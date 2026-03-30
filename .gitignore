@@ -1,0 +1,11 @@
+# Dépendances
+node_modules/
+
+# Fichiers locaux / OS
+.DS_Store
+Thumbs.db
+
+# Env (les secrets restent hors dépôt ; utiliser .env.example)
+.env
+.env.local
+*.log

@@ -1,0 +1,13 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: clubflow
+      POSTGRES_PASSWORD: clubflow
+      POSTGRES_DB: clubflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - clubflow_pg:/var/lib/postgresql/data
+volumes:
+  clubflow_pg:
