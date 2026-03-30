@@ -1,0 +1,15 @@
+export enum ModuleCode {
+  MEMBERS = 'MEMBERS',
+  PAYMENT = 'PAYMENT',
+  PLANNING = 'PLANNING',
+  COMMUNICATION = 'COMMUNICATION',
+  ACCOUNTING = 'ACCOUNTING',
+  SUBSIDIES = 'SUBSIDIES', // spec « Subventions » — code technique court
+  SPONSORING = 'SPONSORING',
+  WEBSITE = 'WEBSITE',
+  BLOG = 'BLOG',
+  SHOP = 'SHOP',
+  CLUB_LIFE = 'CLUB_LIFE',
+  EVENTS = 'EVENTS',
+  BOOKING = 'BOOKING',
+}
