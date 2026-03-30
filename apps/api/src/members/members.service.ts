@@ -94,6 +94,11 @@ export class MembersService {
     customRoleAssignments: { include: { roleDefinition: true } },
     familyMembers: { take: 1 as const, include: { family: true } },
     customFieldValues: { include: { definition: true } },
+    dynamicGroupAssignments: {
+      include: {
+        dynamicGroup: { select: { id: true, name: true } },
+      },
+    },
   } as const;
 
   private async toMemberGraph(
@@ -104,10 +109,21 @@ export class MembersService {
         customRoleAssignments: { include: { roleDefinition: true } };
         familyMembers: { take: 1; include: { family: true } };
         customFieldValues: { include: { definition: true } };
+        dynamicGroupAssignments: {
+          include: {
+            dynamicGroup: { select: { id: true; name: true } };
+          };
+        };
       };
     }>,
   ): Promise<MemberGraph> {
     const fm = row.familyMembers[0];
+    const assignedDynamicGroups = [...row.dynamicGroupAssignments]
+      .map((l) => ({
+        id: l.dynamicGroup.id,
+        name: l.dynamicGroup.name,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
     return {
       id: row.id,
       clubId: row.clubId,
@@ -144,6 +160,7 @@ export class MembersService {
           valueText: v.valueText,
           definition: this.fieldConfig.toDefGraph(v.definition),
         })),
+      assignedDynamicGroups,
     };
   }
 
