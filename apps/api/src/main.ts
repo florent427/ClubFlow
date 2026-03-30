@@ -4,6 +4,11 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const adminOrigin = process.env.ADMIN_WEB_ORIGIN ?? 'http://localhost:5173';
+  app.enableCors({
+    origin: [adminOrigin, /^http:\/\/127\.0\.0\.1:\d+$/],
+    credentials: true,
+  });
   app.enableShutdownHooks();
   app.useGlobalPipes(
     new ValidationPipe({
