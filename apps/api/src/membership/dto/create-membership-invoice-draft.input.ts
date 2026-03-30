@@ -22,7 +22,7 @@ export class CreateMembershipInvoiceDraftInput {
   membershipProductId!: string;
 
   /** Date effet adhésion (prorata). */
-  @Field()
+  @Field(() => String)
   @IsDateString()
   effectiveDate!: string;
 
@@ -43,17 +43,17 @@ export class CreateMembershipInvoiceDraftInput {
   @IsInt()
   publicAidAmountCents?: number | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsString()
   publicAidOrganisme?: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsString()
   publicAidReference?: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsString()
   publicAidAttachmentUrl?: string | null;
@@ -63,7 +63,7 @@ export class CreateMembershipInvoiceDraftInput {
   @IsInt()
   exceptionalAmountCents?: number | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsString()
   exceptionalReason?: string | null;

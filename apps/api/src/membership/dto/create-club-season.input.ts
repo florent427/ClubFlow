@@ -3,19 +3,19 @@ import { IsBoolean, IsDateString, IsOptional, IsString, IsUUID } from 'class-val
 
 @InputType()
 export class CreateClubSeasonInput {
-  @Field()
+  @Field(() => String)
   @IsString()
   label!: string;
 
-  @Field()
+  @Field(() => String)
   @IsDateString()
   startsOn!: string;
 
-  @Field()
+  @Field(() => String)
   @IsDateString()
   endsOn!: string;
 
-  @Field({ nullable: true })
+  @Field(() => Boolean, { nullable: true })
   @IsOptional()
   @IsBoolean()
   setActive?: boolean;
@@ -27,22 +27,22 @@ export class UpdateClubSeasonInput {
   @IsUUID('4')
   id!: string;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsString()
   label?: string;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsDateString()
   startsOn?: string;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsDateString()
   endsOn?: string;
 
-  @Field({ nullable: true })
+  @Field(() => Boolean, { nullable: true })
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;

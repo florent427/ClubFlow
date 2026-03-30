@@ -10,7 +10,7 @@ import {
 
 @InputType()
 export class CreateMembershipProductInput {
-  @Field()
+  @Field(() => String)
   @IsString()
   label!: string;
 
@@ -23,22 +23,22 @@ export class CreateMembershipProductInput {
   @IsUUID('4')
   dynamicGroupId!: string;
 
-  @Field({ nullable: true })
+  @Field(() => Boolean, { nullable: true })
   @IsOptional()
   @IsBoolean()
   allowProrata?: boolean;
 
-  @Field({ nullable: true })
+  @Field(() => Boolean, { nullable: true })
   @IsOptional()
   @IsBoolean()
   allowFamily?: boolean;
 
-  @Field({ nullable: true })
+  @Field(() => Boolean, { nullable: true })
   @IsOptional()
   @IsBoolean()
   allowPublicAid?: boolean;
 
-  @Field({ nullable: true })
+  @Field(() => Boolean, { nullable: true })
   @IsOptional()
   @IsBoolean()
   allowExceptional?: boolean;
@@ -55,7 +55,7 @@ export class UpdateMembershipProductInput {
   @IsUUID('4')
   id!: string;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsString()
   label?: string;
@@ -71,22 +71,22 @@ export class UpdateMembershipProductInput {
   @IsUUID('4')
   dynamicGroupId?: string;
 
-  @Field({ nullable: true })
+  @Field(() => Boolean, { nullable: true })
   @IsOptional()
   @IsBoolean()
   allowProrata?: boolean;
 
-  @Field({ nullable: true })
+  @Field(() => Boolean, { nullable: true })
   @IsOptional()
   @IsBoolean()
   allowFamily?: boolean;
 
-  @Field({ nullable: true })
+  @Field(() => Boolean, { nullable: true })
   @IsOptional()
   @IsBoolean()
   allowPublicAid?: boolean;
 
-  @Field({ nullable: true })
+  @Field(() => Boolean, { nullable: true })
   @IsOptional()
   @IsBoolean()
   allowExceptional?: boolean;
