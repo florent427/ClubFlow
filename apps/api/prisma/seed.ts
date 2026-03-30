@@ -115,6 +115,17 @@ async function main(): Promise<void> {
       disabledAt: null,
     },
   });
+
+  const pwdHint =
+    process.env.SEED_ADMIN_PASSWORD === undefined
+      ? 'ChangeMe! (défaut)'
+      : '(valeur de SEED_ADMIN_PASSWORD)';
+  console.log(`
+ClubFlow — seed terminé
+  GraphQL : http://localhost:${process.env.PORT ?? 3000}/graphql
+  Login   : ${demoEmail} / ${pwdHint}
+  Header  : X-Club-Id: ${club.id}
+`);
 }
 
 main()

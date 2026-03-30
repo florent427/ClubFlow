@@ -160,7 +160,7 @@ describe('ClubFlow API (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/graphql')
       .set('Authorization', `Bearer ${token}`)
-      .set('x-club-id', clubId)
+      .set('x-club-id', clubId as string)
       .send({
         query: `{
           adminDashboardSummary {
@@ -186,7 +186,7 @@ describe('ClubFlow API (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/graphql')
       .set('Authorization', `Bearer ${token}`)
-      .set('x-club-id', clubId)
+      .set('x-club-id', clubId as string)
       .send({
         query: `{ adminDashboardSummary { activeMembersCount } }`,
       });
@@ -203,7 +203,7 @@ describe('ClubFlow API (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/graphql')
       .set('Authorization', `Bearer ${token}`)
-      .set('x-club-id', clubId)
+      .set('x-club-id', clubId as string)
       .send({
         query: `mutation {
           setClubModuleEnabled(moduleCode: BLOG, enabled: true) { id enabled }
