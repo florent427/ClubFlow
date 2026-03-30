@@ -17,6 +17,8 @@ import { MembershipModule } from '../membership/membership.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { PlanningModule } from '../planning/planning.module';
 import './register-enums';
+/** Charge tôt les @ObjectType membres (MemberGraph, AssignedDynamicGroupGraph, …) pour le build du schéma GraphQL. */
+import '../members/models/member.model';
 
 @Module({
   imports: [

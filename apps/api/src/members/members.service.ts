@@ -935,6 +935,35 @@ export class MembersService {
     };
   }
 
+  /**
+   * Ancien schéma : `MembershipProduct.dynamicGroupId`. Absent après migration dual tarif.
+   */
+  private async countLegacyMembershipProductsForGroup(
+    clubId: string,
+    dynamicGroupId: string,
+  ): Promise<number> {
+    try {
+      const cols = await this.prisma.$queryRaw<{ n: bigint }[]>`
+        SELECT COUNT(*)::bigint AS n
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'MembershipProduct'
+          AND column_name = 'dynamicGroupId'
+      `;
+      if (Number(cols[0]?.n ?? 0) === 0) {
+        return 0;
+      }
+      const r = await this.prisma.$queryRaw<{ n: bigint }[]>`
+        SELECT COUNT(*)::bigint AS n
+        FROM "MembershipProduct"
+        WHERE "clubId" = ${clubId} AND "dynamicGroupId" = ${dynamicGroupId}
+      `;
+      return Number(r[0]?.n ?? 0);
+    } catch {
+      return 0;
+    }
+  }
+
   async deleteDynamicGroup(clubId: string, id: string): Promise<void> {
     const existing = await this.prisma.dynamicGroup.findFirst({
       where: { id, clubId },
@@ -942,6 +971,38 @@ export class MembersService {
     if (!existing) {
       throw new NotFoundException('Groupe dynamique introuvable');
     }
-    await this.prisma.dynamicGroup.delete({ where: { id } });
+
+    const legacyLinked = await this.countLegacyMembershipProductsForGroup(
+      clubId,
+      id,
+    );
+    if (legacyLinked > 0) {
+      throw new BadRequestException(
+        `${legacyLinked} formule(s) d’adhésion référencent encore ce groupe (ancien modèle « groupe tarifaire »). ` +
+          `Dans le dossier apps/api, exécutez « npx prisma migrate deploy » (ou « migrate dev » en local), ` +
+          `puis redémarrez l’API. Sinon, supprimez ou modifiez ces formules directement en base.`,
+      );
+    }
+
+    try {
+      await this.prisma.dynamicGroup.delete({ where: { id } });
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2003'
+      ) {
+        const meta = e.meta as
+          | { constraint?: string; field_name?: string }
+          | undefined;
+        const c = `${meta?.constraint ?? ''} ${meta?.field_name ?? ''}`;
+        if (c.includes('MembershipProduct') && c.includes('dynamicGroup')) {
+          throw new BadRequestException(
+            'La base est encore sur l’ancien lien formule ↔ groupe dynamique. ' +
+              'Exécutez « npx prisma migrate deploy » dans apps/api (migration dual tarif / suppression de dynamicGroupId sur les formules), puis réessayez.',
+          );
+        }
+      }
+      throw e;
+    }
   }
 }
