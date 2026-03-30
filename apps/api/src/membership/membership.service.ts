@@ -197,6 +197,16 @@ export class MembershipService {
     });
   }
 
+  async deleteMembershipProduct(clubId: string, id: string): Promise<void> {
+    const existing = await this.prisma.membershipProduct.findFirst({
+      where: { id, clubId, archivedAt: null },
+    });
+    if (!existing) {
+      throw new NotFoundException('Formule introuvable');
+    }
+    await this.prisma.membershipProduct.delete({ where: { id } });
+  }
+
   async createMembershipInvoiceDraft(
     clubId: string,
     userId: string,

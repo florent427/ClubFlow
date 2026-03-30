@@ -9,6 +9,7 @@ import {
   CLUB_SEASONS,
   CREATE_CLUB_SEASON,
   CREATE_MEMBERSHIP_PRODUCT,
+  DELETE_MEMBERSHIP_PRODUCT,
   MEMBERSHIP_PRODUCTS,
   UPDATE_CLUB_SEASON,
   UPDATE_MEMBERSHIP_PRODUCT,
@@ -128,6 +129,14 @@ export function AdhesionSettingsPage() {
       onError: (e) => setProductMsg(e.message),
     },
   );
+
+  const [deleteProduct] = useMutation(DELETE_MEMBERSHIP_PRODUCT, {
+    onCompleted: () => {
+      setProductMsg(null);
+      void refetchProducts();
+    },
+    onError: (e) => setProductMsg(e.message),
+  });
 
   const seasons = seasonData?.clubSeasons ?? [];
   const products = productsData?.membershipProducts ?? [];
@@ -276,6 +285,25 @@ export function AdhesionSettingsPage() {
         },
       },
     });
+  }
+
+  async function onDeleteProduct(id: string, label: string) {
+    setProductMsg(null);
+    if (
+      !window.confirm(
+        `Supprimer définitivement la formule « ${label} » ? Les lignes de facture passées conserveront l’historique sans lien vers cette formule.`,
+      )
+    ) {
+      return;
+    }
+    if (editProductId === id) {
+      setEditProductId(null);
+    }
+    try {
+      await deleteProduct({ variables: { id } });
+    } catch {
+      /* message via onError */
+    }
   }
 
   if (!paymentOn) {
@@ -699,6 +727,13 @@ export function AdhesionSettingsPage() {
                           >
                             Modifier
                           </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-tight members-table__danger"
+                            onClick={() => void onDeleteProduct(p.id, p.label)}
+                          >
+                            Supprimer
+                          </button>
                         </td>
                       </tr>
                     ),
@@ -707,6 +742,10 @@ export function AdhesionSettingsPage() {
               </table>
             </div>
           )}
+          <p className="members-form__hint muted" style={{ marginTop: '0.75rem' }}>
+            La suppression retire la formule des choix pour les nouvelles
+            cotisations. Elle ne supprime pas les factures déjà créées.
+          </p>
         </section>
       </div>
     </>

@@ -429,6 +429,12 @@ export const UPDATE_MEMBERSHIP_PRODUCT = gql`
   }
 `;
 
+export const DELETE_MEMBERSHIP_PRODUCT = gql`
+  mutation DeleteMembershipProduct($id: ID!) {
+    deleteMembershipProduct(id: $id)
+  }
+`;
+
 export const CLUB_INVOICES = gql`
   query ClubInvoices {
     clubInvoices {

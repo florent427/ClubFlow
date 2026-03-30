@@ -1,5 +1,5 @@
 import { UnauthorizedException, UseGuards } from '@nestjs/common';
-import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 import type { Club } from '@prisma/client';
 import { CurrentClub } from '../common/decorators/current-club.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -181,6 +181,15 @@ export class MembershipResolver {
       allowExceptional: r.allowExceptional,
       exceptionalCapPercentBp: r.exceptionalCapPercentBp,
     };
+  }
+
+  @Mutation(() => Boolean)
+  async deleteMembershipProduct(
+    @CurrentClub() club: Club,
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<boolean> {
+    await this.membership.deleteMembershipProduct(club.id, id);
+    return true;
   }
 
   @Mutation(() => InvoiceGraph)
