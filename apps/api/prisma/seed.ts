@@ -11,6 +11,7 @@ const prisma = new PrismaClient();
 
 const MODULE_LABELS: Record<ModuleCode, string> = {
   [ModuleCode.MEMBERS]: 'Membres',
+  [ModuleCode.FAMILIES]: 'Familles',
   [ModuleCode.PAYMENT]: 'Paiement',
   [ModuleCode.PLANNING]: 'Planning',
   [ModuleCode.COMMUNICATION]: 'Communication',
@@ -30,7 +31,8 @@ async function seedModuleDefinitions(): Promise<void> {
     const row: Prisma.ModuleDefinitionCreateInput = {
       code,
       label: MODULE_LABELS[code],
-      isRequired: code === ModuleCode.MEMBERS,
+      isRequired:
+        code === ModuleCode.MEMBERS || code === ModuleCode.FAMILIES,
     };
     await prisma.moduleDefinition.upsert({
       where: { code },
@@ -113,6 +115,152 @@ async function main(): Promise<void> {
       enabled: true,
       enabledAt: new Date(),
       disabledAt: null,
+    },
+  });
+
+  await prisma.clubModule.upsert({
+    where: {
+      clubId_moduleCode: { clubId: club.id, moduleCode: ModuleCode.FAMILIES },
+    },
+    create: {
+      id: randomUUID(),
+      clubId: club.id,
+      moduleCode: ModuleCode.FAMILIES,
+      enabled: true,
+      enabledAt: new Date(),
+    },
+    update: {
+      enabled: true,
+      enabledAt: new Date(),
+      disabledAt: null,
+    },
+  });
+
+  await prisma.clubModule.upsert({
+    where: {
+      clubId_moduleCode: { clubId: club.id, moduleCode: ModuleCode.PLANNING },
+    },
+    create: {
+      id: randomUUID(),
+      clubId: club.id,
+      moduleCode: ModuleCode.PLANNING,
+      enabled: true,
+      enabledAt: new Date(),
+    },
+    update: {
+      enabled: true,
+      enabledAt: new Date(),
+      disabledAt: null,
+    },
+  });
+
+  await prisma.clubModule.upsert({
+    where: {
+      clubId_moduleCode: { clubId: club.id, moduleCode: ModuleCode.PAYMENT },
+    },
+    create: {
+      id: randomUUID(),
+      clubId: club.id,
+      moduleCode: ModuleCode.PAYMENT,
+      enabled: true,
+      enabledAt: new Date(),
+    },
+    update: {
+      enabled: true,
+      enabledAt: new Date(),
+      disabledAt: null,
+    },
+  });
+
+  let gEnfant = await prisma.dynamicGroup.findFirst({
+    where: { clubId: club.id, name: 'Enfants' },
+  });
+  if (!gEnfant) {
+    gEnfant = await prisma.dynamicGroup.create({
+      data: {
+        clubId: club.id,
+        name: 'Enfants',
+        minAge: 6,
+        maxAge: 17,
+      },
+    });
+  }
+
+  let gAdulte = await prisma.dynamicGroup.findFirst({
+    where: { clubId: club.id, name: 'Adultes' },
+  });
+  if (!gAdulte) {
+    gAdulte = await prisma.dynamicGroup.create({
+      data: {
+        clubId: club.id,
+        name: 'Adultes',
+        minAge: 18,
+        maxAge: null,
+      },
+    });
+  }
+
+  let season = await prisma.clubSeason.findFirst({
+    where: { clubId: club.id, label: '2025-2026' },
+  });
+  if (!season) {
+    await prisma.clubSeason.updateMany({
+      where: { clubId: club.id, isActive: true },
+      data: { isActive: false },
+    });
+    season = await prisma.clubSeason.create({
+      data: {
+        clubId: club.id,
+        label: '2025-2026',
+        startsOn: new Date('2025-09-01'),
+        endsOn: new Date('2026-08-31'),
+        isActive: true,
+      },
+    });
+  } else {
+    await prisma.clubSeason.updateMany({
+      where: { clubId: club.id, isActive: true, NOT: { id: season.id } },
+      data: { isActive: false },
+    });
+    await prisma.clubSeason.update({
+      where: { id: season.id },
+      data: { isActive: true },
+    });
+  }
+
+  for (const def of [
+    {
+      label: 'Cotisation Enfant',
+      baseAmountCents: 150_00,
+      dynamicGroupId: gEnfant.id,
+    },
+    {
+      label: 'Cotisation Adulte',
+      baseAmountCents: 200_00,
+      dynamicGroupId: gAdulte.id,
+    },
+  ] as const) {
+    const exists = await prisma.membershipProduct.findFirst({
+      where: { clubId: club.id, label: def.label, archivedAt: null },
+    });
+    if (!exists) {
+      await prisma.membershipProduct.create({
+        data: {
+          clubId: club.id,
+          label: def.label,
+          baseAmountCents: def.baseAmountCents,
+          dynamicGroupId: def.dynamicGroupId,
+        },
+      });
+    }
+  }
+
+  await prisma.club.update({
+    where: { id: club.id },
+    data: {
+      membershipFamilyDiscountFromNth: 2,
+      membershipFamilyAdjustmentType: 'PERCENT_BP',
+      membershipFamilyAdjustmentValue: -500,
     },
   });
 

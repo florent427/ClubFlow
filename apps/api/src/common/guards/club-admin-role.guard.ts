@@ -9,7 +9,9 @@ import { MembershipRole } from '@prisma/client';
 import type { Request } from 'express';
 import { PrismaService } from '../../prisma/prisma.service';
 
-/** MVP : seuls CLUB_ADMIN et BOARD peuvent utiliser le back-office sensibles. */
+/**
+ * Back-office sensible : admin club, bureau, trésorerie (facturation, adhésion, etc.).
+ */
 @Injectable()
 export class ClubAdminRoleGuard implements CanActivate {
   constructor(private readonly prisma: PrismaService) {}
@@ -30,7 +32,8 @@ export class ClubAdminRoleGuard implements CanActivate {
     }
     if (
       membership.role !== MembershipRole.CLUB_ADMIN &&
-      membership.role !== MembershipRole.BOARD
+      membership.role !== MembershipRole.BOARD &&
+      membership.role !== MembershipRole.TREASURER
     ) {
       throw new ForbiddenException();
     }

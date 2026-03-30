@@ -7,7 +7,15 @@ import { AuthModule } from '../auth/auth.module';
 import { CatalogModule } from '../modules/catalog/catalog.module';
 import { ClubModulesModule } from '../modules/club-modules.module';
 import { ClubsModule } from '../clubs/clubs.module';
+import { AccountingModule } from '../accounting/accounting.module';
+import { CommsModule } from '../comms/comms.module';
 import { DashboardModule } from '../dashboard/dashboard.module';
+import { ExternalFinanceModule } from '../external-finance/external-finance.module';
+import { FamiliesModule } from '../families/families.module';
+import { MembersModule } from '../members/members.module';
+import { MembershipModule } from '../membership/membership.module';
+import { PaymentsModule } from '../payments/payments.module';
+import { PlanningModule } from '../planning/planning.module';
 import './register-enums';
 
 @Module({
@@ -23,6 +31,14 @@ import './register-enums';
     ClubsModule,
     DashboardModule,
     ClubModulesModule,
+    MembersModule,
+    FamiliesModule,
+    PlanningModule,
+    AccountingModule,
+    PaymentsModule,
+    MembershipModule,
+    CommsModule,
+    ExternalFinanceModule,
   ],
 })
 export class GraphqlAppModule {}

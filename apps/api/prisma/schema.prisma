@@ -14,8 +14,31 @@ model Club {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships ClubMembership[]
-  modules     ClubModule[]
+  memberships   ClubMembership[]
+  modules       ClubModule[]
+  gradeLevels     GradeLevel[]
+  roleDefinitions ClubRoleDefinition[]
+  members         Member[]
+  dynamicGroups DynamicGroup[]
+  families      Family[]
+  venues        Venue[]
+  courseSlots   CourseSlot[]
+
+  pricingRules        ClubPricingRule[]
+  invoices            Invoice[]
+  payments            Payment[]
+  messageCampaigns    MessageCampaign[]
+  accountingEntries   AccountingEntry[]
+  grantApplications   GrantApplication[]
+  sponsorshipDeals    SponsorshipDeal[]
+  memberFieldCatalogSettings    ClubMemberFieldCatalogSetting[]
+  memberCustomFieldDefinitions  MemberCustomFieldDefinition[]
+  clubSeasons                   ClubSeason[]
+  membershipProducts            MembershipProduct[]
+  /// À partir du n-ième bulletin d’adhésion (OPEN/PAID) pour le foyer sur la saison — null = désactivé
+  membershipFamilyDiscountFromNth Int?
+  membershipFamilyAdjustmentType   PricingAdjustmentType @default(NONE)
+  membershipFamilyAdjustmentValue  Int                   @default(0)
 }
 
 enum MembershipRole {
@@ -37,6 +60,7 @@ model User {
 
   memberships ClubMembership[]
   tokens      RefreshToken[]
+  members     Member[]
 }
 
 model ClubMembership {
@@ -82,4 +106,584 @@ model RefreshToken {
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// --- Module Membres (référentiel adhérents + grades + groupes dynamiques) ---
+
+enum MemberStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum MemberClubRole {
+  STUDENT
+  COACH
+  BOARD
+}
+
+enum MemberCivility {
+  MR
+  MME
+}
+
+/// Champs « catalogue » (colonnes Member) configurables sur la fiche admin
+enum MemberCatalogFieldKey {
+  PHONE
+  ADDRESS_LINE
+  POSTAL_CODE
+  CITY
+  BIRTH_DATE
+  PHOTO_URL
+  MEDICAL_CERT_EXPIRES_AT
+  GRADE_LEVEL
+}
+
+enum MemberCustomFieldType {
+  TEXT
+  TEXT_LONG
+  NUMBER
+  DATE
+  BOOLEAN
+  SELECT
+}
+
+model ClubMemberFieldCatalogSetting {
+  id         String                @id @default(uuid())
+  clubId     String
+  fieldKey   MemberCatalogFieldKey
+  showOnForm Boolean               @default(true)
+  required   Boolean               @default(false)
+  sortOrder  Int                   @default(0)
+  createdAt  DateTime              @default(now())
+  updatedAt  DateTime              @updatedAt
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, fieldKey])
+  @@index([clubId])
+}
+
+model MemberCustomFieldDefinition {
+  id              String                 @id @default(uuid())
+  clubId          String
+  code            String
+  label           String
+  type            MemberCustomFieldType
+  required        Boolean                @default(false)
+  sortOrder       Int                    @default(0)
+  visibleToMember Boolean                @default(false)
+  optionsJson     String?
+  archivedAt      DateTime?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  club   Club                     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  values MemberCustomFieldValue[]
+
+  @@unique([clubId, code])
+  @@index([clubId])
+}
+
+model MemberCustomFieldValue {
+  id           String   @id @default(uuid())
+  memberId     String
+  definitionId String
+  valueText    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  member     Member                      @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  definition MemberCustomFieldDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, definitionId])
+  @@index([memberId])
+  @@index([definitionId])
+}
+
+model GradeLevel {
+  id        String   @id @default(uuid())
+  clubId    String
+  label     String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  club                  Club                     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  members               Member[]
+  dynamicGroupGradeLevels DynamicGroupGradeLevel[]
+
+  @@index([clubId])
+}
+
+model Member {
+  id                     String        @id @default(uuid())
+  clubId                 String
+  userId                 String?
+  firstName              String
+  lastName               String
+  civility               MemberCivility
+  email                  String
+  phone                  String?
+  addressLine            String?
+  postalCode             String?
+  city                   String?
+  birthDate              DateTime?
+  photoUrl               String?
+  medicalCertExpiresAt   DateTime?
+  status                 MemberStatus  @default(ACTIVE)
+  gradeLevelId           String?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  club             Club                    @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user             User?                   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  gradeLevel       GradeLevel?             @relation(fields: [gradeLevelId], references: [id], onDelete: SetNull)
+  roleAssignments         MemberRoleAssignment[]
+  customRoleAssignments   MemberCustomRoleAssignment[]
+  familyMembers           FamilyMember[]
+  courseSlotsAsCoach CourseSlot[] @relation("CourseSlotCoach")
+  messageCampaignRecipients MessageCampaignRecipient[]
+  customFieldValues          MemberCustomFieldValue[]
+  dynamicGroupAssignments    MemberDynamicGroup[]
+  invoiceLines               InvoiceLine[]
+
+  @@unique([clubId, userId])
+  @@index([clubId])
+  @@index([clubId, status])
+}
+
+model MemberRoleAssignment {
+  id        String         @id @default(uuid())
+  memberId  String
+  role      MemberClubRole
+  createdAt DateTime       @default(now())
+
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, role])
+}
+
+/// Rôle « libellé » défini par le club (ex. bénévole, compétiteur). Les rôles
+/// système STUDENT / COACH / BOARD restent sur MemberRoleAssignment (enum).
+model ClubRoleDefinition {
+  id        String   @id @default(uuid())
+  clubId    String
+  label     String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  club         Club                       @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  assignments  MemberCustomRoleAssignment[]
+
+  @@index([clubId])
+}
+
+model MemberCustomRoleAssignment {
+  id               String   @id @default(uuid())
+  memberId         String
+  roleDefinitionId String
+  createdAt        DateTime @default(now())
+
+  member         Member             @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  roleDefinition ClubRoleDefinition @relation(fields: [roleDefinitionId], references: [id], onDelete: Restrict)
+
+  @@unique([memberId, roleDefinitionId])
+  @@index([roleDefinitionId])
+}
+
+model DynamicGroup {
+  id        String   @id @default(uuid())
+  clubId    String
+  name      String
+  minAge    Int?
+  maxAge    Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  club         Club                     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  gradeFilters DynamicGroupGradeLevel[]
+  courseSlots        CourseSlot[]
+  messageCampaigns   MessageCampaign[]
+  memberAssignments  MemberDynamicGroup[]
+  membershipProducts MembershipProduct[]
+  invoiceLines       InvoiceLine[]
+
+  @@index([clubId])
+}
+
+model DynamicGroupGradeLevel {
+  dynamicGroupId String
+  gradeLevelId   String
+
+  dynamicGroup DynamicGroup @relation(fields: [dynamicGroupId], references: [id], onDelete: Cascade)
+  gradeLevel   GradeLevel   @relation(fields: [gradeLevelId], references: [id], onDelete: Cascade)
+
+  @@id([dynamicGroupId, gradeLevelId])
+}
+
+// --- Module Familles (foyer, payeur unique, profils visionneur) ---
+
+enum FamilyMemberLinkRole {
+  PAYER
+  MEMBER
+}
+
+model Family {
+  id        String   @id @default(uuid())
+  clubId    String
+  label     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  club           Club           @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  familyMembers  FamilyMember[]
+  invoices       Invoice[]
+
+  @@index([clubId])
+}
+
+model FamilyMember {
+  id        String               @id @default(uuid())
+  familyId  String
+  memberId  String
+  linkRole  FamilyMemberLinkRole @default(MEMBER)
+  createdAt DateTime             @default(now())
+
+  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([familyId, memberId])
+  @@index([memberId])
+}
+
+// --- Module Planning (créneaux, lieux, conflits professeur) ---
+
+model Venue {
+  id          String   @id @default(uuid())
+  clubId      String
+  name        String
+  addressLine String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  club        Club         @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  courseSlots CourseSlot[]
+
+  @@index([clubId])
+}
+
+model CourseSlot {
+  id             String   @id @default(uuid())
+  clubId         String
+  venueId        String
+  coachMemberId  String
+  title          String
+  startsAt       DateTime
+  endsAt         DateTime
+  dynamicGroupId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  club         Club          @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  venue        Venue         @relation(fields: [venueId], references: [id], onDelete: Restrict)
+  coachMember  Member        @relation("CourseSlotCoach", fields: [coachMemberId], references: [id], onDelete: Restrict)
+  dynamicGroup DynamicGroup? @relation(fields: [dynamicGroupId], references: [id], onDelete: SetNull)
+
+  @@index([clubId, coachMemberId])
+  @@index([clubId, startsAt])
+}
+
+// --- Adhésion : saisons, groupes persistés, formules, lignes de facture ---
+
+model ClubSeason {
+  id        String   @id @default(uuid())
+  clubId    String
+  label     String
+  startsOn  DateTime @db.Date
+  endsOn    DateTime @db.Date
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  club     Club      @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  invoices Invoice[]
+
+  @@index([clubId])
+}
+
+model MemberDynamicGroup {
+  id             String   @id @default(uuid())
+  clubId         String
+  memberId       String
+  dynamicGroupId String
+  createdAt      DateTime @default(now())
+
+  member       Member       @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  dynamicGroup DynamicGroup @relation(fields: [dynamicGroupId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, dynamicGroupId])
+  @@index([clubId, memberId])
+}
+
+model MembershipProduct {
+  id                      String    @id @default(uuid())
+  clubId                  String
+  label                   String
+  baseAmountCents         Int
+  dynamicGroupId          String
+  allowProrata            Boolean   @default(true)
+  allowFamily             Boolean   @default(true)
+  allowPublicAid          Boolean   @default(true)
+  allowExceptional        Boolean   @default(true)
+  exceptionalCapPercentBp Int?
+  archivedAt              DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  club         Club          @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  dynamicGroup DynamicGroup  @relation(fields: [dynamicGroupId], references: [id], onDelete: Restrict)
+  invoiceLines InvoiceLine[]
+
+  @@index([clubId])
+}
+
+enum InvoiceLineKind {
+  MEMBERSHIP
+}
+
+enum InvoiceLineAdjustmentType {
+  PRORATA_SEASON
+  FAMILY
+  PUBLIC_AID
+  EXCEPTIONAL
+}
+
+model InvoiceLine {
+  id                  String          @id @default(uuid())
+  invoiceId           String
+  kind                InvoiceLineKind @default(MEMBERSHIP)
+  memberId            String
+  membershipProductId String?
+  dynamicGroupId      String?
+  baseAmountCents     Int
+  sortOrder           Int             @default(0)
+
+  invoice           Invoice              @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  member            Member               @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  membershipProduct MembershipProduct?   @relation(fields: [membershipProductId], references: [id], onDelete: SetNull)
+  dynamicGroup      DynamicGroup?        @relation(fields: [dynamicGroupId], references: [id], onDelete: SetNull)
+  adjustments       InvoiceLineAdjustment[]
+
+  @@index([invoiceId])
+  @@index([memberId])
+}
+
+model InvoiceLineAdjustment {
+  id               String                    @id @default(uuid())
+  lineId           String
+  stepOrder        Int
+  type             InvoiceLineAdjustmentType
+  amountCents      Int
+  percentAppliedBp Int?
+  metadataJson     String?
+  reason           String?
+  createdByUserId  String?
+
+  line InvoiceLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+
+  @@index([lineId])
+}
+
+// --- Phase E : Paiement (factures, encaissements, tarification, Stripe) ---
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+}
+
+enum ClubPaymentMethod {
+  STRIPE_CARD
+  MANUAL_CASH
+  MANUAL_CHECK
+  MANUAL_TRANSFER
+}
+
+enum PricingAdjustmentType {
+  NONE
+  PERCENT_BP
+  FIXED_CENTS
+}
+
+model ClubPricingRule {
+  id              String                @id @default(uuid())
+  clubId          String
+  method          ClubPaymentMethod
+  adjustmentType  PricingAdjustmentType @default(NONE)
+  adjustmentValue Int                   @default(0)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, method])
+  @@index([clubId])
+}
+
+model Invoice {
+  id                    String        @id @default(uuid())
+  clubId                String
+  familyId              String?
+  clubSeasonId          String?
+  label                 String
+  baseAmountCents       Int
+  amountCents           Int
+  status                InvoiceStatus @default(OPEN)
+  lockedPaymentMethod   ClubPaymentMethod?
+  dueAt                 DateTime?
+  stripePaymentIntentId String?       @unique
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  club       Club        @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  family     Family?     @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  clubSeason ClubSeason? @relation(fields: [clubSeasonId], references: [id], onDelete: SetNull)
+  lines      InvoiceLine[]
+  payments   Payment[]
+
+  @@index([clubId, status])
+  @@index([clubSeasonId])
+}
+
+model Payment {
+  id          String            @id @default(uuid())
+  clubId      String
+  invoiceId   String
+  amountCents Int
+  method      ClubPaymentMethod
+  externalRef String?
+  createdAt   DateTime          @default(now())
+
+  club    Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  accountingEntries AccountingEntry[]
+
+  @@index([clubId, createdAt])
+  @@index([invoiceId])
+}
+
+model StripeWebhookEvent {
+  id          String   @id
+  processedAt DateTime @default(now())
+}
+
+// --- Phase F : Communication (campagnes, audience = groupes dynamiques) ---
+
+enum CommunicationChannel {
+  EMAIL
+  TELEGRAM
+  PUSH
+}
+
+enum MessageCampaignStatus {
+  DRAFT
+  SENT
+}
+
+model MessageCampaign {
+  id             String                  @id @default(uuid())
+  clubId         String
+  title          String
+  body           String
+  channel        CommunicationChannel
+  dynamicGroupId String?
+  status         MessageCampaignStatus     @default(DRAFT)
+  sentAt         DateTime?
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+
+  club           Club           @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  dynamicGroup   DynamicGroup? @relation(fields: [dynamicGroupId], references: [id], onDelete: SetNull)
+  recipients     MessageCampaignRecipient[]
+
+  @@index([clubId])
+}
+
+model MessageCampaignRecipient {
+  id         String   @id @default(uuid())
+  campaignId String
+  memberId   String
+  createdAt  DateTime @default(now())
+
+  campaign MessageCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  member   Member        @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, memberId])
+  @@index([memberId])
+}
+
+// --- Phase G : Comptabilité (écritures) + stubs Subventions / Sponsoring ---
+
+enum AccountingEntryKind {
+  INCOME
+  EXPENSE
+}
+
+model AccountingEntry {
+  id          String              @id @default(uuid())
+  clubId      String
+  kind        AccountingEntryKind
+  label       String
+  amountCents Int
+  paymentId   String?
+  occurredAt  DateTime            @default(now())
+  createdAt   DateTime            @default(now())
+
+  club    Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  payment Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@index([clubId, occurredAt])
+}
+
+enum GrantApplicationStatus {
+  DRAFT
+  SUBMITTED
+  ARCHIVED
+}
+
+model GrantApplication {
+  id          String                 @id @default(uuid())
+  clubId      String
+  title       String
+  status      GrantApplicationStatus @default(DRAFT)
+  amountCents Int?
+  notes       String?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@index([clubId])
+}
+
+enum SponsorshipDealStatus {
+  ACTIVE
+  CLOSED
+}
+
+model SponsorshipDeal {
+  id          String                @id @default(uuid())
+  clubId      String
+  sponsorName String
+  amountCents Int?
+  status      SponsorshipDealStatus @default(ACTIVE)
+  notes       String?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@index([clubId])
 }
