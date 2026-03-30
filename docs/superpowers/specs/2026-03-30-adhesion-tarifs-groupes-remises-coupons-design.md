@@ -82,7 +82,7 @@ Ordre **par défaut** (surcharge permise par formule dans la limite des types au
 
 ## 6. API (surface attendue — à affiner au plan)
 
-- `suggestDynamicGroupsForMember(memberId)` ou input âge + grade : retourne groupes dont critères matchent (tri par « spécificité » recommandé).
+- `suggestMemberDynamicGroups(memberId)` (GraphQL) ou input âge + grade : retourne groupes dont critères matchent (tri par « spécificité » recommandé).
 - CRUD **affectations** `MemberDynamicGroup` (guards admin membre).
 - CRUD **`ClubSeason`** ; lecture **saison active**.
 - CRUD **`MembershipProduct`**.
