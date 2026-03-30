@@ -1,0 +1,247 @@
+import type { ReactNode } from 'react';
+import { useState } from 'react';
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { apolloClient } from '../lib/apollo';
+import { clearSession, getToken } from '../lib/storage';
+
+function decodeJwtEmail(token: string): string | null {
+  try {
+    const part = token.split('.')[1];
+    if (!part) return null;
+    const json = JSON.parse(atob(part)) as { email?: string };
+    return json.email ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function displayNameFromEmail(email: string | null): string {
+  if (!email) return 'Admin';
+  const local = email.split('@')[0] ?? 'Admin';
+  if (!local) return 'Admin';
+  return local
+    .split(/[._-]/)
+    .filter(Boolean)
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function initialsFromEmail(email: string | null): string {
+  if (!email) return 'CF';
+  const local = email.split('@')[0] ?? '';
+  if (local.length >= 2) return local.slice(0, 2).toUpperCase();
+  return (email.slice(0, 2) || 'CF').toUpperCase();
+}
+
+export function AdminLayout({ children }: { children?: ReactNode }) {
+  const navigate = useNavigate();
+  const token = getToken();
+  const emailHint = token ? decodeJwtEmail(token) : null;
+  const displayName = displayNameFromEmail(emailHint);
+  const [roleTab, setRoleTab] = useState<'admin' | 'staff'>('admin');
+
+  function logout() {
+    clearSession();
+    void apolloClient.clearStore();
+    void navigate('/login', { replace: true });
+  }
+
+  return (
+    <div className="cf-shell">
+      <aside className="cf-sidenav" aria-label="Navigation principale">
+        <div className="cf-sidenav__brand">
+          <span
+            className="material-symbols-outlined cf-sidenav__brand-icon"
+            aria-hidden
+          >
+            analytics
+          </span>
+          <span className="cf-sidenav__brand-text">ClubFlow</span>
+        </div>
+
+        <nav className="cf-sidenav__nav">
+          <NavLink
+            to="/"
+            end
+            className={({ isActive }) =>
+              `cf-sidenav__link${isActive ? ' cf-sidenav__link--active' : ''}`
+            }
+          >
+            <span className="material-symbols-outlined" aria-hidden>
+              dashboard
+            </span>
+            <span>Tableau de bord</span>
+          </NavLink>
+          <NavLink
+            to="/members"
+            className={({ isActive }) =>
+              `cf-sidenav__link${isActive ? ' cf-sidenav__link--active' : ''}`
+            }
+          >
+            <span className="material-symbols-outlined" aria-hidden>
+              group
+            </span>
+            <span>Gestion des membres</span>
+          </NavLink>
+          <NavLink
+            to="/members/dynamic-groups"
+            className={({ isActive }) =>
+              `cf-sidenav__link${isActive ? ' cf-sidenav__link--active' : ''}`
+            }
+          >
+            <span className="material-symbols-outlined" aria-hidden>
+              category
+            </span>
+            <span>Groupes dynamiques</span>
+          </NavLink>
+          <NavLink
+            to="/settings/adhesion"
+            className={({ isActive }) =>
+              `cf-sidenav__link${isActive ? ' cf-sidenav__link--active' : ''}`
+            }
+          >
+            <span className="material-symbols-outlined" aria-hidden>
+              groups
+            </span>
+            <span>Adhésion &amp; formules</span>
+          </NavLink>
+          <NavLink
+            to="/planning"
+            className={({ isActive }) =>
+              `cf-sidenav__link${isActive ? ' cf-sidenav__link--active' : ''}`
+            }
+          >
+            <span className="material-symbols-outlined" aria-hidden>
+              calendar_today
+            </span>
+            <span>Planning sportif</span>
+          </NavLink>
+
+          <span className="cf-sidenav__section">Bientôt</span>
+          <span className="cf-sidenav__link cf-sidenav__link--disabled">
+            <span className="material-symbols-outlined" aria-hidden>
+              payments
+            </span>
+            <span>Finances</span>
+          </span>
+          <span className="cf-sidenav__link cf-sidenav__link--disabled">
+            <span className="material-symbols-outlined" aria-hidden>
+              campaign
+            </span>
+            <span>Communication</span>
+          </span>
+
+          <span className="cf-sidenav__section">Administration</span>
+          <Link to="/#club-modules" className="cf-sidenav__link">
+            <span className="material-symbols-outlined" aria-hidden>
+              account_balance
+            </span>
+            <span>Modules du club</span>
+          </Link>
+          <NavLink
+            to="/settings"
+            className={({ isActive }) =>
+              `cf-sidenav__link${isActive ? ' cf-sidenav__link--active' : ''}`
+            }
+          >
+            <span className="material-symbols-outlined" aria-hidden>
+              settings
+            </span>
+            <span>Paramètres</span>
+          </NavLink>
+          <button
+            type="button"
+            className="cf-sidenav__link cf-sidenav__link--button"
+            onClick={() => logout()}
+          >
+            <span className="material-symbols-outlined" aria-hidden>
+              logout
+            </span>
+            <span>Déconnexion</span>
+          </button>
+        </nav>
+
+        <div className="cf-sidenav__user">
+          <div className="cf-sidenav__avatar" aria-hidden>
+            {initialsFromEmail(emailHint)}
+          </div>
+          <div className="cf-sidenav__user-text">
+            <p className="cf-sidenav__user-name">{displayName}</p>
+            <p className="cf-sidenav__user-meta" title={emailHint ?? undefined}>
+              {emailHint ?? 'Session'}
+            </p>
+          </div>
+        </div>
+      </aside>
+
+      <header className="cf-topbar">
+        <div className="cf-topbar__search">
+          <span className="material-symbols-outlined cf-topbar__search-icon" aria-hidden>
+            search
+          </span>
+          <input
+            type="search"
+            placeholder="Rechercher un membre, un cours…"
+            className="cf-topbar__input"
+            aria-label="Recherche"
+          />
+        </div>
+        <div className="cf-topbar__actions">
+          <div className="cf-role-toggle" role="group" aria-label="Vue">
+            <button
+              type="button"
+              className={
+                roleTab === 'admin'
+                  ? 'cf-role-toggle__btn cf-role-toggle__btn--on'
+                  : 'cf-role-toggle__btn'
+              }
+              onClick={() => setRoleTab('admin')}
+            >
+              Admin
+            </button>
+            <button
+              type="button"
+              className={
+                roleTab === 'staff'
+                  ? 'cf-role-toggle__btn cf-role-toggle__btn--on'
+                  : 'cf-role-toggle__btn'
+              }
+              onClick={() => setRoleTab('staff')}
+            >
+              Personnel
+            </button>
+          </div>
+          <button
+            type="button"
+            className="cf-icon-btn"
+            aria-label="Notifications (démo)"
+          >
+            <span className="material-symbols-outlined" aria-hidden>
+              notifications
+            </span>
+            <span className="cf-icon-btn__dot" aria-hidden />
+          </button>
+          <div className="cf-topbar__profile">
+            <div className="cf-topbar__profile-text">
+              <p className="cf-topbar__profile-name">{displayName}</p>
+              <p className="cf-topbar__profile-role">Administrateur club</p>
+            </div>
+            <div className="cf-topbar__avatar" aria-hidden>
+              {initialsFromEmail(emailHint)}
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="cf-main">{children ?? <Outlet />}</main>
+
+      <footer className="cf-footer">
+        <span>ClubFlow v0.2</span>
+        <div className="cf-footer__links">
+          <span className="cf-footer__muted">Support</span>
+          <span className="cf-footer__muted">Documentation</span>
+        </div>
+      </footer>
+    </div>
+  );
+}
