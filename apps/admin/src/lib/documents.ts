@@ -384,8 +384,11 @@ export const MEMBERSHIP_PRODUCTS = gql`
       id
       clubId
       label
-      baseAmountCents
-      dynamicGroupId
+      annualAmountCents
+      monthlyAmountCents
+      minAge
+      maxAge
+      gradeLevelIds
       allowProrata
       allowFamily
       allowPublicAid
@@ -401,8 +404,11 @@ export const CREATE_MEMBERSHIP_PRODUCT = gql`
       id
       clubId
       label
-      baseAmountCents
-      dynamicGroupId
+      annualAmountCents
+      monthlyAmountCents
+      minAge
+      maxAge
+      gradeLevelIds
       allowProrata
       allowFamily
       allowPublicAid
@@ -418,8 +424,11 @@ export const UPDATE_MEMBERSHIP_PRODUCT = gql`
       id
       clubId
       label
-      baseAmountCents
-      dynamicGroupId
+      annualAmountCents
+      monthlyAmountCents
+      minAge
+      maxAge
+      gradeLevelIds
       allowProrata
       allowFamily
       allowPublicAid

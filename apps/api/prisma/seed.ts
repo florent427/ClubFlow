@@ -231,13 +231,17 @@ async function main(): Promise<void> {
   for (const def of [
     {
       label: 'Cotisation Enfant',
-      baseAmountCents: 150_00,
-      dynamicGroupId: gEnfant.id,
+      annualAmountCents: 150_00,
+      monthlyAmountCents: 15_00,
+      minAge: gEnfant.minAge,
+      maxAge: gEnfant.maxAge,
     },
     {
       label: 'Cotisation Adulte',
-      baseAmountCents: 200_00,
-      dynamicGroupId: gAdulte.id,
+      annualAmountCents: 200_00,
+      monthlyAmountCents: 20_00,
+      minAge: gAdulte.minAge,
+      maxAge: gAdulte.maxAge,
     },
   ] as const) {
     const exists = await prisma.membershipProduct.findFirst({
@@ -248,8 +252,10 @@ async function main(): Promise<void> {
         data: {
           clubId: club.id,
           label: def.label,
-          baseAmountCents: def.baseAmountCents,
-          dynamicGroupId: def.dynamicGroupId,
+          annualAmountCents: def.annualAmountCents,
+          monthlyAmountCents: def.monthlyAmountCents,
+          minAge: def.minAge ?? null,
+          maxAge: def.maxAge ?? null,
         },
       });
     }

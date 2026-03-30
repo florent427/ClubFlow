@@ -35,6 +35,7 @@ model Club {
   memberCustomFieldDefinitions  MemberCustomFieldDefinition[]
   clubSeasons                   ClubSeason[]
   membershipProducts            MembershipProduct[]
+  membershipOneTimeFees         MembershipOneTimeFee[]
   /// À partir du n-ième bulletin d’adhésion (OPEN/PAID) pour le foyer sur la saison — null = désactivé
   membershipFamilyDiscountFromNth Int?
   membershipFamilyAdjustmentType   PricingAdjustmentType @default(NONE)
@@ -211,6 +212,7 @@ model GradeLevel {
   club                  Club                     @relation(fields: [clubId], references: [id], onDelete: Cascade)
   members               Member[]
   dynamicGroupGradeLevels DynamicGroupGradeLevel[]
+  membershipProductGradeLevels MembershipProductGradeLevel[]
 
   @@index([clubId])
 }
@@ -306,7 +308,6 @@ model DynamicGroup {
   courseSlots        CourseSlot[]
   messageCampaigns   MessageCampaign[]
   memberAssignments  MemberDynamicGroup[]
-  membershipProducts MembershipProduct[]
   invoiceLines       InvoiceLine[]
 
   @@index([clubId])
@@ -430,8 +431,10 @@ model MembershipProduct {
   id                      String    @id @default(uuid())
   clubId                  String
   label                   String
-  baseAmountCents         Int
-  dynamicGroupId          String
+  annualAmountCents       Int
+  monthlyAmountCents      Int
+  minAge                  Int?
+  maxAge                  Int?
   allowProrata            Boolean   @default(true)
   allowFamily             Boolean   @default(true)
   allowPublicAid          Boolean   @default(true)
@@ -441,15 +444,46 @@ model MembershipProduct {
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
+  club          Club                         @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  gradeFilters  MembershipProductGradeLevel[]
+  invoiceLines  InvoiceLine[]
+
+  @@index([clubId])
+}
+
+model MembershipProductGradeLevel {
+  membershipProductId String
+  gradeLevelId        String
+
+  membershipProduct MembershipProduct @relation(fields: [membershipProductId], references: [id], onDelete: Cascade)
+  gradeLevel        GradeLevel        @relation(fields: [gradeLevelId], references: [id], onDelete: Cascade)
+
+  @@id([membershipProductId, gradeLevelId])
+}
+
+model MembershipOneTimeFee {
+  id           String    @id @default(uuid())
+  clubId       String
+  label        String
+  amountCents  Int
+  archivedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
   club         Club          @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  dynamicGroup DynamicGroup  @relation(fields: [dynamicGroupId], references: [id], onDelete: Restrict)
   invoiceLines InvoiceLine[]
 
   @@index([clubId])
 }
 
 enum InvoiceLineKind {
-  MEMBERSHIP
+  MEMBERSHIP_SUBSCRIPTION
+  MEMBERSHIP_ONE_TIME
+}
+
+enum SubscriptionBillingRhythm {
+  ANNUAL
+  MONTHLY
 }
 
 enum InvoiceLineAdjustmentType {
@@ -460,20 +494,23 @@ enum InvoiceLineAdjustmentType {
 }
 
 model InvoiceLine {
-  id                  String          @id @default(uuid())
-  invoiceId           String
-  kind                InvoiceLineKind @default(MEMBERSHIP)
-  memberId            String
-  membershipProductId String?
-  dynamicGroupId      String?
-  baseAmountCents     Int
-  sortOrder           Int             @default(0)
+  id                       String                     @id @default(uuid())
+  invoiceId                String
+  kind                     InvoiceLineKind            @default(MEMBERSHIP_SUBSCRIPTION)
+  memberId                 String
+  membershipProductId      String?
+  membershipOneTimeFeeId   String?
+  subscriptionBillingRhythm SubscriptionBillingRhythm?
+  dynamicGroupId           String?
+  baseAmountCents          Int
+  sortOrder                Int                        @default(0)
 
-  invoice           Invoice              @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  member            Member               @relation(fields: [memberId], references: [id], onDelete: Restrict)
-  membershipProduct MembershipProduct?   @relation(fields: [membershipProductId], references: [id], onDelete: SetNull)
-  dynamicGroup      DynamicGroup?        @relation(fields: [dynamicGroupId], references: [id], onDelete: SetNull)
-  adjustments       InvoiceLineAdjustment[]
+  invoice            Invoice               @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  member             Member                @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  membershipProduct  MembershipProduct?    @relation(fields: [membershipProductId], references: [id], onDelete: SetNull)
+  membershipOneTimeFee MembershipOneTimeFee? @relation(fields: [membershipOneTimeFeeId], references: [id], onDelete: SetNull)
+  dynamicGroup       DynamicGroup?         @relation(fields: [dynamicGroupId], references: [id], onDelete: SetNull)
+  adjustments        InvoiceLineAdjustment[]
 
   @@index([invoiceId])
   @@index([memberId])

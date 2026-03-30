@@ -1,10 +1,10 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { isClubModuleEnabled } from '../../lib/club-modules';
 import {
   ACTIVE_CLUB_SEASON,
-  CLUB_DYNAMIC_GROUPS,
+  CLUB_GRADE_LEVELS,
   CLUB_MODULES,
   CLUB_SEASONS,
   CREATE_CLUB_SEASON,
@@ -18,7 +18,7 @@ import type {
   ActiveClubSeasonQueryData,
   ClubModulesQueryData,
   ClubSeasonsQueryData,
-  DynamicGroupsQueryData,
+  GradeLevelsQueryData,
   MembershipProductsQueryData,
 } from '../../lib/types';
 
@@ -37,10 +37,9 @@ export function AdhesionSettingsPage() {
     useQuery<MembershipProductsQueryData>(MEMBERSHIP_PRODUCTS, {
       skip: !paymentOn,
     });
-  const { data: groupsData } = useQuery<DynamicGroupsQueryData>(
-    CLUB_DYNAMIC_GROUPS,
-    { skip: !paymentOn || !membersOn },
-  );
+  const { data: gradesData } = useQuery<GradeLevelsQueryData>(CLUB_GRADE_LEVELS, {
+    skip: !paymentOn || !membersOn,
+  });
 
   const [seasonMsg, setSeasonMsg] = useState<string | null>(null);
   const [productMsg, setProductMsg] = useState<string | null>(null);
@@ -57,8 +56,11 @@ export function AdhesionSettingsPage() {
   const [esActive, setEsActive] = useState(false);
 
   const [pLabel, setPLabel] = useState('');
-  const [pEuros, setPEuros] = useState('');
-  const [pGroupId, setPGroupId] = useState('');
+  const [pAnnualEuros, setPAnnualEuros] = useState('');
+  const [pMonthlyEuros, setPMonthlyEuros] = useState('');
+  const [pMinAge, setPMinAge] = useState('');
+  const [pMaxAge, setPMaxAge] = useState('');
+  const [pGradeIds, setPGradeIds] = useState<string[]>([]);
   const [pProrata, setPProrata] = useState(true);
   const [pFamily, setPFamily] = useState(true);
   const [pAid, setPAid] = useState(true);
@@ -67,8 +69,11 @@ export function AdhesionSettingsPage() {
 
   const [editProductId, setEditProductId] = useState<string | null>(null);
   const [epLabel, setEpLabel] = useState('');
-  const [epEuros, setEpEuros] = useState('');
-  const [epGroupId, setEpGroupId] = useState('');
+  const [epAnnualEuros, setEpAnnualEuros] = useState('');
+  const [epMonthlyEuros, setEpMonthlyEuros] = useState('');
+  const [epMinAge, setEpMinAge] = useState('');
+  const [epMaxAge, setEpMaxAge] = useState('');
+  const [epGradeIds, setEpGradeIds] = useState<string[]>([]);
   const [epProrata, setEpProrata] = useState(true);
   const [epFamily, setEpFamily] = useState(true);
   const [epAid, setEpAid] = useState(true);
@@ -109,8 +114,11 @@ export function AdhesionSettingsPage() {
     {
       onCompleted: () => {
         setPLabel('');
-        setPEuros('');
-        setPGroupId('');
+        setPAnnualEuros('');
+        setPMonthlyEuros('');
+        setPMinAge('');
+        setPMaxAge('');
+        setPGradeIds([]);
         setProductMsg(null);
         void refetchProducts();
       },
@@ -140,10 +148,38 @@ export function AdhesionSettingsPage() {
 
   const seasons = seasonData?.clubSeasons ?? [];
   const products = productsData?.membershipProducts ?? [];
-  const groups = groupsData?.clubDynamicGroups ?? [];
+  const gradeLevels = gradesData?.clubGradeLevels ?? [];
   const activeSeason = activeSeasonData?.activeClubSeason ?? null;
 
-  const groupById = useMemo(() => new Map(groups.map((g) => [g.id, g])), [groups]);
+  function toggleGradeSelection(
+    id: string,
+    current: string[],
+    setIds: (v: string[]) => void,
+  ) {
+    setIds(
+      current.includes(id) ? current.filter((x) => x !== id) : [...current, id],
+    );
+  }
+
+  function parseOptionalAge(raw: string): number | null {
+    const t = raw.trim();
+    if (!t) return null;
+    const n = Number.parseInt(t, 10);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function productCriteriaLabel(
+    p: MembershipProductsQueryData['membershipProducts'][number],
+  ): string {
+    const parts: string[] = [];
+    if (p.minAge != null || p.maxAge != null) {
+      parts.push(`âge ${p.minAge ?? '—'}–${p.maxAge ?? '—'}`);
+    }
+    if (p.gradeLevelIds.length > 0) {
+      parts.push(`${p.gradeLevelIds.length} grade(s)`);
+    }
+    return parts.length > 0 ? parts.join(' · ') : 'Tous';
+  }
 
   function eurosToCents(raw: string): number | null {
     const t = raw.trim().replace(',', '.');
@@ -209,24 +245,30 @@ export function AdhesionSettingsPage() {
   async function onCreateProduct(e: React.FormEvent) {
     e.preventDefault();
     setProductMsg(null);
-    if (!pLabel.trim() || !pGroupId) {
-      setProductMsg('Libellé et groupe obligatoires.');
+    if (!pLabel.trim()) {
+      setProductMsg('Libellé obligatoire.');
       return;
     }
-    const cents = eurosToCents(pEuros);
-    if (cents == null) {
-      setProductMsg('Montant invalide (ex. 120 ou 120,50).');
+    const annual = eurosToCents(pAnnualEuros);
+    const monthly = eurosToCents(pMonthlyEuros);
+    if (annual == null || monthly == null) {
+      setProductMsg('Tarif annuel et mensuel invalides (ex. 120 ou 120,50).');
       return;
     }
     const capRaw = pCap.trim();
     const cap =
       capRaw === '' ? null : Number.parseInt(capRaw, 10);
+    const minA = parseOptionalAge(pMinAge);
+    const maxA = parseOptionalAge(pMaxAge);
     await createProduct({
       variables: {
         input: {
           label: pLabel.trim(),
-          baseAmountCents: cents,
-          dynamicGroupId: pGroupId,
+          annualAmountCents: annual,
+          monthlyAmountCents: monthly,
+          minAge: minA,
+          maxAge: maxA,
+          gradeLevelIds: pGradeIds.length > 0 ? pGradeIds : undefined,
           allowProrata: pProrata,
           allowFamily: pFamily,
           allowPublicAid: pAid,
@@ -243,8 +285,19 @@ export function AdhesionSettingsPage() {
   ) {
     setEditProductId(row.id);
     setEpLabel(row.label);
-    setEpEuros(centsToEuros(row.baseAmountCents));
-    setEpGroupId(row.dynamicGroupId);
+    setEpAnnualEuros(centsToEuros(row.annualAmountCents));
+    setEpMonthlyEuros(centsToEuros(row.monthlyAmountCents));
+    setEpMinAge(
+      row.minAge != null && Number.isFinite(row.minAge)
+        ? String(row.minAge)
+        : '',
+    );
+    setEpMaxAge(
+      row.maxAge != null && Number.isFinite(row.maxAge)
+        ? String(row.maxAge)
+        : '',
+    );
+    setEpGradeIds([...row.gradeLevelIds]);
     setEpProrata(row.allowProrata);
     setEpFamily(row.allowFamily);
     setEpAid(row.allowPublicAid);
@@ -261,21 +314,27 @@ export function AdhesionSettingsPage() {
     e.preventDefault();
     if (!editProductId) return;
     setProductMsg(null);
-    const cents = eurosToCents(epEuros);
-    if (cents == null) {
-      setProductMsg('Montant invalide.');
+    const annual = eurosToCents(epAnnualEuros);
+    const monthly = eurosToCents(epMonthlyEuros);
+    if (annual == null || monthly == null) {
+      setProductMsg('Tarifs invalides.');
       return;
     }
     const capRaw = epCap.trim();
     const cap =
       capRaw === '' ? null : Number.parseInt(capRaw, 10);
+    const minA = parseOptionalAge(epMinAge);
+    const maxA = parseOptionalAge(epMaxAge);
     await updateProduct({
       variables: {
         input: {
           id: editProductId,
           label: epLabel.trim(),
-          baseAmountCents: cents,
-          dynamicGroupId: epGroupId,
+          annualAmountCents: annual,
+          monthlyAmountCents: monthly,
+          minAge: minA,
+          maxAge: maxA,
+          gradeLevelIds: epGradeIds,
           allowProrata: epProrata,
           allowFamily: epFamily,
           allowPublicAid: epAid,
@@ -330,16 +389,18 @@ export function AdhesionSettingsPage() {
         <p className="members-loom__eyebrow">Paramètres · Adhésion</p>
         <h1 className="members-loom__title">Saisons et formules</h1>
         <p className="members-loom__lede">
-          Une saison active est requise pour émettre des cotisations. Les
-          formules sont rattachées à un{' '}
-          <Link to="/members/dynamic-groups">groupe dynamique</Link>.
+          Une saison active est requise pour émettre des cotisations. Chaque
+          formule définit des tarifs annuel et mensuel et, optionnellement, des
+          critères d’éligibilité (âge, grades). Les{' '}
+          <Link to="/members/dynamic-groups">groupes dynamiques</Link> servent à
+          l’affectation membre (planning, communication), pas au tarif.
         </p>
       </header>
 
       {!membersOn ? (
         <p className="form-error" role="status">
-          Activez aussi le module « Membres » pour lier les formules aux groupes
-          dynamiques.
+          Activez aussi le module « Membres » pour utiliser les grades sur les
+          formules.
         </p>
       ) : null}
 
@@ -503,11 +564,10 @@ export function AdhesionSettingsPage() {
 
         <section className="members-panel">
           <h2 className="members-panel__h">Formules d’adhésion</h2>
-          {groups.length === 0 ? (
+          {!membersOn ? (
             <p className="form-error">
-              Créez au moins un{' '}
-              <Link to="/members/dynamic-groups">groupe dynamique</Link> avant
-              une formule.
+              Activez le module « Membres » pour gérer les grades utilisés comme
+              critères optionnels.
             </p>
           ) : null}
           {productMsg ? <p className="form-error">{productMsg}</p> : null}
@@ -522,28 +582,61 @@ export function AdhesionSettingsPage() {
                 />
               </label>
               <label className="field">
-                <span>Montant (€)</span>
+                <span>Tarif annuel (€)</span>
                 <input
-                  value={pEuros}
-                  onChange={(e) => setPEuros(e.target.value)}
-                  placeholder="120"
+                  value={pAnnualEuros}
+                  onChange={(e) => setPAnnualEuros(e.target.value)}
+                  placeholder="150"
                 />
               </label>
               <label className="field">
-                <span>Groupe tarifaire</span>
-                <select
-                  value={pGroupId}
-                  onChange={(e) => setPGroupId(e.target.value)}
-                >
-                  <option value="">—</option>
-                  {groups.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.name}
-                    </option>
-                  ))}
-                </select>
+                <span>Tarif mensuel (€)</span>
+                <input
+                  value={pMonthlyEuros}
+                  onChange={(e) => setPMonthlyEuros(e.target.value)}
+                  placeholder="15"
+                />
               </label>
             </div>
+            <div className="members-form--inline">
+              <label className="field">
+                <span>Âge min (optionnel)</span>
+                <input
+                  value={pMinAge}
+                  onChange={(e) => setPMinAge(e.target.value)}
+                  placeholder="ex. 6"
+                />
+              </label>
+              <label className="field">
+                <span>Âge max (optionnel)</span>
+                <input
+                  value={pMaxAge}
+                  onChange={(e) => setPMaxAge(e.target.value)}
+                  placeholder="ex. 17"
+                />
+              </label>
+            </div>
+            {gradeLevels.length > 0 ? (
+              <div className="members-form__fieldset">
+                <span className="members-form__legend">
+                  Grades éligibles (optionnel, vide = tous)
+                </span>
+                <div className="members-checkbox-grid">
+                  {gradeLevels.map((gl) => (
+                    <label key={gl.id} className="members-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={pGradeIds.includes(gl.id)}
+                        onChange={() =>
+                          toggleGradeSelection(gl.id, pGradeIds, setPGradeIds)
+                        }
+                      />
+                      <span>{gl.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <div className="members-form__fieldset">
               <span className="members-form__legend">Options</span>
               <div className="members-checkbox-grid">
@@ -592,7 +685,7 @@ export function AdhesionSettingsPage() {
             <button
               type="submit"
               className="btn btn-primary"
-              disabled={creatingProduct || groups.length === 0}
+              disabled={creatingProduct}
             >
               {creatingProduct ? '…' : 'Créer la formule'}
             </button>
@@ -606,8 +699,9 @@ export function AdhesionSettingsPage() {
                 <thead>
                   <tr>
                     <th>Libellé</th>
-                    <th>Montant</th>
-                    <th>Groupe</th>
+                    <th>Annuel</th>
+                    <th>Mensuel</th>
+                    <th>Critères</th>
                     <th />
                   </tr>
                 </thead>
@@ -615,7 +709,7 @@ export function AdhesionSettingsPage() {
                   {products.map((p) =>
                     editProductId === p.id ? (
                       <tr key={p.id}>
-                        <td colSpan={4}>
+                        <td colSpan={5}>
                           <form
                             className="members-form"
                             onSubmit={(e) => void onUpdateProduct(e)}
@@ -629,26 +723,60 @@ export function AdhesionSettingsPage() {
                                 />
                               </label>
                               <label className="field">
-                                <span>Montant (€)</span>
+                                <span>Tarif annuel (€)</span>
                                 <input
-                                  value={epEuros}
-                                  onChange={(e) => setEpEuros(e.target.value)}
+                                  value={epAnnualEuros}
+                                  onChange={(e) =>
+                                    setEpAnnualEuros(e.target.value)
+                                  }
                                 />
                               </label>
                               <label className="field">
-                                <span>Groupe</span>
-                                <select
-                                  value={epGroupId}
-                                  onChange={(e) => setEpGroupId(e.target.value)}
-                                >
-                                  {groups.map((g) => (
-                                    <option key={g.id} value={g.id}>
-                                      {g.name}
-                                    </option>
-                                  ))}
-                                </select>
+                                <span>Tarif mensuel (€)</span>
+                                <input
+                                  value={epMonthlyEuros}
+                                  onChange={(e) =>
+                                    setEpMonthlyEuros(e.target.value)
+                                  }
+                                />
                               </label>
                             </div>
+                            <div className="members-form--inline">
+                              <label className="field">
+                                <span>Âge min</span>
+                                <input
+                                  value={epMinAge}
+                                  onChange={(e) => setEpMinAge(e.target.value)}
+                                />
+                              </label>
+                              <label className="field">
+                                <span>Âge max</span>
+                                <input
+                                  value={epMaxAge}
+                                  onChange={(e) => setEpMaxAge(e.target.value)}
+                                />
+                              </label>
+                            </div>
+                            {gradeLevels.length > 0 ? (
+                              <div className="members-checkbox-grid">
+                                {gradeLevels.map((gl) => (
+                                  <label key={gl.id} className="members-checkbox">
+                                    <input
+                                      type="checkbox"
+                                      checked={epGradeIds.includes(gl.id)}
+                                      onChange={() =>
+                                        toggleGradeSelection(
+                                          gl.id,
+                                          epGradeIds,
+                                          setEpGradeIds,
+                                        )
+                                      }
+                                    />
+                                    <span>{gl.label}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            ) : null}
                             <div className="members-checkbox-grid">
                               <label className="members-checkbox">
                                 <input
@@ -714,11 +842,9 @@ export function AdhesionSettingsPage() {
                     ) : (
                       <tr key={p.id}>
                         <td>{p.label}</td>
-                        <td>{centsToEuros(p.baseAmountCents)} €</td>
-                        <td>
-                          {groupById.get(p.dynamicGroupId)?.name ??
-                            p.dynamicGroupId}
-                        </td>
+                        <td>{centsToEuros(p.annualAmountCents)} €</td>
+                        <td>{centsToEuros(p.monthlyAmountCents)} €</td>
+                        <td>{productCriteriaLabel(p)}</td>
                         <td className="members-table__actions">
                           <button
                             type="button"

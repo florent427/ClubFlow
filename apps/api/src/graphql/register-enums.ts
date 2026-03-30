@@ -17,6 +17,7 @@ import {
   MessageCampaignStatus,
   PricingAdjustmentType,
   SponsorshipDealStatus,
+  SubscriptionBillingRhythm,
 } from '@prisma/client';
 import { ModuleCode } from '../domain/module-registry/module-codes';
 
@@ -34,6 +35,9 @@ registerEnumType(MemberCustomFieldType, {
 registerEnumType(FamilyMemberLinkRole, { name: 'FamilyMemberLinkRole' });
 registerEnumType(InvoiceStatus, { name: 'InvoiceStatus' });
 registerEnumType(InvoiceLineKind, { name: 'InvoiceLineKind' });
+registerEnumType(SubscriptionBillingRhythm, {
+  name: 'SubscriptionBillingRhythm',
+});
 registerEnumType(InvoiceLineAdjustmentType, {
   name: 'InvoiceLineAdjustmentType',
 });

@@ -21,8 +21,45 @@ import {
   UpdateMembershipProductInput,
 } from './dto/create-membership-product.input';
 import { ClubSeasonGraph } from './models/club-season.model';
+import type { MembershipProductGradeLevel } from '@prisma/client';
 import { MembershipProductGraph } from './models/membership-product.model';
 import { MembershipService } from './membership.service';
+
+type MembershipProductWithGrades = {
+  id: string;
+  clubId: string;
+  label: string;
+  annualAmountCents: number;
+  monthlyAmountCents: number;
+  minAge: number | null;
+  maxAge: number | null;
+  allowProrata: boolean;
+  allowFamily: boolean;
+  allowPublicAid: boolean;
+  allowExceptional: boolean;
+  exceptionalCapPercentBp: number | null;
+  gradeFilters: MembershipProductGradeLevel[];
+};
+
+function toMembershipProductGraph(
+  r: MembershipProductWithGrades,
+): MembershipProductGraph {
+  return {
+    id: r.id,
+    clubId: r.clubId,
+    label: r.label,
+    annualAmountCents: r.annualAmountCents,
+    monthlyAmountCents: r.monthlyAmountCents,
+    minAge: r.minAge,
+    maxAge: r.maxAge,
+    gradeLevelIds: r.gradeFilters.map((g) => g.gradeLevelId),
+    allowProrata: r.allowProrata,
+    allowFamily: r.allowFamily,
+    allowPublicAid: r.allowPublicAid,
+    allowExceptional: r.allowExceptional,
+    exceptionalCapPercentBp: r.exceptionalCapPercentBp,
+  };
+}
 
 function toInvoiceGraph(row: {
   id: string;
@@ -129,18 +166,7 @@ export class MembershipResolver {
     @CurrentClub() club: Club,
   ): Promise<MembershipProductGraph[]> {
     const rows = await this.membership.listMembershipProducts(club.id);
-    return rows.map((r) => ({
-      id: r.id,
-      clubId: r.clubId,
-      label: r.label,
-      baseAmountCents: r.baseAmountCents,
-      dynamicGroupId: r.dynamicGroupId,
-      allowProrata: r.allowProrata,
-      allowFamily: r.allowFamily,
-      allowPublicAid: r.allowPublicAid,
-      allowExceptional: r.allowExceptional,
-      exceptionalCapPercentBp: r.exceptionalCapPercentBp,
-    }));
+    return rows.map((r) => toMembershipProductGraph(r));
   }
 
   @Mutation(() => MembershipProductGraph)
@@ -149,18 +175,7 @@ export class MembershipResolver {
     @Args('input') input: CreateMembershipProductInput,
   ): Promise<MembershipProductGraph> {
     const r = await this.membership.createMembershipProduct(club.id, input);
-    return {
-      id: r.id,
-      clubId: r.clubId,
-      label: r.label,
-      baseAmountCents: r.baseAmountCents,
-      dynamicGroupId: r.dynamicGroupId,
-      allowProrata: r.allowProrata,
-      allowFamily: r.allowFamily,
-      allowPublicAid: r.allowPublicAid,
-      allowExceptional: r.allowExceptional,
-      exceptionalCapPercentBp: r.exceptionalCapPercentBp,
-    };
+    return toMembershipProductGraph(r);
   }
 
   @Mutation(() => MembershipProductGraph)
@@ -169,18 +184,7 @@ export class MembershipResolver {
     @Args('input') input: UpdateMembershipProductInput,
   ): Promise<MembershipProductGraph> {
     const r = await this.membership.updateMembershipProduct(club.id, input);
-    return {
-      id: r.id,
-      clubId: r.clubId,
-      label: r.label,
-      baseAmountCents: r.baseAmountCents,
-      dynamicGroupId: r.dynamicGroupId,
-      allowProrata: r.allowProrata,
-      allowFamily: r.allowFamily,
-      allowPublicAid: r.allowPublicAid,
-      allowExceptional: r.allowExceptional,
-      exceptionalCapPercentBp: r.exceptionalCapPercentBp,
-    };
+    return toMembershipProductGraph(r);
   }
 
   @Mutation(() => Boolean)

@@ -12,10 +12,19 @@ export class MembershipProductGraph {
   label!: string;
 
   @Field(() => Int)
-  baseAmountCents!: number;
+  annualAmountCents!: number;
 
-  @Field(() => ID)
-  dynamicGroupId!: string;
+  @Field(() => Int)
+  monthlyAmountCents!: number;
+
+  @Field(() => Int, { nullable: true })
+  minAge!: number | null;
+
+  @Field(() => Int, { nullable: true })
+  maxAge!: number | null;
+
+  @Field(() => [ID])
+  gradeLevelIds!: string[];
 
   @Field()
   allowProrata!: boolean;

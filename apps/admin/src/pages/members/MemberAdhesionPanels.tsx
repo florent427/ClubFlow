@@ -34,6 +34,49 @@ import type {
 
 type MemberRow = MembersQueryData['clubMembers'][number];
 
+function ageInYears(birthDate: Date, reference: Date): number {
+  let age = reference.getFullYear() - birthDate.getFullYear();
+  const md = reference.getMonth() - birthDate.getMonth();
+  if (md < 0 || (md === 0 && reference.getDate() < birthDate.getDate())) {
+    age -= 1;
+  }
+  return age;
+}
+
+/** Aligné sur la logique serveur : critères optionnels âge + grades sur la formule. */
+function memberEligibleForProduct(
+  member: MemberRow,
+  p: MembershipProductsQueryData['membershipProducts'][number],
+  reference: Date,
+): boolean {
+  if (member.status !== 'ACTIVE') {
+    return false;
+  }
+  const hasAgeRule = p.minAge != null || p.maxAge != null;
+  if (hasAgeRule) {
+    if (!member.birthDate) {
+      return false;
+    }
+    const bd = new Date(member.birthDate);
+    const age = ageInYears(bd, reference);
+    if (p.minAge != null && age < p.minAge) {
+      return false;
+    }
+    if (p.maxAge != null && age > p.maxAge) {
+      return false;
+    }
+  }
+  if (p.gradeLevelIds.length > 0) {
+    if (
+      !member.gradeLevelId ||
+      !p.gradeLevelIds.includes(member.gradeLevelId)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function eurosDiscountToNegativeCents(raw: string): number | null {
   const t = raw.trim().replace(',', '.');
   if (!t) return null;
@@ -130,14 +173,17 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
   const activeSeason = activeSeasonData?.activeClubSeason ?? null;
   const products = productsData?.membershipProducts ?? [];
 
-  const eligibleProducts = products.filter((p) =>
-    assigned.some((a) => a.id === p.dynamicGroupId),
-  );
-
   const [selectedProductId, setSelectedProductId] = useState('');
   const [effectiveDate, setEffectiveDate] = useState(() =>
     new Date().toISOString().slice(0, 10),
   );
+
+  const eligibleProducts = useMemo(() => {
+    const ref = new Date(`${effectiveDate}T12:00:00`);
+    return products.filter((p) =>
+      memberEligibleForProduct(member, p, ref),
+    );
+  }, [products, member, effectiveDate]);
   const [prorataBp, setProrataBp] = useState('');
   const [publicAidEuros, setPublicAidEuros] = useState('');
   const [publicAidOrg, setPublicAidOrg] = useState('');
@@ -354,15 +400,18 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
                   <option value="">— Choisir —</option>
                   {eligibleProducts.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.label} — {(p.baseAmountCents / 100).toFixed(2)} €
+                      {p.label} — {(p.annualAmountCents / 100).toFixed(2)} €
+                      /an · {(p.monthlyAmountCents / 100).toFixed(2)} €/mois
                     </option>
                   ))}
                 </select>
               </label>
               {eligibleProducts.length === 0 ? (
                 <p className="muted">
-                  Aucune formule : affectez un groupe correspondant à une{' '}
-                  <Link to="/settings/adhesion">formule</Link>.
+                  Aucune formule éligible pour ce profil (âge / grade / date
+                  d’effet). Vérifiez les{' '}
+                  <Link to="/settings/adhesion">formules</Link> ou le profil du
+                  membre.
                 </p>
               ) : null}
 

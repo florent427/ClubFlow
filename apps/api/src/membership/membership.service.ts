@@ -6,10 +6,16 @@ import {
 } from '@nestjs/common';
 import {
   ClubPaymentMethod,
+  InvoiceLineKind,
   InvoiceStatus,
   MembershipRole,
+  SubscriptionBillingRhythm,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  memberMatchesDynamicGroup,
+  type MemberMatchInput,
+} from '../members/dynamic-group-matcher';
 import { applyPricing } from '../payments/pricing-rules';
 import { CreateClubSeasonInput, UpdateClubSeasonInput } from './dto/create-club-season.input';
 import { CreateMembershipInvoiceDraftInput } from './dto/create-membership-invoice-draft.input';
@@ -122,31 +128,55 @@ export class MembershipService {
     return this.prisma.membershipProduct.findMany({
       where: { clubId, archivedAt: null },
       orderBy: { label: 'asc' },
+      include: { gradeFilters: true },
     });
+  }
+
+  private async assertGradeLevelsInClub(
+    clubId: string,
+    gradeLevelIds: string[],
+  ): Promise<void> {
+    for (const gid of gradeLevelIds) {
+      const g = await this.prisma.gradeLevel.findFirst({
+        where: { id: gid, clubId },
+      });
+      if (!g) {
+        throw new BadRequestException(`Grade inconnu : ${gid}`);
+      }
+    }
   }
 
   async createMembershipProduct(
     clubId: string,
     input: CreateMembershipProductInput,
   ) {
-    const grp = await this.prisma.dynamicGroup.findFirst({
-      where: { id: input.dynamicGroupId, clubId },
-    });
-    if (!grp) {
-      throw new BadRequestException('Groupe dynamique inconnu');
+    const gradeLevelIds = input.gradeLevelIds ?? [];
+    if (gradeLevelIds.length > 0) {
+      await this.assertGradeLevelsInClub(clubId, gradeLevelIds);
     }
     return this.prisma.membershipProduct.create({
       data: {
         clubId,
         label: input.label,
-        baseAmountCents: input.baseAmountCents,
-        dynamicGroupId: input.dynamicGroupId,
+        annualAmountCents: input.annualAmountCents,
+        monthlyAmountCents: input.monthlyAmountCents,
+        minAge: input.minAge ?? null,
+        maxAge: input.maxAge ?? null,
         allowProrata: input.allowProrata ?? true,
         allowFamily: input.allowFamily ?? true,
         allowPublicAid: input.allowPublicAid ?? true,
         allowExceptional: input.allowExceptional ?? true,
         exceptionalCapPercentBp: input.exceptionalCapPercentBp ?? null,
+        gradeFilters:
+          gradeLevelIds.length > 0
+            ? {
+                create: gradeLevelIds.map((gradeLevelId) => ({
+                  gradeLevelId,
+                })),
+              }
+            : undefined,
       },
+      include: { gradeFilters: true },
     });
   }
 
@@ -160,40 +190,53 @@ export class MembershipService {
     if (!existing) {
       throw new NotFoundException('Formule introuvable');
     }
-    if (input.dynamicGroupId) {
-      const grp = await this.prisma.dynamicGroup.findFirst({
-        where: { id: input.dynamicGroupId, clubId },
-      });
-      if (!grp) {
-        throw new BadRequestException('Groupe dynamique inconnu');
-      }
+    if (input.gradeLevelIds !== undefined) {
+      await this.assertGradeLevelsInClub(clubId, input.gradeLevelIds);
     }
-    return this.prisma.membershipProduct.update({
-      where: { id: input.id },
-      data: {
-        ...(input.label !== undefined ? { label: input.label } : {}),
-        ...(input.baseAmountCents !== undefined
-          ? { baseAmountCents: input.baseAmountCents }
-          : {}),
-        ...(input.dynamicGroupId !== undefined
-          ? { dynamicGroupId: input.dynamicGroupId }
-          : {}),
-        ...(input.allowProrata !== undefined
-          ? { allowProrata: input.allowProrata }
-          : {}),
-        ...(input.allowFamily !== undefined
-          ? { allowFamily: input.allowFamily }
-          : {}),
-        ...(input.allowPublicAid !== undefined
-          ? { allowPublicAid: input.allowPublicAid }
-          : {}),
-        ...(input.allowExceptional !== undefined
-          ? { allowExceptional: input.allowExceptional }
-          : {}),
-        ...(input.exceptionalCapPercentBp !== undefined
-          ? { exceptionalCapPercentBp: input.exceptionalCapPercentBp }
-          : {}),
-      },
+    return this.prisma.$transaction(async (tx) => {
+      if (input.gradeLevelIds !== undefined) {
+        await tx.membershipProductGradeLevel.deleteMany({
+          where: { membershipProductId: input.id },
+        });
+        if (input.gradeLevelIds.length > 0) {
+          await tx.membershipProductGradeLevel.createMany({
+            data: input.gradeLevelIds.map((gradeLevelId) => ({
+              membershipProductId: input.id,
+              gradeLevelId,
+            })),
+          });
+        }
+      }
+      return tx.membershipProduct.update({
+        where: { id: input.id },
+        data: {
+          ...(input.label !== undefined ? { label: input.label } : {}),
+          ...(input.annualAmountCents !== undefined
+            ? { annualAmountCents: input.annualAmountCents }
+            : {}),
+          ...(input.monthlyAmountCents !== undefined
+            ? { monthlyAmountCents: input.monthlyAmountCents }
+            : {}),
+          ...(input.minAge !== undefined ? { minAge: input.minAge } : {}),
+          ...(input.maxAge !== undefined ? { maxAge: input.maxAge } : {}),
+          ...(input.allowProrata !== undefined
+            ? { allowProrata: input.allowProrata }
+            : {}),
+          ...(input.allowFamily !== undefined
+            ? { allowFamily: input.allowFamily }
+            : {}),
+          ...(input.allowPublicAid !== undefined
+            ? { allowPublicAid: input.allowPublicAid }
+            : {}),
+          ...(input.allowExceptional !== undefined
+            ? { allowExceptional: input.allowExceptional }
+            : {}),
+          ...(input.exceptionalCapPercentBp !== undefined
+            ? { exceptionalCapPercentBp: input.exceptionalCapPercentBp }
+            : {}),
+        },
+        include: { gradeFilters: true },
+      });
     });
   }
 
@@ -228,24 +271,34 @@ export class MembershipService {
 
     const product = await this.prisma.membershipProduct.findFirst({
       where: { id: input.membershipProductId, clubId, archivedAt: null },
-      include: { dynamicGroup: true },
+      include: { gradeFilters: true },
     });
     if (!product) {
       throw new NotFoundException('Formule d’adhésion introuvable');
     }
 
-    const link = await this.prisma.memberDynamicGroup.findFirst({
-      where: {
-        memberId: member.id,
-        dynamicGroupId: product.dynamicGroupId,
-        clubId,
+    const memberInput: MemberMatchInput = {
+      status: member.status,
+      birthDate: member.birthDate,
+      gradeLevelId: member.gradeLevelId,
+    };
+    const effDate = new Date(input.effectiveDate);
+    const eligible = memberMatchesDynamicGroup(
+      memberInput,
+      {
+        minAge: product.minAge,
+        maxAge: product.maxAge,
+        gradeLevelIds: product.gradeFilters.map((g) => g.gradeLevelId),
       },
-    });
-    if (!link) {
+      effDate,
+    );
+    if (!eligible) {
       throw new BadRequestException(
-        'Le membre doit être affecté au groupe de la formule (voir groupes dynamiques).',
+        'Le membre n’est pas éligible pour cette formule (âge ou grade).',
       );
     }
+
+    const subscriptionBaseCents = product.annualAmountCents;
 
     const fm = await this.prisma.familyMember.findFirst({
       where: { memberId: member.id },
@@ -277,11 +330,10 @@ export class MembershipService {
           }
         : null;
 
-    const eff = new Date(input.effectiveDate);
     const factorBp =
       input.prorataPercentBp != null
         ? input.prorataPercentBp
-        : computeProrataFactorBp(eff, season.startsOn, season.endsOn);
+        : computeProrataFactorBp(effDate, season.startsOn, season.endsOn);
 
     const hasExceptional =
       (input.exceptionalAmountCents != null &&
@@ -327,7 +379,7 @@ export class MembershipService {
 
     const { adjustments, subtotalAfterBusinessCents } =
       computeMembershipAdjustments({
-        baseAmountCents: product.baseAmountCents,
+        baseAmountCents: subscriptionBaseCents,
         allowProrata: product.allowProrata,
         allowFamily: product.allowFamily,
         allowPublicAid: product.allowPublicAid,
@@ -355,11 +407,12 @@ export class MembershipService {
           lines: {
             create: [
               {
-                kind: 'MEMBERSHIP',
+                kind: InvoiceLineKind.MEMBERSHIP_SUBSCRIPTION,
                 memberId: member.id,
                 membershipProductId: product.id,
-                dynamicGroupId: product.dynamicGroupId,
-                baseAmountCents: product.baseAmountCents,
+                subscriptionBillingRhythm: SubscriptionBillingRhythm.ANNUAL,
+                dynamicGroupId: null,
+                baseAmountCents: subscriptionBaseCents,
                 sortOrder: 0,
                 adjustments: {
                   create: adjustments.map((a) => ({
@@ -399,7 +452,7 @@ export class MembershipService {
     return this.prisma.invoiceLine.count({
       where: {
         memberId: { in: memberIds },
-        kind: 'MEMBERSHIP',
+        kind: InvoiceLineKind.MEMBERSHIP_SUBSCRIPTION,
         invoice: {
           clubId,
           clubSeasonId,

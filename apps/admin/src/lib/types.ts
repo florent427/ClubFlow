@@ -223,8 +223,11 @@ export type MembershipProductsQueryData = {
     id: string;
     clubId: string;
     label: string;
-    baseAmountCents: number;
-    dynamicGroupId: string;
+    annualAmountCents: number;
+    monthlyAmountCents: number;
+    minAge: number | null;
+    maxAge: number | null;
+    gradeLevelIds: string[];
     allowProrata: boolean;
     allowFamily: boolean;
     allowPublicAid: boolean;

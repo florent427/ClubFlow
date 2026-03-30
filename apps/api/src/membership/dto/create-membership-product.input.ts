@@ -1,5 +1,6 @@
 import { Field, ID, InputType, Int } from '@nestjs/graphql';
 import {
+  IsArray,
   IsBoolean,
   IsInt,
   IsOptional,
@@ -17,11 +18,28 @@ export class CreateMembershipProductInput {
   @Field(() => Int)
   @IsInt()
   @Min(0)
-  baseAmountCents!: number;
+  annualAmountCents!: number;
 
-  @Field(() => ID)
-  @IsUUID('4')
-  dynamicGroupId!: string;
+  @Field(() => Int)
+  @IsInt()
+  @Min(0)
+  monthlyAmountCents!: number;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  minAge?: number | null;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  maxAge?: number | null;
+
+  @Field(() => [ID], { nullable: true })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  gradeLevelIds?: string[];
 
   @Field(() => Boolean, { nullable: true })
   @IsOptional()
@@ -64,12 +82,29 @@ export class UpdateMembershipProductInput {
   @IsOptional()
   @IsInt()
   @Min(0)
-  baseAmountCents?: number;
+  annualAmountCents?: number;
 
-  @Field(() => ID, { nullable: true })
+  @Field(() => Int, { nullable: true })
   @IsOptional()
-  @IsUUID('4')
-  dynamicGroupId?: string;
+  @IsInt()
+  @Min(0)
+  monthlyAmountCents?: number;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  minAge?: number | null;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  maxAge?: number | null;
+
+  @Field(() => [ID], { nullable: true })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  gradeLevelIds?: string[];
 
   @Field(() => Boolean, { nullable: true })
   @IsOptional()
