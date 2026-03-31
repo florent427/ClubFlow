@@ -21,6 +21,9 @@ import { PlanningModule } from '../planning/planning.module';
 import './register-enums';
 /** Charge tôt les @ObjectType membres (MemberGraph, AssignedDynamicGroupGraph, …) pour le build du schéma GraphQL. */
 import '../members/models/member.model';
+import '../members/models/club-contact.model';
+import '../members/models/promote-contact-result.model';
+import '../members/dto/update-club-contact.input';
 /** Domaine d’envoi e-mail (évite qu’un schéma généré sans ces types si résolution d’ordre fragile). */
 import '../mail/models/club-sending-domain.model';
 import '../mail/models/mail-dns-record.model';
