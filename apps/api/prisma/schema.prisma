@@ -88,8 +88,11 @@ model Contact {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  club                 Club            @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user                 User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Liens `FamilyMember` où ce contact est désigné payeur (`linkRole = PAYER`).
+  familyMemberPayerLinks FamilyMember[] @relation("FamilyMemberPayerContact")
+  paymentsAsPaidBy       Payment[]      @relation("PaymentPaidByContact")
 
   @@unique([userId, clubId])
 }
@@ -420,18 +423,21 @@ model HouseholdGroup {
   @@index([clubId])
 }
 
+/// Lien foyer ↔ personne : `MEMBER` → `memberId` requis ; `PAYER` → `memberId` ou `contactId` (exactement un des deux).
 model FamilyMember {
   id        String               @id @default(uuid())
   familyId  String
-  memberId  String
+  memberId  String?
+  contactId String?
   linkRole  FamilyMemberLinkRole @default(MEMBER)
   createdAt DateTime             @default(now())
 
-  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
-  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  family  Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  member  Member?  @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  contact Contact? @relation("FamilyMemberPayerContact", fields: [contactId], references: [id], onDelete: Cascade)
 
-  @@unique([familyId, memberId])
   @@index([memberId])
+  @@index([contactId])
 }
 
 // --- Module Planning (créneaux, lieux, conflits professeur) ---
@@ -682,16 +688,20 @@ model Payment {
   externalRef String?
   /// Payeur réel (portail / traçabilité). Null = encaissement club catalogué sans fiche membre payeur.
   paidByMemberId String?
+  /// Payeur contact (sans fiche `Member`). Au plus un de `paidByMemberId` / `paidByContactId` (appli).
+  paidByContactId String?
   createdAt   DateTime          @default(now())
 
   club    Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
   invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
   paidByMember Member? @relation("PaymentPaidByMember", fields: [paidByMemberId], references: [id], onDelete: SetNull)
+  paidByContact Contact? @relation("PaymentPaidByContact", fields: [paidByContactId], references: [id], onDelete: SetNull)
   accountingEntries AccountingEntry[]
 
   @@index([clubId, createdAt])
   @@index([invoiceId])
   @@index([paidByMemberId])
+  @@index([paidByContactId])
 }
 
 model StripeWebhookEvent {

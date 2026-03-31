@@ -172,6 +172,17 @@ export type CreateMemberMutationData = {
   createClubMember: { id: string; firstName: string; lastName: string };
 };
 
+export type ClubMemberEmailDuplicateInfoQueryData = {
+  clubMemberEmailDuplicateInfo: {
+    isClear: boolean;
+    suggestedFamilyId: string | null;
+    familyLabel: string | null;
+    sharedEmail: string | null;
+    existingMemberLabels: string[] | null;
+    blockedMessage: string | null;
+  };
+};
+
 export type VenuesQueryData = {
   clubVenues: { id: string; name: string; addressLine: string | null }[];
 };
@@ -194,7 +205,12 @@ export type FamiliesQueryData = {
     label: string | null;
     householdGroupId: string | null;
     needsPayer: boolean;
-    links: { id: string; memberId: string; linkRole: string }[];
+    links: {
+      id: string;
+      memberId: string | null;
+      contactId: string | null;
+      linkRole: string;
+    }[];
   }[];
 };
 
@@ -203,7 +219,11 @@ export type TransferMemberFamilyMutationData = {
     id: string;
     needsPayer: boolean;
     label: string | null;
-    links: { memberId: string; linkRole: string }[];
+    links: {
+      memberId: string | null;
+      contactId: string | null;
+      linkRole: string;
+    }[];
   };
 };
 
@@ -211,7 +231,11 @@ export type SetClubFamilyPayerMutationData = {
   setClubFamilyPayer: {
     id: string;
     needsPayer: boolean;
-    links: { memberId: string; linkRole: string }[];
+    links: {
+      memberId: string | null;
+      contactId: string | null;
+      linkRole: string;
+    }[];
   };
 };
 
@@ -220,7 +244,12 @@ export type UpdateClubFamilyMutationData = {
     id: string;
     label: string | null;
     needsPayer: boolean;
-    links: { id: string; memberId: string; linkRole: string }[];
+    links: {
+      id: string;
+      memberId: string | null;
+      contactId: string | null;
+      linkRole: string;
+    }[];
   };
 };
 

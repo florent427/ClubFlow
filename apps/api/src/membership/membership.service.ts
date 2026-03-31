@@ -9,23 +9,28 @@ import {
   InvoiceLineKind,
   InvoiceStatus,
   MembershipRole,
+  Prisma,
   SubscriptionBillingRhythm,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  memberMatchesDynamicGroup,
-  type MemberMatchInput,
-} from '../members/dynamic-group-matcher';
+import { type MemberMatchInput } from '../members/dynamic-group-matcher';
 import { applyPricing } from '../payments/pricing-rules';
 import { CreateClubSeasonInput, UpdateClubSeasonInput } from './dto/create-club-season.input';
 import { CreateMembershipInvoiceDraftInput } from './dto/create-membership-invoice-draft.input';
 import {
+  CreateMembershipOneTimeFeeInput,
+  UpdateMembershipOneTimeFeeInput,
+} from './dto/membership-one-time-fee.input';
+import {
   CreateMembershipProductInput,
   UpdateMembershipProductInput,
 } from './dto/create-membership-product.input';
+import { memberMatchesMembershipProduct } from './membership-eligibility';
 import {
   computeMembershipAdjustments,
+  computeOneTimeFeeAdjustments,
   computeProrataFactorBp,
+  type AdjustmentDraft,
 } from './membership-pricing';
 
 @Injectable()
@@ -250,6 +255,128 @@ export class MembershipService {
     await this.prisma.membershipProduct.delete({ where: { id } });
   }
 
+  async listMembershipOneTimeFees(clubId: string) {
+    return this.prisma.membershipOneTimeFee.findMany({
+      where: { clubId, archivedAt: null },
+      orderBy: { label: 'asc' },
+    });
+  }
+
+  async createMembershipOneTimeFee(
+    clubId: string,
+    input: CreateMembershipOneTimeFeeInput,
+  ) {
+    return this.prisma.membershipOneTimeFee.create({
+      data: {
+        clubId,
+        label: input.label,
+        amountCents: input.amountCents,
+      },
+    });
+  }
+
+  async updateMembershipOneTimeFee(
+    clubId: string,
+    input: UpdateMembershipOneTimeFeeInput,
+  ) {
+    const row = await this.prisma.membershipOneTimeFee.findFirst({
+      where: { id: input.id, clubId, archivedAt: null },
+    });
+    if (!row) {
+      throw new NotFoundException('Frais unique introuvable');
+    }
+    return this.prisma.membershipOneTimeFee.update({
+      where: { id: input.id },
+      data: {
+        ...(input.label !== undefined ? { label: input.label } : {}),
+        ...(input.amountCents !== undefined
+          ? { amountCents: input.amountCents }
+          : {}),
+      },
+    });
+  }
+
+  async archiveMembershipOneTimeFee(clubId: string, id: string): Promise<void> {
+    const row = await this.prisma.membershipOneTimeFee.findFirst({
+      where: { id, clubId, archivedAt: null },
+    });
+    if (!row) {
+      throw new NotFoundException('Frais unique introuvable');
+    }
+    await this.prisma.membershipOneTimeFee.update({
+      where: { id },
+      data: { archivedAt: new Date() },
+    });
+  }
+
+  async deleteMembershipOneTimeFee(clubId: string, id: string): Promise<void> {
+    const row = await this.prisma.membershipOneTimeFee.findFirst({
+      where: { id, clubId },
+    });
+    if (!row) {
+      throw new NotFoundException('Frais unique introuvable');
+    }
+    const used = await this.prisma.invoiceLine.count({
+      where: {
+        membershipOneTimeFeeId: id,
+        invoice: {
+          status: { in: [InvoiceStatus.OPEN, InvoiceStatus.PAID] },
+        },
+      },
+    });
+    if (used > 0) {
+      throw new BadRequestException(
+        'Impossible de supprimer : ce frais figure sur une facture ouverte ou payée.',
+      );
+    }
+    await this.prisma.membershipOneTimeFee.delete({ where: { id } });
+  }
+
+  async eligibleMembershipProducts(
+    clubId: string,
+    memberId: string,
+    referenceDate: Date = new Date(),
+  ) {
+    const member = await this.prisma.member.findFirst({
+      where: { id: memberId, clubId },
+    });
+    if (!member) {
+      throw new NotFoundException('Membre introuvable');
+    }
+    const products = await this.listMembershipProducts(clubId);
+    const memberInput: MemberMatchInput = {
+      status: member.status,
+      birthDate: member.birthDate,
+      gradeLevelId: member.gradeLevelId,
+    };
+    return products.filter((p) =>
+      memberMatchesMembershipProduct(
+        memberInput,
+        {
+          minAge: p.minAge,
+          maxAge: p.maxAge,
+          gradeLevelIds: p.gradeFilters.map((g) => g.gradeLevelId),
+        },
+        referenceDate,
+      ),
+    );
+  }
+
+  private mapAdjustmentsCreate(
+    adjustments: AdjustmentDraft[],
+    userId: string,
+  ): Prisma.InvoiceLineAdjustmentCreateWithoutLineInput[] {
+    return adjustments.map((a) => ({
+      stepOrder: a.stepOrder,
+      type: a.type,
+      amountCents: a.amountCents,
+      percentAppliedBp: a.percentAppliedBp ?? null,
+      metadataJson: a.metadataJson ?? null,
+      reason: a.reason ?? null,
+      createdByUserId: a.type === 'EXCEPTIONAL' ? userId : null,
+    }));
+  }
+
   async createMembershipInvoiceDraft(
     clubId: string,
     userId: string,
@@ -283,7 +410,7 @@ export class MembershipService {
       gradeLevelId: member.gradeLevelId,
     };
     const effDate = new Date(input.effectiveDate);
-    const eligible = memberMatchesDynamicGroup(
+    const eligible = memberMatchesMembershipProduct(
       memberInput,
       {
         minAge: product.minAge,
@@ -298,7 +425,10 @@ export class MembershipService {
       );
     }
 
-    const subscriptionBaseCents = product.annualAmountCents;
+    const subscriptionBaseCents =
+      input.billingRhythm === SubscriptionBillingRhythm.ANNUAL
+        ? product.annualAmountCents
+        : product.monthlyAmountCents;
 
     const fm = await this.prisma.familyMember.findFirst({
       where: { memberId: member.id },
@@ -330,24 +460,82 @@ export class MembershipService {
           }
         : null;
 
-    const factorBp =
-      input.prorataPercentBp != null
-        ? input.prorataPercentBp
-        : computeProrataFactorBp(effDate, season.startsOn, season.endsOn);
+    const allowProrataEffective =
+      product.allowProrata &&
+      input.billingRhythm === SubscriptionBillingRhythm.ANNUAL;
 
-    const hasExceptional =
+    const factorBp = allowProrataEffective
+      ? input.prorataPercentBp != null
+        ? input.prorataPercentBp
+        : computeProrataFactorBp(effDate, season.startsOn, season.endsOn)
+      : 10_000;
+
+    const feeIdList = [...new Set(input.oneTimeFeeIds ?? [])];
+    const exceptionalByFeeId = new Map<
+      string,
+      { amountCents: number; reason: string }
+    >();
+
+    for (const e of input.oneTimeExceptionals ?? []) {
+      if (exceptionalByFeeId.has(e.feeId)) {
+        throw new BadRequestException(
+          'Une seule remise exceptionnelle par frais unique.',
+        );
+      }
+      if (!feeIdList.includes(e.feeId)) {
+        throw new BadRequestException(
+          'Remise sur frais : le frais doit être inclus dans la facture.',
+        );
+      }
+      if (!e.reason?.trim()) {
+        throw new BadRequestException(
+          'Remise sur frais unique : motif obligatoire.',
+        );
+      }
+      if (e.amountCents == null || e.amountCents === 0) {
+        throw new BadRequestException(
+          'Remise sur frais unique : montant obligatoire et non nul.',
+        );
+      }
+      exceptionalByFeeId.set(e.feeId, {
+        amountCents: e.amountCents,
+        reason: e.reason.trim(),
+      });
+    }
+
+    const fees =
+      feeIdList.length === 0
+        ? []
+        : await this.prisma.membershipOneTimeFee.findMany({
+            where: {
+              id: { in: feeIdList },
+              clubId,
+              archivedAt: null,
+            },
+          });
+    if (fees.length !== feeIdList.length) {
+      throw new BadRequestException(
+        'Frais unique inconnu, archivé ou hors club.',
+      );
+    }
+    const feeById = new Map(fees.map((f) => [f.id, f]));
+
+    const hasSubscriptionExceptional =
       (input.exceptionalAmountCents != null &&
         input.exceptionalAmountCents !== 0) ||
       (input.exceptionalReason != null && input.exceptionalReason.length > 0);
 
-    if (hasExceptional) {
+    if (hasSubscriptionExceptional || exceptionalByFeeId.size > 0) {
       await this.assertExceptionalDiscountAllowed(userId, clubId);
+    }
+
+    if (hasSubscriptionExceptional) {
       if (
         !input.exceptionalReason?.trim() ||
         input.exceptionalAmountCents == null
       ) {
         throw new BadRequestException(
-          'Remise exceptionnelle : motif et montant obligatoires.',
+          'Remise exceptionnelle (cotisation) : motif et montant obligatoires.',
         );
       }
     }
@@ -380,7 +568,7 @@ export class MembershipService {
     const { adjustments, subtotalAfterBusinessCents } =
       computeMembershipAdjustments({
         baseAmountCents: subscriptionBaseCents,
-        allowProrata: product.allowProrata,
+        allowProrata: allowProrataEffective,
         allowFamily: product.allowFamily,
         allowPublicAid: product.allowPublicAid,
         allowExceptional: product.allowExceptional,
@@ -392,6 +580,57 @@ export class MembershipService {
         exceptional,
       });
 
+    let invoiceBaseCents = subtotalAfterBusinessCents;
+
+    const linesCreate: Prisma.InvoiceLineUncheckedCreateWithoutInvoiceInput[] =
+      [
+      {
+        kind: InvoiceLineKind.MEMBERSHIP_SUBSCRIPTION,
+        memberId: member.id,
+        membershipProductId: product.id,
+        membershipOneTimeFeeId: null,
+        subscriptionBillingRhythm: input.billingRhythm,
+        dynamicGroupId: null,
+        baseAmountCents: subscriptionBaseCents,
+        sortOrder: 0,
+        adjustments: {
+          create: this.mapAdjustmentsCreate(adjustments, userId),
+        },
+      },
+      ];
+
+    let sortOrder = 1;
+    for (const feeId of feeIdList) {
+      const fee = feeById.get(feeId)!;
+      const exOpt = exceptionalByFeeId.get(feeId);
+      const feeAdjust = computeOneTimeFeeAdjustments({
+        baseAmountCents: fee.amountCents,
+        allowExceptional: product.allowExceptional,
+        exceptionalCapPercentBp: null,
+        exceptional:
+          exOpt != null
+            ? {
+                amountCents: exOpt.amountCents,
+                reason: exOpt.reason,
+              }
+            : null,
+      });
+      invoiceBaseCents += feeAdjust.subtotalAfterBusinessCents;
+      linesCreate.push({
+        kind: InvoiceLineKind.MEMBERSHIP_ONE_TIME,
+        memberId: member.id,
+        membershipProductId: null,
+        membershipOneTimeFeeId: fee.id,
+        subscriptionBillingRhythm: null,
+        dynamicGroupId: null,
+        baseAmountCents: fee.amountCents,
+        sortOrder: sortOrder++,
+        adjustments: {
+          create: this.mapAdjustmentsCreate(feeAdjust.adjustments, userId),
+        },
+      });
+    }
+
     const label = `Adhésion ${season.label} — ${member.firstName} ${member.lastName}`;
 
     return this.prisma.$transaction(async (tx) => {
@@ -401,34 +640,10 @@ export class MembershipService {
           familyId,
           clubSeasonId: season.id,
           label,
-          baseAmountCents: subtotalAfterBusinessCents,
-          amountCents: subtotalAfterBusinessCents,
+          baseAmountCents: invoiceBaseCents,
+          amountCents: invoiceBaseCents,
           status: InvoiceStatus.DRAFT,
-          lines: {
-            create: [
-              {
-                kind: InvoiceLineKind.MEMBERSHIP_SUBSCRIPTION,
-                memberId: member.id,
-                membershipProductId: product.id,
-                subscriptionBillingRhythm: SubscriptionBillingRhythm.ANNUAL,
-                dynamicGroupId: null,
-                baseAmountCents: subscriptionBaseCents,
-                sortOrder: 0,
-                adjustments: {
-                  create: adjustments.map((a) => ({
-                    stepOrder: a.stepOrder,
-                    type: a.type,
-                    amountCents: a.amountCents,
-                    percentAppliedBp: a.percentAppliedBp ?? null,
-                    metadataJson: a.metadataJson ?? null,
-                    reason: a.reason ?? null,
-                    createdByUserId:
-                      a.type === 'EXCEPTIONAL' ? userId : null,
-                  })),
-                },
-              },
-            ],
-          },
+          lines: { create: linesCreate },
         },
         include: { lines: { include: { adjustments: true } } },
       });
@@ -445,7 +660,9 @@ export class MembershipService {
       where: { familyId },
       select: { memberId: true },
     });
-    const memberIds = links.map((l) => l.memberId);
+    const memberIds = links
+      .map((l) => l.memberId)
+      .filter((id): id is string => id != null);
     if (memberIds.length === 0) {
       return 0;
     }

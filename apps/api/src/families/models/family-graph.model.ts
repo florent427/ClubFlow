@@ -6,8 +6,17 @@ export class FamilyMemberLinkGraph {
   @Field(() => ID)
   id!: string;
 
-  @Field(() => ID)
-  memberId!: string;
+  @Field(() => ID, {
+    nullable: true,
+    description: 'Présent pour les liens adhérents (`MEMBER` ou payeur membre).',
+  })
+  memberId!: string | null;
+
+  @Field(() => ID, {
+    nullable: true,
+    description: 'Présent si le payeur est un contact sans fiche adhérent.',
+  })
+  contactId!: string | null;
 
   @Field(() => FamilyMemberLinkRole)
   linkRole!: FamilyMemberLinkRole;

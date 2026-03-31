@@ -21,6 +21,9 @@ export class PaymentGraph {
   @Field(() => ID, { nullable: true })
   paidByMemberId!: string | null;
 
+  @Field(() => ID, { nullable: true })
+  paidByContactId!: string | null;
+
   @Field()
   createdAt!: Date;
 }

@@ -679,6 +679,19 @@ export const FINALIZE_MEMBERSHIP_INVOICE = gql`
   }
 `;
 
+export const CLUB_MEMBER_EMAIL_DUPLICATE_INFO = gql`
+  query ClubMemberEmailDuplicateInfo($email: String!) {
+    clubMemberEmailDuplicateInfo(email: $email) {
+      isClear
+      suggestedFamilyId
+      familyLabel
+      sharedEmail
+      existingMemberLabels
+      blockedMessage
+    }
+  }
+`;
+
 export const CREATE_CLUB_MEMBER = gql`
   mutation CreateClubMember($input: CreateMemberInput!) {
     createClubMember(input: $input) {
@@ -791,6 +804,7 @@ export const CLUB_FAMILIES = gql`
       links {
         id
         memberId
+        contactId
         linkRole
       }
     }
@@ -843,6 +857,7 @@ export const CREATE_CLUB_FAMILY = gql`
       label
       links {
         memberId
+        contactId
         linkRole
       }
     }
@@ -858,6 +873,7 @@ export const UPDATE_CLUB_FAMILY = gql`
       links {
         id
         memberId
+        contactId
         linkRole
       }
     }
@@ -892,6 +908,7 @@ export const TRANSFER_CLUB_MEMBER_TO_FAMILY = gql`
       label
       links {
         memberId
+        contactId
         linkRole
       }
     }
@@ -905,6 +922,22 @@ export const SET_CLUB_FAMILY_PAYER = gql`
       needsPayer
       links {
         memberId
+        contactId
+        linkRole
+      }
+    }
+  }
+`;
+
+export const REMOVE_CLUB_FAMILY_LINK = gql`
+  mutation RemoveClubFamilyLink($linkId: ID!) {
+    removeClubFamilyLink(linkId: $linkId) {
+      id
+      needsPayer
+      links {
+        id
+        memberId
+        contactId
         linkRole
       }
     }

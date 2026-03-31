@@ -75,15 +75,41 @@ export class FamiliesService {
     familyId: string,
   ): Promise<void> {
     const links = await client.familyMember.findMany({ where: { familyId } });
+    const memberLinks = links.filter((l) => l.memberId != null);
     if (
-      links.length !== 1 ||
-      links[0].linkRole === FamilyMemberLinkRole.PAYER
+      memberLinks.length !== 1 ||
+      memberLinks[0].linkRole === FamilyMemberLinkRole.PAYER
     ) {
       return;
     }
     await client.familyMember.update({
-      where: { id: links[0].id },
+      where: { id: memberLinks[0].id },
       data: { linkRole: FamilyMemberLinkRole.PAYER },
+    });
+  }
+
+  /**
+   * Retire le statut payeur explicite : adhérents → `MEMBER` ; ligne payeur
+   * uniquement `Contact` → suppression (le contact ne peut pas être `MEMBER`).
+   */
+  private async clearExplicitPayersInFamily(
+    client: Pick<Prisma.TransactionClient, 'familyMember'>,
+    familyId: string,
+  ): Promise<void> {
+    await client.familyMember.updateMany({
+      where: {
+        familyId,
+        linkRole: FamilyMemberLinkRole.PAYER,
+        memberId: { not: null },
+      },
+      data: { linkRole: FamilyMemberLinkRole.MEMBER },
+    });
+    await client.familyMember.deleteMany({
+      where: {
+        familyId,
+        linkRole: FamilyMemberLinkRole.PAYER,
+        contactId: { not: null },
+      },
     });
   }
 
@@ -139,11 +165,11 @@ export class FamiliesService {
 
     if (legacyFamilyIds.length > 0) {
       const fromLegacy = await this.prisma.familyMember.findMany({
-        where: { familyId: { in: legacyFamilyIds } },
+        where: { familyId: { in: legacyFamilyIds }, memberId: { not: null } },
         include: { member: true },
       });
       for (const fm of fromLegacy) {
-        if (fm.member.status !== MemberStatus.ACTIVE) {
+        if (!fm.member || fm.member.status !== MemberStatus.ACTIVE) {
           continue;
         }
         merge({
@@ -169,11 +195,11 @@ export class FamiliesService {
         continue;
       }
       const rows = await this.prisma.familyMember.findMany({
-        where: { familyId: { in: groupFamilyIds } },
+        where: { familyId: { in: groupFamilyIds }, memberId: { not: null } },
         include: { member: true },
       });
       for (const fm of rows) {
-        if (fm.member.status !== MemberStatus.ACTIVE) {
+        if (!fm.member || fm.member.status !== MemberStatus.ACTIVE) {
           continue;
         }
         if (
@@ -235,11 +261,17 @@ export class FamiliesService {
     clubId: string;
     label: string | null;
     householdGroupId?: string | null;
-    familyMembers: { id: string; memberId: string; linkRole: FamilyMemberLinkRole }[];
+    familyMembers: {
+      id: string;
+      memberId: string | null;
+      contactId: string | null;
+      linkRole: FamilyMemberLinkRole;
+    }[];
   }): FamilyGraph {
     const links = row.familyMembers.map((l) => ({
       id: l.id,
       memberId: l.memberId,
+      contactId: l.contactId,
       linkRole: l.linkRole,
     }));
     return {
@@ -389,6 +421,175 @@ export class FamiliesService {
     return true;
   }
 
+  /** Retire une ligne `FamilyMember` (adhérent ou payeur contact), puis réaligne payeur implicite. */
+  async removeClubFamilyLink(
+    clubId: string,
+    linkId: string,
+  ): Promise<FamilyGraph> {
+    const link = await this.prisma.familyMember.findFirst({
+      where: { id: linkId, family: { clubId } },
+      include: {
+        member: { select: { id: true, email: true } },
+        contact: { select: { userId: true } },
+      },
+    });
+    if (!link) {
+      throw new NotFoundException('Lien foyer introuvable');
+    }
+    const { familyId } = link;
+
+    if (link.memberId != null) {
+      const member = await this.prisma.member.findFirst({
+        where: { id: link.memberId, clubId },
+      });
+      if (!member) {
+        throw new NotFoundException('Membre introuvable');
+      }
+      await assertMemberEmailAllowedInClub(
+        this.prisma,
+        clubId,
+        member.email,
+        {
+          memberId: link.memberId,
+          assumeMemberFamilyId: null,
+        },
+      );
+    }
+
+    const memberEmail = link.member?.email ?? null;
+
+    await this.prisma.familyMember.delete({ where: { id: linkId } });
+    await this.ensureSoleFamilyMemberIsPayer(familyId);
+    await this.syncContactLinksForFamilyMemberEmails(clubId, familyId);
+    if (memberEmail) {
+      await this.syncContactUserPayerMemberLinksByEmail(clubId, memberEmail);
+    }
+    if (link.contactId != null && link.contact) {
+      const u = await this.prisma.user.findUnique({
+        where: { id: link.contact.userId },
+        select: { email: true },
+      });
+      if (u?.email) {
+        await this.syncContactUserPayerMemberLinksByEmail(clubId, u.email);
+      }
+    }
+
+    const row = await this.prisma.family.findFirstOrThrow({
+      where: { id: familyId },
+      include: { familyMembers: true },
+    });
+    return this.toFamilyGraph(row);
+  }
+
+  /**
+   * Portail membre : rattache un adhérent sans foyer à l’espace famille étendu du
+   * foyer du payeur en créant un **nouveau** foyer résidence (le membre n’est pas
+   * ajouté au foyer du payeur — cohérent back-office et confidentialité portail).
+   */
+  async linkMemberAsCoParentResidenceFromPayerFamily(
+    clubId: string,
+    memberId: string,
+    payerFamilyId: string,
+  ): Promise<{ newFamilyId: string; householdGroupId: string }> {
+    const payerFamily = await this.prisma.family.findFirst({
+      where: { id: payerFamilyId, clubId },
+    });
+    if (!payerFamily) {
+      throw new NotFoundException('Foyer du payeur introuvable');
+    }
+
+    const existingLink = await this.prisma.familyMember.findFirst({
+      where: { memberId, family: { clubId } },
+    });
+    if (existingLink) {
+      throw new BadRequestException(
+        'Ce membre est déjà rattaché à un foyer pour ce club.',
+      );
+    }
+
+    const member = await this.prisma.member.findFirst({
+      where: { id: memberId, clubId, status: MemberStatus.ACTIVE },
+    });
+    if (!member) {
+      throw new NotFoundException('Membre introuvable ou inactif pour ce club');
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const pf = await tx.family.findFirst({
+        where: { id: payerFamilyId, clubId },
+      });
+      if (!pf) {
+        throw new NotFoundException('Foyer du payeur introuvable');
+      }
+
+      let hgId = pf.householdGroupId;
+      if (!hgId) {
+        const hg = await tx.householdGroup.create({
+          data: {
+            clubId,
+            label: null,
+            carrierFamilyId: payerFamilyId,
+          },
+        });
+        hgId = hg.id;
+        await tx.family.update({
+          where: { id: payerFamilyId },
+          data: { householdGroupId: hgId },
+        });
+      } else {
+        const hg = await tx.householdGroup.findFirst({
+          where: { id: hgId, clubId },
+        });
+        if (!hg) {
+          throw new BadRequestException('Groupe foyer invalide pour ce payeur');
+        }
+        if (hg.carrierFamilyId == null) {
+          await tx.householdGroup.update({
+            where: { id: hgId },
+            data: { carrierFamilyId: payerFamilyId },
+          });
+        }
+      }
+
+      const newFam = await tx.family.create({
+        data: {
+          clubId,
+          label: null,
+          householdGroupId: hgId,
+        },
+      });
+
+      await assertMemberEmailAllowedInClub(
+        tx,
+        clubId,
+        member.email.trim(),
+        {
+          memberId: member.id,
+          assumeMemberFamilyId: newFam.id,
+        },
+      );
+
+      await tx.familyMember.create({
+        data: {
+          familyId: newFam.id,
+          memberId: member.id,
+          linkRole: FamilyMemberLinkRole.PAYER,
+        },
+      });
+
+      return { newFamilyId: newFam.id, householdGroupId: hgId };
+    });
+
+    await this.syncContactUserPayerMemberLinksByEmail(clubId, member.email);
+    await this.syncContactLinksForFamilyMemberEmails(clubId, payerFamilyId);
+    await this.syncContactLinksForFamilyMemberEmails(
+      clubId,
+      result.newFamilyId,
+    );
+
+    return result;
+  }
+
   async transferClubMemberToFamily(
     clubId: string,
     memberId: string,
@@ -438,13 +639,7 @@ export class FamiliesService {
         );
       }
       if (linkRole === FamilyMemberLinkRole.PAYER) {
-        await tx.familyMember.updateMany({
-          where: {
-            familyId,
-            linkRole: FamilyMemberLinkRole.PAYER,
-          },
-          data: { linkRole: FamilyMemberLinkRole.MEMBER },
-        });
+        await this.clearExplicitPayersInFamily(tx, familyId);
       }
       await tx.familyMember.create({
         data: { familyId, memberId, linkRole },
@@ -478,13 +673,7 @@ export class FamiliesService {
     const { familyId } = link;
 
     const row = await this.prisma.$transaction(async (tx) => {
-      await tx.familyMember.updateMany({
-        where: {
-          familyId,
-          linkRole: FamilyMemberLinkRole.PAYER,
-        },
-        data: { linkRole: FamilyMemberLinkRole.MEMBER },
-      });
+      await this.clearExplicitPayersInFamily(tx, familyId);
       await tx.familyMember.update({
         where: { id: link.id },
         data: { linkRole: FamilyMemberLinkRole.PAYER },
@@ -582,6 +771,9 @@ export class FamiliesService {
     });
     const seen = new Set<string>();
     for (const fm of links) {
+      if (!fm.member) {
+        continue;
+      }
       const norm = normalizeMemberEmail(fm.member.email);
       if (seen.has(norm)) {
         continue;

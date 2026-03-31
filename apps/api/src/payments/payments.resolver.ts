@@ -104,6 +104,7 @@ export class PaymentsResolver {
       method: p.method,
       externalRef: p.externalRef,
       paidByMemberId: p.paidByMemberId ?? null,
+      paidByContactId: p.paidByContactId ?? null,
       createdAt: p.createdAt,
     };
   }

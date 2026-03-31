@@ -2,10 +2,12 @@ import { useMutation, useQuery } from '@apollo/client/react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
+  CLUB_CONTACTS,
   CLUB_FAMILIES,
   CLUB_HOUSEHOLD_GROUPS,
   CLUB_MEMBERS,
   CREATE_HOUSEHOLD_GROUP,
+  REMOVE_CLUB_FAMILY_LINK,
   REMOVE_CLUB_MEMBER_FROM_FAMILY,
   SET_CLUB_FAMILY_PAYER,
   SET_FAMILY_HOUSEHOLD_GROUP,
@@ -13,7 +15,11 @@ import {
   TRANSFER_CLUB_MEMBER_TO_FAMILY,
   UPDATE_CLUB_FAMILY,
 } from '../../lib/documents';
-import type { FamiliesQueryData, MembersQueryData } from '../../lib/types';
+import type {
+  ClubContactsQueryData,
+  FamiliesQueryData,
+  MembersQueryData,
+} from '../../lib/types';
 import { useMembersUi } from './members-ui-context';
 
 function FamilyLabelEditor({
@@ -72,12 +78,15 @@ export function FamilyDetailDrawer({
   }>(CLUB_HOUSEHOLD_GROUPS);
   const { data: membersData, refetch: refetchMembers } =
     useQuery<MembersQueryData>(CLUB_MEMBERS);
+  const { data: contactsData, refetch: refetchContacts } =
+    useQuery<ClubContactsQueryData>(CLUB_CONTACTS);
 
   useEffect(() => {
     void refetchFamilies();
     void refetchMembers();
     void refetchHg();
-  }, [familyId, refetchFamilies, refetchMembers, refetchHg]);
+    void refetchContacts();
+  }, [familyId, refetchFamilies, refetchMembers, refetchHg, refetchContacts]);
 
   const family = useMemo(
     () => famData?.clubFamilies.find((f) => f.id === familyId),
@@ -94,6 +103,14 @@ export function FamilyDetailDrawer({
     return m;
   }, [members]);
 
+  const contactNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of contactsData?.clubContacts ?? []) {
+      m.set(c.id, `${c.firstName} ${c.lastName}`);
+    }
+    return m;
+  }, [contactsData?.clubContacts]);
+
   const [drawerError, setDrawerError] = useState<string | null>(null);
   const [addSearch, setAddSearch] = useState('');
 
@@ -101,6 +118,7 @@ export function FamilyDetailDrawer({
     void refetchFamilies();
     void refetchMembers();
     void refetchHg();
+    void refetchContacts();
   }
 
   const [createHgMutation] = useMutation(CREATE_HOUSEHOLD_GROUP, {
@@ -130,6 +148,11 @@ export function FamilyDetailDrawer({
   );
 
   const [removeMember] = useMutation(REMOVE_CLUB_MEMBER_FROM_FAMILY, {
+    onCompleted: () => refetchAll(),
+    onError: (e) => setDrawerError(e.message),
+  });
+
+  const [removeFamilyLink] = useMutation(REMOVE_CLUB_FAMILY_LINK, {
     onCompleted: () => refetchAll(),
     onError: (e) => setDrawerError(e.message),
   });
@@ -166,6 +189,18 @@ export function FamilyDetailDrawer({
     }
     if (!window.confirm(msg)) return;
     void removeMember({ variables: { memberId } });
+  }
+
+  function onRemoveFamilyLink(linkId: string, displayName: string) {
+    if (!family) return;
+    if (
+      !window.confirm(
+        `Retirer « ${displayName} » du foyer ? Si c’était le payeur, désignez un nouveau payeur si besoin.`,
+      )
+    ) {
+      return;
+    }
+    void removeFamilyLink({ variables: { linkId } });
   }
 
   function onSetPayer(memberId: string) {
@@ -293,10 +328,13 @@ export function FamilyDetailDrawer({
             />
 
             <div className="family-drawer__section">
-              <h3 className="family-drawer__h">Foyer étendu</h3>
+              <h3 className="family-drawer__h">Espace familial partagé (foyer étendu)</h3>
               <p className="muted">
-                Plusieurs foyers peuvent partager une même facturation (ex.
-                parents séparés).
+                Reliez plusieurs foyers « résidences » pour une <strong>facturation
+                commune</strong> côté club. Sur le <strong>portail membre</strong>,
+                les adultes voient alors un <strong>espace partagé</strong>
+                (factures, membres par foyer) ; documents et messagerie
+                intra-familiale sont prévus dans une prochaine version.
               </p>
               {family.householdGroupId ? (
                 <div className="family-drawer__hg-actions">
@@ -380,7 +418,11 @@ export function FamilyDetailDrawer({
                       void createHgMutation({
                         variables: { input: { label } },
                       }).then((res) => {
-                        const newId = res.data?.createHouseholdGroup?.id;
+                        const newId = (
+                          res.data as
+                            | { createHouseholdGroup?: { id: string } }
+                            | undefined
+                        )?.createHouseholdGroup?.id;
                         if (newId) {
                           void setFamilyHouseholdGroup({
                             variables: {
@@ -410,41 +452,66 @@ export function FamilyDetailDrawer({
             <div className="family-drawer__section">
               <h3 className="family-drawer__h">Membres</h3>
               <ul className="family-drawer__members">
-                {family.links.map((l) => (
-                  <li key={l.id} className="family-drawer__member-row">
-                    <div>
-                      <strong>{nameById.get(l.memberId) ?? l.memberId}</strong>
-                      <span className="muted family-drawer__role">
-                        {l.linkRole === 'PAYER' ? 'Payeur' : 'Membre'}
-                      </span>
-                    </div>
-                    <div className="family-drawer__member-actions">
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-tight"
-                        onClick={() => openAnnuaireForMember(l.memberId)}
-                      >
-                        Fiche
-                      </button>
-                      {l.linkRole === 'MEMBER' ? (
+                {family.links.map((l) => {
+                  const isContactPayer =
+                    l.contactId != null && l.memberId == null;
+                  const displayName = isContactPayer
+                    ? (contactNameById.get(l.contactId!) ??
+                      `Contact ${l.contactId!.slice(0, 8)}…`)
+                    : (nameById.get(l.memberId!) ?? l.memberId!);
+                  return (
+                    <li key={l.id} className="family-drawer__member-row">
+                      <div>
+                        <strong>{displayName}</strong>
+                        <span className="muted family-drawer__role">
+                          {l.linkRole === 'PAYER'
+                            ? isContactPayer
+                              ? 'Payeur (contact)'
+                              : 'Payeur'
+                            : 'Membre'}
+                        </span>
+                      </div>
+                      <div className="family-drawer__member-actions">
+                        {l.memberId ? (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-tight"
+                            onClick={() => openAnnuaireForMember(l.memberId!)}
+                          >
+                            Fiche
+                          </button>
+                        ) : (
+                          <Link
+                            className="btn btn-ghost btn-tight"
+                            to="/contacts"
+                          >
+                            Contacts
+                          </Link>
+                        )}
+                        {l.linkRole === 'MEMBER' && l.memberId ? (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-tight"
+                            onClick={() => onSetPayer(l.memberId!)}
+                          >
+                            Payeur
+                          </button>
+                        ) : null}
                         <button
                           type="button"
-                          className="btn btn-ghost btn-tight"
-                          onClick={() => onSetPayer(l.memberId)}
+                          className="btn btn-ghost btn-tight members-table__danger"
+                          onClick={() =>
+                            l.memberId
+                              ? onRemoveMember(l.memberId)
+                              : onRemoveFamilyLink(l.id, displayName)
+                          }
                         >
-                          Payeur
+                          Retirer
                         </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-tight members-table__danger"
-                        onClick={() => onRemoveMember(l.memberId)}
-                      >
-                        Retirer
-                      </button>
-                    </div>
-                  </li>
-                ))}
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
 
