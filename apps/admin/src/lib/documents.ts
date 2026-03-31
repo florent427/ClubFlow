@@ -174,6 +174,12 @@ export const PROMOTE_CONTACT_TO_MEMBER = gql`
   }
 `;
 
+export const SYNC_CLUB_CONTACT_MEMBER_LINKS = gql`
+  mutation SyncClubContactMemberLinks {
+    syncClubContactMemberLinks
+  }
+`;
+
 export const CLUB_MEMBER_FIELD_LAYOUT = gql`
   query ClubMemberFieldLayout {
     clubMemberFieldLayout {

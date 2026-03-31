@@ -1,8 +1,15 @@
-import { useQuery } from '@apollo/client/react';
+import { useMutation, useQuery } from '@apollo/client/react';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CLUB_CONTACTS } from '../../lib/documents';
-import type { ClubContactRow, ClubContactsQueryData } from '../../lib/types';
+import {
+  CLUB_CONTACTS,
+  SYNC_CLUB_CONTACT_MEMBER_LINKS,
+} from '../../lib/documents';
+import type {
+  ClubContactRow,
+  ClubContactsQueryData,
+  SyncClubContactMemberLinksMutationData,
+} from '../../lib/types';
 import { useMembersUi } from '../members/members-ui-context';
 import { ContactDetailDrawer } from './ContactDetailDrawer';
 
@@ -17,11 +24,18 @@ export function ContactsPage() {
   const [verified, setVerified] = useState<VerifiedFilter>('all');
   const [sortKey, setSortKey] = useState<SortKey>('lastName');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   const { data, loading, error, refetch } = useQuery<ClubContactsQueryData>(
     CLUB_CONTACTS,
     { fetchPolicy: 'cache-and-network' },
   );
+
+  const [syncLinks, { loading: syncLoading }] =
+    useMutation<SyncClubContactMemberLinksMutationData>(
+      SYNC_CLUB_CONTACT_MEMBER_LINKS,
+    );
 
   const contacts = data?.clubContacts ?? [];
 
@@ -78,6 +92,20 @@ export function ContactsPage() {
     void navigate('/members');
   }
 
+  async function onSyncLinks() {
+    setSyncMessage(null);
+    setSyncError(null);
+    try {
+      await syncLinks();
+      setSyncMessage('Liaisons mises à jour.');
+      await refetch();
+    } catch (e) {
+      setSyncError(
+        e instanceof Error ? e.message : 'Impossible de mettre à jour les liaisons.',
+      );
+    }
+  }
+
   return (
     <>
       <header className="members-loom__hero members-loom__hero--nested">
@@ -91,6 +119,27 @@ export function ContactsPage() {
               <strong>nom affiché</strong> du compte (effet global pour ce
               compte utilisateur).
             </p>
+          </div>
+          <div className="contacts-hero-sync">
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={syncLoading}
+              title="Rattache les comptes (e-mail vérifié) aux fiches membre payeur ou adhérent seul lorsque l’e-mail est identique."
+              onClick={() => void onSyncLinks()}
+            >
+              {syncLoading ? 'Mise à jour…' : 'Mettre à jour les liaisons'}
+            </button>
+            {syncMessage ? (
+              <p className="contacts-sync-hint contacts-sync-hint--ok">
+                {syncMessage}
+              </p>
+            ) : null}
+            {syncError ? (
+              <p className="contacts-sync-hint contacts-sync-hint--err">
+                {syncError}
+              </p>
+            ) : null}
           </div>
         </div>
       </header>

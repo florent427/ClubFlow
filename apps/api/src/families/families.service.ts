@@ -448,6 +448,23 @@ export class FamiliesService {
   }
 
   /**
+   * Rejoue la liaison contact → membre payeur pour tous les contacts du club
+   * dont l’e-mail est vérifié (action manuelle ou planifiée).
+   */
+  async syncAllContactPayerMemberLinksForClub(clubId: string): Promise<void> {
+    const contacts = await this.prisma.contact.findMany({
+      where: { clubId },
+      include: { user: { select: { emailVerifiedAt: true, email: true } } },
+    });
+    for (const c of contacts) {
+      if (!c.user.emailVerifiedAt) {
+        continue;
+      }
+      await this.syncContactUserPayerMemberLinks(clubId, c.userId, c.user.email);
+    }
+  }
+
+  /**
    * Pour chaque utilisateur contact vérifié du club ayant cet e-mail,
    * applique le rattachement payeur / adhérent seul.
    */

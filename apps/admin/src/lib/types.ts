@@ -394,3 +394,7 @@ export type DeleteClubContactMutationData = {
 export type PromoteContactToMemberMutationData = {
   promoteContactToMember: { memberId: string };
 };
+
+export type SyncClubContactMemberLinksMutationData = {
+  syncClubContactMemberLinks: boolean;
+};

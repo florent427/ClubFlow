@@ -2128,6 +2128,30 @@ code {
   margin-bottom: 1rem;
 }
 
+.contacts-hero-sync {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+  max-width: min(100%, 20rem);
+}
+
+.contacts-sync-hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.contacts-sync-hint--ok {
+  color: var(--cf-primary, #2e7d32);
+}
+
+.contacts-sync-hint--err {
+  color: #b71c1c;
+}
+
 .contacts-filter {
   display: flex;
   flex-wrap: wrap;

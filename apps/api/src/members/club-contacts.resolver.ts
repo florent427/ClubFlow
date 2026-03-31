@@ -87,4 +87,10 @@ export class ClubContactsResolver {
   ): Promise<PromoteContactResultGraph> {
     return this.clubContactsService.promoteContactToMember(club.id, id);
   }
+
+  @Mutation(() => Boolean)
+  async syncClubContactMemberLinks(@CurrentClub() club: Club): Promise<boolean> {
+    await this.clubContactsService.syncContactMemberLinksForClub(club.id);
+    return true;
+  }
 }

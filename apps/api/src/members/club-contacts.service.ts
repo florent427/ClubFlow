@@ -4,7 +4,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { MemberCivility, MemberStatus, Prisma } from '@prisma/client';
+import { FamiliesService } from '../families/families.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { assertMemberEmailAllowedInClub } from './member-email-family-rule';
 
 /** Civilité par défaut à la promotion contact → membre (MVP). À corriger en annuaire si besoin. */
 export const PROMOTE_CONTACT_DEFAULT_CIVILITY = MemberCivility.MR;
@@ -25,7 +27,10 @@ export type ClubContactRecord = {
 
 @Injectable()
 export class ClubContactsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly families: FamiliesService,
+  ) {}
 
   private async findLinkedMemberId(
     clubId: string,
@@ -117,6 +122,11 @@ export class ClubContactsService {
     return this.getClubContact(clubId, contactId);
   }
 
+  /** Rattache les comptes portail (e-mail vérifié) aux fiches membre payeur / seules si même e-mail. */
+  async syncContactMemberLinksForClub(clubId: string): Promise<void> {
+    await this.families.syncAllContactPayerMemberLinksForClub(clubId);
+  }
+
   async deleteClubContact(clubId: string, contactId: string): Promise<void> {
     const row = await this.prisma.contact.findFirst({
       where: { id: contactId, clubId },
@@ -158,6 +168,9 @@ export class ClubContactsService {
         'Ce contact est déjà associé à une fiche membre pour ce club.',
       );
     }
+    await assertMemberEmailAllowedInClub(this.prisma, clubId, user.email, {
+      memberId: null,
+    });
     const member = await this.prisma.member.create({
       data: {
         clubId,

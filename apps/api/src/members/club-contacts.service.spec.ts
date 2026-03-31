@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { MemberCivility, MemberStatus } from '@prisma/client';
+import { FamiliesService } from '../families/families.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   ClubContactsService,
@@ -12,6 +13,7 @@ import {
 
 describe('ClubContactsService', () => {
   let service: ClubContactsService;
+  let families: { syncAllContactPayerMemberLinksForClub: jest.Mock };
   let prisma: {
     contact: {
       findMany: jest.Mock;
@@ -45,6 +47,9 @@ describe('ClubContactsService', () => {
   };
 
   beforeEach(async () => {
+    families = {
+      syncAllContactPayerMemberLinksForClub: jest.fn().mockResolvedValue(undefined),
+    };
     prisma = {
       contact: {
         findMany: jest.fn(),
@@ -65,6 +70,7 @@ describe('ClubContactsService', () => {
       providers: [
         ClubContactsService,
         { provide: PrismaService, useValue: prisma },
+        { provide: FamiliesService, useValue: families },
       ],
     }).compile();
 
@@ -98,6 +104,15 @@ describe('ClubContactsService', () => {
 
       expect(list[0].linkedMemberId).toBeNull();
       expect(list[0].canDeleteContact).toBe(true);
+    });
+  });
+
+  describe('syncContactMemberLinksForClub', () => {
+    it('délègue au service familles', async () => {
+      await service.syncContactMemberLinksForClub(clubId);
+      expect(families.syncAllContactPayerMemberLinksForClub).toHaveBeenCalledWith(
+        clubId,
+      );
     });
   });
 
