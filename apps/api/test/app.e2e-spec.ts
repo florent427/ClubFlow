@@ -194,6 +194,7 @@ describe('ClubFlow API (e2e)', () => {
         await prisma.courseSlot.deleteMany({ where: { clubId } });
         await prisma.venue.deleteMany({ where: { clubId } });
         await prisma.family.deleteMany({ where: { clubId } });
+        await prisma.contact.deleteMany({ where: { clubId } });
         await prisma.member.deleteMany({ where: { clubId } });
         await prisma.clubRoleDefinition.deleteMany({ where: { clubId } });
         await prisma.dynamicGroup.deleteMany({ where: { clubId } });
@@ -1401,5 +1402,181 @@ describe('ClubFlow API (e2e)', () => {
       where: { clubId: clubId as string, invoiceId },
     });
     await prisma.invoice.deleteMany({ where: { id: invoiceId } });
+  });
+
+  describe('Contacts club (admin GraphQL)', () => {
+    async function adminAuthHeaders() {
+      const login = await gql(
+        `mutation ($input: LoginInput!) { login(input: $input) { accessToken } }`,
+        { input: { email: adminEmail, password: adminPassword } },
+      );
+      const token = login.body.data.login.accessToken as string;
+      return {
+        Authorization: `Bearer ${token}`,
+        'x-club-id': clubId as string,
+      };
+    }
+
+    async function registerAndVerifyContact(email: string) {
+      const reg = await gql(
+        `mutation ($i: RegisterContactInput!) {
+          registerContact(input: $i) { ok }
+        }`,
+        {
+          i: {
+            email,
+            password: 'longpassword1',
+            firstName: 'Contact',
+            lastName: 'E2E',
+          },
+        },
+      );
+      expect(reg.status).toBe(200);
+      expect(reg.body.errors).toBeUndefined();
+      const userRow = await prisma.user.findUniqueOrThrow({ where: { email } });
+      const ev = app.get(EmailVerificationService);
+      const raw = await ev.issueTokenForUser(userRow.id);
+      const ver = await gql(
+        `mutation ($i: VerifyEmailInput!) {
+          verifyEmail(input: $i) { accessToken contactClubId }
+        }`,
+        { i: { token: raw } },
+      );
+      expect(ver.status).toBe(200);
+      expect(ver.body.errors).toBeUndefined();
+      const contact = await prisma.contact.findFirstOrThrow({
+        where: { clubId: clubId as string, userId: userRow.id },
+      });
+      return { userId: userRow.id, contactId: contact.id };
+    }
+
+    it('clubContacts liste le contact après verifyEmail', async () => {
+      const email = `e2e-cc-${randomUUID()}@test.invalid`;
+      const { contactId } = await registerAndVerifyContact(email);
+      const h = await adminAuthHeaders();
+      const res = await request(app.getHttpServer())
+        .post('/graphql')
+        .set(h)
+        .send({
+          query: `{ clubContacts { id email firstName lastName emailVerified canDeleteContact linkedMemberId } }`,
+        });
+      expect(res.status).toBe(200);
+      expect(res.body.errors).toBeUndefined();
+      const rows = res.body.data.clubContacts as Array<{
+        id: string;
+        emailVerified: boolean;
+        canDeleteContact: boolean;
+      }>;
+      const found = rows.find((r) => r.id === contactId);
+      expect(found).toBeTruthy();
+      expect(found!.emailVerified).toBe(true);
+      expect(found!.canDeleteContact).toBe(true);
+      await prisma.user.delete({ where: { email } });
+    });
+
+    it('deleteClubContact refusé tant qu’un membre existe', async () => {
+      const email = `e2e-cc-ndel-${randomUUID()}@test.invalid`;
+      const { contactId } = await registerAndVerifyContact(email);
+      const h = await adminAuthHeaders();
+      const prom = await request(app.getHttpServer())
+        .post('/graphql')
+        .set(h)
+        .send({
+          query: `mutation ($id: ID!) { promoteContactToMember(id: $id) { memberId } }`,
+          variables: { id: contactId },
+        });
+      expect(prom.status).toBe(200);
+      expect(prom.body.errors).toBeUndefined();
+      const memberId = prom.body.data.promoteContactToMember.memberId as string;
+
+      const del = await request(app.getHttpServer())
+        .post('/graphql')
+        .set(h)
+        .send({
+          query: `mutation ($id: ID!) { deleteClubContact(id: $id) }`,
+          variables: { id: contactId },
+        });
+      expect(del.status).toBe(200);
+      expect(del.body.errors?.length).toBeGreaterThan(0);
+
+      await prisma.member.delete({ where: { id: memberId } });
+      await prisma.user.delete({ where: { email } });
+    });
+
+    it('deleteClubContact autorisé après deleteClubMember', async () => {
+      const email = `e2e-cc-okdel-${randomUUID()}@test.invalid`;
+      const { contactId } = await registerAndVerifyContact(email);
+      const h = await adminAuthHeaders();
+      const prom = await request(app.getHttpServer())
+        .post('/graphql')
+        .set(h)
+        .send({
+          query: `mutation ($id: ID!) { promoteContactToMember(id: $id) { memberId } }`,
+          variables: { id: contactId },
+        });
+      expect(prom.status).toBe(200);
+      expect(prom.body.errors).toBeUndefined();
+      const memberId = prom.body.data.promoteContactToMember.memberId as string;
+
+      const delM = await request(app.getHttpServer())
+        .post('/graphql')
+        .set(h)
+        .send({
+          query: `mutation ($id: ID!) { deleteClubMember(id: $id) }`,
+          variables: { id: memberId },
+        });
+      expect(delM.status).toBe(200);
+      expect(delM.body.errors).toBeUndefined();
+
+      const delC = await request(app.getHttpServer())
+        .post('/graphql')
+        .set(h)
+        .send({
+          query: `mutation ($id: ID!) { deleteClubContact(id: $id) }`,
+          variables: { id: contactId },
+        });
+      expect(delC.status).toBe(200);
+      expect(delC.body.errors).toBeUndefined();
+      expect(delC.body.data.deleteClubContact).toBe(true);
+
+      await prisma.user.delete({ where: { email } });
+    });
+
+    it('promoteContactToMember crée un membre dans clubMembers', async () => {
+      const email = `e2e-cc-prom-${randomUUID()}@test.invalid`;
+      const { contactId, userId } = await registerAndVerifyContact(email);
+      const h = await adminAuthHeaders();
+      const prom = await request(app.getHttpServer())
+        .post('/graphql')
+        .set(h)
+        .send({
+          query: `mutation ($id: ID!) { promoteContactToMember(id: $id) { memberId } }`,
+          variables: { id: contactId },
+        });
+      expect(prom.status).toBe(200);
+      expect(prom.body.errors).toBeUndefined();
+      const memberId = prom.body.data.promoteContactToMember.memberId as string;
+
+      const qm = await request(app.getHttpServer())
+        .post('/graphql')
+        .set(h)
+        .send({
+          query: `{ clubMembers { id email userId } }`,
+        });
+      expect(qm.status).toBe(200);
+      expect(qm.body.errors).toBeUndefined();
+      const members = qm.body.data.clubMembers as Array<{
+        id: string;
+        email: string;
+        userId: string | null;
+      }>;
+      const m = members.find((row) => row.id === memberId);
+      expect(m).toBeTruthy();
+      expect(m!.email).toBe(email.toLowerCase());
+      expect(m!.userId).toBe(userId);
+
+      await prisma.member.delete({ where: { id: memberId } });
+      await prisma.user.delete({ where: { email } });
+    });
   });
 });
