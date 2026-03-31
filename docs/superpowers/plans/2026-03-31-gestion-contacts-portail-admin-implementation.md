@@ -46,7 +46,7 @@
 - `getClubContact(clubId, contactId)` : idem ou factoring interne ; `NotFoundException` si absent / mauvais club.
 - `updateClubContact(clubId, contactId, input)` : transaction `contact.update` + `user.update` `{ displayName: \`${first} ${last}\`.trim() }` ; **ne pas** toucher au `Member`.
 - `deleteClubContact(clubId, contactId)` : si membre existe (`userId`+`clubId`), `BadRequestException` message type spec §3.4 ; sinon `contact.delete`.
-- `promoteContactToMember(clubId, contactId)` : charger `contact` + `user` ; si `!user.emailVerifiedAt` → `BadRequestException` ; si `member` existe → `BadRequestException` ; `member.create` avec `userId`, `email: user.email`, `firstName`/`lastName` depuis **contact**, `civility: MR` (documenter en constante en tête de service), `clubId`, `status: ACTIVE` ; retourner `member.id`.
+- `promoteContactToMember(clubId, contactId)` : charger `contact` + `user` ; si `!user.emailVerifiedAt` → `BadRequestException` ; si `member` existe → `BadRequestException` ; **ne pas** bloquer pour absence de `passwordHash` / compte **OAuth uniquement** (spec §2.4) ; `member.create` avec `userId`, `email: user.email`, `firstName`/`lastName` depuis **contact**, `civility: MR` (documenter en constante en tête de service), `clubId`, `status: ACTIVE` ; retourner `member.id`.
 
 - [ ] **Étape 1 :** Écrire les tests unitaires **avant** le code (TDD) : cas `canDeleteContact` false/true ; promotion refusée sans `emailVerifiedAt` ; promotion refusée si membre existe ; update met à jour `displayName` (mock Prisma ou tests avec `PrismaService` selon pattern du repo).
 
@@ -54,14 +54,14 @@
 
 ```bash
 cd apps/api
-npx jest club-contacts.service.spec.ts --runInBand
+npm test -- club-contacts.service.spec.ts --runInBand
 ```
 
 Attendu : échecs si implémentation absente.
 
 - [ ] **Étape 3 :** Implémenter le service minimal pour faire passer les tests.
 
-- [ ] **Étape 4 :** Relancer `npx jest club-contacts.service.spec.ts --runInBand` — attendu **PASS**.
+- [ ] **Étape 4 :** Relancer `npm test -- club-contacts.service.spec.ts --runInBand` — attendu **PASS**.
 
 - [ ] **Étape 5 :** Commit.
 
@@ -94,12 +94,14 @@ git commit -m "feat(api): service contacts club et règles métier"
 
 - [ ] **Étape 1 :** Générer / valider le schéma : `npm run build` dans `apps/api`.
 
-- [ ] **Étape 2 :** Commit.
+- [ ] **Étape 2 :** Commit en listant explicitement les fichiers créés ou modifiés (`club-contacts.resolver.ts`, `club-contact.model.ts`, DTO, `promote-contact-result.model.ts`, `members.module.ts`, `graphql/graphql.module.ts`, etc.).
 
 ```bash
-git add apps/api/src/members/
+git add apps/api/src/members/club-contacts.resolver.ts apps/api/src/members/models/club-contact.model.ts apps/api/src/members/dto/update-club-contact.input.ts apps/api/src/members/models/promote-contact-result.model.ts apps/api/src/members/members.module.ts apps/api/src/graphql/graphql.module.ts
 git commit -m "feat(api): GraphQL clubContacts et mutations admin"
 ```
+
+*(Adapter la liste `git add` aux noms réels choisis à l’implémentation.)*
 
 ---
 
@@ -108,10 +110,12 @@ git commit -m "feat(api): GraphQL clubContacts et mutations admin"
 **Fichier :** `apps/api/test/app.e2e-spec.ts`
 
 - [ ] **Étape 1 :** Ajouter un test : staff authentifié liste `clubContacts` après `registerContact` + `verifyEmail` (réutiliser helpers existants si présents).
-- [ ] **Étape 2 :** Test suppression refusée lorsqu’un `Member` existe (créer membre minimal en base ou via mutation existante).
-- [ ] **Étape 3 :** `npm run test:e2e` dans `apps/api` — attendu **PASS**.
+- [ ] **Étape 2 :** Test **suppression refusée** lorsqu’un `Member` existe pour le même `User`+club (créer membre minimal en base ou via mutation existante), appel `deleteClubContact` → erreur attendue.
+- [ ] **Étape 3 :** Test **suppression autorisée** : après **retrait du `Member`** (mutation `deleteClubMember` ou équivalent pour ce `User`+club), `deleteClubContact` → succès, contact absent de `clubContacts`.
+- [ ] **Étape 4 :** Test **promotion** : `promoteContactToMember` sur un contact vérifié sans membre → assert présence du membre (`clubMember` / `clubMembers`) avec le même `userId` ou `email` attendu.
+- [ ] **Étape 5 :** `npm run test:e2e` dans `apps/api` — attendu **PASS**.
 
-- [ ] **Étape 4 :** Commit.
+- [ ] **Étape 6 :** Commit.
 
 ```bash
 git add apps/api/test/app.e2e-spec.ts
@@ -168,7 +172,7 @@ git commit -m "feat(admin): opérations GraphQL contacts"
 
 - En-tête de page type `members-loom__hero` : titre **Contacts portail**, aide courte (effet `displayName` global — spec §2.5).
 - Tableau : colonnes prénom, nom, e-mail, vérifié (oui/non), **Aussi membre** si `linkedMemberId`, lien `NavLink` vers `/members` avec stratégie d’ouverture fiche : soit `Link` vers annuaire (MVP simple : lien + instruction « rechercher »), soit réutiliser `useMembersUi().setDrawerMemberId` si accessible depuis cette route — **préférence plan :** bouton « Ouvrir membre » qui `navigate('/members')` puis `setDrawerMemberId(linkedMemberId)` si le contexte `MembersUiProvider` entoure déjà `App` ; sinon lien documenté « aller à l’annuaire ».
-- Recherche texte (nom/e-mail) côté client ; filtre optionnel boutons **Tous / E-mail vérifié / Non vérifié**.
+- Recherche texte (nom/e-mail) côté client ; filtre optionnel boutons **Tous / E-mail vérifié / Non vérifié** ; **tri de base** spec §3.2 : au minimum tri client sur **nom** ou **e-mail** (clic en-tête ou ordre stable par défaut documenté).
 - Clic ligne → ouvre drawer ; drawer : champs éditables prénom/nom, boutons Enregistrer, Promouvoir, Supprimer (désactivé + `title` si `!canDeleteContact`), erreurs GraphQL affichées avec messages spec.
 
 - [ ] **Étape 1 :** Implémenter et vérifier manuellement avec API locale.
@@ -191,6 +195,7 @@ git commit -m "feat(admin): liste et drawer contacts portail"
 
 - [ ] `npm run build` dans `apps/api` et `apps/admin`
 - [ ] `npm test` dans `apps/api` (ou au minimum `club-contacts.service.spec.ts`)
+- [ ] Si Task 3 réalisée : `npm run test:e2e` dans `apps/api`
 - [ ] Parcours manuel : liste, édition noms, promotion (compte vérifié), suppression après suppression membre, impossibilité supprimer avec membre présent.
 
 ---
@@ -198,5 +203,5 @@ git commit -m "feat(admin): liste et drawer contacts portail"
 ## Notes d’implémentation
 
 - **Module club :** même exigence **`MEMBERS` activé** que pour l’annuaire ; si le produit doit exposer les contacts sans module membres, trancher hors ce plan (non couvert par la spec validée).
-- **Pagination :** spec §4.3 autorise le même style que membres ; l’annuaire actuel est **liste complète** — rester cohérent ; pagination réservée à une phase ultérieure si perf critique.
+- **Pagination :** le tableau spec §4.2 mentionne « paginée » mais **§4.3 prévaut** : même style que l’annuaire — aujourd’hui **liste complète** sans curseur ; rester cohérent jusqu’à évolution éventuelle de l’annuaire.
 - **Civilité par défaut :** `MR` documentée dans le service ; corriger en annuaire après promotion.
