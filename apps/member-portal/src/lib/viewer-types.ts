@@ -1,3 +1,10 @@
+export type ViewerAdminSwitchData = {
+  viewerAdminSwitch: {
+    canAccessClubBackOffice: boolean;
+    adminWorkspaceClubId: string | null;
+  };
+};
+
 export type ViewerMeData = {
   viewerMe: {
     id: string;

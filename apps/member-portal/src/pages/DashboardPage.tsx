@@ -2,12 +2,14 @@ import { useQuery } from '@apollo/client/react';
 import { Link } from 'react-router-dom';
 import {
   CLUB,
+  VIEWER_ADMIN_SWITCH,
   VIEWER_FAMILY_BILLING,
   VIEWER_ME,
   VIEWER_UPCOMING_SLOTS,
 } from '../lib/viewer-documents';
 import type {
   ClubQueryData,
+  ViewerAdminSwitchData,
   ViewerBillingData,
   ViewerMeData,
   ViewerUpcomingData,
@@ -44,9 +46,12 @@ function SlotCard({ slot }: { slot: ViewerSlot }) {
 }
 
 export function DashboardPage() {
-  const { data: meData, loading: meLoading } = useQuery<ViewerMeData>(
-    VIEWER_ME,
+  const { data: adminSwitchData } = useQuery<ViewerAdminSwitchData>(
+    VIEWER_ADMIN_SWITCH,
+    { fetchPolicy: 'cache-and-network', nextFetchPolicy: 'cache-first' },
   );
+  const { data: meData, loading: meLoading, error: meError } =
+    useQuery<ViewerMeData>(VIEWER_ME, { errorPolicy: 'all' });
   const { data: clubData } = useQuery<ClubQueryData>(CLUB);
 
   const slotsQ = useQuery<ViewerUpcomingData>(VIEWER_UPCOMING_SLOTS, {
@@ -57,6 +62,7 @@ export function DashboardPage() {
   });
 
   const me = meData?.viewerMe;
+  const adminSwitch = adminSwitchData?.viewerAdminSwitch;
   const clubName = clubData?.club?.name;
   const slots = slotsQ.data?.viewerUpcomingCourseSlots ?? [];
   const dashSlots = slots.slice(0, 3);
@@ -74,18 +80,22 @@ export function DashboardPage() {
           <p className="mp-eyebrow">
             {clubName ? clubName : 'Espace membre'}
           </p>
-          {!meLoading && me?.canAccessClubBackOffice ? (
+          {adminSwitch?.canAccessClubBackOffice ? (
             <MemberRoleToggle
               canAccessClubBackOffice
-              adminWorkspaceClubId={me.adminWorkspaceClubId}
+              adminWorkspaceClubId={adminSwitch.adminWorkspaceClubId}
               className="mp-role-toggle--hero"
             />
           ) : null}
         </div>
         <h1 className="mp-hero-title">
-          {meLoading || !me
+          {meLoading
             ? '…'
-            : `Content de te revoir, ${me.firstName}`}
+            : me
+              ? `Content de te revoir, ${me.firstName}`
+              : meError
+                ? 'Espace membre'
+                : '…'}
         </h1>
         <div className="mp-badges-row">
           <span

@@ -12,8 +12,8 @@ import {
 import type { SelectProfileData, ViewerProfilesQueryData } from '../lib/auth-types';
 import { MemberRoleToggle } from './MemberRoleToggle';
 import { clearClubId, getClubId, setMemberSession } from '../lib/storage';
-import { VIEWER_ME } from '../lib/viewer-documents';
-import type { ViewerMeData } from '../lib/viewer-types';
+import { VIEWER_ADMIN_SWITCH } from '../lib/viewer-documents';
+import type { ViewerAdminSwitchData } from '../lib/viewer-types';
 
 const navClass = ({ isActive }: { isActive: boolean }) =>
   `mp-sidebar-link${isActive ? ' mp-sidebar-link-active' : ''}`;
@@ -40,19 +40,23 @@ export function MemberLayout() {
     { fetchPolicy: 'cache-first' },
   );
 
-  const { data: viewerMeData } = useQuery<ViewerMeData>(VIEWER_ME, {
-    fetchPolicy: 'cache-and-network',
-    nextFetchPolicy: 'cache-first',
-  });
+  const { data: adminSwitchData } = useQuery<ViewerAdminSwitchData>(
+    VIEWER_ADMIN_SWITCH,
+    {
+      fetchPolicy: 'cache-and-network',
+      nextFetchPolicy: 'cache-first',
+    },
+  );
 
   const [selectProfile, { loading: switching }] =
     useMutation<SelectProfileData>(SELECT_VIEWER_PROFILE);
 
   const profiles = profilesData?.viewerProfiles ?? [];
   const showSwitcher = profiles.length > 1;
-  const viewerMe = viewerMeData?.viewerMe;
-  const canAccessClubBackOffice = viewerMe?.canAccessClubBackOffice === true;
-  const adminWorkspaceClubId = viewerMe?.adminWorkspaceClubId;
+  const adminSwitch = adminSwitchData?.viewerAdminSwitch;
+  const canAccessClubBackOffice =
+    adminSwitch?.canAccessClubBackOffice === true;
+  const adminWorkspaceClubId = adminSwitch?.adminWorkspaceClubId ?? null;
 
   async function switchTo(memberId: string, nextClubId: string) {
     if (!clubId || switching) return;

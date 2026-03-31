@@ -1,5 +1,15 @@
 import { gql } from '@apollo/client';
 
+/** JWT + X-Club-Id seulement — ne dépend pas du garde profil membre (contrairement à viewerMe). */
+export const VIEWER_ADMIN_SWITCH = gql`
+  query ViewerAdminSwitch {
+    viewerAdminSwitch {
+      canAccessClubBackOffice
+      adminWorkspaceClubId
+    }
+  }
+`;
+
 export const VIEWER_ME = gql`
   query ViewerMe {
     viewerMe {
