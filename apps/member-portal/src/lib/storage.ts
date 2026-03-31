@@ -18,6 +18,10 @@ export function setClubId(clubId: string): void {
   localStorage.setItem(CLUB_ID_KEY, clubId);
 }
 
+export function clearClubId(): void {
+  localStorage.removeItem(CLUB_ID_KEY);
+}
+
 export function clearAuth(): void {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(CLUB_ID_KEY);
