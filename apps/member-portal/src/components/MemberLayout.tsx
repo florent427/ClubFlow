@@ -41,7 +41,8 @@ export function MemberLayout() {
   );
 
   const { data: viewerMeData } = useQuery<ViewerMeData>(VIEWER_ME, {
-    fetchPolicy: 'cache-first',
+    fetchPolicy: 'cache-and-network',
+    nextFetchPolicy: 'cache-first',
   });
 
   const [selectProfile, { loading: switching }] =
@@ -112,6 +113,7 @@ export function MemberLayout() {
           </div>
           <div className="mp-topbar-actions">
             <MemberRoleToggle
+              variant="header"
               canAccessClubBackOffice={canAccessClubBackOffice}
               adminWorkspaceClubId={adminWorkspaceClubId}
             />

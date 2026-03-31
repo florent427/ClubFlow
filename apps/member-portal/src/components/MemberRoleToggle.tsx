@@ -9,13 +9,19 @@ type Props = {
    */
   adminWorkspaceClubId?: string | null;
   className?: string;
+  /**
+   * `header` : bouton unique très visible dans la barre du haut.
+   * `segment` : duo Admin + Personnel (ex. tableau de bord).
+   */
+  variant?: 'header' | 'segment';
 };
 
-/** Admin | Personnel — même comportement que le header ; Personnel = vue portail courante. */
+/** Accès back-office depuis le portail membre. */
 export function MemberRoleToggle({
   canAccessClubBackOffice,
   adminWorkspaceClubId,
   className = '',
+  variant = 'segment',
 }: Props) {
   if (!canAccessClubBackOffice) {
     return null;
@@ -26,6 +32,23 @@ export function MemberRoleToggle({
     const cid = adminWorkspaceClubId ?? getClubId();
     if (!tok || !cid) return;
     navigateToAdminApp(tok, cid);
+  }
+
+  if (variant === 'header') {
+    return (
+      <button
+        type="button"
+        className={`mp-backoffice-header-btn${className ? ` ${className}` : ''}`}
+        onClick={() => goAdmin()}
+        title="Ouvrir le back-office ClubFlow"
+        aria-label="Ouvrir le back-office ClubFlow"
+      >
+        <span className="material-symbols-outlined" aria-hidden>
+          admin_panel_settings
+        </span>
+        <span>Back-office</span>
+      </button>
+    );
   }
 
   return (

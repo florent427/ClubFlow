@@ -378,6 +378,52 @@ body {
   flex-shrink: 0;
 }
 
+.mp-backoffice-header-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.7rem;
+  border: none;
+  border-radius: 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  font-family: inherit;
+  color: #fff;
+  background: linear-gradient(135deg, #000666 0%, #1a237e 100%);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 6, 102, 0.25);
+  white-space: nowrap;
+}
+
+.mp-backoffice-header-btn:hover {
+  filter: brightness(1.06);
+}
+
+.mp-backoffice-header-btn:focus-visible {
+  outline: 2px solid #0056c5;
+  outline-offset: 2px;
+}
+
+.mp-backoffice-header-btn .material-symbols-outlined {
+  font-size: 1.15rem !important;
+  opacity: 0.95;
+}
+
+@media (max-width: 380px) {
+  .mp-backoffice-header-btn span:last-child {
+    display: none;
+  }
+
+  .mp-backoffice-header-btn {
+    padding: 0.5rem;
+    border-radius: 999px;
+  }
+
+  .mp-backoffice-header-btn .material-symbols-outlined {
+    margin: 0;
+  }
+}
+
 .mp-role-toggle {
   display: flex;
   padding: 0.2rem;
