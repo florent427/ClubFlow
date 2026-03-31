@@ -328,6 +328,11 @@ body {
   z-index: 10;
 }
 
+.mp-topbar > .mp-breadcrumb {
+  min-width: 0;
+  flex: 1;
+}
+
 @media (min-width: 900px) {
   .mp-topbar {
     padding: 1rem 1.5rem;
@@ -354,12 +359,23 @@ body {
 .mp-bc-current {
   font-weight: 700;
   color: #191c1d;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 11rem;
+}
+
+@media (min-width: 480px) {
+  .mp-bc-current {
+    max-width: 16rem;
+  }
 }
 
 .mp-topbar-actions {
   display: flex;
   align-items: center;
   gap: 0.35rem;
+  flex-shrink: 0;
 }
 
 .mp-role-toggle {
@@ -532,6 +548,29 @@ body {
   letter-spacing: 0.08em;
   color: #0056c5;
   margin: 0 0 0.35rem;
+}
+
+.mp-hero {
+  margin-bottom: 1.25rem;
+}
+
+.mp-hero-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.35rem;
+}
+
+.mp-hero-head .mp-eyebrow {
+  margin-bottom: 0;
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
+.mp-role-toggle--hero {
+  flex-shrink: 0;
 }
 
 .mp-hero-title {

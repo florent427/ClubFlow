@@ -10,8 +10,8 @@ import {
   VIEWER_PROFILES,
 } from '../lib/documents';
 import type { SelectProfileData, ViewerProfilesQueryData } from '../lib/auth-types';
-import { navigateToAdminApp } from '../lib/admin-switch';
-import { clearClubId, getClubId, getToken, setMemberSession } from '../lib/storage';
+import { MemberRoleToggle } from './MemberRoleToggle';
+import { clearClubId, getClubId, setMemberSession } from '../lib/storage';
 import { VIEWER_ME } from '../lib/viewer-documents';
 import type { ViewerMeData } from '../lib/viewer-types';
 
@@ -49,15 +49,8 @@ export function MemberLayout() {
 
   const profiles = profilesData?.viewerProfiles ?? [];
   const showSwitcher = profiles.length > 1;
-  const showAdminSwitch =
+  const canAccessClubBackOffice =
     viewerMeData?.viewerMe?.canAccessClubBackOffice === true;
-
-  function goAdmin() {
-    const tok = getToken();
-    const cid = getClubId();
-    if (!tok || !cid) return;
-    navigateToAdminApp(tok, cid);
-  }
 
   async function switchTo(memberId: string, nextClubId: string) {
     if (!clubId || switching) return;
@@ -117,29 +110,7 @@ export function MemberLayout() {
             <span className="mp-bc-current">{crumb}</span>
           </div>
           <div className="mp-topbar-actions">
-            {showAdminSwitch ? (
-              <div
-                className="mp-role-toggle"
-                role="group"
-                aria-label="Changer d’espace"
-              >
-                <button
-                  type="button"
-                  className="mp-role-toggle__btn"
-                  onClick={() => goAdmin()}
-                >
-                  Admin
-                </button>
-                <button
-                  type="button"
-                  className="mp-role-toggle__btn mp-role-toggle__btn--on"
-                  aria-current="page"
-                  disabled
-                >
-                  Personnel
-                </button>
-              </div>
-            ) : null}
+            <MemberRoleToggle canAccessClubBackOffice={canAccessClubBackOffice} />
             {showSwitcher ? (
               <div className="mp-profile-chips" role="group" aria-label="Changer de profil">
                 {profiles.map((p) => (
