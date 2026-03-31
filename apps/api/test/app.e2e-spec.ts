@@ -1,3 +1,5 @@
+import { execSync } from 'child_process';
+import { join } from 'path';
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
@@ -29,6 +31,12 @@ describe('ClubFlow API (e2e)', () => {
   let clubId: string | undefined;
 
   beforeAll(async () => {
+    execSync('npx prisma migrate deploy', {
+      cwd: join(__dirname, '..'),
+      stdio: 'inherit',
+      env: process.env,
+    });
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -77,6 +85,7 @@ describe('ClubFlow API (e2e)', () => {
         id: randomUUID(),
         email: adminEmail,
         passwordHash: adminHash,
+        emailVerifiedAt: new Date(),
         displayName: 'E2E Admin',
         memberships: {
           create: {
@@ -93,6 +102,7 @@ describe('ClubFlow API (e2e)', () => {
         id: randomUUID(),
         email: staffEmail,
         passwordHash: staffHash,
+        emailVerifiedAt: new Date(),
         displayName: 'E2E Staff',
         memberships: {
           create: {
@@ -793,6 +803,7 @@ describe('ClubFlow API (e2e)', () => {
         id: portalUserId,
         email: memberPortalEmail,
         passwordHash: portalHash,
+        emailVerifiedAt: new Date(),
         displayName: 'E2E Portail',
       },
     });
@@ -1156,7 +1167,8 @@ describe('ClubFlow API (e2e)', () => {
           input: {
             title: 'E2E campagne',
             body: 'Message de test',
-            channel: 'EMAIL',
+            /** PUSH évite la chaîne e-mail / domaine vérifié (cf. campagnes EMAIL). */
+            channel: 'PUSH',
           },
         },
       });

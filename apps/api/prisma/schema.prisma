@@ -36,6 +36,9 @@ model Club {
   clubSeasons                   ClubSeason[]
   membershipProducts            MembershipProduct[]
   membershipOneTimeFees         MembershipOneTimeFee[]
+  sendingDomains                ClubSendingDomain[]
+  emailSuppressions             EmailSuppression[]
+  contacts                      Contact[]
   /// À partir du n-ième bulletin d’adhésion (OPEN/PAID) pour le foyer sur la saison — null = désactivé
   membershipFamilyDiscountFromNth Int?
   membershipFamilyAdjustmentType   PricingAdjustmentType @default(NONE)
@@ -52,16 +55,65 @@ enum MembershipRole {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  passwordHash String
-  displayName  String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String    @id @default(uuid())
+  email           String    @unique
+  passwordHash    String?
+  emailVerifiedAt DateTime?
+  displayName     String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  memberships ClubMembership[]
-  tokens      RefreshToken[]
-  members     Member[]
+  memberships             ClubMembership[]
+  tokens                  RefreshToken[]
+  members                 Member[]
+  contacts                Contact[]
+  userIdentities          UserIdentity[]
+  emailVerificationTokens EmailVerificationToken[]
+}
+
+enum OAuthProvider {
+  GOOGLE
+  FACEBOOK
+  LINKEDIN
+}
+
+/// Prospect / contact portail — distinct du membre adhérent (`Member`)
+model Contact {
+  id        String   @id @default(uuid())
+  clubId    String
+  userId    String
+  firstName String
+  lastName  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clubId])
+}
+
+model UserIdentity {
+  id              String        @id @default(uuid())
+  userId          String
+  provider        OAuthProvider
+  providerSubject String
+  createdAt       DateTime      @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerSubject])
+}
+
+model EmailVerificationToken {
+  id         String    @id @default(uuid())
+  userId     String
+  tokenHash  String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model ClubMembership {
@@ -659,6 +711,51 @@ model MessageCampaignRecipient {
 
   @@unique([campaignId, memberId])
   @@index([memberId])
+}
+
+/// Domaine d’envoi e-mail du club (ESP + statut DNS).
+enum ClubSendingDomainPurpose {
+  TRANSACTIONAL
+  CAMPAIGN
+  BOTH
+}
+
+enum ClubSendingDomainVerificationStatus {
+  PENDING
+  VERIFIED
+  FAILED
+}
+
+model ClubSendingDomain {
+  id                 String                              @id @default(uuid())
+  clubId             String
+  fqdn               String
+  purpose            ClubSendingDomainPurpose
+  verificationStatus ClubSendingDomainVerificationStatus @default(PENDING)
+  providerDomainId   String?
+  dnsRecordsJson     String?
+  lastCheckedAt      DateTime?
+  createdAt          DateTime                            @default(now())
+  updatedAt          DateTime                            @updatedAt
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, fqdn])
+  @@index([clubId])
+}
+
+/// Adresses exclues des campagnes (bounce dur, plainte ESP).
+model EmailSuppression {
+  id              String   @id @default(uuid())
+  clubId          String
+  emailNormalized String
+  reason          String
+  createdAt       DateTime @default(now())
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, emailNormalized])
+  @@index([clubId])
 }
 
 // --- Phase G : Comptabilité (écritures) + stubs Subventions / Sponsoring ---

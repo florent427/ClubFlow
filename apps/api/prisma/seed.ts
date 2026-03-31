@@ -1,6 +1,8 @@
 import { randomUUID } from 'crypto';
 import {
   PrismaClient,
+  MemberClubRole,
+  MemberCivility,
   MembershipRole,
   type Prisma,
 } from '@prisma/client';
@@ -75,10 +77,12 @@ async function main(): Promise<void> {
       id: userId,
       email: demoEmail,
       passwordHash,
+      emailVerifiedAt: new Date(),
       displayName: 'Admin démo',
     },
     update: {
       passwordHash,
+      emailVerifiedAt: new Date(),
       displayName: 'Admin démo',
     },
   });
@@ -98,6 +102,30 @@ async function main(): Promise<void> {
       role: MembershipRole.CLUB_ADMIN,
     },
     update: { role: MembershipRole.CLUB_ADMIN },
+  });
+
+  /** Fiche membre liée au même compte : nécessaire pour `viewerProfiles` / portail membre. */
+  await prisma.member.upsert({
+    where: {
+      clubId_userId: { clubId: club.id, userId: user.id },
+    },
+    create: {
+      id: randomUUID(),
+      clubId: club.id,
+      userId: user.id,
+      firstName: 'Compte',
+      lastName: 'Portail démo',
+      civility: MemberCivility.MR,
+      email: demoEmail,
+      roleAssignments: {
+        create: [{ role: MemberClubRole.STUDENT }],
+      },
+    },
+    update: {
+      status: 'ACTIVE',
+      civility: MemberCivility.MR,
+      email: demoEmail,
+    },
   });
 
   await prisma.clubModule.upsert({
