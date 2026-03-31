@@ -1,0 +1,208 @@
+import { useMutation, useQuery } from '@apollo/client/react';
+import {
+  NavLink,
+  Outlet,
+  useLocation,
+  useNavigate,
+} from 'react-router-dom';
+import {
+  SELECT_VIEWER_PROFILE,
+  VIEWER_PROFILES,
+} from '../lib/documents';
+import type { SelectProfileData, ViewerProfilesQueryData } from '../lib/auth-types';
+import { navigateToAdminApp } from '../lib/admin-switch';
+import { clearClubId, getClubId, getToken, setMemberSession } from '../lib/storage';
+import { VIEWER_ME } from '../lib/viewer-documents';
+import type { ViewerMeData } from '../lib/viewer-types';
+
+const navClass = ({ isActive }: { isActive: boolean }) =>
+  `mp-sidebar-link${isActive ? ' mp-sidebar-link-active' : ''}`;
+
+const bottomClass = ({ isActive }: { isActive: boolean }) =>
+  `mp-bottom-btn${isActive ? ' mp-bottom-btn-active' : ''}`;
+
+function breadcrumbLabel(pathname: string): string {
+  if (pathname === '/' || pathname === '') return 'Tableau de bord';
+  if (pathname.startsWith('/progression')) return 'Ma progression';
+  if (pathname.startsWith('/planning')) return 'Planning';
+  if (pathname.startsWith('/famille')) return 'Ma famille';
+  if (pathname.startsWith('/parametres')) return 'Paramètres';
+  return 'Espace membre';
+}
+
+export function MemberLayout() {
+  const loc = useLocation();
+  const navigate = useNavigate();
+  const clubId = getClubId();
+
+  const { data: profilesData } = useQuery<ViewerProfilesQueryData>(
+    VIEWER_PROFILES,
+    { fetchPolicy: 'cache-first' },
+  );
+
+  const { data: viewerMeData } = useQuery<ViewerMeData>(VIEWER_ME, {
+    fetchPolicy: 'cache-first',
+  });
+
+  const [selectProfile, { loading: switching }] =
+    useMutation<SelectProfileData>(SELECT_VIEWER_PROFILE);
+
+  const profiles = profilesData?.viewerProfiles ?? [];
+  const showSwitcher = profiles.length > 1;
+  const showAdminSwitch =
+    viewerMeData?.viewerMe?.canAccessClubBackOffice === true;
+
+  function goAdmin() {
+    const tok = getToken();
+    const cid = getClubId();
+    if (!tok || !cid) return;
+    navigateToAdminApp(tok, cid);
+  }
+
+  async function switchTo(memberId: string, nextClubId: string) {
+    if (!clubId || switching) return;
+    const { data: sel } = await selectProfile({ variables: { memberId } });
+    const newTok = sel?.selectActiveViewerProfile?.accessToken;
+    if (!newTok) return;
+    setMemberSession(newTok, nextClubId);
+    void navigate('/', { replace: true });
+    window.location.reload();
+  }
+
+  function goChangeProfile() {
+    clearClubId();
+    void navigate('/select-profile', { replace: true });
+  }
+
+  const crumb = breadcrumbLabel(loc.pathname);
+
+  return (
+    <div className="mp-shell">
+      <aside className="mp-sidebar" aria-label="Navigation principale">
+        <div className="mp-sidebar-brand">
+          <span className="mp-logo">ClubFlow</span>
+        </div>
+        <nav className="mp-sidebar-nav">
+          <NavLink to="/" end className={navClass}>
+            <span className="mp-ico material-symbols-outlined">dashboard</span>
+            Tableau de bord
+          </NavLink>
+          <NavLink to="/progression" className={navClass}>
+            <span className="mp-ico material-symbols-outlined">school</span>
+            Ma progression
+          </NavLink>
+          <NavLink to="/planning" className={navClass}>
+            <span className="mp-ico material-symbols-outlined">calendar_today</span>
+            Planning
+          </NavLink>
+          <NavLink to="/famille" className={navClass}>
+            <span className="mp-ico material-symbols-outlined">group</span>
+            Ma famille
+          </NavLink>
+          <NavLink to="/parametres" className={navClass}>
+            <span className="mp-ico material-symbols-outlined">settings</span>
+            Paramètres
+          </NavLink>
+        </nav>
+        <button type="button" className="mp-cta-sidebar" disabled title="Bientôt disponible">
+          Réserver un cours
+        </button>
+      </aside>
+
+      <div className="mp-main-wrap">
+        <header className="mp-topbar">
+          <div className="mp-breadcrumb">
+            <span className="mp-bc-muted">Espace membre</span>
+            <span className="mp-bc-sep material-symbols-outlined">chevron_right</span>
+            <span className="mp-bc-current">{crumb}</span>
+          </div>
+          <div className="mp-topbar-actions">
+            {showAdminSwitch ? (
+              <div
+                className="mp-role-toggle"
+                role="group"
+                aria-label="Changer d’espace"
+              >
+                <button
+                  type="button"
+                  className="mp-role-toggle__btn"
+                  onClick={() => goAdmin()}
+                >
+                  Admin
+                </button>
+                <button
+                  type="button"
+                  className="mp-role-toggle__btn mp-role-toggle__btn--on"
+                  aria-current="page"
+                  disabled
+                >
+                  Personnel
+                </button>
+              </div>
+            ) : null}
+            {showSwitcher ? (
+              <div className="mp-profile-chips" role="group" aria-label="Changer de profil">
+                {profiles.map((p) => (
+                  <button
+                    key={p.memberId}
+                    type="button"
+                    className="mp-profile-chip"
+                    title={`${p.firstName} ${p.lastName}`}
+                    disabled={switching}
+                    onClick={() => void switchTo(p.memberId, p.clubId)}
+                  >
+                    <span className="mp-chip-initials">
+                      {p.firstName.slice(0, 1)}
+                      {p.lastName.slice(0, 1)}
+                    </span>
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="mp-profile-chip mp-profile-chip-more"
+                  onClick={goChangeProfile}
+                  title="Liste des profils"
+                >
+                  …
+                </button>
+              </div>
+            ) : null}
+            <button type="button" className="mp-icon-btn" aria-label="Recherche" disabled>
+              <span className="material-symbols-outlined">search</span>
+            </button>
+            <button type="button" className="mp-icon-btn" aria-label="Notifications" disabled>
+              <span className="material-symbols-outlined">notifications</span>
+            </button>
+          </div>
+        </header>
+
+        <main className="mp-content">
+          <Outlet />
+        </main>
+      </div>
+
+      <nav className="mp-bottom" aria-label="Navigation mobile">
+        <NavLink to="/" end className={bottomClass}>
+          <span className="material-symbols-outlined">dashboard</span>
+          <span>Accueil</span>
+        </NavLink>
+        <NavLink to="/progression" className={bottomClass}>
+          <span className="material-symbols-outlined">school</span>
+          <span>Progrès</span>
+        </NavLink>
+        <NavLink to="/planning" className={bottomClass}>
+          <span className="material-symbols-outlined">calendar_today</span>
+          <span>Planning</span>
+        </NavLink>
+        <NavLink to="/famille" className={bottomClass}>
+          <span className="material-symbols-outlined">group</span>
+          <span>Famille</span>
+        </NavLink>
+        <NavLink to="/parametres" className={bottomClass}>
+          <span className="material-symbols-outlined">settings</span>
+          <span>Profil</span>
+        </NavLink>
+      </nav>
+    </div>
+  );
+}
