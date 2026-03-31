@@ -1,4 +1,23 @@
-# React + TypeScript + Vite
+# ClubFlow — Back-office admin
+
+Application Vite + React du back-office club.
+
+## Développement local
+
+- Démarrer l’API (`apps/api`, port **3000** par défaut).
+- Fichier `.env` à la racine de ce dossier :
+  - `VITE_GRAPHQL_HTTP` — endpoint GraphQL (ex. `http://localhost:3000/graphql`).
+  - `VITE_DEV_CLUB_ID` — UUID du club (affiché après `npm run db:seed` dans l’API).
+  - `VITE_MEMBER_APP_URL` — URL de base du **portail membre** pour le bouton **Personnel** (bascule sans re-login). En dev deux ports : `http://localhost:5174/`. En prod **même origine** : chemin du type `/membre` ou URL complète si besoin.
+- `npm install` puis `npm run dev` — souvent **http://localhost:5173**.
+
+## Bascule Admin ↔ Portail membre
+
+Les deux apps utilisent des **clés `localStorage` différentes** ; au clic, la session est **copiée** puis `window.location` vers l’autre app. Pour que le JWT soit disponible, servez idéalement **admin et portail sous le même hôte** (reverse proxy) ; sinon utilisez des **URL absolues** en dev (`VITE_MEMBER_APP_URL` / côté portail `VITE_ADMIN_APP_URL`).
+
+---
+
+# React + TypeScript + Vite (gabarit)
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
