@@ -30,7 +30,11 @@ export class ViewerResolver {
     @CurrentUser() user: RequestUser,
     @CurrentClub() club: Club,
   ): Promise<ViewerMemberGraph> {
-    return this.viewer.viewerMe(club.id, user.activeProfileMemberId!);
+    return this.viewer.viewerMe(
+      club.id,
+      user.activeProfileMemberId!,
+      user.userId,
+    );
   }
 
   @Query(() => [ViewerCourseSlotGraph], { name: 'viewerUpcomingCourseSlots' })

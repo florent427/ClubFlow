@@ -5,8 +5,8 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { GqlExecutionContext } from '@nestjs/graphql';
-import { MembershipRole } from '@prisma/client';
 import type { Request } from 'express';
+import { userHasClubBackOfficeRole } from '../club-back-office-role';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /**
@@ -24,17 +24,8 @@ export class ClubAdminRoleGuard implements CanActivate {
     if (!userId || !clubId) {
       throw new ForbiddenException();
     }
-    const membership = await this.prisma.clubMembership.findUnique({
-      where: { userId_clubId: { userId, clubId } },
-    });
-    if (!membership) {
-      throw new ForbiddenException();
-    }
-    if (
-      membership.role !== MembershipRole.CLUB_ADMIN &&
-      membership.role !== MembershipRole.BOARD &&
-      membership.role !== MembershipRole.TREASURER
-    ) {
+    const ok = await userHasClubBackOfficeRole(this.prisma, userId, clubId);
+    if (!ok) {
       throw new ForbiddenException();
     }
     return true;

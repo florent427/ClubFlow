@@ -26,4 +26,7 @@ export class ViewerMemberGraph {
 
   @Field(() => String, { nullable: true })
   gradeLevelLabel!: string | null;
+
+  @Field()
+  canAccessClubBackOffice!: boolean;
 }

@@ -4,6 +4,7 @@ import {
   InvoiceStatus,
   MemberStatus,
 } from '@prisma/client';
+import { userHasClubBackOfficeRole } from '../common/club-back-office-role';
 import { invoicePaymentTotals } from '../payments/invoice-totals';
 import { PlanningService } from '../planning/planning.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -18,7 +19,11 @@ export class ViewerService {
     private readonly planning: PlanningService,
   ) {}
 
-  async viewerMe(clubId: string, memberId: string): Promise<ViewerMemberGraph> {
+  async viewerMe(
+    clubId: string,
+    memberId: string,
+    userId: string,
+  ): Promise<ViewerMemberGraph> {
     const m = await this.prisma.member.findFirst({
       where: { id: memberId, clubId, status: MemberStatus.ACTIVE },
       include: { gradeLevel: true },
@@ -26,6 +31,11 @@ export class ViewerService {
     if (!m) {
       throw new NotFoundException('Membre introuvable');
     }
+    const canAccessClubBackOffice = await userHasClubBackOfficeRole(
+      this.prisma,
+      userId,
+      clubId,
+    );
     return {
       id: m.id,
       firstName: m.firstName,
@@ -35,6 +45,7 @@ export class ViewerService {
       medicalCertExpiresAt: m.medicalCertExpiresAt,
       gradeLevelId: m.gradeLevelId,
       gradeLevelLabel: m.gradeLevel?.label ?? null,
+      canAccessClubBackOffice,
     };
   }
 
