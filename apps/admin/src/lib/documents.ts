@@ -8,6 +8,19 @@ export const LOGIN = gql`
   }
 `;
 
+export const VIEWER_PROFILES = gql`
+  query AdminViewerProfiles {
+    viewerProfiles {
+      memberId
+      clubId
+      firstName
+      lastName
+      isPrimaryProfile
+      familyId
+    }
+  }
+`;
+
 export const DASHBOARD_SUMMARY = gql`
   query AdminDashboardSummary {
     adminDashboardSummary {
@@ -398,6 +411,74 @@ export const MEMBERSHIP_PRODUCTS = gql`
   }
 `;
 
+export const ELIGIBLE_MEMBERSHIP_PRODUCTS = gql`
+  query EligibleMembershipProducts($memberId: ID!, $referenceDate: String) {
+    eligibleMembershipProducts(
+      memberId: $memberId
+      referenceDate: $referenceDate
+    ) {
+      id
+      clubId
+      label
+      annualAmountCents
+      monthlyAmountCents
+      minAge
+      maxAge
+      gradeLevelIds
+      allowProrata
+      allowFamily
+      allowPublicAid
+      allowExceptional
+      exceptionalCapPercentBp
+    }
+  }
+`;
+
+export const MEMBERSHIP_ONE_TIME_FEES = gql`
+  query MembershipOneTimeFees {
+    membershipOneTimeFees {
+      id
+      clubId
+      label
+      amountCents
+    }
+  }
+`;
+
+export const CREATE_MEMBERSHIP_ONE_TIME_FEE = gql`
+  mutation CreateMembershipOneTimeFee($input: CreateMembershipOneTimeFeeInput!) {
+    createMembershipOneTimeFee(input: $input) {
+      id
+      clubId
+      label
+      amountCents
+    }
+  }
+`;
+
+export const UPDATE_MEMBERSHIP_ONE_TIME_FEE = gql`
+  mutation UpdateMembershipOneTimeFee($input: UpdateMembershipOneTimeFeeInput!) {
+    updateMembershipOneTimeFee(input: $input) {
+      id
+      clubId
+      label
+      amountCents
+    }
+  }
+`;
+
+export const ARCHIVE_MEMBERSHIP_ONE_TIME_FEE = gql`
+  mutation ArchiveMembershipOneTimeFee($id: ID!) {
+    archiveMembershipOneTimeFee(id: $id)
+  }
+`;
+
+export const DELETE_MEMBERSHIP_ONE_TIME_FEE = gql`
+  mutation DeleteMembershipOneTimeFee($id: ID!) {
+    deleteMembershipOneTimeFee(id: $id)
+  }
+`;
+
 export const CREATE_MEMBERSHIP_PRODUCT = gql`
   mutation CreateMembershipProduct($input: CreateMembershipProductInput!) {
     createMembershipProduct(input: $input) {
@@ -457,6 +538,21 @@ export const CLUB_INVOICES = gql`
       status
       lockedPaymentMethod
       dueAt
+      totalPaidCents
+      balanceCents
+    }
+  }
+`;
+
+export const RECORD_CLUB_MANUAL_PAYMENT = gql`
+  mutation RecordClubManualPayment($input: RecordManualPaymentInput!) {
+    recordClubManualPayment(input: $input) {
+      id
+      invoiceId
+      amountCents
+      method
+      externalRef
+      createdAt
     }
   }
 `;
@@ -487,6 +583,8 @@ export const CREATE_MEMBERSHIP_INVOICE_DRAFT = gql`
       status
       lockedPaymentMethod
       dueAt
+      totalPaidCents
+      balanceCents
     }
   }
 `;
@@ -504,6 +602,8 @@ export const FINALIZE_MEMBERSHIP_INVOICE = gql`
       status
       lockedPaymentMethod
       dueAt
+      totalPaidCents
+      balanceCents
     }
   }
 `;

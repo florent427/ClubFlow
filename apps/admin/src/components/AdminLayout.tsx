@@ -1,8 +1,11 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useQuery } from '@apollo/client/react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { VIEWER_PROFILES } from '../lib/documents';
 import { apolloClient } from '../lib/apollo';
-import { clearSession, getToken } from '../lib/storage';
+import { navigateToMemberPortal } from '../lib/member-portal-switch';
+import type { ViewerProfilesQueryData } from '../lib/types';
+import { clearSession, getClubId, getToken, isLoggedIn } from '../lib/storage';
 
 function decodeJwtEmail(token: string): string | null {
   try {
@@ -36,9 +39,25 @@ function initialsFromEmail(email: string | null): string {
 export function AdminLayout({ children }: { children?: ReactNode }) {
   const navigate = useNavigate();
   const token = getToken();
+  const clubId = getClubId();
+  const loggedIn = isLoggedIn();
   const emailHint = token ? decodeJwtEmail(token) : null;
   const displayName = displayNameFromEmail(emailHint);
-  const [roleTab, setRoleTab] = useState<'admin' | 'staff'>('admin');
+
+  const { data: viewerProfilesData } = useQuery<ViewerProfilesQueryData>(
+    VIEWER_PROFILES,
+    { skip: !loggedIn, fetchPolicy: 'cache-and-network' },
+  );
+  const viewerProfiles = viewerProfilesData?.viewerProfiles ?? [];
+  const hasMemberProfiles = viewerProfiles.length > 0;
+  const personnelTitle = hasMemberProfiles
+    ? 'Ouvrir l’espace personnel (portail membre)'
+    : 'Aucun profil membre lié à ce compte. Contactez votre club.';
+
+  function goPersonnel() {
+    if (!hasMemberProfiles || !token || !clubId) return;
+    navigateToMemberPortal(token, clubId);
+  }
 
   function logout() {
     clearSession();
@@ -190,23 +209,18 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
           <div className="cf-role-toggle" role="group" aria-label="Vue">
             <button
               type="button"
-              className={
-                roleTab === 'admin'
-                  ? 'cf-role-toggle__btn cf-role-toggle__btn--on'
-                  : 'cf-role-toggle__btn'
-              }
-              onClick={() => setRoleTab('admin')}
+              className="cf-role-toggle__btn cf-role-toggle__btn--on"
+              aria-current="page"
+              disabled
             >
               Admin
             </button>
             <button
               type="button"
-              className={
-                roleTab === 'staff'
-                  ? 'cf-role-toggle__btn cf-role-toggle__btn--on'
-                  : 'cf-role-toggle__btn'
-              }
-              onClick={() => setRoleTab('staff')}
+              className="cf-role-toggle__btn"
+              disabled={!hasMemberProfiles}
+              title={personnelTitle}
+              onClick={() => goPersonnel()}
             >
               Personnel
             </button>

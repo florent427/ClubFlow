@@ -4,6 +4,17 @@ export type LoginMutationData = {
   login: { accessToken: string; viewerProfiles?: unknown[] };
 };
 
+export type ViewerProfilesQueryData = {
+  viewerProfiles: Array<{
+    memberId: string;
+    clubId: string;
+    firstName: string;
+    lastName: string;
+    isPrimaryProfile: boolean;
+    familyId: string | null;
+  }>;
+};
+
 export type DashboardQueryData = {
   adminDashboardSummary: {
     activeMembersCount: number;
@@ -236,6 +247,19 @@ export type MembershipProductsQueryData = {
   }[];
 };
 
+export type EligibleMembershipProductsQueryData = {
+  eligibleMembershipProducts: MembershipProductsQueryData['membershipProducts'];
+};
+
+export type MembershipOneTimeFeesQueryData = {
+  membershipOneTimeFees: {
+    id: string;
+    clubId: string;
+    label: string;
+    amountCents: number;
+  }[];
+};
+
 export type ClubInvoicesQueryData = {
   clubInvoices: {
     id: string;
@@ -248,7 +272,20 @@ export type ClubInvoicesQueryData = {
     status: InvoiceStatusStr;
     lockedPaymentMethod: ClubPaymentMethodStr | null;
     dueAt: string | null;
+    totalPaidCents: number;
+    balanceCents: number;
   }[];
+};
+
+export type RecordClubManualPaymentMutationData = {
+  recordClubManualPayment: {
+    id: string;
+    invoiceId: string;
+    amountCents: number;
+    method: ClubPaymentMethodStr;
+    externalRef: string | null;
+    createdAt: string;
+  };
 };
 
 export type ClubPricingRulesQueryData = {
