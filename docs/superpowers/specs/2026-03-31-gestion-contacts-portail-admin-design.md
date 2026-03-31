@@ -97,8 +97,8 @@ Les écrans **Contacts** et **Gestion des membres** restent **deux silos distinc
 ### 4.2 Opérations indicatives
 
 | Opération | Rôle |
-|-----------|------|
-| Query liste paginée | Contacts du `clubId` contexte ; champs enrichis : e-mail, `emailVerified`, `linkedMemberId`, `canDeleteContact`, etc. |
+|-----------|------|  
+| Query liste paginée | Contacts du `clubId` contexte ; champs enrichis : e-mail, `emailVerified: Boolean!` **dérivé** de `User.emailVerifiedAt != null`, `linkedMemberId`, `canDeleteContact`, etc. |
 | Query fiche | Idem pour un `contactId` du club. |
 | Mutation `updateClubContact` | Prénom/nom `Contact` + sync `User.displayName`. |
 | Mutation `deleteClubContact` | Vérif membre lié ; sinon suppression `Contact`. |
@@ -120,7 +120,7 @@ Les noms exacts des types et champs peuvent être ajustés tant que la sémantiq
 
 ## 6. Tests
 
-- **Unitaires / service :** règle `canDelete` vs présence `Member` ; promotion refuse si non vérifié ou déjà membre ; mise à jour synchronise `displayName`.
+- **Unitaires / service :** règle **`canDeleteContact`** vs présence `Member` ; promotion refuse si non vérifié ou déjà membre ; mise à jour synchronise `displayName`.
 - **E2E GraphQL (si infra existante) :** scénario suppression OK après retrait membre ; scénario suppression refusée avec membre présent ; scénario promotion puis présence du membre.
 
 ---
