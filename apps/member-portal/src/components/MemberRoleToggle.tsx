@@ -2,7 +2,11 @@ import { navigateToAdminApp } from '../lib/admin-switch';
 import { getClubId, getToken } from '../lib/storage';
 
 type Props = {
-  /** Utilisateur autorisé à ouvrir le back-office (rôle club admin / bureau / trésorerie). */
+  /**
+   * Droit d’accès à l’app admin (serveur : `ClubMembership` avec rôle
+   * club admin, bureau ou trésorerie — aligné sur `ClubAdminRoleGuard`).
+   * Ne jamais afficher le bouton sans cette stricte égalité à true.
+   */
   canAccessClubBackOffice: boolean;
   /**
    * Club cible pour `X-Club-Id` côté admin (peut différer du club du profil membre actif).
@@ -16,14 +20,14 @@ type Props = {
   variant?: 'header' | 'segment';
 };
 
-/** Accès back-office depuis le portail membre. */
+/** Bascule vers l’app d’administration (visible uniquement si le serveur accorde le droit). */
 export function MemberRoleToggle({
   canAccessClubBackOffice,
   adminWorkspaceClubId,
   className = '',
   variant = 'segment',
 }: Props) {
-  if (!canAccessClubBackOffice) {
+  if (canAccessClubBackOffice !== true) {
     return null;
   }
 
@@ -38,15 +42,15 @@ export function MemberRoleToggle({
     return (
       <button
         type="button"
-        className={`mp-backoffice-header-btn${className ? ` ${className}` : ''}`}
+        className={`mp-administration-header-btn${className ? ` ${className}` : ''}`}
         onClick={() => goAdmin()}
-        title="Ouvrir le back-office ClubFlow"
-        aria-label="Ouvrir le back-office ClubFlow"
+        title="Ouvrir l’administration ClubFlow"
+        aria-label="Ouvrir l’administration ClubFlow (réservé aux gestionnaires du club)"
       >
         <span className="material-symbols-outlined" aria-hidden>
           admin_panel_settings
         </span>
-        <span>Back-office</span>
+        <span>Administration</span>
       </button>
     );
   }
@@ -58,7 +62,7 @@ export function MemberRoleToggle({
       aria-label="Changer d’espace"
     >
       <button type="button" className="mp-role-toggle__btn" onClick={() => goAdmin()}>
-        Admin
+        Administration
       </button>
       <button
         type="button"

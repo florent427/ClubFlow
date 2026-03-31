@@ -54,7 +54,7 @@ export function MemberLayout() {
   const profiles = profilesData?.viewerProfiles ?? [];
   const showSwitcher = profiles.length > 1;
   const adminSwitch = adminSwitchData?.viewerAdminSwitch;
-  const canAccessClubBackOffice =
+  const canAccessClubBackOffice: boolean =
     adminSwitch?.canAccessClubBackOffice === true;
   const adminWorkspaceClubId = adminSwitch?.adminWorkspaceClubId ?? null;
 

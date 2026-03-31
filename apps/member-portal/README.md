@@ -7,7 +7,7 @@ Application Vite + React pour l’espace membre (login, choix de profil, tableau
 1. Démarrer l’API (`apps/api`, port par défaut **3000**) avec une base à jour.
 2. Variables d’environnement (fichier `.env` à la racine de ce dossier) :
    - `VITE_GRAPHQL_HTTP` — URL du endpoint GraphQL (ex. `http://localhost:3000/graphql`). Si absent, cette valeur est utilisée par défaut.
-   - `VITE_ADMIN_APP_URL` — URL de base du **back-office** pour le bouton **Admin** (utilisateurs avec rôle club admin/bureau/trésorerie). En dev deux ports : `http://localhost:5173/`. En prod **même origine** : ex. `/admin`.
+   - `VITE_ADMIN_APP_URL` — URL de base de l’**administration** pour le bouton du même nom (réservé aux comptes avec rôle club admin, bureau ou trésorerie côté API). En dev deux ports : `http://localhost:5173/`. En prod **même origine** : ex. `/admin`.
 3. `npm install` puis `npm run dev` — l’app écoute en général sur **http://localhost:5174** (voir la sortie Vite).
 
 ### Bascule vers l’admin

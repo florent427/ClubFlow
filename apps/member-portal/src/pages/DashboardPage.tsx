@@ -80,9 +80,9 @@ export function DashboardPage() {
           <p className="mp-eyebrow">
             {clubName ? clubName : 'Espace membre'}
           </p>
-          {adminSwitch?.canAccessClubBackOffice ? (
+          {adminSwitch?.canAccessClubBackOffice === true ? (
             <MemberRoleToggle
-              canAccessClubBackOffice
+              canAccessClubBackOffice={true}
               adminWorkspaceClubId={adminSwitch.adminWorkspaceClubId}
               className="mp-role-toggle--hero"
             />
