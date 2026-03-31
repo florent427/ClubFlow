@@ -9,7 +9,9 @@ import {
   MemberStatus,
   Prisma,
 } from '@prisma/client';
+import { FamiliesService } from '../families/families.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { assertMemberEmailAllowedInClub } from './member-email-family-rule';
 import { CreateClubRoleDefinitionInput } from './dto/create-club-role-definition.input';
 import { CreateDynamicGroupInput } from './dto/create-dynamic-group.input';
 import { CreateGradeLevelInput } from './dto/create-grade-level.input';
@@ -36,6 +38,7 @@ export class MembersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly fieldConfig: MemberFieldConfigService,
+    private readonly families: FamiliesService,
   ) {}
 
   private assertMemberIdentityComplete(
@@ -428,6 +431,9 @@ export class MembersService {
       emailTrimmed,
       input.civility,
     );
+    await assertMemberEmailAllowedInClub(this.prisma, clubId, emailTrimmed, {
+      memberId: null,
+    });
     const roles =
       input.roles && input.roles.length > 0
         ? input.roles
@@ -496,6 +502,10 @@ export class MembersService {
         include: this.memberIncludeGraph,
       });
     });
+    await this.families.syncContactUserPayerMemberLinksByEmail(
+      clubId,
+      emailTrimmed,
+    );
     await this.assertMemberMatchesFieldRules(clubId, row.id);
     return this.toMemberGraph(row);
   }
@@ -541,6 +551,12 @@ export class MembersService {
     const civility =
       input.civility !== undefined ? input.civility : existing.civility;
     this.assertMemberIdentityComplete(firstName, lastName, email, civility);
+
+    if (input.email !== undefined) {
+      await assertMemberEmailAllowedInClub(this.prisma, clubId, email, {
+        memberId: input.id,
+      });
+    }
 
     await this.prisma.$transaction(async (tx) => {
       const patch: Prisma.MemberUncheckedUpdateInput = {};
@@ -642,6 +658,7 @@ export class MembersService {
       }
     });
 
+    await this.families.syncContactUserPayerMemberLinksByEmail(clubId, email);
     await this.assertMemberMatchesFieldRules(clubId, input.id);
     return this.getMember(clubId, input.id);
   }
@@ -661,7 +678,20 @@ export class MembersService {
         'Impossible de supprimer ce membre : il est encore professeur sur un ou plusieurs créneaux',
       );
     }
+    const priorFamilyLink = await this.prisma.familyMember.findFirst({
+      where: { memberId: id },
+      select: { familyId: true },
+    });
     await this.prisma.member.delete({ where: { id } });
+    if (priorFamilyLink) {
+      await this.families.ensureSoleFamilyMemberIsPayer(
+        priorFamilyLink.familyId,
+      );
+      await this.families.syncContactLinksForFamilyMemberEmails(
+        clubId,
+        priorFamilyLink.familyId,
+      );
+    }
   }
 
   async setMemberStatus(

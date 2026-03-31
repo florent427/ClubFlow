@@ -175,6 +175,13 @@ export class AuthService {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: consumed.userId },
     });
+    const contacts = await this.prisma.contact.findMany({
+      where: { userId: user.id },
+      select: { clubId: true },
+    });
+    for (const c of contacts) {
+      await this.families.syncContactUserPayerMemberLinks(c.clubId, user.id);
+    }
     const viewerProfiles = await this.families.listViewerProfiles(user.id);
     return this.buildLoginPayload(user.id, user.email, viewerProfiles);
   }
@@ -279,6 +286,7 @@ export class AuthService {
         });
         userId = created.id;
         userEmail = created.email;
+        await this.families.syncContactUserPayerMemberLinks(clubId, userId, userEmail);
         const viewerProfiles = await this.families.listViewerProfiles(userId);
         return this.buildLoginPayload(userId, userEmail, viewerProfiles);
       }
@@ -290,6 +298,7 @@ export class AuthService {
       update: { firstName, lastName },
     });
 
+    await this.families.syncContactUserPayerMemberLinks(clubId, userId, userEmail);
     const viewerProfiles = await this.families.listViewerProfiles(userId);
     return this.buildLoginPayload(userId, userEmail, viewerProfiles);
   }

@@ -20,7 +20,7 @@ describe('ClubContactsService', () => {
       delete: jest.Mock;
     };
     user: { update: jest.Mock };
-    member: { findFirst: jest.Mock; create: jest.Mock };
+    member: { findFirst: jest.Mock; findMany: jest.Mock; create: jest.Mock };
     $transaction: jest.Mock;
   };
 
@@ -55,6 +55,7 @@ describe('ClubContactsService', () => {
       user: { update: jest.fn().mockResolvedValue({}) },
       member: {
         findFirst: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn(),
       },
       $transaction: jest.fn((ops: unknown[]) => Promise.all(ops)),
