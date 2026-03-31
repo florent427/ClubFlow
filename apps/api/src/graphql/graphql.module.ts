@@ -12,6 +12,7 @@ import { CommsModule } from '../comms/comms.module';
 import { DashboardModule } from '../dashboard/dashboard.module';
 import { ExternalFinanceModule } from '../external-finance/external-finance.module';
 import { FamiliesModule } from '../families/families.module';
+import { ViewerModule } from '../viewer/viewer.module';
 import { MembersModule } from '../members/members.module';
 import { MembershipModule } from '../membership/membership.module';
 import { PaymentsModule } from '../payments/payments.module';
@@ -41,6 +42,7 @@ import '../members/models/member.model';
     MembershipModule,
     CommsModule,
     ExternalFinanceModule,
+    ViewerModule,
   ],
 })
 export class GraphqlAppModule {}
