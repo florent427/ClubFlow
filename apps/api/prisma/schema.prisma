@@ -21,6 +21,7 @@ model Club {
   members         Member[]
   dynamicGroups DynamicGroup[]
   families      Family[]
+  householdGroups HouseholdGroup[]
   venues        Venue[]
   courseSlots   CourseSlot[]
 
@@ -300,6 +301,7 @@ model Member {
   customFieldValues          MemberCustomFieldValue[]
   dynamicGroupAssignments    MemberDynamicGroup[]
   invoiceLines               InvoiceLine[]
+  paymentsAsPaidBy           Payment[] @relation("PaymentPaidByMember")
 
   @@unique([clubId, userId])
   @@index([clubId])
@@ -386,12 +388,34 @@ model Family {
   id        String   @id @default(uuid())
   clubId    String
   label     String?
+  householdGroupId String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  club           Club           @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  club           Club            @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  householdGroup HouseholdGroup? @relation("FamilyInHouseholdGroup", fields: [householdGroupId], references: [id], onDelete: SetNull)
+  carrierForHouseholdGroup HouseholdGroup? @relation("HouseholdGroupCarrier")
   familyMembers  FamilyMember[]
   invoices       Invoice[]
+
+  @@index([clubId])
+  @@index([householdGroupId])
+}
+
+/// Foyer étendu : plusieurs `Family` (résidences) partagent facturation et enfants (spec 2026-03-31).
+model HouseholdGroup {
+  id        String   @id @default(uuid())
+  clubId    String
+  label     String?
+  /// Foyer porteur transitoire pour factures encore rattachées à `Invoice.familyId` (spec §6.1).
+  carrierFamilyId String? @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  club          Club      @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  families      Family[]  @relation("FamilyInHouseholdGroup")
+  carrierFamily Family?   @relation("HouseholdGroupCarrier", fields: [carrierFamilyId], references: [id], onDelete: SetNull)
+  invoices      Invoice[]
 
   @@index([clubId])
 }
@@ -625,6 +649,7 @@ model Invoice {
   id                    String        @id @default(uuid())
   clubId                String
   familyId              String?
+  householdGroupId      String?
   clubSeasonId          String?
   label                 String
   baseAmountCents       Int
@@ -638,11 +663,13 @@ model Invoice {
 
   club       Club        @relation(fields: [clubId], references: [id], onDelete: Cascade)
   family     Family?     @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  householdGroup HouseholdGroup? @relation(fields: [householdGroupId], references: [id], onDelete: SetNull)
   clubSeason ClubSeason? @relation(fields: [clubSeasonId], references: [id], onDelete: SetNull)
   lines      InvoiceLine[]
   payments   Payment[]
 
   @@index([clubId, status])
+  @@index([clubId, householdGroupId, status])
   @@index([clubSeasonId])
 }
 
@@ -653,14 +680,18 @@ model Payment {
   amountCents Int
   method      ClubPaymentMethod
   externalRef String?
+  /// Payeur réel (portail / traçabilité). Null = encaissement club catalogué sans fiche membre payeur.
+  paidByMemberId String?
   createdAt   DateTime          @default(now())
 
   club    Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
   invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  paidByMember Member? @relation("PaymentPaidByMember", fields: [paidByMemberId], references: [id], onDelete: SetNull)
   accountingEntries AccountingEntry[]
 
   @@index([clubId, createdAt])
   @@index([invoiceId])
+  @@index([paidByMemberId])
 }
 
 model StripeWebhookEvent {
