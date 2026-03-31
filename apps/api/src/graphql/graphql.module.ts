@@ -2,7 +2,7 @@ import { join } from 'path';
 import { Module } from '@nestjs/common';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
 import { GraphQLModule } from '@nestjs/graphql';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { AuthModule } from '../auth/auth.module';
 import { CatalogModule } from '../modules/catalog/catalog.module';
 import { ClubModulesModule } from '../modules/club-modules.module';
@@ -15,11 +15,17 @@ import { FamiliesModule } from '../families/families.module';
 import { ViewerModule } from '../viewer/viewer.module';
 import { MembersModule } from '../members/members.module';
 import { MembershipModule } from '../membership/membership.module';
+import { MailModule } from '../mail/mail.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { PlanningModule } from '../planning/planning.module';
 import './register-enums';
 /** Charge tôt les @ObjectType membres (MemberGraph, AssignedDynamicGroupGraph, …) pour le build du schéma GraphQL. */
 import '../members/models/member.model';
+/** Domaine d’envoi e-mail (évite qu’un schéma généré sans ces types si résolution d’ordre fragile). */
+import '../mail/models/club-sending-domain.model';
+import '../mail/models/mail-dns-record.model';
+import '../mail/dto/create-club-sending-domain.input';
+import '../mail/dto/send-transactional-test-email.input';
 
 @Module({
   imports: [
@@ -27,7 +33,13 @@ import '../members/models/member.model';
       driver: ApolloDriver,
       autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
       sortSchema: true,
-      context: ({ req }: { req: Request }) => ({ req }),
+      context: ({
+        req,
+        res,
+      }: {
+        req: Request;
+        res: Response;
+      }) => ({ req, res }),
     }),
     AuthModule,
     CatalogModule,
@@ -41,6 +53,7 @@ import '../members/models/member.model';
     PaymentsModule,
     MembershipModule,
     CommsModule,
+    MailModule,
     ExternalFinanceModule,
     ViewerModule,
   ],

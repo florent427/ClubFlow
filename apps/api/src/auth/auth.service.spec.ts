@@ -1,8 +1,9 @@
-import { UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { FamiliesService } from '../families/families.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { AUTH_LOGIN_REJECT_MESSAGE } from './constants';
+import { EmailVerificationService } from './email-verification.service';
 import { AuthService } from './auth.service';
 
 describe('AuthService', () => {
@@ -19,6 +20,7 @@ describe('AuthService', () => {
           id: 'u1',
           email: 'a@b.c',
           passwordHash,
+          emailVerifiedAt: new Date(),
         }),
       },
     } as unknown as PrismaService;
@@ -26,10 +28,41 @@ describe('AuthService', () => {
     const families = {
       listViewerProfiles: jest.fn().mockResolvedValue([]),
     } as unknown as FamiliesService;
-    const svc = new AuthService(prisma, jwt, families);
+    const emailV = {} as unknown as EmailVerificationService;
+    const mail = {
+      sendEmailVerificationLink: jest.fn(),
+    } as unknown as import('../mail/transactional-mail.service').TransactionalMailService;
+    const svc = new AuthService(
+      prisma,
+      jwt,
+      families,
+      emailV,
+      mail,
+    );
     await expect(
       svc.login({ email: 'a@b.c', password: 'bad' }),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
+    ).rejects.toThrow(AUTH_LOGIN_REJECT_MESSAGE);
+  });
+
+  it('lance Unauthorized si e-mail non vérifié', async () => {
+    const prisma = {
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'u1',
+          email: 'a@b.c',
+          passwordHash,
+          emailVerifiedAt: null,
+        }),
+      },
+    } as unknown as PrismaService;
+    const jwt = { sign: jest.fn() } as unknown as JwtService;
+    const families = { listViewerProfiles: jest.fn() } as unknown as FamiliesService;
+    const emailV = {} as unknown as EmailVerificationService;
+    const mail = {} as unknown as import('../mail/transactional-mail.service').TransactionalMailService;
+    const svc = new AuthService(prisma, jwt, families, emailV, mail);
+    await expect(svc.login({ email: 'a@b.c', password: 'good' })).rejects.toThrow(
+      AUTH_LOGIN_REJECT_MESSAGE,
+    );
   });
 
   it('lance Unauthorized si compte sans mot de passe (OAuth uniquement)', async () => {
@@ -39,6 +72,7 @@ describe('AuthService', () => {
           id: 'u1',
           email: 'a@b.c',
           passwordHash: null,
+          emailVerifiedAt: new Date(),
         }),
       },
     } as unknown as PrismaService;
@@ -46,10 +80,12 @@ describe('AuthService', () => {
     const families = {
       listViewerProfiles: jest.fn(),
     } as unknown as FamiliesService;
-    const svc = new AuthService(prisma, jwt, families);
+    const emailV = {} as unknown as EmailVerificationService;
+    const mail = {} as unknown as import('../mail/transactional-mail.service').TransactionalMailService;
+    const svc = new AuthService(prisma, jwt, families, emailV, mail);
     await expect(
       svc.login({ email: 'a@b.c', password: 'anything' }),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
+    ).rejects.toThrow(AUTH_LOGIN_REJECT_MESSAGE);
     expect(families.listViewerProfiles).not.toHaveBeenCalled();
   });
 });

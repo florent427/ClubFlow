@@ -8,6 +8,7 @@ import { PrismaService } from '../src/prisma/prisma.service';
 import { randomUUID } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import {
+  PrismaClient,
   FamilyMemberLinkRole,
   InvoiceStatus,
   MemberCivility,
@@ -16,6 +17,7 @@ import {
   MembershipRole,
 } from '@prisma/client';
 import { ModuleCode } from '../src/domain/module-registry/module-codes';
+import { EmailVerificationService } from '../src/auth/email-verification.service';
 
 describe('ClubFlow API (e2e)', () => {
   let app: INestApplication;
@@ -36,6 +38,27 @@ describe('ClubFlow API (e2e)', () => {
       stdio: 'inherit',
       env: process.env,
     });
+
+    clubId = randomUUID();
+    const pc = new PrismaClient();
+    await pc.club.create({
+      data: {
+        id: clubId,
+        name: 'E2E Club',
+        slug: `e2e-${clubId.slice(0, 8)}`,
+      },
+    });
+    await pc.clubSendingDomain.create({
+      data: {
+        id: randomUUID(),
+        clubId: clubId as string,
+        fqdn: 'e2e-mail.test.invalid',
+        purpose: 'TRANSACTIONAL',
+        verificationStatus: 'VERIFIED',
+      },
+    });
+    process.env.CLUB_ID = clubId;
+    await pc.$disconnect();
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -63,15 +86,6 @@ describe('ClubFlow API (e2e)', () => {
         update: { isRequired: code === ModuleCode.MEMBERS },
       });
     }
-
-    clubId = randomUUID();
-    await prisma.club.create({
-      data: {
-        id: clubId,
-        name: 'E2E Club',
-        slug: `e2e-${clubId.slice(0, 8)}`,
-      },
-    });
 
     const adminHash = await bcrypt.hash(adminPassword, 8);
     const staffHash = await bcrypt.hash(staffPassword, 8);
@@ -170,6 +184,7 @@ describe('ClubFlow API (e2e)', () => {
           where: { campaign: { clubId } },
         });
         await prisma.messageCampaign.deleteMany({ where: { clubId } });
+        await prisma.clubSendingDomain.deleteMany({ where: { clubId } });
         await prisma.accountingEntry.deleteMany({ where: { clubId } });
         await prisma.payment.deleteMany({ where: { clubId } });
         await prisma.invoice.deleteMany({ where: { clubId } });
@@ -213,6 +228,50 @@ describe('ClubFlow API (e2e)', () => {
     );
     expect(res.status).toBe(200);
     expect(res.body.data?.login?.accessToken).toBeDefined();
+  });
+
+  it('contact : registerContact puis verifyEmail retourne accessToken', async () => {
+    const email = `e2e-register-${randomUUID()}@test.invalid`;
+    const reg = await gql(
+      `mutation ($i: RegisterContactInput!) {
+        registerContact(input: $i) { ok }
+      }`,
+      {
+        i: {
+          email,
+          password: 'longpassword1',
+          firstName: 'E2E',
+          lastName: 'Contact',
+        },
+      },
+    );
+    expect(reg.status).toBe(200);
+    expect(reg.body.errors).toBeUndefined();
+    expect(reg.body.data.registerContact.ok).toBe(true);
+
+    const userRow = await prisma.user.findUnique({ where: { email } });
+    expect(userRow).toBeTruthy();
+
+    const ev = app.get(EmailVerificationService);
+    const raw = await ev.issueTokenForUser(userRow!.id);
+
+    const ver = await gql(
+      `mutation ($i: VerifyEmailInput!) {
+        verifyEmail(input: $i) {
+          accessToken
+          contactClubId
+          viewerProfiles { memberId }
+        }
+      }`,
+      { i: { token: raw } },
+    );
+    expect(ver.status).toBe(200);
+    expect(ver.body.errors).toBeUndefined();
+    expect(ver.body.data.verifyEmail.accessToken).toBeDefined();
+    expect(ver.body.data.verifyEmail.contactClubId).toBe(clubId);
+    expect(ver.body.data.verifyEmail.viewerProfiles).toEqual([]);
+
+    await prisma.user.delete({ where: { id: userRow!.id } });
   });
 
   it('adminDashboardSummary sans X-Club-Id échoue', async () => {

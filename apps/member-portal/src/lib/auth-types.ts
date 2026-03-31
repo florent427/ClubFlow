@@ -10,6 +10,7 @@ export type ViewerProfile = {
 export type LoginWithProfilesData = {
   login: {
     accessToken: string;
+    contactClubId?: string | null;
     viewerProfiles: ViewerProfile[];
   };
 };
@@ -21,6 +22,19 @@ export type ViewerProfilesQueryData = {
 export type SelectProfileData = {
   selectActiveViewerProfile: {
     accessToken: string;
+    contactClubId?: string | null;
+    viewerProfiles: { memberId: string; clubId: string }[];
+  };
+};
+
+export type RegisterContactData = {
+  registerContact: { ok: boolean };
+};
+
+export type VerifyEmailData = {
+  verifyEmail: {
+    accessToken: string;
+    contactClubId?: string | null;
     viewerProfiles: { memberId: string; clubId: string }[];
   };
 };

@@ -1,14 +1,16 @@
 import { type FormEvent, useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useMutation } from '@apollo/client/react';
 import { LOGIN_WITH_PROFILES } from '../lib/documents';
 import type { LoginWithProfilesData } from '../lib/auth-types';
+import { getApiBaseUrl } from '../lib/api-base';
 import {
   clearAuth,
   clearClubId,
   getClubId,
   getToken,
   hasMemberSession,
+  setMemberContactSession,
   setMemberSession,
   setToken,
 } from '../lib/storage';
@@ -42,13 +44,19 @@ export function LoginPage() {
       const payload = data?.login;
       const token = payload?.accessToken;
       const profiles = payload?.viewerProfiles ?? [];
+      const contactClubId = payload?.contactClubId ?? null;
       if (!token) {
         setError('Réponse inattendue du serveur.');
         return;
       }
       if (profiles.length === 0) {
+        if (contactClubId) {
+          setMemberContactSession(token, contactClubId);
+          void navigate('/', { replace: true });
+          return;
+        }
         setError(
-          'Aucun profil membre lié à ce compte. Contactez votre club.',
+          'Aucun profil membre ni espace contact pour ce compte. Contactez votre club.',
         );
         return;
       }
@@ -105,7 +113,16 @@ export function LoginPage() {
             {loading ? 'Connexion…' : 'Se connecter'}
           </button>
         </form>
-        <p className="auth-footer">
+        <p className="auth-footer auth-footer-stack">
+          <a
+            href={`${getApiBaseUrl()}/auth/google`}
+            className="auth-btn auth-btn-secondary"
+          >
+            Continuer avec Google
+          </a>
+          <Link to="/register" className="auth-link">
+            Créer un compte contact
+          </Link>
           <button
             type="button"
             className="auth-link"

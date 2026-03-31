@@ -33,7 +33,7 @@ Livrer un **portail web membre** utilisable de bout en bout : connexion, sélect
 - **Historique détaillé des passages de grade** (timeline complète comme dans la maquette) : **non** sans modèle d’historique ; afficher au minimum le **grade courant** (`GradeLevel`) et placeholders pour le reste.
 - **Réservation de cours** (CTA « Réserver un cours » dans la maquette) : **hors MVP** sauf redirection future vers module réservation (phase K) ; bouton **désactivé** ou lien vers une page « À venir » documentée.
 - **Notifications push / FCM** : non.
-- **OAuth / connexion sociale** (phase L) : non ; login **email / mot de passe** comme aujourd’hui.
+- **OAuth / connexion sociale** : voir la spec dédiée [`2026-03-31-inscription-contact-oauth-design.md`](./2026-03-31-inscription-contact-oauth-design.md) (Google v1, e-mail+mot de passe + vérification) ; le MVP initial sans OAuth est obsolète pour les nouveaux déploiements.
 - **Site public** (`apps/web-public`) : distinct du portail membre.
 
 ---

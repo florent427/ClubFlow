@@ -1,6 +1,8 @@
 import { randomUUID } from 'crypto';
 import {
   PrismaClient,
+  ClubSendingDomainPurpose,
+  ClubSendingDomainVerificationStatus,
   MemberClubRole,
   MemberCivility,
   MembershipRole,
@@ -70,6 +72,26 @@ async function main(): Promise<void> {
   const club = await prisma.club.findUniqueOrThrow({
     where: { slug: 'demo-club' },
   });
+
+  await prisma.clubSendingDomain.upsert({
+    where: {
+      clubId_fqdn: { clubId: club.id, fqdn: 'mail.demo.clubflow.local' },
+    },
+    create: {
+      id: randomUUID(),
+      clubId: club.id,
+      fqdn: 'mail.demo.clubflow.local',
+      purpose: ClubSendingDomainPurpose.TRANSACTIONAL,
+      verificationStatus: ClubSendingDomainVerificationStatus.VERIFIED,
+    },
+    update: {
+      verificationStatus: ClubSendingDomainVerificationStatus.VERIFIED,
+    },
+  });
+
+  console.warn(
+    `[seed] Renseigner CLUB_ID=${club.id} dans apps/api/.env (MVP portail / inscription contact).`,
+  );
 
   await prisma.user.upsert({
     where: { email: demoEmail },
