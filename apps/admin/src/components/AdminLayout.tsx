@@ -103,6 +103,17 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
             <span>Gestion des membres</span>
           </NavLink>
           <NavLink
+            to="/contacts"
+            className={({ isActive }) =>
+              `cf-sidenav__link${isActive ? ' cf-sidenav__link--active' : ''}`
+            }
+          >
+            <span className="material-symbols-outlined" aria-hidden>
+              contacts
+            </span>
+            <span>Contacts</span>
+          </NavLink>
+          <NavLink
             to="/members/dynamic-groups"
             className={({ isActive }) =>
               `cf-sidenav__link${isActive ? ' cf-sidenav__link--active' : ''}`

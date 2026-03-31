@@ -109,6 +109,71 @@ export const CLUB_MEMBERS = gql`
   }
 `;
 
+export const CLUB_CONTACTS = gql`
+  query ClubContacts {
+    clubContacts {
+      id
+      clubId
+      userId
+      firstName
+      lastName
+      email
+      emailVerified
+      linkedMemberId
+      canDeleteContact
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const CLUB_CONTACT = gql`
+  query ClubContact($id: ID!) {
+    clubContact(id: $id) {
+      id
+      clubId
+      userId
+      firstName
+      lastName
+      email
+      emailVerified
+      linkedMemberId
+      canDeleteContact
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const UPDATE_CLUB_CONTACT = gql`
+  mutation UpdateClubContact($input: UpdateClubContactInput!) {
+    updateClubContact(input: $input) {
+      id
+      firstName
+      lastName
+      email
+      emailVerified
+      linkedMemberId
+      canDeleteContact
+      updatedAt
+    }
+  }
+`;
+
+export const DELETE_CLUB_CONTACT = gql`
+  mutation DeleteClubContact($id: ID!) {
+    deleteClubContact(id: $id)
+  }
+`;
+
+export const PROMOTE_CONTACT_TO_MEMBER = gql`
+  mutation PromoteContactToMember($id: ID!) {
+    promoteContactToMember(id: $id) {
+      memberId
+    }
+  }
+`;
+
 export const CLUB_MEMBER_FIELD_LAYOUT = gql`
   query ClubMemberFieldLayout {
     clubMemberFieldLayout {
@@ -797,5 +862,92 @@ export const SET_CLUB_FAMILY_PAYER = gql`
         linkRole
       }
     }
+  }
+`;
+
+export const CLUB_HOSTED_MAIL_OFFER = gql`
+  query ClubHostedMailOffer {
+    clubHostedMailOffer {
+      enabled
+      previewFqdn
+    }
+  }
+`;
+
+export const CLUB_SENDING_DOMAINS = gql`
+  query ClubSendingDomains {
+    clubSendingDomains {
+      id
+      fqdn
+      purpose
+      verificationStatus
+      lastCheckedAt
+      webhookUrlHint
+      isClubflowHosted
+      dnsRecords {
+        type
+        name
+        value
+        ttl
+        priority
+      }
+    }
+  }
+`;
+
+export const CREATE_CLUB_HOSTED_SENDING_DOMAIN = gql`
+  mutation CreateClubHostedSendingDomain($purpose: ClubSendingDomainPurpose!) {
+    createClubHostedSendingDomain(purpose: $purpose) {
+      id
+      fqdn
+      purpose
+      verificationStatus
+      isClubflowHosted
+      dnsRecords {
+        type
+        name
+        value
+      }
+    }
+  }
+`;
+
+export const CREATE_CLUB_SENDING_DOMAIN = gql`
+  mutation CreateClubSendingDomain($input: CreateClubSendingDomainInput!) {
+    createClubSendingDomain(input: $input) {
+      id
+      fqdn
+      purpose
+      verificationStatus
+      dnsRecords {
+        type
+        name
+        value
+      }
+    }
+  }
+`;
+
+export const REFRESH_CLUB_SENDING_DOMAIN = gql`
+  mutation RefreshClubSendingDomainVerification($domainId: ID!) {
+    refreshClubSendingDomainVerification(domainId: $domainId) {
+      id
+      verificationStatus
+      lastCheckedAt
+    }
+  }
+`;
+
+export const DELETE_CLUB_SENDING_DOMAIN = gql`
+  mutation DeleteClubSendingDomain($domainId: ID!) {
+    deleteClubSendingDomain(domainId: $domainId)
+  }
+`;
+
+export const SEND_CLUB_TRANSACTIONAL_TEST_EMAIL = gql`
+  mutation SendClubTransactionalTestEmail(
+    $input: SendTransactionalTestEmailInput!
+  ) {
+    sendClubTransactionalTestEmail(input: $input)
   }
 `;

@@ -29,6 +29,32 @@ export type ClubModulesQueryData = {
   clubModules: { id: string; moduleCode: ModuleCodeStr; enabled: boolean }[];
 };
 
+export type ClubHostedMailOfferQueryData = {
+  clubHostedMailOffer: {
+    enabled: boolean;
+    previewFqdn: string | null;
+  };
+};
+
+export type ClubSendingDomainsQueryData = {
+  clubSendingDomains: {
+    id: string;
+    fqdn: string;
+    purpose: string;
+    verificationStatus: string;
+    lastCheckedAt: string | null;
+    webhookUrlHint: string | null;
+    isClubflowHosted: boolean;
+    dnsRecords: {
+      type: string;
+      name: string;
+      value: string;
+      ttl: number | null;
+      priority: number | null;
+    }[];
+  }[];
+};
+
 export type MemberCustomFieldValueRow = {
   id: string;
   definitionId: string;
@@ -323,4 +349,48 @@ export type CreateMembershipInvoiceDraftMutationData = {
 
 export type FinalizeMembershipInvoiceMutationData = {
   finalizeMembershipInvoice: ClubInvoicesQueryData['clubInvoices'][number];
+};
+
+export type ClubContactRow = {
+  id: string;
+  clubId: string;
+  userId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  emailVerified: boolean;
+  linkedMemberId: string | null;
+  canDeleteContact: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ClubContactsQueryData = {
+  clubContacts: ClubContactRow[];
+};
+
+export type ClubContactQueryData = {
+  clubContact: ClubContactRow;
+};
+
+export type UpdateClubContactMutationData = {
+  updateClubContact: Pick<
+    ClubContactRow,
+    | 'id'
+    | 'firstName'
+    | 'lastName'
+    | 'email'
+    | 'emailVerified'
+    | 'linkedMemberId'
+    | 'canDeleteContact'
+    | 'updatedAt'
+  >;
+};
+
+export type DeleteClubContactMutationData = {
+  deleteClubContact: boolean;
+};
+
+export type PromoteContactToMemberMutationData = {
+  promoteContactToMember: { memberId: string };
 };

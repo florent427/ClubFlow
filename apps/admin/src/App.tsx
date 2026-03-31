@@ -19,6 +19,9 @@ import { SettingsLayout } from './pages/settings/SettingsLayout';
 import { SettingsHubPage } from './pages/settings/SettingsHubPage';
 import { MemberFieldsSettingsPage } from './pages/settings/MemberFieldsSettingsPage';
 import { AdhesionSettingsPage } from './pages/settings/AdhesionSettingsPage';
+import { MailDomainSettingsPage } from './pages/settings/MailDomainSettingsPage';
+import { MembersUiProvider } from './pages/members/members-ui-context';
+import { ContactsPage } from './pages/contacts/ContactsPage';
 
 function Protected({ children }: { children: ReactNode }) {
   if (!isLoggedIn()) {
@@ -36,7 +39,9 @@ export default function App() {
           <Route
             element={
               <Protected>
-                <AdminLayout />
+                <MembersUiProvider>
+                  <AdminLayout />
+                </MembersUiProvider>
               </Protected>
             }
           >
@@ -57,6 +62,7 @@ export default function App() {
               path="families"
               element={<Navigate to="/members/families" replace />}
             />
+            <Route path="contacts" element={<ContactsPage />} />
             <Route path="planning" element={<PlanningPage />} />
             <Route path="settings" element={<SettingsLayout />}>
               <Route index element={<SettingsHubPage />} />
@@ -65,6 +71,7 @@ export default function App() {
                 element={<MemberFieldsSettingsPage />}
               />
               <Route path="adhesion" element={<AdhesionSettingsPage />} />
+              <Route path="mail-domain" element={<MailDomainSettingsPage />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
