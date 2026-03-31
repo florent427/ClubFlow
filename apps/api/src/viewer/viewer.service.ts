@@ -4,7 +4,7 @@ import {
   InvoiceStatus,
   MemberStatus,
 } from '@prisma/client';
-import { userHasClubBackOfficeRole } from '../common/club-back-office-role';
+import { resolveAdminWorkspaceClubId } from '../common/club-back-office-role';
 import { invoicePaymentTotals } from '../payments/invoice-totals';
 import { PlanningService } from '../planning/planning.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -31,11 +31,12 @@ export class ViewerService {
     if (!m) {
       throw new NotFoundException('Membre introuvable');
     }
-    const canAccessClubBackOffice = await userHasClubBackOfficeRole(
+    const adminWorkspaceClubId = await resolveAdminWorkspaceClubId(
       this.prisma,
       userId,
       clubId,
     );
+    const canAccessClubBackOffice = adminWorkspaceClubId !== null;
     return {
       id: m.id,
       firstName: m.firstName,
@@ -46,6 +47,7 @@ export class ViewerService {
       gradeLevelId: m.gradeLevelId,
       gradeLevelLabel: m.gradeLevel?.label ?? null,
       canAccessClubBackOffice,
+      adminWorkspaceClubId,
     };
   }
 

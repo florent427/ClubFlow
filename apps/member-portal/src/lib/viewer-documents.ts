@@ -12,6 +12,7 @@ export const VIEWER_ME = gql`
       gradeLevelId
       gradeLevelLabel
       canAccessClubBackOffice
+      adminWorkspaceClubId
     }
   }
 `;

@@ -49,8 +49,9 @@ export function MemberLayout() {
 
   const profiles = profilesData?.viewerProfiles ?? [];
   const showSwitcher = profiles.length > 1;
-  const canAccessClubBackOffice =
-    viewerMeData?.viewerMe?.canAccessClubBackOffice === true;
+  const viewerMe = viewerMeData?.viewerMe;
+  const canAccessClubBackOffice = viewerMe?.canAccessClubBackOffice === true;
+  const adminWorkspaceClubId = viewerMe?.adminWorkspaceClubId;
 
   async function switchTo(memberId: string, nextClubId: string) {
     if (!clubId || switching) return;
@@ -110,7 +111,10 @@ export function MemberLayout() {
             <span className="mp-bc-current">{crumb}</span>
           </div>
           <div className="mp-topbar-actions">
-            <MemberRoleToggle canAccessClubBackOffice={canAccessClubBackOffice} />
+            <MemberRoleToggle
+              canAccessClubBackOffice={canAccessClubBackOffice}
+              adminWorkspaceClubId={adminWorkspaceClubId}
+            />
             {showSwitcher ? (
               <div className="mp-profile-chips" role="group" aria-label="Changer de profil">
                 {profiles.map((p) => (

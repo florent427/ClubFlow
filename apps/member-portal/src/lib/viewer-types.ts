@@ -9,6 +9,7 @@ export type ViewerMeData = {
     gradeLevelId: string | null;
     gradeLevelLabel: string | null;
     canAccessClubBackOffice: boolean;
+    adminWorkspaceClubId: string | null;
   };
 };
 

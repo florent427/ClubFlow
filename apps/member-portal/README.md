@@ -12,7 +12,7 @@ Application Vite + React pour l’espace membre (login, choix de profil, tableau
 
 ### Bascule vers l’admin
 
-Le portail copie le JWT dans les clés **`clubflow_admin_*`** puis ouvre `VITE_ADMIN_APP_URL`. Sans **même origine** en local, renseignez une URL absolue (voir aussi `apps/admin/README.md`).
+Le portail copie le JWT dans les clés **`clubflow_admin_*`** puis ouvre `VITE_ADMIN_APP_URL`. Le **club** enregistré pour l’admin peut être celui du profil membre **ou**, si vous avez un rôle back-office sur un autre club, le club indiqué par l’API (`adminWorkspaceClubId` dans `viewerMe`). Sans **même origine** en local, renseignez une URL absolue (voir aussi `apps/admin/README.md`).
 
 En développement, l’API accepte les origines `http://localhost:*` et `http://127.0.0.1:*` (CORS avec cookies/credentials). Pour la production, configurez les origines explicites côté API.
 

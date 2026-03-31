@@ -77,6 +77,7 @@ export function DashboardPage() {
           {!meLoading && me?.canAccessClubBackOffice ? (
             <MemberRoleToggle
               canAccessClubBackOffice
+              adminWorkspaceClubId={me.adminWorkspaceClubId}
               className="mp-role-toggle--hero"
             />
           ) : null}

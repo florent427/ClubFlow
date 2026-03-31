@@ -29,4 +29,8 @@ export class ViewerMemberGraph {
 
   @Field()
   canAccessClubBackOffice!: boolean;
+
+  /** Club à passer au back-office (`X-Club-Id`) lors du switch depuis le portail. */
+  @Field(() => ID, { nullable: true })
+  adminWorkspaceClubId!: string | null;
 }

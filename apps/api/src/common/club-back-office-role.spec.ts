@@ -2,6 +2,7 @@ import { MembershipRole } from '@prisma/client';
 import type { PrismaService } from '../prisma/prisma.service';
 import {
   isBackOfficeMembershipRole,
+  resolveAdminWorkspaceClubId,
   userHasClubBackOfficeRole,
 } from './club-back-office-role';
 
@@ -55,6 +56,44 @@ describe('club-back-office-role', () => {
       await expect(
         userHasClubBackOfficeRole(prisma, 'u1', 'c1'),
       ).resolves.toBe(false);
+    });
+  });
+
+  describe('resolveAdminWorkspaceClubId', () => {
+    it('retourne null sans adhésion back-office', async () => {
+      const prisma = {
+        clubMembership: {
+          findMany: jest.fn().mockResolvedValue([]),
+        },
+      } as unknown as PrismaService;
+      await expect(
+        resolveAdminWorkspaceClubId(prisma, 'u1', 'c-membre'),
+      ).resolves.toBeNull();
+    });
+
+    it('préfère le club du profil membre courant si admin y est', async () => {
+      const prisma = {
+        clubMembership: {
+          findMany: jest.fn().mockResolvedValue([
+            { clubId: 'c-autre' },
+            { clubId: 'c-membre' },
+          ]),
+        },
+      } as unknown as PrismaService;
+      await expect(
+        resolveAdminWorkspaceClubId(prisma, 'u1', 'c-membre'),
+      ).resolves.toBe('c-membre');
+    });
+
+    it('sinon retourne un club admin quelconque', async () => {
+      const prisma = {
+        clubMembership: {
+          findMany: jest.fn().mockResolvedValue([{ clubId: 'c-admin-seul' }]),
+        },
+      } as unknown as PrismaService;
+      await expect(
+        resolveAdminWorkspaceClubId(prisma, 'u1', 'c-membre-sans-admin'),
+      ).resolves.toBe('c-admin-seul');
     });
   });
 });
