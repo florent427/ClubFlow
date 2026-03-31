@@ -22,7 +22,7 @@ Permettre l’**inscription rapide** d’un **contact** (pas encore membre au se
 
 ## 2. Contexte multi-club (MVP vs évolution)
 
-- **Aujourd’hui :** un seul club dans l’instance ; le rattachement du contact au club est **implicite**. **Source de vérité MVP :** une stratégie explicite en implémentation parmi : `CLUB_ID` en variable d’environnement, **première ligne** `Club`, ou **unique** club en base — le tout **compatible** avec les en-têtes et gardes existants (`X-Club-Id` côté portail si le front continue de l’envoyer pour les routes communes ; sinon documenter l’exception MVP).
+- **Aujourd’hui :** un seul club dans l’instance ; le rattachement du contact au club est **implicite**. **Décision MVP par défaut :** `CLUB_ID` **obligatoire** en variable d’environnement (UUID du club) ; au **démarrage** de l’API, vérifier que ce club existe en base (sinon erreur fatale claire). Toute variante (dérivation automatique du seul club en base) nécessite un **ADR ou mise à jour explicite** de cette spec.
 - **Ensuite :** chaque club aura sa **propre adresse** (nom de domaine dédié ou instance type `sksr.clubflow.app`). **Pas** d’inscription générique sur un `clubflow.app` central pour l’instant ; l’inscription des **clubs** eux-mêmes fera l’objet d’une phase ultérieure.
 - La résolution **club** depuis le **host** HTTP sera requise à cette échéance ; le design des entités (`Contact.clubId`) doit l’anticiper.
 
@@ -68,7 +68,7 @@ Permettre l’**inscription rapide** d’un **contact** (pas encore membre au se
 
 1. Saisie email, mot de passe, champs minimum contact.
 2. Création `User` (email non vérifié), `Contact` lié au club ; envoi du **mail de vérification** via le service mail existant.
-3. Tant que l’email n’est pas vérifié : **pas de JWT** permettant les queries **contact** (ou JWT avec périmètre strictement limité à `verifyEmail` / `resend` — préférence produit : **aucune session métier** jusqu’à clic lien). Possibilité de **renvoyer** le mail (limite de débit).
+3. Tant que l’email n’est pas vérifié : **pas de JWT** permettant les queries **contact** (**préférence produit** : **aucune session métier** jusqu’à clic lien). Les mutations **`verifyEmail`** et **`resendVerificationEmail`** sont **publiques** (sans `Authorization`), protégées par **token signé** (lien) et **rate limiting** ; elles ne passent **pas** par le garde « contact authentifié ». Après `verifyEmail` réussi, retour d’un **LoginPayload** comme pour `login`.
 
 ### 5.2 Connexion email + mot de passe
 
@@ -103,9 +103,9 @@ Permettre l’**inscription rapide** d’un **contact** (pas encore membre au se
 
 ### 6.2 GraphQL
 
-- `registerContact` : inscription + envoi mail de vérification.
-- `verifyEmail` (token) : met à jour `emailVerifiedAt` ; peut retourner `LoginPayload` (access token + `viewerProfiles` comme aujourd’hui).
-- `resendVerificationEmail` : avec limitation de fréquence.
+- `registerContact` : inscription + envoi mail de vérification (**publique**, rate limit).
+- `verifyEmail` (token) : **publique** ; met à jour `emailVerifiedAt` ; peut retourner `LoginPayload` (access token + `viewerProfiles` comme aujourd’hui).
+- `resendVerificationEmail` : **publique** (saisie email), limitation de fréquence ; ne doit **pas** révéler si l’email existe (réponse homogène, cf. 6.5).
 - `login` : enrichi pour le cas « email non vérifié ».
 
 ### 6.3 JWT
@@ -154,6 +154,9 @@ La spec `2026-03-31-portail-membre-mvp-design.md` indiquait **OAuth hors MVP (ph
 | OAuth avec User E/M non vérifié, Google `verified` | Mise à jour `emailVerifiedAt` + lien identité, un seul `User` |
 | `resendVerificationEmail` abusif | Rate limit déclenché |
 | Inscription / login | Pas d’énumération évidente d’emails (messages homogènes) |
+| Callback OAuth + redirect vers portail | `state` validé, pas d’open redirect ; JWT ou code one-shot selon mécanisme retenu en 6.1 |
+| Fréquence appels OAuth (start + callback) | Rate limit appliqué comme en 6.5 |
+| Rotation secrets OAuth / JWT | Procédure documentée et testée au moins une fois avant prod |
 
 ---
 
