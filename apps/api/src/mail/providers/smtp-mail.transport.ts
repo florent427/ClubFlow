@@ -9,7 +9,7 @@ import type {
   SendClubEmailParams,
 } from '../mail-transport.interface';
 import { fqdnFromSmtpProviderId, smtpProviderIdForFqdn } from './smtp-id';
-import { spfTxtIncludesIp4 } from './spf-dns-check';
+import { normalizeIpv4, spfTxtIncludesIp4 } from './spf-dns-check';
 
 function normalizeFqdn(fqdn: string): string {
   return fqdn.trim().toLowerCase().replace(/\.$/, '');
@@ -23,6 +23,32 @@ function smtpAutoVerifyDomain(): boolean {
 
 function smtpDnsSpfCheckEnabled(): boolean {
   return process.env.SMTP_DNS_SPF_CHECK?.trim().toLowerCase() === 'true';
+}
+
+/** Enregistrements d’aide à publier quand l’IP sortante est connue (MVP, pas de DKIM). */
+function smtpSuggestedDnsRecords(fqdn: string): MailDnsRecord[] {
+  const egress = process.env.SMTP_PUBLIC_EGRESS_IP?.trim() ?? '';
+  const ip = normalizeIpv4(egress);
+  if (!ip) {
+    return [];
+  }
+  const records: MailDnsRecord[] = [
+    {
+      type: 'TXT',
+      name: '@',
+      value: `v=spf1 ip4:${ip} ~all`,
+    },
+  ];
+  const rua = process.env.SMTP_DMARC_RUA_EMAIL?.trim();
+  if (rua) {
+    const mailto = rua.startsWith('mailto:') ? rua : `mailto:${rua}`;
+    records.push({
+      type: 'TXT',
+      name: '_dmarc',
+      value: `v=DMARC1; p=none; rua=${mailto}`,
+    });
+  }
+  return records;
 }
 
 @Injectable()
@@ -53,7 +79,7 @@ export class SmtpMailTransport implements MailTransport {
     const norm = normalizeFqdn(fqdn);
     return {
       providerDomainId: smtpProviderIdForFqdn(norm),
-      records: [],
+      records: smtpSuggestedDnsRecords(norm),
     };
   }
 

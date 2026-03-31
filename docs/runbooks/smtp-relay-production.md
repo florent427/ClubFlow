@@ -50,6 +50,10 @@ La spec vise idéalement **API + DB + Postfix** sur le **réseau Docker interne*
 - Image utilisée dans le compose : **`boky/postfix:4.3.0`**
 - Date de référence pour le suivi / rollback : **2026-03-31**
 
+## Enregistrements suggérés (admin)
+
+Si **`SMTP_PUBLIC_EGRESS_IP`** est défini, l’API propose un TXT SPF du type **`v=spf1 ip4:<IP> ~all`** (tilde = phase de test ; passer à **`-all`** quand l’IP sortante est figée). Optionnel : **`SMTP_DMARC_RUA_EMAIL`** ajoute une suggestion **`_dmarc`** en `p=none`.
+
 ## Limite MVP — contrôle SPF (Task 3)
 
 La vérification SPF côté API (quand activée) ne couvre en **MVP** que la présence du littéral **`ip4:<IP>`** correspondant à **`SMTP_PUBLIC_EGRESS_IP`**. **Pas** de résolution récursive des mécanismes `include:`, ni support complet `a` / `mx` dans cette version — extension prévue avec la Task 3 du plan.
