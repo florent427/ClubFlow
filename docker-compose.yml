@@ -9,5 +9,26 @@ services:
       - "5432:5432"
     volumes:
       - clubflow_pg:/var/lib/postgresql/data
+    networks:
+      - clubflow
+
+  postfix:
+    profiles: [relay]
+    image: boky/postfix:4.3.0
+    ports:
+      - "127.0.0.1:2525:25"
+    volumes:
+      - clubflow_postfix_spool:/var/spool/postfix
+    environment:
+      ALLOW_EMPTY_SENDER_DOMAINS: "true"
+      POSTFIX_myhostname: clubflow-relay.local
+    networks:
+      - clubflow
+
+networks:
+  clubflow:
+    driver: bridge
+
 volumes:
   clubflow_pg:
+  clubflow_postfix_spool:
