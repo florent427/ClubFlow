@@ -27,6 +27,7 @@ Les écrans **Contacts** et **Gestion des membres** restent **deux silos distinc
 
 - Après **promotion**, les enregistrements **`Contact`** et **`Member`** peuvent **coexister** pour le **même `User`** au sein du même club.
 - Le **dédoublonnage** fonctionnel repose sur **le compte** (même `User`, donc **même e-mail**) : l’API expose pour chaque contact des indicateurs du type **membre lié** (`linkedMemberId` nullable) et **suppression autorisée** (`canDeleteContact`), calculés **côté serveur** (pas de jointure par e-mail uniquement côté client).
+- **Noms (`Contact` vs `Member`) au MVP :** une mise à jour des prénom/nom **sur la fiche `Contact`** **ne modifie pas** les champs `Member.firstName` / `Member.lastName` du membre lié. Pour aligner l’annuaire, le personnel édite la **fiche membre** dans **Gestion des membres**.
 
 ### 2.2 Suppression d’un membre (annuaire)
 
@@ -40,6 +41,12 @@ Les écrans **Contacts** et **Gestion des membres** restent **deux silos distinc
 ### 2.4 Promotion « membre minimal »
 
 - Une mutation dédiée **promouvoir le contact en membre** crée un **`Member`** avec le **minimum de champs** requis par le modèle / validations existantes.
+- **Remplissage champs `Member` (aligné Prisma actuel) :**
+  - `userId` : celui du `Contact` ;
+  - `email` : **`User.email`** (même valeur que le compte) ;
+  - `firstName` / `lastName` : reprise des champs **`Contact`** au moment de la promotion ;
+  - `civility` : l’enum `MemberCivility` n’admet que `MR` / `MME` — au **MVP**, utiliser une **valeur par défaut documentée en implémentation** (ex. `MR`) ; l’admin **corrige** dans l’annuaire si besoin ;
+  - absence de **mot de passe local** sur le `User` (ex. compte **OAuth** uniquement) : **n’est pas** un blocage à la promotion tant que les autres garde-fous sont satisfaits.
 - **Bloquant si :**
   - l’e-mail du `User` n’est **pas vérifié** (`emailVerifiedAt` absent) ;
   - un **`Member`** existe déjà pour ce `User` et ce club.
@@ -50,6 +57,7 @@ Les écrans **Contacts** et **Gestion des membres** restent **deux silos distinc
 - Champs éditables au **MVP** : **prénom** et **nom** sur **`Contact`**.
 - **E-mail :** **non éditable** depuis l’écran Contacts au MVP (éviter incohérences auth et clé de dédoublonnage).
 - Lors d’une mise à jour prénom/nom, mettre à jour **`User.displayName`** dans la **même transaction** au format `« Prénom Nom »` (trim, cohérence avec `registerContact` qui renseigne `displayName`).
+- **`User.displayName` est unique au niveau compte :** une modification depuis le **contact d’un club** met à jour ce champ pour **tout le `User`** (y compris si le même compte a des profils dans d’autres clubs). **Effet de bord accepté au MVP** ; documenter en UI si pertinent.
 
 ### 2.6 Droits
 
