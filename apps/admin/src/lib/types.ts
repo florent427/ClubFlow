@@ -192,6 +192,7 @@ export type FamiliesQueryData = {
   clubFamilies: {
     id: string;
     label: string | null;
+    householdGroupId: string | null;
     needsPayer: boolean;
     links: { id: string; memberId: string; linkRole: string }[];
   }[];

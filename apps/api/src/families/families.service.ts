@@ -15,11 +15,16 @@ import {
   assertMemberEmailAllowedInClub,
   normalizeMemberEmail,
 } from '../members/member-email-family-rule';
+import { CreateHouseholdGroupInput } from './dto/create-household-group.input';
 import { CreateClubFamilyInput } from './dto/create-club-family.input';
+import { SetFamilyHouseholdGroupInput } from './dto/set-family-household-group.input';
+import { SetHouseholdGroupCarrierInput } from './dto/set-household-group-carrier.input';
 import { UpdateClubFamilyInput } from './dto/update-club-family.input';
 import { validateFamilyCreationInput } from './family-payer-rules';
+import { HouseholdGroupGraph } from './models/household-group-graph.model';
 import { FamilyGraph } from './models/family-graph.model';
 import { ViewerProfileGraph } from './models/viewer-profile.model';
+import { shouldIncludeMemberInHouseholdViewerProfiles } from './viewer-profile-rules';
 
 /** Extrait pour tests unitaires (règle spec : au moins un lien et aucun PAYER). */
 export function computeFamilyNeedsPayer(
@@ -82,59 +87,137 @@ export class FamiliesService {
     });
   }
 
-  /** Profils que l’utilisateur peut sélectionner (foyer + fiches seules liées). */
+  /**
+   * Profils portail : foyers sans groupe (tous les membres actifs, comportement historique)
+   * + foyers étendus (soi, mineurs du groupe ; pas l’autre adulte / co-parent).
+   */
   async listViewerProfiles(userId: string): Promise<ViewerProfileGraph[]> {
+    const now = new Date();
     const inUserFamilies = await this.prisma.familyMember.findMany({
       where: { member: { userId } },
       select: { familyId: true },
     });
-    const familyIds = [...new Set(inUserFamilies.map((f) => f.familyId))];
+    const directFamilyIds = [...new Set(inUserFamilies.map((f) => f.familyId))];
 
-    const fromFamilies =
-      familyIds.length === 0
+    const familyRows =
+      directFamilyIds.length === 0
         ? []
-        : await this.prisma.familyMember.findMany({
-            where: { familyId: { in: familyIds } },
-            include: { member: true },
+        : await this.prisma.family.findMany({
+            where: { id: { in: directFamilyIds } },
+            select: { id: true, householdGroupId: true },
           });
 
-    const seen = new Set<string>();
-    const out: ViewerProfileGraph[] = [];
+    const legacyFamilyIds = familyRows
+      .filter((f) => f.householdGroupId == null)
+      .map((f) => f.id);
+    const householdGroupIds = [
+      ...new Set(
+        familyRows
+          .map((f) => f.householdGroupId)
+          .filter((id): id is string => id != null),
+      ),
+    ];
 
-    for (const fm of fromFamilies) {
-      if (fm.member.status !== MemberStatus.ACTIVE) {
-        continue;
+    const byMember = new Map<string, ViewerProfileGraph>();
+
+    const merge = (p: ViewerProfileGraph) => {
+      const prev = byMember.get(p.memberId);
+      if (!prev) {
+        byMember.set(p.memberId, p);
+        return;
       }
-      seen.add(fm.member.id);
-      out.push({
-        memberId: fm.member.id,
-        clubId: fm.member.clubId,
-        firstName: fm.member.firstName,
-        lastName: fm.member.lastName,
-        isPrimaryProfile: fm.linkRole === FamilyMemberLinkRole.PAYER,
-        familyId: fm.familyId,
+      byMember.set(p.memberId, {
+        memberId: p.memberId,
+        clubId: p.clubId,
+        firstName: p.firstName,
+        lastName: p.lastName,
+        isPrimaryProfile: prev.isPrimaryProfile || p.isPrimaryProfile,
+        familyId: p.householdGroupId != null ? p.familyId : prev.familyId,
+        householdGroupId: prev.householdGroupId ?? p.householdGroupId,
       });
+    };
+
+    if (legacyFamilyIds.length > 0) {
+      const fromLegacy = await this.prisma.familyMember.findMany({
+        where: { familyId: { in: legacyFamilyIds } },
+        include: { member: true },
+      });
+      for (const fm of fromLegacy) {
+        if (fm.member.status !== MemberStatus.ACTIVE) {
+          continue;
+        }
+        merge({
+          memberId: fm.member.id,
+          clubId: fm.member.clubId,
+          firstName: fm.member.firstName,
+          lastName: fm.member.lastName,
+          isPrimaryProfile: fm.linkRole === FamilyMemberLinkRole.PAYER,
+          familyId: fm.familyId,
+          householdGroupId: null,
+        });
+      }
     }
 
+    for (const hgId of householdGroupIds) {
+      const groupFamilyIds = (
+        await this.prisma.family.findMany({
+          where: { householdGroupId: hgId },
+          select: { id: true },
+        })
+      ).map((f) => f.id);
+      if (groupFamilyIds.length === 0) {
+        continue;
+      }
+      const rows = await this.prisma.familyMember.findMany({
+        where: { familyId: { in: groupFamilyIds } },
+        include: { member: true },
+      });
+      for (const fm of rows) {
+        if (fm.member.status !== MemberStatus.ACTIVE) {
+          continue;
+        }
+        if (
+          !shouldIncludeMemberInHouseholdViewerProfiles(
+            userId,
+            fm.member,
+            now,
+          )
+        ) {
+          continue;
+        }
+        merge({
+          memberId: fm.member.id,
+          clubId: fm.member.clubId,
+          firstName: fm.member.firstName,
+          lastName: fm.member.lastName,
+          isPrimaryProfile: fm.linkRole === FamilyMemberLinkRole.PAYER,
+          familyId: fm.familyId,
+          householdGroupId: hgId,
+        });
+      }
+    }
+
+    const seenIds = new Set(byMember.keys());
     const standalone = await this.prisma.member.findMany({
       where: {
         userId,
         status: MemberStatus.ACTIVE,
-        NOT: { id: { in: [...seen] } },
+        NOT: { id: { in: [...seenIds] } },
       },
     });
     for (const m of standalone) {
-      out.push({
+      byMember.set(m.id, {
         memberId: m.id,
         clubId: m.clubId,
         firstName: m.firstName,
         lastName: m.lastName,
         isPrimaryProfile: true,
         familyId: null,
+        householdGroupId: null,
       });
     }
 
-    return out;
+    return [...byMember.values()];
   }
 
   async assertViewerHasProfile(
@@ -151,6 +234,7 @@ export class FamiliesService {
     id: string;
     clubId: string;
     label: string | null;
+    householdGroupId?: string | null;
     familyMembers: { id: string; memberId: string; linkRole: FamilyMemberLinkRole }[];
   }): FamilyGraph {
     const links = row.familyMembers.map((l) => ({
@@ -162,6 +246,7 @@ export class FamiliesService {
       id: row.id,
       clubId: row.clubId,
       label: row.label,
+      householdGroupId: row.householdGroupId ?? null,
       needsPayer: computeFamilyNeedsPayer(row.familyMembers),
       links,
     };
@@ -570,6 +655,137 @@ export class FamiliesService {
       throw new NotFoundException('Foyer introuvable');
     }
     await assertFamilyMayBeDissolved(this.prisma, familyId);
-    await this.prisma.family.delete({ where: { id: familyId } });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.householdGroup.updateMany({
+        where: { carrierFamilyId: familyId },
+        data: { carrierFamilyId: null },
+      });
+      await tx.family.delete({ where: { id: familyId } });
+    });
+  }
+
+  async listClubHouseholdGroups(clubId: string): Promise<HouseholdGroupGraph[]> {
+    const rows = await this.prisma.householdGroup.findMany({
+      where: { clubId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      clubId: r.clubId,
+      label: r.label ?? null,
+      carrierFamilyId: r.carrierFamilyId ?? null,
+    }));
+  }
+
+  async createHouseholdGroup(
+    clubId: string,
+    input: CreateHouseholdGroupInput,
+  ): Promise<HouseholdGroupGraph> {
+    if (input.carrierFamilyId) {
+      const fam = await this.prisma.family.findFirst({
+        where: { id: input.carrierFamilyId, clubId },
+      });
+      if (!fam) {
+        throw new BadRequestException('Foyer porteur inconnu pour ce club');
+      }
+    }
+    const row = await this.prisma.householdGroup.create({
+      data: {
+        clubId,
+        label:
+          input.label === undefined || input.label === null
+            ? null
+            : input.label.trim() === ''
+              ? null
+              : input.label.trim(),
+        carrierFamilyId: input.carrierFamilyId ?? null,
+      },
+    });
+    return {
+      id: row.id,
+      clubId: row.clubId,
+      label: row.label ?? null,
+      carrierFamilyId: row.carrierFamilyId ?? null,
+    };
+  }
+
+  async setFamilyHouseholdGroup(
+    clubId: string,
+    input: SetFamilyHouseholdGroupInput,
+  ): Promise<FamilyGraph> {
+    const family = await this.prisma.family.findFirst({
+      where: { id: input.familyId, clubId },
+      include: { familyMembers: true },
+    });
+    if (!family) {
+      throw new NotFoundException('Foyer introuvable');
+    }
+    if (input.householdGroupId === undefined) {
+      return this.toFamilyGraph(family);
+    }
+    if (input.householdGroupId === null) {
+      const updated = await this.prisma.family.update({
+        where: { id: family.id },
+        data: { householdGroupId: null },
+        include: { familyMembers: true },
+      });
+      return this.toFamilyGraph(updated);
+    }
+    const grp = await this.prisma.householdGroup.findFirst({
+      where: { id: input.householdGroupId, clubId },
+    });
+    if (!grp) {
+      throw new BadRequestException('Groupe foyer inconnu pour ce club');
+    }
+    const updated = await this.prisma.family.update({
+      where: { id: family.id },
+      data: { householdGroupId: input.householdGroupId },
+      include: { familyMembers: true },
+    });
+    return this.toFamilyGraph(updated);
+  }
+
+  async setHouseholdGroupCarrierFamily(
+    clubId: string,
+    input: SetHouseholdGroupCarrierInput,
+  ): Promise<HouseholdGroupGraph> {
+    const grp = await this.prisma.householdGroup.findFirst({
+      where: { id: input.householdGroupId, clubId },
+    });
+    if (!grp) {
+      throw new NotFoundException('Groupe foyer introuvable');
+    }
+    if (input.carrierFamilyId === undefined) {
+      return {
+        id: grp.id,
+        clubId: grp.clubId,
+        label: grp.label ?? null,
+        carrierFamilyId: grp.carrierFamilyId ?? null,
+      };
+    }
+    if (input.carrierFamilyId) {
+      const fam = await this.prisma.family.findFirst({
+        where: {
+          id: input.carrierFamilyId,
+          clubId,
+          householdGroupId: grp.id,
+        },
+      });
+      if (!fam) {
+        throw new BadRequestException(
+          'Le foyer porteur doit appartenir au même groupe foyer étendu',
+        );
+      }
+    }
+    const row = await this.prisma.householdGroup.update({
+      where: { id: grp.id },
+      data: { carrierFamilyId: input.carrierFamilyId },
+    });
+    return {
+      id: row.id,
+      clubId: row.clubId,
+      label: row.label ?? null,
+      carrierFamilyId: row.carrierFamilyId ?? null,
+    };
   }
 }

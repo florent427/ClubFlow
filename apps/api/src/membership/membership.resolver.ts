@@ -10,6 +10,7 @@ import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.gua
 import { GqlJwtAuthGuard } from '../common/guards/gql-jwt-auth.guard';
 import { ModuleCode } from '../domain/module-registry/module-codes';
 import type { RequestUser } from '../common/types/request-user';
+import { invoicePaymentTotals } from '../payments/invoice-totals';
 import { InvoiceGraph } from '../payments/models/invoice.model';
 import { CreateClubSeasonInput, UpdateClubSeasonInput } from './dto/create-club-season.input';
 import {
@@ -20,8 +21,13 @@ import {
   CreateMembershipProductInput,
   UpdateMembershipProductInput,
 } from './dto/create-membership-product.input';
+import {
+  CreateMembershipOneTimeFeeInput,
+  UpdateMembershipOneTimeFeeInput,
+} from './dto/membership-one-time-fee.input';
 import { ClubSeasonGraph } from './models/club-season.model';
 import type { MembershipProductGradeLevel } from '@prisma/client';
+import { MembershipOneTimeFeeGraph } from './models/membership-one-time-fee.model';
 import { MembershipProductGraph } from './models/membership-product.model';
 import { MembershipService } from './membership.service';
 
@@ -40,6 +46,20 @@ type MembershipProductWithGrades = {
   exceptionalCapPercentBp: number | null;
   gradeFilters: MembershipProductGradeLevel[];
 };
+
+function toMembershipOneTimeFeeGraph(row: {
+  id: string;
+  clubId: string;
+  label: string;
+  amountCents: number;
+}): MembershipOneTimeFeeGraph {
+  return {
+    id: row.id,
+    clubId: row.clubId,
+    label: row.label,
+    amountCents: row.amountCents,
+  };
+}
 
 function toMembershipProductGraph(
   r: MembershipProductWithGrades,
@@ -65,6 +85,7 @@ function toInvoiceGraph(row: {
   id: string;
   clubId: string;
   familyId: string | null;
+  householdGroupId: string | null;
   clubSeasonId: string | null;
   label: string;
   baseAmountCents: number;
@@ -73,10 +94,15 @@ function toInvoiceGraph(row: {
   lockedPaymentMethod: import('@prisma/client').ClubPaymentMethod | null;
   dueAt: Date | null;
 }): InvoiceGraph {
+  const { totalPaidCents, balanceCents } = invoicePaymentTotals(
+    row.amountCents,
+    0,
+  );
   return {
     id: row.id,
     clubId: row.clubId,
     familyId: row.familyId,
+    householdGroupId: row.householdGroupId,
     clubSeasonId: row.clubSeasonId,
     label: row.label,
     baseAmountCents: row.baseAmountCents,
@@ -84,6 +110,8 @@ function toInvoiceGraph(row: {
     status: row.status,
     lockedPaymentMethod: row.lockedPaymentMethod,
     dueAt: row.dueAt,
+    totalPaidCents,
+    balanceCents,
   };
 }
 
@@ -169,6 +197,36 @@ export class MembershipResolver {
     return rows.map((r) => toMembershipProductGraph(r));
   }
 
+  @Query(() => [MembershipProductGraph], {
+    name: 'eligibleMembershipProducts',
+    description:
+      'Formules cotisation pour lesquelles le membre remplit les critères (âge / grades).',
+  })
+  async eligibleMembershipProducts(
+    @CurrentClub() club: Club,
+    @Args('memberId', { type: () => ID }) memberId: string,
+    @Args('referenceDate', { type: () => String, nullable: true })
+    referenceDate?: string | null,
+  ): Promise<MembershipProductGraph[]> {
+    const ref = referenceDate ? new Date(referenceDate) : new Date();
+    const rows = await this.membership.eligibleMembershipProducts(
+      club.id,
+      memberId,
+      ref,
+    );
+    return rows.map((r) => toMembershipProductGraph(r));
+  }
+
+  @Query(() => [MembershipOneTimeFeeGraph], {
+    name: 'membershipOneTimeFees',
+  })
+  async membershipOneTimeFees(
+    @CurrentClub() club: Club,
+  ): Promise<MembershipOneTimeFeeGraph[]> {
+    const rows = await this.membership.listMembershipOneTimeFees(club.id);
+    return rows.map((r) => toMembershipOneTimeFeeGraph(r));
+  }
+
   @Mutation(() => MembershipProductGraph)
   async createMembershipProduct(
     @CurrentClub() club: Club,
@@ -193,6 +251,48 @@ export class MembershipResolver {
     @Args('id', { type: () => ID }) id: string,
   ): Promise<boolean> {
     await this.membership.deleteMembershipProduct(club.id, id);
+    return true;
+  }
+
+  @Mutation(() => MembershipOneTimeFeeGraph)
+  async createMembershipOneTimeFee(
+    @CurrentClub() club: Club,
+    @Args('input') input: CreateMembershipOneTimeFeeInput,
+  ): Promise<MembershipOneTimeFeeGraph> {
+    const r = await this.membership.createMembershipOneTimeFee(
+      club.id,
+      input,
+    );
+    return toMembershipOneTimeFeeGraph(r);
+  }
+
+  @Mutation(() => MembershipOneTimeFeeGraph)
+  async updateMembershipOneTimeFee(
+    @CurrentClub() club: Club,
+    @Args('input') input: UpdateMembershipOneTimeFeeInput,
+  ): Promise<MembershipOneTimeFeeGraph> {
+    const r = await this.membership.updateMembershipOneTimeFee(
+      club.id,
+      input,
+    );
+    return toMembershipOneTimeFeeGraph(r);
+  }
+
+  @Mutation(() => Boolean)
+  async archiveMembershipOneTimeFee(
+    @CurrentClub() club: Club,
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<boolean> {
+    await this.membership.archiveMembershipOneTimeFee(club.id, id);
+    return true;
+  }
+
+  @Mutation(() => Boolean)
+  async deleteMembershipOneTimeFee(
+    @CurrentClub() club: Club,
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<boolean> {
+    await this.membership.deleteMembershipOneTimeFee(club.id, id);
     return true;
   }
 

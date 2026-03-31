@@ -188,6 +188,7 @@ describe('ClubFlow API (e2e)', () => {
         await prisma.accountingEntry.deleteMany({ where: { clubId } });
         await prisma.payment.deleteMany({ where: { clubId } });
         await prisma.invoice.deleteMany({ where: { clubId } });
+        await prisma.householdGroup.deleteMany({ where: { clubId } });
         await prisma.clubPricingRule.deleteMany({ where: { clubId } });
         await prisma.grantApplication.deleteMany({ where: { clubId } });
         await prisma.sponsorshipDeal.deleteMany({ where: { clubId } });
@@ -1085,6 +1086,204 @@ describe('ClubFlow API (e2e)', () => {
       where: { id: { in: [payerId, childId, coachId] } },
     });
     await prisma.user.delete({ where: { id: portalUserId } });
+  });
+
+  it('Portail : foyer étendu — co-parents, facturation groupe, profils filtrés', async () => {
+    const hgPassword = 'E2eHg!pass';
+    const hash = await bcrypt.hash(hgPassword, 8);
+    const uidA = randomUUID();
+    const uidB = randomUUID();
+    const memA = randomUUID();
+    const memB = randomUUID();
+    const childId = randomUUID();
+    const emailA = `e2e-hg-a-${randomUUID().slice(0, 8)}@test.invalid`;
+    const emailB = `e2e-hg-b-${randomUUID().slice(0, 8)}@test.invalid`;
+
+    await prisma.user.create({
+      data: {
+        id: uidA,
+        email: emailA,
+        passwordHash: hash,
+        emailVerifiedAt: new Date(),
+        displayName: 'Parent A HG',
+      },
+    });
+    await prisma.user.create({
+      data: {
+        id: uidB,
+        email: emailB,
+        passwordHash: hash,
+        emailVerifiedAt: new Date(),
+        displayName: 'Parent B HG',
+      },
+    });
+
+    await prisma.member.create({
+      data: {
+        id: memA,
+        clubId: clubId as string,
+        userId: uidA,
+        firstName: 'Parent',
+        lastName: 'Alpha',
+        civility: MemberCivility.MR,
+        email: emailA,
+        birthDate: new Date('1985-01-01'),
+        status: MemberStatus.ACTIVE,
+        roleAssignments: { create: { role: MemberClubRole.STUDENT } },
+      },
+    });
+    await prisma.member.create({
+      data: {
+        id: memB,
+        clubId: clubId as string,
+        userId: uidB,
+        firstName: 'Parent',
+        lastName: 'Beta',
+        civility: MemberCivility.MR,
+        email: emailB,
+        birthDate: new Date('1986-06-01'),
+        status: MemberStatus.ACTIVE,
+        roleAssignments: { create: { role: MemberClubRole.STUDENT } },
+      },
+    });
+    await prisma.member.create({
+      data: {
+        id: childId,
+        clubId: clubId as string,
+        firstName: 'Enfant',
+        lastName: 'HG',
+        civility: MemberCivility.MME,
+        email: `e2e-hg-child-${childId}@test.invalid`,
+        birthDate: new Date('2015-03-15'),
+        status: MemberStatus.ACTIVE,
+        roleAssignments: { create: { role: MemberClubRole.STUDENT } },
+      },
+    });
+
+    const hg = await prisma.householdGroup.create({
+      data: { clubId: clubId as string, label: 'Groupe e2e HG' },
+    });
+    const famA = await prisma.family.create({
+      data: {
+        clubId: clubId as string,
+        label: 'Foyer A e2e HG',
+        householdGroupId: hg.id,
+      },
+    });
+    const famB = await prisma.family.create({
+      data: {
+        clubId: clubId as string,
+        label: 'Foyer B e2e HG',
+        householdGroupId: hg.id,
+      },
+    });
+    await prisma.householdGroup.update({
+      where: { id: hg.id },
+      data: { carrierFamilyId: famA.id },
+    });
+    await prisma.familyMember.createMany({
+      data: [
+        {
+          familyId: famA.id,
+          memberId: memA,
+          linkRole: FamilyMemberLinkRole.PAYER,
+        },
+        {
+          familyId: famA.id,
+          memberId: childId,
+          linkRole: FamilyMemberLinkRole.MEMBER,
+        },
+        {
+          familyId: famB.id,
+          memberId: memB,
+          linkRole: FamilyMemberLinkRole.PAYER,
+        },
+      ],
+    });
+    await prisma.invoice.create({
+      data: {
+        clubId: clubId as string,
+        familyId: famA.id,
+        householdGroupId: hg.id,
+        label: 'Cotisation groupe e2e',
+        baseAmountCents: 12000,
+        amountCents: 12000,
+        status: InvoiceStatus.OPEN,
+      },
+    });
+
+    const loginA = await gql(
+      `mutation ($input: LoginInput!) {
+        login(input: $input) {
+          accessToken
+          viewerProfiles { memberId }
+        }
+      }`,
+      { input: { email: emailA, password: hgPassword } },
+    );
+    expect(loginA.body.errors).toBeUndefined();
+    const profA = loginA.body.data.login.viewerProfiles as {
+      memberId: string;
+    }[];
+    const idsA = profA.map((p) => p.memberId);
+    expect(idsA).toContain(memA);
+    expect(idsA).toContain(childId);
+    expect(idsA).not.toContain(memB);
+
+    const tokenA = loginA.body.data.login.accessToken as string;
+    const billA = await request(app.getHttpServer())
+      .post('/graphql')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .set('x-club-id', clubId as string)
+      .send({
+        query: `{ viewerFamilyBillingSummary { isPayerView invoices { balanceCents } } }`,
+      });
+    expect(billA.body.errors).toBeUndefined();
+    expect(billA.body.data.viewerFamilyBillingSummary.isPayerView).toBe(true);
+    expect(billA.body.data.viewerFamilyBillingSummary.invoices).toHaveLength(1);
+
+    const loginB = await gql(
+      `mutation ($input: LoginInput!) {
+        login(input: $input) {
+          accessToken
+          viewerProfiles { memberId }
+        }
+      }`,
+      { input: { email: emailB, password: hgPassword } },
+    );
+    expect(loginB.body.errors).toBeUndefined();
+    const profB = loginB.body.data.login.viewerProfiles as {
+      memberId: string;
+    }[];
+    const idsB = profB.map((p) => p.memberId);
+    expect(idsB).toContain(memB);
+    expect(idsB).toContain(childId);
+    expect(idsB).not.toContain(memA);
+
+    const tokenB = loginB.body.data.login.accessToken as string;
+    const billB = await request(app.getHttpServer())
+      .post('/graphql')
+      .set('Authorization', `Bearer ${tokenB}`)
+      .set('x-club-id', clubId as string)
+      .send({
+        query: `{ viewerFamilyBillingSummary { isPayerView invoices { balanceCents } } }`,
+      });
+    expect(billB.body.errors).toBeUndefined();
+    expect(billB.body.data.viewerFamilyBillingSummary.isPayerView).toBe(true);
+    expect(billB.body.data.viewerFamilyBillingSummary.invoices).toHaveLength(1);
+
+    await prisma.invoice.deleteMany({
+      where: { clubId: clubId as string, label: 'Cotisation groupe e2e' },
+    });
+    await prisma.familyMember.deleteMany({
+      where: { familyId: { in: [famA.id, famB.id] } },
+    });
+    await prisma.family.deleteMany({ where: { id: { in: [famA.id, famB.id] } } });
+    await prisma.householdGroup.delete({ where: { id: hg.id } });
+    await prisma.member.deleteMany({
+      where: { id: { in: [memA, memB, childId] } },
+    });
+    await prisma.user.deleteMany({ where: { id: { in: [uidA, uidB] } } });
   });
 
   it('activation BLOG sans WEBSITE retourne une erreur métier', async () => {

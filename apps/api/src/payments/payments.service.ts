@@ -7,6 +7,7 @@ import {
   type Invoice,
   ClubPaymentMethod,
   InvoiceStatus,
+  MemberStatus,
 } from '@prisma/client';
 import Stripe from 'stripe';
 import { AccountingService } from '../accounting/accounting.service';
@@ -14,6 +15,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateInvoiceInput } from './dto/create-invoice.input';
 import { RecordManualPaymentInput } from './dto/record-manual-payment.input';
 import { UpsertClubPricingRuleInput } from './dto/upsert-pricing-rule.input';
+import { invoicePaymentTotals } from './invoice-totals';
 import { applyPricing } from './pricing-rules';
 
 @Injectable()
@@ -23,10 +25,88 @@ export class PaymentsService {
     private readonly accounting: AccountingService,
   ) {}
 
+  private async assertPaidByMemberAllowedForInvoice(
+    invoice: {
+      clubId: string;
+      familyId: string | null;
+      householdGroupId: string | null;
+    },
+    paidByMemberId: string | null | undefined,
+  ): Promise<void> {
+    if (paidByMemberId == null || paidByMemberId === '') {
+      return;
+    }
+    const payer = await this.prisma.member.findFirst({
+      where: {
+        id: paidByMemberId,
+        clubId: invoice.clubId,
+        status: MemberStatus.ACTIVE,
+      },
+    });
+    if (!payer) {
+      throw new BadRequestException('Payeur membre introuvable pour ce club');
+    }
+    let gId = invoice.householdGroupId;
+    if (!gId && invoice.familyId) {
+      const fam = await this.prisma.family.findFirst({
+        where: { id: invoice.familyId },
+        select: { householdGroupId: true },
+      });
+      gId = fam?.householdGroupId ?? null;
+    }
+    if (gId) {
+      const ok = await this.prisma.familyMember.findFirst({
+        where: {
+          memberId: paidByMemberId,
+          family: { householdGroupId: gId },
+        },
+      });
+      if (!ok) {
+        throw new BadRequestException(
+          'Le payeur doit être rattaché au même groupe foyer que la facture',
+        );
+      }
+      return;
+    }
+    if (invoice.familyId) {
+      const ok = await this.prisma.familyMember.findFirst({
+        where: { memberId: paidByMemberId, familyId: invoice.familyId },
+      });
+      if (!ok) {
+        throw new BadRequestException(
+          'Le payeur doit appartenir au foyer de la facture',
+        );
+      }
+      return;
+    }
+    throw new BadRequestException(
+      'Payeur renseigné impossible : facture sans foyer ni groupe',
+    );
+  }
+
+  async sumPaidCentsForInvoice(invoiceId: string): Promise<number> {
+    const agg = await this.prisma.payment.aggregate({
+      where: { invoiceId },
+      _sum: { amountCents: true },
+    });
+    return agg._sum.amountCents ?? 0;
+  }
+
   async listInvoices(clubId: string) {
-    return this.prisma.invoice.findMany({
+    const rows = await this.prisma.invoice.findMany({
       where: { clubId },
       orderBy: { createdAt: 'desc' },
+      include: {
+        payments: { select: { amountCents: true } },
+      },
+    });
+    return rows.map(({ payments, ...inv }) => {
+      const paid = payments.reduce((s, p) => s + p.amountCents, 0);
+      const { totalPaidCents, balanceCents } = invoicePaymentTotals(
+        inv.amountCents,
+        paid,
+      );
+      return { ...inv, totalPaidCents, balanceCents };
     });
   }
 
@@ -70,6 +150,23 @@ export class PaymentsService {
         throw new BadRequestException('Famille inconnue pour ce club');
       }
     }
+    let householdGroupId: string | null =
+      input.householdGroupId === undefined || input.householdGroupId === ''
+        ? null
+        : input.householdGroupId;
+    let familyId = input.familyId ?? null;
+    if (input.householdGroupId) {
+      const grp = await this.prisma.householdGroup.findFirst({
+        where: { id: input.householdGroupId, clubId },
+      });
+      if (!grp) {
+        throw new BadRequestException('Groupe foyer inconnu pour ce club');
+      }
+      householdGroupId = grp.id;
+      if (familyId == null && grp.carrierFamilyId != null) {
+        familyId = grp.carrierFamilyId;
+      }
+    }
     const rule = await this.prisma.clubPricingRule.findUnique({
       where: {
         clubId_method: { clubId, method: input.pricingMethod },
@@ -83,7 +180,8 @@ export class PaymentsService {
     return this.prisma.invoice.create({
       data: {
         clubId,
-        familyId: input.familyId ?? null,
+        familyId,
+        householdGroupId,
         label: input.label,
         baseAmountCents: input.baseAmountCents,
         amountCents,
@@ -102,6 +200,10 @@ export class PaymentsService {
     if (!invoice) {
       throw new NotFoundException('Facture introuvable');
     }
+    await this.assertPaidByMemberAllowedForInvoice(
+      invoice,
+      input.paidByMemberId,
+    );
     if (invoice.status === InvoiceStatus.DRAFT) {
       throw new BadRequestException(
         'Finalisez la facture (brouillon) avant enregistrement de paiement.',
@@ -118,12 +220,22 @@ export class PaymentsService {
         'Enregistrement manuel : utilisez un mode hors Stripe et un montant > 0',
       );
     }
-    if (input.amountCents !== invoice.amountCents) {
+
+    const paidBefore = await this.sumPaidCentsForInvoice(invoice.id);
+    const { balanceCents } = invoicePaymentTotals(
+      invoice.amountCents,
+      paidBefore,
+    );
+    if (balanceCents <= 0) {
+      throw new BadRequestException('Facture déjà entièrement encaissée');
+    }
+    if (input.amountCents > balanceCents) {
       throw new BadRequestException(
-        'MVP : le paiement doit couvrir le montant exact de la facture',
+        `Montant trop élevé : reste à payer ${balanceCents} cts (centimes).`,
       );
     }
 
+    const ref = input.externalRef?.trim() || null;
     const payment = await this.prisma.$transaction(async (tx) => {
       const p = await tx.payment.create({
         data: {
@@ -131,12 +243,17 @@ export class PaymentsService {
           invoiceId: invoice.id,
           amountCents: input.amountCents,
           method: input.method,
+          externalRef: ref,
+          paidByMemberId: input.paidByMemberId ?? null,
         },
       });
-      await tx.invoice.update({
-        where: { id: invoice.id },
-        data: { status: InvoiceStatus.PAID },
-      });
+      const newPaid = paidBefore + input.amountCents;
+      if (newPaid === invoice.amountCents) {
+        await tx.invoice.update({
+          where: { id: invoice.id },
+          data: { status: InvoiceStatus.PAID },
+        });
+      }
       return p;
     });
 
@@ -190,11 +307,17 @@ export class PaymentsService {
         return;
       }
       const amount = pi.amount_received ?? pi.amount;
+      const paidByMemberId =
+        typeof pi.metadata?.paidByMemberId === 'string' &&
+        pi.metadata.paidByMemberId.length > 0
+          ? pi.metadata.paidByMemberId
+          : null;
       await this.applyStripePaymentSuccess(
         clubId,
         invoiceId,
         pi.id,
         amount,
+        paidByMemberId,
       );
     }
   }
@@ -204,6 +327,7 @@ export class PaymentsService {
     invoiceId: string,
     paymentIntentId: string,
     amountCents: number,
+    paidByMemberId: string | null,
   ): Promise<void> {
     const invoice = await this.prisma.invoice.findFirst({
       where: { id: invoiceId, clubId, status: InvoiceStatus.OPEN },
@@ -211,7 +335,16 @@ export class PaymentsService {
     if (!invoice) {
       return;
     }
-    if (amountCents !== invoice.amountCents) {
+    await this.assertPaidByMemberAllowedForInvoice(invoice, paidByMemberId);
+    const paidBefore = await this.sumPaidCentsForInvoice(invoice.id);
+    const { balanceCents } = invoicePaymentTotals(
+      invoice.amountCents,
+      paidBefore,
+    );
+    if (balanceCents <= 0) {
+      return;
+    }
+    if (amountCents !== balanceCents) {
       return;
     }
 
@@ -223,6 +356,7 @@ export class PaymentsService {
           amountCents,
           method: ClubPaymentMethod.STRIPE_CARD,
           externalRef: paymentIntentId,
+          paidByMemberId,
         },
       });
       await tx.invoice.update({

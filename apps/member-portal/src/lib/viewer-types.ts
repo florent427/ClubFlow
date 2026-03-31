@@ -46,6 +46,14 @@ export type ViewerBillingData = {
       amountCents: number;
       totalPaidCents: number;
       balanceCents: number;
+      payments: Array<{
+        id: string;
+        amountCents: number;
+        method: string;
+        createdAt: string;
+        paidByFirstName: string | null;
+        paidByLastName: string | null;
+      }>;
     }>;
     familyMembers: Array<{
       memberId: string;

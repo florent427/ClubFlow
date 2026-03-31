@@ -1,5 +1,6 @@
 import { Field, ID, Int, ObjectType } from '@nestjs/graphql';
 import { InvoiceStatus } from '@prisma/client';
+import { ViewerInvoicePaymentSnippetGraph } from './viewer-invoice-payment-snippet.model';
 
 @ObjectType()
 export class ViewerInvoiceSummaryGraph {
@@ -23,4 +24,7 @@ export class ViewerInvoiceSummaryGraph {
 
   @Field(() => Int)
   balanceCents!: number;
+
+  @Field(() => [ViewerInvoicePaymentSnippetGraph])
+  payments!: ViewerInvoicePaymentSnippetGraph[];
 }

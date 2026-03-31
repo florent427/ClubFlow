@@ -34,6 +34,7 @@ export class PaymentsResolver {
       id: r.id,
       clubId: r.clubId,
       familyId: r.familyId,
+      householdGroupId: r.householdGroupId ?? null,
       clubSeasonId: r.clubSeasonId ?? null,
       label: r.label,
       baseAmountCents: r.baseAmountCents,
@@ -41,6 +42,8 @@ export class PaymentsResolver {
       status: r.status,
       lockedPaymentMethod: r.lockedPaymentMethod ?? null,
       dueAt: r.dueAt,
+      totalPaidCents: r.totalPaidCents,
+      balanceCents: r.balanceCents,
     }));
   }
 
@@ -58,11 +61,26 @@ export class PaymentsResolver {
   }
 
   @Mutation(() => InvoiceGraph)
-  createClubInvoice(
+  async createClubInvoice(
     @CurrentClub() club: Club,
     @Args('input') input: CreateInvoiceInput,
   ): Promise<InvoiceGraph> {
-    return this.payments.createInvoice(club.id, input);
+    const row = await this.payments.createInvoice(club.id, input);
+    return {
+      id: row.id,
+      clubId: row.clubId,
+      familyId: row.familyId,
+      householdGroupId: row.householdGroupId ?? null,
+      clubSeasonId: row.clubSeasonId ?? null,
+      label: row.label,
+      baseAmountCents: row.baseAmountCents,
+      amountCents: row.amountCents,
+      status: row.status,
+      lockedPaymentMethod: row.lockedPaymentMethod ?? null,
+      dueAt: row.dueAt,
+      totalPaidCents: 0,
+      balanceCents: row.amountCents,
+    };
   }
 
   @Mutation(() => ClubPricingRuleGraph)
@@ -85,6 +103,7 @@ export class PaymentsResolver {
       amountCents: p.amountCents,
       method: p.method,
       externalRef: p.externalRef,
+      paidByMemberId: p.paidByMemberId ?? null,
       createdAt: p.createdAt,
     };
   }

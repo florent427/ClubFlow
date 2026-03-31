@@ -1,7 +1,7 @@
 # Spécification — Famille étendue, contacts / membres et facturation partagée
 
 **Date :** 2026-03-31  
-**Statut :** design validé par échanges (sections 1 à 3) — revue interne spec intégrée (2026-03-31) — en attente de relecture humaine finale  
+**Statut :** implémentation API / admin / portail en cours (2026-04-01) — spec de conception gelée ; PDF reçus = itération ultérieure (données `paidBy*` exposées).  
 **Périmètre :** évolution du modèle **foyer** (`Family`), introduction d’un **groupe foyer étendu** pour parents séparés multi-résidence, **accès portail**, **dette comptable unique** avec **sous-vues par contributeur**, **pièces PDF / exports** au **nom du payeur réel**  
 
 ---

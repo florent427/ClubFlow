@@ -54,6 +54,14 @@ export const VIEWER_FAMILY_BILLING = gql`
         amountCents
         totalPaidCents
         balanceCents
+        payments {
+          id
+          amountCents
+          method
+          createdAt
+          paidByFirstName
+          paidByLastName
+        }
       }
       familyMembers {
         memberId

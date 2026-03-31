@@ -13,6 +13,9 @@ export class InvoiceGraph {
   familyId!: string | null;
 
   @Field(() => ID, { nullable: true })
+  householdGroupId!: string | null;
+
+  @Field(() => ID, { nullable: true })
   clubSeasonId!: string | null;
 
   @Field()
@@ -32,4 +35,15 @@ export class InvoiceGraph {
 
   @Field(() => Date, { nullable: true })
   dueAt!: Date | null;
+
+  @Field(() => Int, {
+    description:
+      'Somme des encaissements enregistrés pour cette facture (tous modes).',
+  })
+  totalPaidCents!: number;
+
+  @Field(() => Int, {
+    description: 'Reste à payer : amountCents − totalPaidCents (plancher 0).',
+  })
+  balanceCents!: number;
 }

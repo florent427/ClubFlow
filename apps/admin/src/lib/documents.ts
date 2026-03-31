@@ -786,12 +786,52 @@ export const CLUB_FAMILIES = gql`
     clubFamilies {
       id
       label
+      householdGroupId
       needsPayer
       links {
         id
         memberId
         linkRole
       }
+    }
+  }
+`;
+
+export const CLUB_HOUSEHOLD_GROUPS = gql`
+  query ClubHouseholdGroups {
+    clubHouseholdGroups {
+      id
+      label
+      carrierFamilyId
+    }
+  }
+`;
+
+export const CREATE_HOUSEHOLD_GROUP = gql`
+  mutation CreateHouseholdGroup($input: CreateHouseholdGroupInput!) {
+    createHouseholdGroup(input: $input) {
+      id
+      label
+      carrierFamilyId
+    }
+  }
+`;
+
+export const SET_FAMILY_HOUSEHOLD_GROUP = gql`
+  mutation SetFamilyHouseholdGroup($input: SetFamilyHouseholdGroupInput!) {
+    setFamilyHouseholdGroup(input: $input) {
+      id
+      householdGroupId
+      label
+    }
+  }
+`;
+
+export const SET_HOUSEHOLD_GROUP_CARRIER = gql`
+  mutation SetHouseholdGroupCarrier($input: SetHouseholdGroupCarrierInput!) {
+    setHouseholdGroupCarrierFamily(input: $input) {
+      id
+      carrierFamilyId
     }
   }
 `;
