@@ -36,19 +36,31 @@ export class ViewerActiveProfileGuard implements CanActivate {
       throw new BadRequestException('X-Club-Id header is required');
     }
     const memberId = user.activeProfileMemberId;
-    if (!memberId?.trim()) {
+    if (memberId?.trim()) {
+      const member = await this.prisma.member.findFirst({
+        where: { id: memberId, clubId },
+      });
+      if (!member) {
+        throw new ForbiddenException();
+      }
+      if (member.status !== MemberStatus.ACTIVE) {
+        throw new ForbiddenException();
+      }
+      await this.families.assertViewerHasProfile(user.userId, memberId);
+      return true;
+    }
+
+    const contactId = user.activeProfileContactId;
+    if (!contactId?.trim()) {
       throw new BadRequestException('Sélection de profil requise');
     }
-    const member = await this.prisma.member.findFirst({
-      where: { id: memberId, clubId },
+    const contact = await this.prisma.contact.findFirst({
+      where: { id: contactId, clubId, userId: user.userId },
     });
-    if (!member) {
+    if (!contact) {
       throw new ForbiddenException();
     }
-    if (member.status !== MemberStatus.ACTIVE) {
-      throw new ForbiddenException();
-    }
-    await this.families.assertViewerHasProfile(user.userId, memberId);
+    await this.families.assertViewerHasContactProfile(user.userId, contactId);
     return true;
   }
 }

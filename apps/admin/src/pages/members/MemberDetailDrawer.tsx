@@ -30,6 +30,7 @@ import { BUILTIN_ROLE_OPTIONS } from './members-constants';
 import { MemberAdhesionPanels } from './MemberAdhesionPanels';
 import { MemberPhotoField } from './MemberPhotoField';
 
+/* eslint-disable react-hooks/set-state-in-effect -- hydratation / reset formulaire tiroir membre */
 type MemberRow = MembersQueryData['clubMembers'][number];
 
 type CatalogFieldRow = { fieldKey: string };
@@ -1007,7 +1008,10 @@ export function MemberDetailDrawer({
                   : ' · membre'}
               </>
             ) : (
-              <span className="muted">aucun</span>
+              <span className="muted">
+                aucun — <strong>adhérent seul</strong>, payeur de fait pour
+                ses facturations
+              </span>
             )}
           </div>
           {member.family ? (
@@ -1214,3 +1218,4 @@ export function MemberDetailDrawer({
     </div>
   );
 }
+/* eslint-enable react-hooks/set-state-in-effect */

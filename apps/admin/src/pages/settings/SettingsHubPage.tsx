@@ -32,6 +32,16 @@ export function SettingsHubPage() {
                 </span>
               </Link>
             </li>
+            <li>
+              <Link to="/settings/mail-domain" className="settings-hub-card">
+                <span className="settings-hub-card__title">
+                  E-mail (domaine)
+                </span>
+                <span className="settings-hub-card__desc">
+                  SMTP, domaine d’expédition — requis pour les campagnes e-mail.
+                </span>
+              </Link>
+            </li>
           </ul>
         </section>
       </div>

@@ -6,6 +6,7 @@ import {
 import {
   type Invoice,
   ClubPaymentMethod,
+  FamilyMemberLinkRole,
   InvoiceStatus,
   MemberStatus,
 } from '@prisma/client';
@@ -81,6 +82,66 @@ export class PaymentsService {
     }
     throw new BadRequestException(
       'Payeur renseigné impossible : facture sans foyer ni groupe',
+    );
+  }
+
+  private async assertPaidByContactAllowedForInvoice(
+    invoice: {
+      clubId: string;
+      familyId: string | null;
+      householdGroupId: string | null;
+    },
+    paidByContactId: string | null | undefined,
+  ): Promise<void> {
+    if (paidByContactId == null || paidByContactId === '') {
+      return;
+    }
+    const payer = await this.prisma.contact.findFirst({
+      where: { id: paidByContactId, clubId: invoice.clubId },
+    });
+    if (!payer) {
+      throw new BadRequestException('Payeur contact introuvable pour ce club');
+    }
+    let gId = invoice.householdGroupId;
+    if (!gId && invoice.familyId) {
+      const fam = await this.prisma.family.findFirst({
+        where: { id: invoice.familyId },
+        select: { householdGroupId: true },
+      });
+      gId = fam?.householdGroupId ?? null;
+    }
+    if (gId) {
+      const ok = await this.prisma.familyMember.findFirst({
+        where: {
+          contactId: paidByContactId,
+          linkRole: FamilyMemberLinkRole.PAYER,
+          family: { householdGroupId: gId },
+        },
+      });
+      if (!ok) {
+        throw new BadRequestException(
+          'Le contact payeur doit être rattaché au même groupe foyer que la facture',
+        );
+      }
+      return;
+    }
+    if (invoice.familyId) {
+      const ok = await this.prisma.familyMember.findFirst({
+        where: {
+          contactId: paidByContactId,
+          linkRole: FamilyMemberLinkRole.PAYER,
+          familyId: invoice.familyId,
+        },
+      });
+      if (!ok) {
+        throw new BadRequestException(
+          'Le contact payeur doit être désigné pour le foyer de la facture',
+        );
+      }
+      return;
+    }
+    throw new BadRequestException(
+      'Payeur contact impossible : facture sans foyer ni groupe',
     );
   }
 
@@ -200,9 +261,24 @@ export class PaymentsService {
     if (!invoice) {
       throw new NotFoundException('Facture introuvable');
     }
+    const hasMember = !!(
+      input.paidByMemberId != null && input.paidByMemberId !== ''
+    );
+    const hasContact = !!(
+      input.paidByContactId != null && input.paidByContactId !== ''
+    );
+    if (hasMember && hasContact) {
+      throw new BadRequestException(
+        'Un seul payeur : renseigner paidByMemberId ou paidByContactId, pas les deux',
+      );
+    }
     await this.assertPaidByMemberAllowedForInvoice(
       invoice,
       input.paidByMemberId,
+    );
+    await this.assertPaidByContactAllowedForInvoice(
+      invoice,
+      input.paidByContactId,
     );
     if (invoice.status === InvoiceStatus.DRAFT) {
       throw new BadRequestException(
@@ -245,6 +321,7 @@ export class PaymentsService {
           method: input.method,
           externalRef: ref,
           paidByMemberId: input.paidByMemberId ?? null,
+          paidByContactId: input.paidByContactId ?? null,
         },
       });
       const newPaid = paidBefore + input.amountCents;

@@ -183,6 +183,11 @@ export class ClubContactsService {
       },
       select: { id: true },
     });
+    await this.families.migrateContactPayerLinksToMember(
+      clubId,
+      user.id,
+      member.id,
+    );
     return { memberId: member.id };
   }
 }

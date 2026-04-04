@@ -182,3 +182,51 @@ export function computeMembershipAdjustments(
 
   return { adjustments, subtotalAfterBusinessCents: running };
 }
+
+export type OneTimeFeePricingInput = {
+  baseAmountCents: number;
+  allowExceptional: boolean;
+  exceptionalCapPercentBp: number | null;
+  exceptional?: {
+    amountCents: number;
+    reason: string;
+  } | null;
+};
+
+/**
+ * Ajustements pour une ligne « frais unique » : au plus une remise EXCEPTIONAL.
+ */
+export function computeOneTimeFeeAdjustments(
+  input: OneTimeFeePricingInput,
+): { adjustments: AdjustmentDraft[]; subtotalAfterBusinessCents: number } {
+  const adjustments: AdjustmentDraft[] = [];
+  let running = input.baseAmountCents;
+
+  if (
+    input.allowExceptional &&
+    input.exceptional &&
+    input.exceptional.amountCents !== 0
+  ) {
+    let ex = input.exceptional.amountCents;
+    if (
+      input.exceptionalCapPercentBp != null &&
+      input.exceptionalCapPercentBp > 0
+    ) {
+      const cap = Math.round(
+        (running * input.exceptionalCapPercentBp) / 10_000,
+      );
+      if (ex < -cap) {
+        ex = -cap;
+      }
+    }
+    adjustments.push({
+      stepOrder: 0,
+      type: 'EXCEPTIONAL',
+      amountCents: ex,
+      reason: input.exceptional.reason,
+    });
+    running = Math.max(0, running + ex);
+  }
+
+  return { adjustments, subtotalAfterBusinessCents: running };
+}

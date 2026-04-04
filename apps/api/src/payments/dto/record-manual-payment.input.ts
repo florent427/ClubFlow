@@ -40,4 +40,13 @@ export class RecordManualPaymentInput {
   @IsOptional()
   @IsUUID()
   paidByMemberId?: string | null;
+
+  @Field(() => ID, {
+    nullable: true,
+    description:
+      'Contact payeur (sans fiche membre). Exclusif avec paidByMemberId si renseigné.',
+  })
+  @IsOptional()
+  @IsUUID()
+  paidByContactId?: string | null;
 }

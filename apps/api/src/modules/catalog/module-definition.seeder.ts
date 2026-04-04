@@ -4,6 +4,7 @@ import { ModuleCode } from '../../domain/module-registry/module-codes';
 
 const MODULE_LABELS: Record<ModuleCode, string> = {
   [ModuleCode.MEMBERS]: 'Membres',
+  [ModuleCode.FAMILIES]: 'Familles',
   [ModuleCode.PAYMENT]: 'Paiement',
   [ModuleCode.PLANNING]: 'Planning',
   [ModuleCode.COMMUNICATION]: 'Communication',
@@ -29,11 +30,13 @@ export class ModuleDefinitionSeeder implements OnModuleInit {
         create: {
           code,
           label: MODULE_LABELS[code],
-          isRequired: code === ModuleCode.MEMBERS,
+          isRequired:
+            code === ModuleCode.MEMBERS || code === ModuleCode.FAMILIES,
         },
         update: {
           label: MODULE_LABELS[code],
-          isRequired: code === ModuleCode.MEMBERS,
+          isRequired:
+            code === ModuleCode.MEMBERS || code === ModuleCode.FAMILIES,
         },
       });
     }

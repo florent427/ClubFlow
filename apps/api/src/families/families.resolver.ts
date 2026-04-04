@@ -206,4 +206,24 @@ export class FamiliesResolver {
   ): Promise<FamilyGraph> {
     return this.families.removeClubFamilyLink(club.id, linkId);
   }
+
+  @Mutation(() => FamilyGraph)
+  @UseGuards(
+    GqlJwtAuthGuard,
+    ClubContextGuard,
+    ClubAdminRoleGuard,
+    ClubModuleEnabledGuard,
+  )
+  @RequireClubModule(ModuleCode.FAMILIES)
+  setClubFamilyPayerContact(
+    @CurrentClub() club: Club,
+    @Args('familyId', { type: () => ID }) familyId: string,
+    @Args('contactId', { type: () => ID }) contactId: string,
+  ): Promise<FamilyGraph> {
+    return this.families.setClubFamilyPayerContact(
+      club.id,
+      familyId,
+      contactId,
+    );
+  }
 }

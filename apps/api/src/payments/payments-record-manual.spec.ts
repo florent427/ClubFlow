@@ -10,6 +10,8 @@ describe('PaymentsService / encaissements manuels', () => {
   let prisma: {
     invoice: { findFirst: jest.Mock };
     member: { findFirst: jest.Mock };
+    contact: { findFirst: jest.Mock };
+    family: { findFirst: jest.Mock };
     familyMember: { findFirst: jest.Mock };
     payment: { aggregate: jest.Mock };
     $transaction: jest.Mock;
@@ -21,6 +23,10 @@ describe('PaymentsService / encaissements manuels', () => {
     prisma = {
       invoice: { findFirst: jest.fn() },
       member: { findFirst: jest.fn() },
+      contact: { findFirst: jest.fn() },
+      family: {
+        findFirst: jest.fn().mockResolvedValue({ householdGroupId: null }),
+      },
       familyMember: { findFirst: jest.fn() },
       payment: {
         aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: null } }),
@@ -91,6 +97,7 @@ describe('PaymentsService / encaissements manuels', () => {
           method: ClubPaymentMethod.MANUAL_TRANSFER,
           externalRef: 'VIR-123',
           paidByMemberId: null,
+          paidByContactId: null,
         },
       });
       return result;
@@ -150,6 +157,54 @@ describe('PaymentsService / encaissements manuels', () => {
         paidByMemberId: 'm-bad',
       }),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  it('refuse membre et contact payeur en même temps', async () => {
+    prisma.invoice.findFirst.mockResolvedValue(openInvoice);
+    await expect(
+      service.recordManualPayment('club-1', {
+        invoiceId: 'inv-1',
+        amountCents: 1000,
+        method: ClubPaymentMethod.MANUAL_CASH,
+        paidByMemberId: 'm-1',
+        paidByContactId: 'c-1',
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('enregistre un paiement avec payeur contact PAYER du foyer', async () => {
+    prisma.invoice.findFirst.mockResolvedValue(openInvoice);
+    prisma.payment.aggregate.mockResolvedValue({
+      _sum: { amountCents: null },
+    });
+    prisma.contact.findFirst.mockResolvedValue({
+      id: 'c-1',
+      clubId: 'club-1',
+    });
+    prisma.familyMember.findFirst.mockResolvedValue({ id: 'fm-1' });
+    const tx = makeTx();
+    prisma.$transaction.mockImplementation(async (fn: (t: InvoiceTx) => Promise<unknown>) => {
+      await fn(tx);
+      expect(tx.payment.create).toHaveBeenCalledWith({
+        data: {
+          clubId: 'club-1',
+          invoiceId: 'inv-1',
+          amountCents: 1000,
+          method: ClubPaymentMethod.MANUAL_CASH,
+          externalRef: null,
+          paidByMemberId: null,
+          paidByContactId: 'c-1',
+        },
+      });
+      return { id: 'pay-1', amountCents: 1000, invoiceId: 'inv-1' };
+    });
+
+    await service.recordManualPayment('club-1', {
+      invoiceId: 'inv-1',
+      amountCents: 1000,
+      method: ClubPaymentMethod.MANUAL_CASH,
+      paidByContactId: 'c-1',
+    });
   });
 });
 

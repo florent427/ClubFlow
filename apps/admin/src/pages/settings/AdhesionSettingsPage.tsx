@@ -8,10 +8,15 @@ import {
   CLUB_MODULES,
   CLUB_SEASONS,
   CREATE_CLUB_SEASON,
+  ARCHIVE_MEMBERSHIP_ONE_TIME_FEE,
+  CREATE_MEMBERSHIP_ONE_TIME_FEE,
   CREATE_MEMBERSHIP_PRODUCT,
+  DELETE_MEMBERSHIP_ONE_TIME_FEE,
   DELETE_MEMBERSHIP_PRODUCT,
+  MEMBERSHIP_ONE_TIME_FEES,
   MEMBERSHIP_PRODUCTS,
   UPDATE_CLUB_SEASON,
+  UPDATE_MEMBERSHIP_ONE_TIME_FEE,
   UPDATE_MEMBERSHIP_PRODUCT,
 } from '../../lib/documents';
 import type {
@@ -19,6 +24,7 @@ import type {
   ClubModulesQueryData,
   ClubSeasonsQueryData,
   GradeLevelsQueryData,
+  MembershipOneTimeFeesQueryData,
   MembershipProductsQueryData,
 } from '../../lib/types';
 
@@ -37,12 +43,17 @@ export function AdhesionSettingsPage() {
     useQuery<MembershipProductsQueryData>(MEMBERSHIP_PRODUCTS, {
       skip: !paymentOn,
     });
+  const { data: feesData, refetch: refetchFees } =
+    useQuery<MembershipOneTimeFeesQueryData>(MEMBERSHIP_ONE_TIME_FEES, {
+      skip: !paymentOn,
+    });
   const { data: gradesData } = useQuery<GradeLevelsQueryData>(CLUB_GRADE_LEVELS, {
     skip: !paymentOn || !membersOn,
   });
 
   const [seasonMsg, setSeasonMsg] = useState<string | null>(null);
   const [productMsg, setProductMsg] = useState<string | null>(null);
+  const [feeMsg, setFeeMsg] = useState<string | null>(null);
 
   const [sLabel, setSLabel] = useState('');
   const [sStart, setSStart] = useState('');
@@ -66,6 +77,12 @@ export function AdhesionSettingsPage() {
   const [pAid, setPAid] = useState(true);
   const [pEx, setPEx] = useState(true);
   const [pCap, setPCap] = useState('');
+
+  const [fLabel, setFLabel] = useState('');
+  const [fEuros, setFEuros] = useState('');
+  const [editFeeId, setEditFeeId] = useState<string | null>(null);
+  const [efLabel, setEfLabel] = useState('');
+  const [efEuros, setEfEuros] = useState('');
 
   const [editProductId, setEditProductId] = useState<string | null>(null);
   const [epLabel, setEpLabel] = useState('');
@@ -146,8 +163,50 @@ export function AdhesionSettingsPage() {
     onError: (e) => setProductMsg(e.message),
   });
 
+  const [createFee, { loading: creatingFee }] = useMutation(
+    CREATE_MEMBERSHIP_ONE_TIME_FEE,
+    {
+      onCompleted: () => {
+        setFLabel('');
+        setFEuros('');
+        setFeeMsg(null);
+        void refetchFees();
+      },
+      onError: (e) => setFeeMsg(e.message),
+    },
+  );
+
+  const [updateFee, { loading: updatingFee }] = useMutation(
+    UPDATE_MEMBERSHIP_ONE_TIME_FEE,
+    {
+      onCompleted: () => {
+        setEditFeeId(null);
+        setFeeMsg(null);
+        void refetchFees();
+      },
+      onError: (e) => setFeeMsg(e.message),
+    },
+  );
+
+  const [archiveFee] = useMutation(ARCHIVE_MEMBERSHIP_ONE_TIME_FEE, {
+    onCompleted: () => {
+      setFeeMsg(null);
+      void refetchFees();
+    },
+    onError: (e) => setFeeMsg(e.message),
+  });
+
+  const [deleteFee] = useMutation(DELETE_MEMBERSHIP_ONE_TIME_FEE, {
+    onCompleted: () => {
+      setFeeMsg(null);
+      void refetchFees();
+    },
+    onError: (e) => setFeeMsg(e.message),
+  });
+
   const seasons = seasonData?.clubSeasons ?? [];
   const products = productsData?.membershipProducts ?? [];
+  const oneTimeFees = feesData?.membershipOneTimeFees ?? [];
   const gradeLevels = gradesData?.clubGradeLevels ?? [];
   const activeSeason = activeSeasonData?.activeClubSeason ?? null;
 
@@ -344,6 +403,88 @@ export function AdhesionSettingsPage() {
         },
       },
     });
+  }
+
+  async function onCreateFee(e: React.FormEvent) {
+    e.preventDefault();
+    setFeeMsg(null);
+    if (!fLabel.trim()) {
+      setFeeMsg('Libellé obligatoire.');
+      return;
+    }
+    const cents = eurosToCents(fEuros);
+    if (cents == null) {
+      setFeeMsg('Montant invalide.');
+      return;
+    }
+    await createFee({
+      variables: { input: { label: fLabel.trim(), amountCents: cents } },
+    });
+  }
+
+  function startEditFee(row: MembershipOneTimeFeesQueryData['membershipOneTimeFees'][number]) {
+    setEditFeeId(row.id);
+    setEfLabel(row.label);
+    setEfEuros(centsToEuros(row.amountCents));
+    setFeeMsg(null);
+  }
+
+  async function onUpdateFee(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editFeeId) return;
+    setFeeMsg(null);
+    const cents = eurosToCents(efEuros);
+    if (cents == null) {
+      setFeeMsg('Montant invalide.');
+      return;
+    }
+    await updateFee({
+      variables: {
+        input: {
+          id: editFeeId,
+          label: efLabel.trim(),
+          amountCents: cents,
+        },
+      },
+    });
+  }
+
+  async function onArchiveFee(id: string, label: string) {
+    setFeeMsg(null);
+    if (
+      !window.confirm(
+        `Archiver le frais « ${label} » ? Il ne sera plus proposé sur les nouvelles cotisations.`,
+      )
+    ) {
+      return;
+    }
+    if (editFeeId === id) {
+      setEditFeeId(null);
+    }
+    try {
+      await archiveFee({ variables: { id } });
+    } catch {
+      /* onError */
+    }
+  }
+
+  async function onDeleteFee(id: string, label: string) {
+    setFeeMsg(null);
+    if (
+      !window.confirm(
+        `Supprimer définitivement « ${label} » ? Possible seulement si aucune facture ouverte ou payée ne l’utilise.`,
+      )
+    ) {
+      return;
+    }
+    if (editFeeId === id) {
+      setEditFeeId(null);
+    }
+    try {
+      await deleteFee({ variables: { id } });
+    } catch {
+      /* onError */
+    }
   }
 
   async function onDeleteProduct(id: string, label: string) {
@@ -872,6 +1013,131 @@ export function AdhesionSettingsPage() {
             La suppression retire la formule des choix pour les nouvelles
             cotisations. Elle ne supprime pas les factures déjà créées.
           </p>
+        </section>
+
+        <section className="members-panel">
+          <h2 className="members-panel__h">Frais uniques (catalogue)</h2>
+          <p className="muted">
+            Ajoutez des montants forfaitaires (licence fédérale, équipement…)
+            sélectionnables sur la fiche membre avec la cotisation.
+          </p>
+          {feeMsg ? <p className="form-error">{feeMsg}</p> : null}
+          <form className="members-form" onSubmit={(e) => void onCreateFee(e)}>
+            <div className="members-form--inline">
+              <label className="field">
+                <span>Libellé</span>
+                <input
+                  value={fLabel}
+                  onChange={(e) => setFLabel(e.target.value)}
+                  placeholder="Licence FFGYM"
+                />
+              </label>
+              <label className="field">
+                <span>Montant (€)</span>
+                <input
+                  value={fEuros}
+                  onChange={(e) => setFEuros(e.target.value)}
+                  placeholder="25"
+                />
+              </label>
+            </div>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={creatingFee}
+            >
+              {creatingFee ? '…' : 'Ajouter le frais'}
+            </button>
+          </form>
+
+          {oneTimeFees.length === 0 ? (
+            <p className="muted">Aucun frais catalogué.</p>
+          ) : (
+            <div className="members-table-wrap" style={{ marginTop: '1rem' }}>
+              <table className="members-table">
+                <thead>
+                  <tr>
+                    <th>Libellé</th>
+                    <th>Montant</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {oneTimeFees.map((f) =>
+                    editFeeId === f.id ? (
+                      <tr key={f.id}>
+                        <td colSpan={3}>
+                          <form
+                            className="members-form"
+                            onSubmit={(e) => void onUpdateFee(e)}
+                          >
+                            <div className="members-form--inline">
+                              <label className="field">
+                                <span>Libellé</span>
+                                <input
+                                  value={efLabel}
+                                  onChange={(e) => setEfLabel(e.target.value)}
+                                />
+                              </label>
+                              <label className="field">
+                                <span>Montant (€)</span>
+                                <input
+                                  value={efEuros}
+                                  onChange={(e) => setEfEuros(e.target.value)}
+                                />
+                              </label>
+                            </div>
+                            <button
+                              type="submit"
+                              className="btn btn-primary"
+                              disabled={updatingFee}
+                            >
+                              Enregistrer
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              onClick={() => setEditFeeId(null)}
+                            >
+                              Fermer
+                            </button>
+                          </form>
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr key={f.id}>
+                        <td>{f.label}</td>
+                        <td>{centsToEuros(f.amountCents)} €</td>
+                        <td className="members-table__actions">
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-tight"
+                            onClick={() => startEditFee(f)}
+                          >
+                            Modifier
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-tight"
+                            onClick={() => void onArchiveFee(f.id, f.label)}
+                          >
+                            Archiver
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-tight members-table__danger"
+                            onClick={() => void onDeleteFee(f.id, f.label)}
+                          >
+                            Supprimer
+                          </button>
+                        </td>
+                      </tr>
+                    ),
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       </div>
     </>

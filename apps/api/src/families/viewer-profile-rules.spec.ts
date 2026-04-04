@@ -62,7 +62,7 @@ describe('viewer-profile-rules', () => {
     ).toBe(true);
   });
 
-  it('shouldInclude : refuse co-parent (autre userId, majeur)', () => {
+  it('shouldInclude : refuse co-parent majeur (autre résidence / sans même foyer payeur)', () => {
     const birth = new Date(Date.UTC(1980, 0, 1));
     const now = new Date(Date.UTC(2026, 0, 1));
     expect(
@@ -77,6 +77,43 @@ describe('viewer-profile-rules', () => {
         now,
       ),
     ).toBe(false);
+    expect(
+      shouldIncludeMemberInHouseholdViewerProfiles(
+        viewerUserId,
+        {
+          id: 'coparent',
+          userId: 'user-other',
+          birthDate: birth,
+          status: MemberStatus.ACTIVE,
+        },
+        now,
+        {
+          candidateFamilyId: 'fam-b',
+          viewerPayerFamilyIds: new Set(['fam-a']),
+        },
+      ),
+    ).toBe(false);
+  });
+
+  it('shouldInclude : accepte adulte du même foyer club que le payeur', () => {
+    const birth = new Date(Date.UTC(1980, 0, 1));
+    const now = new Date(Date.UTC(2026, 0, 1));
+    expect(
+      shouldIncludeMemberInHouseholdViewerProfiles(
+        viewerUserId,
+        {
+          id: 'conjoint',
+          userId: 'user-other',
+          birthDate: birth,
+          status: MemberStatus.ACTIVE,
+        },
+        now,
+        {
+          candidateFamilyId: 'fam-shared',
+          viewerPayerFamilyIds: new Set(['fam-shared']),
+        },
+      ),
+    ).toBe(true);
   });
 
   it('shouldInclude : refuse inactif', () => {

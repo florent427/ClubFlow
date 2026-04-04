@@ -23,11 +23,25 @@ export function isStrictlyMinorProfile(
   return ageYearsUtc(birthDate, now) < 18;
 }
 
-/** Profil sélectionnable pour un foyer étendu (hors chemin legacy « tous les membres »). */
+/** Contexte groupe foyer : inclusion des adultes du même « foyer club » (même familyId) que le payeur. */
+export type HouseholdViewerInclusionContext = {
+  /** `familyId` du lien `FamilyMember` du candidat dans ce groupe. */
+  candidateFamilyId: string;
+  /** Foyers résidence où le visiteur est payeur (rôle PAYER membre ou contact). */
+  viewerPayerFamilyIds: ReadonlySet<string>;
+};
+
+/**
+ * Profil sélectionnable pour un foyer étendu (hors chemin legacy « tous les membres »).
+ * Par défaut : soi, mineurs du groupe ; pas les autres adultes d’une autre résidence.
+ * Avec `householdGroupInclusion` : les adultes du **même** `familyId` que le payeur (même foyer club),
+ * comme les mineurs ; exclusion inchangée pour un adulte uniquement dans un foyer séparé du groupe.
+ */
 export function shouldIncludeMemberInHouseholdViewerProfiles(
   viewerUserId: string,
   member: Pick<Member, 'id' | 'userId' | 'birthDate' | 'status'>,
   now: Date,
+  householdGroupInclusion?: HouseholdViewerInclusionContext | null,
 ): boolean {
   if (member.status !== MemberStatus.ACTIVE) {
     return false;
@@ -36,6 +50,14 @@ export function shouldIncludeMemberInHouseholdViewerProfiles(
     return true;
   }
   if (isStrictlyMinorProfile(member.birthDate, now)) {
+    return true;
+  }
+  if (
+    householdGroupInclusion &&
+    householdGroupInclusion.viewerPayerFamilyIds.has(
+      householdGroupInclusion.candidateFamilyId,
+    )
+  ) {
     return true;
   }
   return false;

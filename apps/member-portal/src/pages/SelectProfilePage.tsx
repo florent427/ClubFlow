@@ -1,14 +1,23 @@
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@apollo/client/react';
 import {
+  SELECT_VIEWER_CONTACT_PROFILE,
   SELECT_VIEWER_PROFILE,
   VIEWER_PROFILES,
 } from '../lib/documents';
 import type {
+  SelectContactProfileData,
   SelectProfileData,
+  ViewerProfile,
   ViewerProfilesQueryData,
 } from '../lib/auth-types';
 import { getToken, hasMemberSession, setMemberSession } from '../lib/storage';
+
+function profileRowKey(p: ViewerProfile): string {
+  if (p.memberId) return `m:${p.memberId}`;
+  if (p.contactId) return `c:${p.contactId}`;
+  return '';
+}
 
 export function SelectProfilePage() {
   const navigate = useNavigate();
@@ -19,8 +28,12 @@ export function SelectProfilePage() {
     { skip: !token },
   );
 
-  const [selectProfile, { loading: selecting }] =
+  const [selectProfile, { loading: selectingMember }] =
     useMutation<SelectProfileData>(SELECT_VIEWER_PROFILE);
+  const [selectContactProfile, { loading: selectingContact }] =
+    useMutation<SelectContactProfileData>(SELECT_VIEWER_CONTACT_PROFILE);
+
+  const selecting = selectingMember || selectingContact;
 
   if (!token) {
     return <Navigate to="/login" replace />;
@@ -29,15 +42,28 @@ export function SelectProfilePage() {
     return <Navigate to="/" replace />;
   }
 
-  async function pick(memberId: string, clubId: string) {
-    const { data: sel } = await selectProfile({
-      variables: { memberId },
-    });
-    const newTok = sel?.selectActiveViewerProfile?.accessToken;
-    if (!newTok) {
+  async function pick(p: ViewerProfile) {
+    if (p.memberId) {
+      const { data: sel } = await selectProfile({
+        variables: { memberId: p.memberId },
+      });
+      const newTok = sel?.selectActiveViewerProfile?.accessToken;
+      if (!newTok) {
+        return;
+      }
+      setMemberSession(newTok, p.clubId);
+    } else if (p.contactId) {
+      const { data: sel } = await selectContactProfile({
+        variables: { contactId: p.contactId },
+      });
+      const newTok = sel?.selectActiveViewerContactProfile?.accessToken;
+      if (!newTok) {
+        return;
+      }
+      setMemberSession(newTok, p.clubId);
+    } else {
       return;
     }
-    setMemberSession(newTok, clubId);
     void navigate('/', { replace: true });
   }
 
@@ -51,8 +77,8 @@ export function SelectProfilePage() {
           <p className="auth-eyebrow">ClubFlow</p>
           <h1>Choisir un profil</h1>
           <p className="auth-sub">
-            Plusieurs adhérents sont liés à votre compte. Sélectionnez celui
-            avec lequel vous naviguez.
+            Plusieurs espaces sont liés à votre compte (adhérent ou payeur
+            contact). Sélectionnez celui avec lequel vous naviguez.
           </p>
         </header>
         {loading ? <p className="auth-hint">Chargement des profils…</p> : null}
@@ -62,12 +88,12 @@ export function SelectProfilePage() {
         ) : null}
         <ul className="profile-grid">
           {profiles.map((p) => (
-            <li key={p.memberId}>
+            <li key={profileRowKey(p)}>
               <button
                 type="button"
                 className="profile-tile"
                 disabled={selecting}
-                onClick={() => void pick(p.memberId, p.clubId)}
+                onClick={() => void pick(p)}
               >
                 <span className="profile-avatar" aria-hidden>
                   {p.firstName.slice(0, 1)}
@@ -76,7 +102,9 @@ export function SelectProfilePage() {
                 <span className="profile-name">
                   {p.firstName} {p.lastName}
                 </span>
-                {p.isPrimaryProfile ? (
+                {p.contactId && !p.memberId ? (
+                  <span className="profile-badge">Payeur (contact)</span>
+                ) : p.isPrimaryProfile ? (
                   <span className="profile-badge">Payeur</span>
                 ) : null}
               </button>

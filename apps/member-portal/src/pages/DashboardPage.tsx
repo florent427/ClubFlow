@@ -21,6 +21,7 @@ import {
   medicalCertState,
   slotCalendarBits,
 } from '../lib/format';
+import { JoinFamilyByPayerEmailCta } from '../components/JoinFamilyByPayerEmailCta';
 import { MemberRoleToggle } from '../components/MemberRoleToggle';
 
 function SlotCard({ slot }: { slot: ViewerSlot }) {
@@ -54,7 +55,10 @@ export function DashboardPage() {
     useQuery<ViewerMeData>(VIEWER_ME, { errorPolicy: 'all' });
   const { data: clubData } = useQuery<ClubQueryData>(CLUB);
 
+  const hideMemberModules = meData?.viewerMe?.hideMemberModules === true;
+
   const slotsQ = useQuery<ViewerUpcomingData>(VIEWER_UPCOMING_SLOTS, {
+    skip: hideMemberModules,
     errorPolicy: 'all',
   });
   const billQ = useQuery<ViewerBillingData>(VIEWER_FAMILY_BILLING, {
@@ -98,65 +102,88 @@ export function DashboardPage() {
                 : '…'}
         </h1>
         <div className="mp-badges-row">
-          <span
-            className={`mp-pill${me?.gradeLevelLabel ? '' : ' mp-pill-muted'}`}
-          >
-            <span className="material-symbols-outlined mp-pill-ico">school</span>
-            {me?.gradeLevelLabel ?? 'Grade non renseigné'}
-          </span>
-          <span
-            className={`mp-pill${cert.ok ? ' mp-pill-ok' : ' mp-pill-warn'}`}
-          >
-            <span className="material-symbols-outlined mp-pill-ico">
-              verified_user
-            </span>
-            {cert.label}
-          </span>
+          {!hideMemberModules ? (
+            <>
+              <span
+                className={`mp-pill${me?.gradeLevelLabel ? '' : ' mp-pill-muted'}`}
+              >
+                <span className="material-symbols-outlined mp-pill-ico">school</span>
+                {me?.gradeLevelLabel ?? 'Grade non renseigné'}
+              </span>
+              <span
+                className={`mp-pill${cert.ok ? ' mp-pill-ok' : ' mp-pill-warn'}`}
+              >
+                <span className="material-symbols-outlined mp-pill-ico">
+                  verified_user
+                </span>
+                {cert.label}
+              </span>
+            </>
+          ) : null}
+          {billing?.isHouseholdGroupSpace ? (
+            <Link
+              to="/famille"
+              className="mp-pill mp-pill-muted mp-pill-link"
+            >
+              <span className="material-symbols-outlined mp-pill-ico">
+                groups
+              </span>
+              Espace familial partagé
+            </Link>
+          ) : null}
         </div>
       </section>
 
-      <div className="mp-dashboard-grid">
-        <section className="mp-panel">
-          <h2 className="mp-panel-title">Mon programme</h2>
-          <div className="mp-empty-soft">
-            <span className="material-symbols-outlined mp-empty-ico">
-              auto_stories
-            </span>
-            <p>
-              Les contenus pédagogiques par grade arrivent bientôt dans cette
-              section.
-            </p>
-          </div>
-          <button type="button" className="mp-btn mp-btn-outline" disabled>
-            Réserver un cours (à venir)
-          </button>
-        </section>
+      <JoinFamilyByPayerEmailCta variant="dashboard" />
 
-        <section className="mp-panel">
-          <div className="mp-panel-head">
-            <h2 className="mp-panel-title">Prochains cours</h2>
-            {slots.length > 3 ? (
-              <Link to="/planning" className="mp-link">
-                Voir tout
-              </Link>
-            ) : null}
-          </div>
-          {slotsQ.error ? (
-            <p className="mp-hint">
-              Planning indisponible (module ou droits).
-            </p>
-          ) : dashSlots.length === 0 ? (
-            <p className="mp-hint">Aucun cours à venir pour l’instant.</p>
-          ) : (
-            <ul className="mp-slot-list">
-              {dashSlots.map((s) => (
-                <li key={s.id}>
-                  <SlotCard slot={s} />
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+      <div
+        className={`mp-dashboard-grid${hideMemberModules ? ' mp-dashboard-grid--billing-only' : ''}`}
+      >
+        {!hideMemberModules ? (
+          <>
+            <section className="mp-panel">
+              <h2 className="mp-panel-title">Mon programme</h2>
+              <div className="mp-empty-soft">
+                <span className="material-symbols-outlined mp-empty-ico">
+                  auto_stories
+                </span>
+                <p>
+                  Les contenus pédagogiques par grade arrivent bientôt dans cette
+                  section.
+                </p>
+              </div>
+              <button type="button" className="mp-btn mp-btn-outline" disabled>
+                Réserver un cours (à venir)
+              </button>
+            </section>
+
+            <section className="mp-panel">
+              <div className="mp-panel-head">
+                <h2 className="mp-panel-title">Prochains cours</h2>
+                {slots.length > 3 ? (
+                  <Link to="/planning" className="mp-link">
+                    Voir tout
+                  </Link>
+                ) : null}
+              </div>
+              {slotsQ.error ? (
+                <p className="mp-hint">
+                  Planning indisponible (module ou droits).
+                </p>
+              ) : dashSlots.length === 0 ? (
+                <p className="mp-hint">Aucun cours à venir pour l’instant.</p>
+              ) : (
+                <ul className="mp-slot-list">
+                  {dashSlots.map((s) => (
+                    <li key={s.id}>
+                      <SlotCard slot={s} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </>
+        ) : null}
 
         <section className="mp-panel mp-panel-wide">
           <h2 className="mp-panel-title">Famille &amp; paiements</h2>

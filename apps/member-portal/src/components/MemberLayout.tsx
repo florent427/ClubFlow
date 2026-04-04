@@ -6,14 +6,26 @@ import {
   useNavigate,
 } from 'react-router-dom';
 import {
+  SELECT_VIEWER_CONTACT_PROFILE,
   SELECT_VIEWER_PROFILE,
   VIEWER_PROFILES,
 } from '../lib/documents';
-import type { SelectProfileData, ViewerProfilesQueryData } from '../lib/auth-types';
+import type {
+  SelectContactProfileData,
+  SelectProfileData,
+  ViewerProfile,
+  ViewerProfilesQueryData,
+} from '../lib/auth-types';
 import { MemberRoleToggle } from './MemberRoleToggle';
 import { clearClubId, getClubId, setMemberSession } from '../lib/storage';
-import { VIEWER_ADMIN_SWITCH } from '../lib/viewer-documents';
-import type { ViewerAdminSwitchData } from '../lib/viewer-types';
+import { VIEWER_ADMIN_SWITCH, VIEWER_ME } from '../lib/viewer-documents';
+import type { ViewerAdminSwitchData, ViewerMeData } from '../lib/viewer-types';
+
+function profileRowKey(p: ViewerProfile): string {
+  if (p.memberId) return `m:${p.memberId}`;
+  if (p.contactId) return `c:${p.contactId}`;
+  return '';
+}
 
 const navClass = ({ isActive }: { isActive: boolean }) =>
   `mp-sidebar-link${isActive ? ' mp-sidebar-link-active' : ''}`;
@@ -25,7 +37,7 @@ function breadcrumbLabel(pathname: string): string {
   if (pathname === '/' || pathname === '') return 'Tableau de bord';
   if (pathname.startsWith('/progression')) return 'Ma progression';
   if (pathname.startsWith('/planning')) return 'Planning';
-  if (pathname.startsWith('/famille')) return 'Ma famille';
+  if (pathname.startsWith('/famille')) return 'Famille & espace partagé';
   if (pathname.startsWith('/parametres')) return 'Paramètres';
   return 'Espace membre';
 }
@@ -40,6 +52,11 @@ export function MemberLayout() {
     { fetchPolicy: 'cache-first' },
   );
 
+  const { data: meData } = useQuery<ViewerMeData>(VIEWER_ME, {
+    skip: !clubId,
+    fetchPolicy: 'cache-first',
+  });
+
   const { data: adminSwitchData } = useQuery<ViewerAdminSwitchData>(
     VIEWER_ADMIN_SWITCH,
     {
@@ -48,22 +65,41 @@ export function MemberLayout() {
     },
   );
 
-  const [selectProfile, { loading: switching }] =
+  const [selectProfile, { loading: switchingMember }] =
     useMutation<SelectProfileData>(SELECT_VIEWER_PROFILE);
+  const [selectContactProfile, { loading: switchingContact }] =
+    useMutation<SelectContactProfileData>(SELECT_VIEWER_CONTACT_PROFILE);
+
+  const switching = switchingMember || switchingContact;
 
   const profiles = profilesData?.viewerProfiles ?? [];
   const showSwitcher = profiles.length > 1;
+  const hideMemberModules = meData?.viewerMe?.hideMemberModules === true;
   const adminSwitch = adminSwitchData?.viewerAdminSwitch;
   const canAccessClubBackOffice: boolean =
     adminSwitch?.canAccessClubBackOffice === true;
   const adminWorkspaceClubId = adminSwitch?.adminWorkspaceClubId ?? null;
 
-  async function switchTo(memberId: string, nextClubId: string) {
+  async function switchToProfile(p: ViewerProfile) {
     if (!clubId || switching) return;
-    const { data: sel } = await selectProfile({ variables: { memberId } });
-    const newTok = sel?.selectActiveViewerProfile?.accessToken;
-    if (!newTok) return;
-    setMemberSession(newTok, nextClubId);
+    const nextClubId = p.clubId;
+    if (p.memberId) {
+      const { data: sel } = await selectProfile({
+        variables: { memberId: p.memberId },
+      });
+      const newTok = sel?.selectActiveViewerProfile?.accessToken;
+      if (!newTok) return;
+      setMemberSession(newTok, nextClubId);
+    } else if (p.contactId) {
+      const { data: sel } = await selectContactProfile({
+        variables: { contactId: p.contactId },
+      });
+      const newTok = sel?.selectActiveViewerContactProfile?.accessToken;
+      if (!newTok) return;
+      setMemberSession(newTok, nextClubId);
+    } else {
+      return;
+    }
     void navigate('/', { replace: true });
     window.location.reload();
   }
@@ -86,17 +122,21 @@ export function MemberLayout() {
             <span className="mp-ico material-symbols-outlined">dashboard</span>
             Tableau de bord
           </NavLink>
-          <NavLink to="/progression" className={navClass}>
-            <span className="mp-ico material-symbols-outlined">school</span>
-            Ma progression
-          </NavLink>
-          <NavLink to="/planning" className={navClass}>
-            <span className="mp-ico material-symbols-outlined">calendar_today</span>
-            Planning
-          </NavLink>
+          {!hideMemberModules ? (
+            <>
+              <NavLink to="/progression" className={navClass}>
+                <span className="mp-ico material-symbols-outlined">school</span>
+                Ma progression
+              </NavLink>
+              <NavLink to="/planning" className={navClass}>
+                <span className="mp-ico material-symbols-outlined">calendar_today</span>
+                Planning
+              </NavLink>
+            </>
+          ) : null}
           <NavLink to="/famille" className={navClass}>
-            <span className="mp-ico material-symbols-outlined">group</span>
-            Ma famille
+            <span className="mp-ico material-symbols-outlined">groups</span>
+            Famille &amp; partage
           </NavLink>
           <NavLink to="/parametres" className={navClass}>
             <span className="mp-ico material-symbols-outlined">settings</span>
@@ -125,12 +165,12 @@ export function MemberLayout() {
               <div className="mp-profile-chips" role="group" aria-label="Changer de profil">
                 {profiles.map((p) => (
                   <button
-                    key={p.memberId}
+                    key={profileRowKey(p)}
                     type="button"
                     className="mp-profile-chip"
                     title={`${p.firstName} ${p.lastName}`}
                     disabled={switching}
-                    onClick={() => void switchTo(p.memberId, p.clubId)}
+                    onClick={() => void switchToProfile(p)}
                   >
                     <span className="mp-chip-initials">
                       {p.firstName.slice(0, 1)}
@@ -167,16 +207,20 @@ export function MemberLayout() {
           <span className="material-symbols-outlined">dashboard</span>
           <span>Accueil</span>
         </NavLink>
-        <NavLink to="/progression" className={bottomClass}>
-          <span className="material-symbols-outlined">school</span>
-          <span>Progrès</span>
-        </NavLink>
-        <NavLink to="/planning" className={bottomClass}>
-          <span className="material-symbols-outlined">calendar_today</span>
-          <span>Planning</span>
-        </NavLink>
+        {!hideMemberModules ? (
+          <>
+            <NavLink to="/progression" className={bottomClass}>
+              <span className="material-symbols-outlined">school</span>
+              <span>Progrès</span>
+            </NavLink>
+            <NavLink to="/planning" className={bottomClass}>
+              <span className="material-symbols-outlined">calendar_today</span>
+              <span>Planning</span>
+            </NavLink>
+          </>
+        ) : null}
         <NavLink to="/famille" className={bottomClass}>
-          <span className="material-symbols-outlined">group</span>
+          <span className="material-symbols-outlined">groups</span>
           <span>Famille</span>
         </NavLink>
         <NavLink to="/parametres" className={bottomClass}>

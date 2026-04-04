@@ -156,6 +156,31 @@ code {
   color: #b00020;
 }
 
+.members-form__dup-info {
+  margin: 0 0 1rem;
+  padding: 0.875rem 1rem;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--cf-primary) 35%, transparent);
+  background: color-mix(in srgb, var(--cf-primary) 10%, transparent);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--cf-ink, #1a1a1a);
+}
+
+.members-form__dup-info .members-form__dup-actions {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.members-form__dup-muted {
+  margin: 0.35rem 0 0;
+  font-size: 0.8125rem;
+  opacity: 0.85;
+}
+
 .btn {
   font: inherit;
   font-weight: 600;

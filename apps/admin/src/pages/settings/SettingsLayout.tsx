@@ -29,6 +29,14 @@ export function SettingsLayout() {
         >
           Adhésion
         </NavLink>
+        <NavLink
+          to="/settings/mail-domain"
+          className={({ isActive }) =>
+            `members-subnav__link${isActive ? ' members-subnav__link--active' : ''}`
+          }
+        >
+          E-mail
+        </NavLink>
       </nav>
       <Outlet />
     </div>

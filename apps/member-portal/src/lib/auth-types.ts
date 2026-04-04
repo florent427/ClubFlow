@@ -1,10 +1,12 @@
 export type ViewerProfile = {
-  memberId: string;
+  memberId: string | null;
+  contactId: string | null;
   clubId: string;
   firstName: string;
   lastName: string;
   isPrimaryProfile: boolean;
   familyId: string | null;
+  householdGroupId?: string | null;
 };
 
 export type LoginWithProfilesData = {
@@ -23,7 +25,23 @@ export type SelectProfileData = {
   selectActiveViewerProfile: {
     accessToken: string;
     contactClubId?: string | null;
-    viewerProfiles: { memberId: string; clubId: string }[];
+    viewerProfiles: {
+      memberId: string | null;
+      contactId: string | null;
+      clubId: string;
+    }[];
+  };
+};
+
+export type SelectContactProfileData = {
+  selectActiveViewerContactProfile: {
+    accessToken: string;
+    contactClubId?: string | null;
+    viewerProfiles: {
+      memberId: string | null;
+      contactId: string | null;
+      clubId: string;
+    }[];
   };
 };
 
@@ -35,6 +53,10 @@ export type VerifyEmailData = {
   verifyEmail: {
     accessToken: string;
     contactClubId?: string | null;
-    viewerProfiles: { memberId: string; clubId: string }[];
+    viewerProfiles: {
+      memberId: string | null;
+      contactId: string | null;
+      clubId: string;
+    }[];
   };
 };

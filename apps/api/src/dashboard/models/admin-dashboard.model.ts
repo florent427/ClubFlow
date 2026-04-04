@@ -9,17 +9,17 @@ export class AdminDashboardSummary {
   activeModulesCount!: number;
 
   @Field(() => Int, {
-    description: 'Stub 0 jusqu’au module Planning',
+    description: 'Créneaux cours avec début >= maintenant (module Planning)',
   })
   upcomingSessionsCount!: number;
 
   @Field(() => Int, {
-    description: 'Stub 0 jusqu’au module Paiement',
+    description: 'Nombre de factures au statut OPEN (module Paiement)',
   })
   outstandingPaymentsCount!: number;
 
   @Field(() => Int, {
-    description: 'Revenus mois en centimes — stub 0',
+    description: 'Somme des encaissements du mois civil UTC (centimes)',
   })
   revenueCentsMonth!: number;
 }

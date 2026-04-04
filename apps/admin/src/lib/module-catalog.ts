@@ -1,6 +1,7 @@
 /** Aligné seed API + registre modules (libellés UI admin). */
 export type ModuleCodeStr =
   | 'MEMBERS'
+  | 'FAMILIES'
   | 'PAYMENT'
   | 'PLANNING'
   | 'COMMUNICATION'
@@ -20,6 +21,11 @@ export const MODULE_CATALOG: {
   required: boolean;
 }[] = [
   { code: 'MEMBERS', label: 'Membres', required: true },
+  {
+    code: 'FAMILIES',
+    label: 'Familles & payeurs',
+    required: true,
+  },
   { code: 'PAYMENT', label: 'Paiement', required: false },
   { code: 'PLANNING', label: 'Planning', required: false },
   { code: 'COMMUNICATION', label: 'Communication', required: false },

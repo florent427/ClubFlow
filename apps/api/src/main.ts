@@ -7,6 +7,7 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true,
   });
+  /** Origines admin (prod) ; en dev, localhost/127.0.0.1 avec port quelconque sont aussi autorisés (ex. portail membre :5174). */
   const adminOrigins = (process.env.ADMIN_WEB_ORIGIN ?? 'http://localhost:5173')
     .split(',')
     .map((s) => s.trim())

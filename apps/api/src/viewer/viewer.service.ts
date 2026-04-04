@@ -6,6 +6,7 @@ import {
 import {
   FamilyMemberLinkRole,
   InvoiceStatus,
+  MemberCivility,
   MemberStatus,
   type Prisma,
 } from '@prisma/client';
@@ -71,6 +72,52 @@ export class ViewerService {
       adminWorkspaceClubId,
       hasClubFamily,
       canSelfAttachFamilyViaPayerEmail: !hasClubFamily,
+      isContactProfile: false,
+      hideMemberModules: false,
+    };
+  }
+
+  async viewerMeAsContact(
+    clubId: string,
+    contactId: string,
+    userId: string,
+  ): Promise<ViewerMemberGraph> {
+    const c = await this.prisma.contact.findFirst({
+      where: { id: contactId, clubId, userId },
+    });
+    if (!c) {
+      throw new NotFoundException('Profil introuvable');
+    }
+    const adminWorkspaceClubId = await resolveAdminWorkspaceClubId(
+      this.prisma,
+      userId,
+      clubId,
+    );
+    const canAccessClubBackOffice = adminWorkspaceClubId !== null;
+    const payerLink = await this.prisma.familyMember.findFirst({
+      where: {
+        contactId,
+        linkRole: FamilyMemberLinkRole.PAYER,
+        family: { clubId },
+      },
+      select: { familyId: true },
+    });
+    const hasClubFamily = payerLink != null;
+    return {
+      id: contactId,
+      firstName: c.firstName,
+      lastName: c.lastName,
+      photoUrl: null,
+      civility: MemberCivility.MR,
+      medicalCertExpiresAt: null,
+      gradeLevelId: null,
+      gradeLevelLabel: null,
+      canAccessClubBackOffice,
+      adminWorkspaceClubId,
+      hasClubFamily,
+      canSelfAttachFamilyViaPayerEmail: false,
+      isContactProfile: true,
+      hideMemberModules: true,
     };
   }
 
@@ -106,6 +153,25 @@ export class ViewerService {
         if (count === 1 || l.linkRole === FamilyMemberLinkRole.PAYER) {
           return { familyId: l.familyId };
         }
+      }
+    }
+    const contacts = await this.prisma.contact.findMany({
+      where: {
+        clubId,
+        user: { email: { equals: norm, mode: 'insensitive' } },
+      },
+      select: { id: true },
+    });
+    for (const c of contacts) {
+      const payFm = await this.prisma.familyMember.findFirst({
+        where: {
+          contactId: c.id,
+          linkRole: FamilyMemberLinkRole.PAYER,
+          family: { clubId },
+        },
+      });
+      if (payFm) {
+        return { familyId: payFm.familyId };
       }
     }
     return null;
@@ -230,6 +296,14 @@ export class ViewerService {
 
     if (householdGroup) {
       const nowHg = new Date();
+      const viewerPayerFamilyIds =
+        await this.families.viewerPayerFamilyIdsInHouseholdGroup(
+          viewerUserId,
+          householdGroup.id,
+        );
+      const householdInclusion = {
+        viewerPayerFamilyIds,
+      };
       invoiceWhere = {
         clubId,
         ...buildInvoiceWhereForHouseholdGroup({
@@ -259,6 +333,10 @@ export class ViewerService {
               viewerUserId,
               fm.member,
               nowHg,
+              {
+                candidateFamilyId: fm.familyId,
+                ...householdInclusion,
+              },
             ),
         );
         linkedHouseholdFamilies.push({
@@ -294,6 +372,10 @@ export class ViewerService {
             viewerUserId,
             fm.member,
             nowHg,
+            {
+              candidateFamilyId: fm.familyId,
+              ...householdInclusion,
+            },
           )
         ) {
           continue;
@@ -338,6 +420,7 @@ export class ViewerService {
         orderBy: { createdAt: 'asc' as const },
         include: {
           paidByMember: { select: { firstName: true, lastName: true } },
+          paidByContact: { select: { firstName: true, lastName: true } },
         },
       },
     };
@@ -373,8 +456,235 @@ export class ViewerService {
           amountCents: p.amountCents,
           method: p.method,
           createdAt: p.createdAt,
-          paidByFirstName: p.paidByMember?.firstName ?? null,
-          paidByLastName: p.paidByMember?.lastName ?? null,
+          paidByFirstName:
+            p.paidByMember?.firstName ?? p.paidByContact?.firstName ?? null,
+          paidByLastName:
+            p.paidByMember?.lastName ?? p.paidByContact?.lastName ?? null,
+        }),
+      );
+      return {
+        id: inv.id,
+        label: inv.label,
+        status: inv.status,
+        dueAt: inv.dueAt,
+        amountCents: inv.amountCents,
+        totalPaidCents,
+        balanceCents,
+        payments,
+      };
+    };
+
+    return {
+      isPayerView: true,
+      familyLabel,
+      invoices: [...openRows.map(toSummary), ...paidRows.map(toSummary)],
+      familyMembers: familyMemberRows,
+      isHouseholdGroupSpace: householdGroup != null,
+      linkedHouseholdFamilies,
+    };
+  }
+
+  /** Facturation portail pour un payeur « contact » (sans fiche adhérent). */
+  async viewerFamilyBillingSummaryForContact(
+    clubId: string,
+    contactId: string,
+    viewerUserId: string,
+  ): Promise<ViewerFamilyBillingSummaryGraph> {
+    const empty: ViewerFamilyBillingSummaryGraph = {
+      isPayerView: false,
+      familyLabel: null,
+      invoices: [],
+      familyMembers: [],
+      isHouseholdGroupSpace: false,
+      linkedHouseholdFamilies: [],
+    };
+
+    const link = await this.prisma.familyMember.findFirst({
+      where: {
+        contactId,
+        linkRole: FamilyMemberLinkRole.PAYER,
+        family: { clubId },
+        contact: { userId: viewerUserId },
+      },
+      include: {
+        family: { include: { householdGroup: true } },
+      },
+    });
+    if (!link) {
+      return empty;
+    }
+
+    const householdGroup = link.family.householdGroup;
+    let invoiceWhere: Prisma.InvoiceWhereInput;
+    let familyLabel: string | null;
+    let familyMemberRows: {
+      memberId: string;
+      firstName: string;
+      lastName: string;
+      photoUrl: string | null;
+    }[];
+
+    let linkedHouseholdFamilies: ViewerLinkedHouseholdFamilyGraph[] = [];
+
+    if (householdGroup) {
+      const nowHg = new Date();
+      const viewerPayerFamilyIds =
+        await this.families.viewerPayerFamilyIdsInHouseholdGroup(
+          viewerUserId,
+          householdGroup.id,
+        );
+      const householdInclusion = {
+        viewerPayerFamilyIds,
+      };
+      invoiceWhere = {
+        clubId,
+        ...buildInvoiceWhereForHouseholdGroup({
+          kind: 'householdGroup',
+          householdGroupId: householdGroup.id,
+          carrierFamilyId: householdGroup.carrierFamilyId ?? null,
+        }),
+      };
+      familyLabel = householdGroup.label ?? link.family.label ?? null;
+      const groupFamilies = await this.prisma.family.findMany({
+        where: { householdGroupId: householdGroup.id, clubId },
+        select: { id: true, label: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      const groupFamilyIds = groupFamilies.map((f) => f.id);
+      for (const gf of groupFamilies) {
+        const famLinks = await this.prisma.familyMember.findMany({
+          where: { familyId: gf.id, memberId: { not: null } },
+          include: { member: true },
+          orderBy: { createdAt: 'asc' },
+        });
+        const visibleInResidence = famLinks.filter(
+          (fm) =>
+            fm.member &&
+            shouldIncludeMemberInHouseholdViewerProfiles(
+              viewerUserId,
+              fm.member,
+              nowHg,
+              {
+                candidateFamilyId: fm.familyId,
+                ...householdInclusion,
+              },
+            ),
+        );
+        linkedHouseholdFamilies.push({
+          familyId: gf.id,
+          label: gf.label,
+          members: visibleInResidence.map((fm) => ({
+            memberId: fm.memberId!,
+            firstName: fm.member!.firstName,
+            lastName: fm.member!.lastName,
+            photoUrl: fm.member!.photoUrl,
+          })),
+        });
+      }
+      const gLinks = await this.prisma.familyMember.findMany({
+        where: { familyId: { in: groupFamilyIds }, memberId: { not: null } },
+        include: { member: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      const uniq = new Map<
+        string,
+        {
+          memberId: string;
+          firstName: string;
+          lastName: string;
+          photoUrl: string | null;
+        }
+      >();
+      for (const fm of gLinks) {
+        if (
+          !fm.memberId ||
+          !fm.member ||
+          !shouldIncludeMemberInHouseholdViewerProfiles(
+            viewerUserId,
+            fm.member,
+            nowHg,
+            {
+              candidateFamilyId: fm.familyId,
+              ...householdInclusion,
+            },
+          )
+        ) {
+          continue;
+        }
+        if (!uniq.has(fm.memberId)) {
+          uniq.set(fm.memberId, {
+            memberId: fm.memberId,
+            firstName: fm.member.firstName,
+            lastName: fm.member.lastName,
+            photoUrl: fm.member.photoUrl,
+          });
+        }
+      }
+      familyMemberRows = [...uniq.values()];
+    } else {
+      const familyId = link.familyId;
+      familyLabel = link.family.label ?? null;
+      const links = await this.prisma.familyMember.findMany({
+        where: { familyId, memberId: { not: null } },
+        include: { member: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      familyMemberRows = links
+        .filter((fm) => fm.memberId != null && fm.member)
+        .map((fm) => ({
+          memberId: fm.memberId!,
+          firstName: fm.member!.firstName,
+          lastName: fm.member!.lastName,
+          photoUrl: fm.member!.photoUrl,
+        }));
+      invoiceWhere = { clubId, familyId };
+    }
+
+    const paymentInclude = {
+      payments: {
+        orderBy: { createdAt: 'asc' as const },
+        include: {
+          paidByMember: { select: { firstName: true, lastName: true } },
+          paidByContact: { select: { firstName: true, lastName: true } },
+        },
+      },
+    };
+    const [openRows, paidRows] = await Promise.all([
+      this.prisma.invoice.findMany({
+        where: {
+          ...invoiceWhere,
+          status: InvoiceStatus.OPEN,
+        },
+        orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
+        include: paymentInclude,
+      }),
+      this.prisma.invoice.findMany({
+        where: {
+          ...invoiceWhere,
+          status: InvoiceStatus.PAID,
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: 5,
+        include: paymentInclude,
+      }),
+    ]);
+
+    const toSummary = (inv: (typeof openRows)[0]) => {
+      const paidSum = inv.payments.reduce((s, p) => s + p.amountCents, 0);
+      const { totalPaidCents, balanceCents } = invoicePaymentTotals(
+        inv.amountCents,
+        paidSum,
+      );
+      const payments: ViewerInvoicePaymentSnippetGraph[] = inv.payments.map(
+        (p) => ({
+          id: p.id,
+          amountCents: p.amountCents,
+          method: p.method,
+          createdAt: p.createdAt,
+          paidByFirstName:
+            p.paidByMember?.firstName ?? p.paidByContact?.firstName ?? null,
+          paidByLastName:
+            p.paidByMember?.lastName ?? p.paidByContact?.lastName ?? null,
         }),
       );
       return {

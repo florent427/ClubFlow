@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  FamilyMemberLinkRole,
   MemberCivility,
   MemberClubRole,
   MemberStatus,
@@ -11,7 +12,11 @@ import {
 } from '@prisma/client';
 import { FamiliesService } from '../families/families.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { assertMemberEmailAllowedInClub } from './member-email-family-rule';
+import {
+  assertMemberEmailAllowedInClub,
+  normalizeMemberEmail,
+  resolveClubMemberEmailDuplicateForCreate,
+} from './member-email-family-rule';
 import { CreateClubRoleDefinitionInput } from './dto/create-club-role-definition.input';
 import { CreateDynamicGroupInput } from './dto/create-dynamic-group.input';
 import { CreateGradeLevelInput } from './dto/create-grade-level.input';
@@ -31,6 +36,7 @@ import { ClubRoleDefinitionGraph } from './models/club-role-definition.model';
 import { DynamicGroupGraph } from './models/dynamic-group.model';
 import { GradeLevelGraph } from './models/grade-level.model';
 import { ClubMemberFieldLayoutGraph } from './models/club-member-field-layout.model';
+import { ClubMemberEmailDuplicateInfoGraph } from './models/club-member-email-duplicate-info.model';
 import { MemberGraph } from './models/member.model';
 
 @Injectable()
@@ -411,6 +417,56 @@ export class MembersService {
     }
   }
 
+  async getClubMemberEmailDuplicateInfo(
+    clubId: string,
+    email: string,
+  ): Promise<ClubMemberEmailDuplicateInfoGraph> {
+    const trimmed = email.trim();
+    const empty: ClubMemberEmailDuplicateInfoGraph = {
+      isClear: true,
+      suggestedFamilyId: null,
+      familyLabel: null,
+      sharedEmail: null,
+      existingMemberLabels: null,
+      blockedMessage: null,
+    };
+    if (!trimmed) {
+      return empty;
+    }
+    const r = await resolveClubMemberEmailDuplicateForCreate(
+      this.prisma,
+      clubId,
+      trimmed,
+    );
+    if (r.kind === 'clear') {
+      return empty;
+    }
+    if (r.kind === 'blocked') {
+      return {
+        isClear: false,
+        suggestedFamilyId: null,
+        familyLabel: null,
+        sharedEmail: normalizeMemberEmail(trimmed) || trimmed,
+        existingMemberLabels: null,
+        blockedMessage: r.message,
+      };
+    }
+    const fam = await this.prisma.family.findFirst({
+      where: { id: r.familyId, clubId },
+      select: { label: true },
+    });
+    return {
+      isClear: false,
+      suggestedFamilyId: r.familyId,
+      familyLabel: fam?.label ?? null,
+      sharedEmail: r.sharedEmail,
+      existingMemberLabels: r.existingMembers.map(
+        (m) => `${m.firstName} ${m.lastName}`.trim(),
+      ),
+      blockedMessage: null,
+    };
+  }
+
   async createMember(
     clubId: string,
     input: CreateMemberInput,
@@ -424,6 +480,15 @@ export class MembersService {
     if (input.customRoleIds?.length) {
       await this.assertCustomRoleIdsInClub(clubId, input.customRoleIds);
     }
+    if (input.familyId) {
+      const fam = await this.prisma.family.findFirst({
+        where: { id: input.familyId, clubId },
+        select: { id: true },
+      });
+      if (!fam) {
+        throw new BadRequestException('Foyer introuvable');
+      }
+    }
     const emailTrimmed = input.email.trim();
     this.assertMemberIdentityComplete(
       input.firstName,
@@ -433,6 +498,10 @@ export class MembersService {
     );
     await assertMemberEmailAllowedInClub(this.prisma, clubId, emailTrimmed, {
       memberId: null,
+      assumeMemberFamilyId:
+        input.familyId !== undefined && input.familyId !== null
+          ? input.familyId
+          : undefined,
     });
     const roles =
       input.roles && input.roles.length > 0
@@ -502,6 +571,21 @@ export class MembersService {
         include: this.memberIncludeGraph,
       });
     });
+    if (input.familyId) {
+      await this.families.transferClubMemberToFamily(
+        clubId,
+        row.id,
+        input.familyId,
+        FamilyMemberLinkRole.MEMBER,
+      );
+    }
+    if (input.userId) {
+      await this.families.migrateContactPayerLinksToMember(
+        clubId,
+        input.userId,
+        row.id,
+      );
+    }
     await this.families.syncContactUserPayerMemberLinksByEmail(
       clubId,
       emailTrimmed,
@@ -658,6 +742,13 @@ export class MembersService {
       }
     });
 
+    if (input.userId !== undefined && input.userId !== null) {
+      await this.families.migrateContactPayerLinksToMember(
+        clubId,
+        input.userId,
+        input.id,
+      );
+    }
     await this.families.syncContactUserPayerMemberLinksByEmail(clubId, email);
     await this.assertMemberMatchesFieldRules(clubId, input.id);
     return this.getMember(clubId, input.id);

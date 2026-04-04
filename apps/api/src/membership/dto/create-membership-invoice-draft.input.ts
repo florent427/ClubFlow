@@ -1,6 +1,7 @@
 import { Field, ID, InputType, Int } from '@nestjs/graphql';
-import { ClubPaymentMethod } from '@prisma/client';
+import { ClubPaymentMethod, SubscriptionBillingRhythm } from '@prisma/client';
 import {
+  IsArray,
   IsDateString,
   IsEnum,
   IsInt,
@@ -9,7 +10,24 @@ import {
   IsUUID,
   Max,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+
+@InputType()
+export class OneTimeFeeExceptionalInput {
+  @Field(() => ID)
+  @IsUUID('4')
+  feeId!: string;
+
+  @Field(() => Int)
+  @IsInt()
+  amountCents!: number;
+
+  @Field(() => String)
+  @IsString()
+  reason!: string;
+}
 
 @InputType()
 export class CreateMembershipInvoiceDraftInput {
@@ -21,10 +39,29 @@ export class CreateMembershipInvoiceDraftInput {
   @IsUUID('4')
   membershipProductId!: string;
 
-  /** Date effet adhésion (prorata). */
+  @Field(() => SubscriptionBillingRhythm)
+  @IsEnum(SubscriptionBillingRhythm)
+  billingRhythm!: SubscriptionBillingRhythm;
+
+  /** Date effet adhésion (prorata si rythme annuel et formule autorise le prorata). */
   @Field(() => String)
   @IsDateString()
   effectiveDate!: string;
+
+  /** Frais uniques (catalogue actif) à ajouter à la facture. */
+  @Field(() => [ID], { nullable: true })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  oneTimeFeeIds?: string[] | null;
+
+  /** Remises exceptionnelles sur des frais uniques (une entrée par feeId ; feeId doit être dans oneTimeFeeIds). */
+  @Field(() => [OneTimeFeeExceptionalInput], { nullable: true })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OneTimeFeeExceptionalInput)
+  oneTimeExceptionals?: OneTimeFeeExceptionalInput[] | null;
 
   /**
    * Surcharge du pourcentage de saison à payer (points de base, 10_000 = 100 %).

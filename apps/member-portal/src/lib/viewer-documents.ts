@@ -23,6 +23,21 @@ export const VIEWER_ME = gql`
       gradeLevelLabel
       canAccessClubBackOffice
       adminWorkspaceClubId
+      hasClubFamily
+      canSelfAttachFamilyViaPayerEmail
+      isContactProfile
+      hideMemberModules
+    }
+  }
+`;
+
+export const VIEWER_JOIN_FAMILY_BY_PAYER_EMAIL = gql`
+  mutation ViewerJoinFamilyByPayerEmail($input: ViewerJoinFamilyByPayerEmailInput!) {
+    viewerJoinFamilyByPayerEmail(input: $input) {
+      success
+      message
+      familyId
+      familyLabel
     }
   }
 `;
@@ -46,6 +61,17 @@ export const VIEWER_FAMILY_BILLING = gql`
     viewerFamilyBillingSummary {
       isPayerView
       familyLabel
+      isHouseholdGroupSpace
+      linkedHouseholdFamilies {
+        familyId
+        label
+        members {
+          memberId
+          firstName
+          lastName
+          photoUrl
+        }
+      }
       invoices {
         id
         label

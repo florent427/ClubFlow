@@ -12,6 +12,37 @@ export class ClubModulesService {
     private readonly registry: ModuleRegistryService,
   ) {}
 
+  /** Si MEMBERS est actif, FAMILIES l’est aussi (même périmètre produit). */
+  async ensureFamiliesBundledWithMembers(clubId: string): Promise<void> {
+    const membersRow = await this.prisma.clubModule.findUnique({
+      where: {
+        clubId_moduleCode: { clubId, moduleCode: ModuleCode.MEMBERS },
+      },
+    });
+    if (!membersRow?.enabled) {
+      return;
+    }
+    const now = new Date();
+    await this.prisma.clubModule.upsert({
+      where: {
+        clubId_moduleCode: { clubId, moduleCode: ModuleCode.FAMILIES },
+      },
+      create: {
+        id: randomUUID(),
+        clubId,
+        moduleCode: ModuleCode.FAMILIES,
+        enabled: true,
+        enabledAt: now,
+        disabledAt: null,
+      },
+      update: {
+        enabled: true,
+        enabledAt: now,
+        disabledAt: null,
+      },
+    });
+  }
+
   private async enabledCodes(clubId: string): Promise<Set<ModuleCode>> {
     const rows = await this.prisma.clubModule.findMany({
       where: { clubId, enabled: true },
@@ -28,6 +59,9 @@ export class ClubModulesService {
     if (moduleCode === ModuleCode.MEMBERS && !enabled) {
       throw new BadRequestException('MEMBERS module cannot be disabled');
     }
+    if (moduleCode === ModuleCode.FAMILIES && !enabled) {
+      throw new BadRequestException('FAMILIES module cannot be disabled');
+    }
 
     const before = await this.enabledCodes(clubId);
     if (enabled) {
@@ -37,7 +71,7 @@ export class ClubModulesService {
     }
 
     const now = new Date();
-    return this.prisma.$transaction(async (tx) => {
+    const row = await this.prisma.$transaction(async (tx) => {
       if (enabled) {
         return tx.clubModule.upsert({
           where: { clubId_moduleCode: { clubId, moduleCode } },
@@ -73,5 +107,7 @@ export class ClubModulesService {
         },
       });
     });
+    await this.ensureFamiliesBundledWithMembers(clubId);
+    return row;
   }
 }

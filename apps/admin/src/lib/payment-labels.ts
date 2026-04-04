@@ -14,6 +14,13 @@ export const ALL_CLUB_PAYMENT_METHODS: ClubPaymentMethodStr[] = [
   'MANUAL_TRANSFER',
 ];
 
+/** Encaissement saisi par le trésorier (hors webhook Stripe). */
+export const CLUB_MANUAL_PAYMENT_METHODS: ClubPaymentMethodStr[] = [
+  'MANUAL_CASH',
+  'MANUAL_CHECK',
+  'MANUAL_TRANSFER',
+];
+
 export function clubPaymentMethodLabel(m: ClubPaymentMethodStr): string {
   return LABELS[m] ?? m;
 }

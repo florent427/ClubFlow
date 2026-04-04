@@ -27,6 +27,7 @@ import { DynamicGroupGraph } from './models/dynamic-group.model';
 import { GradeLevelGraph } from './models/grade-level.model';
 import { MemberCatalogFieldSettingGraph } from './models/member-catalog-field-setting.model';
 import { MemberCustomFieldDefinitionGraph } from './models/member-custom-field-definition.model';
+import { ClubMemberEmailDuplicateInfoGraph } from './models/club-member-email-duplicate-info.model';
 import { MemberGraph } from './models/member.model';
 import { MemberFieldConfigService } from './member-field-config.service';
 import { MembersService } from './members.service';
@@ -145,6 +146,18 @@ export class MembersResolver {
   ): Promise<boolean> {
     await this.members.deleteClubRoleDefinition(club.id, id);
     return true;
+  }
+
+  @Query(() => ClubMemberEmailDuplicateInfoGraph, {
+    name: 'clubMemberEmailDuplicateInfo',
+    description:
+      'Pour la création de fiche : indique si l’e-mail est déjà utilisée et quel foyer permet le doublon.',
+  })
+  clubMemberEmailDuplicateInfo(
+    @CurrentClub() club: Club,
+    @Args('email') email: string,
+  ): Promise<ClubMemberEmailDuplicateInfoGraph> {
+    return this.members.getClubMemberEmailDuplicateInfo(club.id, email);
   }
 
   @Query(() => [MemberGraph], { name: 'clubMembers' })

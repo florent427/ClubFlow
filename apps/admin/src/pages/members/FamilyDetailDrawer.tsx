@@ -10,6 +10,7 @@ import {
   REMOVE_CLUB_FAMILY_LINK,
   REMOVE_CLUB_MEMBER_FROM_FAMILY,
   SET_CLUB_FAMILY_PAYER,
+  SET_CLUB_FAMILY_PAYER_CONTACT,
   SET_FAMILY_HOUSEHOLD_GROUP,
   SET_HOUSEHOLD_GROUP_CARRIER,
   TRANSFER_CLUB_MEMBER_TO_FAMILY,
@@ -162,6 +163,16 @@ export function FamilyDetailDrawer({
     onError: (e) => setDrawerError(e.message),
   });
 
+  const [setPayerContactMut] = useMutation(SET_CLUB_FAMILY_PAYER_CONTACT, {
+    onCompleted: () => {
+      setContactPayerPick('');
+      refetchAll();
+    },
+    onError: (e) => setDrawerError(e.message),
+  });
+
+  const [contactPayerPick, setContactPayerPick] = useState('');
+
   const [transferMember] = useMutation(TRANSFER_CLUB_MEMBER_TO_FAMILY, {
     onCompleted: () => {
       refetchAll();
@@ -211,6 +222,22 @@ export function FamilyDetailDrawer({
       return;
     }
     void setPayer({ variables: { memberId } });
+  }
+
+  function onSetPayerContact(contactId: string) {
+    if (!family || !contactId) return;
+    const name =
+      contactNameById.get(contactId) ?? `Contact ${contactId.slice(0, 8)}…`;
+    if (
+      !window.confirm(
+        `Désigner « ${name} » comme payeur du foyer ? L’ancien payeur deviendra simple membre ou sera retiré du rôle payeur.`,
+      )
+    ) {
+      return;
+    }
+    void setPayerContactMut({
+      variables: { familyId: family.id, contactId },
+    });
   }
 
   const addCandidates = useMemo(() => {
@@ -513,6 +540,40 @@ export function FamilyDetailDrawer({
                   );
                 })}
               </ul>
+            </div>
+
+            <div className="family-drawer__section">
+              <h3 className="family-drawer__h">Payeur contact</h3>
+              <p className="muted" style={{ marginTop: 0 }}>
+                Pour un payeur sans fiche adhérent : le serveur refuse si ce
+                contact a déjà une fiche membre active sur le même compte.
+              </p>
+              <div className="family-drawer__add-row" style={{ marginTop: '0.75rem' }}>
+                <label className="field" style={{ flex: 1, marginBottom: 0 }}>
+                  <span className="sr-only">Contact payeur</span>
+                  <select
+                    value={contactPayerPick}
+                    onChange={(e) => setContactPayerPick(e.target.value)}
+                    aria-label="Choisir un contact comme payeur"
+                  >
+                    <option value="">— Choisir un contact —</option>
+                    {(contactsData?.clubContacts ?? []).map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.firstName} {c.lastName}
+                        {c.linkedMemberId ? ' (adhérent lié)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-tight"
+                  disabled={!contactPayerPick}
+                  onClick={() => onSetPayerContact(contactPayerPick)}
+                >
+                  Désigner payeur
+                </button>
+              </div>
             </div>
 
             <div className="family-drawer__section">

@@ -16,9 +16,16 @@ describe('ViewerActiveProfileGuard', () => {
   const clubId = 'club-1';
   const userId = 'user-1';
   const memberId = 'member-1';
+  const contactId = 'contact-1';
 
-  let findFirst: jest.Mock;
-  let families: jest.Mocked<Pick<FamiliesService, 'assertViewerHasProfile'>>;
+  let findFirstMember: jest.Mock;
+  let findFirstContact: jest.Mock;
+  let families: jest.Mocked<
+    Pick<
+      FamiliesService,
+      'assertViewerHasProfile' | 'assertViewerHasContactProfile'
+    >
+  >;
   let guard: ViewerActiveProfileGuard;
   let gqlSpy: jest.SpyInstance;
 
@@ -34,12 +41,15 @@ describe('ViewerActiveProfileGuard', () => {
 
   beforeEach(() => {
     gqlSpy = jest.spyOn(GqlExecutionContext, 'create');
-    findFirst = jest.fn();
+    findFirstMember = jest.fn();
+    findFirstContact = jest.fn();
     const prisma = {
-      member: { findFirst },
+      member: { findFirst: findFirstMember },
+      contact: { findFirst: findFirstContact },
     } as unknown as PrismaService;
     families = {
       assertViewerHasProfile: jest.fn().mockResolvedValue(undefined),
+      assertViewerHasContactProfile: jest.fn().mockResolvedValue(undefined),
     };
     guard = new ViewerActiveProfileGuard(
       prisma,
@@ -82,7 +92,7 @@ describe('ViewerActiveProfileGuard', () => {
   });
 
   it('interdit si membre inconnu ou autre club', async () => {
-    findFirst.mockResolvedValue(null);
+    findFirstMember.mockResolvedValue(null);
     mockReq({
       user: { userId, email: 'a@b.c', activeProfileMemberId: memberId },
       club: { id: clubId } as Request['club'],
@@ -93,7 +103,7 @@ describe('ViewerActiveProfileGuard', () => {
   });
 
   it('interdit si membre inactif', async () => {
-    findFirst.mockResolvedValue({
+    findFirstMember.mockResolvedValue({
       id: memberId,
       clubId,
       status: MemberStatus.INACTIVE,
@@ -108,7 +118,7 @@ describe('ViewerActiveProfileGuard', () => {
   });
 
   it('propage assertViewerHasProfile', async () => {
-    findFirst.mockResolvedValue({
+    findFirstMember.mockResolvedValue({
       id: memberId,
       clubId,
       status: MemberStatus.ACTIVE,
@@ -126,7 +136,7 @@ describe('ViewerActiveProfileGuard', () => {
   });
 
   it('autorise le cas nominal', async () => {
-    findFirst.mockResolvedValue({
+    findFirstMember.mockResolvedValue({
       id: memberId,
       clubId,
       status: MemberStatus.ACTIVE,
@@ -139,6 +149,80 @@ describe('ViewerActiveProfileGuard', () => {
     expect(families.assertViewerHasProfile).toHaveBeenCalledWith(
       userId,
       memberId,
+    );
+    expect(families.assertViewerHasContactProfile).not.toHaveBeenCalled();
+  });
+
+  it('priorise le membre actif si membre et contact sont présents (JWT incohérent)', async () => {
+    findFirstMember.mockResolvedValue({
+      id: memberId,
+      clubId,
+      status: MemberStatus.ACTIVE,
+    } as Member);
+    mockReq({
+      user: {
+        userId,
+        email: 'a@b.c',
+        activeProfileMemberId: memberId,
+        activeProfileContactId: contactId,
+      },
+      club: { id: clubId } as Request['club'],
+    });
+    await expect(guard.canActivate(ctxStub())).resolves.toBe(true);
+    expect(findFirstContact).not.toHaveBeenCalled();
+  });
+
+  it('autorise un profil contact payeur', async () => {
+    findFirstContact.mockResolvedValue({ id: contactId, clubId, userId });
+    mockReq({
+      user: {
+        userId,
+        email: 'a@b.c',
+        activeProfileMemberId: null,
+        activeProfileContactId: contactId,
+      },
+      club: { id: clubId } as Request['club'],
+    });
+    await expect(guard.canActivate(ctxStub())).resolves.toBe(true);
+    expect(families.assertViewerHasContactProfile).toHaveBeenCalledWith(
+      userId,
+      contactId,
+    );
+    expect(families.assertViewerHasProfile).not.toHaveBeenCalled();
+  });
+
+  it('interdit si contact inconnu ou autre utilisateur', async () => {
+    findFirstContact.mockResolvedValue(null);
+    mockReq({
+      user: {
+        userId,
+        email: 'a@b.c',
+        activeProfileMemberId: null,
+        activeProfileContactId: contactId,
+      },
+      club: { id: clubId } as Request['club'],
+    });
+    await expect(guard.canActivate(ctxStub())).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
+  it('propage assertViewerHasContactProfile', async () => {
+    findFirstContact.mockResolvedValue({ id: contactId, clubId, userId });
+    families.assertViewerHasContactProfile.mockRejectedValue(
+      new BadRequestException('Profil non accessible'),
+    );
+    mockReq({
+      user: {
+        userId,
+        email: 'a@b.c',
+        activeProfileMemberId: null,
+        activeProfileContactId: contactId,
+      },
+      club: { id: clubId } as Request['club'],
+    });
+    await expect(guard.canActivate(ctxStub())).rejects.toBeInstanceOf(
+      BadRequestException,
     );
   });
 });

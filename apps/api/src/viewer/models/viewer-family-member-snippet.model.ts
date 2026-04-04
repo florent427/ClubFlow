@@ -5,10 +5,10 @@ export class ViewerFamilyMemberSnippetGraph {
   @Field(() => ID)
   memberId!: string;
 
-  @Field()
+  @Field(() => String)
   firstName!: string;
 
-  @Field()
+  @Field(() => String)
   lastName!: string;
 
   @Field(() => String, { nullable: true })

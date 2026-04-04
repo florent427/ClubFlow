@@ -80,4 +80,14 @@ export class AuthResolver {
   ): Promise<LoginPayload> {
     return this.auth.selectActiveProfile(user.userId, memberId);
   }
+
+  @Mutation(() => LoginPayload)
+  @SkipThrottle()
+  @UseGuards(GqlJwtAuthGuard)
+  selectActiveViewerContactProfile(
+    @CurrentUser() user: RequestUser,
+    @Args('contactId', { type: () => ID }) contactId: string,
+  ): Promise<LoginPayload> {
+    return this.auth.selectActiveContactProfile(user.userId, contactId);
+  }
 }

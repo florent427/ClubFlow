@@ -1236,11 +1236,35 @@ describe('ClubFlow API (e2e)', () => {
       .set('Authorization', `Bearer ${tokenA}`)
       .set('x-club-id', clubId as string)
       .send({
-        query: `{ viewerFamilyBillingSummary { isPayerView invoices { balanceCents } } }`,
+        query: `{
+          viewerFamilyBillingSummary {
+            isPayerView
+            isHouseholdGroupSpace
+            invoices { balanceCents }
+            familyMembers { memberId }
+            linkedHouseholdFamilies { familyId members { memberId } }
+          }
+        }`,
       });
     expect(billA.body.errors).toBeUndefined();
-    expect(billA.body.data.viewerFamilyBillingSummary.isPayerView).toBe(true);
-    expect(billA.body.data.viewerFamilyBillingSummary.invoices).toHaveLength(1);
+    const sumA = billA.body.data.viewerFamilyBillingSummary;
+    expect(sumA.isPayerView).toBe(true);
+    expect(sumA.isHouseholdGroupSpace).toBe(true);
+    expect(sumA.invoices).toHaveLength(1);
+    const memIdsA = sumA.familyMembers.map((m: { memberId: string }) => m.memberId);
+    expect(memIdsA).toContain(memA);
+    expect(memIdsA).toContain(childId);
+    expect(memIdsA).not.toContain(memB);
+    for (const row of sumA.linkedHouseholdFamilies as {
+      familyId: string;
+      members: { memberId: string }[];
+    }[]) {
+      const mids = row.members.map((m) => m.memberId);
+      expect(mids).not.toContain(memB);
+      if (row.familyId === famB.id) {
+        expect(mids).toHaveLength(0);
+      }
+    }
 
     const loginB = await gql(
       `mutation ($input: LoginInput!) {
@@ -1266,11 +1290,33 @@ describe('ClubFlow API (e2e)', () => {
       .set('Authorization', `Bearer ${tokenB}`)
       .set('x-club-id', clubId as string)
       .send({
-        query: `{ viewerFamilyBillingSummary { isPayerView invoices { balanceCents } } }`,
+        query: `{
+          viewerFamilyBillingSummary {
+            isPayerView
+            invoices { balanceCents }
+            familyMembers { memberId }
+            linkedHouseholdFamilies { familyId members { memberId } }
+          }
+        }`,
       });
     expect(billB.body.errors).toBeUndefined();
-    expect(billB.body.data.viewerFamilyBillingSummary.isPayerView).toBe(true);
-    expect(billB.body.data.viewerFamilyBillingSummary.invoices).toHaveLength(1);
+    const sumB = billB.body.data.viewerFamilyBillingSummary;
+    expect(sumB.isPayerView).toBe(true);
+    expect(sumB.invoices).toHaveLength(1);
+    const memIdsB = sumB.familyMembers.map((m: { memberId: string }) => m.memberId);
+    expect(memIdsB).toContain(memB);
+    expect(memIdsB).toContain(childId);
+    expect(memIdsB).not.toContain(memA);
+    for (const row of sumB.linkedHouseholdFamilies as {
+      familyId: string;
+      members: { memberId: string }[];
+    }[]) {
+      const mids = row.members.map((m) => m.memberId);
+      expect(mids).not.toContain(memA);
+      if (row.familyId === famA.id) {
+        expect(mids).toEqual([childId]);
+      }
+    }
 
     await prisma.invoice.deleteMany({
       where: { clubId: clubId as string, label: 'Cotisation groupe e2e' },
@@ -1284,6 +1330,183 @@ describe('ClubFlow API (e2e)', () => {
       where: { id: { in: [memA, memB, childId] } },
     });
     await prisma.user.deleteMany({ where: { id: { in: [uidA, uidB] } } });
+  });
+
+  it('Portail : rattachement e-mail payeur crée un foyer résidence (pas dans le foyer du payeur)', async () => {
+    const pwd = 'E2eAttach!pass9';
+    const hash = await bcrypt.hash(pwd, 8);
+    const uP = randomUUID();
+    const uC = randomUUID();
+    const mP = randomUUID();
+    const mC = randomUUID();
+    const kid = randomUUID();
+    const emP = `e2e-attach-p-${randomUUID().slice(0, 8)}@test.invalid`;
+    const emC = `e2e-attach-c-${randomUUID().slice(0, 8)}@test.invalid`;
+
+    await prisma.user.create({
+      data: {
+        id: uP,
+        email: emP,
+        passwordHash: hash,
+        emailVerifiedAt: new Date(),
+        displayName: 'Payeur attach e2e',
+      },
+    });
+    await prisma.user.create({
+      data: {
+        id: uC,
+        email: emC,
+        passwordHash: hash,
+        emailVerifiedAt: new Date(),
+        displayName: 'Co-parent attach e2e',
+      },
+    });
+    await prisma.member.create({
+      data: {
+        id: mP,
+        clubId: clubId as string,
+        userId: uP,
+        firstName: 'Payeur',
+        lastName: 'AttachE2e',
+        civility: MemberCivility.MR,
+        email: emP,
+        birthDate: new Date('1980-01-01'),
+        status: MemberStatus.ACTIVE,
+        roleAssignments: { create: { role: MemberClubRole.STUDENT } },
+      },
+    });
+    await prisma.member.create({
+      data: {
+        id: mC,
+        clubId: clubId as string,
+        userId: uC,
+        firstName: 'Coparent',
+        lastName: 'AttachE2e',
+        civility: MemberCivility.MR,
+        email: emC,
+        birthDate: new Date('1981-01-01'),
+        status: MemberStatus.ACTIVE,
+        roleAssignments: { create: { role: MemberClubRole.STUDENT } },
+      },
+    });
+    await prisma.member.create({
+      data: {
+        id: kid,
+        clubId: clubId as string,
+        firstName: 'Enfant',
+        lastName: 'AttachE2e',
+        civility: MemberCivility.MME,
+        email: `e2e-attach-kid-${kid}@test.invalid`,
+        birthDate: new Date('2014-05-05'),
+        status: MemberStatus.ACTIVE,
+        roleAssignments: { create: { role: MemberClubRole.STUDENT } },
+      },
+    });
+
+    const f1 = await prisma.family.create({
+      data: {
+        clubId: clubId as string,
+        label: 'Foyer payeur rattachement e2e',
+      },
+    });
+    await prisma.familyMember.createMany({
+      data: [
+        { familyId: f1.id, memberId: mP, linkRole: FamilyMemberLinkRole.PAYER },
+        {
+          familyId: f1.id,
+          memberId: kid,
+          linkRole: FamilyMemberLinkRole.MEMBER,
+        },
+      ],
+    });
+
+    const loginBefore = await gql(
+      `mutation ($input: LoginInput!) {
+        login(input: $input) {
+          accessToken
+          viewerProfiles { memberId }
+        }
+      }`,
+      { input: { email: emC, password: pwd } },
+    );
+    expect(loginBefore.body.errors).toBeUndefined();
+    const profBefore = loginBefore.body.data.login.viewerProfiles as {
+      memberId: string;
+    }[];
+    expect(profBefore.map((p) => p.memberId)).toEqual([mC]);
+
+    const tokC = loginBefore.body.data.login.accessToken as string;
+    const attach = await request(app.getHttpServer())
+      .post('/graphql')
+      .set('Authorization', `Bearer ${tokC}`)
+      .set('x-club-id', clubId as string)
+      .send({
+        query: `mutation {
+          viewerJoinFamilyByPayerEmail(input: { payerEmail: "${emP}" }) {
+            success
+            familyId
+          }
+        }`,
+      });
+    expect(attach.status).toBe(200);
+    expect(attach.body.errors).toBeUndefined();
+    expect(attach.body.data.viewerJoinFamilyByPayerEmail.success).toBe(true);
+    const newFamId = attach.body.data.viewerJoinFamilyByPayerEmail
+      .familyId as string;
+    expect(newFamId).not.toBe(f1.id);
+
+    const linksOnPayerFamily = await prisma.familyMember.findMany({
+      where: { familyId: f1.id },
+      select: { memberId: true },
+    });
+    expect(linksOnPayerFamily.map((l) => l.memberId).sort()).toEqual(
+      [mP, kid].sort(),
+    );
+
+    const coLink = await prisma.familyMember.findMany({
+      where: { memberId: mC },
+    });
+    expect(coLink).toHaveLength(1);
+    expect(coLink[0].familyId).toBe(newFamId);
+
+    const fCo = await prisma.family.findUniqueOrThrow({
+      where: { id: newFamId },
+    });
+    const fPay = await prisma.family.findUniqueOrThrow({ where: { id: f1.id } });
+    expect(fCo.householdGroupId).not.toBeNull();
+    expect(fPay.householdGroupId).toBe(fCo.householdGroupId);
+
+    const loginAfter = await gql(
+      `mutation ($input: LoginInput!) {
+        login(input: $input) {
+          viewerProfiles { memberId }
+        }
+      }`,
+      { input: { email: emC, password: pwd } },
+    );
+    expect(loginAfter.body.errors).toBeUndefined();
+    const profAfter = loginAfter.body.data.login.viewerProfiles as {
+      memberId: string;
+    }[];
+    const idsAfter = profAfter.map((p) => p.memberId);
+    expect(idsAfter).toContain(mC);
+    expect(idsAfter).toContain(kid);
+    expect(idsAfter).not.toContain(mP);
+
+    const hgId = fCo.householdGroupId as string;
+    await prisma.familyMember.deleteMany({
+      where: {
+        OR: [{ familyId: f1.id }, { familyId: newFamId }],
+      },
+    });
+    await prisma.family.deleteMany({
+      where: { id: { in: [f1.id, newFamId] } },
+    });
+    await prisma.householdGroup.delete({ where: { id: hgId } });
+    await prisma.member.deleteMany({
+      where: { id: { in: [mP, mC, kid] } },
+    });
+    await prisma.user.deleteMany({ where: { id: { in: [uP, uC] } } });
   });
 
   it('activation BLOG sans WEBSITE retourne une erreur métier', async () => {

@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+
+<html class="light" lang="fr"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .tonal-transition { transition: background-color 0.3s ease; }
+        .glass-effect { backdrop-filter: blur(20px); }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              colors: {
+                "on-secondary-container": "#fefcff",
+                "on-error-container": "#93000a",
+                "background": "#f8f9fa",
+                "tertiary": "#331000",
+                "on-tertiary-fixed": "#341100",
+                "on-surface": "#191c1d",
+                "secondary-fixed-dim": "#b0c6ff",
+                "on-primary": "#ffffff",
+                "error-container": "#ffdad6",
+                "on-primary-container": "#8690ee",
+                "on-secondary": "#ffffff",
+                "primary-fixed-dim": "#bdc2ff",
+                "secondary-container": "#0f6df3",
+                "outline-variant": "#c6c5d4",
+                "on-secondary-fixed-variant": "#00429b",
+                "outline": "#767683",
+                "on-tertiary-fixed-variant": "#7a3000",
+                "surface-dim": "#d9dadb",
+                "inverse-primary": "#bdc2ff",
+                "surface": "#f8f9fa",
+                "error": "#ba1a1a",
+                "on-background": "#191c1d",
+                "surface-bright": "#f8f9fa",
+                "on-primary-fixed": "#000767",
+                "on-tertiary": "#ffffff",
+                "on-secondary-fixed": "#001945",
+                "on-tertiary-container": "#fb6b00",
+                "tertiary-fixed": "#ffdbcb",
+                "on-error": "#ffffff",
+                "surface-container-highest": "#e1e3e4",
+                "secondary-fixed": "#d9e2ff",
+                "secondary": "#0056c5",
+                "primary-fixed": "#e0e0ff",
+                "tertiary-container": "#551f00",
+                "inverse-on-surface": "#f0f1f2",
+                "surface-variant": "#e1e3e4",
+                "surface-tint": "#4c56af",
+                "inverse-surface": "#2e3132",
+                "surface-container": "#edeeef",
+                "primary": "#000666",
+                "surface-container-high": "#e7e8e9",
+                "surface-container-lowest": "#ffffff",
+                "surface-container-low": "#f3f4f5",
+                "on-surface-variant": "#454652",
+                "on-primary-fixed-variant": "#343d96",
+                "tertiary-fixed-dim": "#ffb692",
+                "primary-container": "#1a237e"
+              },
+              fontFamily: {
+                "headline": ["Inter"],
+                "body": ["Inter"],
+                "label": ["Inter"]
+              },
+              borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+            },
+          },
+        }
+    </script>
+</head>
+<body class="bg-surface text-on-surface antialiased min-h-screen">
+<!-- Sidebar Navigation (Desktop) -->
+<aside class="hidden md:flex h-screen w-72 fixed left-0 top-0 bg-slate-50 dark:bg-slate-950 flex-col p-6 gap-4 z-40">
+<div class="mb-8 px-2">
+<span class="text-2xl font-black tracking-tighter text-indigo-950 dark:text-white">ClubFlow</span>
+</div>
+<div class="flex items-center gap-4 p-4 mb-6 bg-slate-100 dark:bg-slate-900 rounded-2xl">
+<div class="w-12 h-12 rounded-full overflow-hidden bg-primary-container">
+<img alt="Photo de profil membre" class="w-full h-full object-cover" data-alt="professional portrait of a confident man with short hair and friendly expression, warm studio lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDTmyCV13oyU8A43FOodiEWHROhCZtOn9jZnia03Wk63PE3RdMMMq5VYArETfk6zy50UxO-GNMM6gX4jMIiT5CHkNBCY_BEuN_8pQuSwRe1Kcc7kXxjOOjtNyd1K8bcjpWxmbeGDAeU7np6zS6eVGwc6psaykRvw0E1b7QkwSAcDJj0biQh2gc7a-z3aQI0f6wbkEQJ1XjgYu96E2o3gOmQC1OlbfHA3haZQ3Q8PdQn1Q0aV7o4_rOnoTkTZz3WMcEY3ENJ8pSm5a1o"/>
+</div>
+<div>
+<p class="text-sm font-bold text-indigo-900 dark:text-indigo-100">Marc Durand</p>
+<p class="text-xs text-slate-500">Adhérent Premium</p>
+</div>
+</div>
+<nav class="flex flex-col gap-2 flex-grow">
+<!-- Active State Mapping: Tableau de bord -->
+<a class="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-400 shadow-sm rounded-xl font-semibold transition-transform duration-200 hover:translate-x-1" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="text-sm">Tableau de bord</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-transform duration-200 hover:translate-x-1" href="#">
+<span class="material-symbols-outlined" data-icon="school">school</span>
+<span class="text-sm">Ma Progression</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-transform duration-200 hover:translate-x-1" href="#">
+<span class="material-symbols-outlined" data-icon="calendar_today">calendar_today</span>
+<span class="text-sm">Planning</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-transform duration-200 hover:translate-x-1" href="#">
+<span class="material-symbols-outlined" data-icon="group">group</span>
+<span class="text-sm">Ma Famille</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-transform duration-200 hover:translate-x-1" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="text-sm">Paramètres</span>
+</a>
+</nav>
+<button class="mt-auto w-full py-4 px-6 bg-gradient-to-br from-primary to-primary-container text-on-primary rounded-xl font-bold shadow-lg hover:scale-98 transition-transform active:scale-95">
+            Réserver un cours
+        </button>
+</aside>
+<!-- Main Content Area -->
+<main class="md:ml-72 min-h-screen pb-20">
+<!-- Top App Bar -->
+<header class="fixed top-0 right-0 left-0 md:left-72 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md h-20 px-8 flex justify-between items-center shadow-sm dark:shadow-none">
+<div class="flex items-center gap-4">
+<nav class="hidden sm:flex items-center text-xs font-medium text-slate-400 uppercase tracking-widest">
+<span>Espace Membre</span>
+<span class="material-symbols-outlined text-[14px] mx-2" data-icon="chevron_right">chevron_right</span>
+<span class="text-indigo-600">Tableau de bord</span>
+</nav>
+</div>
+<div class="flex items-center gap-6">
+<!-- Profile Switcher -->
+<div class="hidden lg:flex items-center bg-surface-container-low px-3 py-1.5 rounded-full gap-2 border border-outline-variant/10">
+<button class="w-8 h-8 rounded-full border-2 border-primary overflow-hidden ring-2 ring-white">
+<img alt="Marc" class="w-full h-full object-cover" data-alt="close up profile of a man" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBl4OKVtgujJcTRFQfFKIIZOEfD85UQnLovZ4Bf0rM76GFQxNr4hDiOQxO8Q11rWDZo01y9Uq5QYwEVHiI07O8aqT6HhNsWK4WZzJhaXmIWWYzkVTsRougyYTVHzLHW0cxSZtIKfzcEGWafmhzDelGbUN1JCcuD4YlzAPZpY3WUeduY84u7xIiEhooyboTSG2wyDy471UDZ2Gs4c9aZ0NXBnmIL6prQbqcm_bprbSgg-CWVEOtoiLA6Q9w2XwFxuPFZOKFAzvJEjv_-"/>
+</button>
+<button class="w-8 h-8 rounded-full overflow-hidden opacity-40 hover:opacity-100 transition-opacity">
+<img alt="Léa" class="w-full h-full object-cover" data-alt="profile portrait of a smiling woman" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDRkjRj9R2n7La3x_Q0jvm9HM4qWyziMJ7ZLmwuo8ssujeKasQHNgjuLbMXCB-lkarsGq1b4CikQ1ktenTEqrlqyWCbo6BWvad8Vm04cTLjnwypBBDa0tywbGQuL4gn-9UJu_qtpXel8sozKLEWDclVrHdhoBrawe3BTMiSMRPfgfYa9tVinbztgCVZOSBdVBfc5OfW-Li1fIH2V2AZ9gTjk0Duqs7Fx2gzE5lQjychocPr2aLOCjc2Rs6IcX4gr-b1oqDaSMsZNk5I"/>
+</button>
+<button class="w-8 h-8 rounded-full overflow-hidden opacity-40 hover:opacity-100 transition-opacity">
+<img alt="Sophie" class="w-full h-full object-cover" data-alt="profile portrait of a teenage girl" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC6HZZ4KzvHOLzizR5_50urpgQtdcjYlWYmZ4DSSdDLjgUCGHNZNNUlfKLVpt_nwHn0YfevOB0_92y69UZjECH8C3yH0HsUbfZ4XoJU58vRdP1x_JUEb4XLClrafGMQYlIEVlmDQBry91nv5KY2mwq830nYNFriQ3XNBK-ZXeEH7EERNTTahASUpkW0fJMu4lY-Q7ovcAhJk4RUwziMC-rQQ2AdlmPh64sSmiy2C0Mi9CHbXIC0YhhztanCxWf6xVWbPXqEn3vaMnDc"/>
+</button>
+</div>
+<div class="flex items-center gap-2">
+<button class="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all">
+<span class="material-symbols-outlined" data-icon="search">search</span>
+</button>
+<div class="relative">
+<button class="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full ring-2 ring-white"></span>
+</button>
+</div>
+</div>
+</div>
+</header>
+<!-- Canvas Body -->
+<div class="pt-28 px-8 max-w-7xl mx-auto space-y-10">
+<!-- Hero Section -->
+<section class="relative overflow-hidden bg-primary-container rounded-3xl p-8 md:p-12 text-white">
+<div class="absolute top-0 right-0 w-1/2 h-full opacity-10">
+<svg class="w-full h-full object-cover" viewbox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+<path d="M44.7,-76.4C58.8,-69.2,71.8,-59.1,79.6,-45.8C87.4,-32.5,90,-16.3,88.5,-0.9C87,14.5,81.4,29.1,72.6,41.9C63.8,54.7,51.8,65.8,38.1,72.4C24.4,79,9,81.1,-5.5,81.1C-20,81.1,-33.5,79,-45.5,72.4C-57.5,65.8,-68,54.7,-75.4,41.9C-82.8,29.1,-87.1,14.5,-86.3,0.5C-85.5,-13.5,-79.6,-26.9,-71.4,-38.8C-63.2,-50.7,-52.7,-61.1,-40.4,-69.2C-28.1,-77.3,-14.1,-83.1,0.5,-83.9C15.1,-84.7,30.3,-80.6,44.7,-76.4Z" fill="#FFFFFF" transform="translate(100 100)"></path>
+</svg>
+</div>
+<div class="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
+<div class="space-y-4">
+<h1 class="text-4xl md:text-5xl font-black tracking-tight leading-tight">
+                            Content de te revoir,<br/>Marc !
+                        </h1>
+<div class="flex items-center gap-4">
+<span class="bg-white/20 backdrop-blur-md px-4 py-1.5 rounded-full text-sm font-semibold flex items-center gap-2">
+<span class="w-3 h-3 rounded-full bg-[#5d4037] shadow-sm"></span>
+                                Ceinture Marron
+                            </span>
+<span class="bg-emerald-500/20 backdrop-blur-md text-emerald-300 px-4 py-1.5 rounded-full text-sm font-semibold flex items-center gap-2">
+<span class="material-symbols-outlined text-sm" data-icon="check_circle" data-weight="fill" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+                                Certificat Médical Valide
+                            </span>
+</div>
+</div>
+<div class="w-full md:w-80 bg-white/10 backdrop-blur-xl p-6 rounded-2xl space-y-4 border border-white/10">
+<div class="flex justify-between items-end">
+<span class="text-xs font-bold uppercase tracking-wider text-white/70">Objectif Ceinture Noire</span>
+<span class="text-2xl font-black">78%</span>
+</div>
+<div class="h-3 w-full bg-white/10 rounded-full overflow-hidden">
+<div class="h-full bg-gradient-to-r from-secondary-container to-secondary rounded-full w-[78%]"></div>
+</div>
+<p class="text-xs text-white/60 italic">Plus que 12 sessions et 1 passage de grade !</p>
+</div>
+</div>
+</section>
+<!-- Main Dashboard Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8 pb-20">
+<!-- Left Column (Videos & Progress) -->
+<div class="lg:col-span-2 space-y-10">
+<!-- Mon Programme -->
+<section>
+<div class="flex justify-between items-center mb-6">
+<h2 class="text-2xl font-bold text-primary flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary" data-icon="play_circle">play_circle</span>
+                                Mon Programme
+                            </h2>
+<button class="text-sm font-bold text-secondary hover:underline transition-all">Voir tout</button>
+</div>
+<div class="flex gap-6 overflow-x-auto no-scrollbar pb-4 -mx-4 px-4">
+<!-- Video Card 1 -->
+<div class="min-w-[280px] md:min-w-[340px] group">
+<div class="relative aspect-video rounded-2xl overflow-hidden mb-3 shadow-sm surface-container-low">
+<img alt="Katas Supérieurs" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" data-alt="martial artist performing a precise high kick in a sunlit wooden dojo" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDtDR3oQIs2nWw0fTupk8QuUHg9nufBXlWf-23UQSc08nynAgnRiMm7LuQUcp5-Vdwp5Vw8DAz-pc_I_boF-8B2l5KHkWfXChqWGm7NpydkxA2LZagTVkGXuxUGW4q3sWc6_wDcy1CpO7u9JvMCdgUufSHhbkCRP3OMeVVey4JVL7tAnh7RZNE2KmfCwCa8f8hw1rjNtpIem9nQ8kKMmXIw6TxZTO0FTnq20hwIFEEAp45gWNsl7-xWA7kYn5pfx5TX4fOjRZcT_va4"/>
+<div class="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors"></div>
+<div class="absolute bottom-3 left-3 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-bold text-primary">12:45</div>
+</div>
+<h3 class="font-bold text-on-surface">Katas Supérieurs : Empi &amp; Jion</h3>
+<p class="text-sm text-on-surface-variant">Perfectionnement technique • Ceinture Marron</p>
+</div>
+<!-- Video Card 2 -->
+<div class="min-w-[280px] md:min-w-[340px] group">
+<div class="relative aspect-video rounded-2xl overflow-hidden mb-3 shadow-sm surface-container-low">
+<img alt="Préparation physique" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" data-alt="athlete working out with battle ropes in a high contrast gym environment" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBF-jA3dI15QF5jV52ojrouSa14eqFrN-PyFL-8mbQTrbXsSwCcvNaKYMgOIMga3ywIm7gPCtSSMjeWQk-lfbf8OZyYPClZGNfbfibGp8Ne3v09diSZFsPGhxrD3Td1lWIPb8EhVRRFvB05d972C0MRP0KRNhqqOep4YzM-94tt8ncTzGq-AnWPfVHlfmzO9AIVYXWJsjwfM3ix8oLzNeGED4moIRWpRC3Oj-Gd0mavjZwMemlmwNdu5VZawkHTQJbzAQkaJRN0-OpJ"/>
+<div class="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors"></div>
+<div class="absolute bottom-3 left-3 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-bold text-primary">24:00</div>
+</div>
+<h3 class="font-bold text-on-surface">Préparation physique spécifique</h3>
+<p class="text-sm text-on-surface-variant">Explosivité et Cardio • Niveau Avancé</p>
+</div>
+</div>
+</section>
+<!-- Ma Progression -->
+<section>
+<h2 class="text-2xl font-bold text-primary flex items-center gap-2 mb-6">
+<span class="material-symbols-outlined text-secondary" data-icon="trending_up">trending_up</span>
+                            Ma Progression
+                        </h2>
+<div class="bg-white rounded-3xl p-8 shadow-sm border border-outline-variant/10">
+<div class="space-y-8 relative before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-100">
+<div class="relative pl-10">
+<div class="absolute left-0 top-1 w-6 h-6 rounded-full border-4 border-white bg-indigo-200 z-10"></div>
+<div class="flex justify-between items-start">
+<div>
+<p class="font-bold text-primary">Prochain : Ceinture Noire (1er Dan)</p>
+<p class="text-sm text-on-surface-variant">Examen prévu en Juin 2024</p>
+</div>
+<span class="text-xs font-bold px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full">EN ATTENTE</span>
+</div>
+</div>
+<div class="relative pl-10">
+<div class="absolute left-0 top-1 w-6 h-6 rounded-full border-4 border-white bg-indigo-600 z-10"></div>
+<div class="flex justify-between items-start">
+<div>
+<p class="font-bold text-primary">Ceinture Marron</p>
+<p class="text-sm text-on-surface-variant">Obtenue le 14 Décembre 2023</p>
+</div>
+<span class="text-xs font-bold px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full">OBTENU</span>
+</div>
+</div>
+<div class="relative pl-10 opacity-60">
+<div class="absolute left-0 top-1 w-6 h-6 rounded-full border-4 border-white bg-slate-300 z-10"></div>
+<div class="flex justify-between items-start">
+<div>
+<p class="font-bold text-primary">Ceinture Bleue</p>
+<p class="text-sm text-on-surface-variant">Obtenue le 20 Juin 2022</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Right Column (Schedule & Family) -->
+<div class="space-y-10">
+<!-- Mon Planning -->
+<section>
+<h2 class="text-xl font-bold text-primary mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary" data-icon="event">event</span>
+                            Mon Planning
+                        </h2>
+<div class="space-y-4">
+<!-- Class 1 -->
+<div class="bg-white p-5 rounded-2xl shadow-sm hover:translate-x-1 transition-transform border border-outline-variant/5">
+<div class="flex gap-4">
+<div class="flex flex-col items-center justify-center min-w-[50px] h-14 bg-indigo-50 text-indigo-700 rounded-xl">
+<span class="text-xs font-bold uppercase">Mar</span>
+<span class="text-lg font-black leading-none">12</span>
+</div>
+<div>
+<p class="font-bold text-primary">Karaté Combat (Élite)</p>
+<p class="text-xs text-on-surface-variant">19:30 - 21:00 • Dojo Central</p>
+</div>
+</div>
+</div>
+<!-- Class 2 -->
+<div class="bg-white p-5 rounded-2xl shadow-sm hover:translate-x-1 transition-transform border border-outline-variant/5">
+<div class="flex gap-4">
+<div class="flex flex-col items-center justify-center min-w-[50px] h-14 bg-slate-100 text-slate-700 rounded-xl">
+<span class="text-xs font-bold uppercase">Ven</span>
+<span class="text-lg font-black leading-none">15</span>
+</div>
+<div>
+<p class="font-bold text-primary">Katas &amp; Armes</p>
+<p class="text-xs text-on-surface-variant">18:00 - 19:30 • Salle B</p>
+</div>
+</div>
+</div>
+<!-- Class 3 -->
+<div class="bg-white p-5 rounded-2xl shadow-sm hover:translate-x-1 transition-transform border border-outline-variant/5">
+<div class="flex gap-4">
+<div class="flex flex-col items-center justify-center min-w-[50px] h-14 bg-slate-100 text-slate-700 rounded-xl">
+<span class="text-xs font-bold uppercase">Sam</span>
+<span class="text-lg font-black leading-none">16</span>
+</div>
+<div>
+<p class="font-bold text-primary">Stage Prépa-Dan</p>
+<p class="text-xs text-on-surface-variant">09:00 - 12:00 • Dojo Central</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Famille & Paiements -->
+<section>
+<h2 class="text-xl font-bold text-primary mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary" data-icon="account_balance_wallet">account_balance_wallet</span>
+                            Famille &amp; Paiements
+                        </h2>
+<div class="bg-surface-container-low rounded-3xl p-6 space-y-6">
+<!-- Payments -->
+<div class="space-y-3">
+<p class="text-xs font-bold uppercase tracking-wider text-on-surface-variant">Dernière transaction</p>
+<div class="flex justify-between items-center">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-emerald-600 bg-emerald-50 p-2 rounded-lg" data-icon="receipt_long">receipt_long</span>
+<div>
+<p class="text-sm font-bold">Cotisation Mensuelle</p>
+<p class="text-[10px] text-on-surface-variant">Payé le 01 Mars 2024</p>
+</div>
+</div>
+<span class="text-sm font-black">45,00€</span>
+</div>
+</div>
+<!-- Family -->
+<div class="space-y-3 pt-4 border-t border-outline-variant/10">
+<p class="text-xs font-bold uppercase tracking-wider text-on-surface-variant">Membres rattachés</p>
+<div class="flex -space-x-3">
+<div class="w-10 h-10 rounded-full border-4 border-surface-container-low overflow-hidden bg-slate-200">
+<img alt="Léa" class="w-full h-full object-cover" data-alt="smiling woman" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBVzb_fkoiVWcjDzbp10kPgik4FumC4YLRmqPJ3y12STY13qB5oGoRhdzah-g_DkUx7NT1EJG9jPgEkxj20ghsCXAdLVse1_n8VW52KhQNKm2teGZG2mie5mqODIr0yIbxgpHABspOj9bC4K0laiKLfl3Y1r8kmmcPHu1PyDVCkfcJYBWTsrudjvJDuxJFs0hE3U_5uOa2ZA9hPINKD5hN57Z40UZcGfTk94VtGisCLBvEkyfjGLHYl9gFx_viLGntnkF76ZzA5R9l8"/>
+</div>
+<div class="w-10 h-10 rounded-full border-4 border-surface-container-low overflow-hidden bg-slate-200">
+<img alt="Sophie" class="w-full h-full object-cover" data-alt="teen girl" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCmJA6b6x2MKNjc1nACJQfqCnesIJNzG8ft5PNaUT3VqTro_qpDMOAPuamjO65BWAy1w471gPjOtar8-Zb3_FITZQUQpzXkCi_lIdAnTI2JL2ejZ4SLLrpfjXXCzSqDCoMN9vhCQ1m72JaiijXbXLb6Nu0l5rsBHmNMcgM7P9ibcZPE-i0WfWkk3FtKHdtHgYfAE1qyiKSsHbNwHkQkxod8ItKNuFCSDBjWzhKyxH8hO__L0gMxZwWxlbEKJ9o2scFn5yRB4V6FnFMo"/>
+</div>
+<div class="w-10 h-10 rounded-full border-4 border-surface-container-low flex items-center justify-center bg-indigo-100 text-indigo-700 text-[10px] font-bold">+1</div>
+</div>
+<button class="w-full py-2.5 text-xs font-bold text-indigo-700 bg-white rounded-xl shadow-sm border border-indigo-50 hover:bg-indigo-50 transition-colors">Gérer l'abonnement familial</button>
+</div>
+</div>
+</section>
+</div>
+</div>
+</div>
+</main>
+<!-- Bottom Nav Bar (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-md flex justify-around items-center h-20 px-4 z-40">
+<button class="flex flex-col items-center gap-1 text-indigo-700">
+<span class="material-symbols-outlined" data-icon="dashboard" data-weight="fill" style="font-variation-settings: 'FILL' 1;">dashboard</span>
+<span class="text-[10px] font-bold">Dashboard</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-slate-400">
+<span class="material-symbols-outlined" data-icon="school">school</span>
+<span class="text-[10px] font-medium">Progrès</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-slate-400">
+<span class="material-symbols-outlined" data-icon="calendar_today">calendar_today</span>
+<span class="text-[10px] font-medium">Planning</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-slate-400">
+<span class="material-symbols-outlined" data-icon="group">group</span>
+<span class="text-[10px] font-medium">Famille</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-slate-400">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="text-[10px] font-medium">Profil</span>
+</button>
+</nav>
+</body></html>

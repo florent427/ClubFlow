@@ -111,9 +111,6 @@ export class MemberGraph {
   })
   customFieldValues!: MemberCustomFieldValueGraph[];
 
-  @Field(() => [AssignedDynamicGroupGraph], {
-    description:
-      'Groupes dynamiques affectés explicitement (persistés), pour tarif / admin.',
-  })
+  /** Renseigné côté service ; exposé au schéma via `MemberGraphResolver`. */
   assignedDynamicGroups!: AssignedDynamicGroupGraph[];
 }

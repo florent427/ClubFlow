@@ -62,11 +62,12 @@ export class AuthService {
   ): Promise<LoginPayload> {
     const primary =
       viewerProfiles.find((p) => p.isPrimaryProfile) ?? viewerProfiles[0];
-    const jwtPayload: JwtPayload = {
-      sub: userId,
-      email,
-      ...(primary ? { activeProfileMemberId: primary.memberId } : {}),
-    };
+    const jwtPayload: JwtPayload = { sub: userId, email };
+    if (primary?.memberId) {
+      jwtPayload.activeProfileMemberId = primary.memberId;
+    } else if (primary?.contactId) {
+      jwtPayload.activeProfileContactId = primary.contactId;
+    }
     const accessToken = this.signAccessToken(jwtPayload);
     const clubEnv = process.env.CLUB_ID?.trim();
     let contactClubId: string | null = null;
@@ -335,6 +336,31 @@ export class AuthService {
       sub: userId,
       email: user.email,
       activeProfileMemberId: memberId,
+    });
+    const clubEnv = process.env.CLUB_ID?.trim();
+    let contactClubId: string | null = null;
+    if (viewerProfiles.length === 0 && clubEnv) {
+      const c = await this.prisma.contact.findUnique({
+        where: { userId_clubId: { userId, clubId: clubEnv } },
+      });
+      contactClubId = c?.clubId ?? null;
+    }
+    return { accessToken, viewerProfiles, contactClubId };
+  }
+
+  async selectActiveContactProfile(
+    userId: string,
+    contactId: string,
+  ): Promise<LoginPayload> {
+    await this.families.assertViewerHasContactProfile(userId, contactId);
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+    });
+    const viewerProfiles = await this.families.listViewerProfiles(userId);
+    const accessToken = this.signAccessToken({
+      sub: userId,
+      email: user.email,
+      activeProfileContactId: contactId,
     });
     const clubEnv = process.env.CLUB_ID?.trim();
     let contactClubId: string | null = null;

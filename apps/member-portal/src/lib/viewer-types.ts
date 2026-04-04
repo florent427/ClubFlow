@@ -17,6 +17,19 @@ export type ViewerMeData = {
     gradeLevelLabel: string | null;
     canAccessClubBackOffice: boolean;
     adminWorkspaceClubId: string | null;
+    hasClubFamily: boolean;
+    canSelfAttachFamilyViaPayerEmail: boolean;
+    isContactProfile: boolean;
+    hideMemberModules: boolean;
+  };
+};
+
+export type ViewerJoinFamilyByPayerEmailData = {
+  viewerJoinFamilyByPayerEmail: {
+    success: boolean;
+    message: string | null;
+    familyId: string | null;
+    familyLabel: string | null;
   };
 };
 
@@ -38,6 +51,17 @@ export type ViewerBillingData = {
   viewerFamilyBillingSummary: {
     isPayerView: boolean;
     familyLabel: string | null;
+    isHouseholdGroupSpace: boolean;
+    linkedHouseholdFamilies: Array<{
+      familyId: string;
+      label: string | null;
+      members: Array<{
+        memberId: string;
+        firstName: string;
+        lastName: string;
+        photoUrl: string | null;
+      }>;
+    }>;
     invoices: Array<{
       id: string;
       label: string;

@@ -3,8 +3,17 @@ import { Field, ID, ObjectType } from '@nestjs/graphql';
 /** Profil affichable pour l’utilisateur connecté (type Netflix / Phase C). */
 @ObjectType()
 export class ViewerProfileGraph {
-  @Field(() => ID)
-  memberId!: string;
+  @Field(() => ID, {
+    nullable: true,
+    description: 'Présent pour une fiche adhérent liée au compte.',
+  })
+  memberId!: string | null;
+
+  @Field(() => ID, {
+    nullable: true,
+    description: 'Présent pour un payeur contact sans fiche adhérent.',
+  })
+  contactId!: string | null;
 
   @Field(() => ID)
   clubId!: string;
@@ -21,7 +30,7 @@ export class ViewerProfileGraph {
 
   @Field(() => ID, {
     nullable: true,
-    description: 'Présent lorsque le membre appartient à un foyer enregistré',
+    description: 'Présent lorsque le profil appartient à un foyer enregistré',
   })
   familyId!: string | null;
 

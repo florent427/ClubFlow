@@ -6,6 +6,7 @@ export type JwtPayload = {
   sub: string;
   email: string;
   activeProfileMemberId?: string;
+  activeProfileContactId?: string;
 };
 
 @Injectable()
@@ -22,11 +23,13 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     userId: string;
     email: string;
     activeProfileMemberId: string | null;
+    activeProfileContactId: string | null;
   } {
     return {
       userId: payload.sub,
       email: payload.email,
       activeProfileMemberId: payload.activeProfileMemberId ?? null,
+      activeProfileContactId: payload.activeProfileContactId ?? null,
     };
   }
 }

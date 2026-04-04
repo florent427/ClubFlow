@@ -929,6 +929,21 @@ export const SET_CLUB_FAMILY_PAYER = gql`
   }
 `;
 
+export const SET_CLUB_FAMILY_PAYER_CONTACT = gql`
+  mutation SetClubFamilyPayerContact($familyId: ID!, $contactId: ID!) {
+    setClubFamilyPayerContact(familyId: $familyId, contactId: $contactId) {
+      id
+      needsPayer
+      links {
+        id
+        memberId
+        contactId
+        linkRole
+      }
+    }
+  }
+`;
+
 export const REMOVE_CLUB_FAMILY_LINK = gql`
   mutation RemoveClubFamilyLink($linkId: ID!) {
     removeClubFamilyLink(linkId: $linkId) {

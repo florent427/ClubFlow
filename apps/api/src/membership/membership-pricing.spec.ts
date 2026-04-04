@@ -1,5 +1,6 @@
 import {
   computeMembershipAdjustments,
+  computeOneTimeFeeAdjustments,
   computeProrataFactorBp,
   inclusiveCalendarDays,
   type MembershipPricingInput,
@@ -96,6 +97,52 @@ describe('membership-pricing', () => {
       const ex = adjustments.find((a) => a.type === 'EXCEPTIONAL');
       expect(ex?.amountCents).toBe(-5_00);
       expect(subtotalAfterBusinessCents).toBe(95_00);
+    });
+
+    it('sans prorata (ex. cotisation mensuelle) : aucun ajustement PRORATA_SEASON', () => {
+      const { adjustments } = computeMembershipAdjustments({
+        ...base,
+        allowProrata: false,
+        allowFamily: true,
+        familyRule: {
+          fromNth: 2,
+          adjustmentType: 'PERCENT_BP',
+          adjustmentValue: -1_000,
+        },
+        priorFamilyMembershipCount: 1,
+        prorataFactorBp: 5_000,
+      });
+      expect(adjustments.some((a) => a.type === 'PRORATA_SEASON')).toBe(
+        false,
+      );
+      expect(adjustments.some((a) => a.type === 'FAMILY')).toBe(true);
+    });
+  });
+
+  describe('computeOneTimeFeeAdjustments', () => {
+    it('100 € + remise exceptionnelle −10 € → 90 €', () => {
+      const { adjustments, subtotalAfterBusinessCents } =
+        computeOneTimeFeeAdjustments({
+          baseAmountCents: 100_00,
+          allowExceptional: true,
+          exceptionalCapPercentBp: null,
+          exceptional: { amountCents: -10_00, reason: 'Geste' },
+        });
+      expect(adjustments).toHaveLength(1);
+      expect(adjustments[0].type).toBe('EXCEPTIONAL');
+      expect(subtotalAfterBusinessCents).toBe(90_00);
+    });
+
+    it('sans remise : sous-total = base', () => {
+      const { adjustments, subtotalAfterBusinessCents } =
+        computeOneTimeFeeAdjustments({
+          baseAmountCents: 50_00,
+          allowExceptional: true,
+          exceptionalCapPercentBp: null,
+          exceptional: undefined,
+        });
+      expect(adjustments).toHaveLength(0);
+      expect(subtotalAfterBusinessCents).toBe(50_00);
     });
   });
 });

@@ -601,6 +601,11 @@ body {
   line-height: 1.55;
 }
 
+.mp-lead--tight {
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+}
+
 .mp-eyebrow {
   font-size: 0.72rem;
   font-weight: 700;
@@ -665,6 +670,17 @@ body {
   color: #6f7078;
 }
 
+a.mp-pill-link {
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+a.mp-pill-link:hover {
+  border-color: rgba(0, 86, 197, 0.35);
+  background: rgba(0, 86, 197, 0.06);
+}
+
 .mp-pill-ok {
   border-color: rgba(0, 120, 80, 0.35);
   background: rgba(0, 120, 80, 0.06);
@@ -686,6 +702,11 @@ body {
   display: grid;
   gap: 1rem;
   margin-top: 1.5rem;
+}
+
+/* Contact payeur : une seule carte (facturation / famille) */
+.mp-dashboard-grid--billing-only {
+  max-width: 42rem;
 }
 
 @media (min-width: 768px) {
@@ -760,6 +781,27 @@ body {
   background: #f3f4f5;
   color: #6f7078;
   border: 1px dashed rgba(25, 28, 29, 0.12);
+}
+
+.mp-btn-primary {
+  background: linear-gradient(
+    135deg,
+    #0056c5 0%,
+    #003d8a 100%
+  );
+  color: #fff;
+  border: none;
+  box-shadow: 0 4px 14px rgba(0, 86, 197, 0.28);
+}
+
+.mp-btn-primary:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.mp-btn-compact-join {
+  width: auto;
+  margin-top: 0;
+  align-self: flex-start;
 }
 
 .mp-link {
@@ -891,6 +933,97 @@ body {
   margin: 0 0 0.65rem;
 }
 
+.mp-shared-section {
+  margin-top: 0.5rem;
+}
+
+.mp-shared-hint {
+  margin: 0 0 0.85rem !important;
+}
+
+.mp-linked-grid {
+  display: grid;
+  gap: 0.85rem;
+}
+
+@media (min-width: 640px) {
+  .mp-linked-grid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  }
+}
+
+.mp-linked-card {
+  border: 1px solid rgba(0, 86, 197, 0.18);
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+  background: linear-gradient(
+    145deg,
+    rgba(0, 86, 197, 0.04) 0%,
+    rgba(255, 255, 255, 0.9) 100%
+  );
+}
+
+.mp-linked-card__title {
+  margin: 0 0 0.65rem;
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: #000666;
+}
+
+.mp-linked-card__empty {
+  margin: 0 !important;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.mp-member-chips--compact {
+  gap: 0.35rem;
+}
+
+.mp-member-chips--compact .mp-member-chip {
+  font-size: 0.78rem;
+  padding: 0.28rem 0.55rem;
+}
+
+.mp-member-chips--compact .mp-mi,
+.mp-member-chips--compact .mp-mi-ph {
+  width: 1.45rem;
+  height: 1.45rem;
+  font-size: 0.62rem;
+}
+
+.mp-shared-roadmap {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.mp-shared-roadmap__item {
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  border: 1px dashed rgba(25, 28, 29, 0.12);
+  background: rgba(248, 249, 250, 0.65);
+}
+
+.mp-shared-roadmap__ico {
+  font-size: 1.5rem !important;
+  color: #0056c5;
+  opacity: 0.85;
+}
+
+.mp-shared-roadmap__item strong {
+  display: block;
+  font-size: 0.88rem;
+  margin-bottom: 0.25rem;
+}
+
+.mp-shared-roadmap__item .mp-hint {
+  margin: 0 !important;
+}
+
 .mp-member-chips {
   list-style: none;
   margin: 0;
@@ -1005,4 +1138,153 @@ body {
   background: #ffffff;
   color: #ba1a1a;
   border: 2px solid rgba(186, 26, 26, 0.35);
+}
+
+/* Rattachement foyer (payeur) */
+.mp-join-family-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem 1.25rem;
+  margin: 0 0 1.35rem;
+  padding: 1.15rem 1.35rem;
+  border-radius: 16px;
+  border: 1px solid rgba(0, 86, 197, 0.38);
+  background: linear-gradient(
+    125deg,
+    rgba(0, 86, 197, 0.14) 0%,
+    rgba(255, 255, 255, 0.97) 55%,
+    #fff 100%
+  );
+  box-shadow: 0 8px 28px rgba(0, 61, 138, 0.12);
+}
+
+.mp-join-family-banner__text {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.mp-join-family-banner__title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.45rem;
+  font-size: 1.05rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: #000666;
+}
+
+.mp-join-family-banner__ico {
+  font-size: 1.35rem !important;
+  color: #0056c5;
+}
+
+.mp-join-family-banner__lede {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: #454652;
+}
+
+.mp-join-family-banner__btn {
+  flex-shrink: 0;
+  width: auto;
+  min-width: 11rem;
+  margin-top: 0.2rem;
+  padding: 0.75rem 1.15rem;
+}
+
+.mp-join-family-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0 0 1.15rem;
+  padding: 0.95rem 1.1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 86, 197, 0.28);
+  background: rgba(0, 86, 197, 0.06);
+}
+
+.mp-join-family-compact .mp-join-family-banner__title {
+  font-size: 0.95rem;
+}
+
+.mp-join-family-compact .mp-join-family-banner__lede {
+  font-size: 0.82rem;
+}
+
+.mp-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 800;
+  background: rgba(15, 18, 28, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.mp-modal {
+  position: fixed;
+  z-index: 801;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(26rem, calc(100vw - 1.75rem));
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  padding: 1.35rem 1.4rem 1.25rem;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(25, 28, 29, 0.22);
+  border: 1px solid rgba(25, 28, 29, 0.08);
+}
+
+.mp-modal-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+  font-weight: 900;
+  color: #191c1d;
+}
+
+.mp-modal-lede {
+  margin: 0 0 1rem !important;
+}
+
+.mp-modal-form .mp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.mp-modal-form .mp-field span {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #454652;
+}
+
+.mp-modal-form input {
+  padding: 0.6rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid rgba(25, 28, 29, 0.14);
+  font: inherit;
+}
+
+.mp-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.mp-modal-actions .mp-btn {
+  flex: 1 1 7rem;
+  margin-top: 0;
+}
+
+.mp-form-error {
+  margin: 0 0 0.5rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #ba1a1a;
 }

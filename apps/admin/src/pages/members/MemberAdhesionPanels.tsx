@@ -10,13 +10,16 @@ import {
   CLUB_MODULES,
   CLUB_PRICING_RULES,
   CREATE_MEMBERSHIP_INVOICE_DRAFT,
+  ELIGIBLE_MEMBERSHIP_PRODUCTS,
   FINALIZE_MEMBERSHIP_INVOICE,
-  MEMBERSHIP_PRODUCTS,
+  MEMBERSHIP_ONE_TIME_FEES,
+  RECORD_CLUB_MANUAL_PAYMENT,
   SET_MEMBER_DYNAMIC_GROUPS,
   SUGGEST_MEMBER_DYNAMIC_GROUPS,
 } from '../../lib/documents';
 import {
   ALL_CLUB_PAYMENT_METHODS,
+  CLUB_MANUAL_PAYMENT_METHODS,
   clubPaymentMethodLabel,
 } from '../../lib/payment-labels';
 import type {
@@ -27,55 +30,14 @@ import type {
   ClubPricingRulesQueryData,
   CreateMembershipInvoiceDraftMutationData,
   DynamicGroupsQueryData,
-  MembershipProductsQueryData,
+  EligibleMembershipProductsQueryData,
+  MembershipOneTimeFeesQueryData,
   MembersQueryData,
+  RecordClubManualPaymentMutationData,
   SuggestMemberDynamicGroupsQueryData,
 } from '../../lib/types';
 
 type MemberRow = MembersQueryData['clubMembers'][number];
-
-function ageInYears(birthDate: Date, reference: Date): number {
-  let age = reference.getFullYear() - birthDate.getFullYear();
-  const md = reference.getMonth() - birthDate.getMonth();
-  if (md < 0 || (md === 0 && reference.getDate() < birthDate.getDate())) {
-    age -= 1;
-  }
-  return age;
-}
-
-/** Aligné sur la logique serveur : critères optionnels âge + grades sur la formule. */
-function memberEligibleForProduct(
-  member: MemberRow,
-  p: MembershipProductsQueryData['membershipProducts'][number],
-  reference: Date,
-): boolean {
-  if (member.status !== 'ACTIVE') {
-    return false;
-  }
-  const hasAgeRule = p.minAge != null || p.maxAge != null;
-  if (hasAgeRule) {
-    if (!member.birthDate) {
-      return false;
-    }
-    const bd = new Date(member.birthDate);
-    const age = ageInYears(bd, reference);
-    if (p.minAge != null && age < p.minAge) {
-      return false;
-    }
-    if (p.maxAge != null && age > p.maxAge) {
-      return false;
-    }
-  }
-  if (p.gradeLevelIds.length > 0) {
-    if (
-      !member.gradeLevelId ||
-      !p.gradeLevelIds.includes(member.gradeLevelId)
-    ) {
-      return false;
-    }
-  }
-  return true;
-}
 
 function eurosDiscountToNegativeCents(raw: string): number | null {
   const t = raw.trim().replace(',', '.');
@@ -101,14 +63,78 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
     ACTIVE_CLUB_SEASON,
     { skip: !paymentOn },
   );
-  const { data: productsData } = useQuery<MembershipProductsQueryData>(
-    MEMBERSHIP_PRODUCTS,
-    { skip: !paymentOn },
+  const [effectiveDate, setEffectiveDate] = useState(() =>
+    new Date().toISOString().slice(0, 10),
+  );
+
+  const adhesionFormEnabled =
+    Boolean(paymentOn && membersOn && activeSeasonData?.activeClubSeason);
+
+  const { data: eligibleData, loading: eligibleLoading } =
+    useQuery<EligibleMembershipProductsQueryData>(
+      ELIGIBLE_MEMBERSHIP_PRODUCTS,
+      {
+        skip: !adhesionFormEnabled,
+        variables: {
+          memberId: member.id,
+          referenceDate: `${effectiveDate}T12:00:00.000Z`,
+        },
+      },
+    );
+
+  const { data: oneTimeFeesData } = useQuery<MembershipOneTimeFeesQueryData>(
+    MEMBERSHIP_ONE_TIME_FEES,
+    { skip: !adhesionFormEnabled },
   );
   const { data: pricingData } = useQuery<ClubPricingRulesQueryData>(
     CLUB_PRICING_RULES,
     { skip: !paymentOn },
   );
+
+  const { data: invoicesData } = useQuery<ClubInvoicesQueryData>(CLUB_INVOICES, {
+    skip: !paymentOn,
+  });
+
+  const openFamilyInvoices = useMemo(() => {
+    const fid = member.family?.id;
+    const rows = invoicesData?.clubInvoices;
+    if (!fid || !rows) return [];
+    return rows.filter(
+      (i) =>
+        i.familyId === fid &&
+        i.status === 'OPEN' &&
+        i.balanceCents > 0,
+    );
+  }, [member.family?.id, invoicesData]);
+
+  const [encInvoiceId, setEncInvoiceId] = useState('');
+  const [encEuros, setEncEuros] = useState('');
+  const [encMethod, setEncMethod] =
+    useState<ClubPaymentMethodStr>('MANUAL_TRANSFER');
+  const [encRef, setEncRef] = useState('');
+  const [encMsg, setEncMsg] = useState<string | null>(null);
+
+  const [recordPay, { loading: recordingPay }] =
+    useMutation<RecordClubManualPaymentMutationData>(RECORD_CLUB_MANUAL_PAYMENT, {
+      refetchQueries: [{ query: CLUB_INVOICES }, { query: CLUB_MEMBERS }],
+      onCompleted: () => {
+        setEncEuros('');
+        setEncRef('');
+        setEncMsg('Encaissement enregistré.');
+      },
+      onError: (e) => setEncMsg(e.message),
+    });
+
+  const encSelectValue = useMemo(() => {
+    if (openFamilyInvoices.length === 0) return '';
+    if (openFamilyInvoices.some((i) => i.id === encInvoiceId)) {
+      return encInvoiceId;
+    }
+    return openFamilyInvoices[0].id;
+  }, [openFamilyInvoices, encInvoiceId]);
+
+  const encInvoice =
+    openFamilyInvoices.find((i) => i.id === encSelectValue) ?? null;
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
     () => new Set(assigned.map((g) => g.id)),
@@ -171,19 +197,27 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
   }
 
   const activeSeason = activeSeasonData?.activeClubSeason ?? null;
-  const products = productsData?.membershipProducts ?? [];
+  const eligibleProducts =
+    eligibleData?.eligibleMembershipProducts ?? [];
+  const oneTimeFees = oneTimeFeesData?.membershipOneTimeFees ?? [];
 
   const [selectedProductId, setSelectedProductId] = useState('');
-  const [effectiveDate, setEffectiveDate] = useState(() =>
-    new Date().toISOString().slice(0, 10),
+  const [billingRhythm, setBillingRhythm] = useState<'ANNUAL' | 'MONTHLY'>(
+    'ANNUAL',
+  );
+  const [selectedFeeIds, setSelectedFeeIds] = useState<Set<string>>(
+    () => new Set(),
   );
 
-  const eligibleProducts = useMemo(() => {
-    const ref = new Date(`${effectiveDate}T12:00:00`);
-    return products.filter((p) =>
-      memberEligibleForProduct(member, p, ref),
-    );
-  }, [products, member, effectiveDate]);
+  function toggleOneTimeFee(id: string) {
+    setSelectedFeeIds((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  }
+
   const [prorataBp, setProrataBp] = useState('');
   const [publicAidEuros, setPublicAidEuros] = useState('');
   const [publicAidOrg, setPublicAidOrg] = useState('');
@@ -275,9 +309,13 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
     const input: Record<string, unknown> = {
       memberId: member.id,
       membershipProductId: selectedProductId,
+      billingRhythm,
       effectiveDate: `${effectiveDate}T00:00:00.000Z`,
     };
     if (pr !== undefined) input.prorataPercentBp = pr;
+    if (selectedFeeIds.size > 0) {
+      input.oneTimeFeeIds = [...selectedFeeIds];
+    }
 
     if (prod.allowPublicAid && aidCents != null) {
       input.publicAidAmountCents = aidCents;
@@ -301,6 +339,34 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
         input: {
           invoiceId: draftPreview.id,
           lockedPaymentMethod: payMethodResolved,
+        },
+      },
+    });
+  }
+
+  async function submitManualPayment() {
+    if (!encInvoice) return;
+    setEncMsg(null);
+    const t = encEuros.trim().replace(',', '.');
+    const n = Number.parseFloat(t);
+    if (!Number.isFinite(n) || n <= 0) {
+      setEncMsg('Montant invalide.');
+      return;
+    }
+    const cents = Math.round(n * 100);
+    if (cents < 1 || cents > encInvoice.balanceCents) {
+      setEncMsg(
+        `Montant entre 0,01 € et ${(encInvoice.balanceCents / 100).toFixed(2)} €.`,
+      );
+      return;
+    }
+    await recordPay({
+      variables: {
+        input: {
+          invoiceId: encInvoice.id,
+          amountCents: cents,
+          method: encMethod,
+          externalRef: encRef.trim() ? encRef.trim() : null,
         },
       },
     });
@@ -389,15 +455,64 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
           {!activeSeason || !membersOn ? null : (
             <>
               <label className="field">
+                <span>Date d’effet</span>
+                <input
+                  type="date"
+                  value={effectiveDate}
+                  onChange={(e) => {
+                    setEffectiveDate(e.target.value);
+                    setDraftPreview(null);
+                  }}
+                />
+              </label>
+              <div className="field">
+                <span>Rythme de facturation</span>
+                <div className="members-form__actions-row" style={{ marginTop: '0.35rem' }}>
+                  <label className="members-checkbox">
+                    <input
+                      type="radio"
+                      name="adh-billing-rhythm"
+                      checked={billingRhythm === 'ANNUAL'}
+                      onChange={() => {
+                        setBillingRhythm('ANNUAL');
+                        setDraftPreview(null);
+                      }}
+                    />
+                    <span>Annuel</span>
+                  </label>
+                  <label className="members-checkbox">
+                    <input
+                      type="radio"
+                      name="adh-billing-rhythm"
+                      checked={billingRhythm === 'MONTHLY'}
+                      onChange={() => {
+                        setBillingRhythm('MONTHLY');
+                        setDraftPreview(null);
+                      }}
+                    />
+                    <span>Mensuel</span>
+                  </label>
+                </div>
+                {billingRhythm === 'MONTHLY' ? (
+                  <p className="members-form__hint">
+                    Pas de prorata saison en mensuel ; le montant de base est le
+                    tarif mensuel de la formule.
+                  </p>
+                ) : null}
+              </div>
+              <label className="field">
                 <span>Formule</span>
                 <select
                   value={selectedProductId}
+                  disabled={eligibleLoading}
                   onChange={(e) => {
                     setSelectedProductId(e.target.value);
                     setDraftPreview(null);
                   }}
                 >
-                  <option value="">— Choisir —</option>
+                  <option value="">
+                    {eligibleLoading ? '…' : '— Choisir —'}
+                  </option>
                   {eligibleProducts.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.label} — {(p.annualAmountCents / 100).toFixed(2)} €
@@ -406,7 +521,10 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
                   ))}
                 </select>
               </label>
-              {eligibleProducts.length === 0 ? (
+              {eligibleLoading ? (
+                <p className="muted">Formules éligibles…</p>
+              ) : null}
+              {!eligibleLoading && eligibleProducts.length === 0 ? (
                 <p className="muted">
                   Aucune formule éligible pour ce profil (âge / grade / date
                   d’effet). Vérifiez les{' '}
@@ -418,15 +536,7 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
               {selectedProduct ? (
                 <div className="members-form__fieldset">
                   <span className="members-form__legend">Brouillon</span>
-                  <label className="field">
-                    <span>Date d’effet</span>
-                    <input
-                      type="date"
-                      value={effectiveDate}
-                      onChange={(e) => setEffectiveDate(e.target.value)}
-                    />
-                  </label>
-                  {selectedProduct.allowProrata ? (
+                  {selectedProduct.allowProrata && billingRhythm === 'ANNUAL' ? (
                     <label className="field">
                       <span>Prorata manuel (bp, optionnel)</span>
                       <input
@@ -435,6 +545,32 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
                         placeholder="10000 = 100 %"
                       />
                     </label>
+                  ) : null}
+                  {oneTimeFees.length > 0 ? (
+                    <div className="field">
+                      <span>Frais supplémentaires (optionnel)</span>
+                      <div
+                        className="members-checkbox-grid"
+                        style={{ marginTop: '0.5rem' }}
+                      >
+                        {oneTimeFees.map((f) => (
+                          <label key={f.id} className="members-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={selectedFeeIds.has(f.id)}
+                              onChange={() => {
+                                toggleOneTimeFee(f.id);
+                                setDraftPreview(null);
+                              }}
+                            />
+                            <span>
+                              {f.label} — {(f.amountCents / 100).toFixed(2)}{' '}
+                              €
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
                   ) : null}
                   {selectedProduct.allowPublicAid ? (
                     <>
@@ -501,6 +637,99 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
                   >
                     {creatingDraft ? '…' : 'Créer le brouillon'}
                   </button>
+                </div>
+              ) : null}
+
+              {member.family?.id && openFamilyInvoices.length > 0 ? (
+                <div className="members-form__fieldset">
+                  <span className="members-form__legend">
+                    Encaissement (espèces, chèque, virement)
+                  </span>
+                  {encMsg ? (
+                    <p
+                      className={
+                        encMsg.startsWith('Encaissement')
+                          ? 'muted'
+                          : 'form-error'
+                      }
+                    >
+                      {encMsg}
+                    </p>
+                  ) : null}
+                  <ul
+                    className="muted"
+                    style={{ margin: '0 0 0.75rem', paddingLeft: '1.25rem' }}
+                  >
+                    {openFamilyInvoices.map((inv) => (
+                      <li key={inv.id}>
+                        {inv.label} — reste {(inv.balanceCents / 100).toFixed(2)}{' '}
+                        € / {(inv.amountCents / 100).toFixed(2)} €
+                      </li>
+                    ))}
+                  </ul>
+                  {openFamilyInvoices.length > 1 ? (
+                    <label className="field">
+                      <span>Facture</span>
+                      <select
+                        value={encSelectValue}
+                        onChange={(e) => setEncInvoiceId(e.target.value)}
+                      >
+                        {openFamilyInvoices.map((inv) => (
+                          <option key={inv.id} value={inv.id}>
+                            {inv.label} — reste{' '}
+                            {(inv.balanceCents / 100).toFixed(2)} €
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+                  {encInvoice ? (
+                    <>
+                      <label className="field">
+                        <span>
+                          Montant (€), max{' '}
+                          {(encInvoice.balanceCents / 100).toFixed(2)} €
+                        </span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={encEuros}
+                          onChange={(e) => setEncEuros(e.target.value)}
+                          placeholder={`ex. ${(encInvoice.balanceCents / 100).toFixed(2)}`}
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Mode</span>
+                        <select
+                          value={encMethod}
+                          onChange={(e) =>
+                            setEncMethod(e.target.value as ClubPaymentMethodStr)
+                          }
+                        >
+                          {CLUB_MANUAL_PAYMENT_METHODS.map((m) => (
+                            <option key={m} value={m}>
+                              {clubPaymentMethodLabel(m)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="field">
+                        <span>Référence (n° chèque, libellé virement…)</span>
+                        <input
+                          value={encRef}
+                          onChange={(e) => setEncRef(e.target.value)}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        disabled={recordingPay}
+                        onClick={() => void submitManualPayment()}
+                      >
+                        {recordingPay ? '…' : 'Enregistrer l’encaissement'}
+                      </button>
+                    </>
+                  ) : null}
                 </div>
               ) : null}
 

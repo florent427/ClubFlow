@@ -2,6 +2,8 @@ import { registerEnumType } from '@nestjs/graphql';
 import {
   AccountingEntryKind,
   ClubPaymentMethod,
+  ClubSendingDomainPurpose,
+  ClubSendingDomainVerificationStatus,
   CommunicationChannel,
   FamilyMemberLinkRole,
   GrantApplicationStatus,
@@ -44,6 +46,12 @@ registerEnumType(InvoiceLineAdjustmentType, {
 registerEnumType(ClubPaymentMethod, { name: 'ClubPaymentMethod' });
 registerEnumType(PricingAdjustmentType, {
   name: 'PricingAdjustmentType',
+});
+registerEnumType(ClubSendingDomainPurpose, {
+  name: 'ClubSendingDomainPurpose',
+});
+registerEnumType(ClubSendingDomainVerificationStatus, {
+  name: 'ClubSendingDomainVerificationStatus',
 });
 registerEnumType(CommunicationChannel, { name: 'CommunicationChannel' });
 registerEnumType(MessageCampaignStatus, {

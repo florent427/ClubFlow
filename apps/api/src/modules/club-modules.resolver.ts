@@ -20,6 +20,7 @@ export class ClubModulesResolver {
   @Query(() => [ClubModuleGraph], { name: 'clubModules' })
   @UseGuards(GqlJwtAuthGuard, ClubContextGuard)
   async listClubModules(@CurrentClub() club: Club): Promise<ClubModuleGraph[]> {
+    await this.clubModulesService.ensureFamiliesBundledWithMembers(club.id);
     const rows = await this.prisma.clubModule.findMany({
       where: { clubId: club.id },
     });

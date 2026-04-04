@@ -3,6 +3,7 @@ import { ModuleCode } from './module-codes';
 /** Prérequis pour *activer* un module (selon section 5.2 du doc de conception). */
 export const ENABLE_REQUIRES: Record<ModuleCode, ModuleCode[]> = {
   [ModuleCode.MEMBERS]: [],
+  [ModuleCode.FAMILIES]: [ModuleCode.MEMBERS],
   [ModuleCode.PAYMENT]: [ModuleCode.MEMBERS],
   [ModuleCode.PLANNING]: [ModuleCode.MEMBERS],
   [ModuleCode.COMMUNICATION]: [ModuleCode.MEMBERS],
