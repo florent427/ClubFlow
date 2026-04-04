@@ -1,4 +1,4 @@
-﻿import {
+import {
   BadRequestException,
   Injectable,
   NotFoundException,
@@ -14,6 +14,7 @@ import { CreateCourseSlotInput } from './dto/create-course-slot.input';
 import { CreateVenueInput } from './dto/create-venue.input';
 import { UpdateCourseSlotInput } from './dto/update-course-slot.input';
 import { CourseSlotGraph } from './models/course-slot.model';
+import { assertUtcQuarterHour } from './quarter-hour';
 import { VenueGraph } from './models/venue.model';
 
 @Injectable()
@@ -154,6 +155,8 @@ export class PlanningService {
   ): Promise<CourseSlotGraph> {
     const startsAt = new Date(input.startsAt);
     const endsAt = new Date(input.endsAt);
+    assertUtcQuarterHour('Début', startsAt);
+    assertUtcQuarterHour('Fin', endsAt);
     await this.assertVenueInClub(clubId, input.venueId);
     await this.assertCoachMember(clubId, input.coachMemberId);
     if (input.dynamicGroupId) {
@@ -196,6 +199,12 @@ export class PlanningService {
       ? new Date(input.startsAt)
       : existing.startsAt;
     const endsAt = input.endsAt ? new Date(input.endsAt) : existing.endsAt;
+    if (input.startsAt) {
+      assertUtcQuarterHour('Début', startsAt);
+    }
+    if (input.endsAt) {
+      assertUtcQuarterHour('Fin', endsAt);
+    }
     const dynamicGroupId =
       input.dynamicGroupId !== undefined
         ? input.dynamicGroupId
