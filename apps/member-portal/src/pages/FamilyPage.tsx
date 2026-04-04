@@ -4,6 +4,11 @@ import { VIEWER_FAMILY_BILLING } from '../lib/viewer-documents';
 import type { ViewerBillingData } from '../lib/viewer-types';
 import { formatEuroCents } from '../lib/format';
 
+/**
+ * Recommandation UX #8 — Reformulation du texte de rattachement familial
+ * Recommandation UX #10 — Ergonomie mobile des factures (cartes vs tableau)
+ */
+
 function statusLabel(status: string): string {
   switch (status) {
     case 'OPEN':
@@ -16,6 +21,21 @@ function statusLabel(status: string): string {
       return 'Annulée';
     default:
       return status;
+  }
+}
+
+function statusClass(status: string): string {
+  switch (status) {
+    case 'OPEN':
+      return 'mp-invoice-card--open';
+    case 'PAID':
+      return 'mp-invoice-card--paid';
+    case 'DRAFT':
+      return 'mp-invoice-card--draft';
+    case 'VOID':
+      return 'mp-invoice-card--void';
+    default:
+      return '';
   }
 }
 
@@ -37,17 +57,16 @@ export function FamilyPage() {
 
       {shared ? (
         <p className="mp-lead">
-          Votre club a relié plusieurs foyers (résidences) dans un{' '}
-          <strong>espace partagé</strong> : la <strong>facturation</strong> est
-          commune, mais chaque adulte ne voit ici que{' '}
-          <strong>son propre compte</strong> et celui des <strong>mineurs</strong>{' '}
-          du groupe — pas la fiche de l’autre parent. Prochainement : documents et
-          messagerie selon les mêmes règles de confidentialité.
+          Votre club a relié plusieurs foyers dans un{' '}
+          <strong>espace partagé</strong>. Vous partagez les{' '}
+          <strong>mêmes factures</strong> et voyez les{' '}
+          <strong>mêmes enfants</strong>, mais chaque parent garde son{' '}
+          <strong>espace personnel privé</strong>.
         </p>
       ) : (
         <p className="mp-lead mp-lead--tight">
-          Membres du foyer et factures visibles par les adultes en charge du
-          paiement.
+          Membres du foyer et factures visibles par les adultes responsables
+          de la facturation.
         </p>
       )}
 
@@ -63,7 +82,7 @@ export function FamilyPage() {
         <p className="mp-hint">Aucune donnée foyer.</p>
       ) : !summary.isPayerView ? (
         <p className="mp-hint">
-          Réservé aux comptes adultes du foyer (mineurs : pas d’accès
+          Réservé aux comptes adultes du foyer (mineurs : pas d'accès
           facturation).
         </p>
       ) : (
@@ -72,9 +91,8 @@ export function FamilyPage() {
             <section className="mp-subsection mp-shared-section">
               <h2 className="mp-subtitle">Foyers liés</h2>
               <p className="mp-hint mp-shared-hint">
-                Chaque carte est un foyer « résidence ». Seuls les membres que vous
-                êtes autorisé à voir (vous et les enfants) apparaissent ; les
-                adultes de l’autre foyer ne sont pas listés.
+                Chaque carte représente un foyer. Seuls les membres que vous
+                êtes autorisé à voir (vous et les enfants) apparaissent.
               </p>
               <div className="mp-linked-grid">
                 {linked.map((hf) => (
@@ -84,8 +102,8 @@ export function FamilyPage() {
                     </h3>
                     {hf.members.length === 0 ? (
                       <p className="mp-hint mp-linked-card__empty">
-                        Aucun membre de cette résidence n’est affiché pour votre
-                        compte (autre foyer parental).
+                        Aucun membre de ce foyer n'est affiché pour votre
+                        compte.
                       </p>
                     ) : (
                       <ul className="mp-member-chips mp-member-chips--compact">
@@ -136,8 +154,7 @@ export function FamilyPage() {
                   <div>
                     <strong>Messages familiaux</strong>
                     <p className="mp-hint">
-                      Échanges privés entre membres de votre espace partagé, sans
-                      mélanger les autres familles du club —{' '}
+                      Échanges privés entre membres de votre espace partagé —{' '}
                       <em>en conception</em>.
                     </p>
                   </div>
@@ -152,32 +169,11 @@ export function FamilyPage() {
             </p>
           ) : null}
 
-          {shared && summary.familyMembers.length > 0 ? (
+          {summary.familyMembers.length > 0 ? (
             <section className="mp-subsection">
-              <h2 className="mp-subtitle">Tous les membres de l’espace</h2>
-              <ul className="mp-member-chips">
-                {summary.familyMembers.map((m) => (
-                  <li key={m.memberId} className="mp-member-chip">
-                    {m.photoUrl ? (
-                      <img src={m.photoUrl} alt="" className="mp-mi" />
-                    ) : (
-                      <span className="mp-mi mp-mi-ph">
-                        {m.firstName[0]}
-                        {m.lastName[0]}
-                      </span>
-                    )}
-                    <span>
-                      {m.firstName} {m.lastName}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
-
-          {!shared && summary.familyMembers.length > 0 ? (
-            <section className="mp-subsection">
-              <h2 className="mp-subtitle">Membres</h2>
+              <h2 className="mp-subtitle">
+                {shared ? 'Tous les membres de l\u2019espace' : 'Membres'}
+              </h2>
               <ul className="mp-member-chips">
                 {summary.familyMembers.map((m) => (
                   <li key={m.memberId} className="mp-member-chip">
@@ -205,50 +201,91 @@ export function FamilyPage() {
             {summary.invoices.length === 0 ? (
               <p className="mp-hint">Aucune facture.</p>
             ) : (
-              <div className="mp-table-wrap">
-                <table className="mp-table">
-                  <thead>
-                    <tr>
-                      <th>Libellé</th>
-                      <th>Statut</th>
-                      <th className="mp-num">Montant</th>
-                      <th className="mp-num">Payé</th>
-                      <th className="mp-num">Solde</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {summary.invoices.map((inv) => (
-                      <tr key={inv.id}>
-                        <td>
-                          <div>{inv.label}</div>
-                          {inv.payments?.length ? (
-                            <ul className="mp-hint mp-invoice-payments">
-                              {inv.payments.map((p) => (
-                                <li key={p.id}>
-                                  {formatEuroCents(p.amountCents)} —{' '}
-                                  {p.paidByFirstName || p.paidByLastName
-                                    ? `${p.paidByFirstName ?? ''} ${p.paidByLastName ?? ''}`.trim()
-                                    : 'Club'}
-                                </li>
-                              ))}
-                            </ul>
-                          ) : null}
-                        </td>
-                        <td>{statusLabel(inv.status)}</td>
-                        <td className="mp-num">
-                          {formatEuroCents(inv.amountCents)}
-                        </td>
-                        <td className="mp-num">
-                          {formatEuroCents(inv.totalPaidCents)}
-                        </td>
-                        <td className="mp-num">
-                          {formatEuroCents(inv.balanceCents)}
-                        </td>
+              <>
+                {/* Desktop : tableau classique */}
+                <div className="mp-table-wrap mp-invoices-desktop">
+                  <table className="mp-table">
+                    <thead>
+                      <tr>
+                        <th>Libellé</th>
+                        <th>Statut</th>
+                        <th className="mp-num">Montant</th>
+                        <th className="mp-num">Payé</th>
+                        <th className="mp-num">Solde</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {summary.invoices.map((inv) => (
+                        <tr key={inv.id}>
+                          <td>
+                            <div>{inv.label}</div>
+                            {inv.payments?.length ? (
+                              <ul className="mp-hint mp-invoice-payments">
+                                {inv.payments.map((p) => (
+                                  <li key={p.id}>
+                                    {formatEuroCents(p.amountCents)} —{' '}
+                                    {p.paidByFirstName || p.paidByLastName
+                                      ? `${p.paidByFirstName ?? ''} ${p.paidByLastName ?? ''}`.trim()
+                                      : 'Club'}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : null}
+                          </td>
+                          <td>{statusLabel(inv.status)}</td>
+                          <td className="mp-num">
+                            {formatEuroCents(inv.amountCents)}
+                          </td>
+                          <td className="mp-num">
+                            {formatEuroCents(inv.totalPaidCents)}
+                          </td>
+                          <td className="mp-num">
+                            {formatEuroCents(inv.balanceCents)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile : cartes factures */}
+                <div className="mp-invoices-mobile">
+                  {summary.invoices.map((inv) => (
+                    <article
+                      key={inv.id}
+                      className={`mp-invoice-card ${statusClass(inv.status)}`}
+                    >
+                      <div className="mp-invoice-card__head">
+                        <span className={`mp-invoice-status-badge mp-invoice-status-badge--${inv.status.toLowerCase()}`}>
+                          {statusLabel(inv.status)}
+                        </span>
+                        <span className="mp-invoice-card__amount">
+                          {formatEuroCents(inv.amountCents)}
+                        </span>
+                      </div>
+                      <p className="mp-invoice-card__label">{inv.label}</p>
+                      <div className="mp-invoice-card__details">
+                        <span>Payé : {formatEuroCents(inv.totalPaidCents)}</span>
+                        <span className="mp-invoice-card__balance">
+                          Solde : {formatEuroCents(inv.balanceCents)}
+                        </span>
+                      </div>
+                      {inv.payments?.length ? (
+                        <ul className="mp-invoice-card__payments">
+                          {inv.payments.map((p) => (
+                            <li key={p.id}>
+                              {formatEuroCents(p.amountCents)} —{' '}
+                              {p.paidByFirstName || p.paidByLastName
+                                ? `${p.paidByFirstName ?? ''} ${p.paidByLastName ?? ''}`.trim()
+                                : 'Club'}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              </>
             )}
           </section>
         </>

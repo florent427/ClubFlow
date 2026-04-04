@@ -16,6 +16,12 @@ import type {
   VenuesQueryData,
 } from '../lib/types';
 
+/**
+ * Recommandation UX #7 — Duplication de créneaux
+ * Ajout d'un bouton « Dupliquer » sur chaque ligne de créneau qui
+ * pré-remplit le formulaire de création avec les valeurs du créneau source.
+ */
+
 function formatSlotRange(startsAt: string, endsAt: string): string {
   try {
     const a = new Date(startsAt);
@@ -39,6 +45,17 @@ function formatSlotRange(startsAt: string, endsAt: string): string {
   }
 }
 
+/** Convertit une date ISO en valeur datetime-local (YYYY-MM-DDTHH:mm). */
+function toLocalDatetime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch {
+    return '';
+  }
+}
+
 export function PlanningPage() {
   const [venueName, setVenueName] = useState('');
   const [venueAddress, setVenueAddress] = useState('');
@@ -49,6 +66,9 @@ export function PlanningPage() {
   const [slotEnds, setSlotEnds] = useState('');
   const [slotGroupId, setSlotGroupId] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
+
+  /** Indique qu'on est en mode duplication (pré-remplissage). */
+  const [dupSource, setDupSource] = useState<string | null>(null);
 
   const { data: venuesData, refetch: refetchVenues } =
     useQuery<VenuesQueryData>(CLUB_VENUES);
@@ -80,6 +100,7 @@ export function PlanningPage() {
         setSlotStarts('');
         setSlotEnds('');
         setSlotGroupId('');
+        setDupSource(null);
         setFormError(null);
         void refetchSlots();
       },
@@ -115,6 +136,30 @@ export function PlanningPage() {
     for (const v of venues) m.set(v.id, v.name);
     return m;
   }, [venues]);
+
+  /** Pré-remplit le formulaire avec les valeurs d'un créneau existant. */
+  function duplicateSlot(slotId: string) {
+    const source = slots.find((s) => s.id === slotId);
+    if (!source) return;
+    setSlotTitle(source.title + ' (copie)');
+    setSlotVenueId(source.venueId);
+    setSlotCoachId(source.coachMemberId);
+    setSlotStarts(toLocalDatetime(source.startsAt));
+    setSlotEnds(toLocalDatetime(source.endsAt));
+    setSlotGroupId(source.dynamicGroupId ?? '');
+    setDupSource(source.title);
+    setFormError(null);
+    // Scroll vers le formulaire
+    document.getElementById('slot-form')?.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  function clearDuplication() {
+    setSlotTitle('');
+    setSlotStarts('');
+    setSlotEnds('');
+    setSlotGroupId('');
+    setDupSource(null);
+  }
 
   async function onCreateVenue(e: React.FormEvent) {
     e.preventDefault();
@@ -187,7 +232,7 @@ export function PlanningPage() {
                     <th>Lieu</th>
                     <th>Professeur</th>
                     <th>Horaire</th>
-                    <th />
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -208,17 +253,29 @@ export function PlanningPage() {
                       </td>
                       <td>{formatSlotRange(s.startsAt, s.endsAt)}</td>
                       <td>
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-tight"
-                          onClick={() => {
-                            if (confirm('Supprimer ce créneau ?')) {
-                              void deleteSlot({ variables: { id: s.id } });
-                            }
-                          }}
-                        >
-                          Supprimer
-                        </button>
+                        <div className="planning-slot-actions">
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-tight"
+                            title="Dupliquer ce créneau"
+                            onClick={() => duplicateSlot(s.id)}
+                          >
+                            <span className="material-symbols-outlined" style={{ fontSize: '1rem' }}>
+                              content_copy
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-tight"
+                            onClick={() => {
+                              if (confirm('Supprimer ce créneau ?')) {
+                                void deleteSlot({ variables: { id: s.id } });
+                              }
+                            }}
+                          >
+                            Supprimer
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -256,9 +313,20 @@ export function PlanningPage() {
             </button>
           </form>
 
-          <h2 className="members-panel__h" style={{ marginTop: '1.5rem' }}>
-            Nouveau créneau
+          <h2 className="members-panel__h" style={{ marginTop: '1.5rem' }} id="slot-form">
+            {dupSource ? 'Dupliquer un créneau' : 'Nouveau créneau'}
           </h2>
+
+          {dupSource ? (
+            <div className="planning-dup-banner">
+              <span className="material-symbols-outlined">content_copy</span>
+              Pré-rempli depuis « {dupSource} »
+              <button type="button" onClick={clearDuplication}>
+                Annuler
+              </button>
+            </div>
+          ) : null}
+
           <form className="members-form" onSubmit={(e) => void onCreateSlot(e)}>
             <label className="field">
               <span>Titre</span>
@@ -341,10 +409,10 @@ export function PlanningPage() {
               className="btn btn-primary members-form__submit"
               disabled={creatingSlot || venues.length === 0}
             >
-              {creatingSlot ? 'Création…' : 'Créer le créneau'}
+              {creatingSlot ? 'Création…' : dupSource ? 'Créer la copie' : 'Créer le créneau'}
             </button>
             {venues.length === 0 ? (
-              <p className="muted">Créez d’abord un lieu.</p>
+              <p className="muted">Créez d'abord un lieu.</p>
             ) : null}
           </form>
         </aside>

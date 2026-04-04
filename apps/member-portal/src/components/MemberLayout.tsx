@@ -143,9 +143,13 @@ export function MemberLayout() {
             Paramètres
           </NavLink>
         </nav>
-        <button type="button" className="mp-cta-sidebar" disabled title="Bientôt disponible">
-          Réserver un cours
-        </button>
+        <NavLink
+          to="/planning"
+          className="mp-cta-sidebar mp-cta-sidebar--active"
+          style={{ textDecoration: 'none', textAlign: 'center' }}
+        >
+          Voir le planning
+        </NavLink>
       </aside>
 
       <div className="mp-main-wrap">

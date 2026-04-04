@@ -1288,3 +1288,442 @@ a.mp-pill-link:hover {
   font-weight: 600;
   color: #ba1a1a;
 }
+
+/* ================================================================
+   UX Improvements — feat/ux-improvements
+   ================================================================ */
+
+/* --- Recommandation #5 — Profile subline (glossaire UX) --- */
+.profile-subline {
+  font-size: 0.6rem;
+  color: #6f7078;
+  font-weight: 600;
+  margin-top: -0.15rem;
+}
+
+/* --- Recommandation #6 — Toast notifications --- */
+.cf-toast-container {
+  position: fixed;
+  bottom: 5.5rem;
+  right: 1rem;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+@media (min-width: 900px) {
+  .cf-toast-container {
+    bottom: 1.5rem;
+    right: 1.5rem;
+  }
+}
+
+.cf-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 12px 40px rgba(25, 28, 29, 0.18);
+  border: 1px solid rgba(25, 28, 29, 0.08);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #191c1d;
+  animation: cf-toast-in 0.3s ease;
+  max-width: 22rem;
+}
+
+@keyframes cf-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.cf-toast__ico {
+  font-size: 1.25rem !important;
+  flex-shrink: 0;
+}
+
+.cf-toast--success .cf-toast__ico {
+  color: #0d5c3d;
+}
+
+.cf-toast--error .cf-toast__ico {
+  color: #ba1a1a;
+}
+
+.cf-toast--info .cf-toast__ico {
+  color: #0056c5;
+}
+
+.cf-toast__msg {
+  flex: 1;
+  min-width: 0;
+}
+
+.cf-toast__close {
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0.15rem;
+  color: #6f7078;
+  display: flex;
+  align-items: center;
+}
+
+.cf-toast__close .material-symbols-outlined {
+  font-size: 1.1rem !important;
+}
+
+/* --- Recommandation #9 — Schéma visuel foyers partagés --- */
+.mp-family-visual {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+  padding: 0.75rem;
+  border-radius: 12px;
+  background: rgba(0, 86, 197, 0.04);
+  border: 1px dashed rgba(0, 86, 197, 0.18);
+}
+
+.mp-family-visual__house {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.mp-family-visual__house .material-symbols-outlined {
+  font-size: 1.75rem !important;
+  color: #000666;
+}
+
+.mp-family-visual__link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.mp-family-visual__link .material-symbols-outlined {
+  font-size: 1.5rem !important;
+  color: #0056c5;
+}
+
+.mp-family-visual__label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #454652;
+  text-align: center;
+  max-width: 5rem;
+}
+
+/* --- Recommandation #10 — Cartes factures mobile --- */
+.mp-invoices-desktop {
+  display: block;
+}
+
+.mp-invoices-mobile {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .mp-invoices-desktop {
+    display: none;
+  }
+
+  .mp-invoices-mobile {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+}
+
+.mp-invoice-card {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(25, 28, 29, 0.08);
+  box-shadow: 0 4px 12px rgba(25, 28, 29, 0.05);
+}
+
+.mp-invoice-card--open {
+  border-left: 4px solid #e65100;
+}
+
+.mp-invoice-card--paid {
+  border-left: 4px solid #2e7d32;
+}
+
+.mp-invoice-card--draft {
+  border-left: 4px solid #9e9ead;
+}
+
+.mp-invoice-card--void {
+  border-left: 4px solid #ba1a1a;
+  opacity: 0.65;
+}
+
+.mp-invoice-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.mp-invoice-status-badge {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.mp-invoice-status-badge--open {
+  background: rgba(230, 81, 0, 0.12);
+  color: #e65100;
+}
+
+.mp-invoice-status-badge--paid {
+  background: rgba(46, 125, 50, 0.12);
+  color: #2e7d32;
+}
+
+.mp-invoice-status-badge--draft {
+  background: rgba(158, 158, 173, 0.15);
+  color: #6f7078;
+}
+
+.mp-invoice-status-badge--void {
+  background: rgba(186, 26, 26, 0.1);
+  color: #ba1a1a;
+}
+
+.mp-invoice-card__amount {
+  font-size: 1.15rem;
+  font-weight: 900;
+  color: #191c1d;
+}
+
+.mp-invoice-card__label {
+  margin: 0 0 0.45rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #454652;
+}
+
+.mp-invoice-card__details {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: #6f7078;
+}
+
+.mp-invoice-card__balance {
+  font-weight: 700;
+}
+
+.mp-invoice-card__payments {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0.45rem 0 0;
+  border-top: 1px dashed rgba(25, 28, 29, 0.1);
+  font-size: 0.75rem;
+  color: #6f7078;
+}
+
+.mp-invoice-card__payments li {
+  padding: 0.15rem 0;
+}
+
+/* --- Recommandation #5 — Onboarding contact --- */
+.mp-onboarding-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-top: 1.25rem;
+}
+
+.mp-onboarding-card {
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+  padding: 1rem 1.15rem;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 4px 14px rgba(25, 28, 29, 0.06);
+  border: 1px solid rgba(25, 28, 29, 0.06);
+}
+
+.mp-onboarding-card strong {
+  display: block;
+  font-size: 0.92rem;
+  margin-bottom: 0.25rem;
+  color: #191c1d;
+}
+
+.mp-onboarding-card .mp-hint {
+  font-size: 0.82rem;
+}
+
+.mp-onboarding-ico {
+  font-size: 1.5rem !important;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.mp-onboarding-card--ok .mp-onboarding-ico {
+  color: #2e7d32;
+}
+
+.mp-onboarding-card--wait .mp-onboarding-ico {
+  color: #e65100;
+}
+
+/* --- Recommandation #12 — Progression enrichie --- */
+.mp-progression-current {
+  margin-top: 1rem;
+}
+
+.mp-progression-badge {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 8px 28px -6px rgba(25, 28, 29, 0.07);
+}
+
+.mp-progression-belt {
+  display: block;
+  width: 3.5rem;
+  height: 0.85rem;
+  border-radius: 4px;
+  border: 2px solid;
+  flex-shrink: 0;
+}
+
+.mp-progression-grade {
+  font-size: 1.15rem;
+  font-weight: 900;
+  margin: 0 0 0.2rem;
+  color: #000666;
+}
+
+.mp-timeline-belt-dot {
+  width: 1rem;
+  height: 0.5rem;
+  margin-top: 0.5rem;
+  border-radius: 3px;
+  border: 2px solid;
+  flex-shrink: 0;
+}
+
+.mp-timeline-item-done {
+  opacity: 0.5;
+}
+
+.mp-timeline-item-future {
+  opacity: 0.35;
+}
+
+.mp-timeline-current-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #0056c5;
+  margin: 0.15rem 0 0;
+}
+
+/* --- Recommandation #11 — Onboarding admin (tooltip) --- */
+.cf-onboarding-tooltip {
+  position: absolute;
+  z-index: 100;
+  padding: 0.65rem 0.85rem;
+  background: #000666;
+  color: #ffffff;
+  border-radius: 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  max-width: 18rem;
+  box-shadow: 0 12px 32px rgba(0, 6, 102, 0.3);
+  line-height: 1.45;
+}
+
+.cf-onboarding-tooltip__close {
+  border: none;
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  border-radius: 6px;
+  padding: 0.2rem 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 0.45rem;
+  display: inline-block;
+}
+
+.mp-invoice-payments {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  font-size: 0.72rem;
+}
+
+/* --- Recommandation #13 — Programme enrichi dashboard --- */
+.mp-program-summary {
+  padding: 0.5rem 0;
+}
+
+.mp-program-grade {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.mp-program-ico {
+  font-size: 2rem !important;
+  color: #000666;
+  opacity: 0.85;
+}
+
+.mp-program-grade strong {
+  display: block;
+  font-size: 1rem;
+  color: #191c1d;
+}
+
+.mp-program-grade .mp-hint {
+  margin: 0.1rem 0 0;
+}
+
+/* --- Recommandation #14 — Bouton CTA sidebar actif --- */
+.mp-cta-sidebar--active {
+  background: linear-gradient(135deg, #000666 0%, #1a237e 100%);
+  cursor: pointer;
+}
+
+.mp-cta-sidebar--active:hover {
+  filter: brightness(1.06);
+}
+
+/* --- Recommandation #15 — Hero lead pour contact --- */
+.mp-hero-lead {
+  margin: 0 0 1rem;
+  font-size: 0.95rem;
+  color: #454652;
+  line-height: 1.55;
+}

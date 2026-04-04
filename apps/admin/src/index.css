@@ -2943,3 +2943,228 @@ code {
   word-break: break-all;
   white-space: pre-wrap;
 }
+
+/* ================================================================
+   UX Improvements — feat/ux-improvements
+   ================================================================ */
+
+/* --- Recommandation #2 — Onglets tiroir membre --- */
+.member-drawer-tabs {
+  display: flex;
+  gap: 0;
+  margin: 0.75rem 0 0.5rem;
+  border-bottom: 2px solid var(--cf-border);
+}
+
+.member-drawer-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.55rem 0.85rem;
+  border: none;
+  background: none;
+  font-family: var(--font);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--cf-text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.member-drawer-tab:hover {
+  color: var(--cf-text);
+}
+
+.member-drawer-tab--active {
+  color: var(--cf-secondary);
+  border-bottom-color: var(--cf-secondary);
+}
+
+.member-drawer-tab__ico {
+  font-size: 1.15rem !important;
+  opacity: 0.85;
+}
+
+/* --- Recommandation #6 — Toast notifications admin --- */
+.cf-toast-container {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.cf-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--cf-radius);
+  background: var(--cf-surface-card);
+  box-shadow: 0 12px 40px rgba(25, 28, 29, 0.18);
+  border: 1px solid var(--cf-border);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--cf-text);
+  animation: cf-toast-in 0.3s ease;
+  max-width: 22rem;
+}
+
+@keyframes cf-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.cf-toast__ico {
+  font-size: 1.25rem !important;
+  flex-shrink: 0;
+}
+
+.cf-toast--success .cf-toast__ico {
+  color: #0d5c3d;
+}
+
+.cf-toast--error .cf-toast__ico {
+  color: #ba1a1a;
+}
+
+.cf-toast--info .cf-toast__ico {
+  color: var(--cf-secondary);
+}
+
+.cf-toast__msg {
+  flex: 1;
+  min-width: 0;
+}
+
+.cf-toast__close {
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0.15rem;
+  color: var(--cf-text-muted);
+  display: flex;
+  align-items: center;
+}
+
+.cf-toast__close .material-symbols-outlined {
+  font-size: 1.1rem !important;
+}
+
+/* --- Recommandation #7 — Duplication créneaux planning --- */
+.planning-slot-actions {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.planning-slot-actions .btn {
+  padding: 0.3rem 0.55rem;
+  font-size: 0.75rem;
+}
+
+.planning-dup-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.75rem;
+  margin-bottom: 0.75rem;
+  border-radius: 8px;
+  background: rgba(0, 86, 197, 0.08);
+  border: 1px solid rgba(0, 86, 197, 0.2);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--cf-secondary);
+}
+
+.planning-dup-banner .material-symbols-outlined {
+  font-size: 1.15rem !important;
+}
+
+.planning-dup-banner button {
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: var(--cf-text-muted);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+/* --- Recommandation #4 — Alerte certificat médical --- */
+.members-medical-alert {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 8px;
+  background: rgba(186, 26, 26, 0.08);
+  border: 1px solid rgba(186, 26, 26, 0.2);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #ba1a1a;
+  margin-bottom: 0.5rem;
+}
+
+.members-medical-alert .material-symbols-outlined {
+  font-size: 1.15rem !important;
+}
+
+/* --- Recommandation #11 — Onboarding admin --- */
+.cf-onboarding-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  padding: 1rem 1.15rem;
+  margin-bottom: 1rem;
+  border-radius: var(--cf-radius);
+  background: linear-gradient(135deg, rgba(0, 6, 102, 0.06), rgba(0, 86, 197, 0.04));
+  border: 1px solid rgba(0, 6, 102, 0.12);
+}
+
+.cf-onboarding-banner__ico {
+  font-size: 1.5rem !important;
+  color: var(--cf-secondary);
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.cf-onboarding-banner__content strong {
+  display: block;
+  font-size: 0.92rem;
+  margin-bottom: 0.25rem;
+  color: var(--cf-text);
+}
+
+.cf-onboarding-banner__content p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--cf-text-muted);
+  line-height: 1.45;
+}
+
+.cf-onboarding-banner__dismiss {
+  margin-left: auto;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--cf-text-muted);
+  padding: 0.2rem;
+  flex-shrink: 0;
+}
+
+.cf-onboarding-banner__dismiss .material-symbols-outlined {
+  font-size: 1.15rem !important;
+}

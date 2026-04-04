@@ -12,6 +12,13 @@ type Props = {
   variant?: 'dashboard' | 'compact';
 };
 
+/**
+ * Recommandation UX #8 — Reformulation du texte de rattachement familial
+ * Vocabulaire orienté bénéfice utilisateur plutôt que modèle de données.
+ *
+ * Recommandation UX #9 — Schéma visuel pour les foyers partagés
+ * Ajout d'une illustration iconographique du partage familial.
+ */
 export function JoinFamilyByPayerEmailCta({ variant = 'dashboard' }: Props) {
   const navigate = useNavigate();
   const { data: meData } = useQuery<ViewerMeData>(VIEWER_ME, {
@@ -36,7 +43,7 @@ export function JoinFamilyByPayerEmailCta({ variant = 'dashboard' }: Props) {
     setLocalError(null);
     const trimmed = email.trim();
     if (!trimmed) {
-      setLocalError('Saisissez l’e-mail du payeur.');
+      setLocalError('Saisissez l\u2019e-mail du responsable facturation.');
       return;
     }
     try {
@@ -68,7 +75,7 @@ export function JoinFamilyByPayerEmailCta({ variant = 'dashboard' }: Props) {
     <>
       <section
         className={compact ? 'mp-join-family-compact' : 'mp-join-family-banner'}
-        aria-label="Rattachement à un foyer"
+        aria-label="Rattachement à un espace familial"
       >
         <div className="mp-join-family-banner__text">
           <h2 className="mp-join-family-banner__title">
@@ -79,17 +86,32 @@ export function JoinFamilyByPayerEmailCta({ variant = 'dashboard' }: Props) {
               link
             </span>
             {compact
-              ? 'Rejoindre votre foyer'
-              : 'Rattacher ma fiche à un foyer existant'}
+              ? 'Rejoindre votre espace familial'
+              : 'Rattacher ma fiche à un espace familial existant'}
           </h2>
           <p className="mp-join-family-banner__lede">
-            Saisissez l’<strong>e-mail du payeur</strong> tel qu’enregistré au
-            club. Le club crée une <strong>nouvelle résidence</strong> pour votre
-            fiche (vous n’êtes pas ajouté au foyer du payeur côté administration).
-            Vous partagez la <strong>facturation du groupe</strong> et les{' '}
-            <strong>enfants</strong> sur le portail, sans accès à la fiche de
-            l’autre parent.
+            Vous partagez les <strong>mêmes factures</strong> et voyez les{' '}
+            <strong>mêmes enfants</strong> sur le portail. Chaque parent garde
+            son <strong>espace personnel privé</strong>.
           </p>
+
+          {/* Recommandation #9 — Schéma visuel */}
+          {!compact ? (
+            <div className="mp-family-visual" aria-hidden>
+              <div className="mp-family-visual__house">
+                <span className="material-symbols-outlined">home</span>
+                <span className="mp-family-visual__label">Votre espace</span>
+              </div>
+              <div className="mp-family-visual__link">
+                <span className="material-symbols-outlined">receipt_long</span>
+                <span className="mp-family-visual__label">Factures partagées</span>
+              </div>
+              <div className="mp-family-visual__house">
+                <span className="material-symbols-outlined">home</span>
+                <span className="mp-family-visual__label">Autre parent</span>
+              </div>
+            </div>
+          ) : null}
         </div>
         <button
           type="button"
@@ -103,7 +125,7 @@ export function JoinFamilyByPayerEmailCta({ variant = 'dashboard' }: Props) {
             setOpen(true);
           }}
         >
-          Rejoindre un foyer
+          Rejoindre un espace familial
         </button>
       </section>
 
@@ -122,16 +144,16 @@ export function JoinFamilyByPayerEmailCta({ variant = 'dashboard' }: Props) {
           aria-labelledby="join-family-title"
         >
           <h2 id="join-family-title" className="mp-modal-title">
-            E-mail du payeur du foyer
+            E-mail du responsable facturation
           </h2>
           <p className="mp-hint mp-modal-lede">
-            L’adresse doit être <strong>exactement</strong> celle du membre
-            désigné comme payeur (ou du seul membre du foyer). En cas de doute,
-            contactez le secrétariat.
+            Saisissez l'adresse e-mail <strong>exacte</strong> du parent
+            responsable de la facturation, telle qu'enregistrée au club.
+            En cas de doute, contactez le secrétariat.
           </p>
           <form className="mp-modal-form" onSubmit={(e) => void onSubmit(e)}>
             <label className="mp-field">
-              <span>E-mail du payeur</span>
+              <span>E-mail du responsable</span>
               <input
                 type="email"
                 autoComplete="email"

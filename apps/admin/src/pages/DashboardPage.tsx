@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from '@apollo/client/react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   DASHBOARD_SUMMARY,
@@ -55,6 +55,17 @@ const PIE_COLORS = ['#000666', '#0056c5', '#bdc2ff', '#1a237e', '#c2410c'];
 export function DashboardPage() {
   const navigate = useNavigate();
   const [toggleError, setToggleError] = useState<string | null>(null);
+  /**
+   * Recommandation UX #11 — Onboarding admin
+   * Bannière d'accueil pour les nouveaux administrateurs, masquable.
+   */
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    return localStorage.getItem('cf_onboarding_dismissed') !== '1';
+  });
+  function dismissOnboarding() {
+    setShowOnboarding(false);
+    localStorage.setItem('cf_onboarding_dismissed', '1');
+  }
   const token = getToken();
   const email = token ? decodeJwtEmail(token) : null;
 
@@ -154,6 +165,17 @@ export function DashboardPage() {
     }
   }
 
+  /**
+   * Recommandation UX #4 — Alerte certificats médicaux
+   * Calcule le nombre de membres dont le certificat médical est expiré
+   * ou expire dans les 30 prochains jours.
+   */
+  const medicalAlerts = useMemo(() => {
+    const count = summary?.medicalCertExpiringSoonCount ?? 0;
+    const expired = summary?.medicalCertExpiredCount ?? 0;
+    return { expiring: count, expired };
+  }, [summary]);
+
   const revenueEuro =
     summary?.revenueCentsMonth != null
       ? (summary.revenueCentsMonth / 100).toFixed(2)
@@ -162,6 +184,41 @@ export function DashboardPage() {
 
   return (
     <div className="cf-dash">
+      {showOnboarding ? (
+        <div className="cf-onboarding-banner">
+          <span className="material-symbols-outlined cf-onboarding-banner__ico">rocket_launch</span>
+          <div className="cf-onboarding-banner__content">
+            <strong>Bienvenue sur ClubFlow !</strong>
+            <p>
+              Commencez par activer les modules dont vous avez besoin (section en bas de page),
+              puis créez vos premiers membres dans l'annuaire. Le planning et la facturation
+              se débloqueront automatiquement.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="cf-onboarding-banner__dismiss"
+            onClick={dismissOnboarding}
+            aria-label="Masquer"
+          >
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+      ) : null}
+
+      {(medicalAlerts.expired > 0 || medicalAlerts.expiring > 0) ? (
+        <div className="members-medical-alert">
+          <span className="material-symbols-outlined">warning</span>
+          {medicalAlerts.expired > 0 ? (
+            <span>{medicalAlerts.expired} certificat(s) médical(aux) expiré(s)</span>
+          ) : null}
+          {medicalAlerts.expired > 0 && medicalAlerts.expiring > 0 ? ' — ' : null}
+          {medicalAlerts.expiring > 0 ? (
+            <span>{medicalAlerts.expiring} expire(nt) sous 30 jours</span>
+          ) : null}
+        </div>
+      ) : null}
+
       <section className="cf-dash__welcome">
         <div className="cf-dash__welcome-row">
           <div>

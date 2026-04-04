@@ -143,18 +143,33 @@ export function DashboardPage() {
           <>
             <section className="mp-panel">
               <h2 className="mp-panel-title">Mon programme</h2>
-              <div className="mp-empty-soft">
-                <span className="material-symbols-outlined mp-empty-ico">
-                  auto_stories
-                </span>
-                <p>
-                  Les contenus pédagogiques par grade arrivent bientôt dans cette
-                  section.
-                </p>
-              </div>
-              <button type="button" className="mp-btn mp-btn-outline" disabled>
-                Réserver un cours (à venir)
-              </button>
+              {me?.gradeLevelLabel ? (
+                <div className="mp-program-summary">
+                  <div className="mp-program-grade">
+                    <span className="material-symbols-outlined mp-program-ico">school</span>
+                    <div>
+                      <strong>{me.gradeLevelLabel}</strong>
+                      <p className="mp-hint">Votre grade actuel</p>
+                    </div>
+                  </div>
+                  <Link to="/progression" className="mp-link" style={{ marginTop: '0.5rem', display: 'inline-block' }}>
+                    Voir ma progression complète
+                  </Link>
+                </div>
+              ) : (
+                <div className="mp-empty-soft">
+                  <span className="material-symbols-outlined mp-empty-ico">
+                    auto_stories
+                  </span>
+                  <p>
+                    Votre grade n'est pas encore renseigné. Les contenus
+                    pédagogiques par grade seront disponibles ici.
+                  </p>
+                </div>
+              )}
+              <Link to="/planning" className="mp-btn mp-btn-outline" style={{ textDecoration: 'none', textAlign: 'center', display: 'block' }}>
+                Consulter le planning
+              </Link>
             </section>
 
             <section className="mp-panel">

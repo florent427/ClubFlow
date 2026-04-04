@@ -22,6 +22,7 @@ import { AdhesionSettingsPage } from './pages/settings/AdhesionSettingsPage';
 import { MailDomainSettingsPage } from './pages/settings/MailDomainSettingsPage';
 import { MembersUiProvider } from './pages/members/members-ui-context';
 import { ContactsPage } from './pages/contacts/ContactsPage';
+import { ToastProvider } from './components/ToastProvider';
 
 function Protected({ children }: { children: ReactNode }) {
   if (!isLoggedIn()) {
@@ -33,6 +34,7 @@ function Protected({ children }: { children: ReactNode }) {
 export default function App() {
   return (
     <ApolloProvider client={apolloClient}>
+      <ToastProvider>
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -77,6 +79,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
+      </ToastProvider>
     </ApolloProvider>
   );
 }

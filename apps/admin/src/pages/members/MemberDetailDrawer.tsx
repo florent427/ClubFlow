@@ -148,6 +148,13 @@ export function MemberDetailDrawer({
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [memberFormHydrated, setMemberFormHydrated] = useState(false);
 
+  /**
+   * Recommandation UX #2 — Navigation par onglets dans le tiroir membre
+   * Sépare le contenu en 3 onglets : Identité, Adhésion, Foyer
+   */
+  type DrawerTab = 'identity' | 'adhesion' | 'family';
+  const [activeTab, setActiveTab] = useState<DrawerTab>('identity');
+
   const [joinFamilyId, setJoinFamilyId] = useState('');
   const [joinLinkRole, setJoinLinkRole] = useState<'PAYER' | 'MEMBER'>(
     'MEMBER',
@@ -341,6 +348,7 @@ export function MemberDetailDrawer({
   useEffect(() => {
     setCloseConfirmOpen(false);
     setMemberFormHydrated(false);
+    setActiveTab('identity');
   }, [memberId]);
 
   useEffect(() => {
@@ -726,6 +734,41 @@ export function MemberDetailDrawer({
           <Link to="/members/families">Familles &amp; payeurs</Link>
         </p>
 
+        {/* Recommandation UX #2 — Onglets tiroir membre */}
+        <nav className="member-drawer-tabs" role="tablist" aria-label="Sections de la fiche membre">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'identity'}
+            className={`member-drawer-tab${activeTab === 'identity' ? ' member-drawer-tab--active' : ''}`}
+            onClick={() => setActiveTab('identity')}
+          >
+            <span className="material-symbols-outlined member-drawer-tab__ico">person</span>
+            Identité
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'adhesion'}
+            className={`member-drawer-tab${activeTab === 'adhesion' ? ' member-drawer-tab--active' : ''}`}
+            onClick={() => setActiveTab('adhesion')}
+          >
+            <span className="material-symbols-outlined member-drawer-tab__ico">assignment</span>
+            Adhésion
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'family'}
+            className={`member-drawer-tab${activeTab === 'family' ? ' member-drawer-tab--active' : ''}`}
+            onClick={() => setActiveTab('family')}
+          >
+            <span className="material-symbols-outlined member-drawer-tab__ico">groups</span>
+            Foyer
+          </button>
+        </nav>
+
+        {activeTab === 'identity' ? (
         <form
           className="family-drawer__section members-form"
           onSubmit={(e) => void onEditSubmit(e)}
@@ -981,7 +1024,9 @@ export function MemberDetailDrawer({
             </button>
           </div>
         </form>
+        ) : null}
 
+        {activeTab === 'adhesion' ? (
         <MemberAdhesionPanels
           key={`${member.id}-${(member.assignedDynamicGroups ?? [])
             .map((g) => g.id)
@@ -989,7 +1034,9 @@ export function MemberDetailDrawer({
             .join(',')}`}
           member={member}
         />
+        ) : null}
 
+        {activeTab === 'family' ? (
         <div className="family-drawer__section">
           <h3 className="family-drawer__h">Foyer</h3>
           {familyFormError ? (
@@ -1153,6 +1200,7 @@ export function MemberDetailDrawer({
             </form>
           </div>
         </div>
+        ) : null}
       </>
     );
 
