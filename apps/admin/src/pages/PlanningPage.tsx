@@ -1,5 +1,12 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, type FormEvent } from 'react';
+import { addDays } from 'date-fns/addDays';
+import { eachDayOfInterval } from 'date-fns/eachDayOfInterval';
+import { startOfMonth } from 'date-fns/startOfMonth';
+import { startOfWeek } from 'date-fns/startOfWeek';
+import { PlanningMonthView } from '../components/planning/PlanningMonthView';
+import { PlanningTimeGrid } from '../components/planning/PlanningTimeGrid';
+import { useToast } from '../components/ToastProvider';
 import {
   CLUB_COURSE_SLOTS,
   CLUB_DYNAMIC_GROUPS,
@@ -8,13 +15,19 @@ import {
   CREATE_CLUB_COURSE_SLOT,
   CREATE_CLUB_VENUE,
   DELETE_CLUB_COURSE_SLOT,
+  UPDATE_CLUB_COURSE_SLOT,
 } from '../lib/documents';
+import { snapInstantToUtcQuarterHour } from '../lib/planning-calendar';
 import type {
   CourseSlotsQueryData,
   DynamicGroupsQueryData,
   MembersQueryData,
   VenuesQueryData,
 } from '../lib/types';
+import {
+  usePlanningCalendarSearchParams,
+  type PlanningView,
+} from '../planning/usePlanningCalendarSearchParams';
 
 /**
  * Recommandation UX #7 — Duplication de créneaux
@@ -57,6 +70,17 @@ function toLocalDatetime(iso: string): string {
 }
 
 export function PlanningPage() {
+  const { showToast } = useToast();
+  const {
+    view,
+    pivotDate,
+    setView,
+    setPivotDate,
+    goNext,
+    goPrev,
+    goToday,
+  } = usePlanningCalendarSearchParams();
+
   const [venueName, setVenueName] = useState('');
   const [venueAddress, setVenueAddress] = useState('');
   const [slotTitle, setSlotTitle] = useState('');
@@ -104,9 +128,17 @@ export function PlanningPage() {
         setFormError(null);
         void refetchSlots();
       },
-      onError: (e) => setFormError(e.message),
+      onError: (e) => {
+        setFormError(e.message);
+        showToast(e.message, 'error');
+      },
     },
   );
+
+  const [updateSlot] = useMutation(UPDATE_CLUB_COURSE_SLOT, {
+    onCompleted: () => void refetchSlots(),
+    onError: (e) => showToast(e.message, 'error'),
+  });
 
   const [deleteSlot] = useMutation(DELETE_CLUB_COURSE_SLOT, {
     onCompleted: () => void refetchSlots(),
@@ -118,24 +150,53 @@ export function PlanningPage() {
     return list.filter((m) => m.roles.includes('COACH'));
   }, [membersData]);
 
-  const venues = venuesData?.clubVenues ?? [];
   const slots = slotsData?.clubCourseSlots ?? [];
-  const groups = groupsData?.clubDynamicGroups ?? [];
-  const members = membersData?.clubMembers ?? [];
 
   const memberNameById = useMemo(() => {
+    const members = membersData?.clubMembers ?? [];
     const m = new Map<string, string>();
     for (const x of members) {
       m.set(x.id, `${x.firstName} ${x.lastName}`);
     }
     return m;
-  }, [members]);
+  }, [membersData]);
 
   const venueNameById = useMemo(() => {
+    const venues = venuesData?.clubVenues ?? [];
     const m = new Map<string, string>();
     for (const v of venues) m.set(v.id, v.name);
     return m;
-  }, [venues]);
+  }, [venuesData]);
+
+  const groupNameById = useMemo(() => {
+    const groups = groupsData?.clubDynamicGroups ?? [];
+    const m = new Map<string, string>();
+    for (const g of groups) m.set(g.id, g.name);
+    return m;
+  }, [groupsData]);
+
+  const weekDays = useMemo(() => {
+    const start = startOfWeek(pivotDate, { weekStartsOn: 1 });
+    const end = addDays(start, 6);
+    return eachDayOfInterval({ start, end });
+  }, [pivotDate]);
+
+  const monthPivot = useMemo(() => startOfMonth(pivotDate), [pivotDate]);
+
+  const onSlotTimeChange = useCallback(
+    (slotId: string, next: { startsAt: string; endsAt: string }) => {
+      void updateSlot({
+        variables: {
+          input: {
+            id: slotId,
+            startsAt: next.startsAt,
+            endsAt: next.endsAt,
+          },
+        },
+      });
+    },
+    [updateSlot],
+  );
 
   /** Pré-remplit le formulaire avec les valeurs d'un créneau existant. */
   function duplicateSlot(slotId: string) {
@@ -149,7 +210,6 @@ export function PlanningPage() {
     setSlotGroupId(source.dynamicGroupId ?? '');
     setDupSource(source.title);
     setFormError(null);
-    // Scroll vers le formulaire
     document.getElementById('slot-form')?.scrollIntoView({ behavior: 'smooth' });
   }
 
@@ -161,7 +221,7 @@ export function PlanningPage() {
     setDupSource(null);
   }
 
-  async function onCreateVenue(e: React.FormEvent) {
+  async function onCreateVenue(e: FormEvent) {
     e.preventDefault();
     setFormError(null);
     if (!venueName.trim()) {
@@ -178,17 +238,23 @@ export function PlanningPage() {
     });
   }
 
-  async function onCreateSlot(e: React.FormEvent) {
+  async function onCreateSlot(e: FormEvent) {
     e.preventDefault();
     setFormError(null);
     if (!slotTitle.trim() || !slotVenueId || !slotCoachId || !slotStarts || !slotEnds) {
       setFormError('Titre, lieu, professeur et horaires sont obligatoires.');
       return;
     }
-    const starts = new Date(slotStarts);
-    const ends = new Date(slotEnds);
+    let starts = new Date(slotStarts);
+    let ends = new Date(slotEnds);
     if (Number.isNaN(starts.getTime()) || Number.isNaN(ends.getTime())) {
       setFormError('Dates invalides.');
+      return;
+    }
+    starts = snapInstantToUtcQuarterHour(starts);
+    ends = snapInstantToUtcQuarterHour(ends);
+    if (ends <= starts) {
+      setFormError('La fin doit être après le début (durée minimale 15 min).');
       return;
     }
     await createSlot({
@@ -205,21 +271,85 @@ export function PlanningPage() {
     });
   }
 
+  function viewLabel(v: PlanningView): string {
+    if (v === 'month') return 'Mois';
+    if (v === 'week') return 'Semaine';
+    return 'Jour';
+  }
+
   return (
     <div className="members-loom">
       <header className="members-loom__hero">
         <p className="members-loom__eyebrow">Module Planning</p>
         <h1 className="members-loom__title">Lieux et créneaux cours</h1>
         <p className="members-loom__lede">
-          Créneaux avec détection des conflits professeur (chevauchement
-          interdit). Les professeurs sont des membres actifs avec le rôle{' '}
-          <strong>COACH</strong>.
+          Calendrier : déplacez et redimensionnez les créneaux (pas de 15 min,
+          validation UTC côté serveur). Les professeurs sont des membres actifs
+          avec le rôle <strong>COACH</strong>.
         </p>
       </header>
 
+      <div className="planning-toolbar">
+        <div className="planning-toolbar__views" role="tablist" aria-label="Vue calendrier">
+          {(['month', 'week', 'day'] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              role="tab"
+              aria-selected={view === v}
+              className={`btn btn-tight${view === v ? ' btn-primary' : ' btn-ghost'}`}
+              onClick={() => setView(v)}
+            >
+              {viewLabel(v)}
+            </button>
+          ))}
+        </div>
+        <div className="planning-toolbar__nav">
+          <button type="button" className="btn btn-ghost btn-tight" onClick={goPrev}>
+            <span className="material-symbols-outlined">chevron_left</span>
+          </button>
+          <button type="button" className="btn btn-ghost btn-tight" onClick={goToday}>
+            Aujourd’hui
+          </button>
+          <button type="button" className="btn btn-ghost btn-tight" onClick={goNext}>
+            <span className="material-symbols-outlined">chevron_right</span>
+          </button>
+        </div>
+      </div>
+
+      <section className="planning-calendar-shell members-panel">
+        {view === 'month' ? (
+          <PlanningMonthView
+            monthPivot={monthPivot}
+            slots={slots}
+            onSelectDay={(d) => {
+              setPivotDate(d);
+              setView('week');
+            }}
+          />
+        ) : (
+          <PlanningTimeGrid
+            days={view === 'day' ? [pivotDate] : weekDays}
+            slots={slots}
+            coachNameById={memberNameById}
+            venueNameById={venueNameById}
+            groupNameById={groupNameById}
+            onSlotTimeChange={onSlotTimeChange}
+            onDayHeaderClick={
+              view === 'week'
+                ? (d) => {
+                    setPivotDate(d);
+                    setView('day');
+                  }
+                : undefined
+            }
+          />
+        )}
+      </section>
+
       <div className="members-loom__grid">
         <section className="members-panel members-panel--table">
-          <h2 className="members-panel__h">Créneaux</h2>
+          <h2 className="members-panel__h">Liste des créneaux</h2>
           {formError ? <p className="form-error">{formError}</p> : null}
           {slots.length === 0 ? (
             <p className="muted">Aucun créneau. Ajoutez un lieu puis un cours.</p>
@@ -241,15 +371,12 @@ export function PlanningPage() {
                       <td>
                         <span className="members-table__name">{s.title}</span>
                         {s.dynamicGroupId ? (
-                          <span className="members-table__sub">
-                            Groupe lié
-                          </span>
+                          <span className="members-table__sub">Groupe lié</span>
                         ) : null}
                       </td>
                       <td>{venueNameById.get(s.venueId) ?? s.venueId}</td>
                       <td>
-                        {memberNameById.get(s.coachMemberId) ??
-                          s.coachMemberId}
+                        {memberNameById.get(s.coachMemberId) ?? s.coachMemberId}
                       </td>
                       <td>{formatSlotRange(s.startsAt, s.endsAt)}</td>
                       <td>
@@ -260,7 +387,10 @@ export function PlanningPage() {
                             title="Dupliquer ce créneau"
                             onClick={() => duplicateSlot(s.id)}
                           >
-                            <span className="material-symbols-outlined" style={{ fontSize: '1rem' }}>
+                            <span
+                              className="material-symbols-outlined"
+                              style={{ fontSize: '1rem' }}
+                            >
                               content_copy
                             </span>
                           </button>
@@ -344,7 +474,7 @@ export function PlanningPage() {
                 required
               >
                 <option value="">— Choisir —</option>
-                {venues.map((v) => (
+                {(venuesData?.clubVenues ?? []).map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.name}
                   </option>
@@ -397,7 +527,7 @@ export function PlanningPage() {
                 onChange={(e) => setSlotGroupId(e.target.value)}
               >
                 <option value="">— Aucun —</option>
-                {groups.map((g) => (
+                {(groupsData?.clubDynamicGroups ?? []).map((g) => (
                   <option key={g.id} value={g.id}>
                     {g.name}
                   </option>
@@ -407,11 +537,15 @@ export function PlanningPage() {
             <button
               type="submit"
               className="btn btn-primary members-form__submit"
-              disabled={creatingSlot || venues.length === 0}
+              disabled={creatingSlot || (venuesData?.clubVenues ?? []).length === 0}
             >
-              {creatingSlot ? 'Création…' : dupSource ? 'Créer la copie' : 'Créer le créneau'}
+              {creatingSlot
+                ? 'Création…'
+                : dupSource
+                  ? 'Créer la copie'
+                  : 'Créer le créneau'}
             </button>
-            {venues.length === 0 ? (
+            {(venuesData?.clubVenues ?? []).length === 0 ? (
               <p className="muted">Créez d'abord un lieu.</p>
             ) : null}
           </form>

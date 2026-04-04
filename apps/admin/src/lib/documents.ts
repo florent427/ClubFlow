@@ -105,7 +105,34 @@ export const CLUB_MEMBERS = gql`
         id
         name
       }
+      telegramLinked
     }
+  }
+`;
+
+/** État Telegram à jour (évite un cache Apollo obsolète sur la liste clubMembers). */
+export const CLUB_MEMBER_TELEGRAM = gql`
+  query ClubMemberTelegram($id: ID!) {
+    clubMember(id: $id) {
+      id
+      telegramLinked
+    }
+  }
+`;
+
+export const ISSUE_TELEGRAM_MEMBER_LINK = gql`
+  mutation IssueTelegramMemberLink($memberId: ID!) {
+    issueTelegramMemberLink(memberId: $memberId) {
+      url
+      expiresAt
+      emailSent
+    }
+  }
+`;
+
+export const DISCONNECT_MEMBER_TELEGRAM = gql`
+  mutation DisconnectMemberTelegram($memberId: ID!) {
+    disconnectMemberTelegram(memberId: $memberId)
   }
 `;
 
@@ -794,6 +821,20 @@ export const DELETE_CLUB_COURSE_SLOT = gql`
   }
 `;
 
+export const UPDATE_CLUB_COURSE_SLOT = gql`
+  mutation UpdateClubCourseSlot($input: UpdateCourseSlotInput!) {
+    updateClubCourseSlot(input: $input) {
+      id
+      venueId
+      coachMemberId
+      title
+      startsAt
+      endsAt
+      dynamicGroupId
+    }
+  }
+`;
+
 export const CLUB_FAMILIES = gql`
   query ClubFamilies {
     clubFamilies {
@@ -1078,6 +1119,35 @@ export const SEND_CLUB_MESSAGE_CAMPAIGN = gql`
       status
       sentAt
       recipientCount
+    }
+  }
+`;
+
+export const UPDATE_CLUB_MESSAGE_CAMPAIGN = gql`
+  mutation UpdateClubMessageCampaign($input: UpdateMessageCampaignInput!) {
+    updateClubMessageCampaign(input: $input) {
+      id
+      title
+      body
+      channel
+      dynamicGroupId
+      status
+      sentAt
+      recipientCount
+    }
+  }
+`;
+
+export const DELETE_CLUB_MESSAGE_CAMPAIGN = gql`
+  mutation DeleteClubMessageCampaign($campaignId: ID!) {
+    deleteClubMessageCampaign(campaignId: $campaignId)
+  }
+`;
+
+export const SEND_CLUB_QUICK_MESSAGE = gql`
+  mutation SendClubQuickMessage($input: SendQuickMessageInput!) {
+    sendClubQuickMessage(input: $input) {
+      success
     }
   }
 `;

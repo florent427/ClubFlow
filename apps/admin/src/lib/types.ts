@@ -22,6 +22,8 @@ export type DashboardQueryData = {
     upcomingSessionsCount: number;
     outstandingPaymentsCount: number;
     revenueCentsMonth: number;
+    medicalCertExpiringSoonCount?: number;
+    medicalCertExpiredCount?: number;
   };
 };
 
@@ -71,6 +73,13 @@ export type MemberCustomFieldValueRow = {
   };
 };
 
+export type ClubMemberTelegramQueryData = {
+  clubMember: {
+    id: string;
+    telegramLinked: boolean;
+  };
+};
+
 export type MembersQueryData = {
   clubMembers: {
     id: string;
@@ -94,6 +103,7 @@ export type MembersQueryData = {
     familyLink: { id: string; linkRole: string } | null;
     customFieldValues: MemberCustomFieldValueRow[];
     assignedDynamicGroups: { id: string; name: string }[];
+    telegramLinked: boolean;
   }[];
 };
 
@@ -197,6 +207,18 @@ export type CourseSlotsQueryData = {
     endsAt: string;
     dynamicGroupId: string | null;
   }[];
+};
+
+export type UpdateClubCourseSlotMutationData = {
+  updateClubCourseSlot: {
+    id: string;
+    venueId: string;
+    coachMemberId: string;
+    title: string;
+    startsAt: string;
+    endsAt: string;
+    dynamicGroupId: string | null;
+  };
 };
 
 export type FamiliesQueryData = {
@@ -461,4 +483,27 @@ export type SendMessageCampaignMutationData = {
     sentAt: string | null;
     recipientCount: number;
   };
+};
+
+export type UpdateMessageCampaignMutationData = {
+  updateClubMessageCampaign: {
+    id: string;
+    title: string;
+    body: string;
+    channel: CommunicationChannelStr;
+    dynamicGroupId: string | null;
+    status: MessageCampaignStatusStr;
+    sentAt: string | null;
+    recipientCount: number;
+  };
+};
+
+export type DeleteMessageCampaignMutationData = {
+  deleteClubMessageCampaign: boolean;
+};
+
+export type QuickMessageRecipientTypeStr = 'MEMBER' | 'CONTACT';
+
+export type SendClubQuickMessageMutationData = {
+  sendClubQuickMessage: { success: boolean };
 };
