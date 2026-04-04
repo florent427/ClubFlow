@@ -15,6 +15,7 @@ import { FamiliesPage } from './pages/members/FamiliesPage';
 import { NewMemberPage } from './pages/members/NewMemberPage';
 import { NewFamilyPage } from './pages/members/NewFamilyPage';
 import { PlanningPage } from './pages/PlanningPage';
+import { CommunicationPage } from './pages/CommunicationPage';
 import { SettingsLayout } from './pages/settings/SettingsLayout';
 import { SettingsHubPage } from './pages/settings/SettingsHubPage';
 import { MemberFieldsSettingsPage } from './pages/settings/MemberFieldsSettingsPage';
@@ -66,6 +67,7 @@ export default function App() {
             />
             <Route path="contacts" element={<ContactsPage />} />
             <Route path="planning" element={<PlanningPage />} />
+            <Route path="communication" element={<CommunicationPage />} />
             <Route path="settings" element={<SettingsLayout />}>
               <Route index element={<SettingsHubPage />} />
               <Route

@@ -428,3 +428,37 @@ export type PromoteContactToMemberMutationData = {
 export type SyncClubContactMemberLinksMutationData = {
   syncClubContactMemberLinks: boolean;
 };
+
+/** Aligné sur Prisma / GraphQL (CommunicationChannel, MessageCampaignStatus). */
+export type CommunicationChannelStr = 'EMAIL' | 'TELEGRAM' | 'PUSH';
+export type MessageCampaignStatusStr = 'DRAFT' | 'SENT';
+
+export type MessageCampaignsQueryData = {
+  clubMessageCampaigns: {
+    id: string;
+    title: string;
+    body: string;
+    channel: CommunicationChannelStr;
+    dynamicGroupId: string | null;
+    status: MessageCampaignStatusStr;
+    sentAt: string | null;
+    recipientCount: number;
+  }[];
+};
+
+export type CreateMessageCampaignMutationData = {
+  createClubMessageCampaign: {
+    id: string;
+    title: string;
+    status: MessageCampaignStatusStr;
+  };
+};
+
+export type SendMessageCampaignMutationData = {
+  sendClubMessageCampaign: {
+    id: string;
+    status: MessageCampaignStatusStr;
+    sentAt: string | null;
+    recipientCount: number;
+  };
+};

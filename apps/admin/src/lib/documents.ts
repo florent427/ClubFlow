@@ -1045,3 +1045,39 @@ export const SEND_CLUB_TRANSACTIONAL_TEST_EMAIL = gql`
     sendClubTransactionalTestEmail(input: $input)
   }
 `;
+
+export const CLUB_MESSAGE_CAMPAIGNS = gql`
+  query ClubMessageCampaigns {
+    clubMessageCampaigns {
+      id
+      title
+      body
+      channel
+      dynamicGroupId
+      status
+      sentAt
+      recipientCount
+    }
+  }
+`;
+
+export const CREATE_CLUB_MESSAGE_CAMPAIGN = gql`
+  mutation CreateClubMessageCampaign($input: CreateMessageCampaignInput!) {
+    createClubMessageCampaign(input: $input) {
+      id
+      title
+      status
+    }
+  }
+`;
+
+export const SEND_CLUB_MESSAGE_CAMPAIGN = gql`
+  mutation SendClubMessageCampaign($campaignId: ID!) {
+    sendClubMessageCampaign(campaignId: $campaignId) {
+      id
+      status
+      sentAt
+      recipientCount
+    }
+  }
+`;

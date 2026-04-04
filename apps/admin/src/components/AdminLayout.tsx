@@ -154,12 +154,17 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
             </span>
             <span>Finances</span>
           </span>
-          <span className="cf-sidenav__link cf-sidenav__link--disabled">
+          <NavLink
+            to="/communication"
+            className={({ isActive }) =>
+              `cf-sidenav__link${isActive ? ' cf-sidenav__link--active' : ''}`
+            }
+          >
             <span className="material-symbols-outlined" aria-hidden>
               campaign
             </span>
             <span>Communication</span>
-          </span>
+          </NavLink>
 
           <span className="cf-sidenav__section">Administration</span>
           <Link to="/#club-modules" className="cf-sidenav__link">
