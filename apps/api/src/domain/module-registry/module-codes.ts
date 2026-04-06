@@ -4,6 +4,7 @@ export enum ModuleCode {
   PAYMENT = 'PAYMENT',
   PLANNING = 'PLANNING',
   COMMUNICATION = 'COMMUNICATION',
+  MESSAGING = 'MESSAGING',
   ACCOUNTING = 'ACCOUNTING',
   SUBSIDIES = 'SUBSIDIES', // spec « Subventions » — code technique court
   SPONSORING = 'SPONSORING',

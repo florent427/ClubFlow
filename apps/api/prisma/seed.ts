@@ -19,6 +19,7 @@ const MODULE_LABELS: Record<ModuleCode, string> = {
   [ModuleCode.PAYMENT]: 'Paiement',
   [ModuleCode.PLANNING]: 'Planning',
   [ModuleCode.COMMUNICATION]: 'Communication',
+  [ModuleCode.MESSAGING]: 'Messagerie',
   [ModuleCode.ACCOUNTING]: 'Comptabilité',
   [ModuleCode.SUBSIDIES]: 'Subventions',
   [ModuleCode.SPONSORING]: 'Sponsoring',

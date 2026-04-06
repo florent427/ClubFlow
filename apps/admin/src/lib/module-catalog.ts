@@ -5,6 +5,7 @@ export type ModuleCodeStr =
   | 'PAYMENT'
   | 'PLANNING'
   | 'COMMUNICATION'
+  | 'MESSAGING'
   | 'ACCOUNTING'
   | 'SUBSIDIES'
   | 'SPONSORING'
@@ -29,6 +30,7 @@ export const MODULE_CATALOG: {
   { code: 'PAYMENT', label: 'Paiement', required: false },
   { code: 'PLANNING', label: 'Planning', required: false },
   { code: 'COMMUNICATION', label: 'Communication', required: false },
+  { code: 'MESSAGING', label: 'Messagerie', required: false },
   { code: 'ACCOUNTING', label: 'Comptabilité', required: false },
   { code: 'SUBSIDIES', label: 'Subventions', required: false },
   { code: 'SPONSORING', label: 'Sponsoring', required: false },

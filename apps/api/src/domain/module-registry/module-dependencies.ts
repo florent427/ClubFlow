@@ -7,6 +7,7 @@ export const ENABLE_REQUIRES: Record<ModuleCode, ModuleCode[]> = {
   [ModuleCode.PAYMENT]: [ModuleCode.MEMBERS],
   [ModuleCode.PLANNING]: [ModuleCode.MEMBERS],
   [ModuleCode.COMMUNICATION]: [ModuleCode.MEMBERS],
+  [ModuleCode.MESSAGING]: [ModuleCode.MEMBERS],
   [ModuleCode.ACCOUNTING]: [ModuleCode.PAYMENT],
   [ModuleCode.SUBSIDIES]: [ModuleCode.ACCOUNTING],
   [ModuleCode.SPONSORING]: [ModuleCode.ACCOUNTING],
