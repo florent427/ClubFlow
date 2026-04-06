@@ -9,7 +9,10 @@ import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.gua
 import { GqlJwtAuthGuard } from '../common/guards/gql-jwt-auth.guard';
 import { ModuleCode } from '../domain/module-registry/module-codes';
 import { CreateMessageCampaignInput } from './dto/create-message-campaign.input';
+import { SendQuickMessageInput } from './dto/send-quick-message.input';
+import { UpdateMessageCampaignInput } from './dto/update-message-campaign.input';
 import { MessageCampaignGraph } from './models/message-campaign.model';
+import { SendQuickMessageResult } from './models/send-quick-message-result.model';
 import { CommsService } from './comms.service';
 
 @Resolver()
@@ -45,5 +48,29 @@ export class CommsResolver {
     @Args('campaignId', { type: () => ID }) campaignId: string,
   ): Promise<MessageCampaignGraph> {
     return this.comms.sendCampaign(club.id, campaignId);
+  }
+
+  @Mutation(() => MessageCampaignGraph)
+  async updateClubMessageCampaign(
+    @CurrentClub() club: Club,
+    @Args('input') input: UpdateMessageCampaignInput,
+  ): Promise<MessageCampaignGraph> {
+    return this.comms.updateDraft(club.id, input);
+  }
+
+  @Mutation(() => Boolean)
+  async deleteClubMessageCampaign(
+    @CurrentClub() club: Club,
+    @Args('campaignId', { type: () => ID }) campaignId: string,
+  ): Promise<boolean> {
+    return this.comms.deleteDraft(club.id, campaignId);
+  }
+
+  @Mutation(() => SendQuickMessageResult)
+  async sendClubQuickMessage(
+    @CurrentClub() club: Club,
+    @Args('input') input: SendQuickMessageInput,
+  ): Promise<{ success: boolean }> {
+    return this.comms.sendQuickMessage(club.id, input);
   }
 }

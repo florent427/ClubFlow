@@ -5,6 +5,11 @@ node_modules/
 .DS_Store
 Thumbs.db
 
+# IDE / outils locaux (Cursor, agents)
+.cursor/
+.agent/
+design stich/
+
 # Env (les secrets restent hors dépôt ; utiliser .env.example)
 .env
 .env.local

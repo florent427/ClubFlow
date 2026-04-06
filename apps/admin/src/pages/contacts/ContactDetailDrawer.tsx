@@ -1,5 +1,7 @@
 import { useMutation, useQuery } from '@apollo/client/react';
 import { useEffect, useState } from 'react';
+import { QuickMessageModal } from '../../components/QuickMessageModal';
+import { useClubCommunicationEnabled } from '../../lib/useClubCommunicationEnabled';
 import {
   CLUB_CONTACT,
   DELETE_CLUB_CONTACT,
@@ -36,6 +38,12 @@ export function ContactDetailDrawer({
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
+  const commEnabled = useClubCommunicationEnabled();
+  const [quickMsgOpen, setQuickMsgOpen] = useState(false);
+
+  useEffect(() => {
+    if (!commEnabled) setQuickMsgOpen(false);
+  }, [commEnabled]);
 
   const { data, loading, refetch } = useQuery<ClubContactQueryData>(
     CLUB_CONTACT,
@@ -128,42 +136,58 @@ export function ContactDetailDrawer({
   }
 
   return (
-    <div
-      className="family-drawer-backdrop"
-      role="presentation"
-      onClick={onClose}
-    >
-      <aside
-        className="family-drawer family-drawer--wide"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="contact-drawer-title"
+    <>
+      <div
+        className="family-drawer-backdrop"
+        role="presentation"
+        onClick={onClose}
       >
-        <header className="family-drawer__head">
-          <div>
-            <h2 className="family-drawer__title" id="contact-drawer-title">
-              Contact portail
-            </h2>
-            {c ? (
-              <p className="muted family-drawer__hint">
-                E-mail (non modifiable ici) : <strong>{c.email}</strong>
-                {c.emailVerified ? (
-                  <> — vérifié</>
-                ) : (
-                  <> — <span className="form-error">non vérifié</span></>
-                )}
-              </p>
-            ) : null}
-          </div>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={onClose}
-          >
-            Fermer
-          </button>
-        </header>
+        <aside
+          className="family-drawer family-drawer--wide"
+          onClick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="contact-drawer-title"
+        >
+          <header className="family-drawer__head">
+            <div>
+              <h2 className="family-drawer__title" id="contact-drawer-title">
+                Contact portail
+              </h2>
+              {c ? (
+                <p className="muted family-drawer__hint">
+                  E-mail (non modifiable ici) : <strong>{c.email}</strong>
+                  {c.emailVerified ? (
+                    <> — vérifié</>
+                  ) : (
+                    <> — <span className="form-error">non vérifié</span></>
+                  )}
+                </p>
+              ) : null}
+            </div>
+            <div className="family-drawer__head-actions">
+              {commEnabled && c ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-tight"
+                  title="Envoyer un message"
+                  onClick={() => setQuickMsgOpen(true)}
+                  aria-label="Envoyer un message"
+                >
+                  <span className="material-symbols-outlined" aria-hidden>
+                    mail
+                  </span>
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="btn btn-ghost btn-tight"
+                onClick={onClose}
+              >
+                Fermer
+              </button>
+            </div>
+          </header>
 
         <p className="muted family-drawer__section" style={{ marginTop: 0 }}>
           Modifier le prénom ou le nom met à jour l’affichage du compte (
@@ -245,7 +269,17 @@ export function ContactDetailDrawer({
         ) : (
           <p className="form-error">Contact introuvable.</p>
         )}
-      </aside>
-    </div>
+        </aside>
+      </div>
+      {c ? (
+        <QuickMessageModal
+          open={quickMsgOpen}
+          onClose={() => setQuickMsgOpen(false)}
+          recipientType="CONTACT"
+          recipientId={c.id}
+          recipientLabel={`${c.firstName} ${c.lastName}`}
+        />
+      ) : null}
+    </>
   );
 }

@@ -118,6 +118,21 @@ export function DashboardPage() {
                 </span>
                 {cert.label}
               </span>
+              {me?.telegramLinked ? (
+                <span className="mp-pill mp-pill-ok">
+                  <span className="material-symbols-outlined mp-pill-ico">
+                    send
+                  </span>
+                  Telegram relié
+                </span>
+              ) : (
+                <span className="mp-pill mp-pill-muted">
+                  <span className="material-symbols-outlined mp-pill-ico">
+                    send
+                  </span>
+                  Telegram non relié
+                </span>
+              )}
             </>
           ) : null}
           {billing?.isHouseholdGroupSpace ? (

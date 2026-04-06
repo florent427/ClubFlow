@@ -1,4 +1,4 @@
-# ClubFlow — libère les ports dev habituels et remonte docker compose.
+# ClubFlow — libère les ports dev habituels (API, Vite, Metro Expo) et remonte docker compose.
 # Usage (depuis la racine du dépôt ClubFlow) :
 #   .\.cursor\skills\restart-clubflow\scripts\restart-clubflow.ps1
 #   .\.cursor\skills\restart-clubflow\scripts\restart-clubflow.ps1 -NoRelay
@@ -26,8 +26,8 @@ function Stop-ListenerPid {
     }
 }
 
-Write-Host "Arrêt des écouteurs dev (3000, 5173-5180)…"
-foreach ($p in @(3000) + (5173..5180)) {
+Write-Host "Arrêt des écouteurs dev (3000, 5173-5180, 8081-8088 Metro/Expo)…"
+foreach ($p in @(3000) + (5173..5180) + (8081..8088)) {
     Stop-ListenerPid -Port $p
 }
 
@@ -48,3 +48,8 @@ Write-Host "  cd apps\api             ; npm run start:dev"
 Write-Host "  cd apps\admin           ; npm run dev"
 Write-Host "  cd apps\member-portal   ; npm install   # si besoin"
 Write-Host "  cd apps\member-portal   ; npm run dev   # http://localhost:5174/"
+Write-Host '  # Optionnel : app mobile Expo (bundler Metro, port 8081 par defaut) :'
+Write-Host "  cd apps\mobile          ; npm install   # si besoin"
+Write-Host "  cd apps\mobile          ; npx expo start"
+Write-Host '  # Emulateur Android : Device Manager ; dans Expo : touche a'
+Write-Host '  # .env mobile : EXPO_PUBLIC_GRAPHQL_HTTP=http://10.0.2.2:3000/graphql'

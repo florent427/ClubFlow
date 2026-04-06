@@ -3517,3 +3517,197 @@ code {
   text-align: right;
   padding-top: 0.15rem;
 }
+
+/* Lignes de grille : heures plus marquées, quarts d’heure visibles */
+.planning-time-grid__slot-line {
+  box-sizing: border-box;
+}
+
+.planning-time-grid__slot-line--hour {
+  border-bottom: 1px solid rgba(76, 86, 111, 0.32);
+}
+
+.planning-time-grid__slot-line--quarter {
+  border-bottom: 1px solid rgba(118, 118, 131, 0.38);
+}
+
+.planning-day-col {
+  isolation: isolate;
+}
+
+.course-slot-block {
+  container-type: size;
+  container-name: planning-slot;
+  transition:
+    left 0.18s ease,
+    width 0.18s ease,
+    top 0.18s ease,
+    height 0.18s ease,
+    box-shadow 0.15s ease;
+}
+
+/* Contenu : taille de police liée à la hauteur du bloc + ellipsis */
+.course-slot-block__body {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0.1em;
+  min-height: 0;
+  padding: clamp(2px, 1.2cqh, 6px) clamp(3px, 2cqw, 6px);
+  font-size: clamp(0.5rem, calc(var(--slot-h, 48px) * 0.11), 0.72rem);
+  line-height: 1.2;
+}
+
+.course-slot-block__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.2em;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.course-slot-block__title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  line-height: 1.15;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  word-break: break-word;
+}
+
+.course-slot-block__chip {
+  flex-shrink: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85em;
+  padding: 0.05em 0.25em;
+  border-radius: 4px;
+  background: rgba(0, 86, 197, 0.1);
+  color: var(--cf-primary-deep, #000666);
+}
+
+.course-slot-block__warn {
+  flex-shrink: 0;
+  font-size: 1em !important;
+  line-height: 1;
+}
+
+.course-slot-block__main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05em;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.course-slot-block__meta {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.15;
+}
+
+.course-slot-block__coach {
+  margin: 0;
+  margin-top: auto;
+  flex-shrink: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+/* Blocs très bas : masquer d’abord le lieu, puis le groupe */
+@container planning-slot (max-height: 40px) {
+  .course-slot-block__venue {
+    display: none;
+  }
+
+  .course-slot-block__chip {
+    display: none;
+  }
+
+  .course-slot-block__title {
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+  }
+}
+
+@container planning-slot (max-height: 32px) {
+  .course-slot-block__coach {
+    display: none;
+  }
+
+  .course-slot-block__body {
+    gap: 0;
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+}
+
+/* Colonnes étroites (chevauchement) : une ligne pour le titre */
+@container planning-slot (max-width: 72px) {
+  .course-slot-block__title {
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+  }
+
+  .course-slot-block__chip {
+    display: none;
+  }
+}
+
+.course-slot-block--dragging {
+  transition: none;
+}
+
+/* Poignées début / fin : visibles, zone cible ~8px + padding tactile */
+.course-slot-block__resize-handle {
+  flex-shrink: 0;
+  width: 100%;
+  min-height: 10px;
+  padding: 2px 0;
+  border: none;
+  border-radius: 0;
+  cursor: ns-resize;
+  background: transparent;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.course-slot-block__resize-handle::after {
+  content: '';
+  display: block;
+  width: 1.75rem;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(76, 86, 111, 0.42);
+}
+
+.course-slot-block__resize-handle:hover::after,
+.course-slot-block__resize-handle:focus-visible::after {
+  background: rgba(0, 86, 197, 0.65);
+}
+
+.course-slot-block__resize-handle--start {
+  border-radius: 0.75rem 0.75rem 0 0;
+}
+
+.course-slot-block__resize-handle--end {
+  border-radius: 0 0 0.75rem 0.75rem;
+}

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   DndContext,
   PointerSensor,
@@ -16,8 +16,11 @@ import { startOfDay } from 'date-fns/startOfDay';
 import { CourseSlotBlock } from './CourseSlotBlock';
 import type { CourseSlotsQueryData } from '../../lib/types';
 import {
+  MS_QUARTER_HOUR,
   PLANNING_GRID_DEFAULTS,
   coachOverlapIds,
+  gridRelativeYToStartDate,
+  layoutOverlappingSlotsForDay,
   layoutSlotOnDay,
   slotIntersectsLocalDay,
   snapInstantToUtcQuarterHour,
@@ -38,6 +41,8 @@ type PlanningTimeGridProps = {
   ) => void;
   /** Clic sur l'en-tête d'une colonne jour (ex. passage semaine → jour). */
   onDayHeaderClick?: (d: Date) => void;
+  /** Double-clic sur un bloc créneau (fiche détail). */
+  onSlotOpen?: (slotId: string) => void;
 };
 
 const grid = {
@@ -81,8 +86,8 @@ function DayColumn({
 
 function DraggableSlot({
   slot,
-  day,
   layout,
+  horizontal,
   hasConflict,
   coachLabel,
   venueLabel,
@@ -90,21 +95,26 @@ function DraggableSlot({
   timeLabel,
   onResizeCommit,
   onOpenDetails,
+  draggableId,
+  pointerEventsBlocked,
 }: {
   slot: Slot;
-  day: Date;
   layout: { topPx: number; heightPx: number };
+  horizontal: { leftPct: number; widthPct: number };
   hasConflict: boolean;
+  draggableId: string;
+  /** true pour les autres créneaux pendant qu'un drag est actif — laisse passer le pointeur vers la colonne. */
+  pointerEventsBlocked: boolean;
   coachLabel: string;
   venueLabel?: string;
   groupLabel?: string | null;
   timeLabel: string;
-  onResizeCommit: (deltaYPx: number) => void;
+  onResizeCommit: (edge: 'start' | 'end', deltaYPx: number) => void;
   onOpenDetails?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({
-      id: `slot-${slot.id}-${dayKey(day)}`,
+      id: draggableId,
       data: { slot },
     });
 
@@ -122,6 +132,8 @@ function DraggableSlot({
       hasConflict={hasConflict}
       topPx={layout.topPx}
       heightPx={layout.heightPx}
+      leftPct={horizontal.leftPct}
+      widthPct={horizontal.widthPct}
       dragListeners={listeners as Record<string, unknown>}
       dragAttributes={attributes}
       dragRef={setNodeRef}
@@ -129,6 +141,7 @@ function DraggableSlot({
       isDragging={isDragging}
       onResizeCommit={onResizeCommit}
       onOpenDetails={onOpenDetails}
+      pointerEvents={pointerEventsBlocked ? 'none' : 'auto'}
     />
   );
 }
@@ -141,11 +154,23 @@ export function PlanningTimeGrid({
   groupNameById,
   onSlotTimeChange,
   onDayHeaderClick,
+  onSlotOpen,
 }: PlanningTimeGridProps) {
   const totalHeightPx =
     (grid.maxHour - grid.minHour) * grid.pixelsPerHour;
 
+  /** Pendant un drag, désactive le hit-test des autres blocs pour libérer le mouvement. */
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+
   const overlapIds = useMemo(() => coachOverlapIds(slots), [slots]);
+
+  const horizontalByDay = useMemo(() => {
+    const m = new Map<string, Map<string, { leftPct: number; widthPct: number }>>();
+    for (const day of days) {
+      m.set(dayKey(day), layoutOverlappingSlotsForDay(slots, day));
+    }
+    return m;
+  }, [slots, days]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -176,12 +201,24 @@ export function PlanningTimeGrid({
     );
     const sourceDay = startOfDay(new Date(slot.startsAt));
     const deltaDays = differenceInCalendarDays(targetDay, sourceDay);
-    const deltaMs =
-      (delta.y / grid.pixelsPerHour) * 60 * 60 * 1000;
-    const movedStart = addDays(new Date(slot.startsAt), deltaDays);
-    const newStart = snapInstantToUtcQuarterHour(
-      new Date(movedStart.getTime() + deltaMs),
-    );
+
+    const translated = active.rect.current.translated;
+    const colRect = over.rect;
+
+    let newStart: Date;
+    if (translated && colRect) {
+      /** Bord haut du bloc = heure de début ; cohérent avec la grille même en colonnes étroites. */
+      const relY = translated.top - colRect.top;
+      newStart = gridRelativeYToStartDate(relY, targetDay, grid);
+    } else {
+      const deltaMs =
+        (delta.y / grid.pixelsPerHour) * 60 * 60 * 1000;
+      const movedStart = addDays(new Date(slot.startsAt), deltaDays);
+      newStart = snapInstantToUtcQuarterHour(
+        new Date(movedStart.getTime() + deltaMs),
+      );
+    }
+
     const duration =
       new Date(slot.endsAt).getTime() - new Date(slot.startsAt).getTime();
     const newEnd = new Date(newStart.getTime() + duration);
@@ -192,23 +229,53 @@ export function PlanningTimeGrid({
     });
   }
 
-  function commitResize(slot: Slot, deltaYPx: number) {
+  function commitResize(
+    slot: Slot,
+    deltaYPx: number,
+    edge: 'start' | 'end',
+  ) {
     const deltaMs = (deltaYPx / grid.pixelsPerHour) * 60 * 60 * 1000;
     const start = new Date(slot.startsAt);
     const end = new Date(slot.endsAt);
-    const newEnd = snapInstantToUtcQuarterHour(new Date(end.getTime() + deltaMs));
-    if (newEnd <= start) return;
-    onSlotTimeChange(slot.id, {
-      startsAt: start.toISOString(),
-      endsAt: newEnd.toISOString(),
-    });
+    if (edge === 'end') {
+      const newEnd = snapInstantToUtcQuarterHour(
+        new Date(end.getTime() + deltaMs),
+      );
+      if (newEnd <= start) return;
+      if (newEnd.getTime() - start.getTime() < MS_QUARTER_HOUR) return;
+      onSlotTimeChange(slot.id, {
+        startsAt: start.toISOString(),
+        endsAt: newEnd.toISOString(),
+      });
+    } else {
+      const newStart = snapInstantToUtcQuarterHour(
+        new Date(start.getTime() + deltaMs),
+      );
+      if (newStart >= end) return;
+      if (end.getTime() - newStart.getTime() < MS_QUARTER_HOUR) return;
+      onSlotTimeChange(slot.id, {
+        startsAt: newStart.toISOString(),
+        endsAt: end.toISOString(),
+      });
+    }
   }
 
   const hours: number[] = [];
   for (let h = grid.minHour; h < grid.maxHour; h++) hours.push(h);
 
+  const quarterPx = grid.pixelsPerHour / 4;
+  const quarterLineCount = (grid.maxHour - grid.minHour) * 4;
+
   return (
-    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+    <DndContext
+      sensors={sensors}
+      onDragStart={({ active }) => setActiveDragId(active.id.toString())}
+      onDragEnd={(e) => {
+        handleDragEnd(e);
+        setActiveDragId(null);
+      }}
+      onDragCancel={() => setActiveDragId(null)}
+    >
       <div className="planning-time-grid-wrap">
         <div
           className="planning-time-grid"
@@ -277,22 +344,28 @@ export function PlanningTimeGrid({
 
           {days.map((day) => (
             <DayColumn key={dayKey(day)} day={day} totalHeightPx={totalHeightPx}>
-              {hours.map((h) => (
-                <div
-                  key={h}
-                  aria-hidden
-                  className="planning-time-grid__slot-line"
-                  style={{
-                    position: 'absolute',
-                    left: 0,
-                    right: 0,
-                    top: (h - grid.minHour) * grid.pixelsPerHour,
-                    height: grid.pixelsPerHour,
-                    borderBottom: '1px solid rgba(198, 197, 212, 0.2)',
-                    pointerEvents: 'none',
-                  }}
-                />
-              ))}
+              {Array.from({ length: quarterLineCount }, (_, i) => {
+                const isHourMark = i % 4 === 0;
+                return (
+                  <div
+                    key={i}
+                    aria-hidden
+                    className={
+                      isHourMark
+                        ? 'planning-time-grid__slot-line planning-time-grid__slot-line--hour'
+                        : 'planning-time-grid__slot-line planning-time-grid__slot-line--quarter'
+                    }
+                    style={{
+                      position: 'absolute',
+                      left: 0,
+                      right: 0,
+                      top: i * quarterPx,
+                      height: quarterPx,
+                      pointerEvents: 'none',
+                    }}
+                  />
+                );
+              })}
               {slots
                 .filter((s) =>
                   slotIntersectsLocalDay(s.startsAt, s.endsAt, day),
@@ -305,12 +378,22 @@ export function PlanningTimeGrid({
                     grid,
                   );
                   if (!layout) return null;
+                  const hMap = horizontalByDay.get(dayKey(day));
+                  const horizontal = hMap?.get(slot.id) ?? {
+                    leftPct: 0,
+                    widthPct: 100,
+                  };
+                  const did = `slot-${slot.id}-${dayKey(day)}`;
                   return (
                     <DraggableSlot
-                      key={`${slot.id}-${dayKey(day)}`}
+                      key={did}
                       slot={slot}
-                      day={day}
                       layout={layout}
+                      horizontal={horizontal}
+                      draggableId={did}
+                      pointerEventsBlocked={
+                        activeDragId !== null && activeDragId !== did
+                      }
                       hasConflict={overlapIds.has(slot.id)}
                       coachLabel={
                         coachNameById.get(slot.coachMemberId) ??
@@ -323,7 +406,14 @@ export function PlanningTimeGrid({
                           : null
                       }
                       timeLabel={formatRange(slot.startsAt, slot.endsAt)}
-                      onResizeCommit={(dy) => commitResize(slot, dy)}
+                      onResizeCommit={(edge, dy) =>
+                        commitResize(slot, dy, edge)
+                      }
+                      onOpenDetails={
+                        onSlotOpen
+                          ? () => onSlotOpen(slot.id)
+                          : undefined
+                      }
                     />
                   );
                 })}

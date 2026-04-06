@@ -21,7 +21,7 @@ import { GoogleOAuthService } from './oauth/google-oauth.service';
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
       secret: process.env.JWT_SECRET ?? 'change-me-in-development',
-      signOptions: { expiresIn: '15m' },
+      /** Durée des tokens d’accès : définie dans AuthService via JWT_EXPIRES_IN (pas de défaut ici). */
     }),
   ],
   controllers: [GoogleOAuthController],

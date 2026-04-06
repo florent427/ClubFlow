@@ -1,11 +1,9 @@
 import { useMutation, useQuery } from '@apollo/client/react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { isClubModuleEnabled } from '../../lib/club-modules';
 import {
   ACTIVE_CLUB_SEASON,
   CLUB_GRADE_LEVELS,
-  CLUB_MODULES,
   CLUB_SEASONS,
   CREATE_CLUB_SEASON,
   ARCHIVE_MEMBERSHIP_ONE_TIME_FEE,
@@ -21,17 +19,17 @@ import {
 } from '../../lib/documents';
 import type {
   ActiveClubSeasonQueryData,
-  ClubModulesQueryData,
   ClubSeasonsQueryData,
   GradeLevelsQueryData,
   MembershipOneTimeFeesQueryData,
   MembershipProductsQueryData,
 } from '../../lib/types';
+import { useClubModules } from '../../lib/club-modules-context';
 
 export function AdhesionSettingsPage() {
-  const { data: modData } = useQuery<ClubModulesQueryData>(CLUB_MODULES);
-  const paymentOn = isClubModuleEnabled(modData?.clubModules, 'PAYMENT');
-  const membersOn = isClubModuleEnabled(modData?.clubModules, 'MEMBERS');
+  const { isEnabled } = useClubModules();
+  const paymentOn = isEnabled('PAYMENT');
+  const membersOn = isEnabled('MEMBERS');
 
   const { data: seasonData, refetch: refetchSeasons } =
     useQuery<ClubSeasonsQueryData>(CLUB_SEASONS, { skip: !paymentOn });
@@ -518,7 +516,7 @@ export function AdhesionSettingsPage() {
           </p>
         </header>
         <p>
-          <Link to="/#club-modules">Activer dans Modules du club</Link>
+          <Link to="/club-modules">Activer dans Modules du club</Link>
         </p>
       </>
     );

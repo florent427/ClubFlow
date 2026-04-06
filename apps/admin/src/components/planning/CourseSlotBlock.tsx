@@ -10,6 +10,9 @@ type CourseSlotBlockProps = {
   hasConflict: boolean;
   topPx: number;
   heightPx: number;
+  /** Partage horizontal quand plusieurs créneaux se chevauchent (défaut : pleine largeur). */
+  leftPct?: number;
+  widthPct?: number;
   minHeightPx?: number;
   dragListeners?: Record<string, unknown>;
   dragAttributes?: DraggableAttributes;
@@ -17,7 +20,10 @@ type CourseSlotBlockProps = {
   transformStyle?: CSSProperties['transform'];
   isDragging?: boolean;
   onOpenDetails?: () => void;
-  onResizeCommit?: (deltaYPx: number) => void;
+  /** deltaYPx depuis pointerdown : début (haut) ou fin (bas) du créneau. */
+  onResizeCommit?: (edge: 'start' | 'end', deltaYPx: number) => void;
+  /** none pendant le drag d'un autre créneau — évite de bloquer le mouvement au-dessus des voisins. */
+  pointerEvents?: 'auto' | 'none';
 };
 
 const MIN_BLOCK_PX = 24;
@@ -31,6 +37,8 @@ export function CourseSlotBlock({
   hasConflict,
   topPx,
   heightPx,
+  leftPct = 0,
+  widthPct = 100,
   minHeightPx = MIN_BLOCK_PX,
   dragListeners,
   dragAttributes,
@@ -39,13 +47,63 @@ export function CourseSlotBlock({
   isDragging,
   onOpenDetails,
   onResizeCommit,
+  pointerEvents = 'auto',
 }: CourseSlotBlockProps) {
   const h = Math.max(minHeightPx, heightPx);
-  const [previewDy, setPreviewDy] = useState(0);
+  const [resizePreview, setResizePreview] = useState<{
+    edge: 'start' | 'end';
+    dy: number;
+  } | null>(null);
+
+  const marginTop =
+    resizePreview?.edge === 'start' ? resizePreview.dy : 0;
+  const heightExtra =
+    resizePreview?.edge === 'start'
+      ? -resizePreview.dy
+      : resizePreview?.edge === 'end'
+        ? resizePreview.dy
+        : 0;
+  const visualH = Math.max(minHeightPx, h + heightExtra);
 
   const accent = hasConflict
     ? 'var(--cf-planning-conflict-accent, #ba1a1a)'
     : 'var(--cf-planning-accent, #0056c5)';
+
+  function attachResizePointer(
+    edge: 'start' | 'end',
+    e: React.PointerEvent<HTMLButtonElement>,
+  ) {
+    if (!onResizeCommit) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const el = e.currentTarget;
+    el.setPointerCapture(e.pointerId);
+    const startY = e.clientY;
+    setResizePreview({ edge, dy: 0 });
+    const onMove = (ev: PointerEvent) => {
+      if (ev.pointerId !== e.pointerId) return;
+      setResizePreview({ edge, dy: ev.clientY - startY });
+    };
+    let finished = false;
+    const onEnd = (ev: PointerEvent) => {
+      if (finished || ev.pointerId !== e.pointerId) return;
+      finished = true;
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onEnd);
+      window.removeEventListener('pointercancel', onEnd);
+      try {
+        el.releasePointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+      const dy = ev.clientY - startY;
+      setResizePreview(null);
+      if (dy !== 0) onResizeCommit(edge, dy);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onEnd);
+    window.addEventListener('pointercancel', onEnd);
+  }
 
   return (
     <div
@@ -53,12 +111,17 @@ export function CourseSlotBlock({
       className={`course-slot-block${isDragging ? ' course-slot-block--dragging' : ''}${hasConflict ? ' course-slot-block--conflict' : ''}`}
       style={{
         position: 'absolute',
-        left: 4,
-        right: 4,
+        left: `${leftPct}%`,
+        width: `${widthPct}%`,
+        boxSizing: 'border-box',
         top: topPx,
-        height: h + previewDy,
+        marginTop,
+        height: visualH,
+        ['--slot-h' as string]: `${Math.round(visualH)}px`,
         transform: transformStyle,
-        zIndex: isDragging ? 20 : 2,
+        zIndex: isDragging ? 1000 : 2,
+        pointerEvents,
+        touchAction: dragListeners ? 'none' : undefined,
         minHeight: minHeightPx,
         borderLeftWidth: 4,
         borderLeftStyle: 'solid',
@@ -72,20 +135,41 @@ export function CourseSlotBlock({
           : '0 1px 3px rgba(25, 28, 29, 0.06)',
         display: 'flex',
         flexDirection: 'column',
-        justifyContent: 'space-between',
-        padding: '0.35rem 0.5rem',
-        fontSize: '0.7rem',
+        justifyContent: 'stretch',
+        padding: 0,
         textAlign: 'left',
-        cursor: 'grab',
+        cursor: 'default',
         overflow: 'hidden',
       }}
     >
+      {onResizeCommit ? (
+        <button
+          type="button"
+          aria-label="Ajuster l’heure de début"
+          className="course-slot-block__resize-handle course-slot-block__resize-handle--start"
+          onPointerDown={(e) => attachResizePointer('start', e)}
+        />
+      ) : null}
       <div
         {...dragListeners}
         {...dragAttributes}
         role="button"
         tabIndex={0}
         className="course-slot-block__body"
+        style={{
+          flex: 1,
+          minHeight: 0,
+          cursor: 'grab',
+        }}
+        title={
+          onOpenDetails
+            ? 'Double-clic pour ouvrir la fiche — glisser pour déplacer'
+            : undefined
+        }
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          onOpenDetails?.();
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && onOpenDetails) {
             e.preventDefault();
@@ -94,7 +178,9 @@ export function CourseSlotBlock({
         }}
       >
         <div className="course-slot-block__head">
-          <span className="course-slot-block__title">{title}</span>
+          <span className="course-slot-block__title" title={title}>
+            {title}
+          </span>
           {groupLabel ? (
             <span className="course-slot-block__chip">{groupLabel}</span>
           ) : null}
@@ -104,41 +190,29 @@ export function CourseSlotBlock({
             </span>
           ) : null}
         </div>
-        <p className="course-slot-block__meta muted">{timeLabel}</p>
-        {venueLabel ? (
-          <p className="course-slot-block__meta muted">{venueLabel}</p>
-        ) : null}
-        <p className="course-slot-block__coach">{coachLabel}</p>
+        <div className="course-slot-block__main">
+          <p className="course-slot-block__meta course-slot-block__time muted" title={timeLabel}>
+            {timeLabel}
+          </p>
+          {venueLabel ? (
+            <p
+              className="course-slot-block__meta course-slot-block__venue muted"
+              title={venueLabel}
+            >
+              {venueLabel}
+            </p>
+          ) : null}
+        </div>
+        <p className="course-slot-block__coach" title={coachLabel}>
+          {coachLabel}
+        </p>
       </div>
       {onResizeCommit ? (
         <button
           type="button"
-          aria-label="Redimensionner la durée"
-          className="course-slot-block__resize"
-          style={{
-            minHeight: 24,
-            height: 24,
-            marginTop: 'auto',
-            border: 'none',
-            borderRadius: 4,
-            background: 'transparent',
-            cursor: 'ns-resize',
-          }}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            const startY = e.clientY;
-            const onMove = (ev: PointerEvent) =>
-              setPreviewDy(ev.clientY - startY);
-            const onUp = (ev: PointerEvent) => {
-              window.removeEventListener('pointermove', onMove);
-              const dy = ev.clientY - startY;
-              setPreviewDy(0);
-              if (dy !== 0) onResizeCommit(dy);
-            };
-            window.addEventListener('pointermove', onMove);
-            window.addEventListener('pointerup', onUp, { once: true });
-          }}
+          aria-label="Ajuster l’heure de fin"
+          className="course-slot-block__resize-handle course-slot-block__resize-handle--end"
+          onPointerDown={(e) => attachResizePointer('end', e)}
         />
       ) : null}
     </div>

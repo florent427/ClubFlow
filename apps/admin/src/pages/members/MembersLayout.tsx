@@ -1,51 +1,62 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
+import { ModuleGatedNavLink } from '../../components/ModuleGatedNavLink';
 import { MembersCommandPalette } from './MembersCommandPalette';
 
 export function MembersLayout() {
   return (
     <div className="members-loom">
       <nav className="members-subnav" aria-label="Sous-sections membres">
-        <NavLink
+        <ModuleGatedNavLink
           to="/members"
           end
+          modules={['MEMBERS']}
+          disabledClassName="members-subnav__link--disabled"
           className={({ isActive }) =>
             `members-subnav__link${isActive ? ' members-subnav__link--active' : ''}`
           }
         >
           Annuaire
-        </NavLink>
-        <NavLink
+        </ModuleGatedNavLink>
+        <ModuleGatedNavLink
           to="/members/grades"
+          modules={['MEMBERS']}
+          disabledClassName="members-subnav__link--disabled"
           className={({ isActive }) =>
             `members-subnav__link${isActive ? ' members-subnav__link--active' : ''}`
           }
         >
           Grades
-        </NavLink>
-        <NavLink
+        </ModuleGatedNavLink>
+        <ModuleGatedNavLink
           to="/members/dynamic-groups"
+          modules={['MEMBERS']}
+          disabledClassName="members-subnav__link--disabled"
           className={({ isActive }) =>
             `members-subnav__link${isActive ? ' members-subnav__link--active' : ''}`
           }
         >
           Groupes dynamiques
-        </NavLink>
-        <NavLink
+        </ModuleGatedNavLink>
+        <ModuleGatedNavLink
           to="/members/roles"
+          modules={['MEMBERS']}
+          disabledClassName="members-subnav__link--disabled"
           className={({ isActive }) =>
             `members-subnav__link${isActive ? ' members-subnav__link--active' : ''}`
           }
         >
           Rôles
-        </NavLink>
-        <NavLink
+        </ModuleGatedNavLink>
+        <ModuleGatedNavLink
           to="/members/families"
+          modules={['MEMBERS', 'FAMILIES']}
+          disabledClassName="members-subnav__link--disabled"
           className={({ isActive }) =>
             `members-subnav__link${isActive ? ' members-subnav__link--active' : ''}`
           }
         >
           Familles &amp; payeurs
-        </NavLink>
+        </ModuleGatedNavLink>
       </nav>
       <p className="members-palette-hint muted">
         Recherche rapide : <kbd className="members-kbd">Ctrl</kbd> +{' '}

@@ -1,42 +1,51 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
+import { ModuleGatedNavLink } from '../../components/ModuleGatedNavLink';
 
 export function SettingsLayout() {
   return (
     <div className="members-loom settings-loom">
       <nav className="members-subnav" aria-label="Sous-sections paramètres">
-        <NavLink
+        <ModuleGatedNavLink
           to="/settings"
           end
+          modules={[]}
+          disabledClassName="members-subnav__link--disabled"
           className={({ isActive }) =>
             `members-subnav__link${isActive ? ' members-subnav__link--active' : ''}`
           }
         >
           Accueil
-        </NavLink>
-        <NavLink
+        </ModuleGatedNavLink>
+        <ModuleGatedNavLink
           to="/settings/member-fields"
+          modules={['MEMBERS']}
+          disabledClassName="members-subnav__link--disabled"
           className={({ isActive }) =>
             `members-subnav__link${isActive ? ' members-subnav__link--active' : ''}`
           }
         >
           Fiche adhérent
-        </NavLink>
-        <NavLink
+        </ModuleGatedNavLink>
+        <ModuleGatedNavLink
           to="/settings/adhesion"
+          modules={['MEMBERS', 'PAYMENT']}
+          disabledClassName="members-subnav__link--disabled"
           className={({ isActive }) =>
             `members-subnav__link${isActive ? ' members-subnav__link--active' : ''}`
           }
         >
           Adhésion
-        </NavLink>
-        <NavLink
+        </ModuleGatedNavLink>
+        <ModuleGatedNavLink
           to="/settings/mail-domain"
+          modules={['COMMUNICATION']}
+          disabledClassName="members-subnav__link--disabled"
           className={({ isActive }) =>
             `members-subnav__link${isActive ? ' members-subnav__link--active' : ''}`
           }
         >
           E-mail
-        </NavLink>
+        </ModuleGatedNavLink>
       </nav>
       <Outlet />
     </div>

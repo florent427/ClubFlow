@@ -76,6 +76,27 @@ export function layoutSlotOnDay(
   };
 }
 
+/**
+ * Inverse de la position verticale dans la grille : Y (px) depuis le haut de la zone
+ * [minHour, maxHour] → instant de début local, puis snap quart d'heure UTC.
+ */
+export function gridRelativeYToStartDate(
+  relY: number,
+  day: Date,
+  opts: GridLayoutOpts,
+): Date {
+  const totalPx =
+    (opts.maxHour - opts.minHour) * opts.pixelsPerHour;
+  const clamped = Math.max(0, Math.min(relY, totalPx));
+  const msPerPx = (60 * 60 * 1000) / opts.pixelsPerHour;
+  const topMs = clamped * msPerPx;
+  const dayStart = startOfLocalDay(day);
+  const gridStart = new Date(dayStart);
+  gridStart.setHours(opts.minHour, 0, 0, 0);
+  const raw = new Date(gridStart.getTime() + topMs);
+  return snapInstantToUtcQuarterHour(raw);
+}
+
 /** Le créneau intersecte-t-il ce jour civil (local) ? */
 export function slotIntersectsLocalDay(
   startsAt: string,
@@ -138,4 +159,115 @@ export function addLocalDays(base: Date, days: number): Date {
   const d = new Date(base);
   d.setDate(d.getDate() + days);
   return d;
+}
+
+function intervalsOverlapMs(
+  aStart: number,
+  aEnd: number,
+  bStart: number,
+  bEnd: number,
+): boolean {
+  return aStart < bEnd && bStart < aEnd;
+}
+
+/**
+ * Pour une journée donnée, répartit la largeur entre créneaux dont les intervalles
+ * se chevauchent (clusters connexes). Dans chaque cluster : colonnes gloutonnes,
+ * largeur = 100% / nombre de colonnes du cluster.
+ */
+export function layoutOverlappingSlotsForDay(
+  slots: SlotLike[],
+  day: Date,
+): Map<string, { leftPct: number; widthPct: number }> {
+  const daySlots = slots.filter((s) =>
+    slotIntersectsLocalDay(s.startsAt, s.endsAt, day),
+  );
+  const out = new Map<string, { leftPct: number; widthPct: number }>();
+  if (daySlots.length === 0) return out;
+
+  const n = daySlots.length;
+  const parent = Array.from({ length: n }, (_, i) => i);
+  function find(i: number): number {
+    if (parent[i] !== i) parent[i] = find(parent[i]);
+    return parent[i];
+  }
+  function union(i: number, j: number): void {
+    const ri = find(i);
+    const rj = find(j);
+    if (ri !== rj) parent[rj] = ri;
+  }
+
+  for (let i = 0; i < n; i++) {
+    const ai = +new Date(daySlots[i].startsAt);
+    const ae = +new Date(daySlots[i].endsAt);
+    for (let j = i + 1; j < n; j++) {
+      const bi = +new Date(daySlots[j].startsAt);
+      const be = +new Date(daySlots[j].endsAt);
+      if (intervalsOverlapMs(ai, ae, bi, be)) union(i, j);
+    }
+  }
+
+  const byRoot = new Map<number, number[]>();
+  for (let i = 0; i < n; i++) {
+    const r = find(i);
+    const list = byRoot.get(r) ?? [];
+    list.push(i);
+    byRoot.set(r, list);
+  }
+
+  for (const indices of byRoot.values()) {
+    const cluster = indices.map((i) => daySlots[i]);
+    cluster.sort((a, b) => {
+      const ds = +new Date(a.startsAt) - +new Date(b.startsAt);
+      if (ds !== 0) return ds;
+      return +new Date(b.endsAt) - +new Date(a.endsAt);
+    });
+
+    const colEnds: number[] = [];
+    const colById = new Map<string, number>();
+
+    for (const ev of cluster) {
+      const s = +new Date(ev.startsAt);
+      const e = +new Date(ev.endsAt);
+      let placed = false;
+      for (let c = 0; c < colEnds.length; c++) {
+        if (colEnds[c] <= s) {
+          colEnds[c] = e;
+          colById.set(ev.id, c);
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        colById.set(ev.id, colEnds.length);
+        colEnds.push(e);
+      }
+    }
+
+    const numCols = colEnds.length;
+    const w = 100 / numCols;
+    // Réordonne les colonnes gauche → droite par min(id) sur la piste, pas par heure de début.
+    // Le coloriage reste optimal (tri par startsAt) ; seul l’affichage horizontal change.
+    // Ainsi une carte « à droite » (id plus petit) peut commencer plus haut qu’une « à gauche ».
+    const minIdByCol = new Map<number, string>();
+    for (const ev of cluster) {
+      const c = colById.get(ev.id) ?? 0;
+      const prev = minIdByCol.get(c);
+      if (prev === undefined || ev.id < prev) minIdByCol.set(c, ev.id);
+    }
+    const colOrder = [...minIdByCol.keys()].sort((a, b) => {
+      const cmp = minIdByCol.get(a)!.localeCompare(minIdByCol.get(b)!);
+      return cmp !== 0 ? cmp : a - b;
+    });
+    const colToRank = new Map<number, number>();
+    colOrder.forEach((c, rank) => colToRank.set(c, rank));
+
+    for (const ev of cluster) {
+      const col = colById.get(ev.id) ?? 0;
+      const rank = colToRank.get(col) ?? 0;
+      out.set(ev.id, { leftPct: rank * w, widthPct: w });
+    }
+  }
+
+  return out;
 }

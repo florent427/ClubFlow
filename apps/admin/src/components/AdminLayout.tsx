@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { useQuery } from '@apollo/client/react';
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { ModuleGatedNavLink } from './ModuleGatedNavLink';
+import { ModuleRouteGuard } from './ModuleRouteGuard';
 import { VIEWER_PROFILES } from '../lib/documents';
 import { apolloClient } from '../lib/apollo';
 import { navigateToMemberPortal } from '../lib/member-portal-switch';
@@ -91,8 +93,9 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
             </span>
             <span>Tableau de bord</span>
           </NavLink>
-          <NavLink
+          <ModuleGatedNavLink
             to="/members"
+            modules={['MEMBERS']}
             className={({ isActive }) =>
               `cf-sidenav__link${isActive ? ' cf-sidenav__link--active' : ''}`
             }
@@ -101,9 +104,10 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
               group
             </span>
             <span>Gestion des membres</span>
-          </NavLink>
-          <NavLink
+          </ModuleGatedNavLink>
+          <ModuleGatedNavLink
             to="/contacts"
+            modules={['MEMBERS']}
             className={({ isActive }) =>
               `cf-sidenav__link${isActive ? ' cf-sidenav__link--active' : ''}`
             }
@@ -112,9 +116,10 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
               contacts
             </span>
             <span>Contacts</span>
-          </NavLink>
-          <NavLink
+          </ModuleGatedNavLink>
+          <ModuleGatedNavLink
             to="/members/dynamic-groups"
+            modules={['MEMBERS']}
             className={({ isActive }) =>
               `cf-sidenav__link${isActive ? ' cf-sidenav__link--active' : ''}`
             }
@@ -123,9 +128,10 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
               category
             </span>
             <span>Groupes dynamiques</span>
-          </NavLink>
-          <NavLink
+          </ModuleGatedNavLink>
+          <ModuleGatedNavLink
             to="/settings/adhesion"
+            modules={['MEMBERS', 'PAYMENT']}
             className={({ isActive }) =>
               `cf-sidenav__link${isActive ? ' cf-sidenav__link--active' : ''}`
             }
@@ -134,9 +140,10 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
               groups
             </span>
             <span>Adhésion &amp; formules</span>
-          </NavLink>
-          <NavLink
+          </ModuleGatedNavLink>
+          <ModuleGatedNavLink
             to="/planning"
+            modules={['PLANNING']}
             className={({ isActive }) =>
               `cf-sidenav__link${isActive ? ' cf-sidenav__link--active' : ''}`
             }
@@ -145,7 +152,7 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
               calendar_today
             </span>
             <span>Planning sportif</span>
-          </NavLink>
+          </ModuleGatedNavLink>
 
           <span className="cf-sidenav__section">Bientôt</span>
           <span className="cf-sidenav__link cf-sidenav__link--disabled">
@@ -154,8 +161,9 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
             </span>
             <span>Finances</span>
           </span>
-          <NavLink
+          <ModuleGatedNavLink
             to="/communication"
+            modules={['COMMUNICATION']}
             className={({ isActive }) =>
               `cf-sidenav__link${isActive ? ' cf-sidenav__link--active' : ''}`
             }
@@ -164,15 +172,20 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
               campaign
             </span>
             <span>Communication</span>
-          </NavLink>
+          </ModuleGatedNavLink>
 
           <span className="cf-sidenav__section">Administration</span>
-          <Link to="/#club-modules" className="cf-sidenav__link">
+          <NavLink
+            to="/club-modules"
+            className={({ isActive }) =>
+              `cf-sidenav__link${isActive ? ' cf-sidenav__link--active' : ''}`
+            }
+          >
             <span className="material-symbols-outlined" aria-hidden>
               account_balance
             </span>
             <span>Modules du club</span>
-          </Link>
+          </NavLink>
           <NavLink
             to="/settings"
             className={({ isActive }) =>
@@ -263,7 +276,9 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
         </div>
       </header>
 
-      <main className="cf-main">{children ?? <Outlet />}</main>
+      <main className="cf-main">
+        <ModuleRouteGuard>{children ?? <Outlet />}</ModuleRouteGuard>
+      </main>
 
       <footer className="cf-footer">
         <span>ClubFlow v0.2</span>

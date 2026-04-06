@@ -1,20 +1,15 @@
 import { useMutation, useQuery } from '@apollo/client/react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { isClubModuleEnabled } from '../../lib/club-modules';
 import {
   CLUB_DYNAMIC_GROUPS,
   CLUB_GRADE_LEVELS,
-  CLUB_MODULES,
   CREATE_CLUB_DYNAMIC_GROUP,
   DELETE_CLUB_DYNAMIC_GROUP,
   UPDATE_CLUB_DYNAMIC_GROUP,
 } from '../../lib/documents';
-import type {
-  ClubModulesQueryData,
-  DynamicGroupsQueryData,
-  GradeLevelsQueryData,
-} from '../../lib/types';
+import type { DynamicGroupsQueryData, GradeLevelsQueryData } from '../../lib/types';
+import { useClubModules } from '../../lib/club-modules-context';
 
 type GroupRow = DynamicGroupsQueryData['clubDynamicGroups'][number];
 
@@ -35,8 +30,8 @@ export function MembersDynamicGroupsPage() {
     () => new Set(),
   );
 
-  const { data: modData } = useQuery<ClubModulesQueryData>(CLUB_MODULES);
-  const membersOn = isClubModuleEnabled(modData?.clubModules, 'MEMBERS');
+  const { isEnabled } = useClubModules();
+  const membersOn = isEnabled('MEMBERS');
 
   const { data: gradesData } = useQuery<GradeLevelsQueryData>(
     CLUB_GRADE_LEVELS,
@@ -192,7 +187,7 @@ export function MembersDynamicGroupsPage() {
           </p>
         </header>
         <p>
-          <Link to="/#club-modules">Modules du club</Link>
+          <Link to="/club-modules">Modules du club</Link>
         </p>
       </>
     );

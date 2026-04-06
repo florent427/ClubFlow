@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.guard';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ClubSendingDomainResolver } from './club-sending-domain.resolver';
 import { ClubSendingDomainService } from './club-sending-domain.service';
@@ -12,6 +13,7 @@ import { TransactionalMailService } from './transactional-mail.service';
     ClubSendingDomainService,
     TransactionalMailService,
     ClubSendingDomainResolver,
+    ClubModuleEnabledGuard,
     {
       provide: MAIL_TRANSPORT,
       useFactory: () => SmtpMailTransport.fromEnv(),

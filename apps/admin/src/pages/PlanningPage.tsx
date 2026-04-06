@@ -4,6 +4,7 @@ import { addDays } from 'date-fns/addDays';
 import { eachDayOfInterval } from 'date-fns/eachDayOfInterval';
 import { startOfMonth } from 'date-fns/startOfMonth';
 import { startOfWeek } from 'date-fns/startOfWeek';
+import { CourseSlotDetailModal } from '../components/planning/CourseSlotDetailModal';
 import { PlanningMonthView } from '../components/planning/PlanningMonthView';
 import { PlanningTimeGrid } from '../components/planning/PlanningTimeGrid';
 import { useToast } from '../components/ToastProvider';
@@ -94,6 +95,9 @@ export function PlanningPage() {
   /** Indique qu'on est en mode duplication (pré-remplissage). */
   const [dupSource, setDupSource] = useState<string | null>(null);
 
+  /** Fiche créneau (double-clic sur le calendrier). */
+  const [slotDetailId, setSlotDetailId] = useState<string | null>(null);
+
   const { data: venuesData, refetch: refetchVenues } =
     useQuery<VenuesQueryData>(CLUB_VENUES);
   const { data: slotsData, refetch: refetchSlots } =
@@ -151,6 +155,12 @@ export function PlanningPage() {
   }, [membersData]);
 
   const slots = slotsData?.clubCourseSlots ?? [];
+
+  const detailSlot = useMemo(
+    () =>
+      slotDetailId ? slots.find((s) => s.id === slotDetailId) ?? null : null,
+    [slots, slotDetailId],
+  );
 
   const memberNameById = useMemo(() => {
     const members = membersData?.clubMembers ?? [];
@@ -279,6 +289,38 @@ export function PlanningPage() {
 
   return (
     <div className="members-loom">
+      <CourseSlotDetailModal
+        open={detailSlot !== null}
+        onClose={() => setSlotDetailId(null)}
+        slot={detailSlot}
+        venueLabel={
+          detailSlot
+            ? venueNameById.get(detailSlot.venueId) ?? detailSlot.venueId
+            : ''
+        }
+        coachLabel={
+          detailSlot
+            ? memberNameById.get(detailSlot.coachMemberId) ??
+              detailSlot.coachMemberId
+            : ''
+        }
+        groupLabel={
+          detailSlot?.dynamicGroupId
+            ? groupNameById.get(detailSlot.dynamicGroupId) ?? null
+            : null
+        }
+        timeRangeLabel={
+          detailSlot
+            ? formatSlotRange(detailSlot.startsAt, detailSlot.endsAt)
+            : ''
+        }
+        onDuplicate={() => {
+          if (detailSlot) duplicateSlot(detailSlot.id);
+        }}
+        onDelete={() => {
+          if (detailSlot) void deleteSlot({ variables: { id: detailSlot.id } });
+        }}
+      />
       <header className="members-loom__hero">
         <p className="members-loom__eyebrow">Module Planning</p>
         <h1 className="members-loom__title">Lieux et créneaux cours</h1>
@@ -335,6 +377,7 @@ export function PlanningPage() {
             venueNameById={venueNameById}
             groupNameById={groupNameById}
             onSlotTimeChange={onSlotTimeChange}
+            onSlotOpen={(id) => setSlotDetailId(id)}
             onDayHeaderClick={
               view === 'week'
                 ? (d) => {

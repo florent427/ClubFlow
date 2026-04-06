@@ -1,16 +1,13 @@
-import { useQuery, useMutation } from '@apollo/client/react';
-import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@apollo/client/react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   DASHBOARD_SUMMARY,
-  CLUB_MODULES,
-  SET_MODULE,
   CLUB_DYNAMIC_GROUPS,
   CLUB_COURSE_SLOTS,
 } from '../lib/documents';
-import { MODULE_CATALOG, type ModuleCodeStr } from '../lib/module-catalog';
+import { MODULE_CATALOG } from '../lib/module-catalog';
 import type {
-  ClubModulesQueryData,
   CourseSlotsQueryData,
   DashboardQueryData,
   DynamicGroupsQueryData,
@@ -54,7 +51,6 @@ const PIE_COLORS = ['#000666', '#0056c5', '#bdc2ff', '#1a237e', '#c2410c'];
 
 export function DashboardPage() {
   const navigate = useNavigate();
-  const [toggleError, setToggleError] = useState<string | null>(null);
   /**
    * Recommandation UX #11 — Onboarding admin
    * Bannière d'accueil pour les nouveaux administrateurs, masquable.
@@ -71,8 +67,6 @@ export function DashboardPage() {
 
   const { data: dashData, loading: dashLoading } =
     useQuery<DashboardQueryData>(DASHBOARD_SUMMARY);
-  const { data: modData, refetch: refetchModules } =
-    useQuery<ClubModulesQueryData>(CLUB_MODULES);
   const { data: groupsData } = useQuery<DynamicGroupsQueryData>(
     CLUB_DYNAMIC_GROUPS,
   );
@@ -80,19 +74,6 @@ export function DashboardPage() {
     CLUB_COURSE_SLOTS,
     { errorPolicy: 'ignore' },
   );
-
-  const [setModule, { loading: mutating }] = useMutation(SET_MODULE);
-
-  const rows = useMemo(() => {
-    const map = new Map<ModuleCodeStr, boolean>();
-    for (const m of modData?.clubModules ?? []) {
-      map.set(m.moduleCode as ModuleCodeStr, m.enabled);
-    }
-    return MODULE_CATALOG.map((def) => ({
-      ...def,
-      enabled: map.get(def.code) ?? false,
-    }));
-  }, [modData]);
 
   const summary = dashData?.adminDashboardSummary;
 
@@ -151,20 +132,6 @@ export function DashboardPage() {
     );
   }, [summary]);
 
-  async function onToggle(code: ModuleCodeStr, enabled: boolean) {
-    setToggleError(null);
-    try {
-      await setModule({ variables: { code, enabled } });
-      await refetchModules();
-    } catch (e: unknown) {
-      const msg =
-        e instanceof Error
-          ? e.message
-          : 'Action impossible (dépendances ou droits).';
-      setToggleError(msg);
-    }
-  }
-
   /**
    * Recommandation UX #4 — Alerte certificats médicaux
    * Calcule le nombre de membres dont le certificat médical est expiré
@@ -190,9 +157,10 @@ export function DashboardPage() {
           <div className="cf-onboarding-banner__content">
             <strong>Bienvenue sur ClubFlow !</strong>
             <p>
-              Commencez par activer les modules dont vous avez besoin (section en bas de page),
-              puis créez vos premiers membres dans l'annuaire. Le planning et la facturation
-              se débloqueront automatiquement.
+              Commencez par activer les modules dont vous avez besoin (
+              <Link to="/club-modules">page Modules du club</Link>
+              ), puis créez vos premiers membres dans l'annuaire. Le planning et la
+              facturation se débloqueront automatiquement.
             </p>
           </div>
           <button
@@ -520,38 +488,6 @@ export function DashboardPage() {
             </div>
           </div>
         </div>
-      </section>
-
-      <section className="cf-dash-modules" id="club-modules">
-        <h2 className="cf-dash-modules__title">Modules du club</h2>
-        <p className="cf-dash-modules__desc">
-          Activez ou désactivez les briques (dépendances côté API).{' '}
-          <strong>Membres</strong> et <strong>Familles &amp; payeurs</strong>{' '}
-          sont obligatoires et liés (sous-menu dans Gestion des membres).
-        </p>
-        {toggleError ? <p className="form-error">{toggleError}</p> : null}
-        <ul className="cf-module-grid">
-          {rows.map((row) => (
-            <li key={row.code} className="cf-module-tile">
-              <div className="cf-module-tile__info">
-                <span className="cf-module-tile__name">{row.label}</span>
-                <span className="cf-module-tile__code">{row.code}</span>
-                {row.required ? (
-                  <span className="cf-module-tile__badge">Obligatoire</span>
-                ) : null}
-              </div>
-              <label className="toggle">
-                <input
-                  type="checkbox"
-                  checked={row.enabled}
-                  disabled={mutating || (row.required && row.enabled)}
-                  onChange={(e) => void onToggle(row.code, e.target.checked)}
-                />
-                <span className="toggle-ui" aria-hidden />
-              </label>
-            </li>
-          ))}
-        </ul>
       </section>
     </div>
   );

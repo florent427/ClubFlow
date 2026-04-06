@@ -1,13 +1,11 @@
 import { useLazyQuery, useMutation, useQuery } from '@apollo/client/react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { isClubModuleEnabled } from '../../lib/club-modules';
 import {
   ACTIVE_CLUB_SEASON,
   CLUB_DYNAMIC_GROUPS,
   CLUB_INVOICES,
   CLUB_MEMBERS,
-  CLUB_MODULES,
   CLUB_PRICING_RULES,
   CREATE_MEMBERSHIP_INVOICE_DRAFT,
   ELIGIBLE_MEMBERSHIP_PRODUCTS,
@@ -25,7 +23,6 @@ import {
 import type {
   ActiveClubSeasonQueryData,
   ClubInvoicesQueryData,
-  ClubModulesQueryData,
   ClubPaymentMethodStr,
   ClubPricingRulesQueryData,
   CreateMembershipInvoiceDraftMutationData,
@@ -36,6 +33,7 @@ import type {
   RecordClubManualPaymentMutationData,
   SuggestMemberDynamicGroupsQueryData,
 } from '../../lib/types';
+import { useClubModules } from '../../lib/club-modules-context';
 
 type MemberRow = MembersQueryData['clubMembers'][number];
 
@@ -50,9 +48,9 @@ function eurosDiscountToNegativeCents(raw: string): number | null {
 export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
   const assigned = member.assignedDynamicGroups ?? [];
 
-  const { data: modData } = useQuery<ClubModulesQueryData>(CLUB_MODULES);
-  const membersOn = isClubModuleEnabled(modData?.clubModules, 'MEMBERS');
-  const paymentOn = isClubModuleEnabled(modData?.clubModules, 'PAYMENT');
+  const { isEnabled } = useClubModules();
+  const membersOn = isEnabled('MEMBERS');
+  const paymentOn = isEnabled('PAYMENT');
 
   const { data: groupsData, loading: groupsLoading } =
     useQuery<DynamicGroupsQueryData>(CLUB_DYNAMIC_GROUPS, {

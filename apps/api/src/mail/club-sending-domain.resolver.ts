@@ -6,9 +6,12 @@ import {
   type ClubSendingDomain,
 } from '@prisma/client';
 import { CurrentClub } from '../common/decorators/current-club.decorator';
+import { RequireClubModule } from '../common/decorators/require-club-module.decorator';
 import { ClubAdminRoleGuard } from '../common/guards/club-admin-role.guard';
 import { ClubContextGuard } from '../common/guards/club-context.guard';
+import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.guard';
 import { GqlJwtAuthGuard } from '../common/guards/gql-jwt-auth.guard';
+import { ModuleCode } from '../domain/module-registry/module-codes';
 import { ClubSendingDomainService } from './club-sending-domain.service';
 import { CreateClubSendingDomainInput } from './dto/create-club-sending-domain.input';
 import { SendTransactionalTestEmailInput } from './dto/send-transactional-test-email.input';
@@ -61,7 +64,13 @@ function mapRowToGraph(r: ClubSendingDomain): ClubSendingDomainGraph {
 }
 
 @Resolver()
-@UseGuards(GqlJwtAuthGuard, ClubContextGuard, ClubAdminRoleGuard)
+@UseGuards(
+  GqlJwtAuthGuard,
+  ClubContextGuard,
+  ClubAdminRoleGuard,
+  ClubModuleEnabledGuard,
+)
+@RequireClubModule(ModuleCode.COMMUNICATION)
 export class ClubSendingDomainResolver {
   constructor(
     private readonly domains: ClubSendingDomainService,

@@ -4,7 +4,10 @@ import {
   Logger,
   Inject,
 } from '@nestjs/common';
-import { CommunicationChannel, MemberStatus } from '@prisma/client';
+import {
+  CommunicationChannel,
+  MemberStatus,
+} from '@prisma/client';
 import {
   memberMatchesDynamicGroup,
   type DynamicGroupCriteria,
@@ -14,8 +17,12 @@ import { ClubSendingDomainService } from '../mail/club-sending-domain.service';
 import { MAIL_TRANSPORT } from '../mail/mail.constants';
 import type { MailTransport } from '../mail/mail-transport.interface';
 import { PrismaService } from '../prisma/prisma.service';
+import { TelegramApiService } from '../telegram/telegram-api.service';
 import { aggregateForParent } from './notification-aggregator';
 import type { CreateMessageCampaignInput } from './dto/create-message-campaign.input';
+import type { SendQuickMessageInput } from './dto/send-quick-message.input';
+import type { UpdateMessageCampaignInput } from './dto/update-message-campaign.input';
+import { QuickMessageRecipientType } from './enums/quick-message-recipient.enum';
 
 /**
  * Phase F : résolution de l’audience **à l’envoi** (pas de snapshot stocké avant send).
@@ -29,6 +36,7 @@ export class CommsService {
     private readonly prisma: PrismaService,
     private readonly members: MembersService,
     private readonly sendingDomains: ClubSendingDomainService,
+    private readonly telegram: TelegramApiService,
     @Inject(MAIL_TRANSPORT) private readonly mail: MailTransport,
   ) {}
 
@@ -91,6 +99,147 @@ export class CommsService {
         dynamicGroupId: input.dynamicGroupId ?? null,
       },
     });
+  }
+
+  async updateDraft(clubId: string, input: UpdateMessageCampaignInput) {
+    const existing = await this.prisma.messageCampaign.findFirst({
+      where: { id: input.campaignId, clubId },
+    });
+    if (!existing) {
+      throw new BadRequestException('Campagne introuvable');
+    }
+    if (existing.status !== 'DRAFT') {
+      throw new BadRequestException('Seuls les brouillons peuvent être modifiés');
+    }
+    if (input.dynamicGroupId) {
+      const ok = await this.prisma.dynamicGroup.findFirst({
+        where: { id: input.dynamicGroupId, clubId },
+      });
+      if (!ok) {
+        throw new BadRequestException('Groupe dynamique inconnu');
+      }
+    }
+    const updated = await this.prisma.messageCampaign.update({
+      where: { id: input.campaignId },
+      data: {
+        title: input.title,
+        body: input.body,
+        channel: input.channel,
+        dynamicGroupId: input.dynamicGroupId ?? null,
+      },
+    });
+    const count = await this.prisma.messageCampaignRecipient.count({
+      where: { campaignId: updated.id },
+    });
+    return { ...updated, recipientCount: count };
+  }
+
+  async deleteDraft(clubId: string, campaignId: string): Promise<boolean> {
+    const existing = await this.prisma.messageCampaign.findFirst({
+      where: { id: campaignId, clubId },
+    });
+    if (!existing) {
+      throw new BadRequestException('Campagne introuvable');
+    }
+    if (existing.status !== 'DRAFT') {
+      throw new BadRequestException('Seuls les brouillons peuvent être supprimés');
+    }
+    await this.prisma.messageCampaign.delete({
+      where: { id: campaignId },
+    });
+    return true;
+  }
+
+  /**
+   * Message ponctuel à un membre ou un contact (admin), hors entité campagne.
+   * E-mail : domaine transactionnel vérifié. Autres canaux : journalisation (MVP).
+   */
+  async sendQuickMessage(
+    clubId: string,
+    input: SendQuickMessageInput,
+  ): Promise<{ success: boolean }> {
+    let emailTo: string | null = null;
+    if (input.recipientType === QuickMessageRecipientType.MEMBER) {
+      const m = await this.prisma.member.findFirst({
+        where: { id: input.recipientId, clubId },
+        select: { email: true },
+      });
+      if (!m) {
+        throw new BadRequestException('Membre introuvable');
+      }
+      emailTo = m.email?.trim() ?? '';
+    } else {
+      const row = await this.prisma.contact.findFirst({
+        where: { id: input.recipientId, clubId },
+        include: { user: true },
+      });
+      if (!row) {
+        throw new BadRequestException('Contact introuvable');
+      }
+      emailTo = row.user.email?.trim() ?? '';
+    }
+
+    const channels = [...new Set(input.channels)];
+    for (const channel of channels) {
+      if (channel === CommunicationChannel.EMAIL) {
+        if (!emailTo || !emailTo.includes('@')) {
+          throw new BadRequestException(
+            'Aucune adresse e-mail utilisable pour ce destinataire',
+          );
+        }
+        const norm = emailTo.toLowerCase();
+        const suppressed = await this.prisma.emailSuppression.findFirst({
+          where: { clubId, emailNormalized: norm },
+        });
+        if (suppressed) {
+          throw new BadRequestException(
+            'Envoi refusé : adresse en liste de suppression.',
+          );
+        }
+        const mailProfile = await this.sendingDomains.getVerifiedMailProfile(
+          clubId,
+          'transactional',
+        );
+        await this.mail.sendEmail({
+          clubId,
+          kind: 'transactional',
+          from: mailProfile.from,
+          to: emailTo,
+          subject: input.title,
+          html: `<div style="white-space:pre-wrap">${escapeHtml(input.body)}</div>`,
+          text: input.body,
+        });
+      } else if (channel === CommunicationChannel.TELEGRAM) {
+        if (input.recipientType !== QuickMessageRecipientType.MEMBER) {
+          throw new BadRequestException(
+            'Telegram n’est disponible que pour les membres.',
+          );
+        }
+        const mem = await this.prisma.member.findFirst({
+          where: { id: input.recipientId, clubId },
+          select: { telegramChatId: true },
+        });
+        if (!mem?.telegramChatId) {
+          throw new BadRequestException(
+            'Ce membre n’a pas relié Telegram (lien d’invitation dans la fiche).',
+          );
+        }
+        await this.telegram.sendMessage(
+          mem.telegramChatId,
+          `${input.title}\n\n${input.body}`,
+        );
+      } else {
+        this.log.log(
+          JSON.stringify({
+            event: 'comms.quick_stub',
+            channel,
+            recipientType: input.recipientType,
+            recipientId: input.recipientId,
+          }),
+        );
+      }
+    }
+    return { success: true };
   }
 
   async sendCampaign(clubId: string, campaignId: string) {
@@ -229,6 +378,64 @@ export class CommsService {
           } catch (err) {
             this.log.error(
               `comms.email_send_failed campaign=${campaign.id} to=${norm}: ${err}`,
+            );
+          }
+        }
+      }
+    } else if (campaign.channel === CommunicationChannel.TELEGRAM) {
+      const neededIds = new Set<string>(matched.map((x) => x.id));
+      const payerByAudienceId = new Map<string, string | null>();
+      for (const m of matched) {
+        const famRow = await this.prisma.familyMember.findFirst({
+          where: { memberId: m.id },
+          include: {
+            family: {
+              include: {
+                familyMembers: { where: { linkRole: 'PAYER' }, take: 1 },
+              },
+            },
+          },
+        });
+        const payerId = famRow?.family.familyMembers[0]?.memberId ?? null;
+        payerByAudienceId.set(m.id, payerId);
+        if (payerId) {
+          neededIds.add(payerId);
+        }
+      }
+      const tgRows = await this.prisma.member.findMany({
+        where: { clubId, id: { in: [...neededIds] } },
+        select: { id: true, telegramChatId: true },
+      });
+      const chatByMemberId = new Map(
+        tgRows.map((r) => [r.id, r.telegramChatId]),
+      );
+      const chatSent = new Set<string>();
+      for (const m of matched) {
+        const payerMemberId = payerByAudienceId.get(m.id) ?? null;
+        const agg = aggregateForParent(
+          m.id,
+          payerMemberId,
+          campaign.title,
+          campaign.body,
+        );
+        for (const targetId of agg.targetMemberIds) {
+          const chatId = chatByMemberId.get(targetId);
+          if (!chatId) {
+            this.log.warn(`comms.telegram_skip no_chat member=${targetId}`);
+            continue;
+          }
+          if (chatSent.has(chatId)) {
+            continue;
+          }
+          chatSent.add(chatId);
+          try {
+            await this.telegram.sendMessage(
+              chatId,
+              `${campaign.title}\n\n${campaign.body}`,
+            );
+          } catch (err) {
+            this.log.error(
+              `comms.telegram_send_failed campaign=${campaign.id} chat=${chatId}: ${err}`,
             );
           }
         }

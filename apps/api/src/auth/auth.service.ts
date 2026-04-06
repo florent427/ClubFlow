@@ -3,6 +3,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import type { JwtSignOptions } from '@nestjs/jwt';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { OAuthProvider } from '@prisma/client';
@@ -30,14 +31,33 @@ export class AuthService {
     private readonly mail: TransactionalMailService,
   ) {}
 
+  /**
+   * Options de signature des JWT d’accès (login, sélection de profil, etc.).
+   * `JWT_EXPIRES_IN` : durée type `15m`, `7d`, `365d`. Valeurs `none`, `never`, `false`, `0`
+   * ou variable absente / chaîne vide = pas de claim `exp` (session sans expiration côté JWT).
+   */
+  private accessTokenSignOptions(): JwtSignOptions {
+    const secret = process.env.JWT_SECRET ?? 'change-me-in-development';
+    const raw = process.env.JWT_EXPIRES_IN?.trim();
+    const opts: JwtSignOptions = { secret };
+    if (!raw) {
+      return opts;
+    }
+    const lower = raw.toLowerCase();
+    if (
+      lower === 'none' ||
+      lower === 'never' ||
+      lower === 'false' ||
+      lower === '0'
+    ) {
+      return opts;
+    }
+    opts.expiresIn = raw as JwtSignOptions['expiresIn'];
+    return opts;
+  }
+
   private signAccessToken(payload: JwtPayload): string {
-    return this.jwt.sign(
-      { ...payload },
-      {
-        secret: process.env.JWT_SECRET ?? 'change-me-in-development',
-        expiresIn: '15m',
-      },
-    );
+    return this.jwt.sign({ ...payload }, this.accessTokenSignOptions());
   }
 
   private clubIdFromEnv(): string {

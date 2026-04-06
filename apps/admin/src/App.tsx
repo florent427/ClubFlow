@@ -6,6 +6,7 @@ import { isLoggedIn } from './lib/storage';
 import { AdminLayout } from './components/AdminLayout';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { ClubModulesPage } from './pages/ClubModulesPage';
 import { MembersLayout } from './pages/members/MembersLayout';
 import { MembersDirectoryPage } from './pages/members/MembersDirectoryPage';
 import { MembersDynamicGroupsPage } from './pages/members/MembersDynamicGroupsPage';
@@ -24,6 +25,7 @@ import { MailDomainSettingsPage } from './pages/settings/MailDomainSettingsPage'
 import { MembersUiProvider } from './pages/members/members-ui-context';
 import { ContactsPage } from './pages/contacts/ContactsPage';
 import { ToastProvider } from './components/ToastProvider';
+import { ClubModulesProvider } from './lib/club-modules-context';
 
 function Protected({ children }: { children: ReactNode }) {
   if (!isLoggedIn()) {
@@ -42,13 +44,16 @@ export default function App() {
           <Route
             element={
               <Protected>
-                <MembersUiProvider>
-                  <AdminLayout />
-                </MembersUiProvider>
+                <ClubModulesProvider>
+                  <MembersUiProvider>
+                    <AdminLayout />
+                  </MembersUiProvider>
+                </ClubModulesProvider>
               </Protected>
             }
           >
             <Route index element={<DashboardPage />} />
+            <Route path="club-modules" element={<ClubModulesPage />} />
             <Route path="members" element={<MembersLayout />}>
               <Route index element={<MembersDirectoryPage />} />
               <Route path="new" element={<NewMemberPage />} />
