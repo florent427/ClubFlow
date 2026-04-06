@@ -15,6 +15,7 @@ import { ProgressionPage } from './pages/ProgressionPage';
 import { PlanningPage } from './pages/PlanningPage';
 import { FamilyPage } from './pages/FamilyPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { MessagingPage } from './pages/MessagingPage';
 
 function Protected() {
   if (!getToken()) {
@@ -69,6 +70,14 @@ export default function App() {
                 element={
                   <MemberOnly>
                     <SettingsPage />
+                  </MemberOnly>
+                }
+              />
+              <Route
+                path="/messagerie"
+                element={
+                  <MemberOnly>
+                    <MessagingPage />
                   </MemberOnly>
                 }
               />

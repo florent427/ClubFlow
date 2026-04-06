@@ -20,8 +20,11 @@ import {
   PricingAdjustmentType,
   SponsorshipDealStatus,
   SubscriptionBillingRhythm,
+  ChatRoomKind,
+  ChatRoomMemberRole,
 } from '@prisma/client';
 import { ModuleCode } from '../domain/module-registry/module-codes';
+import { QuickMessageRecipientType } from '../comms/enums/quick-message-recipient.enum';
 
 registerEnumType(MembershipRole, { name: 'MembershipRole' });
 registerEnumType(ModuleCode, { name: 'ModuleCode' });
@@ -57,6 +60,9 @@ registerEnumType(CommunicationChannel, { name: 'CommunicationChannel' });
 registerEnumType(MessageCampaignStatus, {
   name: 'MessageCampaignStatus',
 });
+registerEnumType(QuickMessageRecipientType, {
+  name: 'QuickMessageRecipientType',
+});
 registerEnumType(AccountingEntryKind, { name: 'AccountingEntryKind' });
 registerEnumType(GrantApplicationStatus, {
   name: 'GrantApplicationStatus',
@@ -64,3 +70,5 @@ registerEnumType(GrantApplicationStatus, {
 registerEnumType(SponsorshipDealStatus, {
   name: 'SponsorshipDealStatus',
 });
+registerEnumType(ChatRoomKind, { name: 'ChatRoomKind' });
+registerEnumType(ChatRoomMemberRole, { name: 'ChatRoomMemberRole' });

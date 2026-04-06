@@ -11,6 +11,7 @@ import { ViewerActiveProfileGuard } from '../common/guards/viewer-active-profile
 import type { RequestUser } from '../common/types/request-user';
 import { ModuleCode } from '../domain/module-registry/module-codes';
 import { ViewerJoinFamilyByPayerEmailInput } from './dto/viewer-join-family-by-payer-email.input';
+import { ViewerUpdateMyPseudoInput } from './dto/viewer-update-my-pseudo.input';
 import { ViewerCourseSlotGraph } from './models/viewer-course-slot.model';
 import { ViewerFamilyBillingSummaryGraph } from './models/viewer-family-billing.model';
 import { ViewerFamilyJoinResultGraph } from './models/viewer-family-join-result.model';
@@ -109,6 +110,26 @@ export class ViewerResolver {
       club.id,
       user.activeProfileMemberId,
       input.payerEmail,
+    );
+  }
+
+  @Mutation(() => ViewerMemberGraph, { name: 'viewerUpdateMyPseudo' })
+  @RequireClubModule(ModuleCode.MESSAGING)
+  viewerUpdateMyPseudo(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('input') input: ViewerUpdateMyPseudoInput,
+  ): Promise<ViewerMemberGraph> {
+    if (!user.activeProfileMemberId) {
+      throw new BadRequestException(
+        'Cette action nécessite une fiche adhérent active.',
+      );
+    }
+    return this.viewer.updateMyPseudo(
+      club.id,
+      user.activeProfileMemberId,
+      user.userId,
+      input.pseudo,
     );
   }
 }

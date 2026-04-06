@@ -39,6 +39,7 @@ function breadcrumbLabel(pathname: string): string {
   if (pathname.startsWith('/planning')) return 'Planning';
   if (pathname.startsWith('/famille')) return 'Famille & espace partagé';
   if (pathname.startsWith('/parametres')) return 'Paramètres';
+  if (pathname.startsWith('/messagerie')) return 'Messagerie';
   return 'Espace membre';
 }
 
@@ -138,6 +139,10 @@ export function MemberLayout() {
             <span className="mp-ico material-symbols-outlined">groups</span>
             Famille &amp; partage
           </NavLink>
+          <NavLink to="/messagerie" className={navClass}>
+            <span className="mp-ico material-symbols-outlined">chat</span>
+            Messagerie
+          </NavLink>
           <NavLink to="/parametres" className={navClass}>
             <span className="mp-ico material-symbols-outlined">settings</span>
             Paramètres
@@ -226,6 +231,10 @@ export function MemberLayout() {
         <NavLink to="/famille" className={bottomClass}>
           <span className="material-symbols-outlined">groups</span>
           <span>Famille</span>
+        </NavLink>
+        <NavLink to="/messagerie" className={bottomClass}>
+          <span className="material-symbols-outlined">chat</span>
+          <span>Chat</span>
         </NavLink>
         <NavLink to="/parametres" className={bottomClass}>
           <span className="material-symbols-outlined">settings</span>

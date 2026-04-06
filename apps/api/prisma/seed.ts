@@ -138,6 +138,7 @@ async function main(): Promise<void> {
       userId: user.id,
       firstName: 'Compte',
       lastName: 'Portail démo',
+      pseudo: 'compte_portail_demo',
       civility: MemberCivility.MR,
       email: demoEmail,
       roleAssignments: {
@@ -148,6 +149,7 @@ async function main(): Promise<void> {
       status: 'ACTIVE',
       civility: MemberCivility.MR,
       email: demoEmail,
+      pseudo: 'compte_portail_demo',
     },
   });
 
@@ -213,6 +215,24 @@ async function main(): Promise<void> {
       id: randomUUID(),
       clubId: club.id,
       moduleCode: ModuleCode.PAYMENT,
+      enabled: true,
+      enabledAt: new Date(),
+    },
+    update: {
+      enabled: true,
+      enabledAt: new Date(),
+      disabledAt: null,
+    },
+  });
+
+  await prisma.clubModule.upsert({
+    where: {
+      clubId_moduleCode: { clubId: club.id, moduleCode: ModuleCode.MESSAGING },
+    },
+    create: {
+      id: randomUUID(),
+      clubId: club.id,
+      moduleCode: ModuleCode.MESSAGING,
       enabled: true,
       enabledAt: new Date(),
     },

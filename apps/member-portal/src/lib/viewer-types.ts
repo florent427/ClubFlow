@@ -10,6 +10,7 @@ export type ViewerMeData = {
     id: string;
     firstName: string;
     lastName: string;
+    pseudo: string | null;
     photoUrl: string | null;
     civility: string;
     medicalCertExpiresAt: string | null;
@@ -21,6 +22,7 @@ export type ViewerMeData = {
     canSelfAttachFamilyViaPayerEmail: boolean;
     isContactProfile: boolean;
     hideMemberModules: boolean;
+    telegramLinked: boolean;
   };
 };
 

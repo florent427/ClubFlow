@@ -40,6 +40,7 @@ model Club {
   sendingDomains                ClubSendingDomain[]
   emailSuppressions             EmailSuppression[]
   contacts                      Contact[]
+  chatRooms                     ChatRoom[]
   /// À partir du n-ième bulletin d’adhésion (OPEN/PAID) pour le foyer sur la saison — null = désactivé
   membershipFamilyDiscountFromNth Int?
   membershipFamilyAdjustmentType   PricingAdjustmentType @default(NONE)
@@ -279,6 +280,8 @@ model Member {
   userId                 String?
   firstName              String
   lastName               String
+  /// Pseudo messagerie ; unique par club ; [a-z0-9_]
+  pseudo                 String   @db.VarChar(64)
   civility               MemberCivility
   email                  String
   phone                  String?
@@ -305,10 +308,91 @@ model Member {
   dynamicGroupAssignments    MemberDynamicGroup[]
   invoiceLines               InvoiceLine[]
   paymentsAsPaidBy           Payment[] @relation("PaymentPaidByMember")
+  telegramChatId             String?   @map("telegram_chat_id")
+  telegramLinkedAt           DateTime? @map("telegram_linked_at")
+  telegramLinkTokens         TelegramLinkToken[]
+  chatRoomMemberships        ChatRoomMember[]
+  chatMessagesSent           ChatMessage[]    @relation("ChatMessageSender")
+  chatRoomsCreated           ChatRoom[]       @relation("MemberChatRoomsCreated")
 
   @@unique([clubId, userId])
+  @@unique([clubId, pseudo])
   @@index([clubId])
   @@index([clubId, status])
+}
+
+enum ChatRoomKind {
+  DIRECT
+  GROUP
+  COMMUNITY
+}
+
+enum ChatRoomMemberRole {
+  MEMBER
+  ADMIN
+}
+
+model ChatRoom {
+  id                 String         @id @default(uuid())
+  clubId             String
+  kind               ChatRoomKind
+  name               String?
+  directPairKey      String?        @unique
+  createdByMemberId  String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  club    Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  creator Member?          @relation("MemberChatRoomsCreated", fields: [createdByMemberId], references: [id], onDelete: SetNull)
+  members ChatRoomMember[]
+  messages ChatMessage[]
+
+  @@index([clubId, kind])
+}
+
+model ChatRoomMember {
+  id        String             @id @default(uuid())
+  roomId    String
+  memberId  String
+  role      ChatRoomMemberRole @default(MEMBER)
+  joinedAt  DateTime           @default(now())
+
+  room   ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  member Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, memberId])
+  @@index([memberId])
+}
+
+model ChatMessage {
+  id             String    @id @default(uuid())
+  roomId         String
+  senderMemberId String
+  body           String    @db.Text
+  createdAt      DateTime  @default(now())
+  editedAt       DateTime?
+  deletedAt      DateTime?
+
+  room   ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  sender Member   @relation("ChatMessageSender", fields: [senderMemberId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, createdAt])
+}
+
+/// Jeton ponctuel pour `t.me/Bot?start=TOKEN` — lie le chat Telegram au membre.
+model TelegramLinkToken {
+  id         String    @id @default(uuid())
+  clubId     String
+  memberId   String
+  token      String    @unique @db.VarChar(64)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([memberId])
+  @@index([token])
 }
 
 model MemberRoleAssignment {

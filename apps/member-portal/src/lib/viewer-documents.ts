@@ -16,6 +16,7 @@ export const VIEWER_ME = gql`
       id
       firstName
       lastName
+      pseudo
       photoUrl
       civility
       medicalCertExpiresAt
@@ -27,6 +28,7 @@ export const VIEWER_ME = gql`
       canSelfAttachFamilyViaPayerEmail
       isContactProfile
       hideMemberModules
+      telegramLinked
     }
   }
 `;

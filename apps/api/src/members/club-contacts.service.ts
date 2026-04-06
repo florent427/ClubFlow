@@ -6,6 +6,7 @@ import {
 import { MemberCivility, MemberStatus, Prisma } from '@prisma/client';
 import { FamiliesService } from '../families/families.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { MemberPseudoService } from '../messaging/member-pseudo.service';
 import { assertMemberEmailAllowedInClub } from './member-email-family-rule';
 
 /** Civilité par défaut à la promotion contact → membre (MVP). À corriger en annuaire si besoin. */
@@ -30,6 +31,7 @@ export class ClubContactsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly families: FamiliesService,
+    private readonly memberPseudo: MemberPseudoService,
   ) {}
 
   private async findLinkedMemberId(
@@ -171,12 +173,20 @@ export class ClubContactsService {
     await assertMemberEmailAllowedInClub(this.prisma, clubId, user.email, {
       memberId: null,
     });
+    const pseudo = await this.memberPseudo.pickAvailablePseudo(
+      this.prisma,
+      clubId,
+      row.firstName,
+      row.lastName,
+      null,
+    );
     const member = await this.prisma.member.create({
       data: {
         clubId,
         userId: user.id,
         firstName: row.firstName,
         lastName: row.lastName,
+        pseudo,
         civility: PROMOTE_CONTACT_DEFAULT_CIVILITY,
         email: user.email,
         status: MemberStatus.ACTIVE,

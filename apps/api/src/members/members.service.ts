@@ -38,6 +38,7 @@ import { GradeLevelGraph } from './models/grade-level.model';
 import { ClubMemberFieldLayoutGraph } from './models/club-member-field-layout.model';
 import { ClubMemberEmailDuplicateInfoGraph } from './models/club-member-email-duplicate-info.model';
 import { MemberGraph } from './models/member.model';
+import { MemberPseudoService } from '../messaging/member-pseudo.service';
 
 @Injectable()
 export class MembersService {
@@ -45,6 +46,7 @@ export class MembersService {
     private readonly prisma: PrismaService,
     private readonly fieldConfig: MemberFieldConfigService,
     private readonly families: FamiliesService,
+    private readonly memberPseudo: MemberPseudoService,
   ) {}
 
   private assertMemberIdentityComplete(
@@ -139,6 +141,7 @@ export class MembersService {
       userId: row.userId,
       firstName: row.firstName,
       lastName: row.lastName,
+      pseudo: row.pseudo,
       civility: row.civility,
       email: row.email,
       phone: row.phone,
@@ -170,6 +173,7 @@ export class MembersService {
           definition: this.fieldConfig.toDefGraph(v.definition),
         })),
       assignedDynamicGroups,
+      telegramLinked: Boolean(row.telegramChatId),
     };
   }
 
@@ -350,7 +354,22 @@ export class MembersService {
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
       include: this.memberIncludeGraph,
     });
-    return Promise.all(rows.map((r) => this.toMemberGraph(r)));
+    const ids = rows.map((r) => r.id);
+    const tgRows =
+      ids.length === 0
+        ? []
+        : await this.prisma.member.findMany({
+            where: { clubId, id: { in: ids } },
+            select: { id: true, telegramChatId: true },
+          });
+    const tgById = new Map(tgRows.map((r) => [r.id, r.telegramChatId]));
+    return Promise.all(
+      rows.map(async (r) => {
+        const g = await this.toMemberGraph(r);
+        g.telegramLinked = Boolean(tgById.get(r.id));
+        return g;
+      }),
+    );
   }
 
   async getMember(clubId: string, id: string): Promise<MemberGraph> {
@@ -361,7 +380,13 @@ export class MembersService {
     if (!row) {
       throw new NotFoundException('Membre introuvable');
     }
-    return this.toMemberGraph(row);
+    const g = await this.toMemberGraph(row);
+    const tg = await this.prisma.member.findUnique({
+      where: { id },
+      select: { telegramChatId: true },
+    });
+    g.telegramLinked = Boolean(tg?.telegramChatId);
+    return g;
   }
 
   private async assertGradeInClub(
@@ -508,11 +533,19 @@ export class MembersService {
         ? input.roles
         : [MemberClubRole.STUDENT];
     const row = await this.prisma.$transaction(async (tx) => {
+      const pseudo = await this.memberPseudo.pickAvailablePseudo(
+        tx,
+        clubId,
+        input.firstName,
+        input.lastName,
+        null,
+      );
       const created = await tx.member.create({
         data: {
           clubId,
           firstName: input.firstName,
           lastName: input.lastName,
+          pseudo,
           civility: input.civility,
           email: emailTrimmed,
           phone: input.phone ?? null,

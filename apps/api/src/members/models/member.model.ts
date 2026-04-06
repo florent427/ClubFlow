@@ -54,6 +54,11 @@ export class MemberGraph {
   @Field()
   lastName!: string;
 
+  @Field({
+    description: 'Pseudo messagerie (unique par club).',
+  })
+  pseudo!: string;
+
   @Field(() => MemberCivility)
   civility!: MemberCivility;
 
@@ -113,4 +118,9 @@ export class MemberGraph {
 
   /** Renseigné côté service ; exposé au schéma via `MemberGraphResolver`. */
   assignedDynamicGroups!: AssignedDynamicGroupGraph[];
+
+  @Field(() => Boolean, {
+    description: 'True si le membre a relié son compte Telegram (chat_id enregistré).',
+  })
+  telegramLinked!: boolean;
 }

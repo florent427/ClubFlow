@@ -12,6 +12,12 @@ export class ViewerMemberGraph {
   @Field(() => String)
   lastName!: string;
 
+  @Field(() => String, {
+    nullable: true,
+    description: 'Pseudo messagerie (profil adhérent uniquement).',
+  })
+  pseudo!: string | null;
+
   @Field(() => String, { nullable: true })
   photoUrl!: string | null;
 
@@ -54,4 +60,10 @@ export class ViewerMemberGraph {
   /** Masquer progression / planning (payeur contact uniquement). */
   @Field(() => Boolean, { defaultValue: false })
   hideMemberModules!: boolean;
+
+  @Field(() => Boolean, {
+    description:
+      'True si la fiche membre a relié Telegram (chat_id enregistré côté serveur).',
+  })
+  telegramLinked!: boolean;
 }

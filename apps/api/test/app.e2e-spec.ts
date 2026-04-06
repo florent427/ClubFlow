@@ -405,6 +405,7 @@ describe('ClubFlow API (e2e)', () => {
     const childId = randomUUID();
     await prisma.member.create({
       data: {
+        pseudo: uniquePseudo(),
         id: parentId,
         clubId: clubId as string,
         userId: admin.id,
@@ -420,6 +421,7 @@ describe('ClubFlow API (e2e)', () => {
     });
     await prisma.member.create({
       data: {
+        pseudo: uniquePseudo(),
         id: childId,
         clubId: clubId as string,
         firstName: 'Enfant',
@@ -541,6 +543,7 @@ describe('ClubFlow API (e2e)', () => {
     const oId = randomUUID();
     await prisma.member.create({
       data: {
+        pseudo: uniquePseudo(),
         id: pId,
         clubId: clubId as string,
         firstName: 'Payeur',
@@ -553,6 +556,7 @@ describe('ClubFlow API (e2e)', () => {
     });
     await prisma.member.create({
       data: {
+        pseudo: uniquePseudo(),
         id: kId,
         clubId: clubId as string,
         firstName: 'Enfant',
@@ -565,6 +569,7 @@ describe('ClubFlow API (e2e)', () => {
     });
     await prisma.member.create({
       data: {
+        pseudo: uniquePseudo(),
         id: oId,
         clubId: clubId as string,
         firstName: 'Orphelin',
@@ -697,6 +702,7 @@ describe('ClubFlow API (e2e)', () => {
     const mId = randomUUID();
     await prisma.member.create({
       data: {
+        pseudo: uniquePseudo(),
         id: mId,
         clubId: clubId as string,
         firstName: 'Solo',
@@ -771,6 +777,7 @@ describe('ClubFlow API (e2e)', () => {
     const coachId = randomUUID();
     await prisma.member.create({
       data: {
+        pseudo: uniquePseudo(),
         id: coachId,
         clubId: clubId as string,
         firstName: 'Sensei',
@@ -871,6 +878,7 @@ describe('ClubFlow API (e2e)', () => {
 
     await prisma.member.create({
       data: {
+        pseudo: uniquePseudo(),
         id: payerId,
         clubId: clubId as string,
         userId: portalUserId,
@@ -884,6 +892,7 @@ describe('ClubFlow API (e2e)', () => {
     });
     await prisma.member.create({
       data: {
+        pseudo: uniquePseudo(),
         id: childId,
         clubId: clubId as string,
         firstName: 'Enfant',
@@ -913,6 +922,7 @@ describe('ClubFlow API (e2e)', () => {
     });
     await prisma.member.create({
       data: {
+        pseudo: uniquePseudo(),
         id: coachId,
         clubId: clubId as string,
         firstName: 'Coach',
@@ -1120,6 +1130,7 @@ describe('ClubFlow API (e2e)', () => {
 
     await prisma.member.create({
       data: {
+        pseudo: uniquePseudo(),
         id: memA,
         clubId: clubId as string,
         userId: uidA,
@@ -1134,6 +1145,7 @@ describe('ClubFlow API (e2e)', () => {
     });
     await prisma.member.create({
       data: {
+        pseudo: uniquePseudo(),
         id: memB,
         clubId: clubId as string,
         userId: uidB,
@@ -1148,6 +1160,7 @@ describe('ClubFlow API (e2e)', () => {
     });
     await prisma.member.create({
       data: {
+        pseudo: uniquePseudo(),
         id: childId,
         clubId: clubId as string,
         firstName: 'Enfant',
@@ -1363,6 +1376,7 @@ describe('ClubFlow API (e2e)', () => {
     });
     await prisma.member.create({
       data: {
+        pseudo: uniquePseudo(),
         id: mP,
         clubId: clubId as string,
         userId: uP,
@@ -1377,6 +1391,7 @@ describe('ClubFlow API (e2e)', () => {
     });
     await prisma.member.create({
       data: {
+        pseudo: uniquePseudo(),
         id: mC,
         clubId: clubId as string,
         userId: uC,
@@ -1391,6 +1406,7 @@ describe('ClubFlow API (e2e)', () => {
     });
     await prisma.member.create({
       data: {
+        pseudo: uniquePseudo(),
         id: kid,
         clubId: clubId as string,
         firstName: 'Enfant',

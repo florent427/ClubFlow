@@ -27,6 +27,7 @@ import { ViewerInvoicePaymentSnippetGraph } from './models/viewer-invoice-paymen
 import { ViewerLinkedHouseholdFamilyGraph } from './models/viewer-linked-household-family.model';
 import { ViewerFamilyJoinResultGraph } from './models/viewer-family-join-result.model';
 import { ViewerMemberGraph } from './models/viewer-member.model';
+import { MemberPseudoService } from '../messaging/member-pseudo.service';
 
 @Injectable()
 export class ViewerService {
@@ -34,6 +35,7 @@ export class ViewerService {
     private readonly prisma: PrismaService,
     private readonly planning: PlanningService,
     private readonly families: FamiliesService,
+    private readonly memberPseudo: MemberPseudoService,
   ) {}
 
   async viewerMe(
@@ -63,6 +65,7 @@ export class ViewerService {
       id: m.id,
       firstName: m.firstName,
       lastName: m.lastName,
+      pseudo: m.pseudo,
       photoUrl: m.photoUrl,
       civility: m.civility,
       medicalCertExpiresAt: m.medicalCertExpiresAt,
@@ -74,7 +77,22 @@ export class ViewerService {
       canSelfAttachFamilyViaPayerEmail: !hasClubFamily,
       isContactProfile: false,
       hideMemberModules: false,
+      telegramLinked: Boolean(m.telegramChatId),
     };
+  }
+
+  async updateMyPseudo(
+    clubId: string,
+    memberId: string,
+    userId: string,
+    pseudoRaw: string,
+  ): Promise<ViewerMemberGraph> {
+    await this.memberPseudo.updatePseudoForMember(
+      clubId,
+      memberId,
+      pseudoRaw,
+    );
+    return this.viewerMe(clubId, memberId, userId);
   }
 
   async viewerMeAsContact(
@@ -107,6 +125,7 @@ export class ViewerService {
       id: contactId,
       firstName: c.firstName,
       lastName: c.lastName,
+      pseudo: null,
       photoUrl: null,
       civility: MemberCivility.MR,
       medicalCertExpiresAt: null,
@@ -118,6 +137,7 @@ export class ViewerService {
       canSelfAttachFamilyViaPayerEmail: false,
       isContactProfile: true,
       hideMemberModules: true,
+      telegramLinked: false,
     };
   }
 

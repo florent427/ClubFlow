@@ -9,10 +9,12 @@ import { ClubModulesModule } from '../modules/club-modules.module';
 import { ClubsModule } from '../clubs/clubs.module';
 import { AccountingModule } from '../accounting/accounting.module';
 import { CommsModule } from '../comms/comms.module';
+import { TelegramModule } from '../telegram/telegram.module';
 import { DashboardModule } from '../dashboard/dashboard.module';
 import { ExternalFinanceModule } from '../external-finance/external-finance.module';
 import { FamiliesModule } from '../families/families.module';
 import { ViewerModule } from '../viewer/viewer.module';
+import { MessagingModule } from '../messaging/messaging.module';
 import { MembersModule } from '../members/members.module';
 import { MembershipModule } from '../membership/membership.module';
 import { MailModule } from '../mail/mail.module';
@@ -29,6 +31,13 @@ import '../mail/models/club-sending-domain.model';
 import '../mail/models/mail-dns-record.model';
 import '../mail/dto/create-club-sending-domain.input';
 import '../mail/dto/send-transactional-test-email.input';
+import '../comms/dto/send-quick-message.input';
+import '../telegram/models/telegram-link-payload.model';
+import '../messaging/models/chat-room-gql.model';
+import '../messaging/models/chat-message-gql.model';
+import '../messaging/dto/create-chat-group.input';
+import '../messaging/dto/post-chat-message.input';
+import '../viewer/dto/viewer-update-my-pseudo.input';
 
 @Module({
   imports: [
@@ -59,6 +68,8 @@ import '../mail/dto/send-transactional-test-email.input';
     MailModule,
     ExternalFinanceModule,
     ViewerModule,
+    TelegramModule,
+    MessagingModule,
   ],
 })
 export class GraphqlAppModule {}

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { FamiliesModule } from '../families/families.module';
+import { MessagingModule } from '../messaging/messaging.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.guard';
 import { ClubContactsResolver } from './club-contacts.resolver';
@@ -10,7 +11,7 @@ import { MembersResolver } from './members.resolver';
 import { MembersService } from './members.service';
 
 @Module({
-  imports: [PrismaModule, FamiliesModule],
+  imports: [PrismaModule, FamiliesModule, MessagingModule],
   providers: [
     MemberFieldConfigService,
     MembersService,
