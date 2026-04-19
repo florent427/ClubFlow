@@ -1371,3 +1371,80 @@ export const DELETE_CLUB_SURVEY = gql`
     deleteClubSurvey(id: $id)
   }
 `;
+
+const EVENT_FIELDS = `
+  id
+  title
+  description
+  location
+  startsAt
+  endsAt
+  capacity
+  registrationOpensAt
+  registrationClosesAt
+  priceCents
+  status
+  publishedAt
+  allowContactRegistration
+  createdAt
+  updatedAt
+  registeredCount
+  waitlistCount
+  viewerRegistrationStatus
+  registrations {
+    id
+    memberId
+    contactId
+    status
+    registeredAt
+    cancelledAt
+    note
+    displayName
+  }
+`;
+
+export const CLUB_EVENTS = gql`
+  query ClubEvents {
+    clubEvents {
+      ${EVENT_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_CLUB_EVENT = gql`
+  mutation CreateClubEvent($input: CreateEventInput!) {
+    createClubEvent(input: $input) {
+      ${EVENT_FIELDS}
+    }
+  }
+`;
+
+export const UPDATE_CLUB_EVENT = gql`
+  mutation UpdateClubEvent($input: UpdateEventInput!) {
+    updateClubEvent(input: $input) {
+      ${EVENT_FIELDS}
+    }
+  }
+`;
+
+export const PUBLISH_CLUB_EVENT = gql`
+  mutation PublishClubEvent($id: ID!) {
+    publishClubEvent(id: $id) {
+      ${EVENT_FIELDS}
+    }
+  }
+`;
+
+export const CANCEL_CLUB_EVENT = gql`
+  mutation CancelClubEvent($id: ID!) {
+    cancelClubEvent(id: $id) {
+      ${EVENT_FIELDS}
+    }
+  }
+`;
+
+export const DELETE_CLUB_EVENT = gql`
+  mutation DeleteClubEvent($id: ID!) {
+    deleteClubEvent(id: $id)
+  }
+`;

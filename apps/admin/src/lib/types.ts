@@ -672,3 +672,49 @@ export type CloseClubSurveyMutationData = {
 export type DeleteClubSurveyMutationData = {
   deleteClubSurvey: boolean;
 };
+
+export type ClubEventStatusStr = 'DRAFT' | 'PUBLISHED' | 'CANCELLED';
+export type ClubEventRegistrationStatusStr =
+  | 'REGISTERED'
+  | 'WAITLISTED'
+  | 'CANCELLED';
+
+export type ClubEventRegistration = {
+  id: string;
+  memberId: string | null;
+  contactId: string | null;
+  status: ClubEventRegistrationStatusStr;
+  registeredAt: string;
+  cancelledAt: string | null;
+  note: string | null;
+  displayName: string | null;
+};
+
+export type ClubEvent = {
+  id: string;
+  title: string;
+  description: string | null;
+  location: string | null;
+  startsAt: string;
+  endsAt: string;
+  capacity: number | null;
+  registrationOpensAt: string | null;
+  registrationClosesAt: string | null;
+  priceCents: number | null;
+  status: ClubEventStatusStr;
+  publishedAt: string | null;
+  allowContactRegistration: boolean;
+  createdAt: string;
+  updatedAt: string;
+  registeredCount: number;
+  waitlistCount: number;
+  viewerRegistrationStatus: ClubEventRegistrationStatusStr | null;
+  registrations: ClubEventRegistration[];
+};
+
+export type ClubEventsQueryData = { clubEvents: ClubEvent[] };
+export type CreateClubEventMutationData = { createClubEvent: ClubEvent };
+export type UpdateClubEventMutationData = { updateClubEvent: ClubEvent };
+export type PublishClubEventMutationData = { publishClubEvent: ClubEvent };
+export type CancelClubEventMutationData = { cancelClubEvent: ClubEvent };
+export type DeleteClubEventMutationData = { deleteClubEvent: boolean };

@@ -2418,3 +2418,13 @@ a:focus-visible {
 .mp-empty__icon { font-size: 40px !important; color: #94a3b8; display: block; margin-bottom: 8px; }
 
 .mp-error { color: #b91c1c; font-size: 13px; margin: 0; }
+
+.mp-event-list { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+.mp-event-card { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 1px 2px rgba(16,24,40,0.04); }
+.mp-event-card__head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.mp-event-card__title { margin: 0; color: #0f172a; font-size: 1.05rem; }
+.mp-event-card__meta { display: flex; flex-wrap: wrap; gap: 10px 18px; color: #475569; font-size: 0.9rem; }
+.mp-event-card__meta span { display: inline-flex; align-items: center; gap: 4px; }
+.mp-event-card__meta .material-symbols-outlined { font-size: 18px; opacity: 0.75; }
+.mp-event-card__body { margin: 0; color: #334155; white-space: pre-wrap; }
+.mp-event-card__actions { display: flex; align-items: center; gap: 10px; margin-top: 4px; }

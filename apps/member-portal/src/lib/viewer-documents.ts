@@ -226,3 +226,45 @@ export const VIEWER_RESPOND_TO_CLUB_SURVEY = gql`
     }
   }
 `;
+
+const VIEWER_EVENT_FIELDS = `
+  id
+  title
+  description
+  location
+  startsAt
+  endsAt
+  capacity
+  registrationOpensAt
+  registrationClosesAt
+  priceCents
+  status
+  allowContactRegistration
+  registeredCount
+  waitlistCount
+  viewerRegistrationStatus
+`;
+
+export const VIEWER_CLUB_EVENTS = gql`
+  query ViewerClubEvents {
+    viewerClubEvents {
+      ${VIEWER_EVENT_FIELDS}
+    }
+  }
+`;
+
+export const VIEWER_REGISTER_TO_EVENT = gql`
+  mutation ViewerRegisterToEvent($eventId: ID!, $note: String) {
+    viewerRegisterToEvent(eventId: $eventId, note: $note) {
+      ${VIEWER_EVENT_FIELDS}
+    }
+  }
+`;
+
+export const VIEWER_CANCEL_EVENT_REGISTRATION = gql`
+  mutation ViewerCancelEventRegistration($eventId: ID!) {
+    viewerCancelEventRegistration(eventId: $eventId) {
+      ${VIEWER_EVENT_FIELDS}
+    }
+  }
+`;

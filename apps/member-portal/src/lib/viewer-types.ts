@@ -197,3 +197,39 @@ export type ViewerClubSurveysData = {
 export type ViewerRespondToClubSurveyData = {
   viewerRespondToClubSurvey: ViewerClubSurvey;
 };
+
+export type ViewerClubEventStatus = 'DRAFT' | 'PUBLISHED' | 'CANCELLED';
+export type ViewerClubEventRegistrationStatus =
+  | 'REGISTERED'
+  | 'WAITLISTED'
+  | 'CANCELLED';
+
+export type ViewerClubEvent = {
+  id: string;
+  title: string;
+  description: string | null;
+  location: string | null;
+  startsAt: string;
+  endsAt: string;
+  capacity: number | null;
+  registrationOpensAt: string | null;
+  registrationClosesAt: string | null;
+  priceCents: number | null;
+  status: ViewerClubEventStatus;
+  allowContactRegistration: boolean;
+  registeredCount: number;
+  waitlistCount: number;
+  viewerRegistrationStatus: ViewerClubEventRegistrationStatus | null;
+};
+
+export type ViewerClubEventsData = {
+  viewerClubEvents: ViewerClubEvent[];
+};
+
+export type ViewerRegisterToEventData = {
+  viewerRegisterToEvent: ViewerClubEvent;
+};
+
+export type ViewerCancelEventRegistrationData = {
+  viewerCancelEventRegistration: ViewerClubEvent;
+};

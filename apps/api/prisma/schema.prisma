@@ -1057,3 +1057,56 @@ model ClubSurveyResponse {
   @@unique([surveyId, contactId, optionId])
   @@index([surveyId])
 }
+
+enum ClubEventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+}
+
+enum ClubEventRegistrationStatus {
+  REGISTERED
+  WAITLISTED
+  CANCELLED
+}
+
+model ClubEvent {
+  id                     String           @id @default(uuid())
+  clubId                 String
+  title                  String
+  description            String?
+  location               String?
+  startsAt               DateTime
+  endsAt                 DateTime
+  capacity               Int?
+  registrationOpensAt    DateTime?
+  registrationClosesAt   DateTime?
+  priceCents             Int?
+  status                 ClubEventStatus  @default(DRAFT)
+  publishedAt            DateTime?
+  allowContactRegistration Boolean        @default(false)
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  registrations          ClubEventRegistration[]
+
+  @@index([clubId, startsAt])
+  @@index([clubId, status])
+}
+
+model ClubEventRegistration {
+  id            String                        @id @default(uuid())
+  eventId       String
+  memberId      String?
+  contactId     String?
+  status        ClubEventRegistrationStatus   @default(REGISTERED)
+  registeredAt  DateTime                      @default(now())
+  cancelledAt   DateTime?
+  note          String?
+
+  event         ClubEvent                     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, memberId])
+  @@unique([eventId, contactId])
+  @@index([eventId, status])
+}
