@@ -317,6 +317,7 @@ model Member {
   customRoleAssignments   MemberCustomRoleAssignment[]
   familyMembers           FamilyMember[]
   courseSlotsAsCoach CourseSlot[] @relation("CourseSlotCoach")
+  courseSlotBookings CourseSlotBooking[] @relation("CourseSlotBookingMember")
   messageCampaignRecipients MessageCampaignRecipient[]
   customFieldValues          MemberCustomFieldValue[]
   dynamicGroupAssignments    MemberDynamicGroup[]
@@ -582,24 +583,54 @@ model Venue {
 }
 
 model CourseSlot {
-  id             String   @id @default(uuid())
-  clubId         String
-  venueId        String
-  coachMemberId  String
-  title          String
-  startsAt       DateTime
-  endsAt         DateTime
-  dynamicGroupId String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                 String   @id @default(uuid())
+  clubId             String
+  venueId            String
+  coachMemberId      String
+  title              String
+  startsAt           DateTime
+  endsAt             DateTime
+  dynamicGroupId     String?
+  bookingEnabled     Boolean  @default(false)
+  bookingCapacity    Int?
+  bookingOpensAt     DateTime?
+  bookingClosesAt    DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   club         Club          @relation(fields: [clubId], references: [id], onDelete: Cascade)
   venue        Venue         @relation(fields: [venueId], references: [id], onDelete: Restrict)
   coachMember  Member        @relation("CourseSlotCoach", fields: [coachMemberId], references: [id], onDelete: Restrict)
   dynamicGroup DynamicGroup? @relation(fields: [dynamicGroupId], references: [id], onDelete: SetNull)
+  bookings     CourseSlotBooking[]
 
   @@index([clubId, coachMemberId])
   @@index([clubId, startsAt])
+}
+
+enum CourseSlotBookingStatus {
+  BOOKED
+  WAITLISTED
+  CANCELLED
+}
+
+model CourseSlotBooking {
+  id           String                  @id @default(uuid())
+  courseSlotId String
+  memberId     String
+  status       CourseSlotBookingStatus @default(BOOKED)
+  bookedAt     DateTime                @default(now())
+  cancelledAt  DateTime?
+  note         String?                 @db.VarChar(500)
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @updatedAt
+
+  courseSlot CourseSlot @relation(fields: [courseSlotId], references: [id], onDelete: Cascade)
+  member     Member     @relation("CourseSlotBookingMember", fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([courseSlotId, memberId])
+  @@index([courseSlotId])
+  @@index([memberId])
 }
 
 // --- Adhésion : saisons, groupes persistés, formules, lignes de facture ---

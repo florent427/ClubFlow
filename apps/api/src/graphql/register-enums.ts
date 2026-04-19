@@ -26,6 +26,7 @@ import {
   ClubSurveyStatus,
   ClubEventStatus,
   ClubEventRegistrationStatus,
+  CourseSlotBookingStatus,
 } from '@prisma/client';
 import { ModuleCode } from '../domain/module-registry/module-codes';
 import { QuickMessageRecipientType } from '../comms/enums/quick-message-recipient.enum';
@@ -81,4 +82,7 @@ registerEnumType(ClubSurveyStatus, { name: 'ClubSurveyStatus' });
 registerEnumType(ClubEventStatus, { name: 'ClubEventStatus' });
 registerEnumType(ClubEventRegistrationStatus, {
   name: 'ClubEventRegistrationStatus',
+});
+registerEnumType(CourseSlotBookingStatus, {
+  name: 'CourseSlotBookingStatus',
 });

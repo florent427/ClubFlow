@@ -1,18 +1,9 @@
 import { Field, ID, Int, ObjectType } from '@nestjs/graphql';
 
 @ObjectType()
-export class CourseSlotGraph {
+export class BookableSlotGraph {
   @Field(() => ID)
   id!: string;
-
-  @Field(() => ID)
-  clubId!: string;
-
-  @Field(() => ID)
-  venueId!: string;
-
-  @Field(() => ID)
-  coachMemberId!: string;
 
   @Field()
   title!: string;
@@ -23,11 +14,14 @@ export class CourseSlotGraph {
   @Field()
   endsAt!: Date;
 
-  @Field(() => ID, { nullable: true })
-  dynamicGroupId!: string | null;
+  @Field()
+  venueName!: string;
 
-  @Field({ defaultValue: false })
-  bookingEnabled!: boolean;
+  @Field()
+  coachFirstName!: string;
+
+  @Field()
+  coachLastName!: string;
 
   @Field(() => Int, { nullable: true })
   bookingCapacity!: number | null;
@@ -38,12 +32,36 @@ export class CourseSlotGraph {
   @Field({ nullable: true })
   bookingClosesAt!: Date | null;
 
-  @Field(() => Int, { defaultValue: 0 })
+  @Field(() => Int)
   bookedCount!: number;
 
-  @Field(() => Int, { defaultValue: 0 })
+  @Field(() => Int)
   waitlistCount!: number;
 
   @Field(() => String, { nullable: true })
   viewerBookingStatus!: string | null;
+}
+
+@ObjectType()
+export class SlotBookingGraph {
+  @Field(() => ID)
+  id!: string;
+
+  @Field(() => ID)
+  memberId!: string;
+
+  @Field()
+  status!: string;
+
+  @Field()
+  bookedAt!: Date;
+
+  @Field({ nullable: true })
+  cancelledAt!: Date | null;
+
+  @Field({ nullable: true })
+  note!: string | null;
+
+  @Field()
+  displayName!: string;
 }

@@ -206,6 +206,12 @@ export type CourseSlotsQueryData = {
     startsAt: string;
     endsAt: string;
     dynamicGroupId: string | null;
+    bookingEnabled: boolean;
+    bookingCapacity: number | null;
+    bookingOpensAt: string | null;
+    bookingClosesAt: string | null;
+    bookedCount: number;
+    waitlistCount: number;
   }[];
 };
 
@@ -218,7 +224,23 @@ export type UpdateClubCourseSlotMutationData = {
     startsAt: string;
     endsAt: string;
     dynamicGroupId: string | null;
+    bookingEnabled: boolean;
+    bookingCapacity: number | null;
+    bookingOpensAt: string | null;
+    bookingClosesAt: string | null;
   };
+};
+
+export type ClubCourseSlotBookingsQueryData = {
+  clubCourseSlotBookings: {
+    id: string;
+    memberId: string;
+    status: 'BOOKED' | 'WAITLISTED' | 'CANCELLED';
+    bookedAt: string;
+    cancelledAt: string | null;
+    note: string | null;
+    displayName: string;
+  }[];
 };
 
 export type FamiliesQueryData = {

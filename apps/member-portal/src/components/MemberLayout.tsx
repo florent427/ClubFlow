@@ -42,6 +42,7 @@ function breadcrumbLabel(pathname: string): string {
   if (pathname.startsWith('/messagerie')) return 'Messagerie';
   if (pathname.startsWith('/actus')) return 'Vie du club';
   if (pathname.startsWith('/evenements')) return 'Événements';
+  if (pathname.startsWith('/reservations')) return 'Réservations';
   return 'Espace membre';
 }
 
@@ -152,6 +153,10 @@ export function MemberLayout() {
           <NavLink to="/evenements" className={navClass}>
             <span className="mp-ico material-symbols-outlined">event</span>
             Événements
+          </NavLink>
+          <NavLink to="/reservations" className={navClass}>
+            <span className="mp-ico material-symbols-outlined">event_available</span>
+            Réservations
           </NavLink>
           <NavLink to="/messagerie" className={navClass}>
             <span className="mp-ico material-symbols-outlined">chat</span>

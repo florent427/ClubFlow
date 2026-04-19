@@ -191,6 +191,18 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
             <span>Vie du club</span>
           </ModuleGatedNavLink>
           <ModuleGatedNavLink
+            to="/reservations"
+            modules={['BOOKING']}
+            className={({ isActive }) =>
+              `cf-sidenav__link${isActive ? ' cf-sidenav__link--active' : ''}`
+            }
+          >
+            <span className="material-symbols-outlined" aria-hidden>
+              event_available
+            </span>
+            <span>Réservations</span>
+          </ModuleGatedNavLink>
+          <ModuleGatedNavLink
             to="/evenements"
             modules={['EVENTS']}
             className={({ isActive }) =>

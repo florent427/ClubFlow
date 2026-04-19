@@ -233,3 +233,25 @@ export type ViewerRegisterToEventData = {
 export type ViewerCancelEventRegistrationData = {
   viewerCancelEventRegistration: ViewerClubEvent;
 };
+
+export type ViewerBookingStatus = 'BOOKED' | 'WAITLISTED' | 'CANCELLED';
+
+export type ViewerBookableSlot = {
+  id: string;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  venueName: string;
+  coachFirstName: string;
+  coachLastName: string;
+  bookingCapacity: number | null;
+  bookingOpensAt: string | null;
+  bookingClosesAt: string | null;
+  bookedCount: number;
+  waitlistCount: number;
+  viewerBookingStatus: ViewerBookingStatus | null;
+};
+
+export type ViewerBookableCourseSlotsData = {
+  viewerBookableCourseSlots: ViewerBookableSlot[];
+};

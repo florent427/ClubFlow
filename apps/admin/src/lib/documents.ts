@@ -882,6 +882,26 @@ export const CLUB_COURSE_SLOTS = gql`
       startsAt
       endsAt
       dynamicGroupId
+      bookingEnabled
+      bookingCapacity
+      bookingOpensAt
+      bookingClosesAt
+      bookedCount
+      waitlistCount
+    }
+  }
+`;
+
+export const CLUB_COURSE_SLOT_BOOKINGS = gql`
+  query ClubCourseSlotBookings($slotId: ID!) {
+    clubCourseSlotBookings(slotId: $slotId) {
+      id
+      memberId
+      status
+      bookedAt
+      cancelledAt
+      note
+      displayName
     }
   }
 `;
@@ -913,6 +933,10 @@ export const UPDATE_CLUB_COURSE_SLOT = gql`
       startsAt
       endsAt
       dynamicGroupId
+      bookingEnabled
+      bookingCapacity
+      bookingOpensAt
+      bookingClosesAt
     }
   }
 `;

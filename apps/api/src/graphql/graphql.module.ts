@@ -17,6 +17,7 @@ import { ViewerModule } from '../viewer/viewer.module';
 import { MessagingModule } from '../messaging/messaging.module';
 import { ClubLifeModule } from '../club-life/club-life.module';
 import { EventsModule } from '../events/events.module';
+import { BookingModule } from '../booking/booking.module';
 import { MembersModule } from '../members/members.module';
 import { MembershipModule } from '../membership/membership.module';
 import { MailModule } from '../mail/mail.module';
@@ -48,6 +49,7 @@ import '../club-life/dto/respond-survey.input';
 import '../events/models/club-event.model';
 import '../events/dto/create-event.input';
 import '../events/dto/update-event.input';
+import '../booking/models/bookable-slot.model';
 import '../viewer/dto/viewer-update-my-pseudo.input';
 
 @Module({
@@ -83,6 +85,7 @@ import '../viewer/dto/viewer-update-my-pseudo.input';
     MessagingModule,
     ClubLifeModule,
     EventsModule,
+    BookingModule,
   ],
 })
 export class GraphqlAppModule {}
