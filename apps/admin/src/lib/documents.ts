@@ -666,6 +666,88 @@ export const CLUB_PRICING_RULES = gql`
   }
 `;
 
+export const CLUB_INVOICE_DETAIL = gql`
+  query ClubInvoice($id: String!) {
+    clubInvoice(id: $id) {
+      id
+      clubId
+      familyId
+      familyLabel
+      clubSeasonId
+      clubSeasonLabel
+      label
+      baseAmountCents
+      amountCents
+      totalPaidCents
+      balanceCents
+      status
+      lockedPaymentMethod
+      dueAt
+      createdAt
+      lines {
+        id
+        kind
+        memberId
+        memberFirstName
+        memberLastName
+        membershipProductId
+        membershipProductLabel
+        membershipOneTimeFeeId
+        membershipOneTimeFeeLabel
+        subscriptionBillingRhythm
+        baseAmountCents
+        adjustments {
+          id
+          stepOrder
+          type
+          amountCents
+          percentAppliedBp
+          reason
+        }
+      }
+      payments {
+        id
+        amountCents
+        method
+        externalRef
+        paidByFirstName
+        paidByLastName
+        createdAt
+      }
+    }
+  }
+`;
+
+export const ISSUE_CLUB_INVOICE = gql`
+  mutation IssueClubInvoice($id: String!) {
+    issueClubInvoice(id: $id) {
+      id
+      status
+    }
+  }
+`;
+
+export const VOID_CLUB_INVOICE = gql`
+  mutation VoidClubInvoice($id: String!, $reason: String) {
+    voidClubInvoice(id: $id, reason: $reason) {
+      id
+      status
+      label
+    }
+  }
+`;
+
+export const UPSERT_CLUB_PRICING_RULE = gql`
+  mutation UpsertClubPricingRule($input: UpsertClubPricingRuleInput!) {
+    upsertClubPricingRule(input: $input) {
+      id
+      method
+      adjustmentType
+      adjustmentValue
+    }
+  }
+`;
+
 export const CREATE_MEMBERSHIP_INVOICE_DRAFT = gql`
   mutation CreateMembershipInvoiceDraft(
     $input: CreateMembershipInvoiceDraftInput!

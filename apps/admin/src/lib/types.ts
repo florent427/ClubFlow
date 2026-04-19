@@ -380,13 +380,19 @@ export type RecordClubManualPaymentMutationData = {
   };
 };
 
+export type PricingAdjustmentTypeStr = 'PERCENT_BP' | 'FIXED_CENTS';
+
 export type ClubPricingRulesQueryData = {
   clubPricingRules: {
     id: string;
     method: ClubPaymentMethodStr;
-    adjustmentType: string;
+    adjustmentType: PricingAdjustmentTypeStr;
     adjustmentValue: number;
   }[];
+};
+
+export type UpsertClubPricingRuleMutationData = {
+  upsertClubPricingRule: ClubPricingRulesQueryData['clubPricingRules'][number];
 };
 
 export type SuggestMemberDynamicGroupsQueryData = {
@@ -415,6 +421,76 @@ export type CreateMembershipInvoiceDraftMutationData = {
 
 export type FinalizeMembershipInvoiceMutationData = {
   finalizeMembershipInvoice: ClubInvoicesQueryData['clubInvoices'][number];
+};
+
+export type InvoiceLineAdjustmentStr =
+  | 'DISCOUNT_FAMILY_FLAT'
+  | 'DISCOUNT_FAMILY_PERCENT'
+  | 'DISCOUNT_PUBLIC_AID'
+  | 'DISCOUNT_EXCEPTIONAL';
+
+export type InvoiceLineKindStr =
+  | 'MEMBERSHIP_SUBSCRIPTION'
+  | 'MEMBERSHIP_ONE_TIME_FEE';
+
+export type SubscriptionBillingRhythmStr = 'ANNUAL' | 'MONTHLY';
+
+export type ClubInvoiceDetailQueryData = {
+  clubInvoice: {
+    id: string;
+    clubId: string;
+    familyId: string | null;
+    familyLabel: string | null;
+    clubSeasonId: string | null;
+    clubSeasonLabel: string | null;
+    label: string;
+    baseAmountCents: number;
+    amountCents: number;
+    totalPaidCents: number;
+    balanceCents: number;
+    status: InvoiceStatusStr;
+    lockedPaymentMethod: ClubPaymentMethodStr | null;
+    dueAt: string | null;
+    createdAt: string;
+    lines: {
+      id: string;
+      kind: InvoiceLineKindStr;
+      memberId: string;
+      memberFirstName: string;
+      memberLastName: string;
+      membershipProductId: string | null;
+      membershipProductLabel: string | null;
+      membershipOneTimeFeeId: string | null;
+      membershipOneTimeFeeLabel: string | null;
+      subscriptionBillingRhythm: SubscriptionBillingRhythmStr | null;
+      baseAmountCents: number;
+      adjustments: {
+        id: string;
+        stepOrder: number;
+        type: InvoiceLineAdjustmentStr;
+        amountCents: number;
+        percentAppliedBp: number | null;
+        reason: string | null;
+      }[];
+    }[];
+    payments: {
+      id: string;
+      amountCents: number;
+      method: ClubPaymentMethodStr;
+      externalRef: string | null;
+      paidByFirstName: string | null;
+      paidByLastName: string | null;
+      createdAt: string;
+    }[];
+  };
+};
+
+export type IssueClubInvoiceMutationData = {
+  issueClubInvoice: { id: string; status: InvoiceStatusStr };
+};
+
+export type VoidClubInvoiceMutationData = {
+  voidClubInvoice: { id: string; status: InvoiceStatusStr; label: string };
 };
 
 export type ClubContactRow = {

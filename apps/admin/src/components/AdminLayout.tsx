@@ -154,13 +154,18 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
             <span>Planning sportif</span>
           </ModuleGatedNavLink>
 
-          <span className="cf-sidenav__section">Bientôt</span>
-          <span className="cf-sidenav__link cf-sidenav__link--disabled">
+          <ModuleGatedNavLink
+            to="/billing"
+            modules={['PAYMENT']}
+            className={({ isActive }) =>
+              `cf-sidenav__link${isActive ? ' cf-sidenav__link--active' : ''}`
+            }
+          >
             <span className="material-symbols-outlined" aria-hidden>
               payments
             </span>
-            <span>Finances</span>
-          </span>
+            <span>Facturation</span>
+          </ModuleGatedNavLink>
           <ModuleGatedNavLink
             to="/communication"
             modules={['COMMUNICATION']}

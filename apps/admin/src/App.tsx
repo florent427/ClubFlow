@@ -17,10 +17,12 @@ import { NewMemberPage } from './pages/members/NewMemberPage';
 import { NewFamilyPage } from './pages/members/NewFamilyPage';
 import { PlanningPage } from './pages/PlanningPage';
 import { CommunicationPage } from './pages/CommunicationPage';
+import { BillingPage } from './pages/billing/BillingPage';
 import { SettingsLayout } from './pages/settings/SettingsLayout';
 import { SettingsHubPage } from './pages/settings/SettingsHubPage';
 import { MemberFieldsSettingsPage } from './pages/settings/MemberFieldsSettingsPage';
 import { AdhesionSettingsPage } from './pages/settings/AdhesionSettingsPage';
+import { PricingRulesPage } from './pages/settings/PricingRulesPage';
 import { MailDomainSettingsPage } from './pages/settings/MailDomainSettingsPage';
 import { MembersUiProvider } from './pages/members/members-ui-context';
 import { ContactsPage } from './pages/contacts/ContactsPage';
@@ -73,6 +75,7 @@ export default function App() {
             <Route path="contacts" element={<ContactsPage />} />
             <Route path="planning" element={<PlanningPage />} />
             <Route path="communication" element={<CommunicationPage />} />
+            <Route path="billing" element={<BillingPage />} />
             <Route path="settings" element={<SettingsLayout />}>
               <Route index element={<SettingsHubPage />} />
               <Route
@@ -80,6 +83,7 @@ export default function App() {
                 element={<MemberFieldsSettingsPage />}
               />
               <Route path="adhesion" element={<AdhesionSettingsPage />} />
+              <Route path="pricing-rules" element={<PricingRulesPage />} />
               <Route path="mail-domain" element={<MailDomainSettingsPage />} />
             </Route>
           </Route>

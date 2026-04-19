@@ -16,6 +16,7 @@ import { HomeEntry } from './components/HomeEntry';
 import { ProgressionPage } from './pages/ProgressionPage';
 import { PlanningPage } from './pages/PlanningPage';
 import { FamilyPage } from './pages/FamilyPage';
+import { BillingPage } from './pages/BillingPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { MessagingPage } from './pages/MessagingPage';
 import { JoinFamilyInvitePage } from './pages/JoinFamilyInvitePage';
@@ -68,6 +69,14 @@ export default function App() {
                 element={
                   <MemberOnly>
                     <FamilyPage />
+                  </MemberOnly>
+                }
+              />
+              <Route
+                path="/factures"
+                element={
+                  <MemberOnly>
+                    <BillingPage />
                   </MemberOnly>
                 }
               />

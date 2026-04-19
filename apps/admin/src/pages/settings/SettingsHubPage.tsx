@@ -69,6 +69,14 @@ export function SettingsHubPage() {
             </li>
             <li>
               <SettingsHubCard
+                to="/settings/pricing-rules"
+                modules={['PAYMENT']}
+                title="Tarification par moyen de paiement"
+                desc="Remises et majorations automatiques selon le mode de paiement (CB, chèque, virement, espèces)."
+              />
+            </li>
+            <li>
+              <SettingsHubCard
                 to="/settings/mail-domain"
                 modules={['COMMUNICATION']}
                 title="E-mail (domaine)"

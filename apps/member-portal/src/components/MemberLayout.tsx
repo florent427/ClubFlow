@@ -139,6 +139,10 @@ export function MemberLayout() {
             <span className="mp-ico material-symbols-outlined">groups</span>
             Famille &amp; partage
           </NavLink>
+          <NavLink to="/factures" className={navClass}>
+            <span className="mp-ico material-symbols-outlined">receipt_long</span>
+            Factures
+          </NavLink>
           <NavLink to="/messagerie" className={navClass}>
             <span className="mp-ico material-symbols-outlined">chat</span>
             Messagerie

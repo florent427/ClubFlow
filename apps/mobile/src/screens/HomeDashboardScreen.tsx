@@ -59,6 +59,13 @@ export function HomeDashboardScreen() {
   const isPayer = billing?.isPayerView ?? false;
   const openInvoices =
     billing?.invoices.filter((i) => i.balanceCents > 0) ?? [];
+  const totalBalance = openInvoices.reduce((s, i) => s + i.balanceCents, 0);
+  const totalPaid =
+    billing?.invoices.reduce((s, i) => s + i.totalPaidCents, 0) ?? 0;
+  const nowMs = Date.now();
+  const hasOverdue = openInvoices.some(
+    (i) => i.dueAt && new Date(i.dueAt).getTime() < nowMs,
+  );
 
   const cert = medicalCertState(me?.medicalCertExpiresAt ?? null);
 
@@ -196,7 +203,15 @@ export function HomeDashboardScreen() {
       ) : null}
 
       <View style={[styles.panel, styles.panelWide]}>
-        <Text style={styles.panelTitle}>Famille & paiements</Text>
+        <View style={styles.panelHead}>
+          <Text style={styles.panelTitle}>Mes factures</Text>
+          {hasOverdue ? (
+            <View style={styles.overdueBadge}>
+              <Ionicons name="alert-circle" size={14} color="#b91c1c" />
+              <Text style={styles.overdueBadgeText}>En retard</Text>
+            </View>
+          ) : null}
+        </View>
         {billQ.error ? (
           <Text style={styles.hint}>
             Facturation indisponible (module ou droits).
@@ -209,23 +224,57 @@ export function HomeDashboardScreen() {
           </Text>
         ) : (
           <>
-            {billing.familyLabel ? (
-              <Text style={styles.familyLabel}>{billing.familyLabel}</Text>
-            ) : null}
+            <View style={styles.kpiRow}>
+              <View
+                style={[
+                  styles.kpi,
+                  totalBalance > 0 ? styles.kpiWarn : styles.kpiOk,
+                ]}
+              >
+                <Text style={styles.kpiLabel}>Reste à payer</Text>
+                <Text
+                  style={[
+                    styles.kpiValue,
+                    totalBalance > 0 ? styles.kpiValueWarn : styles.kpiValueOk,
+                  ]}
+                >
+                  {formatEuroCents(totalBalance)}
+                </Text>
+              </View>
+              <View style={[styles.kpi, styles.kpiOk]}>
+                <Text style={styles.kpiLabel}>Déjà réglé</Text>
+                <Text style={[styles.kpiValue, styles.kpiValueOk]}>
+                  {formatEuroCents(totalPaid)}
+                </Text>
+              </View>
+            </View>
             {openInvoices.length === 0 ? (
-              <Text style={styles.hint}>Aucun solde ouvert.</Text>
+              <Text style={styles.hint}>Aucun solde ouvert — tout est à jour.</Text>
             ) : (
-              openInvoices.slice(0, 3).map((inv) => (
-                <View key={inv.id} style={styles.invoiceLine}>
-                  <Text style={styles.invoiceLabel}>{inv.label}</Text>
-                  <Text style={styles.invoiceAmt}>
-                    {formatEuroCents(inv.balanceCents)}
-                  </Text>
-                </View>
-              ))
+              openInvoices.slice(0, 3).map((inv) => {
+                const overdue =
+                  inv.dueAt && new Date(inv.dueAt).getTime() < nowMs;
+                return (
+                  <View key={inv.id} style={styles.invoiceLine}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.invoiceLabel} numberOfLines={1}>
+                        {inv.label}
+                      </Text>
+                      {overdue ? (
+                        <Text style={styles.invoiceOverdue}>
+                          En retard
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Text style={styles.invoiceAmt}>
+                      {formatEuroCents(inv.balanceCents)}
+                    </Text>
+                  </View>
+                );
+              })
             )}
             <Pressable onPress={() => navigation.navigate('Famille')}>
-              <Text style={styles.link}>Ouvrir Ma famille</Text>
+              <Text style={styles.link}>Voir toutes les factures</Text>
             </Pressable>
           </>
         )}
@@ -341,10 +390,61 @@ const styles = StyleSheet.create({
   invoiceLine: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 6,
+    alignItems: 'center',
+    paddingVertical: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#ddd',
+    gap: 12,
   },
-  invoiceLabel: { flex: 1, fontSize: 14, color: '#333' },
-  invoiceAmt: { fontSize: 14, fontWeight: '700', color: '#111' },
+  invoiceLabel: { fontSize: 14, color: '#333' },
+  invoiceOverdue: {
+    fontSize: 12,
+    color: '#b91c1c',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  invoiceAmt: { fontSize: 14, fontWeight: '700', color: '#b45309' },
+  kpiRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  kpi: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#fff',
+  },
+  kpiWarn: { backgroundColor: '#fffbeb', borderColor: '#fcd34d' },
+  kpiOk: { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' },
+  kpiLabel: {
+    fontSize: 11,
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  kpiValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginTop: 2,
+  },
+  kpiValueWarn: { color: '#b45309' },
+  kpiValueOk: { color: '#166534' },
+  overdueBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#fee2e2',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+  },
+  overdueBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#b91c1c',
+  },
 });

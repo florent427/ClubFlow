@@ -171,6 +171,87 @@ export class PaymentsService {
     });
   }
 
+  async getInvoiceDetail(clubId: string, invoiceId: string) {
+    const inv = await this.prisma.invoice.findFirst({
+      where: { id: invoiceId, clubId },
+      include: {
+        lines: {
+          orderBy: { sortOrder: 'asc' },
+          include: {
+            member: { select: { id: true, firstName: true, lastName: true } },
+            membershipProduct: { select: { id: true, label: true } },
+            membershipOneTimeFee: { select: { id: true, label: true } },
+            adjustments: { orderBy: { stepOrder: 'asc' } },
+          },
+        },
+        payments: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            paidByMember: { select: { id: true, firstName: true, lastName: true } },
+            paidByContact: { select: { id: true, firstName: true, lastName: true } },
+          },
+        },
+        family: { select: { id: true, label: true } },
+        clubSeason: { select: { id: true, label: true } },
+      },
+    });
+    if (!inv) {
+      throw new NotFoundException('Facture introuvable');
+    }
+    const paid = inv.payments.reduce((s, p) => s + p.amountCents, 0);
+    const { totalPaidCents, balanceCents } = invoicePaymentTotals(
+      inv.amountCents,
+      paid,
+    );
+    return { ...inv, totalPaidCents, balanceCents };
+  }
+
+  async issueInvoice(clubId: string, invoiceId: string) {
+    const inv = await this.prisma.invoice.findFirst({
+      where: { id: invoiceId, clubId },
+    });
+    if (!inv) throw new NotFoundException('Facture introuvable');
+    if (inv.status !== InvoiceStatus.DRAFT) {
+      throw new BadRequestException(
+        "Seule une facture en brouillon peut être émise.",
+      );
+    }
+    const lines = await this.prisma.invoiceLine.count({
+      where: { invoiceId },
+    });
+    if (lines === 0) {
+      throw new BadRequestException('Facture sans ligne, impossible d\u2019émettre.');
+    }
+    return this.prisma.invoice.update({
+      where: { id: invoiceId },
+      data: { status: InvoiceStatus.OPEN },
+    });
+  }
+
+  async voidInvoice(clubId: string, invoiceId: string, reason?: string) {
+    const inv = await this.prisma.invoice.findFirst({
+      where: { id: invoiceId, clubId },
+      include: { payments: true },
+    });
+    if (!inv) throw new NotFoundException('Facture introuvable');
+    if (inv.status === InvoiceStatus.PAID) {
+      throw new BadRequestException('Une facture payée ne peut être annulée.');
+    }
+    if (inv.payments.length > 0) {
+      throw new BadRequestException(
+        "Des paiements existent : annulez d\u2019abord les encaissements.",
+      );
+    }
+    const labelSuffix = reason ? ` (annul\u00e9 : ${reason})` : ' (annul\u00e9)';
+    return this.prisma.invoice.update({
+      where: { id: invoiceId },
+      data: {
+        status: InvoiceStatus.VOID,
+        label: inv.label.includes('annul\u00e9') ? inv.label : inv.label + labelSuffix,
+      },
+    });
+  }
+
   async listPricingRules(clubId: string) {
     return this.prisma.clubPricingRule.findMany({ where: { clubId } });
   }
