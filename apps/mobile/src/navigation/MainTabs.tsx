@@ -1,9 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useQuery } from '@apollo/client/react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { BookingScreen } from '../screens/BookingScreen';
+import { EventsScreen } from '../screens/EventsScreen';
 import { FamilyScreen } from '../screens/FamilyScreen';
 import { HomeContactScreen } from '../screens/HomeContactScreen';
 import { HomeDashboardScreen } from '../screens/HomeDashboardScreen';
+import { NewsScreen } from '../screens/NewsScreen';
 import { PlanningScreen } from '../screens/PlanningScreen';
 import { ProgressionScreen } from '../screens/ProgressionScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
@@ -62,8 +65,41 @@ export function MemberTabsNavigator() {
               ),
             }}
           />
+          <MemberTab.Screen
+            name="Reservations"
+            component={BookingScreen}
+            options={{
+              title: 'Réservations',
+              tabBarLabel: 'Réserver',
+              tabBarIcon: ({ color, size }) => (
+                <Ionicons name="checkmark-circle-outline" size={size} color={color} />
+              ),
+            }}
+          />
         </>
       ) : null}
+      <MemberTab.Screen
+        name="Actus"
+        component={NewsScreen}
+        options={{
+          title: 'Vie du club',
+          tabBarLabel: 'Actus',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="megaphone-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <MemberTab.Screen
+        name="Evenements"
+        component={EventsScreen}
+        options={{
+          title: 'Événements',
+          tabBarLabel: 'Events',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="star-outline" size={size} color={color} />
+          ),
+        }}
+      />
       <MemberTab.Screen
         name="Famille"
         component={FamilyScreen}
@@ -80,6 +116,7 @@ export function MemberTabsNavigator() {
         component={SettingsScreen}
         options={{
           title: 'Paramètres',
+          tabBarLabel: 'Profil',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="settings-outline" size={size} color={color} />
           ),
@@ -106,6 +143,28 @@ export function ContactTabsNavigator() {
           tabBarLabel: 'Accueil',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <ContactTab.Screen
+        name="Actus"
+        component={NewsScreen}
+        options={{
+          title: 'Vie du club',
+          tabBarLabel: 'Actus',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="megaphone-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <ContactTab.Screen
+        name="Evenements"
+        component={EventsScreen}
+        options={{
+          title: 'Événements',
+          tabBarLabel: 'Events',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="star-outline" size={size} color={color} />
           ),
         }}
       />

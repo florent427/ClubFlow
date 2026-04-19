@@ -92,3 +92,76 @@ export type ViewerBillingData = {
 export type ClubQueryData = {
   club: { id: string; name: string; slug: string };
 };
+
+export type ViewerClubAnnouncement = {
+  id: string;
+  title: string;
+  body: string;
+  pinned: boolean;
+  publishedAt: string | null;
+};
+export type ViewerClubAnnouncementsData = {
+  viewerClubAnnouncements: ViewerClubAnnouncement[];
+};
+
+export type ViewerClubSurveyOption = {
+  id: string;
+  label: string;
+  sortOrder: number;
+  responseCount: number;
+};
+export type ViewerClubSurveyStatus = 'DRAFT' | 'OPEN' | 'CLOSED';
+export type ViewerClubSurvey = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: ViewerClubSurveyStatus;
+  multipleChoice: boolean;
+  allowAnonymous: boolean;
+  publishedAt: string | null;
+  closesAt: string | null;
+  totalResponses: number;
+  viewerSelectedOptionIds: string[];
+  options: ViewerClubSurveyOption[];
+};
+export type ViewerClubSurveysData = {
+  viewerClubSurveys: ViewerClubSurvey[];
+};
+
+export type ViewerClubEvent = {
+  id: string;
+  title: string;
+  description: string | null;
+  location: string | null;
+  startsAt: string;
+  endsAt: string;
+  capacity: number | null;
+  registrationOpensAt: string | null;
+  registrationClosesAt: string | null;
+  priceCents: number | null;
+  status: 'DRAFT' | 'PUBLISHED' | 'CANCELLED';
+  allowContactRegistration: boolean;
+  registeredCount: number;
+  waitlistCount: number;
+  viewerRegistrationStatus: 'REGISTERED' | 'WAITLISTED' | 'CANCELLED' | null;
+};
+export type ViewerClubEventsData = { viewerClubEvents: ViewerClubEvent[] };
+
+export type ViewerBookableSlot = {
+  id: string;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  venueName: string;
+  coachFirstName: string;
+  coachLastName: string;
+  bookingCapacity: number | null;
+  bookingOpensAt: string | null;
+  bookingClosesAt: string | null;
+  bookedCount: number;
+  waitlistCount: number;
+  viewerBookingStatus: 'BOOKED' | 'WAITLISTED' | 'CANCELLED' | null;
+};
+export type ViewerBookableCourseSlotsData = {
+  viewerBookableCourseSlots: ViewerBookableSlot[];
+};
