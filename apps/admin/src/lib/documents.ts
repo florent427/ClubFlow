@@ -1533,3 +1533,94 @@ export const DELETE_CLUB_BLOG_POST = gql`
     deleteClubBlogPost(id: $id)
   }
 `;
+
+const SHOP_PRODUCT_FIELDS = `
+  id
+  clubId
+  sku
+  name
+  description
+  imageUrl
+  priceCents
+  stock
+  active
+  createdAt
+  updatedAt
+`;
+
+const SHOP_ORDER_FIELDS = `
+  id
+  clubId
+  memberId
+  contactId
+  status
+  totalCents
+  note
+  createdAt
+  updatedAt
+  paidAt
+  buyerFirstName
+  buyerLastName
+  lines {
+    id
+    orderId
+    productId
+    quantity
+    unitPriceCents
+    label
+  }
+`;
+
+export const SHOP_PRODUCTS = gql`
+  query ShopProducts {
+    shopProducts {
+      ${SHOP_PRODUCT_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_SHOP_PRODUCT = gql`
+  mutation CreateShopProduct($input: CreateShopProductInput!) {
+    createShopProduct(input: $input) {
+      ${SHOP_PRODUCT_FIELDS}
+    }
+  }
+`;
+
+export const UPDATE_SHOP_PRODUCT = gql`
+  mutation UpdateShopProduct($input: UpdateShopProductInput!) {
+    updateShopProduct(input: $input) {
+      ${SHOP_PRODUCT_FIELDS}
+    }
+  }
+`;
+
+export const DELETE_SHOP_PRODUCT = gql`
+  mutation DeleteShopProduct($id: ID!) {
+    deleteShopProduct(id: $id)
+  }
+`;
+
+export const SHOP_ORDERS = gql`
+  query ShopOrders {
+    shopOrders {
+      ${SHOP_ORDER_FIELDS}
+    }
+  }
+`;
+
+export const MARK_SHOP_ORDER_PAID = gql`
+  mutation MarkShopOrderPaid($id: ID!) {
+    markShopOrderPaid(id: $id) {
+      ${SHOP_ORDER_FIELDS}
+    }
+  }
+`;
+
+export const CANCEL_SHOP_ORDER = gql`
+  mutation CancelShopOrder($id: ID!) {
+    cancelShopOrder(id: $id) {
+      ${SHOP_ORDER_FIELDS}
+    }
+  }
+`;

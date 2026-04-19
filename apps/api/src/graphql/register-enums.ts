@@ -28,6 +28,7 @@ import {
   ClubEventRegistrationStatus,
   CourseSlotBookingStatus,
   BlogPostStatus,
+  ShopOrderStatus,
 } from '@prisma/client';
 import { ModuleCode } from '../domain/module-registry/module-codes';
 import { QuickMessageRecipientType } from '../comms/enums/quick-message-recipient.enum';
@@ -88,3 +89,4 @@ registerEnumType(CourseSlotBookingStatus, {
   name: 'CourseSlotBookingStatus',
 });
 registerEnumType(BlogPostStatus, { name: 'BlogPostStatus' });
+registerEnumType(ShopOrderStatus, { name: 'ShopOrderStatus' });

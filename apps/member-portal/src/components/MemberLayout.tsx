@@ -43,6 +43,7 @@ function breadcrumbLabel(pathname: string): string {
   if (pathname.startsWith('/actus')) return 'Vie du club';
   if (pathname.startsWith('/evenements')) return 'Événements';
   if (pathname.startsWith('/blog')) return 'Blog du club';
+  if (pathname.startsWith('/boutique')) return 'Boutique';
   if (pathname.startsWith('/reservations')) return 'Réservations';
   return 'Espace membre';
 }
@@ -162,6 +163,10 @@ export function MemberLayout() {
           <NavLink to="/blog" className={navClass}>
             <span className="mp-ico material-symbols-outlined">article</span>
             Blog
+          </NavLink>
+          <NavLink to="/boutique" className={navClass}>
+            <span className="mp-ico material-symbols-outlined">storefront</span>
+            Boutique
           </NavLink>
           <NavLink to="/messagerie" className={navClass}>
             <span className="mp-ico material-symbols-outlined">chat</span>

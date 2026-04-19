@@ -1148,6 +1148,63 @@ enum BlogPostStatus {
   ARCHIVED
 }
 
+enum ShopOrderStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+model ShopProduct {
+  id            String   @id @default(uuid())
+  clubId        String
+  sku           String?
+  name          String
+  description   String?
+  imageUrl      String?
+  priceCents    Int
+  stock         Int?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  orderLines    ShopOrderLine[]
+
+  @@index([clubId, active])
+}
+
+model ShopOrder {
+  id          String           @id @default(uuid())
+  clubId      String
+  memberId    String?
+  contactId   String?
+  status      ShopOrderStatus  @default(PENDING)
+  totalCents  Int
+  note        String?          @db.VarChar(500)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  paidAt      DateTime?
+
+  lines       ShopOrderLine[]
+
+  @@index([clubId, status])
+  @@index([memberId])
+  @@index([contactId])
+}
+
+model ShopOrderLine {
+  id            String       @id @default(uuid())
+  orderId       String
+  productId     String
+  quantity      Int
+  unitPriceCents Int
+  label         String
+
+  order         ShopOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product       ShopProduct  @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+}
+
 model BlogPost {
   id             String         @id @default(uuid())
   clubId         String

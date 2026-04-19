@@ -226,6 +226,18 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
             </span>
             <span>Blog</span>
           </ModuleGatedNavLink>
+          <ModuleGatedNavLink
+            to="/boutique"
+            modules={['SHOP']}
+            className={({ isActive }) =>
+              `cf-sidenav__link${isActive ? ' cf-sidenav__link--active' : ''}`
+            }
+          >
+            <span className="material-symbols-outlined" aria-hidden>
+              storefront
+            </span>
+            <span>Boutique</span>
+          </ModuleGatedNavLink>
 
           <span className="cf-sidenav__section">Administration</span>
           <NavLink

@@ -764,3 +764,52 @@ export type UpdateClubBlogPostMutationData = { updateClubBlogPost: BlogPost };
 export type PublishClubBlogPostMutationData = { publishClubBlogPost: BlogPost };
 export type ArchiveClubBlogPostMutationData = { archiveClubBlogPost: BlogPost };
 export type DeleteClubBlogPostMutationData = { deleteClubBlogPost: boolean };
+
+export type ShopProduct = {
+  id: string;
+  clubId: string;
+  sku: string | null;
+  name: string;
+  description: string | null;
+  imageUrl: string | null;
+  priceCents: number;
+  stock: number | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ShopOrderStatusGql = 'PENDING' | 'PAID' | 'CANCELLED';
+
+export type ShopOrderLine = {
+  id: string;
+  orderId: string;
+  productId: string;
+  quantity: number;
+  unitPriceCents: number;
+  label: string;
+};
+
+export type ShopOrder = {
+  id: string;
+  clubId: string;
+  memberId: string | null;
+  contactId: string | null;
+  status: ShopOrderStatusGql;
+  totalCents: number;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+  paidAt: string | null;
+  lines: ShopOrderLine[];
+  buyerFirstName: string | null;
+  buyerLastName: string | null;
+};
+
+export type ShopProductsQueryData = { shopProducts: ShopProduct[] };
+export type CreateShopProductMutationData = { createShopProduct: ShopProduct };
+export type UpdateShopProductMutationData = { updateShopProduct: ShopProduct };
+export type DeleteShopProductMutationData = { deleteShopProduct: boolean };
+export type ShopOrdersQueryData = { shopOrders: ShopOrder[] };
+export type MarkShopOrderPaidMutationData = { markShopOrderPaid: ShopOrder };
+export type CancelShopOrderMutationData = { cancelShopOrder: ShopOrder };

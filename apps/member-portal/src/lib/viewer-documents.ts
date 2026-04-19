@@ -327,3 +327,56 @@ export const VIEWER_CLUB_BLOG_POST = gql`
     }
   }
 `;
+
+const VIEWER_SHOP_PRODUCT_FIELDS = `
+  id
+  sku
+  name
+  description
+  imageUrl
+  priceCents
+  stock
+  active
+`;
+
+const VIEWER_SHOP_ORDER_FIELDS = `
+  id
+  status
+  totalCents
+  note
+  createdAt
+  paidAt
+  buyerFirstName
+  buyerLastName
+  lines {
+    id
+    productId
+    quantity
+    unitPriceCents
+    label
+  }
+`;
+
+export const VIEWER_SHOP_PRODUCTS = gql`
+  query ViewerShopProducts {
+    viewerShopProducts {
+      ${VIEWER_SHOP_PRODUCT_FIELDS}
+    }
+  }
+`;
+
+export const VIEWER_SHOP_ORDERS = gql`
+  query ViewerShopOrders {
+    viewerShopOrders {
+      ${VIEWER_SHOP_ORDER_FIELDS}
+    }
+  }
+`;
+
+export const VIEWER_PLACE_SHOP_ORDER = gql`
+  mutation ViewerPlaceShopOrder($input: PlaceShopOrderInput!) {
+    viewerPlaceShopOrder(input: $input) {
+      ${VIEWER_SHOP_ORDER_FIELDS}
+    }
+  }
+`;

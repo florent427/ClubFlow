@@ -282,3 +282,42 @@ export type ViewerClubBlogPostsData = {
 export type ViewerClubBlogPostData = {
   viewerClubBlogPost: ViewerBlogPost | null;
 };
+
+export type ViewerShopProduct = {
+  id: string;
+  sku: string | null;
+  name: string;
+  description: string | null;
+  imageUrl: string | null;
+  priceCents: number;
+  stock: number | null;
+  active: boolean;
+};
+
+export type ViewerShopOrderStatus = 'PENDING' | 'PAID' | 'CANCELLED';
+
+export type ViewerShopOrderLine = {
+  id: string;
+  productId: string;
+  quantity: number;
+  unitPriceCents: number;
+  label: string;
+};
+
+export type ViewerShopOrder = {
+  id: string;
+  status: ViewerShopOrderStatus;
+  totalCents: number;
+  note: string | null;
+  createdAt: string;
+  paidAt: string | null;
+  buyerFirstName: string | null;
+  buyerLastName: string | null;
+  lines: ViewerShopOrderLine[];
+};
+
+export type ViewerShopProductsData = { viewerShopProducts: ViewerShopProduct[] };
+export type ViewerShopOrdersData = { viewerShopOrders: ViewerShopOrder[] };
+export type ViewerPlaceShopOrderData = {
+  viewerPlaceShopOrder: ViewerShopOrder;
+};

@@ -19,6 +19,7 @@ import { ClubLifeModule } from '../club-life/club-life.module';
 import { EventsModule } from '../events/events.module';
 import { BookingModule } from '../booking/booking.module';
 import { BlogModule } from '../blog/blog.module';
+import { ShopModule } from '../shop/shop.module';
 import { MembersModule } from '../members/members.module';
 import { MembershipModule } from '../membership/membership.module';
 import { MailModule } from '../mail/mail.module';
@@ -54,6 +55,11 @@ import '../booking/models/bookable-slot.model';
 import '../blog/models/blog-post.model';
 import '../blog/dto/create-blog-post.input';
 import '../blog/dto/update-blog-post.input';
+import '../shop/models/shop-product.model';
+import '../shop/models/shop-order.model';
+import '../shop/dto/create-shop-product.input';
+import '../shop/dto/update-shop-product.input';
+import '../shop/dto/place-shop-order.input';
 import '../viewer/dto/viewer-update-my-pseudo.input';
 
 @Module({
@@ -91,6 +97,7 @@ import '../viewer/dto/viewer-update-my-pseudo.input';
     EventsModule,
     BookingModule,
     BlogModule,
+    ShopModule,
   ],
 })
 export class GraphqlAppModule {}
