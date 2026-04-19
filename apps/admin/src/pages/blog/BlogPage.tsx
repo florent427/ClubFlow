@@ -337,6 +337,9 @@ export function BlogPage() {
               rows={14}
               maxLength={100000}
             />
+            <span className="cf-field__hint">
+              Markdown léger accepté : # Titre, ## Sous-titre, **gras**, _italique_, - liste, [lien](https://…).
+            </span>
           </label>
           {!editing ? (
             <label className="cf-checkbox">

@@ -8,6 +8,7 @@ import type {
   ViewerClubBlogPostData,
   ViewerClubBlogPostsData,
 } from '../lib/viewer-types';
+import { renderMarkdownLite } from '../lib/markdown-lite';
 
 function fmt(iso: string | null): string {
   if (!iso) return '';
@@ -122,9 +123,7 @@ export function BlogPostPage() {
         <p className="mp-blog-article__excerpt">{post.excerpt}</p>
       ) : null}
       <div className="mp-blog-article__body">
-        {post.body.split('\n').map((line, i) => (
-          <p key={i}>{line}</p>
-        ))}
+        {renderMarkdownLite(post.body)}
       </div>
     </article>
   );

@@ -2527,6 +2527,25 @@ a:focus-visible {
 .mp-blog-article__body p {
   margin: 0 0 12px;
 }
+.mp-blog-article__body h1,
+.mp-blog-article__body h2,
+.mp-blog-article__body h3 {
+  margin: 20px 0 8px;
+  color: #0f172a;
+  font-weight: 700;
+}
+.mp-blog-article__body h1 { font-size: 1.6rem; }
+.mp-blog-article__body h2 { font-size: 1.3rem; }
+.mp-blog-article__body h3 { font-size: 1.1rem; }
+.mp-blog-article__body ul {
+  margin: 0 0 12px;
+  padding-left: 20px;
+}
+.mp-blog-article__body li { margin-bottom: 4px; }
+.mp-blog-article__body a {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
 
 /* Shop (member portal) */
 .mp-product-list {
