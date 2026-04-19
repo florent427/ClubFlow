@@ -459,7 +459,7 @@ export function MembersDirectoryPage() {
                               : 'members-status'
                           }
                         >
-                          {m.status}
+                          {m.status === 'ACTIVE' ? 'Actif' : 'Inactif'}
                         </span>
                       </td>
                       <td

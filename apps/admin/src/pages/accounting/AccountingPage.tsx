@@ -165,7 +165,7 @@ export function AccountingPage() {
         <EmptyState
           icon="account_balance"
           title="Aucune écriture"
-          description="Les recettes sont créées automatiquement, ajoutez vos dépenses manuellement."
+          message="Les recettes sont créées automatiquement, ajoutez vos dépenses manuellement."
         />
       ) : (
         <table className="cf-table">

@@ -4865,3 +4865,42 @@ a:focus-visible {
 .cf-gs__item .material-symbols-outlined { font-size: 18px; color: #1a237e; }
 .cf-gs__item-main { flex: 1; }
 .cf-gs__item-meta { font-size: 12px; color: #64748b; }
+
+/* Sprint A: dashboard finance grid remplace la chart hardcodée */
+.cf-finance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.cf-finance-cell {
+  padding: 14px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fafbff;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cf-finance-cell__label {
+  font-size: 12px;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: 600;
+}
+.cf-finance-cell__value {
+  font-size: 22px;
+  font-weight: 700;
+  color: #0f172a;
+}
+.cf-finance-cell--primary { background: #f0f4ff; border-color: #c7d2fe; }
+.cf-finance-cell--ok .cf-finance-cell__value { color: #15803d; }
+.cf-finance-cell--danger .cf-finance-cell__value { color: #b91c1c; }
+.cf-bento-link {
+  font-size: 13px;
+  color: #1a237e;
+  text-decoration: none;
+  font-weight: 600;
+}
+.cf-bento-link:hover { text-decoration: underline; }

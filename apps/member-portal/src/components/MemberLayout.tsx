@@ -17,7 +17,7 @@ import type {
   ViewerProfilesQueryData,
 } from '../lib/auth-types';
 import { MemberRoleToggle } from './MemberRoleToggle';
-import { clearClubId, getClubId, setMemberSession } from '../lib/storage';
+import { clearAuth, clearClubId, getClubId, setMemberSession } from '../lib/storage';
 import { VIEWER_ADMIN_SWITCH, VIEWER_ME } from '../lib/viewer-documents';
 import type { ViewerAdminSwitchData, ViewerMeData } from '../lib/viewer-types';
 
@@ -226,11 +226,17 @@ export function MemberLayout() {
                 </button>
               </div>
             ) : null}
-            <button type="button" className="mp-icon-btn" aria-label="Recherche" disabled>
-              <span className="material-symbols-outlined">search</span>
-            </button>
-            <button type="button" className="mp-icon-btn" aria-label="Notifications" disabled>
-              <span className="material-symbols-outlined">notifications</span>
+            <button
+              type="button"
+              className="mp-icon-btn"
+              aria-label="Déconnexion"
+              title="Déconnexion"
+              onClick={() => {
+                clearAuth();
+                void navigate('/login', { replace: true });
+              }}
+            >
+              <span className="material-symbols-outlined">logout</span>
             </button>
           </div>
         </header>

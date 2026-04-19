@@ -14,10 +14,12 @@ import type {
 } from '../../lib/types';
 import { FamilyDetailDrawer } from './FamilyDetailDrawer';
 import { useMembersUi } from './members-ui-context';
+import { useToast } from '../../components/ToastProvider';
 
 export function FamiliesPage() {
   const { drawerFamilyId, setDrawerFamilyId } = useMembersUi();
   const [familySearch, setFamilySearch] = useState('');
+  const { showToast } = useToast();
 
   const { data: famData, refetch: refetchFamilies } =
     useQuery<FamiliesQueryData>(CLUB_FAMILIES);
@@ -25,9 +27,12 @@ export function FamiliesPage() {
   const { data: contactsData } = useQuery<ClubContactsQueryData>(CLUB_CONTACTS);
 
   const [deleteFamily] = useMutation(DELETE_CLUB_FAMILY, {
-    onCompleted: () => void refetchFamilies(),
+    onCompleted: () => {
+      void refetchFamilies();
+      showToast('Foyer supprimé.', 'success');
+    },
     onError: (e) => {
-      window.alert(e.message);
+      showToast(e.message, 'error');
     },
   });
 

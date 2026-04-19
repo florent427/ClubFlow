@@ -157,7 +157,7 @@ export function SponsoringPage() {
         <EmptyState
           icon="handshake"
           title="Aucun contrat de sponsoring"
-          description="Créez votre premier contrat pour suivre les engagements sponsors."
+          message="Créez votre premier contrat pour suivre les engagements sponsors."
         />
       ) : (
         <ul className="cf-finance-list">

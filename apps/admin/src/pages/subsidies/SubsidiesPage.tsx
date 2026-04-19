@@ -183,7 +183,7 @@ export function SubsidiesPage() {
         <EmptyState
           icon="volunteer_activism"
           title="Aucun dossier de subvention"
-          description="Préparez votre premier dossier pour suivre son statut jusqu'à l'obtention."
+          message="Préparez votre premier dossier pour suivre son statut jusqu'à l'obtention."
         />
       ) : (
         <ul className="cf-finance-list">
