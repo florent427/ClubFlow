@@ -25,6 +25,15 @@ import { BookingPage } from './pages/BookingPage';
 import { BlogListPage, BlogPostPage } from './pages/BlogPage';
 import { ShopPage } from './pages/ShopPage';
 import { JoinFamilyInvitePage } from './pages/JoinFamilyInvitePage';
+import { PublicSiteLayout } from './pages/public/PublicSiteLayout';
+import { PublicHomePage } from './pages/public/PublicHomePage';
+import { PublicNewsPage } from './pages/public/PublicNewsPage';
+import { PublicEventsPage } from './pages/public/PublicEventsPage';
+import {
+  PublicBlogListPage,
+  PublicBlogPostPage,
+} from './pages/public/PublicBlogPage';
+import { PublicShopPage } from './pages/public/PublicShopPage';
 
 function Protected() {
   if (!getToken()) {
@@ -49,6 +58,14 @@ export default function App() {
             <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
             <Route path="/rejoindre" element={<JoinFamilyInvitePage />} />
+            <Route path="/site/:slug" element={<PublicSiteLayout />}>
+              <Route index element={<PublicHomePage />} />
+              <Route path="actus" element={<PublicNewsPage />} />
+              <Route path="evenements" element={<PublicEventsPage />} />
+              <Route path="blog" element={<PublicBlogListPage />} />
+              <Route path="blog/:postSlug" element={<PublicBlogPostPage />} />
+              <Route path="boutique" element={<PublicShopPage />} />
+            </Route>
             <Route path="/select-profile" element={<SelectProfilePage />} />
             <Route element={<Protected />}>
               <Route element={<MemberOrContactShell />}>
