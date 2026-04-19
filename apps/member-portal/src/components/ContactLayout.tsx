@@ -1,7 +1,10 @@
-import { Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { clearAuth } from '../lib/storage';
 
-/** Navigation minimale pour un compte « contact » sans fiche membre. */
+function linkClass({ isActive }: { isActive: boolean }): string {
+  return `mp-sidebar-link${isActive ? ' mp-sidebar-link-active' : ''}`;
+}
+
 export function ContactLayout() {
   const navigate = useNavigate();
 
@@ -17,10 +20,30 @@ export function ContactLayout() {
           <span className="mp-logo">ClubFlow</span>
         </div>
         <nav className="mp-sidebar-nav">
-          <span className="mp-sidebar-link mp-sidebar-link-active">
-            <span className="mp-ico material-symbols-outlined">person</span>
-            Espace contact
-          </span>
+          <NavLink to="/" end className={linkClass}>
+            <span className="mp-ico material-symbols-outlined">home</span>
+            Accueil
+          </NavLink>
+          <NavLink to="/facturation" className={linkClass}>
+            <span className="mp-ico material-symbols-outlined">receipt_long</span>
+            Mes factures
+          </NavLink>
+          <NavLink to="/famille" className={linkClass}>
+            <span className="mp-ico material-symbols-outlined">groups</span>
+            Famille
+          </NavLink>
+          <NavLink to="/actualites" className={linkClass}>
+            <span className="mp-ico material-symbols-outlined">campaign</span>
+            Actus & sondages
+          </NavLink>
+          <NavLink to="/evenements" className={linkClass}>
+            <span className="mp-ico material-symbols-outlined">event</span>
+            Événements
+          </NavLink>
+          <NavLink to="/parametres" className={linkClass}>
+            <span className="mp-ico material-symbols-outlined">settings</span>
+            Paramètres
+          </NavLink>
         </nav>
         <button type="button" className="mp-cta-sidebar" onClick={logout}>
           Déconnexion

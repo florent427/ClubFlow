@@ -116,6 +116,8 @@ export class ViewerService {
       lastName: m.lastName,
       pseudo: m.pseudo,
       photoUrl: m.photoUrl,
+      email: m.email ?? null,
+      phone: m.phone ?? null,
       civility: m.civility,
       medicalCertExpiresAt: m.medicalCertExpiresAt,
       gradeLevelId: m.gradeLevelId,
@@ -176,6 +178,8 @@ export class ViewerService {
       lastName: c.lastName,
       pseudo: null,
       photoUrl: null,
+      email: null,
+      phone: null,
       civility: MemberCivility.MR,
       medicalCertExpiresAt: null,
       gradeLevelId: null,
@@ -1001,5 +1005,41 @@ export class ViewerService {
       firstName: created.firstName,
       lastName: created.lastName,
     };
+  }
+
+  async updateMyProfile(
+    clubId: string,
+    memberId: string,
+    userId: string,
+    patch: {
+      firstName?: string;
+      lastName?: string;
+      email?: string;
+      phone?: string;
+      photoUrl?: string;
+    },
+  ): Promise<ViewerMemberGraph> {
+    const m = await this.prisma.member.findFirst({
+      where: { id: memberId, clubId },
+      select: { id: true },
+    });
+    if (!m) throw new NotFoundException('Membre introuvable');
+    const data: Prisma.MemberUpdateInput = {};
+    if (patch.firstName !== undefined) data.firstName = patch.firstName.trim();
+    if (patch.lastName !== undefined) data.lastName = patch.lastName.trim();
+    if (patch.phone !== undefined) data.phone = patch.phone.trim() || null;
+    if (patch.photoUrl !== undefined)
+      data.photoUrl = patch.photoUrl.trim() || null;
+    if (patch.email !== undefined) {
+      const next = normalizeMemberEmail(patch.email);
+      if (next) {
+        await assertMemberEmailAllowedInClub(this.prisma, clubId, next, {
+          memberId,
+        });
+        data.email = next;
+      }
+    }
+    await this.prisma.member.update({ where: { id: memberId }, data });
+    return this.viewerMe(clubId, memberId, userId);
   }
 }

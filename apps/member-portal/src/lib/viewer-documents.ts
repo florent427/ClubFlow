@@ -18,6 +18,8 @@ export const VIEWER_ME = gql`
       lastName
       pseudo
       photoUrl
+      email
+      phone
       civility
       medicalCertExpiresAt
       gradeLevelId
@@ -377,6 +379,19 @@ export const VIEWER_PLACE_SHOP_ORDER = gql`
   mutation ViewerPlaceShopOrder($input: PlaceShopOrderInput!) {
     viewerPlaceShopOrder(input: $input) {
       ${VIEWER_SHOP_ORDER_FIELDS}
+    }
+  }
+`;
+
+export const VIEWER_UPDATE_MY_PROFILE = gql`
+  mutation ViewerUpdateMyProfile($input: ViewerUpdateMyProfileInput!) {
+    viewerUpdateMyProfile(input: $input) {
+      id
+      firstName
+      lastName
+      email
+      phone
+      photoUrl
     }
   }
 `;

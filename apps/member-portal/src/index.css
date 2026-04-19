@@ -2893,3 +2893,47 @@ a:focus-visible {
   color: #1a237e;
   margin-top: 8px;
 }
+
+/* Sprint B — Settings profile form */
+.mp-form-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 20px;
+  margin: 16px 0;
+}
+.mp-section-title {
+  font-size: 16px;
+  margin: 0 0 12px;
+  color: #0f172a;
+}
+.mp-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+.mp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mp-field span {
+  font-size: 12px;
+  color: #475569;
+  font-weight: 600;
+}
+.mp-field input {
+  padding: 9px 11px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.mp-field-wide { grid-column: 1 / -1; }
+.mp-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+}
+.mp-hint-ok { color: #15803d; }
+.mp-hint-error { color: #b91c1c; }

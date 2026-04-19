@@ -18,6 +18,7 @@ import { FamilyInviteCreateResultGraph } from '../families/models/family-invite-
 import { ViewerJoinFamilyByPayerEmailInput } from './dto/viewer-join-family-by-payer-email.input';
 import { ViewerPromoteSelfToMemberInput } from './dto/viewer-promote-self-to-member.input';
 import { ViewerRegisterChildMemberInput } from './dto/viewer-register-child-member.input';
+import { ViewerUpdateMyProfileInput } from './dto/viewer-update-my-profile.input';
 import { ViewerUpdateMyPseudoInput } from './dto/viewer-update-my-pseudo.input';
 import { ViewerCourseSlotGraph } from './models/viewer-course-slot.model';
 import { ViewerFamilyBillingSummaryGraph } from './models/viewer-family-billing.model';
@@ -242,6 +243,25 @@ export class ViewerResolver {
         membershipProductId: input.membershipProductId ?? null,
         billingRhythm: input.billingRhythm ?? null,
       },
+    );
+  }
+
+  @Mutation(() => ViewerMemberGraph, { name: 'viewerUpdateMyProfile' })
+  viewerUpdateMyProfile(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('input') input: ViewerUpdateMyProfileInput,
+  ): Promise<ViewerMemberGraph> {
+    if (!user.activeProfileMemberId) {
+      throw new BadRequestException(
+        'Cette action nécessite une fiche adhérent active.',
+      );
+    }
+    return this.viewer.updateMyProfile(
+      club.id,
+      user.activeProfileMemberId,
+      user.userId,
+      input,
     );
   }
 

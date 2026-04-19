@@ -21,6 +21,12 @@ export class ViewerMemberGraph {
   @Field(() => String, { nullable: true })
   photoUrl!: string | null;
 
+  @Field(() => String, { nullable: true })
+  email!: string | null;
+
+  @Field(() => String, { nullable: true })
+  phone!: string | null;
+
   @Field(() => MemberCivility)
   civility!: MemberCivility;
 

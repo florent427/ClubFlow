@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from '@apollo/client/react';
 import { useCallback, useMemo, useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { addDays } from 'date-fns/addDays';
 import { eachDayOfInterval } from 'date-fns/eachDayOfInterval';
 import { startOfMonth } from 'date-fns/startOfMonth';
@@ -541,8 +542,11 @@ export function PlanningPage() {
             </label>
             {coaches.length === 0 ? (
               <p className="muted">
-                Aucun professeur : attribuez le rôle COACH à un membre (API /
-                futur écran).
+                Aucun professeur.{' '}
+                <Link to="/members" className="cf-link">
+                  Ouvrez un membre
+                </Link>{' '}
+                et cochez le rôle système <strong>COACH</strong> dans les rôles.
               </p>
             ) : null}
             <label className="field">
