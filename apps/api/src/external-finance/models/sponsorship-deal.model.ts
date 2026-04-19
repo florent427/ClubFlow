@@ -14,4 +14,13 @@ export class SponsorshipDealGraph {
 
   @Field(() => Int, { nullable: true })
   amountCents!: number | null;
+
+  @Field(() => String, { nullable: true })
+  notes!: string | null;
+
+  @Field()
+  createdAt!: Date;
+
+  @Field()
+  updatedAt!: Date;
 }

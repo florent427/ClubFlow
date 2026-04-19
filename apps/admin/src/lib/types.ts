@@ -813,3 +813,74 @@ export type DeleteShopProductMutationData = { deleteShopProduct: boolean };
 export type ShopOrdersQueryData = { shopOrders: ShopOrder[] };
 export type MarkShopOrderPaidMutationData = { markShopOrderPaid: ShopOrder };
 export type CancelShopOrderMutationData = { cancelShopOrder: ShopOrder };
+
+export type SponsorshipDealStatusGql = 'ACTIVE' | 'CLOSED';
+export type SponsorshipDeal = {
+  id: string;
+  sponsorName: string;
+  status: SponsorshipDealStatusGql;
+  amountCents: number | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+export type ClubSponsorshipDealsData = {
+  clubSponsorshipDeals: SponsorshipDeal[];
+};
+export type CreateClubSponsorshipDealData = {
+  createClubSponsorshipDeal: SponsorshipDeal;
+};
+export type UpdateClubSponsorshipDealData = {
+  updateClubSponsorshipDeal: SponsorshipDeal;
+};
+
+export type GrantApplicationStatusGql = 'DRAFT' | 'SUBMITTED' | 'ARCHIVED';
+export type GrantApplication = {
+  id: string;
+  title: string;
+  status: GrantApplicationStatusGql;
+  amountCents: number | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+export type ClubGrantApplicationsData = {
+  clubGrantApplications: GrantApplication[];
+};
+export type CreateClubGrantApplicationData = {
+  createClubGrantApplication: GrantApplication;
+};
+export type UpdateClubGrantApplicationData = {
+  updateClubGrantApplication: GrantApplication;
+};
+export type SubmitClubGrantApplicationData = {
+  submitClubGrantApplication: GrantApplication;
+};
+export type ArchiveClubGrantApplicationData = {
+  archiveClubGrantApplication: GrantApplication;
+};
+
+export type AccountingEntryKindGql = 'INCOME' | 'EXPENSE';
+export type AccountingEntry = {
+  id: string;
+  clubId: string;
+  kind: AccountingEntryKindGql;
+  label: string;
+  amountCents: number;
+  paymentId: string | null;
+  occurredAt: string;
+};
+export type ClubAccountingEntriesData = {
+  clubAccountingEntries: AccountingEntry[];
+};
+export type AccountingSummary = {
+  incomeCents: number;
+  expenseCents: number;
+  balanceCents: number;
+};
+export type ClubAccountingSummaryData = {
+  clubAccountingSummary: AccountingSummary;
+};
+export type CreateClubAccountingEntryData = {
+  createClubAccountingEntry: AccountingEntry;
+};

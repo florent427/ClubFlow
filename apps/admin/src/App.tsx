@@ -23,6 +23,9 @@ import { EventsPage } from './pages/events/EventsPage';
 import { BookingPage } from './pages/booking/BookingPage';
 import { BlogPage } from './pages/blog/BlogPage';
 import { ShopPage } from './pages/shop/ShopPage';
+import { SponsoringPage } from './pages/sponsoring/SponsoringPage';
+import { SubsidiesPage } from './pages/subsidies/SubsidiesPage';
+import { AccountingPage } from './pages/accounting/AccountingPage';
 import { SettingsLayout } from './pages/settings/SettingsLayout';
 import { SettingsHubPage } from './pages/settings/SettingsHubPage';
 import { MemberFieldsSettingsPage } from './pages/settings/MemberFieldsSettingsPage';
@@ -86,6 +89,9 @@ export default function App() {
             <Route path="reservations" element={<BookingPage />} />
             <Route path="blog" element={<BlogPage />} />
             <Route path="boutique" element={<ShopPage />} />
+            <Route path="sponsoring" element={<SponsoringPage />} />
+            <Route path="subventions" element={<SubsidiesPage />} />
+            <Route path="comptabilite" element={<AccountingPage />} />
             <Route path="settings" element={<SettingsLayout />}>
               <Route index element={<SettingsHubPage />} />
               <Route

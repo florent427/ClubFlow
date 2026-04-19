@@ -1624,3 +1624,141 @@ export const CANCEL_SHOP_ORDER = gql`
     }
   }
 `;
+
+const SPONSORSHIP_FIELDS = `
+  id
+  sponsorName
+  status
+  amountCents
+  notes
+  createdAt
+  updatedAt
+`;
+
+const GRANT_FIELDS = `
+  id
+  title
+  status
+  amountCents
+  notes
+  createdAt
+  updatedAt
+`;
+
+const ACCOUNTING_ENTRY_FIELDS = `
+  id
+  clubId
+  kind
+  label
+  amountCents
+  paymentId
+  occurredAt
+`;
+
+export const CLUB_SPONSORSHIP_DEALS = gql`
+  query ClubSponsorshipDeals {
+    clubSponsorshipDeals {
+      ${SPONSORSHIP_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_CLUB_SPONSORSHIP_DEAL = gql`
+  mutation CreateClubSponsorshipDeal($input: CreateSponsorshipDealInput!) {
+    createClubSponsorshipDeal(input: $input) {
+      ${SPONSORSHIP_FIELDS}
+    }
+  }
+`;
+
+export const UPDATE_CLUB_SPONSORSHIP_DEAL = gql`
+  mutation UpdateClubSponsorshipDeal($input: UpdateSponsorshipDealInput!) {
+    updateClubSponsorshipDeal(input: $input) {
+      ${SPONSORSHIP_FIELDS}
+    }
+  }
+`;
+
+export const DELETE_CLUB_SPONSORSHIP_DEAL = gql`
+  mutation DeleteClubSponsorshipDeal($id: ID!) {
+    deleteClubSponsorshipDeal(id: $id)
+  }
+`;
+
+export const CLUB_GRANT_APPLICATIONS = gql`
+  query ClubGrantApplications {
+    clubGrantApplications {
+      ${GRANT_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_CLUB_GRANT_APPLICATION = gql`
+  mutation CreateClubGrantApplication($input: CreateGrantApplicationInput!) {
+    createClubGrantApplication(input: $input) {
+      ${GRANT_FIELDS}
+    }
+  }
+`;
+
+export const UPDATE_CLUB_GRANT_APPLICATION = gql`
+  mutation UpdateClubGrantApplication($input: UpdateGrantApplicationInput!) {
+    updateClubGrantApplication(input: $input) {
+      ${GRANT_FIELDS}
+    }
+  }
+`;
+
+export const SUBMIT_CLUB_GRANT_APPLICATION = gql`
+  mutation SubmitClubGrantApplication($id: ID!) {
+    submitClubGrantApplication(id: $id) {
+      ${GRANT_FIELDS}
+    }
+  }
+`;
+
+export const ARCHIVE_CLUB_GRANT_APPLICATION = gql`
+  mutation ArchiveClubGrantApplication($id: ID!) {
+    archiveClubGrantApplication(id: $id) {
+      ${GRANT_FIELDS}
+    }
+  }
+`;
+
+export const DELETE_CLUB_GRANT_APPLICATION = gql`
+  mutation DeleteClubGrantApplication($id: ID!) {
+    deleteClubGrantApplication(id: $id)
+  }
+`;
+
+export const CLUB_ACCOUNTING_ENTRIES = gql`
+  query ClubAccountingEntries {
+    clubAccountingEntries {
+      ${ACCOUNTING_ENTRY_FIELDS}
+    }
+  }
+`;
+
+export const CLUB_ACCOUNTING_SUMMARY = gql`
+  query ClubAccountingSummary {
+    clubAccountingSummary {
+      incomeCents
+      expenseCents
+      balanceCents
+    }
+  }
+`;
+
+export const CREATE_CLUB_ACCOUNTING_ENTRY = gql`
+  mutation CreateClubAccountingEntry($input: CreateAccountingEntryInput!) {
+    createClubAccountingEntry(input: $input) {
+      ${ACCOUNTING_ENTRY_FIELDS}
+    }
+  }
+`;
+
+export const DELETE_CLUB_ACCOUNTING_ENTRY = gql`
+  mutation DeleteClubAccountingEntry($id: ID!) {
+    deleteClubAccountingEntry(id: $id)
+  }
+`;

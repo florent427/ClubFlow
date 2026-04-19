@@ -238,6 +238,42 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
             </span>
             <span>Boutique</span>
           </ModuleGatedNavLink>
+          <ModuleGatedNavLink
+            to="/sponsoring"
+            modules={['SPONSORING']}
+            className={({ isActive }) =>
+              `cf-sidenav__link${isActive ? ' cf-sidenav__link--active' : ''}`
+            }
+          >
+            <span className="material-symbols-outlined" aria-hidden>
+              handshake
+            </span>
+            <span>Sponsoring</span>
+          </ModuleGatedNavLink>
+          <ModuleGatedNavLink
+            to="/subventions"
+            modules={['SUBSIDIES']}
+            className={({ isActive }) =>
+              `cf-sidenav__link${isActive ? ' cf-sidenav__link--active' : ''}`
+            }
+          >
+            <span className="material-symbols-outlined" aria-hidden>
+              volunteer_activism
+            </span>
+            <span>Subventions</span>
+          </ModuleGatedNavLink>
+          <ModuleGatedNavLink
+            to="/comptabilite"
+            modules={['ACCOUNTING']}
+            className={({ isActive }) =>
+              `cf-sidenav__link${isActive ? ' cf-sidenav__link--active' : ''}`
+            }
+          >
+            <span className="material-symbols-outlined" aria-hidden>
+              account_balance
+            </span>
+            <span>Comptabilité</span>
+          </ModuleGatedNavLink>
 
           <span className="cf-sidenav__section">Administration</span>
           <NavLink

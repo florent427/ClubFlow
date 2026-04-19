@@ -62,6 +62,15 @@ import '../shop/dto/create-shop-product.input';
 import '../shop/dto/update-shop-product.input';
 import '../shop/dto/place-shop-order.input';
 import '../public-site/models/public-club.model';
+import '../external-finance/models/sponsorship-deal.model';
+import '../external-finance/models/grant-application.model';
+import '../external-finance/dto/create-sponsorship-deal.input';
+import '../external-finance/dto/update-sponsorship-deal.input';
+import '../external-finance/dto/create-grant-application.input';
+import '../external-finance/dto/update-grant-application.input';
+import '../accounting/models/accounting-entry.model';
+import '../accounting/models/accounting-summary.model';
+import '../accounting/dto/create-accounting-entry.input';
 import '../viewer/dto/viewer-update-my-pseudo.input';
 
 @Module({

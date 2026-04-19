@@ -4687,3 +4687,89 @@ a:focus-visible {
   gap: 6px;
   flex-wrap: wrap;
 }
+
+/* Finance pages (sponsoring, subventions, comptabilité) */
+.cf-finance-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+.cf-finance-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cf-finance-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.cf-finance-card__head h2 {
+  margin: 0;
+  font-size: 17px;
+  color: #0f172a;
+}
+.cf-finance-card__amount {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1a237e;
+  margin: 0;
+}
+.cf-finance-card__meta {
+  font-size: 12px;
+  color: #64748b;
+  margin: 0;
+}
+.cf-finance-card__notes {
+  color: #475569;
+  font-size: 14px;
+  white-space: pre-wrap;
+  line-height: 1.5;
+  margin: 0;
+}
+.cf-finance-card__actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.cf-acct-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.cf-acct-summary__card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cf-acct-summary__card span {
+  color: #64748b;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.cf-acct-summary__card strong {
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.cf-acct-summary__card--income strong { color: #15803d; }
+.cf-acct-summary__card--expense strong { color: #b91c1c; }
+.cf-acct-summary__card--balance strong { color: #1a237e; }
