@@ -138,3 +138,19 @@ export type ViewerPromoteSelfToMemberData = {
 export type ViewerRegisterChildMemberData = {
   viewerRegisterChildMember: ViewerMemberCreatedResult;
 };
+
+export type ViewerMembershipFormula = {
+  id: string;
+  label: string;
+  annualAmountCents: number;
+  monthlyAmountCents: number;
+  minAge: number | null;
+  maxAge: number | null;
+  allowProrata: boolean;
+};
+
+export type ViewerEligibleMembershipFormulasData = {
+  viewerEligibleMembershipFormulas: ViewerMembershipFormula[];
+};
+
+export type SubscriptionBillingRhythm = 'ANNUAL' | 'MONTHLY';

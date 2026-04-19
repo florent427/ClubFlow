@@ -156,6 +156,20 @@ export const VIEWER_REGISTER_CHILD_MEMBER = gql`
   }
 `;
 
+export const VIEWER_ELIGIBLE_MEMBERSHIP_FORMULAS = gql`
+  query ViewerEligibleMembershipFormulas($birthDate: String!) {
+    viewerEligibleMembershipFormulas(birthDate: $birthDate) {
+      id
+      label
+      annualAmountCents
+      monthlyAmountCents
+      minAge
+      maxAge
+      allowProrata
+    }
+  }
+`;
+
 export const CLUB = gql`
   query MemberClub {
     club {

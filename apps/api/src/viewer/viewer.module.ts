@@ -3,6 +3,7 @@ import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.gua
 import { ViewerActiveProfileGuard } from '../common/guards/viewer-active-profile.guard';
 import { FamiliesModule } from '../families/families.module';
 import { MembersModule } from '../members/members.module';
+import { MembershipModule } from '../membership/membership.module';
 import { MessagingModule } from '../messaging/messaging.module';
 import { PlanningModule } from '../planning/planning.module';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -16,6 +17,7 @@ import { ViewerService } from './viewer.service';
     FamiliesModule,
     MessagingModule,
     MembersModule,
+    MembershipModule,
   ],
   providers: [
     ViewerService,

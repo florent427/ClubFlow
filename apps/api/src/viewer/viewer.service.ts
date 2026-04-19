@@ -9,6 +9,7 @@ import {
   MemberCivility,
   MemberClubRole,
   MemberStatus,
+  SubscriptionBillingRhythm,
   type Prisma,
 } from '@prisma/client';
 import { FamiliesService } from '../families/families.service';
@@ -17,6 +18,9 @@ import {
   assertMemberEmailAllowedInClub,
   normalizeMemberEmail,
 } from '../members/member-email-family-rule';
+import { memberMatchesMembershipProduct } from '../membership/membership-eligibility';
+import { MembershipService } from '../membership/membership.service';
+import { ViewerMembershipFormulaGraph } from './models/viewer-membership-formula.model';
 import { resolveAdminWorkspaceClubId } from '../common/club-back-office-role';
 import { buildInvoiceWhereForHouseholdGroup } from '../families/household-billing.scope';
 import {
@@ -42,7 +46,46 @@ export class ViewerService {
     private readonly families: FamiliesService,
     private readonly memberPseudo: MemberPseudoService,
     private readonly clubContacts: ClubContactsService,
+    private readonly membership: MembershipService,
   ) {}
+
+  async viewerEligibleMembershipFormulas(
+    clubId: string,
+    birthDate: string,
+  ): Promise<ViewerMembershipFormulaGraph[]> {
+    const bd = new Date(birthDate);
+    if (Number.isNaN(bd.getTime())) {
+      throw new BadRequestException('Date de naissance invalide.');
+    }
+    const ref = new Date();
+    const products = await this.membership.listMembershipProducts(clubId);
+    return products
+      .filter((p) =>
+        memberMatchesMembershipProduct(
+          {
+            status: MemberStatus.ACTIVE,
+            birthDate: bd,
+            gradeLevelId: null,
+          },
+          {
+            minAge: p.minAge,
+            maxAge: p.maxAge,
+            gradeLevelIds: p.gradeFilters.map((g) => g.gradeLevelId),
+          },
+          ref,
+        ),
+      )
+      .filter((p) => p.gradeFilters.length === 0)
+      .map((p) => ({
+        id: p.id,
+        label: p.label,
+        annualAmountCents: p.annualAmountCents,
+        monthlyAmountCents: p.monthlyAmountCents,
+        minAge: p.minAge,
+        maxAge: p.maxAge,
+        allowProrata: p.allowProrata,
+      }));
+  }
 
   async viewerMe(
     clubId: string,
@@ -797,7 +840,12 @@ export class ViewerService {
     clubId: string,
     contactId: string,
     userId: string,
-    input: { civility: MemberCivility; birthDate?: string | null },
+    input: {
+      civility: MemberCivility;
+      birthDate?: string | null;
+      membershipProductId?: string | null;
+      billingRhythm?: SubscriptionBillingRhythm | null;
+    },
   ): Promise<{ memberId: string; firstName: string; lastName: string }> {
     const contact = await this.prisma.contact.findFirst({
       where: { id: contactId, clubId, userId },
@@ -805,6 +853,11 @@ export class ViewerService {
     });
     if (!contact) {
       throw new NotFoundException('Profil contact introuvable.');
+    }
+    if (input.membershipProductId && !input.birthDate) {
+      throw new BadRequestException(
+        'La date de naissance est requise pour choisir une formule.',
+      );
     }
     const res = await this.clubContacts.promoteContactToMember(
       clubId,
@@ -814,6 +867,15 @@ export class ViewerService {
         birthDate: input.birthDate ? new Date(input.birthDate) : null,
       },
     );
+    if (input.membershipProductId) {
+      await this.membership.createMembershipInvoiceDraft(clubId, userId, {
+        memberId: res.memberId,
+        membershipProductId: input.membershipProductId,
+        billingRhythm:
+          input.billingRhythm ?? SubscriptionBillingRhythm.ANNUAL,
+        effectiveDate: new Date().toISOString(),
+      });
+    }
     return {
       memberId: res.memberId,
       firstName: contact.firstName,
@@ -830,6 +892,8 @@ export class ViewerService {
       lastName: string;
       civility: MemberCivility;
       birthDate: string;
+      membershipProductId?: string | null;
+      billingRhythm?: SubscriptionBillingRhythm | null;
     },
   ): Promise<{ memberId: string; firstName: string; lastName: string }> {
     let familyId: string | null = null;
@@ -923,6 +987,15 @@ export class ViewerService {
       clubId,
       payerEmail,
     );
+    if (input.membershipProductId) {
+      await this.membership.createMembershipInvoiceDraft(clubId, userId, {
+        memberId: created.id,
+        membershipProductId: input.membershipProductId,
+        billingRhythm:
+          input.billingRhythm ?? SubscriptionBillingRhythm.ANNUAL,
+        effectiveDate: new Date().toISOString(),
+      });
+    }
     return {
       memberId: created.id,
       firstName: created.firstName,

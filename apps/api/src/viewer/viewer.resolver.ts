@@ -24,6 +24,7 @@ import { ViewerFamilyBillingSummaryGraph } from './models/viewer-family-billing.
 import { ViewerFamilyJoinResultGraph } from './models/viewer-family-join-result.model';
 import { ViewerMemberGraph } from './models/viewer-member.model';
 import { ViewerMemberCreatedResultGraph } from './models/viewer-member-created-result.model';
+import { ViewerMembershipFormulaGraph } from './models/viewer-membership-formula.model';
 import { ViewerService } from './viewer.service';
 
 @Resolver()
@@ -192,8 +193,26 @@ export class ViewerResolver {
       club.id,
       user.activeProfileContactId,
       user.userId,
-      { civility: input.civility, birthDate: input.birthDate ?? null },
+      {
+        civility: input.civility,
+        birthDate: input.birthDate ?? null,
+        membershipProductId: input.membershipProductId ?? null,
+        billingRhythm: input.billingRhythm ?? null,
+      },
     );
+  }
+
+  @Query(() => [ViewerMembershipFormulaGraph], {
+    name: 'viewerEligibleMembershipFormulas',
+    description:
+      'Formules d\u2019adh\u00e9sion du club compatibles avec la date de naissance donn\u00e9e (utilis\u00e9 par le portail avant cr\u00e9ation de la fiche adh\u00e9rent).',
+  })
+  @RequireClubModule(ModuleCode.PAYMENT)
+  viewerEligibleMembershipFormulas(
+    @CurrentClub() club: Club,
+    @Args('birthDate', { type: () => String }) birthDate: string,
+  ): Promise<ViewerMembershipFormulaGraph[]> {
+    return this.viewer.viewerEligibleMembershipFormulas(club.id, birthDate);
   }
 
   @Mutation(() => ViewerMemberCreatedResultGraph, {
@@ -220,6 +239,8 @@ export class ViewerResolver {
         lastName: input.lastName,
         civility: input.civility,
         birthDate: input.birthDate,
+        membershipProductId: input.membershipProductId ?? null,
+        billingRhythm: input.billingRhythm ?? null,
       },
     );
   }
