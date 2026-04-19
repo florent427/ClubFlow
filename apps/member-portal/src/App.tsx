@@ -18,6 +18,7 @@ import { PlanningPage } from './pages/PlanningPage';
 import { FamilyPage } from './pages/FamilyPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { MessagingPage } from './pages/MessagingPage';
+import { JoinFamilyInvitePage } from './pages/JoinFamilyInvitePage';
 
 function Protected() {
   if (!getToken()) {
@@ -41,6 +42,7 @@ export default function App() {
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
+            <Route path="/rejoindre" element={<JoinFamilyInvitePage />} />
             <Route path="/select-profile" element={<SelectProfilePage />} />
             <Route element={<Protected />}>
               <Route element={<MemberOrContactShell />}>

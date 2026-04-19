@@ -1,5 +1,6 @@
 import { BadRequestException, UseGuards } from '@nestjs/common';
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Throttle } from '@nestjs/throttler';
 import type { Club } from '@prisma/client';
 import { CurrentClub } from '../common/decorators/current-club.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -10,6 +11,10 @@ import { GqlJwtAuthGuard } from '../common/guards/gql-jwt-auth.guard';
 import { ViewerActiveProfileGuard } from '../common/guards/viewer-active-profile.guard';
 import type { RequestUser } from '../common/types/request-user';
 import { ModuleCode } from '../domain/module-registry/module-codes';
+import { AcceptFamilyInviteInput } from '../families/dto/accept-family-invite.input';
+import { CreateFamilyInviteInput } from '../families/dto/create-family-invite.input';
+import { FamilyInviteService } from '../families/family-invite.service';
+import { FamilyInviteCreateResultGraph } from '../families/models/family-invite-create-result.model';
 import { ViewerJoinFamilyByPayerEmailInput } from './dto/viewer-join-family-by-payer-email.input';
 import { ViewerUpdateMyPseudoInput } from './dto/viewer-update-my-pseudo.input';
 import { ViewerCourseSlotGraph } from './models/viewer-course-slot.model';
@@ -26,7 +31,10 @@ import { ViewerService } from './viewer.service';
   ClubModuleEnabledGuard,
 )
 export class ViewerResolver {
-  constructor(private readonly viewer: ViewerService) {}
+  constructor(
+    private readonly viewer: ViewerService,
+    private readonly familyInvites: FamilyInviteService,
+  ) {}
 
   @Query(() => ViewerMemberGraph, { name: 'viewerMe' })
   viewerMe(
@@ -117,6 +125,47 @@ export class ViewerResolver {
       );
     }
     throw new BadRequestException('Sélection de profil requise');
+  }
+
+  @Mutation(() => FamilyInviteCreateResultGraph, {
+    name: 'createFamilyInvite',
+    description:
+      'Génère un code et un lien d’invitation pour rattacher un proche au foyer du viewer (COPAYER ou VIEWER).',
+  })
+  @RequireClubModule(ModuleCode.FAMILIES)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  createFamilyInvite(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('input') input: CreateFamilyInviteInput,
+  ): Promise<FamilyInviteCreateResultGraph> {
+    return this.familyInvites.createInvite(
+      club.id,
+      user.userId,
+      {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      input.role,
+    );
+  }
+
+  @Mutation(() => ViewerFamilyJoinResultGraph, {
+    name: 'acceptFamilyInvite',
+    description:
+      'Accepte une invitation de rattachement à un foyer (code ou lien).',
+  })
+  @RequireClubModule(ModuleCode.FAMILIES)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  acceptFamilyInvite(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('input') input: AcceptFamilyInviteInput,
+  ): Promise<ViewerFamilyJoinResultGraph> {
+    return this.familyInvites.acceptInvite(input.code, club.id, user.userId, {
+      memberId: user.activeProfileMemberId ?? null,
+      contactId: user.activeProfileContactId ?? null,
+    });
   }
 
   @Mutation(() => ViewerMemberGraph, { name: 'viewerUpdateMyPseudo' })

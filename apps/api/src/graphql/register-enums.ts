@@ -5,6 +5,7 @@ import {
   ClubSendingDomainPurpose,
   ClubSendingDomainVerificationStatus,
   CommunicationChannel,
+  FamilyInviteRole,
   FamilyMemberLinkRole,
   GrantApplicationStatus,
   InvoiceLineAdjustmentType,
@@ -38,6 +39,7 @@ registerEnumType(MemberCustomFieldType, {
   name: 'MemberCustomFieldType',
 });
 registerEnumType(FamilyMemberLinkRole, { name: 'FamilyMemberLinkRole' });
+registerEnumType(FamilyInviteRole, { name: 'FamilyInviteRole' });
 registerEnumType(InvoiceStatus, { name: 'InvoiceStatus' });
 registerEnumType(InvoiceLineKind, { name: 'InvoiceLineKind' });
 registerEnumType(SubscriptionBillingRhythm, {

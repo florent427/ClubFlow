@@ -498,9 +498,36 @@ model Family {
   carrierForHouseholdGroup HouseholdGroup? @relation("HouseholdGroupCarrier")
   familyMembers  FamilyMember[]
   invoices       Invoice[]
+  invites        FamilyInvite[]
 
   @@index([clubId])
   @@index([householdGroupId])
+}
+
+/// Rôle proposé par le payeur à l'invité dans une invitation FamilyInvite.
+enum FamilyInviteRole {
+  COPAYER
+  VIEWER
+}
+
+/// Invitation nominative envoyée par un payeur à un proche pour rejoindre son foyer (spec 2026-04-19).
+model FamilyInvite {
+  id               String           @id @default(uuid())
+  clubId           String
+  familyId         String
+  createdByUserId  String
+  role             FamilyInviteRole
+  code             String           @unique @db.VarChar(16)
+  tokenHash        String
+  expiresAt        DateTime
+  consumedAt       DateTime?
+  consumedByUserId String?
+  createdAt        DateTime         @default(now())
+
+  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@index([clubId])
+  @@index([familyId])
 }
 
 /// Foyer étendu : plusieurs `Family` (résidences) partagent facturation et enfants (spec 2026-03-31).

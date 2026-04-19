@@ -1,4 +1,8 @@
+import { useQuery } from '@apollo/client/react';
+import { InviteFamilyMemberCta } from '../components/InviteFamilyMemberCta';
 import { JoinFamilyByPayerEmailCta } from '../components/JoinFamilyByPayerEmailCta';
+import { VIEWER_ME } from '../lib/viewer-documents';
+import type { ViewerMeData } from '../lib/viewer-types';
 
 /**
  * Recommandation UX #5 — Glossaire UX / Onboarding contact
@@ -7,6 +11,11 @@ import { JoinFamilyByPayerEmailCta } from '../components/JoinFamilyByPayerEmailC
  * ce qui nécessite l'intervention du club.
  */
 export function ContactHomePage() {
+  const { data } = useQuery<ViewerMeData>(VIEWER_ME, {
+    fetchPolicy: 'cache-first',
+  });
+  const isPayerContact = data?.viewerMe?.hasClubFamily === true;
+
   return (
     <div className="mp-page">
       <section className="mp-hero">
@@ -21,6 +30,12 @@ export function ContactHomePage() {
       </section>
 
       <JoinFamilyByPayerEmailCta variant="dashboard" />
+
+      {isPayerContact ? (
+        <div className="mp-family-actions">
+          <InviteFamilyMemberCta />
+        </div>
+      ) : null}
 
       <div className="mp-onboarding-grid">
         <div className="mp-onboarding-card mp-onboarding-card--ok">

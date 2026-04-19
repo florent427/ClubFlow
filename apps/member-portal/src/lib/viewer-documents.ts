@@ -44,6 +44,41 @@ export const VIEWER_JOIN_FAMILY_BY_PAYER_EMAIL = gql`
   }
 `;
 
+export const CREATE_FAMILY_INVITE = gql`
+  mutation CreateFamilyInvite($input: CreateFamilyInviteInput!) {
+    createFamilyInvite(input: $input) {
+      code
+      rawToken
+      expiresAt
+      familyId
+    }
+  }
+`;
+
+export const PREVIEW_FAMILY_INVITE = gql`
+  mutation PreviewFamilyInvite($input: PreviewFamilyInviteInput!) {
+    previewFamilyInvite(input: $input) {
+      role
+      familyLabel
+      inviterFirstName
+      inviterLastName
+      clubName
+      expiresAt
+    }
+  }
+`;
+
+export const ACCEPT_FAMILY_INVITE = gql`
+  mutation AcceptFamilyInvite($input: AcceptFamilyInviteInput!) {
+    acceptFamilyInvite(input: $input) {
+      success
+      message
+      familyId
+      familyLabel
+    }
+  }
+`;
+
 export const VIEWER_UPCOMING_SLOTS = gql`
   query ViewerUpcomingCourseSlots {
     viewerUpcomingCourseSlots {

@@ -1,4 +1,5 @@
 import { useQuery } from '@apollo/client/react';
+import { InviteFamilyMemberCta } from '../components/InviteFamilyMemberCta';
 import { JoinFamilyByPayerEmailCta } from '../components/JoinFamilyByPayerEmailCta';
 import { VIEWER_FAMILY_BILLING } from '../lib/viewer-documents';
 import type { ViewerBillingData } from '../lib/viewer-types';
@@ -71,6 +72,12 @@ export function FamilyPage() {
       )}
 
       <JoinFamilyByPayerEmailCta variant="compact" />
+
+      {summary?.isPayerView ? (
+        <div className="mp-family-actions">
+          <InviteFamilyMemberCta />
+        </div>
+      ) : null}
 
       {error ? (
         <p className="mp-hint">

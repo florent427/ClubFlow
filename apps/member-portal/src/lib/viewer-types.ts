@@ -35,6 +35,37 @@ export type ViewerJoinFamilyByPayerEmailData = {
   };
 };
 
+export type FamilyInviteRole = 'COPAYER' | 'VIEWER';
+
+export type CreateFamilyInviteData = {
+  createFamilyInvite: {
+    code: string;
+    rawToken: string;
+    expiresAt: string;
+    familyId: string;
+  };
+};
+
+export type PreviewFamilyInviteData = {
+  previewFamilyInvite: {
+    role: FamilyInviteRole;
+    familyLabel: string | null;
+    inviterFirstName: string | null;
+    inviterLastName: string | null;
+    clubName: string | null;
+    expiresAt: string;
+  };
+};
+
+export type AcceptFamilyInviteData = {
+  acceptFamilyInvite: {
+    success: boolean;
+    message: string | null;
+    familyId: string | null;
+    familyLabel: string | null;
+  };
+};
+
 export type ViewerSlot = {
   id: string;
   title: string;
