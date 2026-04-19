@@ -75,6 +75,7 @@ import '../dashboard/models/admin-dashboard.model';
 import '../dashboard/models/club-search.model';
 import '../viewer/dto/viewer-update-my-pseudo.input';
 import '../viewer/dto/viewer-update-my-profile.input';
+import '../viewer/models/viewer-checkout-session.model';
 
 @Module({
   imports: [

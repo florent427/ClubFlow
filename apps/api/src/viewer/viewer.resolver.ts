@@ -21,6 +21,7 @@ import { ViewerRegisterChildMemberInput } from './dto/viewer-register-child-memb
 import { ViewerUpdateMyProfileInput } from './dto/viewer-update-my-profile.input';
 import { ViewerUpdateMyPseudoInput } from './dto/viewer-update-my-pseudo.input';
 import { ViewerCourseSlotGraph } from './models/viewer-course-slot.model';
+import { ViewerCheckoutSessionGraph } from './models/viewer-checkout-session.model';
 import { ViewerFamilyBillingSummaryGraph } from './models/viewer-family-billing.model';
 import { ViewerFamilyJoinResultGraph } from './models/viewer-family-join-result.model';
 import { ViewerMemberGraph } from './models/viewer-member.model';
@@ -283,5 +284,28 @@ export class ViewerResolver {
       user.userId,
       input.pseudo,
     );
+  }
+
+  @Mutation(() => ViewerCheckoutSessionGraph, {
+    name: 'viewerCreateInvoiceCheckoutSession',
+    description:
+      'Crée une session Stripe Checkout pour régler une facture du foyer viewer. Retourne l’URL hébergée Stripe.',
+  })
+  @RequireClubModule(ModuleCode.PAYMENT)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  viewerCreateInvoiceCheckoutSession(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('invoiceId') invoiceId: string,
+  ): Promise<ViewerCheckoutSessionGraph> {
+    return this.viewer.viewerCreateInvoiceCheckoutSession({
+      clubId: club.id,
+      invoiceId,
+      activeProfile: {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      viewerUserId: user.userId,
+    });
   }
 }

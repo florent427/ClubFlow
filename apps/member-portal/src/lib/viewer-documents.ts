@@ -383,6 +383,15 @@ export const VIEWER_PLACE_SHOP_ORDER = gql`
   }
 `;
 
+export const VIEWER_CREATE_INVOICE_CHECKOUT_SESSION = gql`
+  mutation ViewerCreateInvoiceCheckoutSession($invoiceId: String!) {
+    viewerCreateInvoiceCheckoutSession(invoiceId: $invoiceId) {
+      url
+      sessionId
+    }
+  }
+`;
+
 export const VIEWER_UPDATE_MY_PROFILE = gql`
   mutation ViewerUpdateMyProfile($input: ViewerUpdateMyProfileInput!) {
     viewerUpdateMyProfile(input: $input) {

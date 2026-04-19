@@ -1,11 +1,19 @@
-import { useQuery } from '@apollo/client/react';
-import { useMemo, useState } from 'react';
-import { VIEWER_FAMILY_BILLING } from '../lib/viewer-documents';
-import type { ViewerBillingData } from '../lib/viewer-types';
+import { useMutation, useQuery } from '@apollo/client/react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import {
+  VIEWER_CREATE_INVOICE_CHECKOUT_SESSION,
+  VIEWER_FAMILY_BILLING,
+} from '../lib/viewer-documents';
+import type {
+  ViewerBillingData,
+  ViewerCreateInvoiceCheckoutSessionData,
+} from '../lib/viewer-types';
 import { formatEuroCents } from '../lib/format';
 import { EmptyState } from '../components/ui/EmptyState';
 import { LoadingState } from '../components/ui/LoadingState';
 import { ErrorState } from '../components/ui/ErrorState';
+import { useToast } from '../components/ToastProvider';
 
 type StatusFilter = 'ALL' | 'OPEN' | 'PAID' | 'DRAFT';
 
@@ -56,6 +64,48 @@ export function BillingPage() {
 
   const [filter, setFilter] = useState<StatusFilter>('ALL');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [payingId, setPayingId] = useState<string | null>(null);
+  const { showToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const [createCheckoutSession] =
+    useMutation<ViewerCreateInvoiceCheckoutSessionData>(
+      VIEWER_CREATE_INVOICE_CHECKOUT_SESSION,
+    );
+
+  useEffect(() => {
+    const paid = searchParams.get('paid');
+    const canceled = searchParams.get('canceled');
+    if (paid === '1') {
+      showToast('Paiement enregistré. Merci !', 'success');
+      void refetch();
+    } else if (canceled === '1') {
+      showToast('Paiement annulé.', 'info');
+    }
+    if (paid || canceled) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('paid');
+      next.delete('canceled');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams, showToast, refetch]);
+
+  async function handlePay(invoiceId: string): Promise<void> {
+    if (payingId) return;
+    setPayingId(invoiceId);
+    try {
+      const res = await createCheckoutSession({ variables: { invoiceId } });
+      const url = res.data?.viewerCreateInvoiceCheckoutSession.url;
+      if (!url) {
+        throw new Error('URL de paiement manquante.');
+      }
+      window.location.assign(url);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Paiement indisponible.';
+      showToast(msg, 'error');
+      setPayingId(null);
+    }
+  }
 
   const summary = data?.viewerFamilyBillingSummary;
   const invoices = summary?.invoices ?? [];
@@ -292,11 +342,28 @@ export function BillingPage() {
                       <p className="mp-hint">Aucun paiement enregistré.</p>
                     )}
                     {inv.balanceCents > 0 ? (
-                      <p className="mp-hint mp-invoice-item__tip">
-                        Pour régler cette facture, contactez le club ou
-                        utilisez le moyen de paiement indiqué par votre
-                        trésorier (paiement en ligne à venir).
-                      </p>
+                      <div className="mp-invoice-item__pay">
+                        <button
+                          type="button"
+                          className="mp-btn mp-btn-primary"
+                          onClick={() => void handlePay(inv.id)}
+                          disabled={payingId !== null}
+                        >
+                          <span
+                            className="material-symbols-outlined"
+                            aria-hidden
+                          >
+                            credit_card
+                          </span>
+                          {payingId === inv.id
+                            ? 'Redirection…'
+                            : `Payer en ligne ${formatEuroCents(inv.balanceCents)}`}
+                        </button>
+                        <p className="mp-hint mp-invoice-item__tip">
+                          Paiement sécurisé Stripe. Vous pouvez également régler
+                          directement auprès du club.
+                        </p>
+                      </div>
                     ) : null}
                   </div>
                 ) : null}

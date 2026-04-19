@@ -28,6 +28,7 @@ import {
   shouldIncludeMemberInHouseholdViewerProfiles,
 } from '../families/viewer-profile-rules';
 import { invoicePaymentTotals } from '../payments/invoice-totals';
+import { StripeCheckoutService } from '../payments/stripe-checkout.service';
 import { PlanningService } from '../planning/planning.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ViewerCourseSlotGraph } from './models/viewer-course-slot.model';
@@ -47,7 +48,103 @@ export class ViewerService {
     private readonly memberPseudo: MemberPseudoService,
     private readonly clubContacts: ClubContactsService,
     private readonly membership: MembershipService,
+    private readonly stripeCheckout: StripeCheckoutService,
   ) {}
+
+  private async buildPayerInvoiceWhereForMember(
+    clubId: string,
+    memberId: string,
+  ): Promise<Prisma.InvoiceWhereInput | null> {
+    const memberFamilyLinks = await this.prisma.familyMember.findMany({
+      where: { memberId, family: { clubId } },
+      include: { family: { include: { householdGroup: true } } },
+    });
+    const householdGroup =
+      memberFamilyLinks
+        .map((l) => l.family.householdGroup)
+        .find((g) => g != null) ?? null;
+    if (householdGroup) {
+      return {
+        clubId,
+        ...buildInvoiceWhereForHouseholdGroup({
+          kind: 'householdGroup',
+          householdGroupId: householdGroup.id,
+          carrierFamilyId: householdGroup.carrierFamilyId ?? null,
+        }),
+      };
+    }
+    const payerLink = memberFamilyLinks.find(
+      (l) => l.linkRole === FamilyMemberLinkRole.PAYER,
+    );
+    if (!payerLink) return null;
+    return { clubId, familyId: payerLink.familyId };
+  }
+
+  private async buildPayerInvoiceWhereForContact(
+    clubId: string,
+    contactId: string,
+    viewerUserId: string,
+  ): Promise<Prisma.InvoiceWhereInput | null> {
+    const link = await this.prisma.familyMember.findFirst({
+      where: {
+        contactId,
+        linkRole: FamilyMemberLinkRole.PAYER,
+        family: { clubId },
+        contact: { userId: viewerUserId },
+      },
+      include: { family: { include: { householdGroup: true } } },
+    });
+    if (!link) return null;
+    const householdGroup = link.family.householdGroup;
+    if (householdGroup) {
+      return {
+        clubId,
+        ...buildInvoiceWhereForHouseholdGroup({
+          kind: 'householdGroup',
+          householdGroupId: householdGroup.id,
+          carrierFamilyId: householdGroup.carrierFamilyId ?? null,
+        }),
+      };
+    }
+    return { clubId, familyId: link.familyId };
+  }
+
+  async viewerCreateInvoiceCheckoutSession(args: {
+    clubId: string;
+    invoiceId: string;
+    activeProfile: { memberId: string | null; contactId: string | null };
+    viewerUserId: string;
+  }): Promise<{ url: string; sessionId: string }> {
+    const where = args.activeProfile.memberId
+      ? await this.buildPayerInvoiceWhereForMember(
+          args.clubId,
+          args.activeProfile.memberId,
+        )
+      : args.activeProfile.contactId
+        ? await this.buildPayerInvoiceWhereForContact(
+            args.clubId,
+            args.activeProfile.contactId,
+            args.viewerUserId,
+          )
+        : null;
+    if (!where) {
+      throw new BadRequestException(
+        'Seul le payeur du foyer peut régler une facture en ligne.',
+      );
+    }
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { ...where, id: args.invoiceId, status: InvoiceStatus.OPEN },
+      select: { id: true },
+    });
+    if (!invoice) {
+      throw new NotFoundException('Facture introuvable ou déjà réglée.');
+    }
+    return this.stripeCheckout.createInvoiceCheckoutSession({
+      invoiceId: invoice.id,
+      clubId: args.clubId,
+      paidByMemberId: args.activeProfile.memberId ?? null,
+    });
+  }
 
   async viewerEligibleMembershipFormulas(
     clubId: string,

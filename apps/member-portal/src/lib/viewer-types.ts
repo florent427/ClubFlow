@@ -318,6 +318,13 @@ export type ViewerShopOrder = {
   lines: ViewerShopOrderLine[];
 };
 
+export type ViewerCreateInvoiceCheckoutSessionData = {
+  viewerCreateInvoiceCheckoutSession: {
+    url: string;
+    sessionId: string;
+  };
+};
+
 export type ViewerShopProductsData = { viewerShopProducts: ViewerShopProduct[] };
 export type ViewerShopOrdersData = { viewerShopOrders: ViewerShopOrder[] };
 export type ViewerPlaceShopOrderData = {
