@@ -179,3 +179,50 @@ export const CLUB = gql`
     }
   }
 `;
+
+export const VIEWER_CLUB_ANNOUNCEMENTS = gql`
+  query ViewerClubAnnouncements {
+    viewerClubAnnouncements {
+      id
+      title
+      body
+      pinned
+      publishedAt
+    }
+  }
+`;
+
+const VIEWER_SURVEY_FIELDS = `
+  id
+  title
+  description
+  status
+  multipleChoice
+  allowAnonymous
+  publishedAt
+  closesAt
+  totalResponses
+  viewerSelectedOptionIds
+  options {
+    id
+    label
+    sortOrder
+    responseCount
+  }
+`;
+
+export const VIEWER_CLUB_SURVEYS = gql`
+  query ViewerClubSurveys {
+    viewerClubSurveys {
+      ${VIEWER_SURVEY_FIELDS}
+    }
+  }
+`;
+
+export const VIEWER_RESPOND_TO_CLUB_SURVEY = gql`
+  mutation ViewerRespondToClubSurvey($input: RespondSurveyInput!) {
+    viewerRespondToClubSurvey(input: $input) {
+      ${VIEWER_SURVEY_FIELDS}
+    }
+  }
+`;

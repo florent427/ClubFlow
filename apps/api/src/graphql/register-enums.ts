@@ -23,6 +23,7 @@ import {
   SubscriptionBillingRhythm,
   ChatRoomKind,
   ChatRoomMemberRole,
+  ClubSurveyStatus,
 } from '@prisma/client';
 import { ModuleCode } from '../domain/module-registry/module-codes';
 import { QuickMessageRecipientType } from '../comms/enums/quick-message-recipient.enum';
@@ -74,3 +75,4 @@ registerEnumType(SponsorshipDealStatus, {
 });
 registerEnumType(ChatRoomKind, { name: 'ChatRoomKind' });
 registerEnumType(ChatRoomMemberRole, { name: 'ChatRoomMemberRole' });
+registerEnumType(ClubSurveyStatus, { name: 'ClubSurveyStatus' });

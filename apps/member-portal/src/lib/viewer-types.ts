@@ -154,3 +154,46 @@ export type ViewerEligibleMembershipFormulasData = {
 };
 
 export type SubscriptionBillingRhythm = 'ANNUAL' | 'MONTHLY';
+
+export type ViewerClubAnnouncement = {
+  id: string;
+  title: string;
+  body: string;
+  pinned: boolean;
+  publishedAt: string | null;
+};
+
+export type ViewerClubAnnouncementsData = {
+  viewerClubAnnouncements: ViewerClubAnnouncement[];
+};
+
+export type ViewerClubSurveyOption = {
+  id: string;
+  label: string;
+  sortOrder: number;
+  responseCount: number;
+};
+
+export type ViewerClubSurveyStatus = 'DRAFT' | 'OPEN' | 'CLOSED';
+
+export type ViewerClubSurvey = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: ViewerClubSurveyStatus;
+  multipleChoice: boolean;
+  allowAnonymous: boolean;
+  publishedAt: string | null;
+  closesAt: string | null;
+  totalResponses: number;
+  viewerSelectedOptionIds: string[];
+  options: ViewerClubSurveyOption[];
+};
+
+export type ViewerClubSurveysData = {
+  viewerClubSurveys: ViewerClubSurvey[];
+};
+
+export type ViewerRespondToClubSurveyData = {
+  viewerRespondToClubSurvey: ViewerClubSurvey;
+};

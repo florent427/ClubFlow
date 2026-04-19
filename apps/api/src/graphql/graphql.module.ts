@@ -15,6 +15,7 @@ import { ExternalFinanceModule } from '../external-finance/external-finance.modu
 import { FamiliesModule } from '../families/families.module';
 import { ViewerModule } from '../viewer/viewer.module';
 import { MessagingModule } from '../messaging/messaging.module';
+import { ClubLifeModule } from '../club-life/club-life.module';
 import { MembersModule } from '../members/members.module';
 import { MembershipModule } from '../membership/membership.module';
 import { MailModule } from '../mail/mail.module';
@@ -37,6 +38,12 @@ import '../messaging/models/chat-room-gql.model';
 import '../messaging/models/chat-message-gql.model';
 import '../messaging/dto/create-chat-group.input';
 import '../messaging/dto/post-chat-message.input';
+import '../club-life/models/club-announcement.model';
+import '../club-life/models/club-survey.model';
+import '../club-life/dto/create-announcement.input';
+import '../club-life/dto/update-announcement.input';
+import '../club-life/dto/create-survey.input';
+import '../club-life/dto/respond-survey.input';
 import '../viewer/dto/viewer-update-my-pseudo.input';
 
 @Module({
@@ -70,6 +77,7 @@ import '../viewer/dto/viewer-update-my-pseudo.input';
     ViewerModule,
     TelegramModule,
     MessagingModule,
+    ClubLifeModule,
   ],
 })
 export class GraphqlAppModule {}

@@ -597,3 +597,78 @@ export type QuickMessageRecipientTypeStr = 'MEMBER' | 'CONTACT';
 export type SendClubQuickMessageMutationData = {
   sendClubQuickMessage: { success: boolean };
 };
+
+export type ClubAnnouncement = {
+  id: string;
+  title: string;
+  body: string;
+  pinned: boolean;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ClubAnnouncementsQueryData = {
+  clubAnnouncements: ClubAnnouncement[];
+};
+
+export type CreateClubAnnouncementMutationData = {
+  createClubAnnouncement: ClubAnnouncement;
+};
+
+export type UpdateClubAnnouncementMutationData = {
+  updateClubAnnouncement: ClubAnnouncement;
+};
+
+export type PublishClubAnnouncementMutationData = {
+  publishClubAnnouncement: Pick<ClubAnnouncement, 'id' | 'publishedAt'>;
+};
+
+export type DeleteClubAnnouncementMutationData = {
+  deleteClubAnnouncement: boolean;
+};
+
+export type ClubSurveyStatusStr = 'DRAFT' | 'OPEN' | 'CLOSED';
+
+export type ClubSurveyOption = {
+  id: string;
+  label: string;
+  sortOrder: number;
+  responseCount: number;
+};
+
+export type ClubSurvey = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: ClubSurveyStatusStr;
+  multipleChoice: boolean;
+  allowAnonymous: boolean;
+  publishedAt: string | null;
+  closesAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  totalResponses: number;
+  viewerSelectedOptionIds: string[];
+  options: ClubSurveyOption[];
+};
+
+export type ClubSurveysQueryData = {
+  clubSurveys: ClubSurvey[];
+};
+
+export type CreateClubSurveyMutationData = {
+  createClubSurvey: ClubSurvey;
+};
+
+export type OpenClubSurveyMutationData = {
+  openClubSurvey: ClubSurvey;
+};
+
+export type CloseClubSurveyMutationData = {
+  closeClubSurvey: ClubSurvey;
+};
+
+export type DeleteClubSurveyMutationData = {
+  deleteClubSurvey: boolean;
+};

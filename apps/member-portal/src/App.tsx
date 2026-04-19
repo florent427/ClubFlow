@@ -19,6 +19,7 @@ import { FamilyPage } from './pages/FamilyPage';
 import { BillingPage } from './pages/BillingPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { MessagingPage } from './pages/MessagingPage';
+import { NewsPage } from './pages/NewsPage';
 import { JoinFamilyInvitePage } from './pages/JoinFamilyInvitePage';
 
 function Protected() {
@@ -96,6 +97,7 @@ export default function App() {
                   </MemberOnly>
                 }
               />
+              <Route path="/actus" element={<NewsPage />} />
               </Route>
             </Route>
             <Route

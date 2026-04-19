@@ -1255,3 +1255,119 @@ export const SEND_CLUB_QUICK_MESSAGE = gql`
     }
   }
 `;
+
+export const CLUB_ANNOUNCEMENTS = gql`
+  query ClubAnnouncements {
+    clubAnnouncements {
+      id
+      title
+      body
+      pinned
+      publishedAt
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const CREATE_CLUB_ANNOUNCEMENT = gql`
+  mutation CreateClubAnnouncement($input: CreateAnnouncementInput!) {
+    createClubAnnouncement(input: $input) {
+      id
+      title
+      body
+      pinned
+      publishedAt
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const UPDATE_CLUB_ANNOUNCEMENT = gql`
+  mutation UpdateClubAnnouncement($input: UpdateAnnouncementInput!) {
+    updateClubAnnouncement(input: $input) {
+      id
+      title
+      body
+      pinned
+      publishedAt
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const PUBLISH_CLUB_ANNOUNCEMENT = gql`
+  mutation PublishClubAnnouncement($id: ID!) {
+    publishClubAnnouncement(id: $id) {
+      id
+      publishedAt
+    }
+  }
+`;
+
+export const DELETE_CLUB_ANNOUNCEMENT = gql`
+  mutation DeleteClubAnnouncement($id: ID!) {
+    deleteClubAnnouncement(id: $id)
+  }
+`;
+
+const SURVEY_FIELDS = `
+  id
+  title
+  description
+  status
+  multipleChoice
+  allowAnonymous
+  publishedAt
+  closesAt
+  createdAt
+  updatedAt
+  totalResponses
+  viewerSelectedOptionIds
+  options {
+    id
+    label
+    sortOrder
+    responseCount
+  }
+`;
+
+export const CLUB_SURVEYS = gql`
+  query ClubSurveys {
+    clubSurveys {
+      ${SURVEY_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_CLUB_SURVEY = gql`
+  mutation CreateClubSurvey($input: CreateSurveyInput!) {
+    createClubSurvey(input: $input) {
+      ${SURVEY_FIELDS}
+    }
+  }
+`;
+
+export const OPEN_CLUB_SURVEY = gql`
+  mutation OpenClubSurvey($id: ID!) {
+    openClubSurvey(id: $id) {
+      ${SURVEY_FIELDS}
+    }
+  }
+`;
+
+export const CLOSE_CLUB_SURVEY = gql`
+  mutation CloseClubSurvey($id: ID!) {
+    closeClubSurvey(id: $id) {
+      ${SURVEY_FIELDS}
+    }
+  }
+`;
+
+export const DELETE_CLUB_SURVEY = gql`
+  mutation DeleteClubSurvey($id: ID!) {
+    deleteClubSurvey(id: $id)
+  }
+`;

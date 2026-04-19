@@ -18,6 +18,7 @@ import { NewFamilyPage } from './pages/members/NewFamilyPage';
 import { PlanningPage } from './pages/PlanningPage';
 import { CommunicationPage } from './pages/CommunicationPage';
 import { BillingPage } from './pages/billing/BillingPage';
+import { ClubLifePage } from './pages/club-life/ClubLifePage';
 import { SettingsLayout } from './pages/settings/SettingsLayout';
 import { SettingsHubPage } from './pages/settings/SettingsHubPage';
 import { MemberFieldsSettingsPage } from './pages/settings/MemberFieldsSettingsPage';
@@ -76,6 +77,7 @@ export default function App() {
             <Route path="planning" element={<PlanningPage />} />
             <Route path="communication" element={<CommunicationPage />} />
             <Route path="billing" element={<BillingPage />} />
+            <Route path="vie-du-club" element={<ClubLifePage />} />
             <Route path="settings" element={<SettingsLayout />}>
               <Route index element={<SettingsHubPage />} />
               <Route
