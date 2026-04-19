@@ -1,6 +1,8 @@
 import { useQuery } from '@apollo/client/react';
 import { InviteFamilyMemberCta } from '../components/InviteFamilyMemberCta';
 import { JoinFamilyByPayerEmailCta } from '../components/JoinFamilyByPayerEmailCta';
+import { PromoteSelfToMemberCta } from '../components/PromoteSelfToMemberCta';
+import { RegisterChildMemberCta } from '../components/RegisterChildMemberCta';
 import { VIEWER_ME } from '../lib/viewer-documents';
 import type { ViewerMeData } from '../lib/viewer-types';
 
@@ -31,11 +33,11 @@ export function ContactHomePage() {
 
       <JoinFamilyByPayerEmailCta variant="dashboard" />
 
-      {isPayerContact ? (
-        <div className="mp-family-actions">
-          <InviteFamilyMemberCta />
-        </div>
-      ) : null}
+      <div className="mp-family-actions">
+        <PromoteSelfToMemberCta />
+        {isPayerContact ? <RegisterChildMemberCta /> : null}
+        {isPayerContact ? <InviteFamilyMemberCta /> : null}
+      </div>
 
       <div className="mp-onboarding-grid">
         <div className="mp-onboarding-card mp-onboarding-card--ok">
@@ -65,9 +67,9 @@ export function ContactHomePage() {
           <div>
             <strong>Espace membre complet</strong>
             <p className="mp-hint">
-              Le planning, la progression et les réservations seront
-              disponibles lorsque le club aura créé votre fiche sportive.
-              Contactez le secrétariat si nécessaire.
+              Utilisez « M'inscrire comme membre » ou « Inscrire un enfant »
+              ci-dessus pour créer une fiche sportive. Le club finalise ensuite
+              la formule d'adhésion et la facturation.
             </p>
           </div>
         </div>

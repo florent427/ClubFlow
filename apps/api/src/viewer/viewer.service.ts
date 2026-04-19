@@ -7,11 +7,16 @@ import {
   FamilyMemberLinkRole,
   InvoiceStatus,
   MemberCivility,
+  MemberClubRole,
   MemberStatus,
   type Prisma,
 } from '@prisma/client';
 import { FamiliesService } from '../families/families.service';
-import { normalizeMemberEmail } from '../members/member-email-family-rule';
+import { ClubContactsService } from '../members/club-contacts.service';
+import {
+  assertMemberEmailAllowedInClub,
+  normalizeMemberEmail,
+} from '../members/member-email-family-rule';
 import { resolveAdminWorkspaceClubId } from '../common/club-back-office-role';
 import { buildInvoiceWhereForHouseholdGroup } from '../families/household-billing.scope';
 import {
@@ -36,6 +41,7 @@ export class ViewerService {
     private readonly planning: PlanningService,
     private readonly families: FamiliesService,
     private readonly memberPseudo: MemberPseudoService,
+    private readonly clubContacts: ClubContactsService,
   ) {}
 
   async viewerMe(
@@ -784,6 +790,143 @@ export class ViewerService {
       familyMembers: familyMemberRows,
       isHouseholdGroupSpace: householdGroup != null,
       linkedHouseholdFamilies,
+    };
+  }
+
+  async viewerPromoteSelfToMember(
+    clubId: string,
+    contactId: string,
+    userId: string,
+    input: { civility: MemberCivility; birthDate?: string | null },
+  ): Promise<{ memberId: string; firstName: string; lastName: string }> {
+    const contact = await this.prisma.contact.findFirst({
+      where: { id: contactId, clubId, userId },
+      select: { id: true, firstName: true, lastName: true },
+    });
+    if (!contact) {
+      throw new NotFoundException('Profil contact introuvable.');
+    }
+    const res = await this.clubContacts.promoteContactToMember(
+      clubId,
+      contactId,
+      {
+        civility: input.civility,
+        birthDate: input.birthDate ? new Date(input.birthDate) : null,
+      },
+    );
+    return {
+      memberId: res.memberId,
+      firstName: contact.firstName,
+      lastName: contact.lastName,
+    };
+  }
+
+  async viewerRegisterChildMember(
+    clubId: string,
+    userId: string,
+    activeProfile: { memberId: string | null; contactId: string | null },
+    input: {
+      firstName: string;
+      lastName: string;
+      civility: MemberCivility;
+      birthDate: string;
+    },
+  ): Promise<{ memberId: string; firstName: string; lastName: string }> {
+    let familyId: string | null = null;
+    let payerEmail: string | null = null;
+    if (activeProfile.memberId) {
+      const payerLink = await this.prisma.familyMember.findFirst({
+        where: {
+          memberId: activeProfile.memberId,
+          linkRole: FamilyMemberLinkRole.PAYER,
+          family: { clubId },
+        },
+        select: { familyId: true },
+      });
+      if (!payerLink) {
+        throw new BadRequestException(
+          'Seul un payeur de foyer peut inscrire un enfant depuis le portail.',
+        );
+      }
+      const me = await this.prisma.member.findFirst({
+        where: { id: activeProfile.memberId, clubId },
+        select: { email: true },
+      });
+      familyId = payerLink.familyId;
+      payerEmail = me?.email ?? null;
+    } else if (activeProfile.contactId) {
+      const payerLink = await this.prisma.familyMember.findFirst({
+        where: {
+          contactId: activeProfile.contactId,
+          linkRole: FamilyMemberLinkRole.PAYER,
+          family: { clubId },
+        },
+        select: { familyId: true },
+      });
+      if (!payerLink) {
+        throw new BadRequestException(
+          'Seul un payeur de foyer peut inscrire un enfant depuis le portail.',
+        );
+      }
+      const user = await this.prisma.user.findFirst({
+        where: { id: userId },
+        select: { email: true },
+      });
+      familyId = payerLink.familyId;
+      payerEmail = user?.email ?? null;
+    } else {
+      throw new BadRequestException('Sélection de profil requise');
+    }
+    if (!payerEmail) {
+      throw new BadRequestException(
+        'Adresse e-mail du compte payeur introuvable.',
+      );
+    }
+    await assertMemberEmailAllowedInClub(this.prisma, clubId, payerEmail, {
+      memberId: null,
+      assumeMemberFamilyId: familyId!,
+    });
+    const pseudo = await this.memberPseudo.pickAvailablePseudo(
+      this.prisma,
+      clubId,
+      input.firstName,
+      input.lastName,
+      null,
+    );
+    const created = await this.prisma.$transaction(async (tx) => {
+      const m = await tx.member.create({
+        data: {
+          clubId,
+          firstName: input.firstName,
+          lastName: input.lastName,
+          pseudo,
+          civility: input.civility,
+          email: payerEmail!,
+          birthDate: new Date(input.birthDate),
+          status: MemberStatus.ACTIVE,
+          roleAssignments: {
+            create: [{ role: MemberClubRole.STUDENT }],
+          },
+        },
+        select: { id: true, firstName: true, lastName: true },
+      });
+      await tx.familyMember.create({
+        data: {
+          familyId: familyId!,
+          memberId: m.id,
+          linkRole: FamilyMemberLinkRole.MEMBER,
+        },
+      });
+      return m;
+    });
+    await this.families.syncContactUserPayerMemberLinksByEmail(
+      clubId,
+      payerEmail,
+    );
+    return {
+      memberId: created.id,
+      firstName: created.firstName,
+      lastName: created.lastName,
     };
   }
 }

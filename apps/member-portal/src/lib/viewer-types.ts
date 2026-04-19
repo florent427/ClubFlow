@@ -124,3 +124,17 @@ export type ViewerBillingData = {
 export type ClubQueryData = {
   club: { id: string; name: string; slug: string };
 };
+
+export type ViewerMemberCreatedResult = {
+  memberId: string;
+  firstName: string;
+  lastName: string;
+};
+
+export type ViewerPromoteSelfToMemberData = {
+  viewerPromoteSelfToMember: ViewerMemberCreatedResult;
+};
+
+export type ViewerRegisterChildMemberData = {
+  viewerRegisterChildMember: ViewerMemberCreatedResult;
+};

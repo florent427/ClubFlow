@@ -16,11 +16,14 @@ import { CreateFamilyInviteInput } from '../families/dto/create-family-invite.in
 import { FamilyInviteService } from '../families/family-invite.service';
 import { FamilyInviteCreateResultGraph } from '../families/models/family-invite-create-result.model';
 import { ViewerJoinFamilyByPayerEmailInput } from './dto/viewer-join-family-by-payer-email.input';
+import { ViewerPromoteSelfToMemberInput } from './dto/viewer-promote-self-to-member.input';
+import { ViewerRegisterChildMemberInput } from './dto/viewer-register-child-member.input';
 import { ViewerUpdateMyPseudoInput } from './dto/viewer-update-my-pseudo.input';
 import { ViewerCourseSlotGraph } from './models/viewer-course-slot.model';
 import { ViewerFamilyBillingSummaryGraph } from './models/viewer-family-billing.model';
 import { ViewerFamilyJoinResultGraph } from './models/viewer-family-join-result.model';
 import { ViewerMemberGraph } from './models/viewer-member.model';
+import { ViewerMemberCreatedResultGraph } from './models/viewer-member-created-result.model';
 import { ViewerService } from './viewer.service';
 
 @Resolver()
@@ -166,6 +169,59 @@ export class ViewerResolver {
       memberId: user.activeProfileMemberId ?? null,
       contactId: user.activeProfileContactId ?? null,
     });
+  }
+
+  @Mutation(() => ViewerMemberCreatedResultGraph, {
+    name: 'viewerPromoteSelfToMember',
+    description:
+      'Promeut le contact actif en fiche adhérent (civilité + date de naissance optionnelle). L’admin complète ensuite la formule d’adhésion et la facturation.',
+  })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  viewerPromoteSelfToMember(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('input') input: ViewerPromoteSelfToMemberInput,
+  ): Promise<ViewerMemberCreatedResultGraph> {
+    if (!user.activeProfileContactId) {
+      throw new BadRequestException(
+        'Cette action nécessite un profil contact actif.',
+      );
+    }
+    return this.viewer.viewerPromoteSelfToMember(
+      club.id,
+      user.activeProfileContactId,
+      user.userId,
+      { civility: input.civility, birthDate: input.birthDate ?? null },
+    );
+  }
+
+  @Mutation(() => ViewerMemberCreatedResultGraph, {
+    name: 'viewerRegisterChildMember',
+    description:
+      'Crée une fiche adhérent mineure rattachée au foyer du viewer payeur. L’admin complète la formule d’adhésion et la facturation.',
+  })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  viewerRegisterChildMember(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('input') input: ViewerRegisterChildMemberInput,
+  ): Promise<ViewerMemberCreatedResultGraph> {
+    return this.viewer.viewerRegisterChildMember(
+      club.id,
+      user.userId,
+      {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      {
+        firstName: input.firstName,
+        lastName: input.lastName,
+        civility: input.civility,
+        birthDate: input.birthDate,
+      },
+    );
   }
 
   @Mutation(() => ViewerMemberGraph, { name: 'viewerUpdateMyPseudo' })

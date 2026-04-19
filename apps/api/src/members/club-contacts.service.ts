@@ -150,6 +150,10 @@ export class ClubContactsService {
   async promoteContactToMember(
     clubId: string,
     contactId: string,
+    overrides?: {
+      civility?: MemberCivility;
+      birthDate?: Date | null;
+    },
   ): Promise<{ memberId: string }> {
     const row = await this.prisma.contact.findFirst({
       where: { id: contactId, clubId },
@@ -187,8 +191,9 @@ export class ClubContactsService {
         firstName: row.firstName,
         lastName: row.lastName,
         pseudo,
-        civility: PROMOTE_CONTACT_DEFAULT_CIVILITY,
+        civility: overrides?.civility ?? PROMOTE_CONTACT_DEFAULT_CIVILITY,
         email: user.email,
+        birthDate: overrides?.birthDate ?? null,
         status: MemberStatus.ACTIVE,
       },
       select: { id: true },

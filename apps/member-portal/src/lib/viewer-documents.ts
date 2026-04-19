@@ -136,6 +136,26 @@ export const VIEWER_FAMILY_BILLING = gql`
   }
 `;
 
+export const VIEWER_PROMOTE_SELF_TO_MEMBER = gql`
+  mutation ViewerPromoteSelfToMember($input: ViewerPromoteSelfToMemberInput!) {
+    viewerPromoteSelfToMember(input: $input) {
+      memberId
+      firstName
+      lastName
+    }
+  }
+`;
+
+export const VIEWER_REGISTER_CHILD_MEMBER = gql`
+  mutation ViewerRegisterChildMember($input: ViewerRegisterChildMemberInput!) {
+    viewerRegisterChildMember(input: $input) {
+      memberId
+      firstName
+      lastName
+    }
+  }
+`;
+
 export const CLUB = gql`
   query MemberClub {
     club {
