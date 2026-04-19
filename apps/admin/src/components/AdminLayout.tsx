@@ -3,6 +3,7 @@ import { useQuery } from '@apollo/client/react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { ModuleGatedNavLink } from './ModuleGatedNavLink';
 import { ModuleRouteGuard } from './ModuleRouteGuard';
+import { GlobalSearchBar } from './GlobalSearchBar';
 import { VIEWER_PROFILES } from '../lib/documents';
 import { apolloClient } from '../lib/apollo';
 import { navigateToMemberPortal } from '../lib/member-portal-switch';
@@ -324,17 +325,7 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
       </aside>
 
       <header className="cf-topbar">
-        <div className="cf-topbar__search">
-          <span className="material-symbols-outlined cf-topbar__search-icon" aria-hidden>
-            search
-          </span>
-          <input
-            type="search"
-            placeholder="Rechercher un membre, un cours…"
-            className="cf-topbar__input"
-            aria-label="Recherche"
-          />
-        </div>
+        <GlobalSearchBar />
         <div className="cf-topbar__actions">
           <div className="cf-role-toggle" role="group" aria-label="Vue">
             <button

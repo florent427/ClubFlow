@@ -29,6 +29,25 @@ export const DASHBOARD_SUMMARY = gql`
       upcomingSessionsCount
       outstandingPaymentsCount
       revenueCentsMonth
+      newMembersThisMonthCount
+      upcomingEventsCount
+      recentAnnouncementsCount
+      pendingShopOrdersCount
+      openGrantApplicationsCount
+      activeSponsorshipDealsCount
+      accountingBalanceCents
+    }
+  }
+`;
+
+export const CLUB_SEARCH = gql`
+  query ClubSearch($q: String!) {
+    clubSearch(q: $q) {
+      members { id firstName lastName email }
+      contacts { id firstName lastName email }
+      events { id title startsAt }
+      blogPosts { id title slug }
+      announcements { id title }
     }
   }
 `;

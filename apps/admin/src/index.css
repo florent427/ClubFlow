@@ -4773,3 +4773,95 @@ a:focus-visible {
 .cf-acct-summary__card--income strong { color: #15803d; }
 .cf-acct-summary__card--expense strong { color: #b91c1c; }
 .cf-acct-summary__card--balance strong { color: #1a237e; }
+
+/* Dashboard mini-tiles (phase 6) */
+.cf-dash__mini {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+.cf-mini-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+.cf-mini-tile:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+  border-color: #c7d2fe;
+}
+.cf-mini-tile__ico {
+  font-size: 22px;
+  color: #1a237e;
+}
+.cf-mini-tile__value {
+  font-size: 22px;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.15;
+}
+.cf-mini-tile__label {
+  font-size: 12px;
+  color: #64748b;
+}
+.cf-mini-tile--ok .cf-mini-tile__value { color: #15803d; }
+.cf-mini-tile--danger .cf-mini-tile__value { color: #b91c1c; }
+
+/* Global search dropdown (phase 6) */
+.cf-gs { position: relative; }
+.cf-gs__panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 420px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
+  padding: 8px;
+  z-index: 60;
+}
+.cf-gs__status {
+  padding: 10px 12px;
+  color: #64748b;
+  font-size: 13px;
+  margin: 0;
+}
+.cf-gs__group + .cf-gs__group { margin-top: 6px; }
+.cf-gs__group-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+  padding: 6px 10px 4px;
+  margin: 0;
+}
+.cf-gs__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  text-align: left;
+  cursor: pointer;
+  color: #0f172a;
+  font-size: 14px;
+}
+.cf-gs__item:hover { background: #f1f5ff; }
+.cf-gs__item .material-symbols-outlined { font-size: 18px; color: #1a237e; }
+.cf-gs__item-main { flex: 1; }
+.cf-gs__item-meta { font-size: 12px; color: #64748b; }

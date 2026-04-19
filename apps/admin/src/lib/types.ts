@@ -22,8 +22,25 @@ export type DashboardQueryData = {
     upcomingSessionsCount: number;
     outstandingPaymentsCount: number;
     revenueCentsMonth: number;
+    newMembersThisMonthCount: number;
+    upcomingEventsCount: number;
+    recentAnnouncementsCount: number;
+    pendingShopOrdersCount: number;
+    openGrantApplicationsCount: number;
+    activeSponsorshipDealsCount: number;
+    accountingBalanceCents: number;
     medicalCertExpiringSoonCount?: number;
     medicalCertExpiredCount?: number;
+  };
+};
+
+export type ClubSearchQueryData = {
+  clubSearch: {
+    members: { id: string; firstName: string; lastName: string; email: string | null }[];
+    contacts: { id: string; firstName: string; lastName: string; email: string | null }[];
+    events: { id: string; title: string; startsAt: string }[];
+    blogPosts: { id: string; title: string; slug: string }[];
+    announcements: { id: string; title: string }[];
   };
 };
 

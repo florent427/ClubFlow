@@ -148,6 +148,64 @@ export function DashboardPage() {
       ? (summary.revenueCentsMonth / 100).toFixed(2)
       : '0,00';
   const openInvoices = summary?.outstandingPaymentsCount ?? 0;
+  const balanceEuro =
+    summary?.accountingBalanceCents != null
+      ? (summary.accountingBalanceCents / 100).toFixed(2)
+      : '0,00';
+  const miniTiles: {
+    icon: string;
+    label: string;
+    value: string | number;
+    to: string;
+    tone?: 'positive' | 'negative' | 'neutral';
+  }[] = summary
+    ? [
+        {
+          icon: 'person_add',
+          label: 'Nouveaux membres (mois)',
+          value: summary.newMembersThisMonthCount,
+          to: '/members',
+        },
+        {
+          icon: 'event',
+          label: 'Événements à venir',
+          value: summary.upcomingEventsCount,
+          to: '/evenements',
+        },
+        {
+          icon: 'campaign',
+          label: 'Annonces récentes',
+          value: summary.recentAnnouncementsCount,
+          to: '/vie-club',
+        },
+        {
+          icon: 'shopping_bag',
+          label: 'Commandes boutique',
+          value: summary.pendingShopOrdersCount,
+          to: '/boutique',
+        },
+        {
+          icon: 'volunteer_activism',
+          label: 'Dossiers subvention',
+          value: summary.openGrantApplicationsCount,
+          to: '/subventions',
+        },
+        {
+          icon: 'handshake',
+          label: 'Sponsors actifs',
+          value: summary.activeSponsorshipDealsCount,
+          to: '/sponsoring',
+        },
+        {
+          icon: 'account_balance',
+          label: 'Solde comptable',
+          value: `${balanceEuro} €`,
+          to: '/comptabilite',
+          tone:
+            (summary.accountingBalanceCents ?? 0) >= 0 ? 'positive' : 'negative',
+        },
+      ]
+    : [];
 
   return (
     <div className="cf-dash">
@@ -324,6 +382,26 @@ export function DashboardPage() {
           </div>
         </div>
       </section>
+
+      {miniTiles.length > 0 ? (
+        <section className="cf-dash__mini">
+          {miniTiles.map((t) => (
+            <Link
+              key={t.label}
+              to={t.to}
+              className={`cf-mini-tile${
+                t.tone === 'negative' ? ' cf-mini-tile--danger' : ''
+              }${t.tone === 'positive' ? ' cf-mini-tile--ok' : ''}`}
+            >
+              <span className="material-symbols-outlined cf-mini-tile__ico" aria-hidden>
+                {t.icon}
+              </span>
+              <span className="cf-mini-tile__value">{t.value}</span>
+              <span className="cf-mini-tile__label">{t.label}</span>
+            </Link>
+          ))}
+        </section>
+      ) : null}
 
       <section className="cf-dash__bento">
         <div className="cf-bento-card cf-bento-card--pie">

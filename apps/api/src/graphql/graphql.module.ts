@@ -71,6 +71,8 @@ import '../external-finance/dto/update-grant-application.input';
 import '../accounting/models/accounting-entry.model';
 import '../accounting/models/accounting-summary.model';
 import '../accounting/dto/create-accounting-entry.input';
+import '../dashboard/models/admin-dashboard.model';
+import '../dashboard/models/club-search.model';
 import '../viewer/dto/viewer-update-my-pseudo.input';
 
 @Module({
