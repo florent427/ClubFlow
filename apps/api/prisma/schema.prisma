@@ -1141,3 +1141,27 @@ model ClubEventRegistration {
   @@unique([eventId, contactId])
   @@index([eventId, status])
 }
+
+enum BlogPostStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model BlogPost {
+  id             String         @id @default(uuid())
+  clubId         String
+  authorUserId   String
+  slug           String
+  title          String
+  excerpt        String?        @db.VarChar(500)
+  body           String
+  coverImageUrl  String?
+  status         BlogPostStatus @default(DRAFT)
+  publishedAt    DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([clubId, slug])
+  @@index([clubId, status, publishedAt])
+}

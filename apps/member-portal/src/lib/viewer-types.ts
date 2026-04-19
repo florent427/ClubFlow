@@ -255,3 +255,30 @@ export type ViewerBookableSlot = {
 export type ViewerBookableCourseSlotsData = {
   viewerBookableCourseSlots: ViewerBookableSlot[];
 };
+
+export type ViewerBlogPostSummary = {
+  id: string;
+  slug: string;
+  title: string;
+  excerpt: string | null;
+  coverImageUrl: string | null;
+  publishedAt: string | null;
+};
+
+export type ViewerBlogPost = {
+  id: string;
+  slug: string;
+  title: string;
+  excerpt: string | null;
+  body: string;
+  coverImageUrl: string | null;
+  publishedAt: string | null;
+};
+
+export type ViewerClubBlogPostsData = {
+  viewerClubBlogPosts: ViewerBlogPostSummary[];
+};
+
+export type ViewerClubBlogPostData = {
+  viewerClubBlogPost: ViewerBlogPost | null;
+};

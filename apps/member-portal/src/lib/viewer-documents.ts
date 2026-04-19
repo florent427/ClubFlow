@@ -300,3 +300,30 @@ export const VIEWER_CANCEL_COURSE_SLOT_BOOKING = gql`
     viewerCancelCourseSlotBooking(slotId: $slotId)
   }
 `;
+
+export const VIEWER_CLUB_BLOG_POSTS = gql`
+  query ViewerClubBlogPosts {
+    viewerClubBlogPosts {
+      id
+      slug
+      title
+      excerpt
+      coverImageUrl
+      publishedAt
+    }
+  }
+`;
+
+export const VIEWER_CLUB_BLOG_POST = gql`
+  query ViewerClubBlogPost($slug: String!) {
+    viewerClubBlogPost(slug: $slug) {
+      id
+      slug
+      title
+      excerpt
+      body
+      coverImageUrl
+      publishedAt
+    }
+  }
+`;

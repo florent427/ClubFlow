@@ -740,3 +740,27 @@ export type UpdateClubEventMutationData = { updateClubEvent: ClubEvent };
 export type PublishClubEventMutationData = { publishClubEvent: ClubEvent };
 export type CancelClubEventMutationData = { cancelClubEvent: ClubEvent };
 export type DeleteClubEventMutationData = { deleteClubEvent: boolean };
+
+export type BlogPostStatusGql = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+
+export type BlogPost = {
+  id: string;
+  clubId: string;
+  authorUserId: string;
+  slug: string;
+  title: string;
+  excerpt: string | null;
+  body: string;
+  coverImageUrl: string | null;
+  status: BlogPostStatusGql;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ClubBlogPostsQueryData = { clubBlogPosts: BlogPost[] };
+export type CreateClubBlogPostMutationData = { createClubBlogPost: BlogPost };
+export type UpdateClubBlogPostMutationData = { updateClubBlogPost: BlogPost };
+export type PublishClubBlogPostMutationData = { publishClubBlogPost: BlogPost };
+export type ArchiveClubBlogPostMutationData = { archiveClubBlogPost: BlogPost };
+export type DeleteClubBlogPostMutationData = { deleteClubBlogPost: boolean };

@@ -22,6 +22,7 @@ import { MessagingPage } from './pages/MessagingPage';
 import { NewsPage } from './pages/NewsPage';
 import { EventsPage } from './pages/EventsPage';
 import { BookingPage } from './pages/BookingPage';
+import { BlogListPage, BlogPostPage } from './pages/BlogPage';
 import { JoinFamilyInvitePage } from './pages/JoinFamilyInvitePage';
 
 function Protected() {
@@ -102,6 +103,8 @@ export default function App() {
               <Route path="/actus" element={<NewsPage />} />
               <Route path="/evenements" element={<EventsPage />} />
               <Route path="/reservations" element={<BookingPage />} />
+              <Route path="/blog" element={<BlogListPage />} />
+              <Route path="/blog/:slug" element={<BlogPostPage />} />
               </Route>
             </Route>
             <Route

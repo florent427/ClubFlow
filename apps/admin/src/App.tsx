@@ -21,6 +21,7 @@ import { BillingPage } from './pages/billing/BillingPage';
 import { ClubLifePage } from './pages/club-life/ClubLifePage';
 import { EventsPage } from './pages/events/EventsPage';
 import { BookingPage } from './pages/booking/BookingPage';
+import { BlogPage } from './pages/blog/BlogPage';
 import { SettingsLayout } from './pages/settings/SettingsLayout';
 import { SettingsHubPage } from './pages/settings/SettingsHubPage';
 import { MemberFieldsSettingsPage } from './pages/settings/MemberFieldsSettingsPage';
@@ -82,6 +83,7 @@ export default function App() {
             <Route path="vie-du-club" element={<ClubLifePage />} />
             <Route path="evenements" element={<EventsPage />} />
             <Route path="reservations" element={<BookingPage />} />
+            <Route path="blog" element={<BlogPage />} />
             <Route path="settings" element={<SettingsLayout />}>
               <Route index element={<SettingsHubPage />} />
               <Route

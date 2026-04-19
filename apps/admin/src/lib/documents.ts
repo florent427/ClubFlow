@@ -1472,3 +1472,64 @@ export const DELETE_CLUB_EVENT = gql`
     deleteClubEvent(id: $id)
   }
 `;
+
+const BLOG_POST_FIELDS = `
+  id
+  clubId
+  authorUserId
+  slug
+  title
+  excerpt
+  body
+  coverImageUrl
+  status
+  publishedAt
+  createdAt
+  updatedAt
+`;
+
+export const CLUB_BLOG_POSTS = gql`
+  query ClubBlogPosts {
+    clubBlogPosts {
+      ${BLOG_POST_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_CLUB_BLOG_POST = gql`
+  mutation CreateClubBlogPost($input: CreateBlogPostInput!) {
+    createClubBlogPost(input: $input) {
+      ${BLOG_POST_FIELDS}
+    }
+  }
+`;
+
+export const UPDATE_CLUB_BLOG_POST = gql`
+  mutation UpdateClubBlogPost($input: UpdateBlogPostInput!) {
+    updateClubBlogPost(input: $input) {
+      ${BLOG_POST_FIELDS}
+    }
+  }
+`;
+
+export const PUBLISH_CLUB_BLOG_POST = gql`
+  mutation PublishClubBlogPost($id: ID!) {
+    publishClubBlogPost(id: $id) {
+      ${BLOG_POST_FIELDS}
+    }
+  }
+`;
+
+export const ARCHIVE_CLUB_BLOG_POST = gql`
+  mutation ArchiveClubBlogPost($id: ID!) {
+    archiveClubBlogPost(id: $id) {
+      ${BLOG_POST_FIELDS}
+    }
+  }
+`;
+
+export const DELETE_CLUB_BLOG_POST = gql`
+  mutation DeleteClubBlogPost($id: ID!) {
+    deleteClubBlogPost(id: $id)
+  }
+`;
