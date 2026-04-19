@@ -343,9 +343,18 @@ export class FamiliesService {
     contactId: string,
   ): Promise<void> {
     const profiles = await this.listViewerProfiles(userId);
-    if (!profiles.some((p) => p.contactId === contactId)) {
-      throw new BadRequestException('Profil non accessible pour ce compte');
+    if (profiles.some((p) => p.contactId === contactId)) {
+      return;
     }
+    // Contact « orphelin » (pas encore rattaché à une famille) :
+    // accès au portail autorisé si la fiche contact existe pour ce compte.
+    const contact = await this.prisma.contact.findFirst({
+      where: { id: contactId, userId },
+    });
+    if (contact) {
+      return;
+    }
+    throw new BadRequestException('Profil non accessible pour ce compte');
   }
 
   private toFamilyGraph(row: {

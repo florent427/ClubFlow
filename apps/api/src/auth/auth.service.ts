@@ -99,7 +99,6 @@ export class AuthService {
     } else if (primary?.contactId) {
       jwtPayload.activeProfileContactId = primary.contactId;
     }
-    const accessToken = this.signAccessToken(jwtPayload);
     const clubEnv = process.env.CLUB_ID?.trim();
     let contactClubId: string | null = null;
     if (viewerProfiles.length === 0 && clubEnv) {
@@ -107,7 +106,11 @@ export class AuthService {
         where: { userId_clubId: { userId, clubId: clubEnv } },
       });
       contactClubId = c?.clubId ?? null;
+      if (c && !jwtPayload.activeProfileContactId) {
+        jwtPayload.activeProfileContactId = c.id;
+      }
     }
+    const accessToken = this.signAccessToken(jwtPayload);
     return { accessToken, viewerProfiles, contactClubId };
   }
 

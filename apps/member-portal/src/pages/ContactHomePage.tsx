@@ -1,3 +1,5 @@
+import { JoinFamilyByPayerEmailCta } from '../components/JoinFamilyByPayerEmailCta';
+
 /**
  * Recommandation UX #5 — Glossaire UX / Onboarding contact
  * Écran d'onboarding enrichi après vérification de l'e-mail, qui explique
@@ -17,6 +19,8 @@ export function ContactHomePage() {
           </p>
         </div>
       </section>
+
+      <JoinFamilyByPayerEmailCta variant="dashboard" />
 
       <div className="mp-onboarding-grid">
         <div className="mp-onboarding-card mp-onboarding-card--ok">
