@@ -131,6 +131,30 @@ export class TransactionalMailService {
     });
   }
 
+  async sendPasswordResetLink(
+    clubId: string,
+    to: string,
+    resetUrl: string,
+  ): Promise<void> {
+    const trimmed = to.trim();
+    if (!trimmed || !trimmed.includes('@')) {
+      throw new BadRequestException('Adresse e-mail invalide');
+    }
+    const profile = await this.domains.getVerifiedMailProfile(
+      clubId,
+      'transactional',
+    );
+    await this.transport.sendEmail({
+      clubId,
+      kind: 'transactional',
+      from: profile.from,
+      to: trimmed,
+      subject: 'ClubFlow — réinitialisation de votre mot de passe',
+      html: `<p>Bonjour,</p><p>Vous avez demandé à réinitialiser votre mot de passe. Ce lien est valable 1 heure :</p><p><a href="${resetUrl}">Réinitialiser mon mot de passe</a></p><p>Lien (copier-coller) : ${resetUrl}</p><p>Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail.</p>`,
+      text: `Réinitialisez votre mot de passe en ouvrant ce lien (valable 1 heure) : ${resetUrl}`,
+    });
+  }
+
   async sendTestEmail(clubId: string, to: string): Promise<void> {
     const trimmed = to.trim();
     if (!trimmed || !trimmed.includes('@')) {

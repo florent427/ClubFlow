@@ -112,6 +112,11 @@ export function LoginPage() {
           <button type="submit" className="auth-btn" disabled={loading}>
             {loading ? 'Connexion…' : 'Se connecter'}
           </button>
+          <p className="auth-forgot">
+            <Link to="/forgot-password" className="auth-link">
+              Mot de passe oublié ?
+            </Link>
+          </p>
         </form>
         <p className="auth-footer auth-footer-stack">
           <a
