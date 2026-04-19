@@ -112,6 +112,8 @@ function toInvoiceGraph(row: {
     dueAt: row.dueAt,
     totalPaidCents,
     balanceCents,
+    familyLabel: null,
+    householdGroupLabel: null,
   };
 }
 

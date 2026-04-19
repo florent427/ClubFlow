@@ -159,15 +159,23 @@ export class PaymentsService {
       orderBy: { createdAt: 'desc' },
       include: {
         payments: { select: { amountCents: true } },
+        family: { select: { label: true } },
+        householdGroup: { select: { label: true } },
       },
     });
-    return rows.map(({ payments, ...inv }) => {
+    return rows.map(({ payments, family, householdGroup, ...inv }) => {
       const paid = payments.reduce((s, p) => s + p.amountCents, 0);
       const { totalPaidCents, balanceCents } = invoicePaymentTotals(
         inv.amountCents,
         paid,
       );
-      return { ...inv, totalPaidCents, balanceCents };
+      return {
+        ...inv,
+        totalPaidCents,
+        balanceCents,
+        familyLabel: family?.label ?? null,
+        householdGroupLabel: householdGroup?.label ?? null,
+      };
     });
   }
 

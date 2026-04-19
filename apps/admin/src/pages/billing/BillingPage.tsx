@@ -6,6 +6,7 @@ import type {
   InvoiceStatusStr,
 } from '../../lib/types';
 import { useClubModules } from '../../lib/club-modules-context';
+import { downloadCsv, toCsv } from '../../lib/csv-export';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { LoadingState, Skeleton } from '../../components/ui/LoadingState';
 import { ErrorState } from '../../components/ui/ErrorState';
@@ -114,6 +115,40 @@ export function BillingPage() {
           <p className="cf-page__subtitle">
             Factures du club, encaissements et suivi du reste à payer.
           </p>
+        </div>
+        <div className="cf-page__actions">
+          <button
+            type="button"
+            className="cf-btn cf-btn--ghost"
+            onClick={() => {
+              const csv = toCsv(
+                [
+                  'Libellé',
+                  'Foyer',
+                  'Échéance',
+                  'Montant',
+                  'Payé',
+                  'Reste dû',
+                  'Statut',
+                ],
+                filtered.map((inv) => [
+                  inv.label,
+                  inv.householdGroupLabel ?? inv.familyLabel ?? '',
+                  inv.dueAt ? inv.dueAt.slice(0, 10) : '',
+                  (inv.amountCents / 100).toFixed(2),
+                  (inv.totalPaidCents / 100).toFixed(2),
+                  (inv.balanceCents / 100).toFixed(2),
+                  inv.status,
+                ]),
+              );
+              const ts = new Date().toISOString().slice(0, 10);
+              downloadCsv(`factures-${ts}.csv`, csv);
+            }}
+            disabled={!filtered.length}
+          >
+            <span className="material-symbols-outlined">download</span>
+            Exporter CSV
+          </button>
         </div>
       </div>
 
@@ -230,7 +265,11 @@ export function BillingPage() {
                       {inv.id.slice(0, 8)}
                     </div>
                   </td>
-                  <td>{inv.familyId ? inv.familyId.slice(0, 8) : '—'}</td>
+                  <td>
+                    {inv.householdGroupLabel ??
+                      inv.familyLabel ??
+                      (inv.familyId ? inv.familyId.slice(0, 8) : '—')}
+                  </td>
                   <td className={overdue ? 'cf-cell-danger' : ''}>
                     {formatDate(inv.dueAt)}
                     {overdue ? ' · en retard' : ''}

@@ -27,8 +27,10 @@ export class AccountingResolver {
   @Query(() => [AccountingEntryGraph], { name: 'clubAccountingEntries' })
   async clubAccountingEntries(
     @CurrentClub() club: Club,
+    @Args('from', { type: () => Date, nullable: true }) from: Date | null,
+    @Args('to', { type: () => Date, nullable: true }) to: Date | null,
   ): Promise<AccountingEntryGraph[]> {
-    const rows = await this.accounting.listEntries(club.id);
+    const rows = await this.accounting.listEntries(club.id, { from, to });
     return rows.map((r) => ({
       id: r.id,
       clubId: r.clubId,
@@ -43,8 +45,10 @@ export class AccountingResolver {
   @Query(() => AccountingSummaryGraph, { name: 'clubAccountingSummary' })
   clubAccountingSummary(
     @CurrentClub() club: Club,
+    @Args('from', { type: () => Date, nullable: true }) from: Date | null,
+    @Args('to', { type: () => Date, nullable: true }) to: Date | null,
   ): Promise<AccountingSummaryGraph> {
-    return this.accounting.summary(club.id);
+    return this.accounting.summary(club.id, { from, to });
   }
 
   @Mutation(() => AccountingEntryGraph)

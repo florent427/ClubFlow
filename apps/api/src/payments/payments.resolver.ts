@@ -45,6 +45,8 @@ export class PaymentsResolver {
       dueAt: r.dueAt,
       totalPaidCents: r.totalPaidCents,
       balanceCents: r.balanceCents,
+      familyLabel: r.familyLabel,
+      householdGroupLabel: r.householdGroupLabel,
     }));
   }
 
@@ -81,6 +83,8 @@ export class PaymentsResolver {
       dueAt: row.dueAt,
       totalPaidCents: 0,
       balanceCents: row.amountCents,
+      familyLabel: null,
+      householdGroupLabel: null,
     };
   }
 
@@ -187,6 +191,8 @@ export class PaymentsResolver {
       dueAt: inv.dueAt,
       totalPaidCents: 0,
       balanceCents: inv.amountCents,
+      familyLabel: null,
+      householdGroupLabel: null,
     };
   }
 
@@ -212,6 +218,8 @@ export class PaymentsResolver {
       dueAt: inv.dueAt,
       totalPaidCents: 0,
       balanceCents: 0,
+      familyLabel: null,
+      householdGroupLabel: null,
     };
   }
 }

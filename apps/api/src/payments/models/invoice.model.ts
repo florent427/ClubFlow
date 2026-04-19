@@ -36,6 +36,12 @@ export class InvoiceGraph {
   @Field(() => Date, { nullable: true })
   dueAt!: Date | null;
 
+  @Field(() => String, { nullable: true })
+  familyLabel!: string | null;
+
+  @Field(() => String, { nullable: true })
+  householdGroupLabel!: string | null;
+
   @Field(() => Int, {
     description:
       'Somme des encaissements enregistrés pour cette facture (tous modes).',

@@ -648,6 +648,9 @@ export const CLUB_INVOICES = gql`
       id
       clubId
       familyId
+      familyLabel
+      householdGroupId
+      householdGroupLabel
       clubSeasonId
       label
       baseAmountCents
@@ -1751,16 +1754,16 @@ export const DELETE_CLUB_GRANT_APPLICATION = gql`
 `;
 
 export const CLUB_ACCOUNTING_ENTRIES = gql`
-  query ClubAccountingEntries {
-    clubAccountingEntries {
+  query ClubAccountingEntries($from: DateTime, $to: DateTime) {
+    clubAccountingEntries(from: $from, to: $to) {
       ${ACCOUNTING_ENTRY_FIELDS}
     }
   }
 `;
 
 export const CLUB_ACCOUNTING_SUMMARY = gql`
-  query ClubAccountingSummary {
-    clubAccountingSummary {
+  query ClubAccountingSummary($from: DateTime, $to: DateTime) {
+    clubAccountingSummary(from: $from, to: $to) {
       incomeCents
       expenseCents
       balanceCents

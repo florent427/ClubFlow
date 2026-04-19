@@ -14,6 +14,38 @@ import type {
 } from '../../lib/types';
 import { useToast } from '../../components/ToastProvider';
 import { ConfirmModal, Drawer, EmptyState } from '../../components/ui';
+import { downloadCsv, toCsv } from '../../lib/csv-export';
+
+type Period = 'ALL' | 'MONTH' | 'YEAR' | 'CUSTOM';
+
+function computeRange(
+  period: Period,
+  customFrom: string,
+  customTo: string,
+): { from: string | null; to: string | null } {
+  const now = new Date();
+  if (period === 'MONTH') {
+    const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const to = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    return { from: from.toISOString(), to: to.toISOString() };
+  }
+  if (period === 'YEAR') {
+    const from = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+    const to = new Date(Date.UTC(now.getUTCFullYear() + 1, 0, 1));
+    return { from: from.toISOString(), to: to.toISOString() };
+  }
+  if (period === 'CUSTOM') {
+    return {
+      from: customFrom ? new Date(customFrom + 'T00:00:00Z').toISOString() : null,
+      to: customTo
+        ? new Date(
+            new Date(customTo + 'T00:00:00Z').getTime() + 24 * 3600 * 1000,
+          ).toISOString()
+        : null,
+    };
+  }
+  return { from: null, to: null };
+}
 
 function fmtEuros(cents: number): string {
   return `${(cents / 100).toFixed(2).replace('.', ',')} €`;
@@ -29,13 +61,22 @@ function fmtDate(iso: string): string {
 
 export function AccountingPage() {
   const { showToast } = useToast();
+  const [period, setPeriod] = useState<Period>('ALL');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const range = useMemo(
+    () => computeRange(period, customFrom, customTo),
+    [period, customFrom, customTo],
+  );
   const { data: entriesData, refetch: refetchEntries, loading } =
     useQuery<ClubAccountingEntriesData>(CLUB_ACCOUNTING_ENTRIES, {
       fetchPolicy: 'cache-and-network',
+      variables: { from: range.from, to: range.to },
     });
   const { data: summaryData, refetch: refetchSummary } =
     useQuery<ClubAccountingSummaryData>(CLUB_ACCOUNTING_SUMMARY, {
       fetchPolicy: 'cache-and-network',
+      variables: { from: range.from, to: range.to },
     });
   const [create, { loading: creating }] = useMutation(
     CREATE_CLUB_ACCOUNTING_ENTRY,
@@ -145,7 +186,7 @@ export function AccountingPage() {
         </div>
       ) : null}
 
-      <div className="cf-toolbar">
+      <div className="cf-toolbar" style={{ flexWrap: 'wrap', gap: 12 }}>
         <label className="cf-field cf-field--inline">
           <span>Filtre</span>
           <select
@@ -157,6 +198,62 @@ export function AccountingPage() {
             <option value="EXPENSE">Dépenses</option>
           </select>
         </label>
+        <label className="cf-field cf-field--inline">
+          <span>Période</span>
+          <select
+            value={period}
+            onChange={(e) => setPeriod(e.target.value as Period)}
+          >
+            <option value="ALL">Depuis le début</option>
+            <option value="MONTH">Ce mois</option>
+            <option value="YEAR">Cette année</option>
+            <option value="CUSTOM">Personnalisée…</option>
+          </select>
+        </label>
+        {period === 'CUSTOM' ? (
+          <>
+            <label className="cf-field cf-field--inline">
+              <span>Du</span>
+              <input
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+              />
+            </label>
+            <label className="cf-field cf-field--inline">
+              <span>Au</span>
+              <input
+                type="date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+              />
+            </label>
+          </>
+        ) : null}
+        <button
+          type="button"
+          className="cf-btn cf-btn--ghost"
+          onClick={() => {
+            const csv = toCsv(
+              ['Date', 'Libellé', 'Type', 'Montant (€)', 'Source'],
+              filtered.map((e) => [
+                e.occurredAt.slice(0, 10),
+                e.label,
+                e.kind === 'INCOME' ? 'Recette' : 'Dépense',
+                ((e.kind === 'INCOME' ? 1 : -1) * (e.amountCents / 100))
+                  .toFixed(2),
+                e.paymentId ? 'Auto (paiement)' : 'Manuelle',
+              ]),
+            );
+            const ts = new Date().toISOString().slice(0, 10);
+            downloadCsv(`comptabilite-${ts}.csv`, csv);
+          }}
+          disabled={!filtered.length}
+          style={{ marginLeft: 'auto' }}
+        >
+          <span className="material-symbols-outlined">download</span>
+          Exporter CSV
+        </button>
       </div>
 
       {loading && entries.length === 0 ? (

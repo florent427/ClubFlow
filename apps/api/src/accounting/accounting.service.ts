@@ -36,9 +36,21 @@ export class AccountingService {
     });
   }
 
-  async listEntries(clubId: string) {
+  async listEntries(
+    clubId: string,
+    range?: { from?: Date | null; to?: Date | null },
+  ) {
+    const where: {
+      clubId: string;
+      occurredAt?: { gte?: Date; lt?: Date };
+    } = { clubId };
+    if (range?.from || range?.to) {
+      where.occurredAt = {};
+      if (range.from) where.occurredAt.gte = range.from;
+      if (range.to) where.occurredAt.lt = range.to;
+    }
     return this.prisma.accountingEntry.findMany({
-      where: { clubId },
+      where,
       orderBy: { occurredAt: 'desc' },
       take: 500,
     });
@@ -78,9 +90,21 @@ export class AccountingService {
     return true;
   }
 
-  async summary(clubId: string) {
+  async summary(
+    clubId: string,
+    range?: { from?: Date | null; to?: Date | null },
+  ) {
+    const where: {
+      clubId: string;
+      occurredAt?: { gte?: Date; lt?: Date };
+    } = { clubId };
+    if (range?.from || range?.to) {
+      where.occurredAt = {};
+      if (range.from) where.occurredAt.gte = range.from;
+      if (range.to) where.occurredAt.lt = range.to;
+    }
     const rows = await this.prisma.accountingEntry.findMany({
-      where: { clubId },
+      where,
       select: { kind: true, amountCents: true },
     });
     let income = 0;

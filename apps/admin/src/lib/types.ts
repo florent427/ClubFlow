@@ -396,6 +396,9 @@ export type ClubInvoicesQueryData = {
     id: string;
     clubId: string;
     familyId: string | null;
+    familyLabel: string | null;
+    householdGroupId: string | null;
+    householdGroupLabel: string | null;
     clubSeasonId: string | null;
     label: string;
     baseAmountCents: number;
