@@ -275,6 +275,20 @@ export type UpdateClubFamilyMutationData = {
   };
 };
 
+export type AttachClubContactToFamilyAsMemberMutationData = {
+  attachClubContactToFamilyAsMember: {
+    id: string;
+    label: string | null;
+    needsPayer: boolean;
+    links: {
+      id: string;
+      memberId: string | null;
+      contactId: string | null;
+      linkRole: string;
+    }[];
+  };
+};
+
 /** Aligné Prisma / GraphQL `InvoiceStatus`. */
 export type InvoiceStatusStr = 'DRAFT' | 'OPEN' | 'PAID' | 'VOID';
 

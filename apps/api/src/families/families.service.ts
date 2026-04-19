@@ -576,6 +576,70 @@ export class FamiliesService {
   }
 
   /**
+   * Rattache (côté admin) un contact à un foyer en tant que MEMBER (observateur
+   * sans rôle de facturation). Si le contact est déjà rattaché à ce foyer, on
+   * aligne le rôle sur MEMBER. S’il est rattaché à un autre foyer du club on
+   * refuse.
+   */
+  async adminAttachContactToFamilyAsMember(
+    clubId: string,
+    familyId: string,
+    contactId: string,
+  ): Promise<FamilyGraph> {
+    const family = await this.prisma.family.findFirst({
+      where: { id: familyId, clubId },
+    });
+    if (!family) {
+      throw new NotFoundException('Foyer introuvable');
+    }
+    const contact = await this.prisma.contact.findFirst({
+      where: { id: contactId, clubId },
+    });
+    if (!contact) {
+      throw new NotFoundException('Contact introuvable pour ce club');
+    }
+    const elsewhere = await this.prisma.familyMember.findFirst({
+      where: {
+        contactId,
+        family: { clubId },
+        NOT: { familyId },
+      },
+    });
+    if (elsewhere) {
+      throw new BadRequestException(
+        'Ce contact est déjà rattaché à un autre foyer de ce club.',
+      );
+    }
+    await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.familyMember.findFirst({
+        where: { contactId, familyId },
+      });
+      if (existing) {
+        if (existing.linkRole !== FamilyMemberLinkRole.MEMBER) {
+          await tx.familyMember.update({
+            where: { id: existing.id },
+            data: { linkRole: FamilyMemberLinkRole.MEMBER },
+          });
+        }
+      } else {
+        await tx.familyMember.create({
+          data: {
+            familyId,
+            contactId,
+            linkRole: FamilyMemberLinkRole.MEMBER,
+          },
+        });
+      }
+      await this.ensureSoleFamilyMemberIsPayerWithClient(tx, familyId);
+    });
+    const row = await this.prisma.family.findFirstOrThrow({
+      where: { id: familyId },
+      include: { familyMembers: true },
+    });
+    return this.toFamilyGraph(row);
+  }
+
+  /**
    * Règle B : lorsqu’un `Member` est créé ou relié à un `User` qui était payeur `Contact`,
    * le lien payeur pointe vers le membre.
    */

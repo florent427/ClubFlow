@@ -1000,6 +1000,28 @@ export const REMOVE_CLUB_FAMILY_LINK = gql`
   }
 `;
 
+export const ATTACH_CLUB_CONTACT_TO_FAMILY_AS_MEMBER = gql`
+  mutation AttachClubContactToFamilyAsMember(
+    $familyId: ID!
+    $contactId: ID!
+  ) {
+    attachClubContactToFamilyAsMember(
+      familyId: $familyId
+      contactId: $contactId
+    ) {
+      id
+      label
+      needsPayer
+      links {
+        id
+        memberId
+        contactId
+        linkRole
+      }
+    }
+  }
+`;
+
 export const CLUB_HOSTED_MAIL_OFFER = gql`
   query ClubHostedMailOffer {
     clubHostedMailOffer {

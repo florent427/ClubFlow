@@ -3,14 +3,19 @@ import { useEffect, useState } from 'react';
 import { QuickMessageModal } from '../../components/QuickMessageModal';
 import { useClubCommunicationEnabled } from '../../lib/useClubCommunicationEnabled';
 import {
+  ATTACH_CLUB_CONTACT_TO_FAMILY_AS_MEMBER,
   CLUB_CONTACT,
+  CLUB_FAMILIES,
   DELETE_CLUB_CONTACT,
   PROMOTE_CONTACT_TO_MEMBER,
+  REMOVE_CLUB_FAMILY_LINK,
   UPDATE_CLUB_CONTACT,
 } from '../../lib/documents';
 import type {
+  AttachClubContactToFamilyAsMemberMutationData,
   ClubContactQueryData,
   DeleteClubContactMutationData,
+  FamiliesQueryData,
   PromoteContactToMemberMutationData,
   UpdateClubContactMutationData,
 } from '../../lib/types';
@@ -70,6 +75,33 @@ export function ContactDetailDrawer({
   const [promote, { loading: promoting }] =
     useMutation<PromoteContactToMemberMutationData>(PROMOTE_CONTACT_TO_MEMBER);
 
+  const { data: familiesData, refetch: refetchFamilies } =
+    useQuery<FamiliesQueryData>(CLUB_FAMILIES, {
+      skip: !contactId,
+      fetchPolicy: 'cache-and-network',
+    });
+
+  const [attachToFamily, { loading: attaching }] =
+    useMutation<AttachClubContactToFamilyAsMemberMutationData>(
+      ATTACH_CLUB_CONTACT_TO_FAMILY_AS_MEMBER,
+    );
+  const [removeFamilyLink, { loading: removingLink }] = useMutation(
+    REMOVE_CLUB_FAMILY_LINK,
+  );
+
+  const [selectedFamilyId, setSelectedFamilyId] = useState<string>('');
+
+  const currentFamilyLink = (() => {
+    if (!contactId || !familiesData?.clubFamilies) return null;
+    for (const fam of familiesData.clubFamilies) {
+      const link = fam.links.find((l) => l.contactId === contactId);
+      if (link) {
+        return { family: fam, link };
+      }
+    }
+    return null;
+  })();
+
   if (!contactId) {
     return null;
   }
@@ -106,6 +138,39 @@ export function ContactDetailDrawer({
       await deleteContact({ variables: { id: contactId } });
       onChanged();
       onClose();
+    } catch (e) {
+      setLocalError(gqlErrorMessage(e));
+    }
+  }
+
+  async function onAttachFamily() {
+    if (!selectedFamilyId) return;
+    setLocalError(null);
+    try {
+      await attachToFamily({
+        variables: { familyId: selectedFamilyId, contactId },
+      });
+      setSelectedFamilyId('');
+      await refetchFamilies();
+      onChanged();
+    } catch (e) {
+      setLocalError(gqlErrorMessage(e));
+    }
+  }
+
+  async function onDetachFamily(linkId: string) {
+    if (
+      !window.confirm(
+        'Retirer ce contact du foyer ? Son accès en lecture sera supprimé.',
+      )
+    ) {
+      return;
+    }
+    setLocalError(null);
+    try {
+      await removeFamilyLink({ variables: { linkId } });
+      await refetchFamilies();
+      onChanged();
     } catch (e) {
       setLocalError(gqlErrorMessage(e));
     }
@@ -264,6 +329,76 @@ export function ContactDetailDrawer({
               >
                 {deleting ? 'Suppression…' : 'Supprimer le contact'}
               </button>
+            </div>
+
+            <div className="family-drawer__section" style={{ marginTop: '1.5rem' }}>
+              <h3 style={{ marginTop: 0 }}>Foyer</h3>
+              {currentFamilyLink ? (
+                <div>
+                  <p className="muted" style={{ marginTop: 0 }}>
+                    Rattaché au foyer{' '}
+                    <strong>
+                      {currentFamilyLink.family.label ?? 'Sans nom'}
+                    </strong>{' '}
+                    en tant que{' '}
+                    <strong>
+                      {currentFamilyLink.link.linkRole === 'PAYER'
+                        ? 'payeur'
+                        : 'membre observateur'}
+                    </strong>
+                    .
+                  </p>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={removingLink}
+                    onClick={() =>
+                      void onDetachFamily(currentFamilyLink.link.id)
+                    }
+                  >
+                    {removingLink ? 'Retrait…' : 'Retirer du foyer'}
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <p className="muted" style={{ marginTop: 0 }}>
+                    Ce contact n'est rattaché à aucun foyer. Vous pouvez le
+                    rattacher à un foyer existant en tant que membre
+                    observateur (accès en lecture).
+                  </p>
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: '0.5rem',
+                      alignItems: 'flex-end',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <label className="field" style={{ flex: 1, minWidth: 220 }}>
+                      <span>Foyer</span>
+                      <select
+                        value={selectedFamilyId}
+                        onChange={(e) => setSelectedFamilyId(e.target.value)}
+                      >
+                        <option value="">— Choisir un foyer —</option>
+                        {familiesData?.clubFamilies.map((fam) => (
+                          <option key={fam.id} value={fam.id}>
+                            {fam.label ?? `Foyer ${fam.id.slice(0, 8)}`}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={!selectedFamilyId || attaching}
+                      onClick={() => void onAttachFamily()}
+                    >
+                      {attaching ? 'Rattachement…' : 'Rattacher au foyer'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         ) : (
