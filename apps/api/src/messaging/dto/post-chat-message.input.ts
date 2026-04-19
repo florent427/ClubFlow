@@ -1,9 +1,10 @@
 import { Field, ID, InputType } from '@nestjs/graphql';
-import { IsString, MaxLength, MinLength } from 'class-validator';
+import { IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 
 @InputType()
 export class PostChatMessageInput {
   @Field(() => ID)
+  @IsUUID()
   roomId!: string;
 
   @Field()

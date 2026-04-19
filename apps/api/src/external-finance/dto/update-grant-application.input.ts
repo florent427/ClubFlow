@@ -5,6 +5,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   Min,
   MinLength,
@@ -13,6 +14,7 @@ import {
 @InputType()
 export class UpdateGrantApplicationInput {
   @Field(() => ID)
+  @IsUUID()
   id!: string;
 
   @Field({ nullable: true })

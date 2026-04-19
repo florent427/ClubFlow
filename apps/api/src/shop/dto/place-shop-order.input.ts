@@ -7,6 +7,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   Min,
   ValidateNested,
@@ -15,6 +16,7 @@ import {
 @InputType()
 export class PlaceShopOrderLineInput {
   @Field(() => ID)
+  @IsUUID()
   productId!: string;
 
   @Field(() => Int)

@@ -2,6 +2,7 @@ import { Field, ID, InputType } from '@nestjs/graphql';
 import {
   IsOptional,
   IsString,
+  IsUUID,
   IsUrl,
   MaxLength,
   Matches,
@@ -11,6 +12,7 @@ import {
 @InputType()
 export class UpdateBlogPostInput {
   @Field(() => ID)
+  @IsUUID()
   id!: string;
 
   @Field({ nullable: true })
