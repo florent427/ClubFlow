@@ -103,6 +103,7 @@ export function MessagingPage() {
   }, [selectedRoomId]);
 
   const rooms = roomsData?.viewerChatRooms ?? [];
+  const hasPseudo = Boolean(meData?.viewerMe?.pseudo?.trim());
 
   useEffect(() => {
     if (selectedRoomId == null && rooms.length > 0) {
@@ -159,7 +160,9 @@ export function MessagingPage() {
         <h1 className="mp-page-title">Messagerie</h1>
         <form className="mp-pseudo-form" onSubmit={onSavePseudo}>
           <label>
-            <span className="mp-label">Votre pseudo</span>
+            <span className="mp-label">
+              {hasPseudo ? 'Votre pseudo' : 'Choisissez un pseudo unique (3 à 32 caractères)'}
+            </span>
             <input
               className="mp-input"
               value={pseudoDraft}
@@ -168,6 +171,7 @@ export function MessagingPage() {
               minLength={3}
               maxLength={32}
               autoComplete="off"
+              placeholder={hasPseudo ? undefined : 'ex. judoka75'}
             />
           </label>
           <button type="submit" className="mp-btn mp-btn-secondary" disabled={savingPseudo}>
@@ -180,6 +184,12 @@ export function MessagingPage() {
           ) : null}
         </form>
       </header>
+      {!hasPseudo ? (
+        <p className="mp-hint">
+          Choisissez un pseudo pour participer aux salons. Il sera visible des autres
+          membres du club à la place de votre vrai nom.
+        </p>
+      ) : null}
 
       <div className="mp-messaging-grid">
         <aside className="mp-messaging-rooms">
@@ -206,29 +216,49 @@ export function MessagingPage() {
         </aside>
 
         <section className="mp-messaging-thread">
-          <div className="mp-thread-title">{titleForRoom || '—'}</div>
+          <div className="mp-thread-title">{titleForRoom || 'Aucun salon sélectionné'}</div>
           <div className="mp-thread-messages">
-            {liveMessages.map((m) => (
-              <div key={m.id} className="mp-msg">
-                <div className="mp-msg-meta">
-                  <strong>{m.sender.pseudo ?? `${m.sender.firstName}`}</strong>
-                  <span className="mp-msg-time">
-                    {new Date(m.createdAt).toLocaleString('fr-FR')}
-                  </span>
+            {!selectedRoomId && rooms.length === 0 ? (
+              <p className="mp-hint">
+                Aucun salon pour l’instant. Le club peut en créer depuis l’administration.
+              </p>
+            ) : !selectedRoomId ? (
+              <p className="mp-hint">Sélectionnez un salon pour commencer à discuter.</p>
+            ) : liveMessages.length === 0 ? (
+              <p className="mp-hint">Aucun message pour l’instant. Lancez la discussion !</p>
+            ) : (
+              liveMessages.map((m) => (
+                <div key={m.id} className="mp-msg">
+                  <div className="mp-msg-meta">
+                    <strong>{m.sender.pseudo ?? `${m.sender.firstName}`}</strong>
+                    <span className="mp-msg-time">
+                      {new Date(m.createdAt).toLocaleString('fr-FR')}
+                    </span>
+                  </div>
+                  <div className="mp-msg-body">{m.body}</div>
                 </div>
-                <div className="mp-msg-body">{m.body}</div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
           <form className="mp-thread-compose" onSubmit={onSend}>
             <input
               className="mp-input"
-              placeholder="Message…"
+              placeholder={
+                !hasPseudo
+                  ? 'Enregistrez un pseudo pour écrire…'
+                  : !selectedRoomId
+                    ? 'Sélectionnez un salon…'
+                    : 'Message…'
+              }
               value={draft}
               onChange={(ev) => setDraft(ev.target.value)}
-              disabled={!selectedRoomId}
+              disabled={!selectedRoomId || !hasPseudo}
             />
-            <button type="submit" className="mp-btn" disabled={!selectedRoomId}>
+            <button
+              type="submit"
+              className="mp-btn"
+              disabled={!selectedRoomId || !hasPseudo || !draft.trim()}
+            >
               Envoyer
             </button>
           </form>

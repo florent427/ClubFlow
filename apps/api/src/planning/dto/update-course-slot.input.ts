@@ -60,12 +60,12 @@ export class UpdateCourseSlotInput {
   @Min(0)
   bookingCapacity?: number | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsISO8601()
   bookingOpensAt?: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsISO8601()
   bookingClosesAt?: string | null;

@@ -1020,6 +1020,11 @@ export class ViewerService {
       familyId = payerLink.familyId;
       payerEmail = me?.email ?? null;
     } else if (activeProfile.contactId) {
+      const user = await this.prisma.user.findFirst({
+        where: { id: userId },
+        select: { email: true },
+      });
+      payerEmail = user?.email ?? null;
       const payerLink = await this.prisma.familyMember.findFirst({
         where: {
           contactId: activeProfile.contactId,
@@ -1028,17 +1033,25 @@ export class ViewerService {
         },
         select: { familyId: true },
       });
-      if (!payerLink) {
-        throw new BadRequestException(
-          'Seul un payeur de foyer peut inscrire un enfant depuis le portail.',
-        );
+      if (payerLink) {
+        familyId = payerLink.familyId;
+      } else {
+        const newFamily = await this.prisma.family.create({
+          data: {
+            clubId,
+            familyMembers: {
+              create: [
+                {
+                  contactId: activeProfile.contactId,
+                  linkRole: FamilyMemberLinkRole.PAYER,
+                },
+              ],
+            },
+          },
+          select: { id: true },
+        });
+        familyId = newFamily.id;
       }
-      const user = await this.prisma.user.findFirst({
-        where: { id: userId },
-        select: { email: true },
-      });
-      familyId = payerLink.familyId;
-      payerEmail = user?.email ?? null;
     } else {
       throw new BadRequestException('Sélection de profil requise');
     }
@@ -1051,6 +1064,20 @@ export class ViewerService {
       memberId: null,
       assumeMemberFamilyId: familyId!,
     });
+    const duplicate = await this.prisma.member.findFirst({
+      where: {
+        clubId,
+        birthDate: new Date(input.birthDate),
+        firstName: { equals: input.firstName.trim(), mode: 'insensitive' },
+        lastName: { equals: input.lastName.trim(), mode: 'insensitive' },
+      },
+      select: { id: true },
+    });
+    if (duplicate) {
+      throw new BadRequestException(
+        'Un adhérent avec ce prénom, nom et date de naissance existe déjà dans le club.',
+      );
+    }
     const pseudo = await this.memberPseudo.pickAvailablePseudo(
       this.prisma,
       clubId,

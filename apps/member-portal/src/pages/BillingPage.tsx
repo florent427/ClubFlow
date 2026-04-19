@@ -115,7 +115,7 @@ export function BillingPage() {
     let paid = 0;
     for (const inv of invoices) {
       if (inv.status === 'OPEN') open += inv.balanceCents;
-      if (inv.status === 'PAID') paid += inv.totalPaidCents;
+      paid += inv.totalPaidCents;
     }
     return { open, paid };
   }, [invoices]);

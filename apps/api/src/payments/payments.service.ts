@@ -19,6 +19,25 @@ import { UpsertClubPricingRuleInput } from './dto/upsert-pricing-rule.input';
 import { invoicePaymentTotals } from './invoice-totals';
 import { applyPricing } from './pricing-rules';
 
+type FamilyForLabel = {
+  familyMembers: Array<{
+    member: { lastName: string | null; firstName: string | null } | null;
+    contact: { lastName: string | null; firstName: string | null } | null;
+  }>;
+} | null;
+
+function deriveFamilyLabel(family: FamilyForLabel): string | null {
+  if (!family) return null;
+  const lastNames = new Set<string>();
+  for (const fm of family.familyMembers) {
+    const ln = fm.contact?.lastName ?? fm.member?.lastName;
+    if (ln && ln.trim()) lastNames.add(ln.trim());
+  }
+  if (lastNames.size === 0) return null;
+  const sorted = Array.from(lastNames).sort();
+  return `Famille ${sorted.join('-')}`;
+}
+
 @Injectable()
 export class PaymentsService {
   constructor(
@@ -159,7 +178,17 @@ export class PaymentsService {
       orderBy: { createdAt: 'desc' },
       include: {
         payments: { select: { amountCents: true } },
-        family: { select: { label: true } },
+        family: {
+          select: {
+            label: true,
+            familyMembers: {
+              include: {
+                member: { select: { lastName: true, firstName: true } },
+                contact: { select: { lastName: true, firstName: true } },
+              },
+            },
+          },
+        },
         householdGroup: { select: { label: true } },
       },
     });
@@ -173,7 +202,7 @@ export class PaymentsService {
         ...inv,
         totalPaidCents,
         balanceCents,
-        familyLabel: family?.label ?? null,
+        familyLabel: family?.label ?? deriveFamilyLabel(family) ?? null,
         householdGroupLabel: householdGroup?.label ?? null,
       };
     });

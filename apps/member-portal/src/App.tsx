@@ -86,30 +86,9 @@ export default function App() {
                   </MemberOnly>
                 }
               />
-              <Route
-                path="/famille"
-                element={
-                  <MemberOnly>
-                    <FamilyPage />
-                  </MemberOnly>
-                }
-              />
-              <Route
-                path="/factures"
-                element={
-                  <MemberOnly>
-                    <BillingPage />
-                  </MemberOnly>
-                }
-              />
-              <Route
-                path="/parametres"
-                element={
-                  <MemberOnly>
-                    <SettingsPage />
-                  </MemberOnly>
-                }
-              />
+              <Route path="/famille" element={<FamilyPage />} />
+              <Route path="/factures" element={<BillingPage />} />
+              <Route path="/parametres" element={<SettingsPage />} />
               <Route
                 path="/messagerie"
                 element={

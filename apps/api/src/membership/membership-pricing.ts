@@ -25,7 +25,9 @@ export function inclusiveCalendarDays(a: Date, b: Date): number {
 
 /**
  * Part de saison restant à payer en points de base (10_000 = 100 %).
- * Date d’effet bornée à [startsOn, endsOn].
+ * Granularité au mois plein : la date d’effet est ramenée au 1er du mois,
+ * la fin de saison au dernier jour de son mois. Date d’effet bornée à
+ * [startsOn, endsOn].
  */
 export function computeProrataFactorBp(
   effectiveDate: Date,
@@ -41,15 +43,28 @@ export function computeProrataFactorBp(
   if (eff > end) {
     return 0;
   }
-  const totalDays = inclusiveCalendarDays(start, end);
-  if (totalDays < 1) {
+  const totalMonths = inclusiveCalendarMonths(start, end);
+  if (totalMonths < 1) {
     return 10_000;
   }
-  const remainingDays = inclusiveCalendarDays(eff, end);
+  const effMonthStart = new Date(
+    Date.UTC(eff.getUTCFullYear(), eff.getUTCMonth(), 1),
+  );
+  const remainingMonths = inclusiveCalendarMonths(effMonthStart, end);
   return Math.min(
     10_000,
-    Math.max(0, Math.round((remainingDays * 10_000) / totalDays)),
+    Math.max(0, Math.round((remainingMonths * 10_000) / totalMonths)),
   );
+}
+
+/** Nombre de mois calendaires couverts entre a et b (inclus), min 0. */
+export function inclusiveCalendarMonths(a: Date, b: Date): number {
+  const ay = a.getUTCFullYear();
+  const am = a.getUTCMonth();
+  const by = b.getUTCFullYear();
+  const bm = b.getUTCMonth();
+  const diff = (by - ay) * 12 + (bm - am) + 1;
+  return diff < 0 ? 0 : diff;
 }
 
 function stripTime(d: Date): Date {

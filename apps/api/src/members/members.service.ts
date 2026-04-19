@@ -790,6 +790,7 @@ export class MembersService {
   async deleteMember(clubId: string, id: string): Promise<void> {
     const existing = await this.prisma.member.findFirst({
       where: { id, clubId },
+      select: { id: true, userId: true },
     });
     if (!existing) {
       throw new NotFoundException('Membre introuvable');
@@ -802,10 +803,35 @@ export class MembersService {
         'Impossible de supprimer ce membre : il est encore professeur sur un ou plusieurs créneaux',
       );
     }
+    const memberLines = await this.prisma.invoiceLine.findMany({
+      where: { memberId: id },
+      select: { id: true, invoiceId: true, invoice: { select: { status: true } } },
+    });
+    const blockingLine = memberLines.find(
+      (l) => l.invoice.status !== 'DRAFT',
+    );
+    if (blockingLine) {
+      throw new BadRequestException(
+        'Impossible de supprimer ce membre : des factures émises ou payées le référencent.',
+      );
+    }
     const priorFamilyLink = await this.prisma.familyMember.findFirst({
       where: { memberId: id },
       select: { familyId: true },
     });
+    if (memberLines.length > 0) {
+      const invoiceIds = [...new Set(memberLines.map((l) => l.invoiceId))];
+      await this.prisma.invoiceLine.deleteMany({ where: { memberId: id } });
+      const emptyInvoices = await this.prisma.invoice.findMany({
+        where: { id: { in: invoiceIds }, lines: { none: {} } },
+        select: { id: true },
+      });
+      if (emptyInvoices.length > 0) {
+        await this.prisma.invoice.deleteMany({
+          where: { id: { in: emptyInvoices.map((i) => i.id) } },
+        });
+      }
+    }
     await this.prisma.member.delete({ where: { id } });
     if (priorFamilyLink) {
       await this.families.ensureSoleFamilyMemberIsPayer(
@@ -815,6 +841,17 @@ export class MembersService {
         clubId,
         priorFamilyLink.familyId,
       );
+    }
+    if (existing.userId) {
+      const remainingMembers = await this.prisma.member.count({
+        where: { userId: existing.userId },
+      });
+      const staffMemberships = await this.prisma.clubMembership.count({
+        where: { userId: existing.userId },
+      });
+      if (remainingMembers === 0 && staffMemberships === 0) {
+        await this.prisma.user.delete({ where: { id: existing.userId } });
+      }
     }
   }
 

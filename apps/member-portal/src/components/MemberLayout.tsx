@@ -177,13 +177,15 @@ export function MemberLayout() {
             Paramètres
           </NavLink>
         </nav>
-        <NavLink
-          to="/planning"
-          className="mp-cta-sidebar mp-cta-sidebar--active"
-          style={{ textDecoration: 'none', textAlign: 'center' }}
-        >
-          Voir le planning
-        </NavLink>
+        {!hideMemberModules ? (
+          <NavLink
+            to="/planning"
+            className="mp-cta-sidebar mp-cta-sidebar--active"
+            style={{ textDecoration: 'none', textAlign: 'center' }}
+          >
+            Voir le planning
+          </NavLink>
+        ) : null}
       </aside>
 
       <div className="mp-main-wrap">

@@ -39,21 +39,18 @@ export function FamiliesPage() {
   const members = membersData?.clubMembers ?? [];
   const families = famData?.clubFamilies ?? [];
 
-  const filteredFamilies = useMemo(() => {
-    const raw = familySearch.trim().toLowerCase();
-    if (!raw) return families;
-    return families.filter((f) => {
-      const labelLower = (f.label ?? '').trim().toLowerCase();
-      const fallback = 'foyer sans nom';
-      const haystack = labelLower || fallback;
-      return haystack.includes(raw);
-    });
-  }, [families, familySearch]);
-
   const memberNameById = useMemo(() => {
     const m = new Map<string, string>();
     for (const x of members) {
       m.set(x.id, `${x.firstName} ${x.lastName}`);
+    }
+    return m;
+  }, [members]);
+
+  const memberLastNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const x of members) {
+      m.set(x.id, x.lastName);
     }
     return m;
   }, [members]);
@@ -65,6 +62,42 @@ export function FamiliesPage() {
     }
     return m;
   }, [contactsData?.clubContacts]);
+
+  const contactLastNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of contactsData?.clubContacts ?? []) {
+      m.set(c.id, c.lastName);
+    }
+    return m;
+  }, [contactsData?.clubContacts]);
+
+  const deriveFamilyLabel = (
+    links: Array<{ memberId: string | null; contactId: string | null }>,
+  ): string | null => {
+    const lastNames = new Set<string>();
+    for (const l of links) {
+      const ln =
+        (l.contactId ? contactLastNameById.get(l.contactId) : null) ??
+        (l.memberId ? memberLastNameById.get(l.memberId) : null);
+      if (ln && ln.trim()) lastNames.add(ln.trim());
+    }
+    if (lastNames.size === 0) return null;
+    return `Famille ${Array.from(lastNames).sort().join('-')}`;
+  };
+
+  const filteredFamilies = useMemo(() => {
+    const raw = familySearch.trim().toLowerCase();
+    if (!raw) return families;
+    return families.filter((f) => {
+      const labelLower = (f.label ?? deriveFamilyLabel(f.links) ?? '')
+        .trim()
+        .toLowerCase();
+      const fallback = 'foyer sans nom';
+      const haystack = labelLower || fallback;
+      return haystack.includes(raw);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [families, familySearch, memberLastNameById, contactLastNameById]);
 
   function onDeleteFamily(familyId: string) {
     if (
@@ -142,7 +175,7 @@ export function FamiliesPage() {
                       >
                         <div className="families-card__head">
                           <strong>
-                            {f.label ?? 'Foyer sans nom'}
+                            {f.label ?? deriveFamilyLabel(f.links) ?? 'Foyer sans nom'}
                             {f.needsPayer ? (
                               <span className="families-needs-payer-badge">
                                 Payeur manquant

@@ -85,10 +85,19 @@ export function SettingsPage() {
       {loading ? (
         <p className="mp-hint">Chargement…</p>
       ) : isContact ? (
-        <p className="mp-hint">
-          L'édition de profil est réservée aux fiches adhérent. Demandez au club
-          de créer votre fiche pour accéder à ces options.
-        </p>
+        <div className="mp-form-card">
+          <h2 className="mp-section-title">Mon compte</h2>
+          <p className="mp-hint">
+            Vous utilisez un compte contact (sans fiche adhérent). Pour modifier
+            votre prénom, nom, e-mail ou téléphone, contactez le club : ces
+            informations sont synchronisées avec votre rôle de payeur pour
+            éviter toute divergence sur les factures.
+          </p>
+          <p className="mp-hint">
+            Dès que le club vous aura rattaché à une fiche adhérent, vous
+            pourrez éditer votre profil directement ici.
+          </p>
+        </div>
       ) : (
         <form className="mp-form-card" onSubmit={onSubmit}>
           <h2 className="mp-section-title">Mon profil</h2>

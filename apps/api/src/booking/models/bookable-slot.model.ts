@@ -26,10 +26,10 @@ export class BookableSlotGraph {
   @Field(() => Int, { nullable: true })
   bookingCapacity!: number | null;
 
-  @Field({ nullable: true })
+  @Field(() => Date, { nullable: true })
   bookingOpensAt!: Date | null;
 
-  @Field({ nullable: true })
+  @Field(() => Date, { nullable: true })
   bookingClosesAt!: Date | null;
 
   @Field(() => Int)
@@ -56,10 +56,10 @@ export class SlotBookingGraph {
   @Field()
   bookedAt!: Date;
 
-  @Field({ nullable: true })
+  @Field(() => Date, { nullable: true })
   cancelledAt!: Date | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   note!: string | null;
 
   @Field()

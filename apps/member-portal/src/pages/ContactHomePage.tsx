@@ -35,7 +35,7 @@ export function ContactHomePage() {
 
       <div className="mp-family-actions">
         <PromoteSelfToMemberCta />
-        {isPayerContact ? <RegisterChildMemberCta /> : null}
+        <RegisterChildMemberCta />
         {isPayerContact ? <InviteFamilyMemberCta /> : null}
       </div>
 

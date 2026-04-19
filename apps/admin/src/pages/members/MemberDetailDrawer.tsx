@@ -2,6 +2,7 @@ import { useMutation, useQuery } from '@apollo/client/react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { QuickMessageModal } from '../../components/QuickMessageModal';
+import { useToast } from '../../components/ToastProvider';
 import { useClubCommunicationEnabled } from '../../lib/useClubCommunicationEnabled';
 import {
   CLUB_FAMILIES,
@@ -165,6 +166,7 @@ export function MemberDetailDrawer({
   const [builtinRoles, setBuiltinRoles] = useState<string[]>(['STUDENT']);
   const [customRoleIds, setCustomRoleIds] = useState<string[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
+  const { showToast } = useToast();
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [memberFormHydrated, setMemberFormHydrated] = useState(false);
 
@@ -463,10 +465,14 @@ export function MemberDetailDrawer({
     DeleteMemberMutationData
   >(DELETE_CLUB_MEMBER, {
     onCompleted: () => {
+      showToast('Fiche supprimée.', 'success');
       refetchAll();
       onClose();
     },
-    onError: (e) => setFormError(e.message),
+    onError: (e) => {
+      setFormError(e.message);
+      showToast(e.message, 'error');
+    },
   });
 
   const [removeFromFamily, { loading: removingFamily }] = useMutation(

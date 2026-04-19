@@ -24,7 +24,7 @@ export function ContactLayout() {
             <span className="mp-ico material-symbols-outlined">home</span>
             Accueil
           </NavLink>
-          <NavLink to="/facturation" className={linkClass}>
+          <NavLink to="/factures" className={linkClass}>
             <span className="mp-ico material-symbols-outlined">receipt_long</span>
             Mes factures
           </NavLink>
@@ -32,7 +32,7 @@ export function ContactLayout() {
             <span className="mp-ico material-symbols-outlined">groups</span>
             Famille
           </NavLink>
-          <NavLink to="/actualites" className={linkClass}>
+          <NavLink to="/actus" className={linkClass}>
             <span className="mp-ico material-symbols-outlined">campaign</span>
             Actus & sondages
           </NavLink>

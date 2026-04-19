@@ -81,8 +81,10 @@ export function BillingPage() {
     let draft = 0;
     for (const inv of invoices) {
       if (inv.status === 'OPEN') open += inv.balanceCents;
-      else if (inv.status === 'PAID') paid += inv.totalPaidCents;
-      else if (inv.status === 'DRAFT') draft += inv.amountCents;
+      if (inv.status === 'DRAFT') draft += inv.amountCents;
+      if (inv.status === 'OPEN' || inv.status === 'PAID') {
+        paid += inv.totalPaidCents;
+      }
     }
     return { open, paid, draft };
   }, [invoices]);
