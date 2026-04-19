@@ -93,7 +93,7 @@ export class ViewerResolver {
   @Mutation(() => ViewerFamilyJoinResultGraph, {
     name: 'viewerJoinFamilyByPayerEmail',
     description:
-      'Rattache la fiche active à un foyer existant en saisissant l’e-mail du payeur (ou du membre seul du foyer).',
+      'Rattache le profil actif (fiche adhérent ou contact) à un foyer existant en saisissant l’e-mail du payeur (ou du membre seul du foyer).',
   })
   @RequireClubModule(ModuleCode.FAMILIES)
   viewerJoinFamilyByPayerEmail(
@@ -101,16 +101,22 @@ export class ViewerResolver {
     @CurrentClub() club: Club,
     @Args('input') input: ViewerJoinFamilyByPayerEmailInput,
   ): Promise<ViewerFamilyJoinResultGraph> {
-    if (!user.activeProfileMemberId) {
-      throw new BadRequestException(
-        'Cette action nécessite une fiche adhérent active.',
+    if (user.activeProfileMemberId) {
+      return this.viewer.viewerJoinFamilyByPayerEmail(
+        club.id,
+        user.activeProfileMemberId,
+        input.payerEmail,
       );
     }
-    return this.viewer.viewerJoinFamilyByPayerEmail(
-      club.id,
-      user.activeProfileMemberId,
-      input.payerEmail,
-    );
+    if (user.activeProfileContactId) {
+      return this.viewer.contactJoinFamilyByPayerEmail(
+        club.id,
+        user.activeProfileContactId,
+        user.userId,
+        input.payerEmail,
+      );
+    }
+    throw new BadRequestException('Sélection de profil requise');
   }
 
   @Mutation(() => ViewerMemberGraph, { name: 'viewerUpdateMyPseudo' })

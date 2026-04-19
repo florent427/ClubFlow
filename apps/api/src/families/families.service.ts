@@ -838,6 +838,110 @@ export class FamiliesService {
     return result;
   }
 
+  /**
+   * Portail contact : rattache un compte contact (sans fiche adhérent) à
+   * l’espace famille étendu du foyer du payeur en créant un **nouveau** foyer
+   * résidence dont le contact est PAYER. Le contact n’est pas ajouté au foyer
+   * du payeur (confidentialité) mais partage factures et enfants via le
+   * HouseholdGroup.
+   */
+  async linkContactAsCoParentResidenceFromPayerFamily(
+    clubId: string,
+    contactId: string,
+    payerFamilyId: string,
+  ): Promise<{ newFamilyId: string; householdGroupId: string }> {
+    const payerFamily = await this.prisma.family.findFirst({
+      where: { id: payerFamilyId, clubId },
+    });
+    if (!payerFamily) {
+      throw new NotFoundException('Foyer du payeur introuvable');
+    }
+
+    const contact = await this.prisma.contact.findFirst({
+      where: { id: contactId, clubId },
+    });
+    if (!contact) {
+      throw new NotFoundException('Contact introuvable pour ce club');
+    }
+
+    const existingPayerLink = await this.prisma.familyMember.findFirst({
+      where: {
+        contactId,
+        linkRole: FamilyMemberLinkRole.PAYER,
+        family: { clubId },
+      },
+    });
+    if (existingPayerLink) {
+      throw new BadRequestException(
+        'Ce contact est déjà rattaché à un foyer en tant que payeur pour ce club.',
+      );
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const pf = await tx.family.findFirst({
+        where: { id: payerFamilyId, clubId },
+      });
+      if (!pf) {
+        throw new NotFoundException('Foyer du payeur introuvable');
+      }
+
+      let hgId = pf.householdGroupId;
+      if (!hgId) {
+        const hg = await tx.householdGroup.create({
+          data: {
+            clubId,
+            label: null,
+            carrierFamilyId: payerFamilyId,
+          },
+        });
+        hgId = hg.id;
+        await tx.family.update({
+          where: { id: payerFamilyId },
+          data: { householdGroupId: hgId },
+        });
+      } else {
+        const hg = await tx.householdGroup.findFirst({
+          where: { id: hgId, clubId },
+        });
+        if (!hg) {
+          throw new BadRequestException('Groupe foyer invalide pour ce payeur');
+        }
+        if (hg.carrierFamilyId == null) {
+          await tx.householdGroup.update({
+            where: { id: hgId },
+            data: { carrierFamilyId: payerFamilyId },
+          });
+        }
+      }
+
+      const newFam = await tx.family.create({
+        data: {
+          clubId,
+          label: null,
+          householdGroupId: hgId,
+        },
+      });
+
+      await tx.familyMember.create({
+        data: {
+          familyId: newFam.id,
+          contactId,
+          linkRole: FamilyMemberLinkRole.PAYER,
+        },
+      });
+
+      return { newFamilyId: newFam.id, householdGroupId: hgId };
+    });
+
+    await this.syncContactLinksForFamilyMemberEmails(clubId, payerFamilyId);
+    await this.syncContactLinksForFamilyMemberEmails(
+      clubId,
+      result.newFamilyId,
+    );
+
+    return result;
+  }
+
   async transferClubMemberToFamily(
     clubId: string,
     memberId: string,

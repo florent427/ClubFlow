@@ -134,7 +134,7 @@ export class ViewerService {
       canAccessClubBackOffice,
       adminWorkspaceClubId,
       hasClubFamily,
-      canSelfAttachFamilyViaPayerEmail: false,
+      canSelfAttachFamilyViaPayerEmail: !hasClubFamily,
       isContactProfile: true,
       hideMemberModules: true,
       telegramLinked: false,
@@ -244,6 +244,64 @@ export class ViewerService {
       success: true,
       message:
         'Votre foyer « résidence » a été créé dans l’espace familial partagé avec celui du payeur. Vous n’apparaissez pas dans son foyer au club ; vous partagez les factures et les enfants du groupe sur le portail. Actualisez la page.',
+      familyId: linked.newFamilyId,
+      familyLabel: fam?.label ?? null,
+    };
+  }
+
+  async contactJoinFamilyByPayerEmail(
+    clubId: string,
+    contactId: string,
+    userId: string,
+    payerEmail: string,
+  ): Promise<ViewerFamilyJoinResultGraph> {
+    const subject = await this.prisma.contact.findFirst({
+      where: { id: contactId, clubId, userId },
+    });
+    if (!subject) {
+      throw new NotFoundException('Profil introuvable');
+    }
+
+    const existingPayerLink = await this.prisma.familyMember.findFirst({
+      where: {
+        contactId,
+        linkRole: FamilyMemberLinkRole.PAYER,
+        family: { clubId },
+      },
+      select: { familyId: true },
+    });
+    if (existingPayerLink) {
+      throw new BadRequestException(
+        'Vous êtes déjà rattaché à un foyer. Contactez le club pour modifier ce rattachement.',
+      );
+    }
+
+    const target = await this.findFamilyByPrincipalPayerEmail(
+      clubId,
+      payerEmail,
+    );
+    if (!target) {
+      throw new BadRequestException(
+        "Aucun foyer dont le payeur correspond à cette e-mail n'a été trouvé. Vérifiez l'adresse (telle qu'enregistrée au club) ou contactez le secrétariat.",
+      );
+    }
+
+    const linked =
+      await this.families.linkContactAsCoParentResidenceFromPayerFamily(
+        clubId,
+        contactId,
+        target.familyId,
+      );
+
+    const fam = await this.prisma.family.findFirst({
+      where: { id: linked.newFamilyId, clubId },
+      select: { label: true },
+    });
+
+    return {
+      success: true,
+      message:
+        'Votre espace contact est rattaché à l’espace familial partagé avec celui du payeur. Vous partagez les factures et les enfants du groupe sur le portail. Actualisez la page.',
       familyId: linked.newFamilyId,
       familyLabel: fam?.label ?? null,
     };
