@@ -228,7 +228,16 @@ export class PaymentsService {
             paidByContact: { select: { id: true, firstName: true, lastName: true } },
           },
         },
-        family: { select: { id: true, label: true } },
+        family: {
+          include: {
+            familyMembers: {
+              include: {
+                member: { select: { lastName: true, firstName: true } },
+                contact: { select: { lastName: true, firstName: true } },
+              },
+            },
+          },
+        },
         clubSeason: { select: { id: true, label: true } },
       },
     });
@@ -240,7 +249,13 @@ export class PaymentsService {
       inv.amountCents,
       paid,
     );
-    return { ...inv, totalPaidCents, balanceCents };
+    const familyWithLabel = inv.family
+      ? {
+          id: inv.family.id,
+          label: inv.family.label ?? deriveFamilyLabel(inv.family),
+        }
+      : null;
+    return { ...inv, family: familyWithLabel, totalPaidCents, balanceCents };
   }
 
   async issueInvoice(clubId: string, invoiceId: string) {

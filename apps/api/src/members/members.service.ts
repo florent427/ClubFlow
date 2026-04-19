@@ -40,6 +40,23 @@ import { ClubMemberEmailDuplicateInfoGraph } from './models/club-member-email-du
 import { MemberGraph } from './models/member.model';
 import { MemberPseudoService } from '../messaging/member-pseudo.service';
 
+type FamilyMemberWithNames = {
+  member: { lastName: string | null; firstName: string | null } | null;
+  contact: { lastName: string | null; firstName: string | null } | null;
+};
+
+function deriveFamilyLabelFromMembers(
+  familyMembers: FamilyMemberWithNames[],
+): string | null {
+  const lastNames = new Set<string>();
+  for (const fm of familyMembers) {
+    const ln = fm.contact?.lastName ?? fm.member?.lastName;
+    if (ln && ln.trim()) lastNames.add(ln.trim());
+  }
+  if (lastNames.size === 0) return null;
+  return `Famille ${Array.from(lastNames).sort().join('-')}`;
+}
+
 @Injectable()
 export class MembersService {
   constructor(
@@ -103,7 +120,21 @@ export class MembersService {
     gradeLevel: true,
     roleAssignments: true,
     customRoleAssignments: { include: { roleDefinition: true } },
-    familyMembers: { take: 1 as const, include: { family: true } },
+    familyMembers: {
+      take: 1 as const,
+      include: {
+        family: {
+          include: {
+            familyMembers: {
+              include: {
+                member: { select: { lastName: true, firstName: true } },
+                contact: { select: { lastName: true, firstName: true } },
+              },
+            },
+          },
+        },
+      },
+    },
     customFieldValues: { include: { definition: true } },
     dynamicGroupAssignments: {
       include: {
@@ -118,7 +149,21 @@ export class MembersService {
         gradeLevel: true;
         roleAssignments: true;
         customRoleAssignments: { include: { roleDefinition: true } };
-        familyMembers: { take: 1; include: { family: true } };
+        familyMembers: {
+          take: 1;
+          include: {
+            family: {
+              include: {
+                familyMembers: {
+                  include: {
+                    member: { select: { lastName: true; firstName: true } };
+                    contact: { select: { lastName: true; firstName: true } };
+                  };
+                };
+              };
+            };
+          };
+        };
         customFieldValues: { include: { definition: true } };
         dynamicGroupAssignments: {
           include: {
@@ -159,7 +204,10 @@ export class MembersService {
         this.toClubRoleGraph(a.roleDefinition),
       ),
       family: fm
-        ? { id: fm.family.id, label: fm.family.label }
+        ? {
+            id: fm.family.id,
+            label: fm.family.label ?? deriveFamilyLabelFromMembers(fm.family.familyMembers),
+          }
         : null,
       familyLink: fm
         ? { id: fm.id, linkRole: fm.linkRole }
