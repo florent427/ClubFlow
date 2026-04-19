@@ -91,6 +91,7 @@ export function PlanningPage() {
   const [slotStarts, setSlotStarts] = useState('');
   const [slotEnds, setSlotEnds] = useState('');
   const [slotGroupId, setSlotGroupId] = useState('');
+  const [slotRepeatWeeks, setSlotRepeatWeeks] = useState('1');
   const [formError, setFormError] = useState<string | null>(null);
 
   /** Indique qu'on est en mode duplication (pré-remplissage). */
@@ -268,18 +269,35 @@ export function PlanningPage() {
       setFormError('La fin doit être après le début (durée minimale 15 min).');
       return;
     }
-    await createSlot({
-      variables: {
-        input: {
-          venueId: slotVenueId,
-          coachMemberId: slotCoachId,
-          title: slotTitle.trim(),
-          startsAt: starts.toISOString(),
-          endsAt: ends.toISOString(),
-          dynamicGroupId: slotGroupId || undefined,
-        },
-      },
-    });
+    const weeks = Math.max(1, Math.min(52, parseInt(slotRepeatWeeks, 10) || 1));
+    const occurrences: { starts: Date; ends: Date }[] = [];
+    for (let i = 0; i < weeks; i++) {
+      const s = new Date(starts.getTime() + i * 7 * 24 * 60 * 60 * 1000);
+      const e = new Date(ends.getTime() + i * 7 * 24 * 60 * 60 * 1000);
+      occurrences.push({ starts: s, ends: e });
+    }
+    try {
+      for (const occ of occurrences) {
+        await createSlot({
+          variables: {
+            input: {
+              venueId: slotVenueId,
+              coachMemberId: slotCoachId,
+              title: slotTitle.trim(),
+              startsAt: occ.starts.toISOString(),
+              endsAt: occ.ends.toISOString(),
+              dynamicGroupId: slotGroupId || undefined,
+            },
+          },
+        });
+      }
+      if (weeks > 1) {
+        showToast(`${weeks} créneaux créés`, 'success');
+      }
+      setSlotRepeatWeeks('1');
+    } catch {
+      // error already shown via onError handler
+    }
   }
 
   function viewLabel(v: PlanningView): string {
@@ -581,6 +599,20 @@ export function PlanningPage() {
                 ))}
               </select>
             </label>
+            <label className="field">
+              <span>Répéter chaque semaine pendant (1–52)</span>
+              <input
+                type="number"
+                min={1}
+                max={52}
+                value={slotRepeatWeeks}
+                onChange={(e) => setSlotRepeatWeeks(e.target.value)}
+              />
+              <small className="muted">
+                1 = pas de répétition. Crée une occurrence par semaine à la même
+                heure.
+              </small>
+            </label>
             <button
               type="submit"
               className="btn btn-primary members-form__submit"
@@ -590,7 +622,9 @@ export function PlanningPage() {
                 ? 'Création…'
                 : dupSource
                   ? 'Créer la copie'
-                  : 'Créer le créneau'}
+                  : parseInt(slotRepeatWeeks, 10) > 1
+                    ? `Créer ${parseInt(slotRepeatWeeks, 10)} créneaux`
+                    : 'Créer le créneau'}
             </button>
             {(venuesData?.clubVenues ?? []).length === 0 ? (
               <p className="muted">Créez d'abord un lieu.</p>

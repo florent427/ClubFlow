@@ -72,6 +72,32 @@ export class EventsAdminResolver {
   ): Promise<boolean> {
     return this.service.remove(club.id, id);
   }
+
+  @Mutation(() => ClubEventGraph)
+  adminRegisterMemberToEvent(
+    @CurrentClub() club: Club,
+    @Args('eventId', { type: () => ID }) eventId: string,
+    @Args('memberId', { type: () => ID }) memberId: string,
+    @Args('note', { type: () => String, nullable: true }) note: string | null,
+  ): Promise<ClubEventGraph> {
+    return this.service.adminRegisterMember(
+      club.id,
+      eventId,
+      memberId,
+      note ?? undefined,
+    ) as Promise<ClubEventGraph>;
+  }
+
+  @Mutation(() => ClubEventGraph)
+  adminCancelEventRegistration(
+    @CurrentClub() club: Club,
+    @Args('registrationId', { type: () => ID }) registrationId: string,
+  ): Promise<ClubEventGraph> {
+    return this.service.adminCancelRegistrationById(
+      club.id,
+      registrationId,
+    ) as Promise<ClubEventGraph>;
+  }
 }
 
 @Resolver()

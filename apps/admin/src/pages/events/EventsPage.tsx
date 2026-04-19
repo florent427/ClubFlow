@@ -2,8 +2,11 @@ import { useMutation, useQuery } from '@apollo/client/react';
 import { useState, useMemo } from 'react';
 import type { FormEvent } from 'react';
 import {
+  ADMIN_CANCEL_EVENT_REGISTRATION,
+  ADMIN_REGISTER_MEMBER_TO_EVENT,
   CANCEL_CLUB_EVENT,
   CLUB_EVENTS,
+  CLUB_MEMBERS,
   CREATE_CLUB_EVENT,
   DELETE_CLUB_EVENT,
   PUBLISH_CLUB_EVENT,
@@ -13,9 +16,11 @@ import type {
   ClubEvent,
   ClubEventsQueryData,
   ClubEventStatusStr,
+  MembersQueryData,
 } from '../../lib/types';
 import { useToast } from '../../components/ToastProvider';
 import { ConfirmModal, Drawer, EmptyState } from '../../components/ui';
+import { downloadCsv, toCsv } from '../../lib/csv-export';
 
 function toLocalInputValue(iso: string | null): string {
   if (!iso) return '';
@@ -90,17 +95,26 @@ function emptyForm(): FormState {
 export function EventsPage() {
   const { showToast } = useToast();
   const { data, refetch, loading } = useQuery<ClubEventsQueryData>(CLUB_EVENTS);
+  const { data: membersData } = useQuery<MembersQueryData>(CLUB_MEMBERS);
   const [create, { loading: creating }] = useMutation(CREATE_CLUB_EVENT);
   const [update, { loading: updating }] = useMutation(UPDATE_CLUB_EVENT);
   const [publish] = useMutation(PUBLISH_CLUB_EVENT);
   const [cancel] = useMutation(CANCEL_CLUB_EVENT);
   const [remove] = useMutation(DELETE_CLUB_EVENT);
+  const [adminRegisterMember, { loading: registering }] = useMutation(
+    ADMIN_REGISTER_MEMBER_TO_EVENT,
+  );
+  const [adminCancelRegistration] = useMutation(
+    ADMIN_CANCEL_EVENT_REGISTRATION,
+  );
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<ClubEvent | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
   const [confirmDelete, setConfirmDelete] = useState<ClubEvent | null>(null);
   const [detailEvent, setDetailEvent] = useState<ClubEvent | null>(null);
+  const [memberPickerOpen, setMemberPickerOpen] = useState(false);
+  const [memberSearch, setMemberSearch] = useState('');
 
   const events = useMemo(
     () =>
@@ -218,6 +232,65 @@ export function EventsPage() {
       showToast(err instanceof Error ? err.message : 'Erreur', 'error');
     }
   }
+  async function onAdminRegisterMember(memberId: string) {
+    if (!detailEvent) return;
+    try {
+      const res = await adminRegisterMember({
+        variables: { eventId: detailEvent.id, memberId },
+      });
+      showToast('Adhérent inscrit', 'success');
+      const updated = (res.data as { adminRegisterMemberToEvent: ClubEvent } | null)
+        ?.adminRegisterMemberToEvent;
+      if (updated) setDetailEvent(updated);
+      setMemberPickerOpen(false);
+      setMemberSearch('');
+      await refetch();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
+
+  async function onAdminCancelRegistration(registrationId: string) {
+    if (!detailEvent) return;
+    try {
+      const res = await adminCancelRegistration({
+        variables: { registrationId },
+      });
+      showToast('Inscription annulée', 'success');
+      const updated = (res.data as {
+        adminCancelEventRegistration: ClubEvent;
+      } | null)?.adminCancelEventRegistration;
+      if (updated) setDetailEvent(updated);
+      await refetch();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
+
+  function exportAttendeesCsv(ev: ClubEvent) {
+    const csv = toCsv(
+      ['Nom', 'Statut', 'Inscrit le', 'Annulé le', 'Note'],
+      ev.registrations.map((r) => [
+        r.displayName ?? '',
+        r.status === 'REGISTERED'
+          ? 'Confirmé'
+          : r.status === 'WAITLISTED'
+            ? 'En attente'
+            : 'Annulé',
+        r.registeredAt ? new Date(r.registeredAt).toLocaleString('fr-FR') : '',
+        r.cancelledAt ? new Date(r.cancelledAt).toLocaleString('fr-FR') : '',
+        r.note ?? '',
+      ]),
+    );
+    const slug = ev.title
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '') || 'evenement';
+    downloadCsv(`emargement-${slug}.csv`, csv);
+  }
+
   async function onDelete() {
     if (!confirmDelete) return;
     try {
@@ -538,6 +611,95 @@ export function EventsPage() {
                 ? ` (capacité ${detailEvent.capacity})`
                 : ''}
             </p>
+            <div className="cf-form-actions" style={{ marginBottom: 12 }}>
+              <button
+                type="button"
+                className="cf-btn cf-btn--primary"
+                onClick={() => {
+                  setMemberSearch('');
+                  setMemberPickerOpen(true);
+                }}
+              >
+                <span className="material-symbols-outlined" aria-hidden>
+                  person_add
+                </span>
+                Inscrire un adhérent
+              </button>
+              <button
+                type="button"
+                className="cf-btn"
+                onClick={() => exportAttendeesCsv(detailEvent)}
+                disabled={detailEvent.registrations.length === 0}
+              >
+                <span className="material-symbols-outlined" aria-hidden>
+                  download
+                </span>
+                Export émargement CSV
+              </button>
+            </div>
+            {memberPickerOpen ? (
+              <div className="cf-registration-picker">
+                <input
+                  type="search"
+                  className="cf-input"
+                  placeholder="Rechercher un adhérent…"
+                  value={memberSearch}
+                  onChange={(e) => setMemberSearch(e.target.value)}
+                  autoFocus
+                />
+                <ul className="cf-registration-picker__list">
+                  {(() => {
+                    const q = memberSearch.trim().toLowerCase();
+                    const alreadyMemberIds = new Set(
+                      detailEvent.registrations
+                        .filter((r) => r.status !== 'CANCELLED' && r.memberId)
+                        .map((r) => r.memberId as string),
+                    );
+                    const matches = (membersData?.clubMembers ?? [])
+                      .filter((m) => !alreadyMemberIds.has(m.id))
+                      .filter((m) => {
+                        if (!q) return true;
+                        const name = `${m.firstName} ${m.lastName}`.toLowerCase();
+                        return (
+                          name.includes(q) ||
+                          (m.email ?? '').toLowerCase().includes(q)
+                        );
+                      })
+                      .slice(0, 20);
+                    if (matches.length === 0) {
+                      return (
+                        <li className="cf-muted">Aucun adhérent trouvé.</li>
+                      );
+                    }
+                    return matches.map((m) => (
+                      <li key={m.id}>
+                        <button
+                          type="button"
+                          className="cf-btn cf-btn--ghost cf-registration-picker__item"
+                          disabled={registering}
+                          onClick={() => void onAdminRegisterMember(m.id)}
+                        >
+                          {m.firstName} {m.lastName}
+                          {m.email ? (
+                            <span className="cf-muted"> · {m.email}</span>
+                          ) : null}
+                        </button>
+                      </li>
+                    ));
+                  })()}
+                </ul>
+                <button
+                  type="button"
+                  className="cf-btn"
+                  onClick={() => {
+                    setMemberPickerOpen(false);
+                    setMemberSearch('');
+                  }}
+                >
+                  Fermer
+                </button>
+              </div>
+            ) : null}
             <ul className="cf-registration-list">
               {detailEvent.registrations.length === 0 ? (
                 <li className="cf-muted">Aucune inscription pour l’instant.</li>
@@ -569,6 +731,15 @@ export function EventsPage() {
                           ? 'En attente'
                           : 'Annulé'}
                     </span>
+                    {r.status !== 'CANCELLED' ? (
+                      <button
+                        type="button"
+                        className="cf-btn cf-btn--ghost cf-btn--sm"
+                        onClick={() => void onAdminCancelRegistration(r.id)}
+                      >
+                        Annuler
+                      </button>
+                    ) : null}
                   </li>
                 ))
               )}

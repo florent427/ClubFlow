@@ -1495,6 +1495,30 @@ export const DELETE_CLUB_EVENT = gql`
   }
 `;
 
+export const ADMIN_REGISTER_MEMBER_TO_EVENT = gql`
+  mutation AdminRegisterMemberToEvent(
+    $eventId: ID!
+    $memberId: ID!
+    $note: String
+  ) {
+    adminRegisterMemberToEvent(
+      eventId: $eventId
+      memberId: $memberId
+      note: $note
+    ) {
+      ${EVENT_FIELDS}
+    }
+  }
+`;
+
+export const ADMIN_CANCEL_EVENT_REGISTRATION = gql`
+  mutation AdminCancelEventRegistration($registrationId: ID!) {
+    adminCancelEventRegistration(registrationId: $registrationId) {
+      ${EVENT_FIELDS}
+    }
+  }
+`;
+
 const BLOG_POST_FIELDS = `
   id
   clubId

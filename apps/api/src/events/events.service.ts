@@ -228,6 +228,67 @@ export class EventsService {
     return this.hydrate(refreshed, viewer);
   }
 
+  async adminRegisterMember(
+    clubId: string,
+    eventId: string,
+    memberId: string,
+    note?: string,
+  ) {
+    const member = await this.prisma.member.findFirst({
+      where: { id: memberId, clubId },
+      select: { id: true },
+    });
+    if (!member) throw new NotFoundException('Adhérent introuvable');
+    return this.register(clubId, { memberId }, eventId, note);
+  }
+
+  async adminCancelRegistrationById(clubId: string, registrationId: string) {
+    const reg = await this.prisma.clubEventRegistration.findFirst({
+      where: {
+        id: registrationId,
+        event: { clubId },
+      },
+      include: { event: { include: { registrations: true } } },
+    });
+    if (!reg) throw new NotFoundException('Inscription introuvable');
+    const event = reg.event;
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.clubEventRegistration.update({
+        where: { id: reg.id },
+        data: {
+          status: ClubEventRegistrationStatus.CANCELLED,
+          cancelledAt: new Date(),
+        },
+      });
+      if (
+        reg.status === ClubEventRegistrationStatus.REGISTERED &&
+        event.capacity !== null
+      ) {
+        const nextWait = await tx.clubEventRegistration.findFirst({
+          where: {
+            eventId: event.id,
+            status: ClubEventRegistrationStatus.WAITLISTED,
+          },
+          orderBy: { registeredAt: 'asc' },
+        });
+        if (nextWait) {
+          await tx.clubEventRegistration.update({
+            where: { id: nextWait.id },
+            data: { status: ClubEventRegistrationStatus.REGISTERED },
+          });
+        }
+      }
+    });
+
+    const refreshed = await this.prisma.clubEvent.findUnique({
+      where: { id: event.id },
+      include: { registrations: true },
+    });
+    if (!refreshed) throw new NotFoundException('Événement introuvable');
+    return this.hydrate(refreshed, {});
+  }
+
   async cancelRegistration(clubId: string, viewer: Viewer, eventId: string) {
     if (!viewer.memberId && !viewer.contactId) {
       throw new ForbiddenException('Profil requis.');
