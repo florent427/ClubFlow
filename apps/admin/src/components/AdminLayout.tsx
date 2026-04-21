@@ -4,6 +4,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { ModuleGatedNavLink } from './ModuleGatedNavLink';
 import { ModuleRouteGuard } from './ModuleRouteGuard';
 import { GlobalSearchBar } from './GlobalSearchBar';
+import { AikoChatWidget } from './agent/AikoChatWidget';
 import { VIEWER_PROFILES } from '../lib/documents';
 import { apolloClient } from '../lib/apollo';
 import { navigateToMemberPortal } from '../lib/member-portal-switch';
@@ -93,6 +94,17 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
               dashboard
             </span>
             <span>Tableau de bord</span>
+          </NavLink>
+          <NavLink
+            to="/agent"
+            className={({ isActive }) =>
+              `cf-sidenav__link${isActive ? ' cf-sidenav__link--active' : ''}`
+            }
+          >
+            <span className="material-symbols-outlined" aria-hidden>
+              smart_toy
+            </span>
+            <span>Aïko · Agent IA</span>
           </NavLink>
           <ModuleGatedNavLink
             to="/members"
@@ -276,6 +288,18 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
             <span>Comptabilité</span>
           </ModuleGatedNavLink>
 
+          <NavLink
+            to="/vitrine"
+            className={({ isActive }) =>
+              `cf-sidenav__link${isActive ? ' cf-sidenav__link--active' : ''}`
+            }
+          >
+            <span className="material-symbols-outlined" aria-hidden>
+              public
+            </span>
+            <span>Site vitrine</span>
+          </NavLink>
+
           <span className="cf-sidenav__section">Administration</span>
           <NavLink
             to="/club-modules"
@@ -379,6 +403,8 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
           <span className="cf-footer__muted">Documentation</span>
         </div>
       </footer>
+
+      <AikoChatWidget />
     </div>
   );
 }

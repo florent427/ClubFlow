@@ -72,4 +72,12 @@ export class ViewerMemberGraph {
       'True si la fiche membre a relié Telegram (chat_id enregistré côté serveur).',
   })
   telegramLinked!: boolean;
+
+  @Field(() => Boolean, {
+    description:
+      'True si le viewer est adulte (≥ 18 ans) et désigné payeur de son foyer (rôle PAYER). ' +
+      'Réservé à la gestion du projet d’adhésion.',
+    defaultValue: false,
+  })
+  canManageMembershipCart!: boolean;
 }

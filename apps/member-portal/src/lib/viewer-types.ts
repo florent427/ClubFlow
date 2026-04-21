@@ -25,6 +25,7 @@ export type ViewerMeData = {
     isContactProfile: boolean;
     hideMemberModules: boolean;
     telegramLinked: boolean;
+    canManageMembershipCart: boolean;
   };
 };
 

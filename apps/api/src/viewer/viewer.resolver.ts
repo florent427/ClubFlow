@@ -18,6 +18,11 @@ import { FamilyInviteCreateResultGraph } from '../families/models/family-invite-
 import { ViewerJoinFamilyByPayerEmailInput } from './dto/viewer-join-family-by-payer-email.input';
 import { ViewerPromoteSelfToMemberInput } from './dto/viewer-promote-self-to-member.input';
 import { ViewerRegisterChildMemberInput } from './dto/viewer-register-child-member.input';
+import {
+  ViewerRegisterSelfAsMemberInput,
+  ViewerToggleCartItemLicenseInput,
+  ViewerUpdateCartItemInput,
+} from './dto/viewer-membership-cart.input';
 import { ViewerUpdateMyProfileInput } from './dto/viewer-update-my-profile.input';
 import { ViewerUpdateMyPseudoInput } from './dto/viewer-update-my-pseudo.input';
 import { ViewerCourseSlotGraph } from './models/viewer-course-slot.model';
@@ -28,6 +33,9 @@ import { ViewerMemberGraph } from './models/viewer-member.model';
 import { ViewerMemberCreatedResultGraph } from './models/viewer-member-created-result.model';
 import { ViewerMembershipFormulaGraph } from './models/viewer-membership-formula.model';
 import { ViewerService } from './viewer.service';
+import { MembershipCartGraph } from '../membership/models/membership-cart.model';
+import { toMembershipCartGraph } from '../membership/membership-cart.mapper';
+import { MembershipCartService } from '../membership/membership-cart.service';
 
 @Resolver()
 @UseGuards(
@@ -40,6 +48,7 @@ export class ViewerResolver {
   constructor(
     private readonly viewer: ViewerService,
     private readonly familyInvites: FamilyInviteService,
+    private readonly membershipCart: MembershipCartService,
   ) {}
 
   @Query(() => ViewerMemberGraph, { name: 'viewerMe' })
@@ -307,5 +316,196 @@ export class ViewerResolver {
       },
       viewerUserId: user.userId,
     });
+  }
+
+  // ------------------------------------------------------------------
+  // Projet d'adhésion (cart) — portail
+  // ------------------------------------------------------------------
+
+  @Query(() => [MembershipCartGraph], { name: 'viewerMembershipCarts' })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  async viewerMembershipCarts(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+  ): Promise<MembershipCartGraph[]> {
+    const carts = await this.viewer.viewerListMembershipCarts(club.id, {
+      memberId: user.activeProfileMemberId ?? null,
+      contactId: user.activeProfileContactId ?? null,
+    });
+    const result: MembershipCartGraph[] = [];
+    for (const c of carts) {
+      const preview = await this.membershipCart.computeCartPreview(
+        club.id,
+        c.id,
+      );
+      const full = await this.membershipCart.getCartById(club.id, c.id);
+      result.push(toMembershipCartGraph(full, preview));
+    }
+    return result;
+  }
+
+  @Query(() => MembershipCartGraph, {
+    name: 'viewerActiveMembershipCart',
+    nullable: true,
+  })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  async viewerActiveMembershipCart(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+  ): Promise<MembershipCartGraph | null> {
+    const cart = await this.viewer.viewerActiveMembershipCart(club.id, {
+      memberId: user.activeProfileMemberId ?? null,
+      contactId: user.activeProfileContactId ?? null,
+    });
+    if (!cart) return null;
+    const full = await this.membershipCart.getCartById(club.id, cart.id);
+    const preview = await this.membershipCart.computeCartPreview(
+      club.id,
+      cart.id,
+    );
+    return toMembershipCartGraph(full, preview);
+  }
+
+  @Mutation(() => MembershipCartGraph, {
+    name: 'viewerOpenMembershipCart',
+    description:
+      'Ouvre ou récupère le projet d’adhésion actif du foyer pour la saison courante. Crée un nouveau cart OPEN si le précédent est VALIDATED (ajout mi-saison).',
+  })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  async viewerOpenMembershipCart(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+  ): Promise<MembershipCartGraph> {
+    const cart = await this.viewer.viewerEnsureOpenMembershipCart(club.id, {
+      memberId: user.activeProfileMemberId ?? null,
+      contactId: user.activeProfileContactId ?? null,
+    });
+    const full = await this.membershipCart.getCartById(club.id, cart.id);
+    const preview = await this.membershipCart.computeCartPreview(
+      club.id,
+      cart.id,
+    );
+    return toMembershipCartGraph(full, preview);
+  }
+
+  @Mutation(() => MembershipCartGraph, { name: 'viewerUpdateCartItem' })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  async viewerUpdateCartItem(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('input') input: ViewerUpdateCartItemInput,
+  ): Promise<MembershipCartGraph> {
+    const item = await this.viewer.viewerUpdateMembershipCartItem(
+      club.id,
+      {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      input.itemId,
+      { billingRhythm: input.billingRhythm ?? null },
+    );
+    const full = await this.membershipCart.getCartById(club.id, item.cartId);
+    const preview = await this.membershipCart.computeCartPreview(
+      club.id,
+      item.cartId,
+    );
+    return toMembershipCartGraph(full, preview);
+  }
+
+  @Mutation(() => MembershipCartGraph, { name: 'viewerToggleCartItemLicense' })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  async viewerToggleCartItemLicense(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('input') input: ViewerToggleCartItemLicenseInput,
+  ): Promise<MembershipCartGraph> {
+    const item = await this.viewer.viewerToggleMembershipCartItemLicense(
+      club.id,
+      {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      input.itemId,
+      input.hasExistingLicense,
+      input.existingLicenseNumber ?? null,
+    );
+    const full = await this.membershipCart.getCartById(club.id, item.cartId);
+    const preview = await this.membershipCart.computeCartPreview(
+      club.id,
+      item.cartId,
+    );
+    return toMembershipCartGraph(full, preview);
+  }
+
+  @Mutation(() => MembershipCartGraph, { name: 'viewerRemoveCartItem' })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  async viewerRemoveCartItem(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('itemId') itemId: string,
+  ): Promise<MembershipCartGraph> {
+    const { cartId } = await this.viewer.viewerRemoveMembershipCartItem(
+      club.id,
+      {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      itemId,
+    );
+    const full = await this.membershipCart.getCartById(club.id, cartId);
+    const preview = await this.membershipCart.computeCartPreview(
+      club.id,
+      cartId,
+    );
+    return toMembershipCartGraph(full, preview);
+  }
+
+  @Mutation(() => MembershipCartGraph, { name: 'viewerValidateMembershipCart' })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  async viewerValidateMembershipCart(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('cartId') cartId: string,
+  ): Promise<MembershipCartGraph> {
+    const cart = await this.viewer.viewerValidateMembershipCart(
+      club.id,
+      user.userId,
+      {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      cartId,
+    );
+    const preview = await this.membershipCart.computeCartPreview(
+      club.id,
+      cart.id,
+    );
+    return toMembershipCartGraph(cart, preview);
+  }
+
+  @Mutation(() => ViewerMemberCreatedResultGraph, {
+    name: 'viewerRegisterSelfAsMember',
+    description:
+      'Promeut le contact viewer en fiche adhérent et l’ajoute au projet d’adhésion actif (flux self-register).',
+  })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  viewerRegisterSelfAsMember(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('input') input: ViewerRegisterSelfAsMemberInput,
+  ): Promise<ViewerMemberCreatedResultGraph> {
+    return this.viewer.viewerRegisterSelfAsMember(
+      club.id,
+      user.userId,
+      {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      {
+        civility: input.civility,
+        birthDate: input.birthDate,
+      },
+    );
   }
 }

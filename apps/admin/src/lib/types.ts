@@ -34,6 +34,23 @@ export type DashboardQueryData = {
   };
 };
 
+export type DashboardTrendsData = {
+  adminDashboardTrends: {
+    revenueLast30Cents: number;
+    revenuePrev30Cents: number;
+    revenueTrendPct: number;
+    newMembersLast30: number;
+    newMembersPrev30: number;
+    memberGrowthPct: number;
+    overdueInvoicesCount: number;
+    overdueBalanceCents: number;
+    paidOnTimeRate: number;
+    vitrinePublishedPagesCount: number;
+    vitrinePublishedArticlesCount: number;
+    vitrineContactsLast30Count: number;
+  };
+};
+
 export type ClubSearchQueryData = {
   clubSearch: {
     members: { id: string; firstName: string; lastName: string; email: string | null }[];
@@ -408,6 +425,9 @@ export type ClubInvoicesQueryData = {
     dueAt: string | null;
     totalPaidCents: number;
     balanceCents: number;
+    isCreditNote: boolean;
+    parentInvoiceId: string | null;
+    creditNoteReason: string | null;
   }[];
 };
 
@@ -494,6 +514,9 @@ export type ClubInvoiceDetailQueryData = {
     lockedPaymentMethod: ClubPaymentMethodStr | null;
     dueAt: string | null;
     createdAt: string;
+    isCreditNote: boolean;
+    parentInvoiceId: string | null;
+    creditNoteReason: string | null;
     lines: {
       id: string;
       kind: InvoiceLineKindStr;
@@ -533,6 +556,26 @@ export type IssueClubInvoiceMutationData = {
 
 export type VoidClubInvoiceMutationData = {
   voidClubInvoice: { id: string; status: InvoiceStatusStr; label: string };
+};
+
+export type CreateClubCreditNoteMutationData = {
+  createClubCreditNote: ClubInvoicesQueryData['clubInvoices'][number];
+};
+
+export type ClubBrandingQueryData = {
+  club: {
+    id: string;
+    name: string;
+    slug: string;
+    logoUrl: string | null;
+    siret: string | null;
+    address: string | null;
+    legalMentions: string | null;
+  };
+};
+
+export type UpdateClubBrandingMutationData = {
+  updateClubBranding: ClubBrandingQueryData['club'];
 };
 
 export type ClubContactRow = {
@@ -732,6 +775,15 @@ export type ClubEventRegistration = {
   displayName: string | null;
 };
 
+export type ClubEventAttachment = {
+  id: string;
+  eventId: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+};
+
 export type ClubEvent = {
   id: string;
   title: string;
@@ -752,6 +804,7 @@ export type ClubEvent = {
   waitlistCount: number;
   viewerRegistrationStatus: ClubEventRegistrationStatusStr | null;
   registrations: ClubEventRegistration[];
+  attachments: ClubEventAttachment[];
 };
 
 export type ClubEventsQueryData = { clubEvents: ClubEvent[] };
@@ -760,6 +813,23 @@ export type UpdateClubEventMutationData = { updateClubEvent: ClubEvent };
 export type PublishClubEventMutationData = { publishClubEvent: ClubEvent };
 export type CancelClubEventMutationData = { cancelClubEvent: ClubEvent };
 export type DeleteClubEventMutationData = { deleteClubEvent: boolean };
+
+export type EventConvocationMode =
+  | 'REGISTERED'
+  | 'ALL_MEMBERS'
+  | 'DYNAMIC_GROUP';
+
+export type EventConvocationResult = {
+  totalTargets: number;
+  sent: number;
+  skipped: number;
+  suppressed: number;
+  failed: number;
+};
+
+export type SendClubEventConvocationMutationData = {
+  sendClubEventConvocation: EventConvocationResult;
+};
 
 export type BlogPostStatusGql = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
 

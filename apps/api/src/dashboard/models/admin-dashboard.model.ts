@@ -1,4 +1,48 @@
-import { Field, Int, ObjectType } from '@nestjs/graphql';
+import { Field, Float, Int, ObjectType } from '@nestjs/graphql';
+
+@ObjectType({ description: 'Tendances et KPI 30j glissants' })
+export class AdminDashboardTrends {
+  @Field(() => Int)
+  revenueLast30Cents!: number;
+
+  @Field(() => Int)
+  revenuePrev30Cents!: number;
+
+  @Field(() => Float, { description: 'Variation % (last 30 vs prev 30)' })
+  revenueTrendPct!: number;
+
+  @Field(() => Int)
+  newMembersLast30!: number;
+
+  @Field(() => Int)
+  newMembersPrev30!: number;
+
+  @Field(() => Float)
+  memberGrowthPct!: number;
+
+  @Field(() => Int, { description: 'Factures OPEN avec échéance passée' })
+  overdueInvoicesCount!: number;
+
+  @Field(() => Int, { description: 'Somme des soldes dus (centimes)' })
+  overdueBalanceCents!: number;
+
+  @Field(() => Float, {
+    description:
+      'Ratio [0..1] des factures PAID des 30 derniers jours payées avant échéance',
+  })
+  paidOnTimeRate!: number;
+
+  @Field(() => Int)
+  vitrinePublishedPagesCount!: number;
+
+  @Field(() => Int)
+  vitrinePublishedArticlesCount!: number;
+
+  @Field(() => Int, {
+    description: 'Contacts créés via formulaire vitrine (30j)',
+  })
+  vitrineContactsLast30Count!: number;
+}
 
 @ObjectType({ description: 'Agrégations admin alignées dashboard Stitch' })
 export class AdminDashboardSummary {

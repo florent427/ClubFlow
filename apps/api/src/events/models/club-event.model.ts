@@ -1,5 +1,6 @@
 import { Field, ID, Int, ObjectType } from '@nestjs/graphql';
 import { ClubEventRegistrationStatus, ClubEventStatus } from '@prisma/client';
+import { ClubEventAttachmentGraph } from './club-event-attachment.model';
 
 @ObjectType()
 export class ClubEventRegistrationGraph {
@@ -92,4 +93,10 @@ export class ClubEventGraph {
 
   @Field(() => [ClubEventRegistrationGraph])
   registrations!: ClubEventRegistrationGraph[];
+
+  @Field(() => [ClubEventAttachmentGraph], {
+    description:
+      "Pièces jointes (PDF, images). Téléchargement via REST : GET /events/:eventId/attachments/:id",
+  })
+  attachments!: ClubEventAttachmentGraph[];
 }

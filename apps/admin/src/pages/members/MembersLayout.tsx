@@ -57,6 +57,16 @@ export function MembersLayout() {
         >
           Familles &amp; payeurs
         </ModuleGatedNavLink>
+        <ModuleGatedNavLink
+          to="/members/adhesions"
+          modules={['MEMBERS']}
+          disabledClassName="members-subnav__link--disabled"
+          className={({ isActive }) =>
+            `members-subnav__link${isActive ? ' members-subnav__link--active' : ''}`
+          }
+        >
+          Projets d&rsquo;adhésion
+        </ModuleGatedNavLink>
       </nav>
       <p className="members-palette-hint muted">
         Recherche rapide : <kbd className="members-kbd">Ctrl</kbd> +{' '}

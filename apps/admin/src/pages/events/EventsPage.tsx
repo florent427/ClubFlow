@@ -1,26 +1,51 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import { useState, useMemo } from 'react';
-import type { FormEvent } from 'react';
+import { useState, useMemo, useRef } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
 import {
   ADMIN_CANCEL_EVENT_REGISTRATION,
   ADMIN_REGISTER_MEMBER_TO_EVENT,
   CANCEL_CLUB_EVENT,
+  CLUB_DYNAMIC_GROUPS,
   CLUB_EVENTS,
   CLUB_MEMBERS,
   CREATE_CLUB_EVENT,
   DELETE_CLUB_EVENT,
   PUBLISH_CLUB_EVENT,
+  SEND_CLUB_EVENT_CONVOCATION,
   UPDATE_CLUB_EVENT,
 } from '../../lib/documents';
 import type {
   ClubEvent,
+  ClubEventAttachment,
   ClubEventsQueryData,
   ClubEventStatusStr,
+  DynamicGroupsQueryData,
+  EventConvocationMode,
   MembersQueryData,
+  SendClubEventConvocationMutationData,
 } from '../../lib/types';
 import { useToast } from '../../components/ToastProvider';
 import { ConfirmModal, Drawer, EmptyState } from '../../components/ui';
 import { downloadCsv, toCsv } from '../../lib/csv-export';
+import { getClubId, getToken } from '../../lib/storage';
+
+/** Racine REST dérivée de l'URL GraphQL (pour l'upload/download des pièces jointes). */
+const API_ROOT = (
+  (import.meta as unknown as { env?: { VITE_GRAPHQL_HTTP?: string } }).env
+    ?.VITE_GRAPHQL_HTTP ?? 'http://localhost:3000/graphql'
+).replace(/\/graphql\/?$/, '');
+
+function fmtSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} o`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} Ko`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+}
+
+function attachmentIconFor(mime: string): string {
+  if (mime.startsWith('image/')) return 'image';
+  if (mime === 'application/pdf') return 'picture_as_pdf';
+  return 'attach_file';
+}
 
 function toLocalInputValue(iso: string | null): string {
   if (!iso) return '';
@@ -96,6 +121,8 @@ export function EventsPage() {
   const { showToast } = useToast();
   const { data, refetch, loading } = useQuery<ClubEventsQueryData>(CLUB_EVENTS);
   const { data: membersData } = useQuery<MembersQueryData>(CLUB_MEMBERS);
+  const { data: groupsData } =
+    useQuery<DynamicGroupsQueryData>(CLUB_DYNAMIC_GROUPS);
   const [create, { loading: creating }] = useMutation(CREATE_CLUB_EVENT);
   const [update, { loading: updating }] = useMutation(UPDATE_CLUB_EVENT);
   const [publish] = useMutation(PUBLISH_CLUB_EVENT);
@@ -107,6 +134,9 @@ export function EventsPage() {
   const [adminCancelRegistration] = useMutation(
     ADMIN_CANCEL_EVENT_REGISTRATION,
   );
+  const [sendConvocation, { loading: sendingConvocation }] = useMutation(
+    SEND_CLUB_EVENT_CONVOCATION,
+  );
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<ClubEvent | null>(null);
@@ -115,6 +145,130 @@ export function EventsPage() {
   const [detailEvent, setDetailEvent] = useState<ClubEvent | null>(null);
   const [memberPickerOpen, setMemberPickerOpen] = useState(false);
   const [memberSearch, setMemberSearch] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [convocationOpen, setConvocationOpen] = useState(false);
+  const [convocationMode, setConvocationMode] =
+    useState<EventConvocationMode>('REGISTERED');
+  const [convocationGroupId, setConvocationGroupId] = useState<string>('');
+  const [convocationSubject, setConvocationSubject] = useState('');
+  const [convocationBody, setConvocationBody] = useState('');
+
+  async function uploadAttachment(eventId: string, file: File) {
+    const token = getToken();
+    const clubId = getClubId();
+    if (!token || !clubId) {
+      showToast('Session expirée', 'error');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('Fichier trop volumineux (max 10 Mo)', 'error');
+      return;
+    }
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`${API_ROOT}/events/${eventId}/attachments`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'x-club-id': clubId,
+        },
+        body: fd,
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => '');
+        throw new Error(msg || `Erreur HTTP ${res.status}`);
+      }
+      showToast('Pièce jointe ajoutée', 'success');
+      const refreshed = await refetch();
+      // Resync drawer state with freshly-hydrated event
+      const updated = refreshed.data?.clubEvents?.find((ev) => ev.id === eventId);
+      if (updated && detailEvent?.id === eventId) setDetailEvent(updated);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur upload', 'error');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
+  async function downloadAttachment(eventId: string, att: ClubEventAttachment) {
+    const token = getToken();
+    const clubId = getClubId();
+    if (!token || !clubId) {
+      showToast('Session expirée', 'error');
+      return;
+    }
+    try {
+      const res = await fetch(
+        `${API_ROOT}/events/${eventId}/attachments/${att.id}`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'x-club-id': clubId,
+          },
+        },
+      );
+      if (!res.ok) throw new Error(`Erreur HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = att.fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : 'Erreur téléchargement',
+        'error',
+      );
+    }
+  }
+
+  async function deleteAttachment(eventId: string, att: ClubEventAttachment) {
+    const token = getToken();
+    const clubId = getClubId();
+    if (!token || !clubId) {
+      showToast('Session expirée', 'error');
+      return;
+    }
+    if (
+      !window.confirm(
+        `Supprimer la pièce jointe « ${att.fileName} » ?`,
+      )
+    )
+      return;
+    try {
+      const res = await fetch(
+        `${API_ROOT}/events/${eventId}/attachments/${att.id}`,
+        {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'x-club-id': clubId,
+          },
+        },
+      );
+      if (!res.ok) throw new Error(`Erreur HTTP ${res.status}`);
+      showToast('Pièce jointe supprimée', 'success');
+      const refreshed = await refetch();
+      const updated = refreshed.data?.clubEvents?.find((ev) => ev.id === eventId);
+      if (updated && detailEvent?.id === eventId) setDetailEvent(updated);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
+
+  function onFilePicked(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !detailEvent) return;
+    void uploadAttachment(detailEvent.id, file);
+  }
 
   const events = useMemo(
     () =>
@@ -262,6 +416,70 @@ export function EventsPage() {
       } | null)?.adminCancelEventRegistration;
       if (updated) setDetailEvent(updated);
       await refetch();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
+
+  function openConvocationModal(ev: ClubEvent) {
+    setDetailEvent(ev);
+    const defaultSubject = `Convocation : ${ev.title}`;
+    const whenFr = new Date(ev.startsAt).toLocaleString('fr-FR', {
+      dateStyle: 'full',
+      timeStyle: 'short',
+    });
+    const lines = [
+      'Bonjour,',
+      '',
+      `Vous êtes convié(e) à l’événement « ${ev.title} ».`,
+      '',
+      `Date : ${whenFr}`,
+    ];
+    if (ev.location) lines.push(`Lieu : ${ev.location}`);
+    if (ev.description) lines.push('', ev.description);
+    lines.push('', 'À bientôt,');
+    setConvocationMode('REGISTERED');
+    setConvocationGroupId('');
+    setConvocationSubject(defaultSubject);
+    setConvocationBody(lines.join('\n'));
+    setConvocationOpen(true);
+  }
+
+  async function onSendConvocation(e: FormEvent) {
+    e.preventDefault();
+    if (!detailEvent) return;
+    if (convocationMode === 'DYNAMIC_GROUP' && !convocationGroupId) {
+      showToast('Choisissez un groupe dynamique', 'error');
+      return;
+    }
+    try {
+      const res = await sendConvocation({
+        variables: {
+          input: {
+            eventId: detailEvent.id,
+            mode: convocationMode,
+            dynamicGroupId:
+              convocationMode === 'DYNAMIC_GROUP' ? convocationGroupId : null,
+            subject: convocationSubject.trim() || null,
+            body: convocationBody.trim() || null,
+          },
+        },
+      });
+      const r = (res.data as SendClubEventConvocationMutationData | null)
+        ?.sendClubEventConvocation;
+      if (r) {
+        const bits: string[] = [`${r.sent}/${r.totalTargets} envoyé(s)`];
+        if (r.suppressed > 0) bits.push(`${r.suppressed} supprimé(s)`);
+        if (r.skipped > 0) bits.push(`${r.skipped} ignoré(s)`);
+        if (r.failed > 0) bits.push(`${r.failed} en échec`);
+        showToast(
+          `Convocation — ${bits.join(' · ')}`,
+          r.failed > 0 ? 'error' : 'success',
+        );
+      } else {
+        showToast('Convocation envoyée', 'success');
+      }
+      setConvocationOpen(false);
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Erreur', 'error');
     }
@@ -450,16 +668,24 @@ export function EventsPage() {
             />
           </label>
           <label className="cf-field">
-            <span className="cf-field__label">Description</span>
+            <span className="cf-field__label">
+              Description / Programme détaillé
+            </span>
             <textarea
               className="cf-input cf-textarea"
               value={form.description}
               onChange={(e) =>
                 setForm({ ...form, description: e.target.value })
               }
-              rows={4}
+              rows={10}
               maxLength={10000}
+              placeholder={
+                "Programme, itinéraire, horaires précis, matériel à prévoir, consignes de sécurité…\n\nCe texte apparaît tel quel sur la fiche événement et dans les convocations envoyées par e-mail."
+              }
             />
+            <span className="cf-field__hint">
+              {form.description.length} / 10 000 caractères. Retours à la ligne conservés.
+            </span>
           </label>
           <label className="cf-field">
             <span className="cf-field__label">Lieu</span>
@@ -595,9 +821,9 @@ export function EventsPage() {
 
       <Drawer
         open={detailEvent !== null}
-        title={detailEvent ? `Inscrits : ${detailEvent.title}` : ''}
+        title={detailEvent ? `Détails : ${detailEvent.title}` : ''}
         onClose={() => setDetailEvent(null)}
-        width={560}
+        width={620}
       >
         {detailEvent ? (
           <div className="cf-form">
@@ -611,6 +837,76 @@ export function EventsPage() {
                 ? ` (capacité ${detailEvent.capacity})`
                 : ''}
             </p>
+
+            <section className="cf-event-attachments">
+              <header className="cf-event-attachments__header">
+                <h3>Pièces jointes</h3>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/pdf,image/png,image/jpeg,image/webp,image/gif"
+                  style={{ display: 'none' }}
+                  onChange={onFilePicked}
+                />
+                <button
+                  type="button"
+                  className="cf-btn cf-btn--primary cf-btn--sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                >
+                  <span className="material-symbols-outlined" aria-hidden>
+                    upload_file
+                  </span>
+                  {uploading ? 'Envoi…' : 'Ajouter un fichier'}
+                </button>
+              </header>
+              {detailEvent.attachments.length === 0 ? (
+                <p className="cf-muted">
+                  Aucune pièce jointe. PDF et images (max 10 Mo) acceptés.
+                </p>
+              ) : (
+                <ul className="cf-event-attachments__list">
+                  {detailEvent.attachments.map((a) => (
+                    <li key={a.id} className="cf-event-attachments__item">
+                      <span
+                        className="material-symbols-outlined cf-event-attachments__icon"
+                        aria-hidden
+                      >
+                        {attachmentIconFor(a.mimeType)}
+                      </span>
+                      <button
+                        type="button"
+                        className="cf-btn cf-btn--ghost cf-event-attachments__name"
+                        onClick={() =>
+                          void downloadAttachment(detailEvent.id, a)
+                        }
+                        title={`${a.fileName} — ${fmtSize(a.sizeBytes)}`}
+                      >
+                        {a.fileName}
+                      </button>
+                      <span className="cf-muted cf-event-attachments__size">
+                        {fmtSize(a.sizeBytes)}
+                      </span>
+                      <button
+                        type="button"
+                        className="cf-btn cf-btn--ghost cf-btn--sm cf-event-attachments__delete"
+                        onClick={() =>
+                          void deleteAttachment(detailEvent.id, a)
+                        }
+                        aria-label={`Supprimer ${a.fileName}`}
+                      >
+                        <span
+                          className="material-symbols-outlined"
+                          aria-hidden
+                        >
+                          delete
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
             <div className="cf-form-actions" style={{ marginBottom: 12 }}>
               <button
                 type="button"
@@ -635,6 +931,16 @@ export function EventsPage() {
                   download
                 </span>
                 Export émargement CSV
+              </button>
+              <button
+                type="button"
+                className="cf-btn"
+                onClick={() => openConvocationModal(detailEvent)}
+              >
+                <span className="material-symbols-outlined" aria-hidden>
+                  mail
+                </span>
+                Envoyer une convocation
               </button>
             </div>
             {memberPickerOpen ? (
@@ -745,6 +1051,125 @@ export function EventsPage() {
               )}
             </ul>
           </div>
+        ) : null}
+      </Drawer>
+
+      <Drawer
+        open={convocationOpen}
+        title={
+          detailEvent
+            ? `Convocation : ${detailEvent.title}`
+            : 'Envoyer une convocation'
+        }
+        onClose={() => setConvocationOpen(false)}
+        width={620}
+      >
+        {detailEvent ? (
+          <form
+            onSubmit={(e) => void onSendConvocation(e)}
+            className="cf-form"
+          >
+            <fieldset className="cf-field">
+              <span className="cf-field__label">Audience</span>
+              <label className="cf-radio">
+                <input
+                  type="radio"
+                  name="cf-convocation-mode"
+                  checked={convocationMode === 'REGISTERED'}
+                  onChange={() => setConvocationMode('REGISTERED')}
+                />
+                <span>
+                  Inscrits uniquement ({detailEvent.registeredCount}
+                  {detailEvent.waitlistCount > 0
+                    ? ` + ${detailEvent.waitlistCount} en attente`
+                    : ''}
+                  )
+                </span>
+              </label>
+              <label className="cf-radio">
+                <input
+                  type="radio"
+                  name="cf-convocation-mode"
+                  checked={convocationMode === 'ALL_MEMBERS'}
+                  onChange={() => setConvocationMode('ALL_MEMBERS')}
+                />
+                <span>Tous les adhérents actifs (diffusion)</span>
+              </label>
+              <label className="cf-radio">
+                <input
+                  type="radio"
+                  name="cf-convocation-mode"
+                  checked={convocationMode === 'DYNAMIC_GROUP'}
+                  onChange={() => setConvocationMode('DYNAMIC_GROUP')}
+                />
+                <span>Groupe dynamique ciblé</span>
+              </label>
+            </fieldset>
+            {convocationMode === 'DYNAMIC_GROUP' ? (
+              <label className="cf-field">
+                <span className="cf-field__label">Groupe dynamique</span>
+                <select
+                  className="cf-input"
+                  value={convocationGroupId}
+                  onChange={(e) => setConvocationGroupId(e.target.value)}
+                  required
+                >
+                  <option value="">— Choisir un groupe —</option>
+                  {(groupsData?.clubDynamicGroups ?? []).map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name} · {g.matchingActiveMembersCount} membres
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            <label className="cf-field">
+              <span className="cf-field__label">Objet</span>
+              <input
+                type="text"
+                className="cf-input"
+                value={convocationSubject}
+                onChange={(e) => setConvocationSubject(e.target.value)}
+                maxLength={200}
+                placeholder="Auto-généré si laissé vide"
+              />
+            </label>
+            <label className="cf-field">
+              <span className="cf-field__label">Message</span>
+              <textarea
+                className="cf-input cf-textarea"
+                value={convocationBody}
+                onChange={(e) => setConvocationBody(e.target.value)}
+                rows={12}
+                maxLength={20000}
+                placeholder="Auto-généré si laissé vide"
+              />
+              <span className="cf-field__hint">
+                {convocationBody.length} / 20 000 caractères · e-mail texte
+                brut, retours à la ligne conservés.
+              </span>
+            </label>
+            <div className="cf-form-actions">
+              <button
+                type="button"
+                className="cf-btn"
+                onClick={() => setConvocationOpen(false)}
+                disabled={sendingConvocation}
+              >
+                Annuler
+              </button>
+              <button
+                type="submit"
+                className="cf-btn cf-btn--primary"
+                disabled={sendingConvocation}
+              >
+                <span className="material-symbols-outlined" aria-hidden>
+                  send
+                </span>
+                {sendingConvocation ? 'Envoi…' : 'Envoyer'}
+              </button>
+            </div>
+          </form>
         ) : null}
       </Drawer>
 

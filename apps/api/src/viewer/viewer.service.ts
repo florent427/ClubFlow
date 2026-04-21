@@ -20,10 +20,12 @@ import {
 } from '../members/member-email-family-rule';
 import { memberMatchesMembershipProduct } from '../membership/membership-eligibility';
 import { MembershipService } from '../membership/membership.service';
+import { MembershipCartService } from '../membership/membership-cart.service';
 import { ViewerMembershipFormulaGraph } from './models/viewer-membership-formula.model';
 import { resolveAdminWorkspaceClubId } from '../common/club-back-office-role';
 import { buildInvoiceWhereForHouseholdGroup } from '../families/household-billing.scope';
 import {
+  ageYearsUtc,
   isStrictlyMinorProfile,
   shouldIncludeMemberInHouseholdViewerProfiles,
 } from '../families/viewer-profile-rules';
@@ -48,6 +50,7 @@ export class ViewerService {
     private readonly memberPseudo: MemberPseudoService,
     private readonly clubContacts: ClubContactsService,
     private readonly membership: MembershipService,
+    private readonly membershipCart: MembershipCartService,
     private readonly stripeCheckout: StripeCheckoutService,
   ) {}
 
@@ -207,6 +210,10 @@ export class ViewerService {
       select: { familyId: true },
     });
     const hasClubFamily = familyLink != null;
+    const canManageMembershipCart = await this.computeCanManageMembershipCart(
+      clubId,
+      { memberId, contactId: null },
+    );
     return {
       id: m.id,
       firstName: m.firstName,
@@ -226,6 +233,7 @@ export class ViewerService {
       isContactProfile: false,
       hideMemberModules: false,
       telegramLinked: Boolean(m.telegramChatId),
+      canManageMembershipCart,
     };
   }
 
@@ -269,6 +277,10 @@ export class ViewerService {
       select: { familyId: true },
     });
     const hasClubFamily = payerLink != null;
+    const canManageMembershipCart = await this.computeCanManageMembershipCart(
+      clubId,
+      { memberId: null, contactId },
+    );
     return {
       id: contactId,
       firstName: c.firstName,
@@ -288,6 +300,7 @@ export class ViewerService {
       isContactProfile: true,
       hideMemberModules: true,
       telegramLinked: false,
+      canManageMembershipCart,
     };
   }
 
@@ -1115,14 +1128,16 @@ export class ViewerService {
       clubId,
       payerEmail,
     );
-    if (input.membershipProductId) {
-      await this.membership.createMembershipInvoiceDraft(clubId, userId, {
-        memberId: created.id,
-        membershipProductId: input.membershipProductId,
-        billingRhythm:
-          input.billingRhythm ?? SubscriptionBillingRhythm.ANNUAL,
-        effectiveDate: new Date().toISOString(),
-      });
+    // Ajout automatique au projet d'adhésion (cart) actif.
+    // Swallow les erreurs pour ne pas faire échouer l'inscription de l'enfant.
+    try {
+      await this.membershipCart.addMemberToActiveCart(clubId, created.id);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[viewer.registerChildMember] auto-add membership cart failed',
+        (err as Error).message,
+      );
     }
     return {
       memberId: created.id,
@@ -1165,5 +1180,388 @@ export class ViewerService {
     }
     await this.prisma.member.update({ where: { id: memberId }, data });
     return this.viewerMe(clubId, memberId, userId);
+  }
+
+  // ------------------------------------------------------------------
+  // Viewer : projet d'adhésion (cart)
+  // ------------------------------------------------------------------
+
+  private async resolveViewerFamilyId(
+    clubId: string,
+    activeProfile: { memberId: string | null; contactId: string | null },
+  ): Promise<string | null> {
+    if (activeProfile.memberId) {
+      const fm = await this.prisma.familyMember.findFirst({
+        where: {
+          memberId: activeProfile.memberId,
+          family: { clubId },
+        },
+        select: { familyId: true },
+      });
+      return fm?.familyId ?? null;
+    }
+    if (activeProfile.contactId) {
+      const fm = await this.prisma.familyMember.findFirst({
+        where: {
+          contactId: activeProfile.contactId,
+          family: { clubId },
+        },
+        select: { familyId: true },
+      });
+      return fm?.familyId ?? null;
+    }
+    return null;
+  }
+
+  /**
+   * Règle d’accès au projet d’adhésion (portail) :
+   *  - le viewer doit être rattaché à un foyer du club,
+   *  - il doit être désigné PAYER sur ce foyer,
+   *  - s’il est un Member, il doit être adulte (âge ≥ 18 ans ou birthDate inconnue).
+   *
+   * Les Contacts (payeurs sans fiche adhérent) sont adultes par construction
+   * (création de compte portail réservée aux adultes).
+   */
+  private async computeCanManageMembershipCart(
+    clubId: string,
+    activeProfile: { memberId: string | null; contactId: string | null },
+  ): Promise<boolean> {
+    if (activeProfile.memberId) {
+      const row = await this.prisma.familyMember.findFirst({
+        where: {
+          memberId: activeProfile.memberId,
+          family: { clubId },
+        },
+        select: {
+          linkRole: true,
+          member: { select: { birthDate: true } },
+        },
+      });
+      if (!row) return false;
+      if (row.linkRole !== FamilyMemberLinkRole.PAYER) return false;
+      const bd = row.member?.birthDate ?? null;
+      if (bd && ageYearsUtc(bd, new Date()) < 18) return false;
+      return true;
+    }
+    if (activeProfile.contactId) {
+      const row = await this.prisma.familyMember.findFirst({
+        where: {
+          contactId: activeProfile.contactId,
+          family: { clubId },
+        },
+        select: { linkRole: true },
+      });
+      if (!row) return false;
+      return row.linkRole === FamilyMemberLinkRole.PAYER;
+    }
+    return false;
+  }
+
+  private async assertViewerCanManageMembershipCart(
+    clubId: string,
+    activeProfile: { memberId: string | null; contactId: string | null },
+  ): Promise<void> {
+    const ok = await this.computeCanManageMembershipCart(clubId, activeProfile);
+    if (!ok) {
+      throw new BadRequestException(
+        'Le projet d’adhésion est réservé aux membres adultes désignés payeurs du foyer.',
+      );
+    }
+  }
+
+  async viewerListMembershipCarts(
+    clubId: string,
+    activeProfile: { memberId: string | null; contactId: string | null },
+    seasonId?: string | null,
+  ) {
+    if (!(await this.computeCanManageMembershipCart(clubId, activeProfile))) {
+      return [];
+    }
+    const familyId = await this.resolveViewerFamilyId(clubId, activeProfile);
+    if (!familyId) return [];
+    return this.membershipCart.listCartsForFamily(clubId, familyId, seasonId);
+  }
+
+  async viewerActiveMembershipCart(
+    clubId: string,
+    activeProfile: { memberId: string | null; contactId: string | null },
+    seasonId?: string | null,
+  ) {
+    if (!(await this.computeCanManageMembershipCart(clubId, activeProfile))) {
+      return null;
+    }
+    const familyId = await this.resolveViewerFamilyId(clubId, activeProfile);
+    if (!familyId) return null;
+    const targetSeasonId =
+      seasonId ??
+      (await this.prisma.clubSeason.findFirst({
+        where: { clubId, isActive: true },
+        select: { id: true },
+      }))?.id ??
+      null;
+    if (!targetSeasonId) return null;
+    return this.membershipCart.findOpenCartForFamily(
+      clubId,
+      familyId,
+      targetSeasonId,
+    );
+  }
+
+  async viewerEnsureOpenMembershipCart(
+    clubId: string,
+    activeProfile: { memberId: string | null; contactId: string | null },
+    seasonId?: string | null,
+  ) {
+    await this.assertViewerCanManageMembershipCart(clubId, activeProfile);
+    const familyId = await this.resolveViewerFamilyId(clubId, activeProfile);
+    if (!familyId) {
+      throw new BadRequestException(
+        'Aucun foyer associé au profil sélectionné.',
+      );
+    }
+    const targetSeasonId =
+      seasonId ??
+      (await this.prisma.clubSeason.findFirst({
+        where: { clubId, isActive: true },
+        select: { id: true },
+      }))?.id;
+    if (!targetSeasonId) {
+      throw new BadRequestException('Aucune saison active.');
+    }
+    // S'il existe un VALIDATED/CANCELLED pour cette saison sans OPEN,
+    // on ouvre un nouveau cart OPEN (use-case « ajout mi-saison »).
+    const openCart = await this.membershipCart.findOpenCartForFamily(
+      clubId,
+      familyId,
+      targetSeasonId,
+    );
+    if (openCart) return openCart;
+    const created = await this.membershipCart.openAdditionalCart(
+      clubId,
+      familyId,
+      targetSeasonId,
+    );
+    return this.membershipCart['getCartById'].call(
+      this.membershipCart,
+      clubId,
+      created.id,
+    );
+  }
+
+  async viewerComputeMembershipCartPreview(clubId: string, cartId: string) {
+    return this.membershipCart.computeCartPreview(clubId, cartId);
+  }
+
+  async viewerUpdateMembershipCartItem(
+    clubId: string,
+    activeProfile: { memberId: string | null; contactId: string | null },
+    itemId: string,
+    patch: {
+      billingRhythm?: SubscriptionBillingRhythm | null;
+      membershipProductId?: string | null;
+    },
+  ) {
+    await this.assertViewerCanManageMembershipCart(clubId, activeProfile);
+    await this.assertViewerItemOwnership(clubId, activeProfile, itemId);
+    return this.membershipCart.updateItem(clubId, itemId, {
+      billingRhythm: patch.billingRhythm ?? undefined,
+      membershipProductId: patch.membershipProductId ?? undefined,
+    });
+  }
+
+  async viewerRemoveMembershipCartItem(
+    clubId: string,
+    activeProfile: { memberId: string | null; contactId: string | null },
+    itemId: string,
+  ) {
+    await this.assertViewerCanManageMembershipCart(clubId, activeProfile);
+    await this.assertViewerItemOwnership(clubId, activeProfile, itemId);
+    return this.membershipCart.removeItem(clubId, itemId);
+  }
+
+  async viewerToggleMembershipCartItemLicense(
+    clubId: string,
+    activeProfile: { memberId: string | null; contactId: string | null },
+    itemId: string,
+    hasExistingLicense: boolean,
+    existingLicenseNumber: string | null,
+  ) {
+    await this.assertViewerCanManageMembershipCart(clubId, activeProfile);
+    await this.assertViewerItemOwnership(clubId, activeProfile, itemId);
+    return this.membershipCart.toggleExistingLicense(
+      clubId,
+      itemId,
+      hasExistingLicense,
+      existingLicenseNumber,
+    );
+  }
+
+  async viewerValidateMembershipCart(
+    clubId: string,
+    userId: string,
+    activeProfile: { memberId: string | null; contactId: string | null },
+    cartId: string,
+  ) {
+    await this.assertViewerCanManageMembershipCart(clubId, activeProfile);
+    const familyId = await this.resolveViewerFamilyId(clubId, activeProfile);
+    const cart = await this.membershipCart['getCartById'].call(
+      this.membershipCart,
+      clubId,
+      cartId,
+    );
+    if (!familyId || cart.familyId !== familyId) {
+      throw new BadRequestException('Projet d’adhésion hors de votre foyer.');
+    }
+    return this.membershipCart.validateCart(clubId, userId, cartId);
+  }
+
+  private async assertViewerItemOwnership(
+    clubId: string,
+    activeProfile: { memberId: string | null; contactId: string | null },
+    itemId: string,
+  ): Promise<void> {
+    const familyId = await this.resolveViewerFamilyId(clubId, activeProfile);
+    if (!familyId) {
+      throw new BadRequestException('Aucun foyer associé au profil.');
+    }
+    const row = await this.prisma.membershipCartItem.findFirst({
+      where: { id: itemId, cart: { clubId, familyId } },
+      select: { id: true },
+    });
+    if (!row) {
+      throw new NotFoundException(
+        'Ligne de projet introuvable pour votre foyer.',
+      );
+    }
+  }
+
+  /**
+   * Auto-inscription adulte : crée un Member depuis le Contact viewer et
+   * l'ajoute au projet d'adhésion actif.
+   */
+  async viewerRegisterSelfAsMember(
+    clubId: string,
+    userId: string,
+    activeProfile: { memberId: string | null; contactId: string | null },
+    input: {
+      civility: MemberCivility;
+      birthDate: string;
+    },
+  ): Promise<{ memberId: string; firstName: string; lastName: string }> {
+    if (activeProfile.memberId) {
+      throw new BadRequestException(
+        'Ce profil est déjà enregistré comme adhérent du club.',
+      );
+    }
+    if (!activeProfile.contactId) {
+      throw new BadRequestException('Sélection de profil requise.');
+    }
+    // Cette voie d’auto-inscription est un sous-flux du projet d’adhésion :
+    // seuls les payeurs (adultes) du foyer peuvent l’emprunter.
+    await this.assertViewerCanManageMembershipCart(clubId, activeProfile);
+    // Contrôle d’âge sur l’input — un majeur qui s’auto-enregistre ne peut
+    // pas revendiquer un âge < 18 ans.
+    const bd = new Date(input.birthDate);
+    if (!Number.isNaN(bd.getTime()) && ageYearsUtc(bd, new Date()) < 18) {
+      throw new BadRequestException(
+        'L’auto-inscription est réservée aux adultes. Utilisez « Ajouter un enfant » pour un mineur.',
+      );
+    }
+    const contact = await this.prisma.contact.findFirst({
+      where: { id: activeProfile.contactId, clubId },
+      include: { user: true },
+    });
+    if (!contact) {
+      throw new NotFoundException('Profil contact introuvable.');
+    }
+    const email = contact.user?.email ?? null;
+    if (!email) {
+      throw new BadRequestException(
+        'Aucun e-mail rattaché au profil. Créez un compte utilisateur avant inscription.',
+      );
+    }
+    const firstName = contact.firstName?.trim();
+    const lastName = contact.lastName?.trim();
+    if (!firstName || !lastName) {
+      throw new BadRequestException(
+        'Prénom et nom obligatoires sur votre profil.',
+      );
+    }
+    await assertMemberEmailAllowedInClub(this.prisma, clubId, email, {
+      memberId: null,
+    });
+    const pseudo = await this.memberPseudo.pickAvailablePseudo(
+      this.prisma,
+      clubId,
+      firstName,
+      lastName,
+      null,
+    );
+    const created = await this.prisma.$transaction(async (tx) => {
+      const m = await tx.member.create({
+        data: {
+          clubId,
+          firstName,
+          lastName,
+          pseudo,
+          civility: input.civility,
+          email,
+          birthDate: new Date(input.birthDate),
+          status: MemberStatus.ACTIVE,
+          roleAssignments: { create: [{ role: MemberClubRole.STUDENT }] },
+        },
+        select: { id: true, firstName: true, lastName: true },
+      });
+      // Recherche / création famille via le contact
+      const existing = await tx.familyMember.findFirst({
+        where: {
+          contactId: activeProfile.contactId!,
+          family: { clubId },
+        },
+        select: { familyId: true },
+      });
+      const familyId =
+        existing?.familyId ??
+        (
+          await tx.family.create({
+            data: {
+              clubId,
+              familyMembers: {
+                create: [
+                  {
+                    contactId: activeProfile.contactId!,
+                    linkRole: FamilyMemberLinkRole.PAYER,
+                  },
+                ],
+              },
+            },
+            select: { id: true },
+          })
+        ).id;
+      await tx.familyMember.create({
+        data: {
+          familyId,
+          memberId: m.id,
+          linkRole: FamilyMemberLinkRole.MEMBER,
+        },
+      });
+      return m;
+    });
+    await this.families.syncContactUserPayerMemberLinksByEmail(clubId, email);
+    // Ajout auto au cart actif
+    try {
+      await this.membershipCart.addMemberToActiveCart(clubId, created.id);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[viewer.registerSelfAsMember] auto-add membership cart failed',
+        (err as Error).message,
+      );
+    }
+    return {
+      memberId: created.id,
+      firstName: created.firstName,
+      lastName: created.lastName,
+    };
   }
 }

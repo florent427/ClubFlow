@@ -341,6 +341,37 @@ async function main(): Promise<void> {
     },
   });
 
+  // Frais uniques démo : licence fédérale (LICENSE, autoApply) + cotisation club (MANDATORY, autoApply)
+  for (const fee of [
+    {
+      label: 'Licence fédérale 2025-2026',
+      amountCents: 42_00,
+      kind: 'LICENSE' as const,
+      autoApply: true,
+    },
+    {
+      label: 'Cotisation club',
+      amountCents: 15_00,
+      kind: 'MANDATORY' as const,
+      autoApply: true,
+    },
+  ]) {
+    const exists = await prisma.membershipOneTimeFee.findFirst({
+      where: { clubId: club.id, label: fee.label, archivedAt: null },
+    });
+    if (!exists) {
+      await prisma.membershipOneTimeFee.create({
+        data: {
+          clubId: club.id,
+          label: fee.label,
+          amountCents: fee.amountCents,
+          kind: fee.kind,
+          autoApply: fee.autoApply,
+        },
+      });
+    }
+  }
+
   const pwdHint =
     process.env.SEED_ADMIN_PASSWORD === undefined
       ? 'ChangeMe! (défaut)'

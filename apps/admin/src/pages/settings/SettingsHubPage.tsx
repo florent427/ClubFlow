@@ -83,6 +83,22 @@ export function SettingsHubPage() {
                 desc="SMTP, domaine d’expédition — requis pour les campagnes e-mail."
               />
             </li>
+            <li>
+              <SettingsHubCard
+                to="/settings/branding"
+                modules={[]}
+                title="Identité du club"
+                desc="Logo, SIRET, adresse et mentions légales imprimés sur les factures et avoirs PDF."
+              />
+            </li>
+            <li>
+              <SettingsHubCard
+                to="/settings/ai"
+                modules={[]}
+                title="Intégration IA"
+                desc="Clé OpenRouter + modèles texte/image pour la génération d'articles SEO et d'illustrations."
+              />
+            </li>
           </ul>
         </section>
       </div>

@@ -1,0 +1,46 @@
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px;
+  align-items: start;
+}
+
+.info {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.infoCard {
+  padding: 18px 22px;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.infoCard dt {
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.infoCard dd {
+  margin: 0;
+  font-family: var(--serif);
+  font-size: 18px;
+  color: var(--fg);
+}
+
+.map {
+  width: 100%;
+  height: 320px;
+  border: 1px solid var(--line);
+}
+
+@media (max-width: 880px) {
+  .grid {
+    grid-template-columns: 1fr;
+    gap: 36px;
+  }
+}

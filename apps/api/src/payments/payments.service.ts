@@ -280,6 +280,63 @@ export class PaymentsService {
     });
   }
 
+  /**
+   * Crée un AVOIR (credit note) rattaché à une facture existante.
+   * - `amountCents` : montant à rembourser. Si null, reprend le montant de la facture parente.
+   * - `reason` : motif affiché sur l'avoir et conservé en DB.
+   *
+   * Règles :
+   * - La facture parente doit exister et appartenir au club.
+   * - Le montant ne peut pas excéder le montant total de la facture parente.
+   * - L'avoir est créé avec `status: PAID` (document final, pas modifiable).
+   */
+  async createCreditNote(
+    clubId: string,
+    parentInvoiceId: string,
+    reason: string,
+    amountCents?: number | null,
+  ) {
+    const parent = await this.prisma.invoice.findFirst({
+      where: { id: parentInvoiceId, clubId },
+    });
+    if (!parent) {
+      throw new NotFoundException('Facture parente introuvable');
+    }
+    if (parent.isCreditNote) {
+      throw new BadRequestException(
+        'Impossible de créer un avoir sur un avoir.',
+      );
+    }
+    const amount = amountCents ?? parent.amountCents;
+    if (amount <= 0) {
+      throw new BadRequestException('Le montant doit être positif.');
+    }
+    if (amount > parent.amountCents) {
+      throw new BadRequestException(
+        "Le montant de l'avoir ne peut excéder celui de la facture.",
+      );
+    }
+    const trimmedReason = reason.trim();
+    if (!trimmedReason) {
+      throw new BadRequestException('Motif obligatoire pour un avoir.');
+    }
+    return this.prisma.invoice.create({
+      data: {
+        clubId,
+        familyId: parent.familyId,
+        householdGroupId: parent.householdGroupId,
+        clubSeasonId: parent.clubSeasonId,
+        label: `Avoir — ${parent.label}`,
+        baseAmountCents: amount,
+        amountCents: amount,
+        status: InvoiceStatus.PAID,
+        isCreditNote: true,
+        parentInvoiceId: parent.id,
+        creditNoteReason: trimmedReason,
+      },
+    });
+  }
+
   async voidInvoice(clubId: string, invoiceId: string, reason?: string) {
     const inv = await this.prisma.invoice.findFirst({
       where: { id: invoiceId, clubId },
@@ -554,7 +611,22 @@ export class PaymentsService {
     if (balanceCents <= 0) {
       return;
     }
-    if (amountCents !== balanceCents) {
+
+    // Idempotence : si ce paymentIntent a déjà été enregistré, on ne duplique pas.
+    const already = await this.prisma.payment.findFirst({
+      where: { invoiceId: invoice.id, externalRef: paymentIntentId },
+      select: { id: true },
+    });
+    if (already) {
+      return;
+    }
+
+    // Tolérance aux paiements partiels (via Stripe : remboursements partiels,
+    // application de coupon côté Stripe, etc.). On n'ignore plus silencieusement
+    // un montant différent — on enregistre ce qu'on reçoit, dans la limite du
+    // solde dû. Le trop-plein serait un bug Stripe côté marchand.
+    const amountToRecord = Math.max(0, Math.min(amountCents, balanceCents));
+    if (amountToRecord <= 0) {
       return;
     }
 
@@ -563,16 +635,19 @@ export class PaymentsService {
         data: {
           clubId,
           invoiceId: invoice.id,
-          amountCents,
+          amountCents: amountToRecord,
           method: ClubPaymentMethod.STRIPE_CARD,
           externalRef: paymentIntentId,
           paidByMemberId,
         },
       });
+      const fullyPaid = amountToRecord >= balanceCents;
       await tx.invoice.update({
         where: { id: invoice.id },
         data: {
-          status: InvoiceStatus.PAID,
+          // Ne passe en PAID que si l'invoice est soldée. Sinon, reste OPEN
+          // — la balance sera visible côté admin pour relance ou 2e paiement.
+          ...(fullyPaid ? { status: InvoiceStatus.PAID } : {}),
           stripePaymentIntentId: paymentIntentId,
         },
       });

@@ -145,6 +145,38 @@ export class ClubContactsService {
     await this.prisma.contact.delete({
       where: { id: contactId },
     });
+    await this.cleanupOrphanUser(row.userId);
+  }
+
+  /**
+   * Supprime le User et ses artefacts d’authentification lorsqu’aucune fiche
+   * Contact / Member / ClubMembership ne le référence plus (tous clubs confondus).
+   *
+   * Sans ce nettoyage, un User orphelin bloquerait toute future inscription
+   * portail avec la même adresse e-mail (erreur USER_ALREADY_EXISTS côté
+   * AuthService), alors même qu’aucun profil métier n’existe plus.
+   */
+  private async cleanupOrphanUser(userId: string): Promise<void> {
+    const [remainingContact, remainingMember, remainingMembership] =
+      await Promise.all([
+        this.prisma.contact.count({ where: { userId } }),
+        this.prisma.member.count({ where: { userId } }),
+        this.prisma.clubMembership.count({ where: { userId } }),
+      ]);
+    if (
+      remainingContact > 0 ||
+      remainingMember > 0 ||
+      remainingMembership > 0
+    ) {
+      return;
+    }
+    await this.prisma.$transaction([
+      this.prisma.emailVerificationToken.deleteMany({ where: { userId } }),
+      this.prisma.passwordResetToken.deleteMany({ where: { userId } }),
+      this.prisma.refreshToken.deleteMany({ where: { userId } }),
+      this.prisma.userIdentity.deleteMany({ where: { userId } }),
+      this.prisma.user.delete({ where: { id: userId } }),
+    ]);
   }
 
   async promoteContactToMember(

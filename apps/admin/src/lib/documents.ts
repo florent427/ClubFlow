@@ -40,6 +40,25 @@ export const DASHBOARD_SUMMARY = gql`
   }
 `;
 
+export const DASHBOARD_TRENDS = gql`
+  query AdminDashboardTrends {
+    adminDashboardTrends {
+      revenueLast30Cents
+      revenuePrev30Cents
+      revenueTrendPct
+      newMembersLast30
+      newMembersPrev30
+      memberGrowthPct
+      overdueInvoicesCount
+      overdueBalanceCents
+      paidOnTimeRate
+      vitrinePublishedPagesCount
+      vitrinePublishedArticlesCount
+      vitrineContactsLast30Count
+    }
+  }
+`;
+
 export const CLUB_SEARCH = gql`
   query ClubSearch($q: String!) {
     clubSearch(q: $q) {
@@ -660,6 +679,9 @@ export const CLUB_INVOICES = gql`
       dueAt
       totalPaidCents
       balanceCents
+      isCreditNote
+      parentInvoiceId
+      creditNoteReason
     }
   }
 `;
@@ -706,6 +728,9 @@ export const CLUB_INVOICE_DETAIL = gql`
       lockedPaymentMethod
       dueAt
       createdAt
+      isCreditNote
+      parentInvoiceId
+      creditNoteReason
       lines {
         id
         kind
@@ -1447,6 +1472,14 @@ const EVENT_FIELDS = `
     note
     displayName
   }
+  attachments {
+    id
+    eventId
+    fileName
+    mimeType
+    sizeBytes
+    createdAt
+  }
 `;
 
 export const CLUB_EVENTS = gql`
@@ -1515,6 +1548,18 @@ export const ADMIN_CANCEL_EVENT_REGISTRATION = gql`
   mutation AdminCancelEventRegistration($registrationId: ID!) {
     adminCancelEventRegistration(registrationId: $registrationId) {
       ${EVENT_FIELDS}
+    }
+  }
+`;
+
+export const SEND_CLUB_EVENT_CONVOCATION = gql`
+  mutation SendClubEventConvocation($input: SendEventConvocationInput!) {
+    sendClubEventConvocation(input: $input) {
+      totalTargets
+      sent
+      skipped
+      suppressed
+      failed
     }
   }
 `;
@@ -1806,5 +1851,66 @@ export const CREATE_CLUB_ACCOUNTING_ENTRY = gql`
 export const DELETE_CLUB_ACCOUNTING_ENTRY = gql`
   mutation DeleteClubAccountingEntry($id: ID!) {
     deleteClubAccountingEntry(id: $id)
+  }
+`;
+
+export const CREATE_CLUB_CREDIT_NOTE = gql`
+  mutation CreateClubCreditNote(
+    $parentInvoiceId: String!
+    $reason: String!
+    $amountCents: Float
+  ) {
+    createClubCreditNote(
+      parentInvoiceId: $parentInvoiceId
+      reason: $reason
+      amountCents: $amountCents
+    ) {
+      id
+      clubId
+      familyId
+      familyLabel
+      householdGroupId
+      householdGroupLabel
+      clubSeasonId
+      label
+      baseAmountCents
+      amountCents
+      status
+      lockedPaymentMethod
+      dueAt
+      totalPaidCents
+      balanceCents
+      isCreditNote
+      parentInvoiceId
+      creditNoteReason
+    }
+  }
+`;
+
+export const CLUB_BRANDING = gql`
+  query ClubBranding {
+    club {
+      id
+      name
+      slug
+      logoUrl
+      siret
+      address
+      legalMentions
+    }
+  }
+`;
+
+export const UPDATE_CLUB_BRANDING = gql`
+  mutation UpdateClubBranding($input: UpdateClubBrandingInput!) {
+    updateClubBranding(input: $input) {
+      id
+      name
+      slug
+      logoUrl
+      siret
+      address
+      legalMentions
+    }
   }
 `;

@@ -114,6 +114,9 @@ function toInvoiceGraph(row: {
     balanceCents,
     familyLabel: null,
     householdGroupLabel: null,
+    isCreditNote: false,
+    parentInvoiceId: null,
+    creditNoteReason: null,
   };
 }
 

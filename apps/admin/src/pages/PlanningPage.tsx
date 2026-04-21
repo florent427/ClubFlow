@@ -5,7 +5,10 @@ import { addDays } from 'date-fns/addDays';
 import { eachDayOfInterval } from 'date-fns/eachDayOfInterval';
 import { startOfMonth } from 'date-fns/startOfMonth';
 import { startOfWeek } from 'date-fns/startOfWeek';
-import { CourseSlotDetailModal } from '../components/planning/CourseSlotDetailModal';
+import {
+  CourseSlotDetailModal,
+  type CourseSlotDraft,
+} from '../components/planning/CourseSlotDetailModal';
 import { PlanningMonthView } from '../components/planning/PlanningMonthView';
 import { PlanningTimeGrid } from '../components/planning/PlanningTimeGrid';
 import { useToast } from '../components/ToastProvider';
@@ -97,8 +100,16 @@ export function PlanningPage() {
   /** Indique qu'on est en mode duplication (pré-remplissage). */
   const [dupSource, setDupSource] = useState<string | null>(null);
 
-  /** Fiche créneau (double-clic sur le calendrier). */
-  const [slotDetailId, setSlotDetailId] = useState<string | null>(null);
+  /**
+   * Modal édition/création.
+   * - mode 'edit'  : double-clic sur un créneau existant
+   * - mode 'create': double-clic sur une cellule vide du calendrier
+   */
+  const [slotModalMode, setSlotModalMode] = useState<'edit' | 'create' | null>(
+    null,
+  );
+  const [slotModalInitial, setSlotModalInitial] =
+    useState<CourseSlotDraft | null>(null);
 
   const { data: venuesData, refetch: refetchVenues } =
     useQuery<VenuesQueryData>(CLUB_VENUES);
@@ -157,12 +168,6 @@ export function PlanningPage() {
   }, [membersData]);
 
   const slots = slotsData?.clubCourseSlots ?? [];
-
-  const detailSlot = useMemo(
-    () =>
-      slotDetailId ? slots.find((s) => s.id === slotDetailId) ?? null : null,
-    [slots, slotDetailId],
-  );
 
   const memberNameById = useMemo(() => {
     const members = membersData?.clubMembers ?? [];
@@ -306,39 +311,122 @@ export function PlanningPage() {
     return 'Jour';
   }
 
+  /** Ouvre la modale en édition à partir d'un slot existant. */
+  function openEditModal(slotId: string) {
+    const source = slots.find((s) => s.id === slotId);
+    if (!source) return;
+    setSlotModalInitial({
+      id: source.id,
+      title: source.title,
+      venueId: source.venueId,
+      coachMemberId: source.coachMemberId,
+      startsAt: source.startsAt,
+      endsAt: source.endsAt,
+      dynamicGroupId: source.dynamicGroupId ?? null,
+      bookingEnabled: source.bookingEnabled ?? false,
+      bookingCapacity: source.bookingCapacity ?? null,
+    });
+    setSlotModalMode('edit');
+  }
+
+  /**
+   * Ouvre la modale en création avec un slot d'1h pré-rempli
+   * à `day` + `hour:minute` (clic sur cellule vide).
+   */
+  function openCreateModal(day: Date, hour: number, minute: number) {
+    const starts = new Date(day);
+    starts.setHours(hour, minute, 0, 0);
+    const ends = new Date(starts.getTime() + 60 * 60 * 1000);
+    // Pré-sélectionne le premier lieu disponible (cas courant : 1 seul lieu).
+    const firstVenue = venuesData?.clubVenues?.[0]?.id ?? '';
+    // Pré-sélectionne le premier coach disponible.
+    const firstCoach = coaches[0]?.id ?? '';
+    setSlotModalInitial({
+      title: '',
+      venueId: firstVenue,
+      coachMemberId: firstCoach,
+      startsAt: starts.toISOString(),
+      endsAt: ends.toISOString(),
+      dynamicGroupId: null,
+      bookingEnabled: false,
+      bookingCapacity: null,
+    });
+    setSlotModalMode('create');
+  }
+
+  function closeSlotModal() {
+    setSlotModalMode(null);
+    setSlotModalInitial(null);
+  }
+
+  /** Sauvegarde (create ou update) selon le mode en cours. */
+  async function onSaveSlot(draft: CourseSlotDraft) {
+    if (slotModalMode === 'create') {
+      await createSlot({
+        variables: {
+          input: {
+            venueId: draft.venueId,
+            coachMemberId: draft.coachMemberId,
+            title: draft.title,
+            startsAt: draft.startsAt,
+            endsAt: draft.endsAt,
+            dynamicGroupId: draft.dynamicGroupId ?? undefined,
+            bookingEnabled: draft.bookingEnabled,
+            bookingCapacity: draft.bookingEnabled
+              ? draft.bookingCapacity
+              : undefined,
+          },
+        },
+      });
+      showToast('Créneau créé', 'success');
+    } else if (slotModalMode === 'edit' && draft.id) {
+      await updateSlot({
+        variables: {
+          input: {
+            id: draft.id,
+            venueId: draft.venueId,
+            coachMemberId: draft.coachMemberId,
+            title: draft.title,
+            startsAt: draft.startsAt,
+            endsAt: draft.endsAt,
+            dynamicGroupId: draft.dynamicGroupId,
+            bookingEnabled: draft.bookingEnabled,
+            bookingCapacity: draft.bookingEnabled
+              ? draft.bookingCapacity
+              : null,
+          },
+        },
+      });
+      showToast('Créneau modifié', 'success');
+    }
+  }
+
   return (
     <div className="members-loom">
       <CourseSlotDetailModal
-        open={detailSlot !== null}
-        onClose={() => setSlotDetailId(null)}
-        slot={detailSlot}
-        venueLabel={
-          detailSlot
-            ? venueNameById.get(detailSlot.venueId) ?? detailSlot.venueId
-            : ''
+        open={slotModalMode !== null}
+        onClose={closeSlotModal}
+        mode={slotModalMode ?? 'edit'}
+        initial={slotModalInitial}
+        venues={venuesData?.clubVenues ?? []}
+        coaches={membersData?.clubMembers ?? []}
+        groups={groupsData?.clubDynamicGroups ?? []}
+        onSave={onSaveSlot}
+        onDuplicate={
+          slotModalMode === 'edit' && slotModalInitial?.id
+            ? () => {
+                if (slotModalInitial?.id) duplicateSlot(slotModalInitial.id);
+              }
+            : undefined
         }
-        coachLabel={
-          detailSlot
-            ? memberNameById.get(detailSlot.coachMemberId) ??
-              detailSlot.coachMemberId
-            : ''
+        onDelete={
+          slotModalMode === 'edit' && slotModalInitial?.id
+            ? () => {
+                const id = slotModalInitial?.id;
+                if (id) void deleteSlot({ variables: { id } });
+              }
+            : undefined
         }
-        groupLabel={
-          detailSlot?.dynamicGroupId
-            ? groupNameById.get(detailSlot.dynamicGroupId) ?? null
-            : null
-        }
-        timeRangeLabel={
-          detailSlot
-            ? formatSlotRange(detailSlot.startsAt, detailSlot.endsAt)
-            : ''
-        }
-        onDuplicate={() => {
-          if (detailSlot) duplicateSlot(detailSlot.id);
-        }}
-        onDelete={() => {
-          if (detailSlot) void deleteSlot({ variables: { id: detailSlot.id } });
-        }}
       />
       <header className="members-loom__hero">
         <p className="members-loom__eyebrow">Module Planning</p>
@@ -396,7 +484,8 @@ export function PlanningPage() {
             venueNameById={venueNameById}
             groupNameById={groupNameById}
             onSlotTimeChange={onSlotTimeChange}
-            onSlotOpen={(id) => setSlotDetailId(id)}
+            onSlotOpen={(id) => openEditModal(id)}
+            onCellClick={(d, h, m) => openCreateModal(d, h, m)}
             onDayHeaderClick={
               view === 'week'
                 ? (d) => {

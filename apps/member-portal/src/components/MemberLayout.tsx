@@ -38,6 +38,7 @@ function breadcrumbLabel(pathname: string): string {
   if (pathname.startsWith('/progression')) return 'Ma progression';
   if (pathname.startsWith('/planning')) return 'Planning';
   if (pathname.startsWith('/famille')) return 'Famille & espace partagé';
+  if (pathname.startsWith('/adhesion')) return 'Projet d\u2019adhésion';
   if (pathname.startsWith('/parametres')) return 'Paramètres';
   if (pathname.startsWith('/messagerie')) return 'Messagerie';
   if (pathname.startsWith('/actus')) return 'Vie du club';
@@ -81,6 +82,8 @@ export function MemberLayout() {
   const profiles = profilesData?.viewerProfiles ?? [];
   const showSwitcher = profiles.length > 1;
   const hideMemberModules = meData?.viewerMe?.hideMemberModules === true;
+  const canManageMembershipCart =
+    meData?.viewerMe?.canManageMembershipCart === true;
   const adminSwitch = adminSwitchData?.viewerAdminSwitch;
   const canAccessClubBackOffice: boolean =
     adminSwitch?.canAccessClubBackOffice === true;
@@ -144,6 +147,12 @@ export function MemberLayout() {
             <span className="mp-ico material-symbols-outlined">groups</span>
             Famille &amp; partage
           </NavLink>
+          {canManageMembershipCart ? (
+            <NavLink to="/adhesion" className={navClass}>
+              <span className="mp-ico material-symbols-outlined">loyalty</span>
+              Projet d&rsquo;adhésion
+            </NavLink>
+          ) : null}
           <NavLink to="/factures" className={navClass}>
             <span className="mp-ico material-symbols-outlined">receipt_long</span>
             Factures

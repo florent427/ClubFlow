@@ -15,7 +15,36 @@ import { ClubPricingRuleGraph } from './models/club-pricing-rule.model';
 import { InvoiceGraph } from './models/invoice.model';
 import { InvoiceDetailGraph } from './models/invoice-detail.model';
 import { PaymentGraph } from './models/payment.model';
+import { InvoiceRemindersService } from './invoice-reminders.service';
 import { PaymentsService } from './payments.service';
+import { Field, ID, Int, ObjectType } from '@nestjs/graphql';
+
+@ObjectType()
+class OverdueInvoiceGraph {
+  @Field(() => ID)
+  invoiceId!: string;
+
+  @Field()
+  label!: string;
+
+  @Field(() => Date, { nullable: true })
+  dueAt!: Date | null;
+
+  @Field(() => Int)
+  balanceCents!: number;
+
+  @Field(() => String, { nullable: true })
+  payerEmail!: string | null;
+
+  @Field(() => String, { nullable: true })
+  payerName!: string | null;
+}
+
+@ObjectType()
+class InvoiceReminderResultGraph {
+  @Field()
+  sentTo!: string;
+}
 
 @Resolver()
 @UseGuards(
@@ -26,7 +55,25 @@ import { PaymentsService } from './payments.service';
 )
 @RequireClubModule(ModuleCode.PAYMENT)
 export class PaymentsResolver {
-  constructor(private readonly payments: PaymentsService) {}
+  constructor(
+    private readonly payments: PaymentsService,
+    private readonly reminders: InvoiceRemindersService,
+  ) {}
+
+  @Query(() => [OverdueInvoiceGraph], { name: 'clubOverdueInvoices' })
+  async clubOverdueInvoices(
+    @CurrentClub() club: Club,
+  ): Promise<OverdueInvoiceGraph[]> {
+    return this.reminders.listOverdue(club.id);
+  }
+
+  @Mutation(() => InvoiceReminderResultGraph)
+  async sendInvoiceReminder(
+    @CurrentClub() club: Club,
+    @Args('invoiceId') invoiceId: string,
+  ): Promise<InvoiceReminderResultGraph> {
+    return this.reminders.sendReminder(club.id, invoiceId);
+  }
 
   @Query(() => [InvoiceGraph], { name: 'clubInvoices' })
   async clubInvoices(@CurrentClub() club: Club): Promise<InvoiceGraph[]> {
@@ -47,6 +94,9 @@ export class PaymentsResolver {
       balanceCents: r.balanceCents,
       familyLabel: r.familyLabel,
       householdGroupLabel: r.householdGroupLabel,
+      isCreditNote: r.isCreditNote,
+      parentInvoiceId: r.parentInvoiceId ?? null,
+      creditNoteReason: r.creditNoteReason ?? null,
     }));
   }
 
@@ -85,6 +135,9 @@ export class PaymentsResolver {
       balanceCents: row.amountCents,
       familyLabel: null,
       householdGroupLabel: null,
+      isCreditNote: row.isCreditNote,
+      parentInvoiceId: row.parentInvoiceId ?? null,
+      creditNoteReason: row.creditNoteReason ?? null,
     };
   }
 
@@ -168,6 +221,9 @@ export class PaymentsResolver {
           p.paidByMember?.lastName ?? p.paidByContact?.lastName ?? null,
         createdAt: p.createdAt,
       })),
+      isCreditNote: inv.isCreditNote,
+      parentInvoiceId: inv.parentInvoiceId ?? null,
+      creditNoteReason: inv.creditNoteReason ?? null,
     };
   }
 
@@ -193,6 +249,9 @@ export class PaymentsResolver {
       balanceCents: inv.amountCents,
       familyLabel: null,
       householdGroupLabel: null,
+      isCreditNote: inv.isCreditNote,
+      parentInvoiceId: inv.parentInvoiceId ?? null,
+      creditNoteReason: inv.creditNoteReason ?? null,
     };
   }
 
@@ -220,6 +279,50 @@ export class PaymentsResolver {
       balanceCents: 0,
       familyLabel: null,
       householdGroupLabel: null,
+      isCreditNote: inv.isCreditNote,
+      parentInvoiceId: inv.parentInvoiceId ?? null,
+      creditNoteReason: inv.creditNoteReason ?? null,
+    };
+  }
+
+  /**
+   * Crée un avoir (credit note) rattaché à une facture existante.
+   * Utilisé pour constater un remboursement ou une annulation partielle
+   * sans détruire la facture source.
+   */
+  @Mutation(() => InvoiceGraph, { name: 'createClubCreditNote' })
+  async createClubCreditNote(
+    @CurrentClub() club: Club,
+    @Args('parentInvoiceId', { type: () => String }) parentInvoiceId: string,
+    @Args('reason', { type: () => String }) reason: string,
+    @Args('amountCents', { type: () => Number, nullable: true })
+    amountCents: number | null,
+  ): Promise<InvoiceGraph> {
+    const inv = await this.payments.createCreditNote(
+      club.id,
+      parentInvoiceId,
+      reason,
+      amountCents ?? null,
+    );
+    return {
+      id: inv.id,
+      clubId: inv.clubId,
+      familyId: inv.familyId,
+      householdGroupId: inv.householdGroupId ?? null,
+      clubSeasonId: inv.clubSeasonId ?? null,
+      label: inv.label,
+      baseAmountCents: inv.baseAmountCents,
+      amountCents: inv.amountCents,
+      status: inv.status,
+      lockedPaymentMethod: inv.lockedPaymentMethod ?? null,
+      dueAt: inv.dueAt,
+      totalPaidCents: inv.amountCents,
+      balanceCents: 0,
+      familyLabel: null,
+      householdGroupLabel: null,
+      isCreditNote: inv.isCreditNote,
+      parentInvoiceId: inv.parentInvoiceId ?? null,
+      creditNoteReason: inv.creditNoteReason ?? null,
     };
   }
 }

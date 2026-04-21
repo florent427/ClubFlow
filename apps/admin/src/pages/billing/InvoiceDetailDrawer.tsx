@@ -2,6 +2,7 @@ import { useMutation, useQuery } from '@apollo/client/react';
 import { useMemo, useState } from 'react';
 import {
   CLUB_INVOICE_DETAIL,
+  CREATE_CLUB_CREDIT_NOTE,
   ISSUE_CLUB_INVOICE,
   RECORD_CLUB_MANUAL_PAYMENT,
   VOID_CLUB_INVOICE,
@@ -9,6 +10,7 @@ import {
 import type {
   ClubInvoiceDetailQueryData,
   ClubPaymentMethodStr,
+  CreateClubCreditNoteMutationData,
   InvoiceLineAdjustmentStr,
   InvoiceStatusStr,
   IssueClubInvoiceMutationData,
@@ -19,6 +21,40 @@ import { Drawer } from '../../components/ui/Drawer';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
 import { LoadingState } from '../../components/ui/LoadingState';
 import { ErrorState } from '../../components/ui/ErrorState';
+import { getClubId, getToken } from '../../lib/storage';
+
+const API_ROOT = (
+  (import.meta.env.VITE_GRAPHQL_HTTP as string | undefined) ??
+  'http://localhost:3000/graphql'
+).replace(/\/graphql\/?$/, '');
+
+async function downloadInvoicePdf(invoiceId: string, filename: string) {
+  const token = getToken();
+  const clubId = getClubId();
+  const res = await fetch(`${API_ROOT}/invoices/${invoiceId}/pdf`, {
+    method: 'GET',
+    credentials: 'include',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(clubId ? { 'x-club-id': clubId } : {}),
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(
+      `Téléchargement impossible (HTTP ${res.status})${text ? ': ' + text : ''}`,
+    );
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
 function formatEuros(cents: number): string {
   return (cents / 100).toLocaleString('fr-FR', {
@@ -104,6 +140,8 @@ export function InvoiceDetailDrawer({
   );
   const [recordPayment, payState] =
     useMutation<RecordClubManualPaymentMutationData>(RECORD_CLUB_MANUAL_PAYMENT);
+  const [createCreditNote, creditNoteState] =
+    useMutation<CreateClubCreditNoteMutationData>(CREATE_CLUB_CREDIT_NOTE);
 
   const [confirmKind, setConfirmKind] = useState<ConfirmKind>(null);
   const [voidReason, setVoidReason] = useState('');
@@ -113,11 +151,25 @@ export function InvoiceDetailDrawer({
   const [payRef, setPayRef] = useState('');
   const [payError, setPayError] = useState<string | null>(null);
 
+  const [creditOpen, setCreditOpen] = useState(false);
+  const [creditReason, setCreditReason] = useState('');
+  const [creditAmount, setCreditAmount] = useState('');
+  const [creditError, setCreditError] = useState<string | null>(null);
+
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+
   const inv = data?.clubInvoice ?? null;
   const isDraft = inv?.status === 'DRAFT';
   const isOpen = inv?.status === 'OPEN';
   const canVoid = inv?.status === 'DRAFT' || inv?.status === 'OPEN';
   const balance = inv?.balanceCents ?? 0;
+  const isCreditNote = inv?.isCreditNote === true;
+  // Avoir disponible seulement sur factures émises ou payées et non-avoir.
+  const canCreditNote =
+    !!inv && !isCreditNote && (inv.status === 'OPEN' || inv.status === 'PAID');
+  // Téléchargement PDF : dès qu'un document existe (même brouillon, utile pour prévisualiser)
+  const canDownloadPdf = !!inv;
 
   const totalAdjustments = useMemo(() => {
     if (!inv) return 0;
@@ -198,8 +250,86 @@ export function InvoiceDetailDrawer({
     }
   }
 
+  function handleOpenCreditForm() {
+    if (!inv) return;
+    setCreditReason('');
+    // Par défaut on propose un avoir total = montant facture
+    setCreditAmount((inv.amountCents / 100).toFixed(2));
+    setCreditError(null);
+    setCreditOpen(true);
+  }
+
+  async function handleCreateCreditNote(e: React.FormEvent) {
+    e.preventDefault();
+    if (!inv) return;
+    const reasonTrim = creditReason.trim();
+    if (!reasonTrim) {
+      setCreditError('Motif obligatoire.');
+      return;
+    }
+    const normalized = creditAmount.replace(',', '.').trim();
+    const cents = Math.round(Number(normalized) * 100);
+    if (!Number.isFinite(cents) || cents <= 0) {
+      setCreditError('Montant invalide.');
+      return;
+    }
+    if (cents > inv.amountCents) {
+      setCreditError(
+        `Le montant ne peut excéder celui de la facture (${formatEuros(inv.amountCents)}).`,
+      );
+      return;
+    }
+    setCreditError(null);
+    try {
+      await createCreditNote({
+        variables: {
+          parentInvoiceId: inv.id,
+          reason: reasonTrim,
+          amountCents: cents,
+        },
+      });
+      setCreditOpen(false);
+      await refetch();
+      onChanged();
+    } catch (err) {
+      setCreditError(err instanceof Error ? err.message : 'Erreur');
+    }
+  }
+
+  async function handleDownloadPdf() {
+    if (!inv) return;
+    setPdfLoading(true);
+    setPdfError(null);
+    try {
+      const shortId = inv.id.slice(0, 8).toUpperCase();
+      const filename = inv.isCreditNote
+        ? `Avoir_${shortId}.pdf`
+        : `Facture_${shortId}.pdf`;
+      await downloadInvoicePdf(inv.id, filename);
+    } catch (err) {
+      setPdfError(err instanceof Error ? err.message : 'Téléchargement impossible');
+    } finally {
+      setPdfLoading(false);
+    }
+  }
+
   const footer = inv ? (
     <div className="cf-drawer__footer-actions">
+      {canDownloadPdf ? (
+        <button
+          type="button"
+          className="btn-ghost"
+          onClick={handleDownloadPdf}
+          disabled={pdfLoading}
+          title={
+            isCreditNote
+              ? 'Télécharger l’avoir en PDF'
+              : 'Télécharger la facture en PDF'
+          }
+        >
+          {pdfLoading ? 'Génération…' : 'Télécharger PDF'}
+        </button>
+      ) : null}
       {isDraft ? (
         <button
           type="button"
@@ -217,6 +347,17 @@ export function InvoiceDetailDrawer({
           onClick={handleOpenPayForm}
         >
           Enregistrer un paiement
+        </button>
+      ) : null}
+      {canCreditNote ? (
+        <button
+          type="button"
+          className="btn-ghost"
+          onClick={handleOpenCreditForm}
+          disabled={creditNoteState.loading}
+          title="Créer un avoir lié à cette facture"
+        >
+          Créer un avoir
         </button>
       ) : null}
       {canVoid ? (
@@ -302,6 +443,36 @@ export function InvoiceDetailDrawer({
                     {METHOD_LABELS[inv.lockedPaymentMethod]}
                   </span>
                 </div>
+              ) : null}
+              {inv.isCreditNote ? (
+                <>
+                  <div className="cf-invoice-detail__meta-row">
+                    <span className="cf-invoice-detail__meta-label">Type</span>
+                    <span className="cf-invoice-detail__meta-value cf-cell-danger">
+                      Avoir (remboursement)
+                    </span>
+                  </div>
+                  {inv.parentInvoiceId ? (
+                    <div className="cf-invoice-detail__meta-row">
+                      <span className="cf-invoice-detail__meta-label">
+                        Rattaché à
+                      </span>
+                      <span className="cf-invoice-detail__meta-value">
+                        Facture {inv.parentInvoiceId.slice(0, 8).toUpperCase()}
+                      </span>
+                    </div>
+                  ) : null}
+                  {inv.creditNoteReason ? (
+                    <div className="cf-invoice-detail__meta-row">
+                      <span className="cf-invoice-detail__meta-label">
+                        Motif
+                      </span>
+                      <span className="cf-invoice-detail__meta-value">
+                        {inv.creditNoteReason}
+                      </span>
+                    </div>
+                  ) : null}
+                </>
               ) : null}
             </section>
 
@@ -510,6 +681,77 @@ export function InvoiceDetailDrawer({
                   </button>
                 </div>
               </form>
+            ) : null}
+
+            {creditOpen ? (
+              <form
+                className="cf-invoice-pay-form"
+                onSubmit={handleCreateCreditNote}
+              >
+                <h3 className="cf-invoice-detail__section-title">
+                  Nouvel avoir
+                </h3>
+                <p
+                  className="cf-invoice-detail__empty"
+                  style={{ marginTop: 0 }}
+                >
+                  Un avoir constate un remboursement ou une annulation partielle
+                  sans toucher à la facture d’origine.
+                </p>
+                <label className="cf-field">
+                  <span className="cf-field__label">Motif *</span>
+                  <textarea
+                    className="cf-field__input"
+                    value={creditReason}
+                    onChange={(e) => setCreditReason(e.target.value)}
+                    rows={2}
+                    maxLength={500}
+                    placeholder="Remboursement arrêt maladie, inscription annulée…"
+                    required
+                  />
+                </label>
+                <label className="cf-field">
+                  <span className="cf-field__label">
+                    Montant (€) — max {formatEuros(inv.amountCents)}
+                  </span>
+                  <input
+                    className="cf-field__input"
+                    type="text"
+                    inputMode="decimal"
+                    value={creditAmount}
+                    onChange={(e) => setCreditAmount(e.target.value)}
+                    required
+                  />
+                </label>
+                {creditError ? (
+                  <p className="cf-form-error" role="alert">
+                    {creditError}
+                  </p>
+                ) : null}
+                <div className="cf-form-actions">
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => setCreditOpen(false)}
+                    disabled={creditNoteState.loading}
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn-primary"
+                    disabled={creditNoteState.loading}
+                  >
+                    {creditNoteState.loading ? 'Création…' : "Créer l'avoir"}
+                  </button>
+                </div>
+              </form>
+            ) : null}
+
+            {pdfError ? (
+              <p className="cf-form-error" role="alert">
+                {pdfError}
+              </p>
             ) : null}
           </div>
         ) : null}

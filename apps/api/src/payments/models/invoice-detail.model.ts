@@ -65,4 +65,19 @@ export class InvoiceDetailGraph {
   @Field(() => Date) createdAt!: Date;
   @Field(() => [InvoiceLineGraph]) lines!: InvoiceLineGraph[];
   @Field(() => [InvoicePaymentGraph]) payments!: InvoicePaymentGraph[];
+
+  @Field(() => Boolean, {
+    description: 'true si ce document est un avoir (credit note).',
+  })
+  isCreditNote!: boolean;
+
+  @Field(() => ID, {
+    nullable: true,
+    description:
+      "Facture source lorsque ce document est un avoir — sinon null.",
+  })
+  parentInvoiceId!: string | null;
+
+  @Field(() => String, { nullable: true })
+  creditNoteReason!: string | null;
 }

@@ -4373,6 +4373,16 @@ a:focus-visible {
   cursor: pointer;
 }
 .cf-checkbox input { width: 16px; height: 16px; cursor: pointer; }
+.cf-radio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #334155;
+  cursor: pointer;
+  padding: 6px 0;
+}
+.cf-radio input { width: 16px; height: 16px; cursor: pointer; }
 
 .cf-muted { color: #64748b; font-size: 14px; }
 
@@ -4923,3 +4933,359 @@ a:focus-visible {
   font-weight: 600;
 }
 .cf-bento-link:hover { text-decoration: underline; }
+
+/* --- Groupes dynamiques · refonte UI --- */
+.dyn-group-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 420px) 1fr;
+  gap: 1.1rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .dyn-group-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dyn-group-panel {
+  padding: 1.15rem 1.25rem 1.35rem;
+}
+
+.dyn-group-panel__lede {
+  margin: -0.25rem 0 0.9rem;
+  font-size: 0.88rem;
+}
+
+.dyn-group-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.dyn-group-form__section {
+  border: 1px solid rgba(25, 28, 29, 0.08);
+  border-radius: 10px;
+  padding: 0.85rem 1rem 1rem;
+  margin: 0;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.dyn-group-form__legend {
+  padding: 0 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--cf-primary-deep, #1a237e);
+}
+
+.dyn-group-form__legend .muted {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  font-size: 0.85rem;
+  color: var(--cf-text-muted);
+  margin-left: 0.25rem;
+}
+
+.dyn-group-form__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.dyn-group-form__hint {
+  margin: 0.45rem 0 0;
+  font-size: 0.8rem;
+  color: var(--cf-text-muted);
+}
+
+.dyn-group-form__grade-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.55rem;
+}
+
+.dyn-group-form__grades {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.dyn-group-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(25, 28, 29, 0.05);
+  border: 1px solid rgba(25, 28, 29, 0.1);
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.dyn-group-chip:hover {
+  background: rgba(26, 35, 126, 0.08);
+}
+
+.dyn-group-chip input[type='checkbox'] {
+  margin: 0;
+}
+
+.dyn-group-chip--active {
+  background: rgba(26, 35, 126, 0.12);
+  border-color: rgba(26, 35, 126, 0.45);
+  color: var(--cf-primary-deep, #1a237e);
+  font-weight: 600;
+}
+
+.dyn-group-form__preview {
+  margin: 0;
+  padding: 0.65rem 0.85rem;
+  background: rgba(255, 107, 53, 0.08);
+  border-left: 3px solid var(--cf-accent, #ff6b35);
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.dyn-group-form__actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.dyn-group-row--active {
+  background: rgba(26, 35, 126, 0.06) !important;
+}
+
+.link-like {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--cf-primary-deep, #1a237e);
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  font-size: inherit;
+  font-family: inherit;
+}
+
+.link-like:hover {
+  text-decoration: underline;
+}
+
+/* ===========================================================================
+   CourseSlotDetailModal (édition/création de créneau depuis le calendrier)
+   ------------------------------------------------------------------------
+   Utilise la même base que .members-family-modal (overlay + card blanche).
+   Voir CourseSlotDetailModal.tsx pour la structure du DOM.
+   =========================================================================== */
+
+.slot-edit-modal {
+  max-width: 640px;
+  width: min(96vw, 640px);
+}
+
+.slot-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 0.25rem 0 0;
+}
+
+.slot-edit-form__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem;
+}
+
+@media (max-width: 520px) {
+  .slot-edit-form__row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.slot-edit-form__booking {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 0.65rem;
+  padding: 0.6rem 0.8rem 0.8rem;
+  margin: 0.3rem 0 0.1rem;
+  background: rgba(248, 248, 250, 0.6);
+}
+
+.slot-edit-form__booking legend {
+  padding: 0 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--cf-primary-deep, #1a237e);
+}
+
+.slot-edit-form__toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.15rem 0 0.5rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.slot-edit-form__toggle input[type='checkbox'] {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--cf-primary, #0056c5);
+  cursor: pointer;
+}
+
+.slot-edit-form__delete {
+  color: #b3261e;
+  margin-left: auto;
+}
+
+.slot-edit-form__delete:hover {
+  background-color: rgba(179, 38, 30, 0.08);
+}
+
+/* Paramètres — Identité du club (branding) */
+.cf-branding-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.cf-branding-logo {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 1rem;
+  align-items: start;
+  padding: 0.9rem;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+@media (max-width: 640px) {
+  .cf-branding-logo {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cf-branding-logo__preview {
+  width: 180px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.cf-branding-logo__img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.cf-branding-logo__empty {
+  color: #94a3b8;
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 0 0.6rem;
+}
+
+.cf-branding-logo__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.cf-branding-logo__file {
+  font-size: 0.85rem;
+}
+
+.cf-branding-logo__hint {
+  font-size: 0.8rem;
+  color: #64748b;
+  margin: 0;
+}
+
+/* Pièces jointes d'événement (drawer détail). */
+.cf-event-attachments {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 12px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cf-event-attachments__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cf-event-attachments__header h3 {
+  font-size: 0.95rem;
+  margin: 0;
+  color: #0f172a;
+}
+
+.cf-event-attachments__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cf-event-attachments__item {
+  display: grid;
+  grid-template-columns: 24px 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.cf-event-attachments__icon {
+  color: #475569;
+}
+
+.cf-event-attachments__name {
+  justify-content: flex-start;
+  text-align: left;
+  padding: 4px 6px;
+  font-weight: 500;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cf-event-attachments__size {
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.cf-event-attachments__delete {
+  color: #b91c1c;
+}
+
+/* Hint below textarea in event form (ex. caractères restants). */
+.cf-field__hint {
+  font-size: 0.78rem;
+  color: #64748b;
+  margin-top: 4px;
+  display: block;
+}
+

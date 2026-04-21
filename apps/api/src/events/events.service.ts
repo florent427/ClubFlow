@@ -1,30 +1,76 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
   ClubEventRegistrationStatus,
   ClubEventStatus,
+  MemberStatus,
   Prisma,
 } from '@prisma/client';
+import { ClubSendingDomainService } from '../mail/club-sending-domain.service';
+import { MAIL_TRANSPORT } from '../mail/mail.constants';
+import type { MailTransport } from '../mail/mail-transport.interface';
+import {
+  memberMatchesDynamicGroup,
+  type DynamicGroupCriteria,
+} from '../members/dynamic-group-matcher';
 import { PrismaService } from '../prisma/prisma.service';
+import type { SendEventConvocationInput } from './dto/send-event-convocation.input';
+import { EventConvocationMode } from './enums/event-convocation-mode.enum';
 
 type Viewer = {
   memberId?: string | null;
   contactId?: string | null;
 };
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function formatDateRange(startsAt: Date, endsAt: Date): string {
+  const sameDay =
+    startsAt.getFullYear() === endsAt.getFullYear() &&
+    startsAt.getMonth() === endsAt.getMonth() &&
+    startsAt.getDate() === endsAt.getDate();
+  const longDate = startsAt.toLocaleString('fr-FR', {
+    dateStyle: 'full',
+    timeStyle: 'short',
+  });
+  if (sameDay) {
+    const endTime = endsAt.toLocaleString('fr-FR', { timeStyle: 'short' });
+    return `${longDate} — jusqu’à ${endTime}`;
+  }
+  const endFull = endsAt.toLocaleString('fr-FR', {
+    dateStyle: 'full',
+    timeStyle: 'short',
+  });
+  return `${longDate} → ${endFull}`;
+}
+
 @Injectable()
 export class EventsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly log = new Logger(EventsService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly sendingDomains: ClubSendingDomainService,
+    @Inject(MAIL_TRANSPORT) private readonly mail: MailTransport,
+  ) {}
 
   async listAdmin(clubId: string) {
     const events = await this.prisma.clubEvent.findMany({
       where: { clubId },
       orderBy: [{ startsAt: 'desc' }],
-      include: { registrations: true },
+      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } } },
     });
     return Promise.all(events.map((e) => this.hydrate(e, {})));
   }
@@ -36,7 +82,7 @@ export class EventsService {
         status: ClubEventStatus.PUBLISHED,
       },
       orderBy: [{ startsAt: 'asc' }],
-      include: { registrations: true },
+      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } } },
     });
     // filter contact visibility
     const filtered = viewer.contactId
@@ -81,7 +127,7 @@ export class EventsService {
         status: publishNow ? ClubEventStatus.PUBLISHED : ClubEventStatus.DRAFT,
         publishedAt: publishNow ? new Date() : null,
       },
-      include: { registrations: true },
+      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } } },
     });
     return this.hydrate(ev, {});
   }
@@ -113,7 +159,7 @@ export class EventsService {
     const updated = await this.prisma.clubEvent.update({
       where: { id },
       data,
-      include: { registrations: true },
+      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } } },
     });
     return this.hydrate(updated, {});
   }
@@ -129,7 +175,7 @@ export class EventsService {
         status: ClubEventStatus.PUBLISHED,
         publishedAt: existing.publishedAt ?? new Date(),
       },
-      include: { registrations: true },
+      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } } },
     });
     return this.hydrate(updated, {});
   }
@@ -142,7 +188,7 @@ export class EventsService {
     const updated = await this.prisma.clubEvent.update({
       where: { id },
       data: { status: ClubEventStatus.CANCELLED },
-      include: { registrations: true },
+      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } } },
     });
     return this.hydrate(updated, {});
   }
@@ -162,7 +208,7 @@ export class EventsService {
     }
     const event = await this.prisma.clubEvent.findFirst({
       where: { id: eventId, clubId },
-      include: { registrations: true },
+      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } } },
     });
     if (!event) throw new NotFoundException('Événement introuvable');
     if (event.status !== ClubEventStatus.PUBLISHED) {
@@ -222,7 +268,7 @@ export class EventsService {
 
     const refreshed = await this.prisma.clubEvent.findUnique({
       where: { id: event.id },
-      include: { registrations: true },
+      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } } },
     });
     if (!refreshed) throw new NotFoundException('Événement introuvable');
     return this.hydrate(refreshed, viewer);
@@ -283,7 +329,7 @@ export class EventsService {
 
     const refreshed = await this.prisma.clubEvent.findUnique({
       where: { id: event.id },
-      include: { registrations: true },
+      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } } },
     });
     if (!refreshed) throw new NotFoundException('Événement introuvable');
     return this.hydrate(refreshed, {});
@@ -295,7 +341,7 @@ export class EventsService {
     }
     const event = await this.prisma.clubEvent.findFirst({
       where: { id: eventId, clubId },
-      include: { registrations: true },
+      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } } },
     });
     if (!event) throw new NotFoundException('Événement introuvable');
     const existing = event.registrations.find((r) =>
@@ -336,14 +382,19 @@ export class EventsService {
 
     const refreshed = await this.prisma.clubEvent.findUnique({
       where: { id: event.id },
-      include: { registrations: true },
+      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } } },
     });
     if (!refreshed) throw new NotFoundException('Événement introuvable');
     return this.hydrate(refreshed, viewer);
   }
 
   private async hydrate(
-    ev: Prisma.ClubEventGetPayload<{ include: { registrations: true } }>,
+    ev: Prisma.ClubEventGetPayload<{
+      include: {
+        registrations: true;
+        attachments: true;
+      };
+    }>,
     viewer: Viewer,
   ) {
     const activeRegs = ev.registrations.filter(
@@ -431,6 +482,228 @@ export class EventsService {
             ? contactName.get(r.contactId) ?? null
             : null,
       })),
+      attachments: (ev.attachments ?? []).map((a) => ({
+        id: a.id,
+        eventId: a.eventId,
+        fileName: a.fileName,
+        mimeType: a.mimeType,
+        sizeBytes: a.sizeBytes,
+        createdAt: a.createdAt,
+      })),
     };
+  }
+
+  private async loadGroupCriteria(
+    clubId: string,
+    groupId: string,
+  ): Promise<DynamicGroupCriteria | null> {
+    const g = await this.prisma.dynamicGroup.findFirst({
+      where: { id: groupId, clubId },
+      include: { gradeFilters: true },
+    });
+    if (!g) return null;
+    return {
+      minAge: g.minAge,
+      maxAge: g.maxAge,
+      gradeLevelIds: g.gradeFilters.map((f) => f.gradeLevelId),
+    };
+  }
+
+  /**
+   * Envoi d’une convocation e-mail pour un événement.
+   * - REGISTERED    : cible les inscrits (members + contacts non annulés)
+   * - ALL_MEMBERS   : diffusion à tous les membres ACTIFS du club
+   * - DYNAMIC_GROUP : filtre par groupe dynamique (age + grades)
+   */
+  async sendConvocation(
+    clubId: string,
+    input: SendEventConvocationInput,
+  ): Promise<{
+    totalTargets: number;
+    sent: number;
+    skipped: number;
+    suppressed: number;
+    failed: number;
+  }> {
+    const event = await this.prisma.clubEvent.findFirst({
+      where: { id: input.eventId, clubId },
+      include: { registrations: true },
+    });
+    if (!event) throw new NotFoundException('Événement introuvable');
+
+    const club = await this.prisma.club.findUnique({ where: { id: clubId } });
+    if (!club) throw new NotFoundException('Club introuvable');
+
+    // Resolve recipient email set
+    const emails = new Set<string>();
+    if (input.mode === EventConvocationMode.REGISTERED) {
+      const activeRegs = event.registrations.filter(
+        (r) => r.status !== ClubEventRegistrationStatus.CANCELLED,
+      );
+      const memberIds = activeRegs
+        .map((r) => r.memberId)
+        .filter((x): x is string => !!x);
+      const contactIds = activeRegs
+        .map((r) => r.contactId)
+        .filter((x): x is string => !!x);
+      if (memberIds.length) {
+        const ms = await this.prisma.member.findMany({
+          where: { id: { in: memberIds }, clubId },
+          select: { email: true },
+        });
+        for (const m of ms) {
+          const e = (m.email ?? '').trim();
+          if (e) emails.add(e);
+        }
+      }
+      if (contactIds.length) {
+        const cs = await this.prisma.contact.findMany({
+          where: { id: { in: contactIds }, clubId },
+          include: { user: true },
+        });
+        for (const c of cs) {
+          const e = (c.user.email ?? '').trim();
+          if (e) emails.add(e);
+        }
+      }
+    } else if (input.mode === EventConvocationMode.ALL_MEMBERS) {
+      const members = await this.prisma.member.findMany({
+        where: { clubId, status: MemberStatus.ACTIVE },
+        select: { email: true },
+      });
+      for (const m of members) {
+        const e = (m.email ?? '').trim();
+        if (e) emails.add(e);
+      }
+    } else if (input.mode === EventConvocationMode.DYNAMIC_GROUP) {
+      if (!input.dynamicGroupId) {
+        throw new BadRequestException('Groupe dynamique requis.');
+      }
+      const criteria = await this.loadGroupCriteria(
+        clubId,
+        input.dynamicGroupId,
+      );
+      if (!criteria) {
+        throw new BadRequestException('Groupe dynamique inconnu');
+      }
+      const members = await this.prisma.member.findMany({
+        where: { clubId, status: MemberStatus.ACTIVE },
+        select: {
+          email: true,
+          status: true,
+          birthDate: true,
+          gradeLevelId: true,
+        },
+      });
+      const now = new Date();
+      for (const m of members) {
+        if (
+          !memberMatchesDynamicGroup(
+            {
+              status: m.status,
+              birthDate: m.birthDate,
+              gradeLevelId: m.gradeLevelId,
+            },
+            criteria,
+            now,
+          )
+        ) {
+          continue;
+        }
+        const e = (m.email ?? '').trim();
+        if (e) emails.add(e);
+      }
+    } else {
+      throw new BadRequestException('Mode de convocation invalide.');
+    }
+
+    const totalTargets = emails.size;
+    if (totalTargets === 0) {
+      return { totalTargets: 0, sent: 0, skipped: 0, suppressed: 0, failed: 0 };
+    }
+
+    // Suppression list
+    const suppressedRows = await this.prisma.emailSuppression.findMany({
+      where: { clubId },
+      select: { emailNormalized: true },
+    });
+    const suppressedSet = new Set(suppressedRows.map((s) => s.emailNormalized));
+
+    const profile = await this.sendingDomains.getVerifiedMailProfile(
+      clubId,
+      'transactional',
+    );
+
+    // Build subject / body
+    const whenFr = formatDateRange(event.startsAt, event.endsAt);
+    const subject =
+      (input.subject ?? '').trim() ||
+      `${club.name} — Convocation : ${event.title}`;
+    const manualBody = (input.body ?? '').trim();
+    const defaultLines: string[] = [
+      `Bonjour,`,
+      ``,
+      `Vous êtes convié(e) à l’événement « ${event.title} » organisé par ${club.name}.`,
+      ``,
+      `Date : ${whenFr}`,
+    ];
+    if (event.location) defaultLines.push(`Lieu : ${event.location}`);
+    if (event.description) {
+      defaultLines.push('', event.description);
+    }
+    defaultLines.push('', 'À bientôt,', club.name);
+    const bodyText = manualBody || defaultLines.join('\n');
+    const bodyHtml = `<div style="white-space:pre-wrap;font-family:Arial,Helvetica,sans-serif;color:#1e293b;font-size:15px;line-height:1.55">${escapeHtml(
+      bodyText,
+    )}</div>`;
+
+    let sent = 0;
+    let skipped = 0;
+    let suppressed = 0;
+    let failed = 0;
+    for (const raw of emails) {
+      const norm = raw.toLowerCase();
+      if (!raw.includes('@')) {
+        skipped += 1;
+        continue;
+      }
+      if (suppressedSet.has(norm)) {
+        suppressed += 1;
+        continue;
+      }
+      try {
+        await this.mail.sendEmail({
+          clubId,
+          kind: 'transactional',
+          from: profile.from,
+          to: raw,
+          subject,
+          html: bodyHtml,
+          text: bodyText,
+        });
+        sent += 1;
+      } catch (err) {
+        failed += 1;
+        this.log.error(
+          `events.convocation_send_failed event=${event.id} to=${norm}: ${err}`,
+        );
+      }
+    }
+
+    this.log.log(
+      JSON.stringify({
+        event: 'events.convocation_sent',
+        eventId: event.id,
+        clubId,
+        mode: input.mode,
+        totalTargets,
+        sent,
+        skipped,
+        suppressed,
+        failed,
+      }),
+    );
+
+    return { totalTargets, sent, skipped, suppressed, failed };
   }
 }

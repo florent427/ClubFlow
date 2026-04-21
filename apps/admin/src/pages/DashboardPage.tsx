@@ -13,6 +13,7 @@ import type {
   DynamicGroupsQueryData,
 } from '../lib/types';
 import { getToken } from '../lib/storage';
+import { DashboardTrendsPanel } from './DashboardTrendsPanel';
 
 function decodeJwtEmail(token: string): string | null {
   try {
@@ -302,6 +303,8 @@ export function DashboardPage() {
           </button>
         </div>
       </section>
+
+      <DashboardTrendsPanel />
 
       <section className="cf-dash__kpi">
         <div className="cf-kpi-card">

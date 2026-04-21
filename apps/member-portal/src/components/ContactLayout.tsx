@@ -1,5 +1,8 @@
+import { useQuery } from '@apollo/client/react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { clearAuth } from '../lib/storage';
+import { clearAuth, getClubId } from '../lib/storage';
+import { VIEWER_ME } from '../lib/viewer-documents';
+import type { ViewerMeData } from '../lib/viewer-types';
 
 function linkClass({ isActive }: { isActive: boolean }): string {
   return `mp-sidebar-link${isActive ? ' mp-sidebar-link-active' : ''}`;
@@ -7,6 +10,14 @@ function linkClass({ isActive }: { isActive: boolean }): string {
 
 export function ContactLayout() {
   const navigate = useNavigate();
+  const clubId = getClubId();
+
+  const { data: meData } = useQuery<ViewerMeData>(VIEWER_ME, {
+    skip: !clubId,
+    fetchPolicy: 'cache-first',
+  });
+  const canManageMembershipCart =
+    meData?.viewerMe?.canManageMembershipCart === true;
 
   function logout(): void {
     clearAuth();
@@ -32,6 +43,12 @@ export function ContactLayout() {
             <span className="mp-ico material-symbols-outlined">groups</span>
             Famille
           </NavLink>
+          {canManageMembershipCart ? (
+            <NavLink to="/adhesion" className={linkClass}>
+              <span className="mp-ico material-symbols-outlined">loyalty</span>
+              Projet d&rsquo;adhésion
+            </NavLink>
+          ) : null}
           <NavLink to="/actus" className={linkClass}>
             <span className="mp-ico material-symbols-outlined">campaign</span>
             Actus & sondages

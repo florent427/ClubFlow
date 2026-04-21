@@ -52,4 +52,19 @@ export class InvoiceGraph {
     description: 'Reste à payer : amountCents − totalPaidCents (plancher 0).',
   })
   balanceCents!: number;
+
+  @Field(() => Boolean, {
+    description: 'true si ce document est un avoir (credit note).',
+  })
+  isCreditNote!: boolean;
+
+  @Field(() => ID, {
+    nullable: true,
+    description:
+      "Facture source lorsque ce document est un avoir — sinon null.",
+  })
+  parentInvoiceId!: string | null;
+
+  @Field(() => String, { nullable: true })
+  creditNoteReason!: string | null;
 }

@@ -13,6 +13,7 @@ import { MembersDynamicGroupsPage } from './pages/members/MembersDynamicGroupsPa
 import { MembersGradesPage } from './pages/members/MembersGradesPage';
 import { MembersRolesPage } from './pages/members/MembersRolesPage';
 import { FamiliesPage } from './pages/members/FamiliesPage';
+import { MembershipCartsPage } from './pages/members/MembershipCartsPage';
 import { NewMemberPage } from './pages/members/NewMemberPage';
 import { NewFamilyPage } from './pages/members/NewFamilyPage';
 import { PlanningPage } from './pages/PlanningPage';
@@ -32,6 +33,19 @@ import { MemberFieldsSettingsPage } from './pages/settings/MemberFieldsSettingsP
 import { AdhesionSettingsPage } from './pages/settings/AdhesionSettingsPage';
 import { PricingRulesPage } from './pages/settings/PricingRulesPage';
 import { MailDomainSettingsPage } from './pages/settings/MailDomainSettingsPage';
+import { ClubBrandingSettingsPage } from './pages/settings/ClubBrandingSettingsPage';
+import { AiSettingsPage } from './pages/settings/AiSettingsPage';
+import { AgentChatPage } from './pages/agent/AgentChatPage';
+import { AgentAuditPage } from './pages/agent/AgentAuditPage';
+import { VitrineHomePage } from './pages/vitrine/VitrineHomePage';
+import { VitrinePageEditor } from './pages/vitrine/VitrinePageEditor';
+import { VitrineArticlesPage } from './pages/vitrine/VitrineArticlesPage';
+import { VitrineAnnouncementsPage } from './pages/vitrine/VitrineAnnouncementsPage';
+import { VitrineGalleryPage } from './pages/vitrine/VitrineGalleryPage';
+import { VitrineSettingsPage } from './pages/vitrine/VitrineSettingsPage';
+import { MediaLibraryPage } from './pages/vitrine/MediaLibraryPage';
+import { VitrineArticleEditor } from './pages/vitrine/VitrineArticleEditor';
+import { VitrineBrandingPage } from './pages/vitrine/VitrineBrandingPage';
 import { MembersUiProvider } from './pages/members/members-ui-context';
 import { ContactsPage } from './pages/contacts/ContactsPage';
 import { ToastProvider } from './components/ToastProvider';
@@ -75,6 +89,7 @@ export default function App() {
               <Route path="roles" element={<MembersRolesPage />} />
               <Route path="families/new" element={<NewFamilyPage />} />
               <Route path="families" element={<FamiliesPage />} />
+              <Route path="adhesions" element={<MembershipCartsPage />} />
             </Route>
             <Route
               path="families"
@@ -92,6 +107,17 @@ export default function App() {
             <Route path="sponsoring" element={<SponsoringPage />} />
             <Route path="subventions" element={<SubsidiesPage />} />
             <Route path="comptabilite" element={<AccountingPage />} />
+            <Route path="vitrine">
+              <Route index element={<VitrineHomePage />} />
+              <Route path="articles" element={<VitrineArticlesPage />} />
+              <Route path="articles/:id" element={<VitrineArticleEditor />} />
+              <Route path="annonces" element={<VitrineAnnouncementsPage />} />
+              <Route path="galerie" element={<VitrineGalleryPage />} />
+              <Route path="medias" element={<MediaLibraryPage />} />
+              <Route path="settings" element={<VitrineSettingsPage />} />
+              <Route path="branding" element={<VitrineBrandingPage />} />
+              <Route path="pages/:slug" element={<VitrinePageEditor />} />
+            </Route>
             <Route path="settings" element={<SettingsLayout />}>
               <Route index element={<SettingsHubPage />} />
               <Route
@@ -101,7 +127,11 @@ export default function App() {
               <Route path="adhesion" element={<AdhesionSettingsPage />} />
               <Route path="pricing-rules" element={<PricingRulesPage />} />
               <Route path="mail-domain" element={<MailDomainSettingsPage />} />
+              <Route path="branding" element={<ClubBrandingSettingsPage />} />
+              <Route path="ai" element={<AiSettingsPage />} />
             </Route>
+            <Route path="agent" element={<AgentChatPage />} />
+            <Route path="agent/audit" element={<AgentAuditPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -8,6 +8,10 @@ import {
   CLUB_MEMBERS,
   CLUB_ROLE_DEFINITIONS,
 } from '../../lib/documents';
+import {
+  CLUB_MEMBERSHIP_CARTS,
+  type ClubMembershipCartsData,
+} from '../../lib/cart-documents';
 import { useClubCommunicationEnabled } from '../../lib/useClubCommunicationEnabled';
 import type {
   DynamicGroupsQueryData,
@@ -72,6 +76,18 @@ export function MembersDirectoryPage() {
   } | null>(null);
 
   const { data, loading, error } = useQuery<MembersQueryData>(CLUB_MEMBERS);
+  const { data: cartAlertsData } = useQuery<ClubMembershipCartsData>(
+    CLUB_MEMBERSHIP_CARTS,
+    {
+      variables: { filter: { onlyWithAlerts: true, status: 'OPEN' } },
+      fetchPolicy: 'cache-and-network',
+      errorPolicy: 'ignore',
+    },
+  );
+  const cartAlertsCount = (cartAlertsData?.clubMembershipCarts ?? []).reduce(
+    (n, c) => n + c.requiresManualAssignmentCount,
+    0,
+  );
   const { data: groupsData } = useQuery<DynamicGroupsQueryData>(
     CLUB_DYNAMIC_GROUPS,
   );
@@ -166,6 +182,31 @@ export function MembersDirectoryPage() {
 
   return (
     <>
+      {cartAlertsCount > 0 ? (
+        <div
+          role="alert"
+          style={{
+            background: 'rgba(220, 38, 38, 0.1)',
+            border: '1px solid rgba(220, 38, 38, 0.35)',
+            color: '#991b1b',
+            padding: '10px 14px',
+            borderRadius: 8,
+            marginBottom: 12,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 12,
+          }}
+        >
+          <span>
+            {cartAlertsCount} ligne(s) de projets d&rsquo;adhésion en
+            attente d&rsquo;assignation manuelle.
+          </span>
+          <Link to="/members/adhesions" className="btn btn-tight">
+            Ouvrir les projets
+          </Link>
+        </div>
+      ) : null}
       <header className="members-loom__hero members-loom__hero--nested">
         <div className="members-hero__actions">
           <div>

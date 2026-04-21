@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  forwardRef,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -11,6 +13,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { FamiliesService } from '../families/families.service';
+import { MembershipCartService } from '../membership/membership-cart.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   assertMemberEmailAllowedInClub,
@@ -64,6 +67,8 @@ export class MembersService {
     private readonly fieldConfig: MemberFieldConfigService,
     private readonly families: FamiliesService,
     private readonly memberPseudo: MemberPseudoService,
+    @Inject(forwardRef(() => MembershipCartService))
+    private readonly membershipCart: MembershipCartService,
   ) {}
 
   private assertMemberIdentityComplete(
@@ -672,6 +677,17 @@ export class MembersService {
       emailTrimmed,
     );
     await this.assertMemberMatchesFieldRules(clubId, row.id);
+    // Auto-ajout au projet d'adhésion actif (fire-and-forget).
+    // Les erreurs sont loggées sans interrompre la création du membre.
+    try {
+      await this.membershipCart.addMemberToActiveCart(clubId, row.id);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[members.createMember] auto-add membership cart failed',
+        (err as Error).message,
+      );
+    }
     return this.toMemberGraph(row);
   }
 
@@ -891,14 +907,37 @@ export class MembersService {
       );
     }
     if (existing.userId) {
-      const remainingMembers = await this.prisma.member.count({
-        where: { userId: existing.userId },
-      });
-      const staffMemberships = await this.prisma.clubMembership.count({
-        where: { userId: existing.userId },
-      });
-      if (remainingMembers === 0 && staffMemberships === 0) {
-        await this.prisma.user.delete({ where: { id: existing.userId } });
+      const [remainingMembers, staffMemberships, remainingContacts] =
+        await Promise.all([
+          this.prisma.member.count({ where: { userId: existing.userId } }),
+          this.prisma.clubMembership.count({
+            where: { userId: existing.userId },
+          }),
+          this.prisma.contact.count({ where: { userId: existing.userId } }),
+        ]);
+      if (
+        remainingMembers === 0 &&
+        staffMemberships === 0 &&
+        remainingContacts === 0
+      ) {
+        // Clean up auth artifacts d’abord (aucun cascade FK dans le schema)
+        // pour éviter d’échouer la suppression du User et de laisser un
+        // orphelin qui bloquerait toute ré-inscription par email.
+        await this.prisma.$transaction([
+          this.prisma.emailVerificationToken.deleteMany({
+            where: { userId: existing.userId },
+          }),
+          this.prisma.passwordResetToken.deleteMany({
+            where: { userId: existing.userId },
+          }),
+          this.prisma.refreshToken.deleteMany({
+            where: { userId: existing.userId },
+          }),
+          this.prisma.userIdentity.deleteMany({
+            where: { userId: existing.userId },
+          }),
+          this.prisma.user.delete({ where: { id: existing.userId } }),
+        ]);
       }
     }
   }

@@ -12,8 +12,10 @@ import { ViewerActiveProfileGuard } from '../common/guards/viewer-active-profile
 import type { RequestUser } from '../common/types/request-user';
 import { ModuleCode } from '../domain/module-registry/module-codes';
 import { CreateEventInput } from './dto/create-event.input';
+import { SendEventConvocationInput } from './dto/send-event-convocation.input';
 import { UpdateEventInput } from './dto/update-event.input';
 import { ClubEventGraph } from './models/club-event.model';
+import { EventConvocationResult } from './models/event-convocation-result.model';
 import { EventsService } from './events.service';
 
 @Resolver()
@@ -97,6 +99,14 @@ export class EventsAdminResolver {
       club.id,
       registrationId,
     ) as Promise<ClubEventGraph>;
+  }
+
+  @Mutation(() => EventConvocationResult)
+  sendClubEventConvocation(
+    @CurrentClub() club: Club,
+    @Args('input') input: SendEventConvocationInput,
+  ): Promise<EventConvocationResult> {
+    return this.service.sendConvocation(club.id, input);
   }
 }
 

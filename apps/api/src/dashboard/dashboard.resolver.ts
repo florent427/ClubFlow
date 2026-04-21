@@ -7,7 +7,7 @@ import { ClubContextGuard } from '../common/guards/club-context.guard';
 import { GqlJwtAuthGuard } from '../common/guards/gql-jwt-auth.guard';
 import { ClubSearchService } from './club-search.service';
 import { DashboardService } from './dashboard.service';
-import { AdminDashboardSummary } from './models/admin-dashboard.model';
+import { AdminDashboardSummary, AdminDashboardTrends } from './models/admin-dashboard.model';
 import { ClubSearchResults } from './models/club-search.model';
 
 @Resolver()
@@ -23,6 +23,14 @@ export class DashboardResolver {
     @CurrentClub() club: Club,
   ): Promise<AdminDashboardSummary> {
     return this.dashboard.summary(club.id);
+  }
+
+  @Query(() => AdminDashboardTrends)
+  @UseGuards(GqlJwtAuthGuard, ClubContextGuard, ClubAdminRoleGuard)
+  adminDashboardTrends(
+    @CurrentClub() club: Club,
+  ): Promise<AdminDashboardTrends> {
+    return this.dashboard.trends(club.id);
   }
 
   @Query(() => ClubSearchResults, { name: 'clubSearch' })
