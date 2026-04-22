@@ -69,6 +69,19 @@ export type AcceptFamilyInviteData = {
   };
 };
 
+export type PendingFamilyInvite = {
+  id: string;
+  code: string;
+  role: FamilyInviteRole;
+  familyLabel: string | null;
+  inviterName: string;
+  expiresAt: string;
+};
+
+export type ViewerPendingFamilyInvitesData = {
+  viewerPendingFamilyInvites: PendingFamilyInvite[];
+};
+
 export type ViewerSlot = {
   id: string;
   title: string;
@@ -83,45 +96,62 @@ export type ViewerUpcomingData = {
   viewerUpcomingCourseSlots: ViewerSlot[];
 };
 
-export type ViewerBillingData = {
-  viewerFamilyBillingSummary: {
-    isPayerView: boolean;
-    familyLabel: string | null;
-    isHouseholdGroupSpace: boolean;
-    linkedHouseholdFamilies: Array<{
-      familyId: string;
-      label: string | null;
-      members: Array<{
-        memberId: string;
-        firstName: string;
-        lastName: string;
-        photoUrl: string | null;
-      }>;
-    }>;
-    invoices: Array<{
-      id: string;
-      label: string;
-      status: string;
-      dueAt: string | null;
-      amountCents: number;
-      totalPaidCents: number;
-      balanceCents: number;
-      payments: Array<{
-        id: string;
-        amountCents: number;
-        method: string;
-        createdAt: string;
-        paidByFirstName: string | null;
-        paidByLastName: string | null;
-      }>;
-    }>;
-    familyMembers: Array<{
+export type ViewerFamilyBillingSummary = {
+  familyId: string | null;
+  householdGroupId: string | null;
+  viewerRoleInFamily: string | null;
+  isPayerView: boolean;
+  familyLabel: string | null;
+  isHouseholdGroupSpace: boolean;
+  linkedHouseholdFamilies: Array<{
+    familyId: string;
+    label: string | null;
+    members: Array<{
       memberId: string;
       firstName: string;
       lastName: string;
       photoUrl: string | null;
     }>;
-  };
+    payers: Array<{ firstName: string; lastName: string }>;
+    observers: Array<{
+      firstName: string;
+      lastName: string;
+      role: 'COPAYER' | 'VIEWER';
+    }>;
+  }>;
+  invoices: Array<{
+    id: string;
+    familyId: string | null;
+    familyLabel: string | null;
+    label: string;
+    status: string;
+    dueAt: string | null;
+    amountCents: number;
+    totalPaidCents: number;
+    balanceCents: number;
+    payments: Array<{
+      id: string;
+      amountCents: number;
+      method: string;
+      createdAt: string;
+      paidByFirstName: string | null;
+      paidByLastName: string | null;
+    }>;
+  }>;
+  familyMembers: Array<{
+    memberId: string;
+    firstName: string;
+    lastName: string;
+    photoUrl: string | null;
+  }>;
+};
+
+export type ViewerBillingData = {
+  viewerFamilyBillingSummary: ViewerFamilyBillingSummary;
+};
+
+export type ViewerAllBillingData = {
+  viewerAllFamilyBillingSummaries: ViewerFamilyBillingSummary[];
 };
 
 export type ClubQueryData = {

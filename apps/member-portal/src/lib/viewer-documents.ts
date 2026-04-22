@@ -58,6 +58,25 @@ export const CREATE_FAMILY_INVITE = gql`
   }
 `;
 
+export const SEND_FAMILY_INVITE_BY_EMAIL = gql`
+  mutation SendFamilyInviteByEmail($input: SendFamilyInviteByEmailInput!) {
+    sendFamilyInviteByEmail(input: $input)
+  }
+`;
+
+export const VIEWER_PENDING_FAMILY_INVITES = gql`
+  query ViewerPendingFamilyInvites {
+    viewerPendingFamilyInvites {
+      id
+      code
+      role
+      familyLabel
+      inviterName
+      expiresAt
+    }
+  }
+`;
+
 export const PREVIEW_FAMILY_INVITE = gql`
   mutation PreviewFamilyInvite($input: PreviewFamilyInviteInput!) {
     previewFamilyInvite(input: $input) {
@@ -99,6 +118,9 @@ export const VIEWER_UPCOMING_SLOTS = gql`
 export const VIEWER_FAMILY_BILLING = gql`
   query ViewerFamilyBillingSummary {
     viewerFamilyBillingSummary {
+      familyId
+      householdGroupId
+      viewerRoleInFamily
       isPayerView
       familyLabel
       isHouseholdGroupSpace
@@ -111,9 +133,77 @@ export const VIEWER_FAMILY_BILLING = gql`
           lastName
           photoUrl
         }
+        payers {
+          firstName
+          lastName
+        }
+        observers {
+          firstName
+          lastName
+          role
+        }
       }
       invoices {
         id
+        familyId
+        familyLabel
+        label
+        status
+        dueAt
+        amountCents
+        totalPaidCents
+        balanceCents
+        payments {
+          id
+          amountCents
+          method
+          createdAt
+          paidByFirstName
+          paidByLastName
+        }
+      }
+      familyMembers {
+        memberId
+        firstName
+        lastName
+        photoUrl
+      }
+    }
+  }
+`;
+
+export const VIEWER_ALL_FAMILY_BILLING = gql`
+  query ViewerAllFamilyBillingSummaries {
+    viewerAllFamilyBillingSummaries {
+      familyId
+      householdGroupId
+      viewerRoleInFamily
+      isPayerView
+      familyLabel
+      isHouseholdGroupSpace
+      linkedHouseholdFamilies {
+        familyId
+        label
+        members {
+          memberId
+          firstName
+          lastName
+          photoUrl
+        }
+        payers {
+          firstName
+          lastName
+        }
+        observers {
+          firstName
+          lastName
+          role
+        }
+      }
+      invoices {
+        id
+        familyId
+        familyLabel
         label
         status
         dueAt

@@ -10,11 +10,23 @@ import {
   setMemberSession,
   setToken,
 } from '../lib/storage';
+import {
+  consumeReturnTo,
+  rememberReturnTo,
+  safeReturnTo,
+} from '../lib/return-to';
 
 export function VerifyEmailPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const token = params.get('token') ?? '';
+  // returnTo peut venir de l'URL (si le backend a propagé) OU du
+  // sessionStorage (si l'user avait cliqué "Créer un compte" depuis une
+  // invitation, avant d'arriver ici via email verification).
+  const urlReturnTo = safeReturnTo(params.get('returnTo'));
+  useEffect(() => {
+    if (urlReturnTo) rememberReturnTo(urlReturnTo);
+  }, [urlReturnTo]);
   const [error, setError] = useState<string | null>(null);
 
   const [runVerify, { loading }] = useMutation<VerifyEmailData>(VERIFY_EMAIL);
@@ -25,7 +37,7 @@ export function VerifyEmailPage() {
       return;
     }
     if (hasMemberSession()) {
-      void navigate('/', { replace: true });
+      void navigate(consumeReturnTo() ?? '/', { replace: true });
       return;
     }
     let cancelled = false;
@@ -50,7 +62,7 @@ export function VerifyEmailPage() {
           clearClubId();
           setToken(payload.accessToken);
         }
-        void navigate('/', { replace: true });
+        void navigate(consumeReturnTo() ?? '/', { replace: true });
       } catch (e) {
         if (!cancelled) {
           setError(

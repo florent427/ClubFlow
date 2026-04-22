@@ -3275,3 +3275,839 @@
     padding: 24px;
   }
 }
+
+
+/* ================================
+ * Article prose (rendu HTML Tiptap)
+ * ================================ */
+/* =============================================================
+ * Article prose — rendu du corps d'un article vitrine (Tiptap HTML)
+ *
+ * Aligné avec le design SKSR : typographies serif pour titres, sans pour
+ * body, palette gold / paper / ink / muted. Adapté pour fond sombre (le
+ * body du site utilise --bg = --ink = quasi noir), donc les textes sont en
+ * --fg (paper ivoire) et les titres dorés/ivoire pour rester lisibles.
+ *
+ * Tailles légèrement réduites par rapport aux heros pour garder l'article
+ * digeste et lisible.
+ * ============================================================= */
+
+.article-prose {
+  font-family: var(--sans);
+  font-size: 17px;
+  line-height: 1.8;
+  font-weight: 300;
+  color: var(--fg);
+  /* Contient les floats (images wrap) → paragraphes et titres coulent
+     correctement autour des images, clear auto en fin de bloc. */
+  display: flow-root;
+  /* Gère les mots/URL très longs sans overflow horizontal. */
+  overflow-wrap: anywhere;
+  word-wrap: break-word;
+  min-width: 0;
+}
+.article-prose > *:first-child { margin-top: 0; }
+.article-prose > *:last-child { margin-bottom: 0; }
+
+/* Descendants texte : on force aussi le wrap pour être certain que les
+   user-agent stylesheets ne ré-imposent pas `overflow-wrap: normal` sur p/li. */
+.article-prose p,
+.article-prose li,
+.article-prose dd,
+.article-prose dt,
+.article-prose blockquote,
+.article-prose code,
+.article-prose pre {
+  overflow-wrap: anywhere;
+  word-wrap: break-word;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Titres — serif SKSR, lettres espacées.
+   Pas de `clear: both` ici : on veut que les titres puissent wrap autour
+   d'une image flottante (sinon tout le reste du texte saute sous l'image).
+   Utilise un <hr /> ou `.clearfix` explicite pour arrêter un wrap. */
+.article-prose h1,
+.article-prose h2,
+.article-prose h3,
+.article-prose h4 {
+  font-family: var(--serif);
+  color: var(--fg);
+  font-weight: 400;
+  letter-spacing: 0.005em;
+  line-height: 1.2;
+}
+.article-prose h1 {
+  font-size: clamp(28px, 3.4vw, 38px);
+  margin: 2em 0 0.6em;
+}
+.article-prose h2 {
+  font-size: clamp(24px, 2.8vw, 30px);
+  margin: 1.8em 0 0.6em;
+  position: relative;
+  padding-top: 0.4em;
+}
+.article-prose h2::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 44px;
+  height: 1px;
+  background: var(--accent);
+  opacity: 0.8;
+}
+.article-prose h3 {
+  font-size: clamp(19px, 2vw, 22px);
+  margin: 1.5em 0 0.5em;
+  color: var(--accent);
+  font-style: italic;
+}
+.article-prose h4 {
+  font-size: 17px;
+  margin: 1.3em 0 0.5em;
+}
+
+.article-prose p {
+  margin: 0 0 1.15em;
+  color: var(--fg);
+  opacity: 0.9;
+}
+
+/* Lead paragraph : premier paragraphe un peu plus grand */
+.article-prose > p:first-of-type {
+  font-size: 19px;
+  line-height: 1.7;
+  opacity: 1;
+  color: var(--fg);
+}
+
+.article-prose ul,
+.article-prose ol {
+  padding-left: 1.5em;
+  margin: 0 0 1.25em;
+  color: var(--fg);
+  opacity: 0.9;
+}
+.article-prose li {
+  margin-bottom: 0.4em;
+}
+.article-prose ul > li::marker {
+  color: var(--accent);
+}
+.article-prose ol > li::marker {
+  color: var(--accent);
+  font-family: var(--serif);
+  font-weight: 500;
+}
+
+.article-prose blockquote {
+  border-left: 2px solid var(--accent);
+  padding: 8px 0 8px 20px;
+  margin: 1.8em 0;
+  font-style: italic;
+  font-family: var(--serif);
+  font-size: 20px;
+  line-height: 1.55;
+  color: var(--fg);
+  opacity: 0.95;
+}
+.article-prose blockquote p { margin-bottom: 0.4em; }
+.article-prose blockquote p:last-child { margin-bottom: 0; }
+
+.article-prose a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  transition: color 0.2s;
+}
+.article-prose a:hover {
+  color: var(--gold-bright);
+  text-decoration-thickness: 2px;
+}
+
+.article-prose strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+.article-prose em {
+  font-style: italic;
+}
+
+.article-prose code {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--line);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 0.9em;
+  color: var(--accent);
+}
+.article-prose pre {
+  background: var(--ink-2);
+  color: var(--fg);
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  overflow-x: auto;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 13.5px;
+  line-height: 1.6;
+  margin: 1.5em 0;
+}
+.article-prose pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
+}
+
+.article-prose hr {
+  border: none;
+  border-top: 1px solid var(--line-strong);
+  margin: 2.5em auto;
+  width: 60%;
+  max-width: 200px;
+  clear: both;
+}
+
+/* =============================================================
+ * Images inline — figures avec alignement / taille / wrap
+ * ============================================================= */
+
+.article-prose .tiptap-img-figure {
+  margin: 1.8em 0;
+  max-width: 100%;
+}
+.article-prose .tiptap-img-figure img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  border: 1px solid var(--line);
+  margin: 0;
+}
+.article-prose .tiptap-img-figure figcaption {
+  font-size: 13.5px;
+  color: var(--muted);
+  font-style: italic;
+  font-family: var(--serif);
+  text-align: center;
+  margin-top: 10px;
+  letter-spacing: 0.02em;
+}
+
+/* Alignement bloc (pas de wrap, l'image prend sa propre ligne) */
+.article-prose .tiptap-img-figure[data-align='left'],
+.article-prose .tiptap-img-figure[data-align='center'],
+.article-prose .tiptap-img-figure[data-align='right'] {
+  display: block;
+  clear: both;
+}
+.article-prose .tiptap-img-figure[data-align='left'] {
+  text-align: left;
+  margin-right: auto;
+  margin-left: 0;
+}
+.article-prose .tiptap-img-figure[data-align='center'] {
+  text-align: center;
+  margin-left: auto;
+  margin-right: auto;
+}
+.article-prose .tiptap-img-figure[data-align='right'] {
+  text-align: right;
+  margin-left: auto;
+  margin-right: 0;
+}
+.article-prose .tiptap-img-figure[data-align='left'] img,
+.article-prose .tiptap-img-figure[data-align='center'] img,
+.article-prose .tiptap-img-figure[data-align='right'] img {
+  display: inline-block;
+}
+.article-prose .tiptap-img-figure[data-align='left'] figcaption { text-align: left; }
+.article-prose .tiptap-img-figure[data-align='right'] figcaption { text-align: right; }
+
+/* Wrap — le texte coule autour de l'image (float CSS).
+   Note : pas de `shape-outside` — il force le wrap à suivre le content-box
+   de la figure et ignore la marge, donc le texte venait se coller à
+   l'image. Par défaut le wrap suit la margin-box → la marge est respectée. */
+.article-prose .tiptap-img-figure[data-align='wrap-left'] {
+  float: left;
+  margin: 6px 36px 22px 0;
+  max-width: 45%;
+}
+.article-prose .tiptap-img-figure[data-align='wrap-right'] {
+  float: right;
+  margin: 6px 0 22px 36px;
+  max-width: 45%;
+}
+
+/* Premier élément après un wrap-image : reset sa marge top pour qu'il
+   s'aligne visuellement avec le haut de l'image (pas décalé vers le bas
+   par une marge de titre/paragraphe). Couvre H2, H3, H4 et paragraphe. */
+.article-prose .tiptap-img-figure[data-align='wrap-left'] + h1,
+.article-prose .tiptap-img-figure[data-align='wrap-left'] + h2,
+.article-prose .tiptap-img-figure[data-align='wrap-left'] + h3,
+.article-prose .tiptap-img-figure[data-align='wrap-left'] + h4,
+.article-prose .tiptap-img-figure[data-align='wrap-left'] + p,
+.article-prose .tiptap-img-figure[data-align='wrap-left'] + ul,
+.article-prose .tiptap-img-figure[data-align='wrap-left'] + ol,
+.article-prose .tiptap-img-figure[data-align='wrap-right'] + h1,
+.article-prose .tiptap-img-figure[data-align='wrap-right'] + h2,
+.article-prose .tiptap-img-figure[data-align='wrap-right'] + h3,
+.article-prose .tiptap-img-figure[data-align='wrap-right'] + h4,
+.article-prose .tiptap-img-figure[data-align='wrap-right'] + p,
+.article-prose .tiptap-img-figure[data-align='wrap-right'] + ul,
+.article-prose .tiptap-img-figure[data-align='wrap-right'] + ol {
+  margin-top: 0;
+  padding-top: 0;
+}
+/* Masque le liseré doré du H2 quand il est juste à côté d'un wrap image
+   (cosmétique : il serait suspendu en l'air sans texte au-dessus). */
+.article-prose .tiptap-img-figure[data-align='wrap-left'] + h2::before,
+.article-prose .tiptap-img-figure[data-align='wrap-right'] + h2::before {
+  display: none;
+}
+
+/* Width presets (pilotés par data-width sur la figure) — tiptap applique
+   aussi `width` inline sur l'img, mais ici on assure la cohérence.
+   Le width est sur la figure (pas l'image) pour que le float respecte
+   le preset même sans contenu plus grand. */
+.article-prose .tiptap-img-figure[data-width='25%'] { width: 25%; }
+.article-prose .tiptap-img-figure[data-width='50%'] { width: 50%; }
+.article-prose .tiptap-img-figure[data-width='75%'] { width: 75%; }
+.article-prose .tiptap-img-figure[data-width='100%'] { width: 100%; }
+.article-prose .tiptap-img-figure[data-width] img { width: 100%; }
+
+/* Quand wrap + width : la width gagne, mais reste capée à 45% pour
+   laisser de la place au texte à côté. */
+.article-prose .tiptap-img-figure[data-align='wrap-left'][data-width='75%'],
+.article-prose .tiptap-img-figure[data-align='wrap-right'][data-width='75%'],
+.article-prose .tiptap-img-figure[data-align='wrap-left'][data-width='100%'],
+.article-prose .tiptap-img-figure[data-align='wrap-right'][data-width='100%'] {
+  width: 45%;
+  max-width: 45%;
+}
+
+/* Responsive : sur mobile, wrap devient block plein largeur pour préserver
+   la lisibilité. */
+@media (max-width: 720px) {
+  .article-prose {
+    font-size: 16px;
+  }
+  .article-prose > p:first-of-type {
+    font-size: 17.5px;
+  }
+  .article-prose .tiptap-img-figure[data-align='wrap-left'],
+  .article-prose .tiptap-img-figure[data-align='wrap-right'] {
+    float: none;
+    max-width: 100%;
+    width: auto;
+    margin: 1.5em auto;
+  }
+  .article-prose .tiptap-img-figure[data-width='25%'],
+  .article-prose .tiptap-img-figure[data-width='50%'],
+  .article-prose .tiptap-img-figure[data-width='75%'] {
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
+/* =============================================================
+ * Article — layout autour du prose
+ * ============================================================= */
+
+.article-container {
+  max-width: 760px;
+  padding-top: 24px;
+  padding-bottom: 64px;
+}
+
+.article-cover {
+  margin: 0;
+  padding: 0;
+}
+.article-cover img {
+  width: 100%;
+  max-height: 560px;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  display: block;
+}
+.article-cover figcaption {
+  margin-top: 14px;
+  font-family: var(--serif);
+  font-style: italic;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+  letter-spacing: 0.03em;
+}
+
+/* FAQ inline (affichage visuel, en plus du JSON-LD FAQPage) */
+.article-faq {
+  margin-top: 64px;
+  padding: 32px 0 8px;
+  border-top: 1px solid var(--line);
+}
+.article-faq > h2 {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(24px, 2.8vw, 30px);
+  margin: 0 0 28px;
+  color: var(--fg);
+  position: relative;
+  padding-top: 0.4em;
+}
+.article-faq > h2::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 44px;
+  height: 1px;
+  background: var(--accent);
+}
+.article-faq dl {
+  margin: 0;
+  display: grid;
+  gap: 18px;
+}
+.article-faq__item {
+  border-left: 2px solid var(--line);
+  padding: 6px 0 6px 18px;
+  transition: border-color 0.2s;
+}
+.article-faq__item:hover { border-left-color: var(--accent); }
+.article-faq dt {
+  font-family: var(--serif);
+  font-weight: 500;
+  color: var(--fg);
+  font-size: 18px;
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+.article-faq dd {
+  margin: 0;
+  color: var(--fg);
+  opacity: 0.85;
+  font-size: 15.5px;
+  line-height: 1.7;
+}
+
+/* Retour */
+.article-back {
+  margin-top: 56px;
+  padding-top: 32px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+}
+.article-back__link {
+  font-family: var(--serif);
+  font-style: italic;
+  color: var(--accent);
+  text-decoration: none;
+  letter-spacing: 0.04em;
+  font-size: 15px;
+  transition: color 0.2s, letter-spacing 0.2s;
+}
+.article-back__link:hover {
+  color: var(--gold-bright);
+  letter-spacing: 0.08em;
+}
+
+/* =============================================================
+ * Badges catégories sur article
+ * ============================================================= */
+
+.article-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 760px;
+  margin: 0 auto;
+}
+.article-category-chip {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(201, 169, 106, 0.08);
+  color: var(--accent);
+  text-decoration: none;
+  transition: background 0.2s, color 0.2s;
+}
+.article-category-chip:hover {
+  background: var(--accent);
+  color: var(--ink);
+}
+
+/* =============================================================
+ * Nav catégories sur la page /actualites/categorie/[slug]
+ * ============================================================= */
+
+.category-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 40px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--line);
+}
+.category-nav__link {
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--fg);
+  opacity: 0.7;
+  text-decoration: none;
+  transition: opacity 0.2s, border-color 0.2s;
+}
+.category-nav__link:hover {
+  opacity: 1;
+  border-color: var(--accent);
+}
+.category-nav__link--active {
+  background: var(--accent);
+  color: var(--ink);
+  border-color: var(--accent);
+  opacity: 1;
+}
+
+/* =============================================================
+ * Article grid (page catégorie + actualités)
+ * ============================================================= */
+
+.article-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 28px;
+}
+.article-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--ink-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+  text-decoration: none;
+  color: var(--fg);
+  transition: border-color 0.2s, transform 0.2s;
+}
+.article-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+.article-card__cover {
+  aspect-ratio: 16/9;
+  overflow: hidden;
+  background: var(--ink);
+}
+.article-card__cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.4s;
+}
+.article-card:hover .article-card__cover img {
+  transform: scale(1.04);
+}
+.article-card__body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+}
+.article-card__date {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+}
+.article-card__title {
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1.25;
+  margin: 0;
+  color: var(--fg);
+}
+.article-card__excerpt {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin: 0;
+  flex: 1;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.article-card__cta {
+  font-family: var(--serif);
+  font-style: italic;
+  color: var(--accent);
+  font-size: 14px;
+  align-self: flex-start;
+  transition: letter-spacing 0.2s;
+}
+.article-card:hover .article-card__cta { letter-spacing: 0.05em; }
+
+/* =============================================================
+ * Commentaires (sur page article)
+ * ============================================================= */
+
+.article-comments {
+  margin-top: 56px;
+  padding-top: 40px;
+  border-top: 1px solid var(--line);
+  position: relative;
+}
+.article-comments > h2 {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(22px, 2.4vw, 28px);
+  color: var(--fg);
+  margin: 0 0 24px;
+  position: relative;
+  padding-top: 0.4em;
+}
+.article-comments > h2::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 44px;
+  height: 1px;
+  background: var(--accent);
+}
+.article-comments__count {
+  font-style: italic;
+  color: var(--accent);
+  font-size: 0.7em;
+  margin-left: 6px;
+}
+
+.article-comments__empty {
+  color: var(--muted);
+  font-style: italic;
+  padding: 20px 0;
+}
+
+.article-comments__list {
+  list-style: none;
+  margin: 0 0 40px;
+  padding: 0;
+  display: grid;
+  gap: 20px;
+}
+.article-comments__item {
+  padding: 18px 20px;
+  background: var(--ink-2);
+  border-left: 2px solid var(--line);
+  border-radius: 4px;
+  transition: border-color 0.2s;
+}
+.article-comments__item:hover { border-left-color: var(--accent); }
+.article-comments__item header {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.article-comments__item header strong {
+  font-family: var(--serif);
+  font-weight: 500;
+  color: var(--fg);
+}
+.article-comments__date {
+  font-style: italic;
+  color: var(--muted);
+  font-size: 13px;
+}
+.article-comments__item p {
+  margin: 0;
+  color: var(--fg);
+  opacity: 0.9;
+  font-size: 15px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Formulaire de commentaire */
+.article-comments__form {
+  background: var(--ink-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 24px;
+  display: grid;
+  gap: 14px;
+  position: relative;
+}
+.article-comments__form h3 {
+  font-family: var(--serif);
+  font-weight: 400;
+  margin: 0;
+  color: var(--fg);
+  font-size: 20px;
+}
+.article-comments__form-hint {
+  margin: -6px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+  font-style: italic;
+}
+.article-comments__form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 640px) {
+  .article-comments__form-grid { grid-template-columns: 1fr; }
+}
+.article-comments__form label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--fg);
+  opacity: 0.8;
+}
+.article-comments__form label span {
+  font-family: var(--sans);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+.article-comments__form input,
+.article-comments__form textarea {
+  padding: 10px 12px;
+  background: var(--ink);
+  border: 1px solid var(--line-strong);
+  color: var(--fg);
+  font-family: var(--sans);
+  font-size: 14px;
+  border-radius: 3px;
+  resize: vertical;
+}
+.article-comments__form input:focus,
+.article-comments__form textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(201, 169, 106, 0.15);
+}
+.article-comments__form small {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+}
+.article-comments__feedback {
+  padding: 10px 14px;
+  border-radius: 4px;
+  font-size: 13.5px;
+}
+.article-comments__feedback--success {
+  background: rgba(5, 150, 105, 0.15);
+  border: 1px solid rgba(5, 150, 105, 0.4);
+  color: #6ee7b7;
+}
+.article-comments__feedback--error {
+  background: rgba(220, 38, 38, 0.15);
+  border: 1px solid rgba(220, 38, 38, 0.4);
+  color: #fca5a5;
+}
+.article-comments__submit {
+  all: unset;
+  cursor: pointer;
+  font-family: var(--serif);
+  font-style: italic;
+  background: var(--accent);
+  color: var(--ink);
+  padding: 10px 22px;
+  border-radius: 3px;
+  text-align: center;
+  letter-spacing: 0.04em;
+  font-size: 15px;
+  align-self: flex-start;
+  transition: background 0.2s, letter-spacing 0.2s;
+}
+.article-comments__submit:hover:not(:disabled) {
+  background: var(--gold-bright);
+  letter-spacing: 0.08em;
+}
+.article-comments__submit:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+/* Réponse admin sous un commentaire */
+.article-comments__reply {
+  margin-top: 16px;
+  margin-left: 24px;
+  padding: 14px 18px;
+  background: rgba(201, 169, 106, 0.08);
+  border-left: 2px solid var(--accent);
+  border-radius: 4px;
+  position: relative;
+}
+.article-comments__reply::before {
+  content: '↳';
+  position: absolute;
+  left: -20px;
+  top: 10px;
+  color: var(--accent);
+  font-size: 18px;
+  font-weight: 600;
+}
+.article-comments__reply header {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+.article-comments__reply header strong {
+  font-family: var(--serif);
+  font-weight: 500;
+  color: var(--accent);
+}
+.article-comments__reply-badge {
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  background: var(--accent);
+  color: var(--ink);
+  border-radius: 999px;
+  margin-right: 4px;
+}
+.article-comments__reply p {
+  margin: 0;
+  color: var(--fg);
+  opacity: 0.95;
+  font-size: 14.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .article-comments__reply {
+    margin-left: 12px;
+    padding: 12px 14px;
+  }
+  .article-comments__reply::before { left: -15px; }
+}

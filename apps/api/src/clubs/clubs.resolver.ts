@@ -20,6 +20,8 @@ function toClubGraph(row: {
   siret?: string | null;
   address?: string | null;
   legalMentions?: string | null;
+  contactPhone?: string | null;
+  contactEmail?: string | null;
 }): ClubGraphModel {
   return {
     id: row.id,
@@ -29,6 +31,8 @@ function toClubGraph(row: {
     siret: row.siret ?? null,
     address: row.address ?? null,
     legalMentions: row.legalMentions ?? null,
+    contactPhone: row.contactPhone ?? null,
+    contactEmail: row.contactEmail ?? null,
   };
 }
 
@@ -80,11 +84,22 @@ export class ClubsResolver {
       throw new ForbiddenException('Club introuvable.');
     }
     const data: Record<string, unknown> = {};
+    if (input.name !== undefined) {
+      const trimmed = input.name.trim();
+      if (trimmed.length === 0) {
+        throw new ForbiddenException('Le nom du club ne peut pas être vide.');
+      }
+      data.name = trimmed;
+    }
     if (input.logoUrl !== undefined) data.logoUrl = input.logoUrl;
     if (input.siret !== undefined) data.siret = input.siret;
     if (input.address !== undefined) data.address = input.address;
     if (input.legalMentions !== undefined)
       data.legalMentions = input.legalMentions;
+    if (input.contactPhone !== undefined)
+      data.contactPhone = input.contactPhone;
+    if (input.contactEmail !== undefined)
+      data.contactEmail = input.contactEmail;
     const updated = await this.prisma.club.update({
       where: { id: club.id },
       data,

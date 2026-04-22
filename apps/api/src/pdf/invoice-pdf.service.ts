@@ -1,5 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { InvoiceStatus } from '@prisma/client';
 import PDFDocument from 'pdfkit';
+import sharp from 'sharp';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -12,7 +14,117 @@ import { PrismaService } from '../prisma/prisma.service';
  */
 @Injectable()
 export class InvoicePdfService {
+  private readonly logger = new Logger(InvoicePdfService.name);
+
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Charge le binaire d'un logo de club à partir de la valeur stockée dans
+   * `Club.logoUrl`. Accepte :
+   *  - data URL (`data:image/...;base64,...`)
+   *  - URL HTTP(S) (`http://...` / `https://...`) — cas ClubFlow où le logo
+   *    a été uploadé via `/media/:id` et stocké comme URL
+   *  - chemin relatif (`/uploads/...`) → résolu contre `API_BASE_URL`
+   *
+   * Renvoie un Buffer PNG/JPEG directement consommable par PDFKit. Les SVG
+   * sont rasterisés en PNG via `sharp` (PDFKit ne sait pas rendre SVG nativement).
+   * Retourne null si la valeur est vide ou si le fetch échoue.
+   */
+  private async loadClubLogoBuffer(
+    rawLogoUrl: string | null | undefined,
+  ): Promise<Buffer | null> {
+    if (!rawLogoUrl) return null;
+    try {
+      let raw: Buffer | null = null;
+      let mime: string | null = null;
+
+      if (rawLogoUrl.startsWith('data:')) {
+        const match = /^data:([^;,]+)(?:;([^,]+))?,(.+)$/s.exec(rawLogoUrl);
+        if (!match) return null;
+        mime = match[1];
+        const encoding = match[2];
+        const payload = match[3];
+        raw =
+          encoding === 'base64'
+            ? Buffer.from(payload, 'base64')
+            : Buffer.from(decodeURIComponent(payload), 'utf8');
+      } else {
+        // URL absolue (http/https) ou relative à l'API (`/media/:id`,
+        // `/uploads/...`). Dans tous les cas on fait un GET HTTP.
+        const base =
+          process.env.API_BASE_URL?.replace(/\/$/, '') ??
+          'http://localhost:3000';
+        const absolute = rawLogoUrl.startsWith('http')
+          ? rawLogoUrl
+          : `${base}${rawLogoUrl.startsWith('/') ? '' : '/'}${rawLogoUrl}`;
+        const res = await fetch(absolute);
+        if (!res.ok) {
+          this.logger.warn(
+            `Logo fetch failed: ${res.status} ${res.statusText} (${absolute})`,
+          );
+          return null;
+        }
+        mime = res.headers.get('content-type');
+        raw = Buffer.from(await res.arrayBuffer());
+      }
+
+      if (!raw || raw.length === 0) return null;
+      // Garde-fou : au-delà de ~5 Mo, on évite de charger l'image (et on
+      // évite de toute façon un tampon trop lourd dans le PDF).
+      if (raw.length > 5 * 1024 * 1024) {
+        this.logger.warn(
+          `Logo too large (${raw.length} bytes), skipping`,
+        );
+        return null;
+      }
+
+      // PDFKit ne sait rendre que PNG et JPEG nativement. On rasterise SVG /
+      // WebP / autres via sharp, et on convertit en PNG (transparence gérée).
+      const isPngOrJpg =
+        (mime?.includes('png') || mime?.includes('jpeg')) ?? false;
+      if (isPngOrJpg) {
+        return raw;
+      }
+      try {
+        const isSvg =
+          mime?.includes('svg') ||
+          raw
+            .slice(0, 256)
+            .toString('utf8')
+            .trimStart()
+            .toLowerCase()
+            .startsWith('<svg') ||
+          raw
+            .slice(0, 256)
+            .toString('utf8')
+            .toLowerCase()
+            .includes('<?xml');
+        // SVG : on rend avec une density élevée (≈ 300 dpi) pour que la
+        // rasterisation reste nette une fois redimensionnée à ~72pt dans
+        // l'en-tête du PDF.
+        const pipeline = isSvg
+          ? sharp(raw, { density: 300 })
+          : sharp(raw);
+        const converted = await pipeline
+          .resize({ width: 512, height: 512, fit: 'inside' })
+          .png()
+          .toBuffer();
+        return converted;
+      } catch (err) {
+        this.logger.warn(
+          `Logo conversion failed (${mime ?? 'unknown mime'}): ${
+            err instanceof Error ? err.message : 'unknown error'
+          }`,
+        );
+        return null;
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Logo load failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+      );
+      return null;
+    }
+  }
 
   /**
    * Construit le PDF en mémoire et renvoie un Buffer.
@@ -39,13 +151,52 @@ export class InvoicePdfService {
             paidByContact: { select: { firstName: true, lastName: true } },
           },
         },
-        family: true,
+        family: {
+          include: {
+            familyMembers: {
+              where: { linkRole: 'PAYER' },
+              include: {
+                member: {
+                  select: {
+                    firstName: true,
+                    lastName: true,
+                    email: true,
+                    phone: true,
+                  },
+                },
+                contact: {
+                  select: {
+                    firstName: true,
+                    lastName: true,
+                    phone: true,
+                    user: { select: { email: true } },
+                  },
+                },
+              },
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        },
         householdGroup: true,
         clubSeason: { select: { label: true } },
         parentInvoice: { select: { id: true, label: true, createdAt: true } },
       },
     });
     if (!inv) throw new NotFoundException('Facture introuvable');
+
+    // Résolution du destinataire : on prend le premier payeur du foyer
+    // responsable (PAYER via FamilyMember). Priorité au contact (compte
+    // portail) puis au membre adhérent. Fallback au label du foyer.
+    const payerLink = inv.family?.familyMembers?.[0] ?? null;
+    const payerName = payerLink?.contact
+      ? `${payerLink.contact.firstName} ${payerLink.contact.lastName}`.trim()
+      : payerLink?.member
+        ? `${payerLink.member.firstName} ${payerLink.member.lastName}`.trim()
+        : null;
+    const payerEmail =
+      payerLink?.contact?.user?.email ?? payerLink?.member?.email ?? null;
+    const payerPhone =
+      payerLink?.contact?.phone ?? payerLink?.member?.phone ?? null;
 
     const isCredit = inv.isCreditNote;
     const doc = new PDFDocument({
@@ -69,21 +220,17 @@ export class InvoicePdfService {
     // ===== En-tête : logo + nom club =====
     const startY = doc.y;
     let textStartX = 48;
-    // Logo : stocké en data:URL (data:image/png;base64,xxxx) — set depuis
-    // la page "Identité du club" côté admin. On le rend en haut à gauche,
-    // et on décale le nom du club à droite du logo.
-    if (inv.club.logoUrl && inv.club.logoUrl.startsWith('data:image/')) {
+    // Chargement du logo : accepte data URL, HTTP(S), chemin relatif, et
+    // rasterise SVG via sharp. Si tout échoue on rend juste le nom en gras.
+    const logoBuf = await this.loadClubLogoBuffer(inv.club.logoUrl);
+    if (logoBuf) {
       try {
-        const commaIdx = inv.club.logoUrl.indexOf(',');
-        if (commaIdx > 0) {
-          const base64 = inv.club.logoUrl.slice(commaIdx + 1);
-          const buf = Buffer.from(base64, 'base64');
-          // Hauteur ~64pt : pied lisible sans manger tout l'en-tête.
-          doc.image(buf, 48, startY, { fit: [72, 64] });
-          textStartX = 130;
-        }
-      } catch {
-        // Silencieux : un logo cassé ne doit pas empêcher la facture de sortir.
+        doc.image(logoBuf, 48, startY, { fit: [72, 64] });
+        textStartX = 130;
+      } catch (err) {
+        this.logger.warn(
+          `Logo rendering failed: ${err instanceof Error ? err.message : 'unknown error'}`,
+        );
       }
     }
 
@@ -106,6 +253,20 @@ export class InvoicePdfService {
         .font('Helvetica')
         .fontSize(9)
         .text(`SIRET ${inv.club.siret}`, textStartX, doc.y);
+    }
+    if (inv.club.contactPhone) {
+      doc
+        .fillColor('#495057')
+        .font('Helvetica')
+        .fontSize(9)
+        .text(`Tél. ${inv.club.contactPhone}`, textStartX, doc.y);
+    }
+    if (inv.club.contactEmail) {
+      doc
+        .fillColor('#495057')
+        .font('Helvetica')
+        .fontSize(9)
+        .text(inv.club.contactEmail, textStartX, doc.y);
     }
 
     // ===== Bloc titre document (à droite) =====
@@ -160,6 +321,9 @@ export class InvoicePdfService {
     doc.moveDown(1.3);
 
     // ===== Destinataire =====
+    // Le destinataire de la facture est le contact payeur du foyer (PAYER),
+    // avec ses coordonnées (email, téléphone). Fallback sur le label du
+    // foyer si aucun payeur n'est rattaché (cas ancien / incohérence).
     doc
       .fillColor('#0b1d2a')
       .font('Helvetica-Bold')
@@ -170,8 +334,30 @@ export class InvoicePdfService {
       .font('Helvetica')
       .fontSize(11);
     const clientName =
-      inv.family?.label ?? inv.householdGroup?.label ?? '—';
+      payerName ??
+      inv.family?.label ??
+      inv.householdGroup?.label ??
+      '—';
     doc.text(clientName);
+    const clientFamilyLabel = inv.family?.label ?? inv.householdGroup?.label;
+    if (payerName && clientFamilyLabel && clientFamilyLabel !== payerName) {
+      doc
+        .fillColor('#495057')
+        .fontSize(9)
+        .text(clientFamilyLabel);
+    }
+    if (payerEmail) {
+      doc
+        .fillColor('#495057')
+        .fontSize(9)
+        .text(payerEmail);
+    }
+    if (payerPhone) {
+      doc
+        .fillColor('#495057')
+        .fontSize(9)
+        .text(payerPhone);
+    }
     if (inv.clubSeason?.label) {
       doc
         .fillColor('#495057')
@@ -234,10 +420,13 @@ export class InvoicePdfService {
       // Lignes d'ajustement (remises, frais)
       for (const adj of line.adjustments) {
         const ay = doc.y + 2;
+        const label = adj.reason?.trim() || adjustmentTypeLabel(adj.type);
         doc
           .fillColor('#6c757d')
           .fontSize(9)
-          .text(`↳ ${adj.reason ?? adj.type}`, 64, ay, { width: 290 });
+          // « — » (em-dash) est dans WinAnsi (géré par Helvetica standard) ;
+          // on évite « ↳ » qui tombait en mojibake « !³ » faute d'encodage.
+          .text(`— ${label}`, 64, ay, { width: 290 });
         doc
           .fillColor('#6c757d')
           .fontSize(9)
@@ -338,9 +527,86 @@ export class InvoicePdfService {
         align: 'center',
       });
 
+    // ===== Tampon « ACQUITTÉE » =====
+    // Facture réglée (et non avoir) → overlay en biais, rouge, en superposition
+    // au centre de la page. On utilise save/rotate/restore pour ne pas impacter
+    // le reste du rendu. Le tampon est semi-transparent pour laisser lire le
+    // contenu sous-jacent.
+    if (inv.status === InvoiceStatus.PAID && !isCredit) {
+      const lastPayment =
+        inv.payments.length > 0
+          ? inv.payments[inv.payments.length - 1]
+          : null;
+      drawPaidStamp(doc, lastPayment?.createdAt ?? null);
+    }
+
     doc.end();
     return done;
   }
+}
+
+/**
+ * Dessine un tampon « ACQUITTÉE » rouge en biais au centre de la page A4.
+ * Le tampon est semi-transparent pour rester non-destructif vis-à-vis du
+ * contenu (lignes, totaux, mentions légales) qu'il survole.
+ */
+function drawPaidStamp(
+  doc: PDFKit.PDFDocument,
+  paidAt: Date | null,
+): void {
+  const pageWidth = doc.page.width; // A4 portrait ~ 595 pt
+  const pageHeight = doc.page.height; // ~ 842 pt
+  const cx = pageWidth / 2;
+  const cy = pageHeight / 2;
+  const angle = -22; // biais « fait main »
+
+  const boxWidth = 340;
+  const boxHeight = 110;
+  const boxX = cx - boxWidth / 2;
+  const boxY = cy - boxHeight / 2;
+
+  doc.save();
+  // Rotation autour du centre de la page.
+  doc.rotate(angle, { origin: [cx, cy] });
+
+  // Cadre double trait (imitation tampon encreur).
+  doc.opacity(0.35);
+  doc.lineWidth(4).strokeColor('#c0392b').rect(boxX, boxY, boxWidth, boxHeight).stroke();
+  doc
+    .lineWidth(1.5)
+    .strokeColor('#c0392b')
+    .rect(boxX + 6, boxY + 6, boxWidth - 12, boxHeight - 12)
+    .stroke();
+
+  // Texte principal.
+  doc.opacity(0.45);
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(54)
+    .fillColor('#c0392b')
+    .text('ACQUITTÉE', boxX, boxY + 20, {
+      width: boxWidth,
+      align: 'center',
+      lineBreak: false,
+    });
+
+  // Sous-ligne : date du dernier paiement si disponible, sinon "Facture réglée".
+  doc.opacity(0.55);
+  const subLabel = paidAt
+    ? `Payée le ${paidAt.toLocaleDateString('fr-FR')}`
+    : 'Facture réglée';
+  doc
+    .font('Helvetica')
+    .fontSize(10)
+    .fillColor('#c0392b')
+    .text(subLabel, boxX, boxY + boxHeight - 24, {
+      width: boxWidth,
+      align: 'center',
+      lineBreak: false,
+    });
+
+  doc.opacity(1);
+  doc.restore();
 }
 
 function formatCents(cents: number, negateForDisplay: boolean): string {
@@ -363,5 +629,27 @@ function methodLabel(m: string): string {
       return 'virement';
     default:
       return m;
+  }
+}
+
+/**
+ * Mappe le type d'ajustement (enum Prisma) vers un libellé humain pour le
+ * PDF. Fallback : on normalise le nom brut (SNAKE_CASE → Snake case) pour
+ * qu'un futur type non-mappé reste lisible.
+ */
+function adjustmentTypeLabel(t: string): string {
+  switch (t) {
+    case 'PRORATA_SEASON':
+      return 'Prorata saison';
+    case 'FAMILY':
+      return 'Remise famille';
+    case 'PUBLIC_AID':
+      return 'Aide publique';
+    case 'EXCEPTIONAL':
+      return 'Remise exceptionnelle';
+    default: {
+      const lower = t.toLowerCase().replace(/_/g, ' ');
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    }
   }
 }

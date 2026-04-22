@@ -1,6 +1,9 @@
 import { useMutation } from '@apollo/client/react';
 import { useState } from 'react';
-import { CREATE_FAMILY_INVITE } from '../lib/viewer-documents';
+import {
+  CREATE_FAMILY_INVITE,
+  SEND_FAMILY_INVITE_BY_EMAIL,
+} from '../lib/viewer-documents';
 import type {
   CreateFamilyInviteData,
   FamilyInviteRole,
@@ -15,6 +18,11 @@ type InviteResult = {
 /**
  * Bouton et modale « Inviter un proche » : permet au payeur d'un foyer
  * de générer un code + lien à partager (co-payeur ou observateur).
+ *
+ * Après génération, l'utilisateur peut :
+ *   - Copier le code à communiquer oralement
+ *   - Copier le lien direct à partager par SMS/messagerie
+ *   - Entrer un email pour envoyer directement l'invitation par mail
  */
 export function InviteFamilyMemberCta() {
   const [open, setOpen] = useState(false);
@@ -23,9 +31,13 @@ export function InviteFamilyMemberCta() {
   const [localError, setLocalError] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [email, setEmail] = useState('');
+  const [emailSentTo, setEmailSentTo] = useState<string | null>(null);
 
-  const [createInvite, { loading }] = useMutation<CreateFamilyInviteData>(
-    CREATE_FAMILY_INVITE,
+  const [createInvite, { loading: creating }] =
+    useMutation<CreateFamilyInviteData>(CREATE_FAMILY_INVITE);
+  const [sendInviteByEmail, { loading: sending }] = useMutation(
+    SEND_FAMILY_INVITE_BY_EMAIL,
   );
 
   function resetAndClose() {
@@ -35,6 +47,8 @@ export function InviteFamilyMemberCta() {
     setCopiedCode(false);
     setCopiedLink(false);
     setRole('COPAYER');
+    setEmail('');
+    setEmailSentTo(null);
   }
 
   async function onGenerate() {
@@ -54,7 +68,9 @@ export function InviteFamilyMemberCta() {
       });
     } catch (err: unknown) {
       const msg =
-        err instanceof Error ? err.message : 'Impossible de générer l\u2019invitation.';
+        err instanceof Error
+          ? err.message
+          : 'Impossible de générer l\u2019invitation.';
       setLocalError(msg);
     }
   }
@@ -78,6 +94,36 @@ export function InviteFamilyMemberCta() {
     }
   }
 
+  async function onSendEmail() {
+    setLocalError(null);
+    setEmailSentTo(null);
+    if (!result) return;
+    const trimmed = email.trim();
+    if (!trimmed || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(trimmed)) {
+      setLocalError('Adresse email invalide.');
+      return;
+    }
+    try {
+      await sendInviteByEmail({
+        variables: {
+          input: {
+            code: result.code,
+            email: trimmed,
+            inviteUrl,
+          },
+        },
+      });
+      setEmailSentTo(trimmed);
+      setEmail('');
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error ? err.message : 'Échec de l\u2019envoi.';
+      setLocalError(msg);
+    }
+  }
+
+  const busy = creating || sending;
+
   return (
     <>
       <button
@@ -95,7 +141,7 @@ export function InviteFamilyMemberCta() {
         <div
           className="mp-modal-backdrop"
           role="presentation"
-          onClick={() => !loading && resetAndClose()}
+          onClick={() => !busy && resetAndClose()}
         />
       ) : null}
       {open ? (
@@ -125,7 +171,7 @@ export function InviteFamilyMemberCta() {
                     value="COPAYER"
                     checked={role === 'COPAYER'}
                     onChange={() => setRole('COPAYER')}
-                    disabled={loading}
+                    disabled={busy}
                   />
                   <span>
                     <strong>Co-payeur</strong>
@@ -143,7 +189,7 @@ export function InviteFamilyMemberCta() {
                     value="VIEWER"
                     checked={role === 'VIEWER'}
                     onChange={() => setRole('VIEWER')}
-                    disabled={loading}
+                    disabled={busy}
                   />
                   <span>
                     <strong>Observateur</strong>
@@ -165,7 +211,7 @@ export function InviteFamilyMemberCta() {
                 <button
                   type="button"
                   className="mp-btn mp-btn-outline"
-                  disabled={loading}
+                  disabled={busy}
                   onClick={resetAndClose}
                 >
                   Annuler
@@ -173,18 +219,17 @@ export function InviteFamilyMemberCta() {
                 <button
                   type="button"
                   className="mp-btn mp-btn-primary"
-                  disabled={loading}
+                  disabled={busy}
                   onClick={() => void onGenerate()}
                 >
-                  {loading ? 'Génération…' : 'Générer l\u2019invitation'}
+                  {creating ? 'Génération…' : 'Générer l\u2019invitation'}
                 </button>
               </div>
             </>
           ) : (
             <>
               <p className="mp-hint mp-modal-lede">
-                Partagez ces informations avec la personne invitée. Le code
-                et le lien expirent le{' '}
+                Invitation générée. Expire le{' '}
                 <strong>
                   {new Date(result.expiresAt).toLocaleDateString('fr-FR', {
                     day: 'numeric',
@@ -194,6 +239,7 @@ export function InviteFamilyMemberCta() {
                 </strong>
                 .
               </p>
+
               <div className="mp-field">
                 <span>Code à 8 caractères</span>
                 <div className="mp-invite-code-row">
@@ -207,6 +253,7 @@ export function InviteFamilyMemberCta() {
                   </button>
                 </div>
               </div>
+
               <div className="mp-field">
                 <span>Lien d'invitation</span>
                 <div className="mp-invite-code-row">
@@ -225,6 +272,45 @@ export function InviteFamilyMemberCta() {
                   </button>
                 </div>
               </div>
+
+              {/* Bloc envoi par email */}
+              <div className="mp-modal-divider">
+                <span className="mp-modal-divider-label">
+                  📧 Envoyer par email directement
+                </span>
+                <div className="mp-modal-email-row">
+                  <input
+                    type="email"
+                    placeholder="email@exemple.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void onSendEmail();
+                    }}
+                    disabled={sending}
+                  />
+                  <button
+                    type="button"
+                    className="mp-btn mp-btn-primary mp-btn-sm"
+                    disabled={sending || !email.trim()}
+                    onClick={() => void onSendEmail()}
+                  >
+                    {sending ? 'Envoi…' : 'Envoyer'}
+                  </button>
+                </div>
+                {emailSentTo ? (
+                  <p className="mp-modal-email-sent" role="status">
+                    ✓ Invitation envoyée à <strong>{emailSentTo}</strong>
+                  </p>
+                ) : null}
+              </div>
+
+              {localError ? (
+                <p className="mp-form-error" role="alert">
+                  {localError}
+                </p>
+              ) : null}
+
               <div className="mp-modal-actions">
                 <button
                   type="button"

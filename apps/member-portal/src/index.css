@@ -893,6 +893,117 @@ a.mp-pill-link:hover {
   font-size: 1.05rem;
 }
 
+/* Multi-foyer : onglets quand l'utilisateur est rattaché à > 1 foyer. */
+.mp-family-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1.25rem;
+  padding: 0.35rem;
+  background: rgba(79, 70, 229, 0.06);
+  border: 1px solid rgba(79, 70, 229, 0.12);
+  border-radius: 12px;
+}
+
+.mp-family-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: #4b5563;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.mp-family-tab:hover {
+  background: rgba(255, 255, 255, 0.8);
+  color: #1f2937;
+}
+
+.mp-family-tab--active {
+  background: #ffffff;
+  color: #4f46e5;
+  border-color: rgba(79, 70, 229, 0.35);
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.06);
+  font-weight: 600;
+}
+
+.mp-family-tab__ico {
+  font-size: 1.05rem !important;
+  color: inherit;
+}
+
+.mp-family-tab__label {
+  white-space: nowrap;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mp-family-tab__badge {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  background: #dc2626;
+  border-radius: 50%;
+  margin-left: 0.1rem;
+  line-height: 0;
+  text-indent: -9999px;
+}
+
+.mp-family-actions {
+  margin: 0 0 1rem;
+}
+
+/* Espace partagé : regroupement des factures par foyer responsable. */
+.mp-invoices-by-family {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.mp-invoices-by-family__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid rgba(79, 70, 229, 0.18);
+  background: rgba(79, 70, 229, 0.03);
+  border-radius: 12px;
+}
+
+.mp-invoices-by-family__title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin: 0;
+  color: #312e81;
+}
+
+.mp-invoices-by-family__ico {
+  font-size: 1.1rem !important;
+  color: #4f46e5;
+}
+
+.mp-invoices-by-family__count {
+  margin-left: auto;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #6b7280;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+}
+
 .mp-invoice-mini {
   list-style: none;
   margin: 0 0 0.75rem;
@@ -970,8 +1081,28 @@ a.mp-pill-link:hover {
   color: #000666;
 }
 
+.mp-linked-card__role {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: #374151;
+}
+
+.mp-linked-card__role-label {
+  font-weight: 700;
+  color: #000666;
+  white-space: nowrap;
+}
+
+.mp-linked-card__role-names {
+  color: #374151;
+}
+
 .mp-linked-card__empty {
-  margin: 0 !important;
+  margin: 0.5rem 0 0 !important;
   font-size: 0.8rem;
   line-height: 1.4;
 }
@@ -1287,6 +1418,146 @@ a.mp-pill-link:hover {
   font-size: 0.82rem;
   font-weight: 600;
   color: #ba1a1a;
+}
+
+/* ================================================================
+   Fieldset + radio + invite blocks (modale d'invitation famille)
+   ================================================================ */
+
+.mp-fieldset {
+  border: 1px solid rgba(25, 28, 29, 0.14);
+  border-radius: 12px;
+  padding: 0.85rem 1rem 1rem;
+  margin: 0 0 1rem;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.mp-legend {
+  padding: 0 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #454652;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.mp-radio {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.7rem;
+  align-items: flex-start;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid rgba(25, 28, 29, 0.12);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+  background: #fff;
+}
+.mp-radio:hover { border-color: rgba(26, 35, 126, 0.35); }
+.mp-radio:has(input[type='radio']:checked) {
+  border-color: #1a237e;
+  background: rgba(26, 35, 126, 0.05);
+}
+.mp-radio input[type='radio'] {
+  margin-top: 0.2rem;
+  accent-color: #1a237e;
+}
+.mp-radio > span {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.88rem;
+  color: #191c1d;
+}
+.mp-radio > span strong {
+  font-weight: 800;
+  color: #191c1d;
+}
+.mp-radio .mp-hint {
+  display: block;
+  font-size: 0.78rem;
+  color: #6f7078;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+/* Blocs d'info invitation (code / lien) */
+.mp-invite-code-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+  margin-top: 0.4rem;
+}
+.mp-invite-code-row input,
+.mp-invite-code-row code {
+  flex: 1;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid rgba(25, 28, 29, 0.14);
+  background: #fafafa;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-size: 0.9rem;
+  color: #191c1d;
+  min-width: 0;
+}
+.mp-invite-code {
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  text-align: center;
+}
+.mp-btn-sm {
+  /* Override width:100% + margin-top hérités de .mp-btn — un bouton "sm"
+     inline dans une flex-row doit garder sa taille intrinsèque. */
+  width: auto;
+  margin-top: 0;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+/* Sécurité spécificité : dans les rows flex de la modale d'invitation,
+   tous les boutons (pas juste sm) doivent rester à taille intrinsèque. */
+.mp-invite-code-row .mp-btn,
+.mp-modal-email-row .mp-btn {
+  width: auto;
+  margin-top: 0;
+  flex: 0 0 auto;
+}
+
+/* Séparateur dans la modale post-génération */
+.mp-modal-divider {
+  margin: 1.2rem 0 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid rgba(25, 28, 29, 0.1);
+}
+.mp-modal-divider-label {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #454652;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+  display: block;
+}
+.mp-modal-email-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+.mp-modal-email-row input {
+  flex: 1;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid rgba(25, 28, 29, 0.14);
+  font: inherit;
+  min-width: 0;
+}
+.mp-modal-email-sent {
+  color: #2e7d32;
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin-top: 0.5rem;
 }
 
 /* ================================================================
@@ -3246,4 +3517,83 @@ a:focus-visible {
   align-items: flex-end;
   gap: 16px;
   margin-bottom: 18px;
+}
+
+/* ================================================================
+   Notification invitations familiales en attente (top of layout)
+   ================================================================ */
+
+.mp-pending-invites {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0 0 1.25rem;
+}
+
+.mp-pending-invite {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.9rem 1.1rem;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+  border: 1px solid #c7d2fe;
+  box-shadow: 0 4px 14px rgba(26, 35, 126, 0.08);
+  animation: mp-invite-slide 0.3s ease-out;
+}
+@keyframes mp-invite-slide {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.mp-pending-invite__icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #1a237e;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.mp-pending-invite__icon .material-symbols-outlined {
+  font-size: 24px;
+}
+
+.mp-pending-invite__body { min-width: 0; }
+.mp-pending-invite__title {
+  font-size: 0.95rem;
+  color: #1e1b4b;
+  line-height: 1.5;
+}
+.mp-pending-invite__title strong { color: #1a237e; font-weight: 700; }
+.mp-pending-invite__title em { font-style: italic; color: #4338ca; }
+.mp-pending-invite__hint {
+  margin-top: 0.25rem;
+  font-size: 0.78rem;
+  color: #6366f1;
+  font-weight: 500;
+}
+
+.mp-pending-invite__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+.mp-pending-invite__actions .mp-btn {
+  min-width: 100px;
+}
+
+@media (max-width: 640px) {
+  .mp-pending-invite {
+    grid-template-columns: auto 1fr;
+    gap: 0.75rem;
+  }
+  .mp-pending-invite__actions {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    justify-content: flex-end;
+  }
 }

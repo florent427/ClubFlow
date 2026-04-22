@@ -17,6 +17,14 @@ export interface ChatCompletionOptions {
   temperature?: number;
   maxTokens?: number;
   responseFormat?: 'json_object' | 'text';
+  /**
+   * Active le plugin web d'OpenRouter (Exa) : le modèle peut faire des
+   * recherches web pour récupérer de l'info récente. Coût : ~0,02 $ par
+   * requête (5 résultats Exa). Compatible avec tous les modèles chat.
+   */
+  webSearch?: boolean;
+  /** Nombre max de résultats web (défaut 5). */
+  webSearchMaxResults?: number;
 }
 
 export interface ChatCompletionResult {
@@ -59,19 +67,50 @@ export class OpenrouterService {
   async chatCompletion(
     opts: ChatCompletionOptions,
   ): Promise<ChatCompletionResult> {
-    const res = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: this.headers(opts.apiKey),
-      body: JSON.stringify({
-        model: opts.model,
-        messages: opts.messages,
-        temperature: opts.temperature ?? 0.7,
-        max_tokens: opts.maxTokens ?? 6000,
-        response_format: opts.responseFormat
-          ? { type: opts.responseFormat }
-          : undefined,
-      }),
-    });
+    // Plugin web OpenRouter : le modèle peut invoquer une recherche Exa
+    // pendant sa génération. Les résultats sont injectés dans le contexte
+    // par OpenRouter avant que le modèle ne réponde. Compatible JSON mode.
+    const plugins = opts.webSearch
+      ? [
+          {
+            id: 'web',
+            max_results: opts.webSearchMaxResults ?? 5,
+          },
+        ]
+      : undefined;
+
+    // Timeout 3 min : OpenRouter peut être lent sur certains modèles mais
+    // au-delà c'est un signe de hang (provider down, modèle preview cassé).
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 180_000);
+
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: this.headers(opts.apiKey),
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: opts.model,
+          messages: opts.messages,
+          temperature: opts.temperature ?? 0.7,
+          max_tokens: opts.maxTokens ?? 6000,
+          response_format: opts.responseFormat
+            ? { type: opts.responseFormat }
+            : undefined,
+          plugins,
+        }),
+      });
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new BadRequestException(
+          `OpenRouter timeout (>3min) sur ${opts.model}. Essaie un autre modèle.`,
+        );
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeout);
+    }
     if (!res.ok) {
       const txt = await res.text();
       throw new BadRequestException(
@@ -114,20 +153,37 @@ export class OpenrouterService {
   async generateImage(
     opts: GenerateImageOptions,
   ): Promise<GenerateImageResult> {
-    const res = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: this.headers(opts.apiKey),
-      body: JSON.stringify({
-        model: opts.model,
-        messages: [
-          {
-            role: 'user',
-            content: opts.prompt,
-          },
-        ],
-        modalities: ['image', 'text'],
-      }),
-    });
+    // Timeout 2 min pour la génération d'image : au-delà c'est un hang.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120_000);
+
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: this.headers(opts.apiKey),
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: opts.model,
+          messages: [
+            {
+              role: 'user',
+              content: opts.prompt,
+            },
+          ],
+          modalities: ['image', 'text'],
+        }),
+      });
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new BadRequestException(
+          `Image ${opts.model} timeout (>2min). Modèle probablement instable, essaie google/gemini-2.5-flash-image (GA stable).`,
+        );
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeout);
+    }
     if (!res.ok) {
       const txt = await res.text();
       throw new BadRequestException(

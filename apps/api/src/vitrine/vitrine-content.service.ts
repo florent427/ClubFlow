@@ -3,8 +3,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type {
-  Prisma,
   VitrineAnnouncement,
   VitrineArticle,
   VitrineArticleStatus,
@@ -36,20 +36,37 @@ export class VitrineContentService {
 
   // ---------- Articles ----------
 
-  async listArticlesAdmin(clubId: string): Promise<VitrineArticle[]> {
+  async listArticlesAdmin(clubId: string) {
     return this.prisma.vitrineArticle.findMany({
       where: { clubId },
       orderBy: [
         { publishedAt: { sort: 'desc', nulls: 'last' } },
         { createdAt: 'desc' },
       ],
+      include: {
+        coverImage: { select: { publicUrl: true } },
+        seoOgImage: { select: { publicUrl: true } },
+        categories: {
+          select: { id: true, slug: true, name: true, color: true },
+        },
+      },
     });
   }
 
-  async listArticlesPublic(
-    clubId: string,
-    limit = 20,
-  ): Promise<VitrineArticle[]> {
+  async getArticleByIdAdmin(clubId: string, id: string) {
+    return this.prisma.vitrineArticle.findFirst({
+      where: { id, clubId },
+      include: {
+        coverImage: { select: { publicUrl: true } },
+        seoOgImage: { select: { publicUrl: true } },
+        categories: {
+          select: { id: true, slug: true, name: true, color: true },
+        },
+      },
+    });
+  }
+
+  async listArticlesPublic(clubId: string, limit = 20) {
     return this.prisma.vitrineArticle.findMany({
       where: {
         clubId,
@@ -58,6 +75,11 @@ export class VitrineContentService {
       },
       orderBy: { publishedAt: 'desc' },
       take: Math.max(1, Math.min(50, limit)),
+      include: {
+        categories: {
+          select: { id: true, slug: true, name: true, color: true },
+        },
+      },
     });
   }
 
@@ -65,9 +87,14 @@ export class VitrineContentService {
     clubId: string,
     slug: string,
     { includeDraft = false } = {},
-  ): Promise<VitrineArticle | null> {
+  ) {
     const article = await this.prisma.vitrineArticle.findUnique({
       where: { clubId_slug: { clubId, slug } },
+      include: {
+        categories: {
+          select: { id: true, slug: true, name: true, color: true },
+        },
+      },
     });
     if (!article) return null;
     if (!includeDraft && article.status !== 'PUBLISHED') return null;
@@ -83,7 +110,16 @@ export class VitrineContentService {
       excerpt?: string | null;
       bodyJson: Prisma.InputJsonValue;
       coverImageId?: string | null;
+      coverImageAlt?: string | null;
       publishNow?: boolean;
+      seoTitle?: string | null;
+      seoDescription?: string | null;
+      seoKeywords?: string[];
+      seoH1?: string | null;
+      seoFaq?: Prisma.InputJsonValue | null;
+      seoCanonicalUrl?: string | null;
+      seoNoindex?: boolean;
+      seoOgImageId?: string | null;
     },
   ): Promise<VitrineArticle> {
     const baseSlug = input.slug ?? slugify(input.title);
@@ -98,8 +134,17 @@ export class VitrineContentService {
         excerpt: input.excerpt ?? null,
         bodyJson: input.bodyJson,
         coverImageId: input.coverImageId ?? null,
+        coverImageAlt: input.coverImageAlt ?? null,
         status: publishNow ? 'PUBLISHED' : 'DRAFT',
         publishedAt: publishNow ? new Date() : null,
+        seoTitle: input.seoTitle ?? null,
+        seoDescription: input.seoDescription ?? null,
+        seoKeywords: input.seoKeywords ?? [],
+        seoH1: input.seoH1 ?? null,
+        seoFaqJson: input.seoFaq === undefined ? undefined : input.seoFaq === null ? Prisma.JsonNull : input.seoFaq,
+        seoCanonicalUrl: input.seoCanonicalUrl ?? null,
+        seoNoindex: input.seoNoindex ?? false,
+        seoOgImageId: input.seoOgImageId ?? null,
       },
     });
   }
@@ -113,6 +158,15 @@ export class VitrineContentService {
       excerpt?: string | null;
       bodyJson?: Prisma.InputJsonValue;
       coverImageId?: string | null;
+      coverImageAlt?: string | null;
+      seoTitle?: string | null;
+      seoDescription?: string | null;
+      seoKeywords?: string[];
+      seoH1?: string | null;
+      seoFaq?: Prisma.InputJsonValue | null;
+      seoCanonicalUrl?: string | null;
+      seoNoindex?: boolean;
+      seoOgImageId?: string | null;
     },
   ): Promise<VitrineArticle> {
     const existing = await this.prisma.vitrineArticle.findFirst({
@@ -129,6 +183,22 @@ export class VitrineContentService {
     if (input.coverImageId !== undefined) {
       data.coverImage = input.coverImageId
         ? { connect: { id: input.coverImageId } }
+        : { disconnect: true };
+    }
+    if (input.coverImageAlt !== undefined) data.coverImageAlt = input.coverImageAlt;
+
+    if (input.seoTitle !== undefined) data.seoTitle = input.seoTitle;
+    if (input.seoDescription !== undefined) data.seoDescription = input.seoDescription;
+    if (input.seoKeywords !== undefined) data.seoKeywords = input.seoKeywords;
+    if (input.seoH1 !== undefined) data.seoH1 = input.seoH1;
+    if (input.seoFaq !== undefined) {
+      data.seoFaqJson = input.seoFaq === null ? Prisma.JsonNull : input.seoFaq;
+    }
+    if (input.seoCanonicalUrl !== undefined) data.seoCanonicalUrl = input.seoCanonicalUrl;
+    if (input.seoNoindex !== undefined) data.seoNoindex = input.seoNoindex;
+    if (input.seoOgImageId !== undefined) {
+      data.seoOgImage = input.seoOgImageId
+        ? { connect: { id: input.seoOgImageId } }
         : { disconnect: true };
     }
     return this.prisma.vitrineArticle.update({

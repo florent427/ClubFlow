@@ -197,6 +197,14 @@ export function VitrineHomePage() {
             <h3>Articles</h3>
             <p className="muted">Actualités publiées sur le site.</p>
           </Link>
+          <Link to="/vitrine/categories" className="card-link">
+            <h3>Catégories</h3>
+            <p className="muted">Organise tes articles par thème.</p>
+          </Link>
+          <Link to="/vitrine/commentaires" className="card-link">
+            <h3>Commentaires</h3>
+            <p className="muted">Modération IA + validation manuelle.</p>
+          </Link>
           <Link to="/vitrine/annonces" className="card-link">
             <h3>Annonces</h3>
             <p className="muted">Messages courts et épinglés.</p>

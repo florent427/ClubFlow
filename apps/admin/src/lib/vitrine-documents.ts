@@ -83,41 +83,71 @@ export const RESTORE_VITRINE_REVISION = gql`
   }
 `;
 
+// Fragment commun pour un article vitrine (admin) — tous les champs SEO + meta
+// + état de génération IA (pour les articles lancés en background).
+export const VITRINE_ARTICLE_FULL_FRAGMENT = gql`
+  fragment VitrineArticleFull on VitrineArticleGraph {
+    id
+    slug
+    title
+    excerpt
+    bodyJson
+    status
+    publishedAt
+    updatedAt
+    coverImageUrl
+    coverImageId
+    coverImageAlt
+    seoTitle
+    seoDescription
+    seoKeywords
+    seoH1
+    seoFaq {
+      question
+      answer
+    }
+    seoCanonicalUrl
+    seoNoindex
+    seoOgImageId
+    seoOgImageUrl
+    generationStatus
+    generationProgress
+    generationError
+    generationWarnings
+    categories {
+      id
+      slug
+      name
+      color
+    }
+  }
+`;
+
 export const CLUB_VITRINE_ARTICLES = gql`
   query ClubVitrineArticles {
     clubVitrineArticles {
-      id
-      slug
-      title
-      excerpt
-      status
-      publishedAt
-      coverImageUrl
-      updatedAt
+      ...VitrineArticleFull
     }
   }
+  ${VITRINE_ARTICLE_FULL_FRAGMENT}
 `;
 
 export const CREATE_VITRINE_ARTICLE = gql`
   mutation CreateVitrineArticle($input: CreateVitrineArticleInput!) {
     createVitrineArticle(input: $input) {
-      id
-      slug
-      title
-      status
+      ...VitrineArticleFull
     }
   }
+  ${VITRINE_ARTICLE_FULL_FRAGMENT}
 `;
 
 export const UPDATE_VITRINE_ARTICLE = gql`
   mutation UpdateVitrineArticle($input: UpdateVitrineArticleInput!) {
     updateVitrineArticle(input: $input) {
-      id
-      slug
-      title
-      excerpt
+      ...VitrineArticleFull
     }
   }
+  ${VITRINE_ARTICLE_FULL_FRAGMENT}
 `;
 
 export const SET_VITRINE_ARTICLE_STATUS = gql`
@@ -335,19 +365,62 @@ export interface ClubVitrinePageData {
   clubVitrinePage: AdminVitrinePage | null;
 }
 
+export interface VitrineArticleFaqItem {
+  question: string;
+  answer: string;
+}
+
+export type VitrineArticleGenerationStatus =
+  | 'NONE'
+  | 'PENDING'
+  | 'DONE'
+  | 'FAILED';
+
+export interface ArticleCategoryLink {
+  id: string;
+  slug: string;
+  name: string;
+  color: string | null;
+}
+
 export interface AdminVitrineArticle {
   id: string;
   slug: string;
   title: string;
   excerpt: string | null;
+  bodyJson: string;
   status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
   publishedAt: string | null;
-  coverImageUrl: string | null;
   updatedAt: string;
+  coverImageUrl: string | null;
+  coverImageId: string | null;
+  coverImageAlt: string | null;
+  seoTitle: string | null;
+  seoDescription: string | null;
+  seoKeywords: string[];
+  seoH1: string | null;
+  seoFaq: VitrineArticleFaqItem[];
+  seoCanonicalUrl: string | null;
+  seoNoindex: boolean;
+  seoOgImageId: string | null;
+  seoOgImageUrl: string | null;
+  generationStatus: VitrineArticleGenerationStatus;
+  generationProgress: string | null;
+  generationError: string | null;
+  generationWarnings: string[];
+  categories: ArticleCategoryLink[];
 }
 
 export interface ClubVitrineArticlesData {
   clubVitrineArticles: AdminVitrineArticle[];
+}
+
+export interface CreateVitrineArticleData {
+  createVitrineArticle: AdminVitrineArticle;
+}
+
+export interface UpdateVitrineArticleData {
+  updateVitrineArticle: AdminVitrineArticle;
 }
 
 export interface AdminVitrineAnnouncement {
@@ -360,4 +433,169 @@ export interface AdminVitrineAnnouncement {
 
 export interface ClubVitrineAnnouncementsData {
   clubVitrineAnnouncements: AdminVitrineAnnouncement[];
+}
+
+// ============================================
+// Catégories
+// ============================================
+
+export const CLUB_VITRINE_CATEGORIES = gql`
+  query ClubVitrineCategories {
+    clubVitrineCategories {
+      id
+      slug
+      name
+      description
+      color
+      sortOrder
+      articleCount
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const CREATE_VITRINE_CATEGORY = gql`
+  mutation CreateVitrineCategory($input: CreateVitrineCategoryInput!) {
+    createVitrineCategory(input: $input) {
+      id
+      slug
+      name
+      description
+      color
+      sortOrder
+      articleCount
+    }
+  }
+`;
+
+export const UPDATE_VITRINE_CATEGORY = gql`
+  mutation UpdateVitrineCategory($input: UpdateVitrineCategoryInput!) {
+    updateVitrineCategory(input: $input) {
+      id
+      slug
+      name
+      description
+      color
+      sortOrder
+      articleCount
+    }
+  }
+`;
+
+export const DELETE_VITRINE_CATEGORY = gql`
+  mutation DeleteVitrineCategory($id: ID!) {
+    deleteVitrineCategory(id: $id)
+  }
+`;
+
+export const SET_VITRINE_ARTICLE_CATEGORIES = gql`
+  mutation SetVitrineArticleCategories(
+    $input: SetVitrineArticleCategoriesInput!
+  ) {
+    setVitrineArticleCategories(input: $input)
+  }
+`;
+
+export interface AdminVitrineCategory {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  color: string | null;
+  sortOrder: number;
+  articleCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ClubVitrineCategoriesData {
+  clubVitrineCategories: AdminVitrineCategory[];
+}
+
+// ============================================
+// Commentaires
+// ============================================
+
+export type VitrineCommentStatus =
+  | 'PENDING'
+  | 'APPROVED'
+  | 'NEEDS_REVIEW'
+  | 'REJECTED'
+  | 'SPAM';
+
+export const CLUB_VITRINE_COMMENTS = gql`
+  query ClubVitrineComments($status: VitrineCommentStatus) {
+    clubVitrineComments(status: $status) {
+      id
+      articleId
+      articleSlug
+      articleTitle
+      authorName
+      authorEmail
+      body
+      status
+      aiScore
+      aiCategory
+      aiReason
+      adminReplyBody
+      adminReplyAuthorName
+      adminReplyAt
+      createdAt
+    }
+  }
+`;
+
+export const SET_VITRINE_COMMENT_STATUS = gql`
+  mutation SetVitrineCommentStatus($input: SetVitrineCommentStatusInput!) {
+    setVitrineCommentStatus(input: $input) {
+      id
+      status
+    }
+  }
+`;
+
+export const DELETE_VITRINE_COMMENT = gql`
+  mutation DeleteVitrineComment($id: ID!) {
+    deleteVitrineComment(id: $id)
+  }
+`;
+
+export const GENERATE_VITRINE_COMMENT_REPLY = gql`
+  mutation GenerateVitrineCommentReply($input: GenerateCommentReplyInput!) {
+    generateVitrineCommentReply(input: $input)
+  }
+`;
+
+export const SET_VITRINE_COMMENT_REPLY = gql`
+  mutation SetVitrineCommentReply($input: SetVitrineCommentReplyInput!) {
+    setVitrineCommentReply(input: $input) {
+      id
+      adminReplyBody
+      adminReplyAuthorName
+      adminReplyAt
+    }
+  }
+`;
+
+export interface AdminVitrineComment {
+  id: string;
+  articleId: string;
+  articleSlug: string;
+  articleTitle: string;
+  authorName: string;
+  authorEmail: string;
+  body: string;
+  status: VitrineCommentStatus;
+  aiScore: number | null;
+  aiCategory: string | null;
+  aiReason: string | null;
+  adminReplyBody: string | null;
+  adminReplyAuthorName: string | null;
+  adminReplyAt: string | null;
+  createdAt: string;
+}
+
+export interface ClubVitrineCommentsData {
+  clubVitrineComments: AdminVitrineComment[];
 }

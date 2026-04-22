@@ -4,7 +4,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { decryptSecret, encryptSecret, maskSecret } from '../common/crypto.util';
 
 export const DEFAULT_TEXT_MODEL = 'anthropic/claude-sonnet-4-5';
-export const DEFAULT_IMAGE_MODEL = 'google/gemini-2.5-flash-image-preview';
+// gemini-2.5-flash-image (GA, sans "-preview") = version stable de Nano Banana.
+// Même API que la version preview mais sensiblement plus fiable en prod.
+export const DEFAULT_IMAGE_MODEL = 'google/gemini-2.5-flash-image';
 
 /** Liste de modèles suggérés (affichée dans l'UI admin). */
 export const CURATED_TEXT_MODELS = [
@@ -17,10 +19,23 @@ export const CURATED_TEXT_MODELS = [
   'mistralai/mistral-large-2411',
 ] as const;
 
+/**
+ * Modèles de génération d'image disponibles sur OpenRouter via l'endpoint
+ * chat-completions avec `modalities: ['image', 'text']`.
+ *
+ * Note : DALL-E et Flux NE SONT PAS disponibles sur OpenRouter ; ils
+ * nécessitent un endpoint différent (OpenAI direct ou Replicate/fal.ai).
+ */
 export const CURATED_IMAGE_MODELS = [
+  // Version GA stable — recommandée par défaut
+  'google/gemini-2.5-flash-image',
+  // OpenAI GPT-5 image (stable, plus cher mais très fiable)
+  'openai/gpt-5-image-mini',
+  'openai/gpt-5-image',
+  // Versions preview (plus récentes, parfois instables)
+  'google/gemini-3.1-flash-image-preview',
+  'google/gemini-3-pro-image-preview',
   'google/gemini-2.5-flash-image-preview',
-  'openai/dall-e-3',
-  'black-forest-labs/flux-1.1-pro',
 ] as const;
 
 export interface AiSettings {
@@ -29,6 +44,8 @@ export interface AiSettings {
   /** True si une clé API est configurée. */
   hasApiKey: boolean;
   textModel: string;
+  /** Null = pas de fallback configuré. */
+  textFallbackModel: string | null;
   imageModel: string;
   tokensInputUsed: number;
   tokensOutputUsed: number;
@@ -41,6 +58,7 @@ export interface AiSettingsUpdate {
   /** Si true, efface la clé existante. */
   clearApiKey?: boolean;
   textModel?: string | null;
+  textFallbackModel?: string | null;
   imageModel?: string | null;
 }
 
@@ -54,6 +72,7 @@ export class AiSettingsService {
       select: {
         aiOpenrouterApiKeyEnc: true,
         aiTextModel: true,
+        aiTextFallbackModel: true,
         aiImageModel: true,
         aiTokensInputUsed: true,
         aiTokensOutputUsed: true,
@@ -73,6 +92,7 @@ export class AiSettingsService {
       apiKeyMasked,
       hasApiKey: !!club.aiOpenrouterApiKeyEnc,
       textModel: club.aiTextModel ?? DEFAULT_TEXT_MODEL,
+      textFallbackModel: club.aiTextFallbackModel,
       imageModel: club.aiImageModel ?? DEFAULT_IMAGE_MODEL,
       tokensInputUsed: Number(club.aiTokensInputUsed),
       tokensOutputUsed: Number(club.aiTokensOutputUsed),
@@ -99,6 +119,9 @@ export class AiSettingsService {
     }
     if (patch.textModel !== undefined) {
       data.aiTextModel = patch.textModel?.trim() || null;
+    }
+    if (patch.textFallbackModel !== undefined) {
+      data.aiTextFallbackModel = patch.textFallbackModel?.trim() || null;
     }
     if (patch.imageModel !== undefined) {
       data.aiImageModel = patch.imageModel?.trim() || null;
@@ -127,13 +150,24 @@ export class AiSettingsService {
     }
   }
 
-  async getModels(clubId: string): Promise<{ textModel: string; imageModel: string }> {
+  async getModels(
+    clubId: string,
+  ): Promise<{
+    textModel: string;
+    textFallbackModel: string | null;
+    imageModel: string;
+  }> {
     const club = await this.prisma.club.findUnique({
       where: { id: clubId },
-      select: { aiTextModel: true, aiImageModel: true },
+      select: {
+        aiTextModel: true,
+        aiTextFallbackModel: true,
+        aiImageModel: true,
+      },
     });
     return {
       textModel: club?.aiTextModel ?? DEFAULT_TEXT_MODEL,
+      textFallbackModel: club?.aiTextFallbackModel ?? null,
       imageModel: club?.aiImageModel ?? DEFAULT_IMAGE_MODEL,
     };
   }

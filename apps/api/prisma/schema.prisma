@@ -22,6 +22,10 @@ model Club {
   address       String?
   /// Mentions légales en pied de facture (TVA non applicable, association loi 1901…).
   legalMentions String?
+  /// Téléphone de contact du club affiché sur l'en-tête de facture.
+  contactPhone  String?
+  /// E-mail de contact du club affiché sur l'en-tête de facture.
+  contactEmail  String?
 
   memberships     ClubMembership[]
   modules         ClubModule[]
@@ -85,6 +89,7 @@ model Club {
   vitrineArticles      VitrineArticle[]
   vitrineAnnouncements VitrineAnnouncement[]
   vitrineGalleryPhotos VitrineGalleryPhoto[]
+  vitrineCategories    VitrineCategory[]
   mediaAssets          MediaAsset[]
 
   /// Clé API OpenRouter (chiffrée AES-256-GCM, base64).
@@ -93,6 +98,10 @@ model Club {
 
   /// Modèle texte (ex. anthropic/claude-sonnet-4-5).
   aiTextModel String?
+
+  /// Modèle texte de fallback (utilisé si le primaire échoue 3× sur un tool
+  /// call ou renvoie une erreur 5xx/timeout). Null = pas de fallback.
+  aiTextFallbackModel String?
 
   /// Modèle image (ex. google/gemini-2.5-flash-image-preview).
   aiImageModel String?
@@ -290,6 +299,8 @@ model Contact {
   userId    String
   firstName String
   lastName  String
+  phone     String?
+  photoUrl  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -735,10 +746,17 @@ model FamilyInvite {
   consumedByUserId String?
   createdAt        DateTime         @default(now())
 
+  /// Email du destinataire si l'invitation a été envoyée par mail.
+  /// Permet au destinataire de voir ses invitations en attente dès qu'il
+  /// se connecte (pas besoin de passer par le mail reçu). Normalisé en
+  /// lowercase + trim avant insertion.
+  recipientEmail String?
+
   family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
 
   @@index([clubId])
   @@index([familyId])
+  @@index([recipientEmail])
 }
 
 /// Foyer étendu : plusieurs `Family` (résidences) partagent facturation et enfants (spec 2026-03-31).
@@ -1611,7 +1629,94 @@ model VitrinePageRevision {
   @@index([pageId, createdAt])
 }
 
+/// État de génération IA d'un article vitrine.
+/// - NONE : article créé manuellement (pas de génération)
+/// - PENDING : génération IA en cours en arrière-plan
+/// - DONE : génération terminée avec succès
+/// - FAILED : génération échouée (voir generationError)
+enum VitrineArticleGenerationStatus {
+  NONE
+  PENDING
+  DONE
+  FAILED
+}
+
+/// Statut d'un commentaire sur un article vitrine après modération.
+/// - PENDING : vient d'être soumis, modération IA en cours
+/// - APPROVED : IA a jugé OK → visible sur la vitrine publique
+/// - NEEDS_REVIEW : IA a flagué pour relecture humaine (admin doit trancher)
+/// - REJECTED : IA ou admin a rejeté (non visible public)
+/// - SPAM : spam détecté (non visible public + bloqué futur)
+enum VitrineCommentStatus {
+  PENDING
+  APPROVED
+  NEEDS_REVIEW
+  REJECTED
+  SPAM
+}
+
+/// Catégorie d'article vitrine (type WordPress). Un article peut avoir
+/// plusieurs catégories via la table de jointure implicite Prisma.
+model VitrineCategory {
+  id          String   @id @default(uuid())
+  clubId      String
+  slug        String
+  name        String
+  description String?
+  /// Couleur hex pour le badge visuel (#RRGGBB). Si null → couleur par défaut.
+  color       String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  club     Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  articles VitrineArticle[] @relation("VitrineArticleCategories")
+
+  @@unique([clubId, slug])
+  @@index([clubId, sortOrder])
+}
+
+/// Commentaire sur un article vitrine (public, soumis par un visiteur).
+/// Modéré automatiquement par IA avant affichage.
+model VitrineComment {
+  id               String               @id @default(uuid())
+  articleId        String
+  authorName       String
+  authorEmail      String
+  body             String
+  ipAddress        String?
+  userAgent        String?
+  status           VitrineCommentStatus @default(PENDING)
+  /// Score IA 0.0 (rejeté) → 1.0 (parfait). Null = pas encore modéré.
+  aiScore          Float?
+  /// Catégorie attribuée par l'IA (constructive, off-topic, offensive, spam, insulting, other).
+  aiCategory       String?
+  /// Raison lisible de la décision IA (affichée à l'admin).
+  aiReason         String?
+  /// Id user admin qui a review manuellement (si applicable).
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+
+  /// Réponse de l'admin (ou générée par IA, validée par admin avant publication).
+  /// Null = pas de réponse publiée.
+  adminReplyBody       String?
+  /// Nom à afficher pour la réponse (ex. "Sensei Tanaka", "L'équipe SKSR", "Direction").
+  adminReplyAuthorName String?
+  adminReplyAt         DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  article VitrineArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([articleId, status, createdAt])
+  @@index([status, createdAt])
+}
+
 /// Article vitrine — distinct du BlogPost (lui réservé aux membres connectés).
+///
+/// `bodyJson` = `{ format: 'html', html: '...' }` (WYSIWYG Tiptap) OU
+/// `['para1', 'para2']` (ancien format paragraphes, rétrocompatible lecture).
 model VitrineArticle {
   id           String               @id @default(uuid())
   clubId       String
@@ -1626,11 +1731,34 @@ model VitrineArticle {
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
 
-  club       Club        @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  coverImage MediaAsset? @relation("VitrineArticleCover", fields: [coverImageId], references: [id], onDelete: SetNull)
+  // --- SEO ---
+  seoTitle         String? // <title> balise, ≤ 60 chars recommandé
+  seoDescription   String? // <meta name="description">, 150-160 chars
+  seoKeywords      String[] @default([]) // LSI / mots-clés cibles
+  seoH1            String? // H1 de l'article (si différent du titre)
+  seoFaqJson       Json?   // [{question, answer}] pour schema.org FAQPage
+  seoCanonicalUrl  String? // URL canonical si dupliquée ailleurs
+  seoNoindex       Boolean @default(false)
+  seoOgImageId     String? // Image Open Graph (partage sociaux). Si null → coverImageId.
+  coverImageAlt    String? // alt de l'image de couverture
+
+  // --- Génération IA en arrière-plan ---
+  generationStatus   VitrineArticleGenerationStatus @default(NONE)
+  generationProgress String?  // libellé courant (ex. "Génération du texte…", "Images 2/4")
+  generationError    String?  // message d'erreur si FAILED
+  generationWarnings String[] @default([]) // avertissements non-bloquants (ex. image gen failed)
+  generationStartedAt DateTime?
+  generationEndedAt   DateTime?
+
+  club       Club              @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  coverImage MediaAsset?       @relation("VitrineArticleCover", fields: [coverImageId], references: [id], onDelete: SetNull)
+  seoOgImage MediaAsset?       @relation("VitrineArticleOgImage", fields: [seoOgImageId], references: [id], onDelete: SetNull)
+  categories VitrineCategory[] @relation("VitrineArticleCategories")
+  comments   VitrineComment[]
 
   @@unique([clubId, slug])
   @@index([clubId, status, publishedAt])
+  @@index([clubId, generationStatus])
 }
 
 /// Annonce courte affichée sur la vitrine (≠ ClubAnnouncement membre).
@@ -1684,10 +1812,11 @@ model MediaAsset {
   uploadedByUserId String?
   createdAt        DateTime       @default(now())
 
-  club          Club                  @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  galleryPhotos VitrineGalleryPhoto[] @relation("VitrineGalleryPhotoAsset")
-  articleCovers VitrineArticle[]      @relation("VitrineArticleCover")
-  ogPages       VitrinePage[]         @relation("VitrinePageOgImage")
+  club           Club                  @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  galleryPhotos  VitrineGalleryPhoto[] @relation("VitrineGalleryPhotoAsset")
+  articleCovers  VitrineArticle[]      @relation("VitrineArticleCover")
+  articleOgImages VitrineArticle[]     @relation("VitrineArticleOgImage")
+  ogPages        VitrinePage[]         @relation("VitrinePageOgImage")
 
   @@index([clubId, ownerKind, ownerId])
 }

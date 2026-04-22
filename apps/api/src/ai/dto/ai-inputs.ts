@@ -33,6 +33,12 @@ export class UpdateAiSettingsInput {
   @IsOptional()
   @IsString()
   @MaxLength(120)
+  textFallbackModel?: string | null;
+
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
   imageModel?: string | null;
 }
 
@@ -62,4 +68,28 @@ export class GenerateVitrineArticleDraftInput {
   @Min(0)
   @Max(6)
   inlineImageCount?: number;
+
+  /**
+   * True (défaut) = les images (featured + inline) sont vraiment générées
+   * par le modèle image (coûte des tokens).
+   * False = on garde les suggestions de prompts/alts de l'IA mais on
+   * insère des placeholders SVG à la place (zéro coût image). L'utilisateur
+   * remplacera les placeholders par ses propres photos dans l'éditeur.
+   */
+  @Field({ defaultValue: true })
+  @IsOptional()
+  @IsBoolean()
+  useAiImages?: boolean;
+
+  /**
+   * True = active le plugin web OpenRouter pendant la génération du texte.
+   * Le modèle aura accès à une recherche web (Exa) pour récupérer de
+   * l'information actuelle (chiffres récents, événements, règlements
+   * mis à jour). Coût : ~0,02 $ par génération en plus des tokens texte.
+   * Défaut : false (pas d'accès web).
+   */
+  @Field({ defaultValue: false })
+  @IsOptional()
+  @IsBoolean()
+  useWebSearch?: boolean;
 }

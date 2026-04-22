@@ -46,6 +46,8 @@ import { VitrineSettingsPage } from './pages/vitrine/VitrineSettingsPage';
 import { MediaLibraryPage } from './pages/vitrine/MediaLibraryPage';
 import { VitrineArticleEditor } from './pages/vitrine/VitrineArticleEditor';
 import { VitrineBrandingPage } from './pages/vitrine/VitrineBrandingPage';
+import { VitrineCategoriesPage } from './pages/vitrine/VitrineCategoriesPage';
+import { VitrineCommentsPage } from './pages/vitrine/VitrineCommentsPage';
 import { MembersUiProvider } from './pages/members/members-ui-context';
 import { ContactsPage } from './pages/contacts/ContactsPage';
 import { ToastProvider } from './components/ToastProvider';
@@ -111,6 +113,8 @@ export default function App() {
               <Route index element={<VitrineHomePage />} />
               <Route path="articles" element={<VitrineArticlesPage />} />
               <Route path="articles/:id" element={<VitrineArticleEditor />} />
+              <Route path="categories" element={<VitrineCategoriesPage />} />
+              <Route path="commentaires" element={<VitrineCommentsPage />} />
               <Route path="annonces" element={<VitrineAnnouncementsPage />} />
               <Route path="galerie" element={<VitrineGalleryPage />} />
               <Route path="medias" element={<MediaLibraryPage />} />

@@ -1,11 +1,28 @@
-import { type FormEvent, useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { type FormEvent, useEffect, useState } from 'react';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { useMutation } from '@apollo/client/react';
 import { REGISTER_CONTACT } from '../lib/documents';
 import type { RegisterContactData } from '../lib/auth-types';
 import { hasMemberSession } from '../lib/storage';
+import {
+  consumeReturnTo,
+  peekReturnTo,
+  rememberReturnTo,
+  safeReturnTo,
+} from '../lib/return-to';
 
 export function RegisterPage() {
+  const [params] = useSearchParams();
+  const urlReturnTo = safeReturnTo(params.get('returnTo'));
+  // Mémorise returnTo pour qu'il survive à l'étape email-verification.
+  useEffect(() => {
+    if (urlReturnTo) rememberReturnTo(urlReturnTo);
+  }, [urlReturnTo]);
+  const returnTo = urlReturnTo ?? peekReturnTo();
+  const loginLink = returnTo
+    ? `/login?returnTo=${encodeURIComponent(returnTo)}`
+    : '/login';
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [firstName, setFirstName] = useState('');
@@ -19,7 +36,7 @@ export function RegisterPage() {
   );
 
   if (hasMemberSession()) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={consumeReturnTo() ?? '/'} replace />;
   }
 
   async function onSubmit(e: FormEvent) {
@@ -62,7 +79,7 @@ export function RegisterPage() {
             </p>
           </header>
           <p className="auth-footer">
-            <Link to="/login" className="auth-link">
+            <Link to={loginLink} className="auth-link">
               Retour à la connexion
             </Link>
           </p>
@@ -85,7 +102,7 @@ export function RegisterPage() {
             </p>
           </header>
           <p className="auth-footer auth-footer-stack">
-            <Link to="/login" className="auth-btn">
+            <Link to={loginLink} className="auth-btn">
               Se connecter
             </Link>
             <Link to="/forgot-password" className="auth-link">
@@ -154,7 +171,7 @@ export function RegisterPage() {
           </button>
         </form>
         <p className="auth-footer">
-          <Link to="/login" className="auth-link">
+          <Link to={loginLink} className="auth-link">
             Déjà un compte ? Connexion
           </Link>
         </p>

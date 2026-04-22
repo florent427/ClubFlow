@@ -1,18 +1,29 @@
-import { Args, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Args, Context, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Throttle } from '@nestjs/throttler';
 import { NotFoundException } from '@nestjs/common';
+import type { Request } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
-import { SubmitVitrineContactInput } from './dto/vitrine-inputs';
+import {
+  SubmitArticleCommentInput,
+  SubmitVitrineContactInput,
+} from './dto/vitrine-inputs';
 import {
   PublicClubBrandingGraph,
+  PublicVitrineCommentGraph,
+  SubmitCommentResultGraph,
   SubmitVitrineContactResult,
   VitrineAnnouncementGraph,
+  VitrineArticleGenerationStatusEnum,
   VitrineArticleGraph,
   VitrineArticleStatusEnum,
+  VitrineCategoryGraph,
+  VitrineCommentStatusEnum,
   VitrineGalleryPhotoGraph,
   VitrinePageGraph,
   VitrinePageStatusEnum,
 } from './models/vitrine-models';
+import { VitrineCategoryService } from './vitrine-category.service';
+import { VitrineCommentService } from './vitrine-comment.service';
 import { VitrineContactService } from './vitrine-contact.service';
 import { VitrineContentService } from './vitrine-content.service';
 import { VitrinePageService } from './vitrine-page.service';
@@ -35,6 +46,8 @@ export class VitrinePublicResolver {
     private readonly pages: VitrinePageService,
     private readonly content: VitrineContentService,
     private readonly contact: VitrineContactService,
+    private readonly categories: VitrineCategoryService,
+    private readonly comments: VitrineCommentService,
   ) {}
 
   private async getClubBySlugOrThrow(slug: string): Promise<{
@@ -91,6 +104,86 @@ export class VitrinePublicResolver {
     };
   }
 
+  private mapArticleToGraph(row: {
+    id: string;
+    slug: string;
+    title: string;
+    excerpt: string | null;
+    bodyJson: unknown;
+    coverImageId: string | null;
+    coverImageAlt: string | null;
+    status: string;
+    publishedAt: Date | null;
+    updatedAt: Date;
+    seoTitle: string | null;
+    seoDescription: string | null;
+    seoKeywords: string[];
+    seoH1: string | null;
+    seoFaqJson: unknown;
+    seoCanonicalUrl: string | null;
+    seoNoindex: boolean;
+    seoOgImageId: string | null;
+    categories?: Array<{
+      id: string;
+      slug: string;
+      name: string;
+      color: string | null;
+    }>;
+  }, covers: Map<string, string>): VitrineArticleGraph {
+    const coverUrl = row.coverImageId ? (covers.get(row.coverImageId) ?? null) : null;
+    const ogUrl = row.seoOgImageId ? (covers.get(row.seoOgImageId) ?? null) : null;
+    let faq: Array<{ question: string; answer: string }> = [];
+    if (Array.isArray(row.seoFaqJson)) {
+      for (const item of row.seoFaqJson) {
+        if (
+          item &&
+          typeof item === 'object' &&
+          typeof (item as Record<string, unknown>).question === 'string' &&
+          typeof (item as Record<string, unknown>).answer === 'string'
+        ) {
+          faq.push({
+            question: (item as { question: string }).question,
+            answer: (item as { answer: string }).answer,
+          });
+        }
+      }
+    }
+    return {
+      id: row.id,
+      slug: row.slug,
+      title: row.title,
+      excerpt: row.excerpt,
+      bodyJson: JSON.stringify(row.bodyJson ?? []),
+      coverImageUrl: coverUrl,
+      coverImageId: row.coverImageId,
+      coverImageAlt: row.coverImageAlt,
+      status: row.status as VitrineArticleStatusEnum,
+      publishedAt: row.publishedAt,
+      updatedAt: row.updatedAt,
+      seoTitle: row.seoTitle,
+      seoDescription: row.seoDescription,
+      seoKeywords: row.seoKeywords ?? [],
+      seoH1: row.seoH1,
+      seoFaq: faq,
+      seoCanonicalUrl: row.seoCanonicalUrl,
+      seoNoindex: row.seoNoindex,
+      seoOgImageId: row.seoOgImageId,
+      seoOgImageUrl: ogUrl,
+      // Les champs de génération ne sont pas exposés côté public
+      // (détail interne admin). Défauts silencieux.
+      generationStatus: 'NONE' as unknown as VitrineArticleGenerationStatusEnum,
+      generationProgress: null,
+      generationError: null,
+      generationWarnings: [],
+      categories: (row.categories ?? []).map((c) => ({
+        id: c.id,
+        slug: c.slug,
+        name: c.name,
+        color: c.color,
+      })),
+    };
+  }
+
   @Query(() => [VitrineArticleGraph], { name: 'publicVitrineArticles' })
   async publicVitrineArticles(
     @Args('clubSlug') clubSlug: string,
@@ -98,28 +191,19 @@ export class VitrinePublicResolver {
   ): Promise<VitrineArticleGraph[]> {
     const club = await this.getClubBySlugOrThrow(clubSlug);
     const rows = await this.content.listArticlesPublic(club.id, limit ?? 20);
-    // Enrichir avec coverImageUrl
-    const coverIds = rows
-      .map((r) => r.coverImageId)
-      .filter((id): id is string => Boolean(id));
-    const covers = coverIds.length
+    const assetIds = new Set<string>();
+    for (const r of rows) {
+      if (r.coverImageId) assetIds.add(r.coverImageId);
+      if (r.seoOgImageId) assetIds.add(r.seoOgImageId);
+    }
+    const assets = assetIds.size
       ? await this.prisma.mediaAsset.findMany({
-          where: { id: { in: coverIds } },
+          where: { id: { in: [...assetIds] } },
           select: { id: true, publicUrl: true },
         })
       : [];
-    const coverMap = new Map(covers.map((c) => [c.id, c.publicUrl]));
-    return rows.map((r) => ({
-      id: r.id,
-      slug: r.slug,
-      title: r.title,
-      excerpt: r.excerpt,
-      bodyJson: JSON.stringify(r.bodyJson ?? []),
-      coverImageUrl: r.coverImageId ? (coverMap.get(r.coverImageId) ?? null) : null,
-      status: r.status as VitrineArticleStatusEnum,
-      publishedAt: r.publishedAt,
-      updatedAt: r.updatedAt,
-    }));
+    const assetMap = new Map(assets.map((c) => [c.id, c.publicUrl]));
+    return rows.map((r) => this.mapArticleToGraph(r, assetMap));
   }
 
   @Query(() => VitrineArticleGraph, {
@@ -133,25 +217,17 @@ export class VitrinePublicResolver {
     const club = await this.getClubBySlugOrThrow(clubSlug);
     const row = await this.content.getArticleBySlug(club.id, slug);
     if (!row) return null;
-    let coverUrl: string | null = null;
-    if (row.coverImageId) {
-      const cover = await this.prisma.mediaAsset.findUnique({
-        where: { id: row.coverImageId },
-        select: { publicUrl: true },
-      });
-      coverUrl = cover?.publicUrl ?? null;
-    }
-    return {
-      id: row.id,
-      slug: row.slug,
-      title: row.title,
-      excerpt: row.excerpt,
-      bodyJson: JSON.stringify(row.bodyJson ?? []),
-      coverImageUrl: coverUrl,
-      status: row.status as VitrineArticleStatusEnum,
-      publishedAt: row.publishedAt,
-      updatedAt: row.updatedAt,
-    };
+    const ids = [row.coverImageId, row.seoOgImageId].filter(
+      (x): x is string => Boolean(x),
+    );
+    const assets = ids.length
+      ? await this.prisma.mediaAsset.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, publicUrl: true },
+        })
+      : [];
+    const assetMap = new Map(assets.map((c) => [c.id, c.publicUrl]));
+    return this.mapArticleToGraph(row, assetMap);
   }
 
   @Query(() => [VitrineAnnouncementGraph], {
@@ -237,5 +313,114 @@ export class VitrinePublicResolver {
       phone: input.phone ?? null,
       message: input.message,
     });
+  }
+
+  // ====================== Catégories publiques ======================
+
+  @Query(() => [VitrineCategoryGraph], { name: 'publicVitrineCategories' })
+  async publicVitrineCategories(
+    @Args('clubSlug') clubSlug: string,
+  ): Promise<VitrineCategoryGraph[]> {
+    const club = await this.getClubBySlugOrThrow(clubSlug);
+    const rows = await this.categories.listPublicByClub(club.id);
+    return rows.map((r) => ({
+      id: r.id,
+      slug: r.slug,
+      name: r.name,
+      description: r.description,
+      color: r.color,
+      sortOrder: r.sortOrder,
+      articleCount: r.publishedArticleCount,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    }));
+  }
+
+  /** Articles publiés filtrés par catégorie. */
+  @Query(() => [VitrineArticleGraph], {
+    name: 'publicVitrineArticlesByCategory',
+  })
+  async publicVitrineArticlesByCategory(
+    @Args('clubSlug') clubSlug: string,
+    @Args('categorySlug') categorySlug: string,
+    @Args('limit', { nullable: true, type: () => Int }) limit?: number,
+  ): Promise<VitrineArticleGraph[]> {
+    const club = await this.getClubBySlugOrThrow(clubSlug);
+    const rows = await this.prisma.vitrineArticle.findMany({
+      where: {
+        clubId: club.id,
+        status: 'PUBLISHED',
+        publishedAt: { not: null },
+        categories: { some: { slug: categorySlug } },
+      },
+      orderBy: { publishedAt: 'desc' },
+      take: Math.max(1, Math.min(50, limit ?? 20)),
+    });
+    const assetIds = new Set<string>();
+    for (const r of rows) {
+      if (r.coverImageId) assetIds.add(r.coverImageId);
+      if (r.seoOgImageId) assetIds.add(r.seoOgImageId);
+    }
+    const assets = assetIds.size
+      ? await this.prisma.mediaAsset.findMany({
+          where: { id: { in: [...assetIds] } },
+          select: { id: true, publicUrl: true },
+        })
+      : [];
+    const assetMap = new Map(assets.map((c) => [c.id, c.publicUrl]));
+    return rows.map((r) => this.mapArticleToGraph(r, assetMap));
+  }
+
+  // ====================== Commentaires publics ======================
+
+  @Query(() => [PublicVitrineCommentGraph], {
+    name: 'publicVitrineArticleComments',
+  })
+  async publicVitrineArticleComments(
+    @Args('clubSlug') clubSlug: string,
+    @Args('articleSlug') articleSlug: string,
+  ): Promise<PublicVitrineCommentGraph[]> {
+    const club = await this.getClubBySlugOrThrow(clubSlug);
+    const rows = await this.comments.listPublicByArticle(club.id, articleSlug);
+    return rows.map((r) => ({
+      id: r.id,
+      authorName: r.authorName,
+      body: r.body,
+      createdAt: r.createdAt,
+      adminReplyBody: r.adminReplyBody ?? null,
+      adminReplyAuthorName: r.adminReplyAuthorName ?? null,
+      adminReplyAt: r.adminReplyAt ?? null,
+    }));
+  }
+
+  @Mutation(() => SubmitCommentResultGraph, { name: 'submitArticleComment' })
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  async submitArticleComment(
+    @Args('input') input: SubmitArticleCommentInput,
+    @Context() ctx: { req?: Request },
+  ): Promise<SubmitCommentResultGraph> {
+    const ip =
+      (ctx.req?.headers?.['x-forwarded-for'] as string | undefined)?.split(
+        ',',
+      )[0]?.trim() ??
+      ctx.req?.socket?.remoteAddress ??
+      null;
+    const ua = (ctx.req?.headers?.['user-agent'] as string | undefined) ?? null;
+    const res = await this.comments.submit({
+      clubSlug: input.clubSlug,
+      articleSlug: input.articleSlug,
+      authorName: input.authorName,
+      authorEmail: input.authorEmail,
+      body: input.body,
+      websiteHoneypot: input.websiteHoneypot,
+      ipAddress: ip,
+      userAgent: ua,
+    });
+    return {
+      success: res.success,
+      commentId: res.commentId ?? null,
+      status: res.status as unknown as VitrineCommentStatusEnum,
+      message: res.message,
+    };
   }
 }

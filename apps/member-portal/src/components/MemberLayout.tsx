@@ -20,6 +20,7 @@ import { MemberRoleToggle } from './MemberRoleToggle';
 import { clearAuth, clearClubId, getClubId, setMemberSession } from '../lib/storage';
 import { VIEWER_ADMIN_SWITCH, VIEWER_ME } from '../lib/viewer-documents';
 import type { ViewerAdminSwitchData, ViewerMeData } from '../lib/viewer-types';
+import { PendingFamilyInvitesBanner } from './PendingFamilyInvitesBanner';
 
 function profileRowKey(p: ViewerProfile): string {
   if (p.memberId) return `m:${p.memberId}`;
@@ -56,7 +57,7 @@ export function MemberLayout() {
 
   const { data: profilesData } = useQuery<ViewerProfilesQueryData>(
     VIEWER_PROFILES,
-    { fetchPolicy: 'cache-first' },
+    { fetchPolicy: 'cache-and-network', nextFetchPolicy: 'cache-first' },
   );
 
   const { data: meData } = useQuery<ViewerMeData>(VIEWER_ME, {
@@ -253,6 +254,7 @@ export function MemberLayout() {
         </header>
 
         <main className="mp-content">
+          <PendingFamilyInvitesBanner />
           <Outlet />
         </main>
       </div>

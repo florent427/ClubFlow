@@ -34,15 +34,23 @@ export function AiSettingsPage() {
   const s = data?.clubAiSettings;
   const [apiKey, setApiKey] = useState('');
   const [textModel, setTextModel] = useState('');
+  const [textFallbackModel, setTextFallbackModel] = useState('');
   const [imageModel, setImageModel] = useState('');
   const [showCustomText, setShowCustomText] = useState(false);
+  const [showCustomFallback, setShowCustomFallback] = useState(false);
   const [showCustomImage, setShowCustomImage] = useState(false);
 
   useEffect(() => {
     if (!s) return;
     setTextModel(s.textModel);
+    setTextFallbackModel(s.textFallbackModel ?? '');
     setImageModel(s.imageModel);
     setShowCustomText(!s.curatedTextModels.includes(s.textModel));
+    // Fallback : vide = pas activé, sinon custom si hors curated
+    setShowCustomFallback(
+      !!s.textFallbackModel &&
+        !s.curatedTextModels.includes(s.textFallbackModel),
+    );
     setShowCustomImage(!s.curatedImageModels.includes(s.imageModel));
   }, [s]);
 
@@ -53,6 +61,7 @@ export function AiSettingsPage() {
           input: {
             apiKey: apiKey.trim() || undefined,
             textModel: textModel.trim() || null,
+            textFallbackModel: textFallbackModel.trim() || null,
             imageModel: imageModel.trim() || null,
           },
         },
@@ -195,6 +204,80 @@ export function AiSettingsPage() {
                       </button>
                     </>
                   )}
+                </label>
+              </div>
+              <div>
+                <label className="field">
+                  <span>
+                    Modèle texte de fallback{' '}
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: '#1e40af',
+                        background: '#dbeafe',
+                        padding: '1px 6px',
+                        borderRadius: 8,
+                        fontWeight: 500,
+                        marginLeft: 4,
+                      }}
+                    >
+                      optionnel
+                    </span>
+                  </span>
+                  {!showCustomFallback ? (
+                    <select
+                      value={textFallbackModel}
+                      onChange={(e) => {
+                        if (e.target.value === '__custom') {
+                          setShowCustomFallback(true);
+                          setTextFallbackModel('');
+                        } else {
+                          setTextFallbackModel(e.target.value);
+                        }
+                      }}
+                    >
+                      <option value="">— Aucun (pas de fallback) —</option>
+                      {s.curatedTextModels
+                        .filter((m) => m !== textModel)
+                        .map((m) => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                      <option value="__custom">
+                        — Autre (saisie libre) —
+                      </option>
+                    </select>
+                  ) : (
+                    <>
+                      <input
+                        type="text"
+                        value={textFallbackModel}
+                        placeholder="ex. anthropic/claude-sonnet-4-5"
+                        onChange={(e) => setTextFallbackModel(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-tight btn-ghost"
+                        style={{ marginTop: 4, fontSize: 12 }}
+                        onClick={() => {
+                          setShowCustomFallback(false);
+                          setTextFallbackModel('');
+                        }}
+                      >
+                        ← Liste prédéfinie
+                      </button>
+                    </>
+                  )}
+                  <small
+                    className="muted"
+                    style={{ fontSize: 11.5, marginTop: 4, display: 'block' }}
+                  >
+                    Déclenché automatiquement si le modèle principal échoue
+                    3× sur un tool call (ex. renvoie des arguments vides).
+                    Recommandé : <code>anthropic/claude-sonnet-4-5</code> ou{' '}
+                    <code>openai/gpt-4o</code>.
+                  </small>
                 </label>
               </div>
               <div>

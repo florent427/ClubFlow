@@ -14,6 +14,7 @@ import {
 } from './ai-settings.service';
 import { ArticleGeneratorService } from './article-generator.service';
 import { ImageGeneratorService } from './image-generator.service';
+import { VitrineArticleGenerationService } from './vitrine-article-generation.service';
 import {
   GenerateVitrineArticleDraftInput,
   UpdateAiSettingsInput,
@@ -22,6 +23,7 @@ import {
   AiArticleDraftGraph,
   AiSettingsGraph,
   AiUsageLogGraph,
+  StartVitrineArticleGenerationResult,
 } from './models/ai-models';
 
 @Resolver()
@@ -31,6 +33,7 @@ export class AiResolver {
     private readonly settings: AiSettingsService,
     private readonly articleGen: ArticleGeneratorService,
     private readonly imageGen: ImageGeneratorService,
+    private readonly vitrineGen: VitrineArticleGenerationService,
   ) {}
 
   // ============ Settings ============
@@ -42,6 +45,7 @@ export class AiResolver {
       apiKeyMasked: s.apiKeyMasked,
       hasApiKey: s.hasApiKey,
       textModel: s.textModel,
+      textFallbackModel: s.textFallbackModel,
       imageModel: s.imageModel,
       tokensInputUsed: s.tokensInputUsed,
       tokensOutputUsed: s.tokensOutputUsed,
@@ -60,12 +64,14 @@ export class AiResolver {
       apiKey: input.apiKey,
       clearApiKey: input.clearApiKey,
       textModel: input.textModel,
+      textFallbackModel: input.textFallbackModel,
       imageModel: input.imageModel,
     });
     return {
       apiKeyMasked: s.apiKeyMasked,
       hasApiKey: s.hasApiKey,
       textModel: s.textModel,
+      textFallbackModel: s.textFallbackModel,
       imageModel: s.imageModel,
       tokensInputUsed: s.tokensInputUsed,
       tokensOutputUsed: s.tokensOutputUsed,
@@ -120,10 +126,18 @@ export class AiResolver {
     let totalOutputTokens = textUsage.outputTokens;
     let totalImagesGenerated = 0;
 
-    // 2. Générer l'image featured si demandé
+    const useAiImages = input.useAiImages !== false;
+
+    // 2. Générer l'image featured si demandé ET si le mode image est activé.
+    //    Si useAiImages=false, on laisse `featuredImageUrl` à null et le
+    //    frontend insérera un placeholder SVG.
     let featuredImageAssetId: string | null = null;
     let featuredImageUrl: string | null = null;
-    if (input.generateFeaturedImage !== false && draft.featuredImagePrompt) {
+    if (
+      useAiImages &&
+      input.generateFeaturedImage !== false &&
+      draft.featuredImagePrompt
+    ) {
       try {
         const featured = await this.imageGen.generateAndUpload({
           clubId: club.id,
@@ -153,12 +167,14 @@ export class AiResolver {
       }
     }
 
-    // 3. Générer les images inline (sections avec inlineImagePrompt)
+    // 3. Générer les images inline (sections avec inlineImagePrompt).
+    //    Si useAiImages=false, on conserve `inlineImagePrompt`/`inlineImageAlt`
+    //    mais les URLs restent null → le frontend insère des placeholders SVG.
     const sectionsOut = await Promise.all(
       draft.sections.map(async (section) => {
         let assetId: string | null = null;
         let url: string | null = null;
-        if (section.inlineImagePrompt) {
+        if (useAiImages && section.inlineImagePrompt) {
           try {
             const inline = await this.imageGen.generateAndUpload({
               clubId: club.id,
@@ -215,5 +231,32 @@ export class AiResolver {
       totalOutputTokens,
       totalImagesGenerated,
     };
+  }
+
+  // ============ Async article generation (background) ============
+
+  /**
+   * Démarre la génération d'un article en arrière-plan. Retourne
+   * immédiatement l'ID du brouillon créé (status=PENDING). Le frontend
+   * peut fermer la modale et poll la liste des articles pour suivre la
+   * progression.
+   */
+  @Mutation(() => StartVitrineArticleGenerationResult)
+  async startVitrineArticleGeneration(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('input') input: GenerateVitrineArticleDraftInput,
+  ): Promise<StartVitrineArticleGenerationResult> {
+    const articleId = await this.vitrineGen.start({
+      clubId: club.id,
+      userId: user.userId,
+      sourceText: input.sourceText,
+      tone: input.tone,
+      generateFeaturedImage: input.generateFeaturedImage,
+      inlineImageCount: input.inlineImageCount,
+      useAiImages: input.useAiImages,
+      useWebSearch: input.useWebSearch,
+    });
+    return { articleId };
   }
 }

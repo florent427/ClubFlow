@@ -1897,6 +1897,8 @@ export const CLUB_BRANDING = gql`
       siret
       address
       legalMentions
+      contactPhone
+      contactEmail
     }
   }
 `;
@@ -1911,6 +1913,8 @@ export const UPDATE_CLUB_BRANDING = gql`
       siret
       address
       legalMentions
+      contactPhone
+      contactEmail
     }
   }
 `;

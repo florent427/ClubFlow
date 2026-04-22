@@ -82,6 +82,8 @@ export interface GenerateArticleInput {
   tone?: string;
   /** Nombre de sections qui doivent contenir une image inline (0 à 6). */
   inlineImageSlots: number;
+  /** Active le plugin web d'OpenRouter (accès Internet pour chiffres/événements récents). */
+  useWebSearch?: boolean;
 }
 
 export interface GenerateArticleResult {
@@ -92,6 +94,54 @@ export interface GenerateArticleResult {
     model: string;
     costCents?: number;
   };
+}
+
+/**
+ * Parse tolérant de JSON LLM : certains modèles (GLM, Minimax, Mistral...)
+ * ignorent `response_format: json_object` et renvoient :
+ *   - du texte avec un bloc ```json ... ``` autour
+ *   - du texte avec un préambule type "Voici le JSON : {...}"
+ *   - du JSON nu parfois mal échappé
+ *
+ * On tente dans l'ordre :
+ *   1. JSON.parse brut
+ *   2. Extraction d'un bloc ```json``` ou ``` ```
+ *   3. Recherche du 1er { et dernier } équilibré
+ */
+function parseJsonLoose<T>(raw: string): T {
+  // 1. Essai brut
+  const trimmed = raw.trim();
+  try {
+    return JSON.parse(trimmed) as T;
+  } catch {
+    /* continue */
+  }
+
+  // 2. Bloc markdown code fence ```json ... ``` (ou ``` ... ```)
+  const fenceMatch =
+    trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/i) ??
+    trimmed.match(/```\s*\n?([\s\S]*?)\n?```/);
+  if (fenceMatch && fenceMatch[1]) {
+    try {
+      return JSON.parse(fenceMatch[1].trim()) as T;
+    } catch {
+      /* continue */
+    }
+  }
+
+  // 3. Fallback : premier { et dernier } équilibré
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    const candidate = trimmed.slice(firstBrace, lastBrace + 1);
+    try {
+      return JSON.parse(candidate) as T;
+    } catch {
+      /* tombe dans le throw */
+    }
+  }
+
+  throw new Error('Impossible de parser la réponse comme JSON.');
 }
 
 @Injectable()
@@ -108,12 +158,24 @@ export class ArticleGeneratorService {
     }
     const inlineImageCount = Math.max(0, Math.min(6, input.inlineImageSlots));
 
+    const webSearchHint = input.useWebSearch
+      ? `
+RECHERCHE WEB ACTIVÉE : tu as accès à Internet via un outil de recherche.
+Utilise-le OBLIGATOIREMENT pour :
+- Vérifier les chiffres, dates, statistiques cités
+- Récupérer l'actualité récente pertinente (dernière saison, derniers événements)
+- Confirmer règlements / normes / pratiques à jour
+Intègre les informations trouvées naturellement dans le corps (pas de liens externes
+dans le JSON — seulement du texte enrichi et factuel).
+`
+      : '';
+
     const userPrompt = `Génère un article SEO optimisé à partir de ce texte source :
 
 ---
 ${input.sourceText.trim().slice(0, 8000)}
 ---
-
+${webSearchHint}
 Contraintes supplémentaires :
 - Tonalité : ${input.tone ?? 'informatif, clair, expert'}
 - ${inlineImageCount} sections doivent avoir inlineImagePrompt non-null (choisir les plus illustratives)
@@ -121,14 +183,20 @@ Contraintes supplémentaires :
 - faq : 3-5 questions si le sujet s'y prête (ex. tutoriel, guide, comparatif), sinon tableau vide
 - featuredImagePrompt : évocateur, esthétique, en anglais pour le modèle image
 
-Réponds UNIQUEMENT avec le JSON demandé, sans markdown autour.`;
+IMPORTANT : réponds UNIQUEMENT avec l'objet JSON demandé.
+- Pas de markdown, pas de \`\`\`json\`\`\`, pas de texte avant ou après.
+- Commence directement par { et termine par }.
+- Tous les strings doivent être valides JSON (échappe les guillemets avec \\", les retours à la ligne avec \\n).`;
 
-    const res = await this.openrouter.chatCompletion({
+    // Premier essai : avec response_format json_object (certains modèles
+    // le supportent nativement et c'est plus fiable).
+    let res = await this.openrouter.chatCompletion({
       apiKey: input.apiKey,
       model: input.textModel,
       temperature: 0.7,
       maxTokens: 6000,
       responseFormat: 'json_object',
+      webSearch: input.useWebSearch === true,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: userPrompt },
@@ -137,15 +205,45 @@ Réponds UNIQUEMENT avec le JSON demandé, sans markdown autour.`;
 
     let draft: ArticleDraft;
     try {
-      draft = JSON.parse(res.content) as ArticleDraft;
-    } catch (err) {
-      this.logger.error(
-        `Réponse non-JSON : ${res.content.slice(0, 300)}`,
-        err instanceof Error ? err.stack : undefined,
+      draft = parseJsonLoose<ArticleDraft>(res.content);
+    } catch (err1) {
+      // Retry sans response_format ET sans web search : le plugin web
+      // injecte beaucoup de contexte (résultats Exa) qui perturbe les
+      // modèles moyens (GLM, Minimax) et leur fait oublier le format JSON.
+      // Au retry on privilégie la structure JSON sur la richesse web.
+      this.logger.warn(
+        `Modèle ${input.textModel} — 1er essai non-JSON, retry SANS response_format ET SANS web search (${
+          err1 instanceof Error ? err1.message : String(err1)
+        })`,
       );
-      throw new BadRequestException(
-        "Le modèle n'a pas retourné un JSON valide. Essayez un autre modèle ou un texte plus simple.",
-      );
+      try {
+        res = await this.openrouter.chatCompletion({
+          apiKey: input.apiKey,
+          model: input.textModel,
+          temperature: 0.3, // plus déterministe au retry
+          maxTokens: 6000,
+          webSearch: false, // désactivé pour donner priorité au format JSON
+          // pas de responseFormat ici
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: userPrompt },
+          ],
+        });
+        draft = parseJsonLoose<ArticleDraft>(res.content);
+      } catch (err2) {
+        this.logger.error(
+          `Réponse non-JSON même après retry (model=${input.textModel}) : ${res.content.slice(0, 500)}`,
+          err2 instanceof Error ? err2.stack : undefined,
+        );
+        const webSearchHint = input.useWebSearch
+          ? ' La recherche web était activée — certains modèles (GLM, Minimax) gèrent mal le combo web search + JSON strict. Essayez sans recherche web, ou bascule sur un modèle plus capable.'
+          : '';
+        throw new BadRequestException(
+          `Le modèle "${input.textModel}" n'a pas retourné un JSON valide (même après retry sans web search).` +
+            webSearchHint +
+            ' Essayez un autre modèle (ex. openai/gpt-4o-mini, anthropic/claude-haiku-4.5, x-ai/grok-4-fast) ou simplifiez le texte source.',
+        );
+      }
     }
 
     // Validation minimale

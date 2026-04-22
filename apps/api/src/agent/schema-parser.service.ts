@@ -241,10 +241,28 @@ export class AgentSchemaParserService implements OnModuleInit {
    * Construit le catalogue LLM filtré pour les rôles utilisateur donnés.
    * Les tools FORBIDDEN ne sont jamais inclus (absence de classification
    * = FORBIDDEN implicite).
+   *
+   * Garde anti-doublons : si plusieurs classifications existent pour le
+   * même `name`+`kind`, on conserve UNIQUEMENT la première (Claude/Azure
+   * rejette l'appel LLM avec 400 "Tool names must be unique" sinon — GLM
+   * tolère mais c'est pas portable).
    */
   buildToolsForRoles(roles: AgentRole[]): LlmTool[] {
     const catalog = buildCatalogForRoles(roles);
-    return catalog.map((c) => this.classificationToTool(c));
+    const seen = new Set<string>();
+    const unique: typeof catalog = [];
+    for (const c of catalog) {
+      const key = `${c.kind}:${c.name}`;
+      if (seen.has(key)) {
+        this.logger.warn(
+          `Doublon détecté dans AGENT_CLASSIFICATIONS : "${c.name}" (${c.kind}) apparaît plusieurs fois. Conservation de la 1re occurrence seulement.`,
+        );
+        continue;
+      }
+      seen.add(key);
+      unique.push(c);
+    }
+    return unique.map((c) => this.classificationToTool(c));
   }
 
   private classificationToTool(c: AgentToolClassification): LlmTool {
@@ -345,6 +363,16 @@ export class AgentSchemaParserService implements OnModuleInit {
     kind: 'query' | 'mutation',
   ): Array<{ name: string; type: string; required: boolean }> | null {
     return this.parsedOps.get(`${kind}:${name}`)?.args ?? null;
+  }
+
+  /**
+   * Retourne les champs d'un InputType parsé (pour auto-wrap des args
+   * aplatis par certains LLM).
+   */
+  getInputFields(
+    inputTypeName: string,
+  ): Array<{ name: string; type: string; required: boolean }> | null {
+    return this.parsedInputs.get(inputTypeName)?.fields ?? null;
   }
 
   /**

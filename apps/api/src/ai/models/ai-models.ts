@@ -14,6 +14,9 @@ export class AiSettingsGraph {
   @Field()
   textModel!: string;
 
+  @Field(() => String, { nullable: true })
+  textFallbackModel!: string | null;
+
   @Field()
   imageModel!: string;
 
@@ -99,3 +102,10 @@ export class AiArticleDraftGraph {
   @Field(() => Int) totalOutputTokens!: number;
   @Field(() => Int) totalImagesGenerated!: number;
 }
+
+@ObjectType()
+export class StartVitrineArticleGenerationResult {
+  @Field(() => ID)
+  articleId!: string;
+}
+

@@ -14,8 +14,44 @@ export interface VitrineArticleSummary {
   publishedAt: string | null;
 }
 
+export interface VitrineArticleCategory {
+  id: string;
+  slug: string;
+  name: string;
+  color: string | null;
+}
+
 export interface VitrineArticleFull extends VitrineArticleSummary {
   bodyJson: string;
+  coverImageAlt: string | null;
+  seoTitle: string | null;
+  seoDescription: string | null;
+  seoKeywords: string[];
+  seoH1: string | null;
+  seoCanonicalUrl: string | null;
+  seoNoindex: boolean;
+  seoOgImageUrl: string | null;
+  seoFaq: Array<{ question: string; answer: string }>;
+  categories: VitrineArticleCategory[];
+}
+
+export interface VitrineCategoryPublic {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  color: string | null;
+  articleCount: number;
+}
+
+export interface VitrineCommentPublic {
+  id: string;
+  authorName: string;
+  body: string;
+  createdAt: string;
+  adminReplyBody: string | null;
+  adminReplyAuthorName: string | null;
+  adminReplyAt: string | null;
 }
 
 export interface VitrineAnnouncementPublic {
@@ -53,7 +89,78 @@ const GET_ARTICLE = /* GraphQL */ `
       excerpt
       bodyJson
       coverImageUrl
+      coverImageAlt
       publishedAt
+      seoTitle
+      seoDescription
+      seoKeywords
+      seoH1
+      seoCanonicalUrl
+      seoNoindex
+      seoOgImageUrl
+      seoFaq {
+        question
+        answer
+      }
+      categories {
+        id
+        slug
+        name
+        color
+      }
+    }
+  }
+`;
+
+const LIST_CATEGORIES = /* GraphQL */ `
+  query PublicVitrineCategories($clubSlug: String!) {
+    publicVitrineCategories(clubSlug: $clubSlug) {
+      id
+      slug
+      name
+      description
+      color
+      articleCount
+    }
+  }
+`;
+
+const LIST_ARTICLES_BY_CATEGORY = /* GraphQL */ `
+  query PublicVitrineArticlesByCategory(
+    $clubSlug: String!
+    $categorySlug: String!
+    $limit: Int
+  ) {
+    publicVitrineArticlesByCategory(
+      clubSlug: $clubSlug
+      categorySlug: $categorySlug
+      limit: $limit
+    ) {
+      slug
+      title
+      excerpt
+      coverImageUrl
+      publishedAt
+    }
+  }
+`;
+
+const LIST_COMMENTS = /* GraphQL */ `
+  query PublicVitrineArticleComments(
+    $clubSlug: String!
+    $articleSlug: String!
+  ) {
+    publicVitrineArticleComments(
+      clubSlug: $clubSlug
+      articleSlug: $articleSlug
+    ) {
+      id
+      authorName
+      body
+      createdAt
+      adminReplyBody
+      adminReplyAuthorName
+      adminReplyAt
     }
   }
 `;
@@ -155,6 +262,72 @@ export async function fetchGalleryPhotos(
     return data.publicVitrineGalleryPhotos;
   } catch (err) {
     console.error('[vitrine] fetchGalleryPhotos failed', err);
+    return [];
+  }
+}
+
+export async function fetchCategories(
+  clubSlug: string,
+): Promise<VitrineCategoryPublic[]> {
+  try {
+    const data = await fetchGraphQL<{
+      publicVitrineCategories: VitrineCategoryPublic[];
+    }>(
+      LIST_CATEGORIES,
+      { clubSlug },
+      { revalidate: 300, tags: [`vitrine-categories:${clubSlug}`] },
+    );
+    return data.publicVitrineCategories;
+  } catch (err) {
+    console.error('[vitrine] fetchCategories failed', err);
+    return [];
+  }
+}
+
+export async function fetchArticlesByCategory(
+  clubSlug: string,
+  categorySlug: string,
+  limit = 20,
+): Promise<VitrineArticleSummary[]> {
+  try {
+    const data = await fetchGraphQL<{
+      publicVitrineArticlesByCategory: VitrineArticleSummary[];
+    }>(
+      LIST_ARTICLES_BY_CATEGORY,
+      { clubSlug, categorySlug, limit },
+      {
+        revalidate: 120,
+        tags: [
+          `vitrine-articles:${clubSlug}`,
+          `vitrine-category:${clubSlug}:${categorySlug}`,
+        ],
+      },
+    );
+    return data.publicVitrineArticlesByCategory;
+  } catch (err) {
+    console.error('[vitrine] fetchArticlesByCategory failed', err);
+    return [];
+  }
+}
+
+export async function fetchArticleComments(
+  clubSlug: string,
+  articleSlug: string,
+): Promise<VitrineCommentPublic[]> {
+  try {
+    const data = await fetchGraphQL<{
+      publicVitrineArticleComments: VitrineCommentPublic[];
+    }>(
+      LIST_COMMENTS,
+      { clubSlug, articleSlug },
+      {
+        revalidate: 60,
+        tags: [`vitrine-comments:${clubSlug}:${articleSlug}`],
+      },
+    );
+    return data.publicVitrineArticleComments;
+  } catch (err) {
+    console.error('[vitrine] fetchArticleComments failed', err);
     return [];
   }
 }

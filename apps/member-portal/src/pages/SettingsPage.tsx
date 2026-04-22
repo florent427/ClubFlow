@@ -84,23 +84,18 @@ export function SettingsPage() {
 
       {loading ? (
         <p className="mp-hint">Chargement…</p>
-      ) : isContact ? (
-        <div className="mp-form-card">
-          <h2 className="mp-section-title">Mon compte</h2>
-          <p className="mp-hint">
-            Vous utilisez un compte contact (sans fiche adhérent). Pour modifier
-            votre prénom, nom, e-mail ou téléphone, contactez le club : ces
-            informations sont synchronisées avec votre rôle de payeur pour
-            éviter toute divergence sur les factures.
-          </p>
-          <p className="mp-hint">
-            Dès que le club vous aura rattaché à une fiche adhérent, vous
-            pourrez éditer votre profil directement ici.
-          </p>
-        </div>
       ) : (
         <form className="mp-form-card" onSubmit={onSubmit}>
-          <h2 className="mp-section-title">Mon profil</h2>
+          <h2 className="mp-section-title">
+            {isContact ? 'Mon compte' : 'Mon profil'}
+          </h2>
+          {isContact ? (
+            <p className="mp-hint">
+              Vos coordonnées de contact. L'e-mail sert à vous connecter et
+              n'est pas modifiable ici ; pour le changer, utilisez la
+              procédure de changement d'e-mail dédiée.
+            </p>
+          ) : null}
           <div className="mp-form-grid">
             <label className="mp-field">
               <span>Prénom</span>
@@ -121,11 +116,13 @@ export function SettingsPage() {
               />
             </label>
             <label className="mp-field">
-              <span>E-mail</span>
+              <span>E-mail{isContact ? ' (compte)' : ''}</span>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                readOnly={isContact}
+                disabled={isContact}
               />
             </label>
             <label className="mp-field">

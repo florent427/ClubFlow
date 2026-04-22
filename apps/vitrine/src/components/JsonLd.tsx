@@ -64,6 +64,7 @@ export function buildArticleLd(args: {
   publishedAt: string | null;
   coverImageUrl?: string | null;
   clubName: string;
+  keywords?: string[];
 }): Record<string, unknown> {
   return {
     '@context': 'https://schema.org',
@@ -73,6 +74,9 @@ export function buildArticleLd(args: {
     url: args.url,
     ...(args.publishedAt ? { datePublished: args.publishedAt } : {}),
     ...(args.coverImageUrl ? { image: args.coverImageUrl } : {}),
+    ...(args.keywords && args.keywords.length > 0
+      ? { keywords: args.keywords.join(', ') }
+      : {}),
     publisher: {
       '@type': 'SportsClub',
       name: args.clubName,
@@ -81,5 +85,22 @@ export function buildArticleLd(args: {
       '@type': 'SportsClub',
       name: args.clubName,
     },
+  };
+}
+
+export function buildFaqLd(
+  faq: Array<{ question: string; answer: string }>,
+): Record<string, unknown> {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faq.map((f) => ({
+      '@type': 'Question',
+      name: f.question,
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: f.answer,
+      },
+    })),
   };
 }

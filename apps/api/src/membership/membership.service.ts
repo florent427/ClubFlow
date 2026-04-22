@@ -435,6 +435,7 @@ export class MembershipService {
       include: { family: true },
     });
     const familyId = fm?.familyId ?? null;
+    const householdGroupId = fm?.family.householdGroupId ?? null;
 
     const priorCount =
       familyId === null
@@ -638,6 +639,11 @@ export class MembershipService {
         data: {
           clubId,
           familyId,
+          // Si la famille appartient à un groupe foyer étendu (espace partagé),
+          // on rattache la facture au groupe pour qu'elle soit visible dans
+          // l'espace partagé côté portail, tout en gardant `familyId` sur le
+          // foyer responsable (permet d'afficher la facture sur sa ligne).
+          householdGroupId,
           clubSeasonId: season.id,
           label,
           baseAmountCents: invoiceBaseCents,

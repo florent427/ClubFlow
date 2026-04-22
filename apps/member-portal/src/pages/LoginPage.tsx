@@ -1,5 +1,10 @@
-import { type FormEvent, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { type FormEvent, useEffect, useState } from 'react';
+import {
+  Link,
+  Navigate,
+  useNavigate,
+  useSearchParams,
+} from 'react-router-dom';
 import { useMutation } from '@apollo/client/react';
 import { LOGIN_WITH_PROFILES } from '../lib/documents';
 import type { LoginWithProfilesData } from '../lib/auth-types';
@@ -14,9 +19,22 @@ import {
   setMemberSession,
   setToken,
 } from '../lib/storage';
+import {
+  consumeReturnTo,
+  peekReturnTo,
+  rememberReturnTo,
+  safeReturnTo,
+} from '../lib/return-to';
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const urlReturnTo = safeReturnTo(params.get('returnTo'));
+  // Mémorise returnTo pour persister à travers le flow (register, verify-email…)
+  useEffect(() => {
+    if (urlReturnTo) rememberReturnTo(urlReturnTo);
+  }, [urlReturnTo]);
+  const returnTo = urlReturnTo ?? peekReturnTo();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -26,10 +44,15 @@ export function LoginPage() {
   );
 
   if (hasMemberSession()) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={returnTo ?? '/'} replace />;
   }
   if (getToken() && !getClubId()) {
-    return <Navigate to="/select-profile" replace />;
+    // Transmet returnTo à select-profile pour que le flow continue après
+    // choix de profil.
+    const target = returnTo
+      ? `/select-profile?returnTo=${encodeURIComponent(returnTo)}`
+      : '/select-profile';
+    return <Navigate to={target} replace />;
   }
 
   async function onSubmit(e: FormEvent) {
@@ -52,7 +75,7 @@ export function LoginPage() {
       if (profiles.length === 0) {
         if (contactClubId) {
           setMemberContactSession(token, contactClubId);
-          void navigate('/', { replace: true });
+          void navigate(consumeReturnTo() ?? returnTo ?? '/', { replace: true });
           return;
         }
         setError(
@@ -64,11 +87,14 @@ export function LoginPage() {
       if (profiles.length === 1) {
         const p = profiles[0];
         setMemberSession(token, p.clubId);
-        void navigate('/', { replace: true });
+        void navigate(consumeReturnTo() ?? returnTo ?? '/', { replace: true });
         return;
       }
       clearClubId();
-      void navigate('/select-profile', { replace: true });
+      const target = returnTo
+        ? `/select-profile?returnTo=${encodeURIComponent(returnTo)}`
+        : '/select-profile';
+      void navigate(target, { replace: true });
     } catch (err: unknown) {
       const msg =
         err instanceof Error ? err.message : 'Connexion impossible.';
@@ -120,12 +146,19 @@ export function LoginPage() {
         </form>
         <p className="auth-footer auth-footer-stack">
           <a
-            href={`${getApiBaseUrl()}/auth/google`}
+            href={`${getApiBaseUrl()}/auth/google${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ''}`}
             className="auth-btn auth-btn-secondary"
           >
             Continuer avec Google
           </a>
-          <Link to="/register" className="auth-link">
+          <Link
+            to={
+              returnTo
+                ? `/register?returnTo=${encodeURIComponent(returnTo)}`
+                : '/register'
+            }
+            className="auth-link"
+          >
             Créer un compte contact
           </Link>
           <button

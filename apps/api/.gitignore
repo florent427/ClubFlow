@@ -3,3 +3,5 @@ dist
 src/schema.gql
 # Keep environment variables out of version control
 .env
+# Uploads utilisateurs (médias, logos, pièces jointes) — hors dépôt.
+uploads/

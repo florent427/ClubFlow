@@ -571,6 +571,8 @@ export type ClubBrandingQueryData = {
     siret: string | null;
     address: string | null;
     legalMentions: string | null;
+    contactPhone: string | null;
+    contactEmail: string | null;
   };
 };
 

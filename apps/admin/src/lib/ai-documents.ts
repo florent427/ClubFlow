@@ -11,6 +11,7 @@ export const CLUB_AI_SETTINGS = gql`
       apiKeyMasked
       hasApiKey
       textModel
+      textFallbackModel
       imageModel
       tokensInputUsed
       tokensOutputUsed
@@ -27,6 +28,7 @@ export const UPDATE_CLUB_AI_SETTINGS = gql`
       apiKeyMasked
       hasApiKey
       textModel
+      textFallbackModel
       imageModel
       tokensInputUsed
       tokensOutputUsed
@@ -87,10 +89,29 @@ export const GENERATE_VITRINE_ARTICLE_DRAFT = gql`
   }
 `;
 
+/** Lance la génération d'un article en arrière-plan ; retourne l'ID du
+ *  brouillon PENDING tout de suite, pas de blocage UI. */
+export const START_VITRINE_ARTICLE_GENERATION = gql`
+  mutation StartVitrineArticleGeneration(
+    $input: GenerateVitrineArticleDraftInput!
+  ) {
+    startVitrineArticleGeneration(input: $input) {
+      articleId
+    }
+  }
+`;
+
+export interface StartVitrineArticleGenerationData {
+  startVitrineArticleGeneration: {
+    articleId: string;
+  };
+}
+
 export interface AiSettings {
   apiKeyMasked: string | null;
   hasApiKey: boolean;
   textModel: string;
+  textFallbackModel: string | null;
   imageModel: string;
   tokensInputUsed: number;
   tokensOutputUsed: number;

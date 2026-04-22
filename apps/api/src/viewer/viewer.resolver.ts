@@ -13,8 +13,10 @@ import type { RequestUser } from '../common/types/request-user';
 import { ModuleCode } from '../domain/module-registry/module-codes';
 import { AcceptFamilyInviteInput } from '../families/dto/accept-family-invite.input';
 import { CreateFamilyInviteInput } from '../families/dto/create-family-invite.input';
+import { SendFamilyInviteByEmailInput } from '../families/dto/send-family-invite-by-email.input';
 import { FamilyInviteService } from '../families/family-invite.service';
 import { FamilyInviteCreateResultGraph } from '../families/models/family-invite-create-result.model';
+import { PendingFamilyInviteGraph } from '../families/models/pending-family-invite.model';
 import { ViewerJoinFamilyByPayerEmailInput } from './dto/viewer-join-family-by-payer-email.input';
 import { ViewerPromoteSelfToMemberInput } from './dto/viewer-promote-self-to-member.input';
 import { ViewerRegisterChildMemberInput } from './dto/viewer-register-child-member.input';
@@ -113,6 +115,33 @@ export class ViewerResolver {
     throw new BadRequestException('Sélection de profil requise');
   }
 
+  @Query(() => [ViewerFamilyBillingSummaryGraph], {
+    name: 'viewerAllFamilyBillingSummaries',
+    description:
+      "Liste tous les foyers rattachés au profil actif où l'utilisateur est payeur (PAYER). Permet de gérer un même contact/membre rattaché à plusieurs foyers distincts (dédupliqués par groupe foyer étendu quand applicable).",
+  })
+  @RequireClubModule(ModuleCode.PAYMENT)
+  viewerAllFamilyBillingSummaries(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+  ): Promise<ViewerFamilyBillingSummaryGraph[]> {
+    if (user.activeProfileMemberId) {
+      return this.viewer.viewerAllFamilyBillingSummaries(
+        club.id,
+        user.activeProfileMemberId,
+        user.userId,
+      );
+    }
+    if (user.activeProfileContactId) {
+      return this.viewer.viewerAllFamilyBillingSummariesForContact(
+        club.id,
+        user.activeProfileContactId,
+        user.userId,
+      );
+    }
+    throw new BadRequestException('Sélection de profil requise');
+  }
+
   @Mutation(() => ViewerFamilyJoinResultGraph, {
     name: 'viewerJoinFamilyByPayerEmail',
     description:
@@ -163,6 +192,42 @@ export class ViewerResolver {
       },
       input.role,
     );
+  }
+
+  @Query(() => [PendingFamilyInviteGraph], {
+    name: 'viewerPendingFamilyInvites',
+    description:
+      "Invitations familiales encore valides adressées à l'email du viewer. Permet d'afficher une notification in-app au login pour accepter en 1 clic sans passer par le mail.",
+  })
+  @RequireClubModule(ModuleCode.FAMILIES)
+  async viewerPendingFamilyInvites(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+  ): Promise<PendingFamilyInviteGraph[]> {
+    if (!user.email) return [];
+    return this.familyInvites.listPendingForEmail(club.id, user.email);
+  }
+
+  @Mutation(() => Boolean, {
+    name: 'sendFamilyInviteByEmail',
+    description:
+      "Envoie par email une invitation déjà générée à une adresse choisie. Le destinataire reçoit un mail avec bouton d'acceptation + code. Ne crée PAS de nouvelle invitation — utilise createFamilyInvite d'abord pour obtenir un code.",
+  })
+  @RequireClubModule(ModuleCode.FAMILIES)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  async sendFamilyInviteByEmail(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('input') input: SendFamilyInviteByEmailInput,
+  ): Promise<boolean> {
+    const res = await this.familyInvites.sendExistingInviteByEmail(
+      club.id,
+      user.userId,
+      input.code,
+      input.email,
+      input.inviteUrl,
+    );
+    return res.success;
   }
 
   @Mutation(() => ViewerFamilyJoinResultGraph, {
@@ -262,17 +327,28 @@ export class ViewerResolver {
     @CurrentClub() club: Club,
     @Args('input') input: ViewerUpdateMyProfileInput,
   ): Promise<ViewerMemberGraph> {
-    if (!user.activeProfileMemberId) {
-      throw new BadRequestException(
-        'Cette action nécessite une fiche adhérent active.',
+    if (user.activeProfileMemberId) {
+      return this.viewer.updateMyProfile(
+        club.id,
+        user.activeProfileMemberId,
+        user.userId,
+        input,
       );
     }
-    return this.viewer.updateMyProfile(
-      club.id,
-      user.activeProfileMemberId,
-      user.userId,
-      input,
-    );
+    if (user.activeProfileContactId) {
+      return this.viewer.updateMyProfileAsContact(
+        club.id,
+        user.activeProfileContactId,
+        user.userId,
+        {
+          firstName: input.firstName,
+          lastName: input.lastName,
+          phone: input.phone,
+          photoUrl: input.photoUrl,
+        },
+      );
+    }
+    throw new BadRequestException('Sélection de profil requise');
   }
 
   @Mutation(() => ViewerMemberGraph, { name: 'viewerUpdateMyPseudo' })

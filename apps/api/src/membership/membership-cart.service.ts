@@ -903,12 +903,20 @@ export class MembershipCartService {
 
     const payerLabel = await this.resolvePayerLabel(cart);
     const label = `Adhésion ${season.label} — ${payerLabel}`;
+    // Rattache la facture au groupe foyer étendu si la famille en fait partie
+    // (sinon la facture serait invisible dans l'espace partagé portail).
+    const cartFamily = await this.prisma.family.findUnique({
+      where: { id: cart.familyId },
+      select: { householdGroupId: true },
+    });
+    const householdGroupId = cartFamily?.householdGroupId ?? null;
 
     const invoice = await this.prisma.$transaction(async (tx) => {
       const inv = await tx.invoice.create({
         data: {
           clubId,
           familyId: cart.familyId,
+          householdGroupId,
           clubSeasonId: season.id,
           label,
           baseAmountCents: invoiceBaseCents,

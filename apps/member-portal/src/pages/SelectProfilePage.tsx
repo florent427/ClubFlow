@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@apollo/client/react';
 import {
   SELECT_VIEWER_CONTACT_PROFILE,
@@ -13,6 +13,11 @@ import type {
   ViewerProfilesQueryData,
 } from '../lib/auth-types';
 import { getToken, hasMemberSession, setMemberSession } from '../lib/storage';
+import {
+  consumeReturnTo,
+  rememberReturnTo,
+  safeReturnTo,
+} from '../lib/return-to';
 
 function profileRowKey(p: ViewerProfile): string {
   if (p.memberId) return `m:${p.memberId}`;
@@ -42,6 +47,11 @@ function profileSubline(p: ViewerProfile): string | null {
 
 export function SelectProfilePage() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const urlReturnTo = safeReturnTo(params.get('returnTo'));
+  useEffect(() => {
+    if (urlReturnTo) rememberReturnTo(urlReturnTo);
+  }, [urlReturnTo]);
   const token = getToken();
   const autoPickedRef = useRef(false);
 
@@ -79,7 +89,7 @@ export function SelectProfilePage() {
     } else {
       return;
     }
-    void navigate('/', { replace: true });
+    void navigate(consumeReturnTo() ?? '/', { replace: true });
   }
 
   const profiles = data?.viewerProfiles ?? [];

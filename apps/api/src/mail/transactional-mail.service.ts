@@ -155,6 +155,101 @@ export class TransactionalMailService {
     });
   }
 
+  /**
+   * Invitation à rejoindre un foyer familial (co-payeur ou observateur).
+   * Envoyée par un parent/payeur via le portail membre.
+   */
+  async sendFamilyInviteEmail(
+    clubId: string,
+    to: string,
+    options: {
+      clubName: string;
+      inviterName: string;
+      role: 'COPAYER' | 'VIEWER';
+      inviteUrl: string;
+      code: string;
+      expiresAt: Date;
+    },
+  ): Promise<void> {
+    const trimmed = to.trim();
+    if (!trimmed || !trimmed.includes('@')) {
+      throw new BadRequestException('Adresse e-mail invalide');
+    }
+    const profile = await this.domains.getVerifiedMailProfile(
+      clubId,
+      'transactional',
+    );
+    const { clubName, inviterName, role, inviteUrl, code, expiresAt } = options;
+    const safeClub = escapeHtml(clubName);
+    const safeInviter = escapeHtml(inviterName.trim() || 'Un parent');
+    const safeCode = escapeHtml(code);
+    const safeUrl = escapeHtml(inviteUrl);
+    const expiresFr = expiresAt.toLocaleString('fr-FR', {
+      dateStyle: 'long',
+      timeStyle: 'short',
+    });
+    const roleLabel = role === 'COPAYER' ? 'co-payeur' : 'observateur';
+    const roleHint =
+      role === 'COPAYER'
+        ? 'En tant que co-payeur, vous créerez un foyer relié au sien et partagerez les factures et les enfants.'
+        : 'En tant qu’observateur, vous rejoindrez directement son foyer en lecture seule.';
+    const subject = `${clubName} — ${safeInviter} vous invite à rejoindre son espace familial`;
+    const html = `
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
+<body style="margin:0;padding:0;background:#f4f6f8;font-family:Georgia,'Times New Roman',serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f6f8;padding:24px 12px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:520px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(15,23,42,0.08);">
+        <tr><td style="background:linear-gradient(135deg,#1a237e 0%,#303f9f 100%);padding:28px 24px;text-align:center;">
+          <p style="margin:0;font-size:13px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.85);">ClubFlow</p>
+          <h1 style="margin:8px 0 0;font-size:22px;line-height:1.25;color:#ffffff;font-weight:600;">${safeClub}</h1>
+        </td></tr>
+        <tr><td style="padding:28px 24px 8px;color:#1e293b;font-size:16px;line-height:1.6;">
+          <p style="margin:0 0 16px;">Bonjour,</p>
+          <p style="margin:0 0 16px;"><strong>${safeInviter}</strong> vous invite à rejoindre son espace familial sur ${safeClub} en tant que <strong>${roleLabel}</strong>.</p>
+          <p style="margin:0 0 16px;color:#475569;font-size:14px;">${roleHint}</p>
+        </td></tr>
+        <tr><td align="center" style="padding:8px 24px 20px;">
+          <a href="${safeUrl}" style="display:inline-block;padding:14px 28px;background:#1a237e;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;border-radius:999px;font-family:system-ui,-apple-system,sans-serif;">Accepter l'invitation</a>
+        </td></tr>
+        <tr><td style="padding:0 24px 20px;color:#475569;font-size:14px;line-height:1.5;text-align:center;">
+          <p style="margin:0 0 8px;">Ou utilisez ce code :</p>
+          <p style="margin:0;padding:10px 16px;background:#f1f5f9;border-radius:8px;display:inline-block;font-family:ui-monospace,monospace;font-size:18px;font-weight:700;letter-spacing:0.1em;color:#1e293b;">${safeCode}</p>
+        </td></tr>
+        <tr><td style="padding:0 24px 24px;color:#64748b;font-size:13px;line-height:1.5;border-top:1px solid #e2e8f0;">
+          <p style="margin:16px 0 8px;">Cette invitation expire le <strong>${escapeHtml(expiresFr)}</strong>.</p>
+          <p style="margin:0;">Si le bouton ne fonctionne pas, copiez ce lien :<br/><span style="word-break:break-all;color:#1a237e;">${safeUrl}</span></p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`.trim();
+    const text = [
+      `Bonjour,`,
+      '',
+      `${inviterName.trim() || 'Un parent'} vous invite à rejoindre son espace familial sur ${clubName} en tant que ${roleLabel}.`,
+      '',
+      roleHint,
+      '',
+      `Lien d'invitation : ${inviteUrl}`,
+      `Code : ${code}`,
+      '',
+      `Ce lien expire le ${expiresFr}.`,
+    ].join('\n');
+    await this.transport.sendEmail({
+      clubId,
+      kind: 'transactional',
+      from: profile.from,
+      to: trimmed,
+      subject,
+      html,
+      text,
+    });
+  }
+
   async sendTestEmail(clubId: string, to: string): Promise<void> {
     const trimmed = to.trim();
     if (!trimmed || !trimmed.includes('@')) {

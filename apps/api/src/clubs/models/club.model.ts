@@ -31,4 +31,16 @@ export class ClubGraphModel {
     description: 'Mentions légales imprimées en pied de facture.',
   })
   legalMentions!: string | null;
+
+  @Field(() => String, {
+    nullable: true,
+    description: 'Téléphone de contact du club affiché sur les factures.',
+  })
+  contactPhone!: string | null;
+
+  @Field(() => String, {
+    nullable: true,
+    description: 'E-mail de contact du club affiché sur les factures.',
+  })
+  contactEmail!: string | null;
 }

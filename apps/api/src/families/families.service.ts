@@ -145,6 +145,26 @@ export class FamiliesService {
   }
 
   /**
+   * Foyers (du groupe foyer étendu donné) dont le payeur a invité ce visiteur
+   * et dont l'invitation a été consommée. Donne droit à voir les mineurs de
+   * ces foyers — modèle unilatéral : une invitation inverse est nécessaire
+   * pour que la visibilité aille dans l'autre sens.
+   */
+  async viewerInvitedFamilyIdsInHouseholdGroup(
+    userId: string,
+    householdGroupId: string,
+  ): Promise<Set<string>> {
+    const invites = await this.prisma.familyInvite.findMany({
+      where: {
+        consumedByUserId: userId,
+        family: { householdGroupId },
+      },
+      select: { familyId: true },
+    });
+    return new Set(invites.map((i) => i.familyId));
+  }
+
+  /**
    * Profils portail : foyers sans groupe (tous les membres actifs, comportement historique)
    * + foyers étendus (soi, mineurs du groupe, et adultes du même foyer club que le payeur).
    */
@@ -250,8 +270,12 @@ export class FamiliesService {
       if (groupFamilyIds.length === 0) {
         continue;
       }
-      const viewerPayerFamilyIds =
-        await this.viewerPayerFamilyIdsInHouseholdGroup(userId, hgId);
+      const [viewerPayerFamilyIds, viewerInvitedFamilyIds] = await Promise.all(
+        [
+          this.viewerPayerFamilyIdsInHouseholdGroup(userId, hgId),
+          this.viewerInvitedFamilyIdsInHouseholdGroup(userId, hgId),
+        ],
+      );
       const rows = await this.prisma.familyMember.findMany({
         where: { familyId: { in: groupFamilyIds }, memberId: { not: null } },
         include: { member: true },
@@ -268,6 +292,7 @@ export class FamiliesService {
             {
               candidateFamilyId: fm.familyId,
               viewerPayerFamilyIds,
+              viewerInvitedFamilyIds,
             },
           )
         ) {
@@ -814,18 +839,33 @@ export class FamiliesService {
   ): Promise<{ newFamilyId: string; householdGroupId: string }> {
     const payerFamily = await this.prisma.family.findFirst({
       where: { id: payerFamilyId, clubId },
+      include: { householdGroup: true },
     });
     if (!payerFamily) {
       throw new NotFoundException('Foyer du payeur introuvable');
     }
 
-    const existingLink = await this.prisma.familyMember.findFirst({
-      where: { memberId, family: { clubId } },
-    });
-    if (existingLink) {
-      throw new BadRequestException(
-        'Ce membre est déjà rattaché à un foyer pour ce club.',
-      );
+    // Multi-foyer : on autorise un membre à être PAYER dans plusieurs foyers
+    // distincts (ex. grand-parent payeur de 2 foyers de petits-enfants).
+    // On bloque UNIQUEMENT si le membre est déjà lié à un foyer du MÊME
+    // groupe foyer étendu (idempotence : on renvoie alors ce foyer existant).
+    if (payerFamily.householdGroupId) {
+      const existingInSameGroup = await this.prisma.familyMember.findFirst({
+        where: {
+          memberId,
+          linkRole: FamilyMemberLinkRole.PAYER,
+          family: {
+            clubId,
+            householdGroupId: payerFamily.householdGroupId,
+          },
+        },
+      });
+      if (existingInSameGroup) {
+        return {
+          newFamilyId: existingInSameGroup.familyId,
+          householdGroupId: payerFamily.householdGroupId,
+        };
+      }
     }
 
     const member = await this.prisma.member.findFirst({
@@ -925,6 +965,7 @@ export class FamiliesService {
   ): Promise<{ newFamilyId: string; householdGroupId: string }> {
     const payerFamily = await this.prisma.family.findFirst({
       where: { id: payerFamilyId, clubId },
+      include: { householdGroup: true },
     });
     if (!payerFamily) {
       throw new NotFoundException('Foyer du payeur introuvable');
@@ -937,17 +978,27 @@ export class FamiliesService {
       throw new NotFoundException('Contact introuvable pour ce club');
     }
 
-    const existingPayerLink = await this.prisma.familyMember.findFirst({
-      where: {
-        contactId,
-        linkRole: FamilyMemberLinkRole.PAYER,
-        family: { clubId },
-      },
-    });
-    if (existingPayerLink) {
-      throw new BadRequestException(
-        'Ce contact est déjà rattaché à un foyer en tant que payeur pour ce club.',
-      );
+    // Multi-foyer : on autorise un contact à être PAYER dans plusieurs
+    // foyers distincts (ex. grand-parent avec 2 enfants dont les petits-
+    // enfants fréquentent le club). On bloque UNIQUEMENT si le contact est
+    // déjà PAYER d'une résidence du MÊME groupe foyer étendu (idempotence).
+    if (payerFamily.householdGroupId) {
+      const existingInSameGroup = await this.prisma.familyMember.findFirst({
+        where: {
+          contactId,
+          linkRole: FamilyMemberLinkRole.PAYER,
+          family: {
+            clubId,
+            householdGroupId: payerFamily.householdGroupId,
+          },
+        },
+      });
+      if (existingInSameGroup) {
+        return {
+          newFamilyId: existingInSameGroup.familyId,
+          householdGroupId: payerFamily.householdGroupId,
+        };
+      }
     }
 
     const result = await this.prisma.$transaction(async (tx) => {

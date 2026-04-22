@@ -39,20 +39,26 @@ export function ClubBrandingSettingsPage() {
   const [updateBranding, updateState] =
     useMutation<UpdateClubBrandingMutationData>(UPDATE_CLUB_BRANDING);
 
+  const [name, setName] = useState('');
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [siret, setSiret] = useState('');
   const [address, setAddress] = useState('');
   const [legalMentions, setLegalMentions] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const c = data?.club;
     if (!c) return;
+    setName(c.name ?? '');
     setLogoUrl(c.logoUrl);
     setSiret(c.siret ?? '');
     setAddress(c.address ?? '');
     setLegalMentions(c.legalMentions ?? '');
+    setContactPhone(c.contactPhone ?? '');
+    setContactEmail(c.contactEmail ?? '');
   }, [data?.club]);
 
   async function handlePickLogo(e: React.ChangeEvent<HTMLInputElement>) {
@@ -85,14 +91,22 @@ export function ClubBrandingSettingsPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setFormError('Le nom du club est obligatoire.');
+      return;
+    }
     try {
       await updateBranding({
         variables: {
           input: {
+            name: trimmedName,
             logoUrl: logoUrl ?? null,
             siret: siret.trim() || null,
             address: address.trim() || null,
             legalMentions: legalMentions.trim() || null,
+            contactPhone: contactPhone.trim() || null,
+            contactEmail: contactEmail.trim() || null,
           },
         },
       });
@@ -131,7 +145,9 @@ export function ClubBrandingSettingsPage() {
         <h1 className="members-loom__title">Identité du club</h1>
         <p className="members-loom__lede">
           Informations imprimées sur les factures, avoirs et documents
-          officiels générés par ClubFlow (logo, SIRET, mentions légales).
+          officiels générés par ClubFlow (nom du club, logo, SIRET, adresse,
+          téléphone, e-mail, mentions légales). Le nom du club est également
+          utilisé sur le site vitrine et dans l'interface admin.
         </p>
       </header>
 
@@ -177,6 +193,25 @@ export function ClubBrandingSettingsPage() {
               </div>
             </div>
 
+            <label className="cf-field">
+              <span className="cf-field__label">
+                Nom du club
+                <span className="cf-field__req" aria-hidden>*</span>
+              </span>
+              <input
+                className="cf-field__input"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                maxLength={200}
+                required
+                placeholder="Ex. Karaté Club de Saint-Pierre"
+              />
+              <span className="cf-field__hint">
+                Affiché sur le site vitrine, l'interface admin et les factures.
+              </span>
+            </label>
+
             <div className="cf-form-row">
               <label className="cf-field">
                 <span className="cf-field__label">SIRET</span>
@@ -202,6 +237,31 @@ export function ClubBrandingSettingsPage() {
                 placeholder="12 rue du sport — 75011 Paris"
               />
             </label>
+
+            <div className="cf-form-row">
+              <label className="cf-field">
+                <span className="cf-field__label">Téléphone</span>
+                <input
+                  className="cf-field__input"
+                  type="tel"
+                  value={contactPhone}
+                  onChange={(e) => setContactPhone(e.target.value)}
+                  maxLength={50}
+                  placeholder="06 12 34 56 78"
+                />
+              </label>
+              <label className="cf-field">
+                <span className="cf-field__label">E-mail</span>
+                <input
+                  className="cf-field__input"
+                  type="email"
+                  value={contactEmail}
+                  onChange={(e) => setContactEmail(e.target.value)}
+                  maxLength={200}
+                  placeholder="contact@club.fr"
+                />
+              </label>
+            </div>
 
             <label className="cf-field">
               <span className="cf-field__label">Mentions légales</span>

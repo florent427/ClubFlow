@@ -187,8 +187,37 @@ export class CreateVitrineArticleInput {
   @Field(() => ID, { nullable: true }) @IsOptional() @IsUUID()
   coverImageId?: string;
 
+  @Field(() => String, { nullable: true }) @IsOptional() @IsString() @MaxLength(200)
+  coverImageAlt?: string;
+
   @Field(() => Boolean, { nullable: true }) @IsOptional() @IsBoolean()
   publishNow?: boolean;
+
+  // ---- SEO ----
+  @Field(() => String, { nullable: true }) @IsOptional() @IsString() @MaxLength(200)
+  seoTitle?: string;
+
+  @Field(() => String, { nullable: true }) @IsOptional() @IsString() @MaxLength(400)
+  seoDescription?: string;
+
+  @Field(() => [String], { nullable: true }) @IsOptional() @IsArray() @IsString({ each: true })
+  seoKeywords?: string[];
+
+  @Field(() => String, { nullable: true }) @IsOptional() @IsString() @MaxLength(200)
+  seoH1?: string;
+
+  /** JSON sérialisé [{question,answer}] pour schema.org FAQPage. */
+  @Field(() => String, { nullable: true }) @IsOptional() @IsString() @MaxLength(40000)
+  seoFaqJson?: string;
+
+  @Field(() => String, { nullable: true }) @IsOptional() @IsString() @MaxLength(400)
+  seoCanonicalUrl?: string;
+
+  @Field(() => Boolean, { nullable: true }) @IsOptional() @IsBoolean()
+  seoNoindex?: boolean;
+
+  @Field(() => ID, { nullable: true }) @IsOptional() @IsUUID()
+  seoOgImageId?: string;
 }
 
 @InputType()
@@ -210,6 +239,34 @@ export class UpdateVitrineArticleInput {
 
   @Field(() => ID, { nullable: true }) @IsOptional() @IsUUID()
   coverImageId?: string;
+
+  @Field(() => String, { nullable: true }) @IsOptional() @IsString() @MaxLength(200)
+  coverImageAlt?: string;
+
+  // ---- SEO ----
+  @Field(() => String, { nullable: true }) @IsOptional() @IsString() @MaxLength(200)
+  seoTitle?: string;
+
+  @Field(() => String, { nullable: true }) @IsOptional() @IsString() @MaxLength(400)
+  seoDescription?: string;
+
+  @Field(() => [String], { nullable: true }) @IsOptional() @IsArray() @IsString({ each: true })
+  seoKeywords?: string[];
+
+  @Field(() => String, { nullable: true }) @IsOptional() @IsString() @MaxLength(200)
+  seoH1?: string;
+
+  @Field(() => String, { nullable: true }) @IsOptional() @IsString() @MaxLength(40000)
+  seoFaqJson?: string;
+
+  @Field(() => String, { nullable: true }) @IsOptional() @IsString() @MaxLength(400)
+  seoCanonicalUrl?: string;
+
+  @Field(() => Boolean, { nullable: true }) @IsOptional() @IsBoolean()
+  seoNoindex?: boolean;
+
+  @Field(() => ID, { nullable: true }) @IsOptional() @IsUUID()
+  seoOgImageId?: string;
 }
 
 @InputType()
@@ -356,4 +413,119 @@ export class SubmitVitrineContactInput {
 
   @Field() @IsString() @Length(1, 5000)
   message!: string;
+}
+
+// ============================================
+// Catégories
+// ============================================
+
+@InputType()
+export class CreateVitrineCategoryInput {
+  @Field(() => String) @IsString() @Length(1, 80)
+  name!: string;
+
+  @Field(() => String, { nullable: true }) @IsOptional() @IsString() @Length(1, 80)
+  slug?: string;
+
+  @Field(() => String, { nullable: true }) @IsOptional() @IsString() @MaxLength(500)
+  description?: string;
+
+  @Field(() => String, { nullable: true }) @IsOptional() @IsString() @MaxLength(20)
+  color?: string;
+
+  @Field(() => Int, { nullable: true }) @IsOptional() @IsInt()
+  sortOrder?: number;
+}
+
+@InputType()
+export class UpdateVitrineCategoryInput {
+  @Field(() => ID) @IsUUID()
+  id!: string;
+
+  @Field(() => String, { nullable: true }) @IsOptional() @IsString() @Length(1, 80)
+  name?: string;
+
+  @Field(() => String, { nullable: true }) @IsOptional() @IsString() @Length(1, 80)
+  slug?: string;
+
+  @Field(() => String, { nullable: true }) @IsOptional() @IsString() @MaxLength(500)
+  description?: string | null;
+
+  @Field(() => String, { nullable: true }) @IsOptional() @IsString() @MaxLength(20)
+  color?: string | null;
+
+  @Field(() => Int, { nullable: true }) @IsOptional() @IsInt()
+  sortOrder?: number;
+}
+
+@InputType()
+export class SetVitrineArticleCategoriesInput {
+  @Field(() => ID) @IsUUID()
+  articleId!: string;
+
+  @Field(() => [ID]) @IsArray() @IsUUID('all', { each: true })
+  categoryIds!: string[];
+}
+
+// ============================================
+// Commentaires
+// ============================================
+
+@InputType()
+export class SubmitArticleCommentInput {
+  @Field(() => String) @IsString() @Length(1, 60)
+  clubSlug!: string;
+
+  @Field(() => String) @IsString() @Length(1, 160)
+  articleSlug!: string;
+
+  @Field(() => String) @IsString() @Length(2, 80)
+  authorName!: string;
+
+  @Field(() => String) @IsEmail() @MaxLength(200)
+  authorEmail!: string;
+
+  @Field(() => String) @IsString() @Length(10, 3000)
+  body!: string;
+
+  /** Champ honeypot — doit rester vide. */
+  @Field(() => String, { nullable: true }) @IsOptional() @IsString() @MaxLength(200)
+  websiteHoneypot?: string;
+}
+
+@InputType()
+export class SetVitrineCommentStatusInput {
+  @Field(() => ID) @IsUUID()
+  id!: string;
+
+  /** Doit être une valeur de VitrineCommentStatus (enum). */
+  @Field(() => String) @IsString()
+  status!: string;
+}
+
+@InputType()
+export class GenerateCommentReplyInput {
+  @Field(() => ID) @IsUUID()
+  commentId!: string;
+
+  /** Nom à utiliser pour signer (ex. "L'équipe SKSR", "Sensei Tanaka").
+   *  Si vide, le service utilise "L'équipe {clubName}". */
+  @Field(() => String, { nullable: true })
+  @IsOptional() @IsString() @MaxLength(120)
+  replyAuthorName?: string;
+}
+
+@InputType()
+export class SetVitrineCommentReplyInput {
+  @Field(() => ID) @IsUUID()
+  id!: string;
+
+  /** Corps de la réponse. Null / vide = retire la réponse existante. */
+  @Field(() => String, { nullable: true })
+  @IsOptional() @IsString() @MaxLength(3000)
+  replyBody?: string | null;
+
+  @Field(() => String, { nullable: true })
+  @IsOptional() @IsString() @MaxLength(120)
+  replyAuthorName?: string | null;
 }

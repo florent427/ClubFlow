@@ -36,6 +36,72 @@ export class AgentExecutorService {
   constructor(private readonly parser: AgentSchemaParserService) {}
 
   /**
+   * Normalise les args fournis par le LLM pour corriger les erreurs
+   * courantes des modèles faibles (ex. GLM, Mistral).
+   *
+   * Problème typique : quand un tool attend `input: XInput!` avec `input`
+   * comme seul arg au top-level, certains modèles aplatissent les champs
+   * de XInput à la racine au lieu de les mettre sous `input`.
+   *
+   * Ex. au lieu de `{ input: { sourceText: "...", tone: "..." } }`, le LLM
+   * envoie `{ sourceText: "...", tone: "..." }`.
+   *
+   * On détecte ce pattern (présence des champs d'un input à la racine +
+   * absence de l'arg input lui-même) et on re-wrap automatiquement.
+   */
+  normalizeArgs(
+    classification: AgentToolClassification,
+    args: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const schemaArgs = this.parser.getOpArgs(
+      classification.name,
+      classification.kind,
+    );
+    if (!schemaArgs) return args;
+
+    // Cherche si le tool a exactement 1 arg required qui est un input type
+    const required = schemaArgs.filter((a) => a.required);
+    if (required.length !== 1) return args;
+    const mainArg = required[0]!;
+    // Type comme "GenerateVitrineArticleDraftInput!" → on strip les `!` et `[]`
+    const inputTypeName = mainArg.type.replace(/[![\]]/g, '');
+
+    // Si l'arg `mainArg.name` est déjà présent et non-vide, rien à faire
+    const existing = args[mainArg.name];
+    if (
+      existing !== undefined &&
+      existing !== null &&
+      !(
+        typeof existing === 'object' &&
+        !Array.isArray(existing) &&
+        Object.keys(existing).length === 0
+      )
+    ) {
+      return args;
+    }
+
+    // Sinon, regarde les champs de l'input type
+    const inputFields = this.parser.getInputFields(inputTypeName);
+    if (!inputFields || inputFields.length === 0) return args;
+
+    // Collecte les clés de args qui correspondent à des champs de l'input
+    const fieldNames = new Set(inputFields.map((f) => f.name));
+    const matched: Record<string, unknown> = {};
+    const rest: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(args)) {
+      if (k === mainArg.name) continue; // skip l'input vide existant
+      if (fieldNames.has(k)) matched[k] = v;
+      else rest[k] = v;
+    }
+
+    // Si au moins 1 champ match, on wrap
+    if (Object.keys(matched).length > 0) {
+      return { ...rest, [mainArg.name]: matched };
+    }
+    return args;
+  }
+
+  /**
    * Vérifie que tous les args `required` sont présents côté LLM avant de
    * créer une pending action ou d'exécuter. Évite les tool calls avec `{}`
    * qui passeraient en pending puis échoueraient au moment de l'exécution.

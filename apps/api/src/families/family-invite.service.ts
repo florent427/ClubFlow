@@ -1,7 +1,10 @@
 import { createHmac, randomBytes } from 'crypto';
 import {
   BadRequestException,
+  forwardRef,
+  Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -10,6 +13,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { FamiliesService } from './families.service';
+import { TransactionalMailService } from '../mail/transactional-mail.service';
 
 const INVITE_TTL_DAYS = 14;
 const CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -45,9 +49,13 @@ export type FamilyInviteCreateResult = {
 
 @Injectable()
 export class FamilyInviteService {
+  private readonly logger = new Logger(FamilyInviteService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly families: FamiliesService,
+    @Inject(forwardRef(() => TransactionalMailService))
+    private readonly mail: TransactionalMailService,
   ) {}
 
   private getPepper(): string {
@@ -166,6 +174,99 @@ export class FamilyInviteService {
     return { code, rawToken, expiresAt, familyId };
   }
 
+  /**
+   * Envoie par email une invitation déjà créée (par son code). Le
+   * destinataire reçoit un mail avec le bouton d'acceptation + le code
+   * de secours. L'invitation elle-même n'est pas modifiée, juste notifiée.
+   *
+   * @param inviteUrl URL absolue du portail membre (ex. https://membres.clubflow.fr/rejoindre?token=XXX)
+   *                   — construite côté resolver à partir de headers / env.
+   */
+  async sendExistingInviteByEmail(
+    clubId: string,
+    createdByUserId: string,
+    code: string,
+    recipientEmail: string,
+    inviteUrl: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const trimmedEmail = recipientEmail.trim();
+    if (!trimmedEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(trimmedEmail)) {
+      throw new BadRequestException('Adresse e-mail invalide.');
+    }
+    const invite = await this.prisma.familyInvite.findUnique({
+      where: { code: code.trim().toUpperCase() },
+      include: {
+        family: { select: { label: true } },
+      },
+    });
+    if (!invite || invite.clubId !== clubId) {
+      throw new NotFoundException('Invitation introuvable.');
+    }
+    if (invite.createdByUserId !== createdByUserId) {
+      throw new BadRequestException(
+        "Cette invitation n'a pas été créée par vous.",
+      );
+    }
+    if (invite.consumedAt) {
+      throw new BadRequestException(
+        'Cette invitation a déjà été acceptée.',
+      );
+    }
+    if (invite.expiresAt < new Date()) {
+      throw new BadRequestException(
+        'Cette invitation a expiré. Générez-en une nouvelle.',
+      );
+    }
+
+    // Récupère le nom du club + nom de l'inviteur pour personnaliser l'email
+    const club = await this.prisma.club.findUnique({
+      where: { id: clubId },
+      select: { name: true },
+    });
+    const inviterUser = await this.prisma.user.findUnique({
+      where: { id: createdByUserId },
+      select: { displayName: true, email: true },
+    });
+    const inviterName =
+      inviterUser?.displayName?.trim() ||
+      inviterUser?.email ||
+      'Un membre du club';
+
+    try {
+      await this.mail.sendFamilyInviteEmail(clubId, trimmedEmail, {
+        clubName: club?.name ?? 'Votre club',
+        inviterName,
+        role: invite.role === 'COPAYER' ? 'COPAYER' : 'VIEWER',
+        inviteUrl,
+        code: invite.code,
+        expiresAt: invite.expiresAt,
+      });
+      // Enregistre l'email destinataire sur l'invite : le destinataire
+      // verra l'invitation dès qu'il se connectera (notification in-app),
+      // sans avoir à cliquer sur le lien du mail.
+      const normalizedEmail = trimmedEmail.toLowerCase();
+      await this.prisma.familyInvite.update({
+        where: { id: invite.id },
+        data: { recipientEmail: normalizedEmail },
+      });
+      this.logger.log(
+        `Invite ${invite.code} envoyée par email à ${trimmedEmail} par user ${createdByUserId}.`,
+      );
+      return {
+        success: true,
+        message: `Invitation envoyée à ${trimmedEmail}.`,
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `Échec envoi email invite ${invite.code} à ${trimmedEmail} : ${msg}`,
+      );
+      throw new BadRequestException(
+        `Échec de l'envoi : ${msg}. Vérifiez que le domaine d'envoi est configuré (Paramètres → Emails).`,
+      );
+    }
+  }
+
   private async findActiveInvite(codeOrToken: string) {
     const trimmed = codeOrToken.trim();
     if (!trimmed) return null;
@@ -272,27 +373,33 @@ export class FamilyInviteService {
       }
     } else {
       if (activeProfile.memberId) {
-        const existing = await this.prisma.familyMember.findFirst({
-          where: {
-            memberId: activeProfile.memberId,
-            family: { clubId },
-          },
-        });
-        if (existing) {
-          throw new BadRequestException(
-            'Votre fiche est déjà rattachée à un foyer. Contactez le club pour modifier ce rattachement.',
-          );
+        // VIEWER = observateur en lecture : on autorise plusieurs familles
+        // par membre (ex. un assistant coach qui voit plusieurs foyers, un
+        // grand-parent rattaché à deux foyers de petits-enfants).
+        // On vérifie juste l'idempotency (pas déjà lié à CETTE famille).
+        const alreadyInThisFamily =
+          await this.prisma.familyMember.findFirst({
+            where: {
+              memberId: activeProfile.memberId,
+              familyId: payerFamilyId,
+            },
+          });
+        if (alreadyInThisFamily) {
+          resolvedFamilyId = payerFamilyId;
+          message =
+            'Vous êtes déjà rattaché à ce foyer — invitation marquée comme acceptée.';
+        } else {
+          await this.prisma.familyMember.create({
+            data: {
+              familyId: payerFamilyId,
+              memberId: activeProfile.memberId,
+              linkRole: FamilyMemberLinkRole.MEMBER,
+            },
+          });
+          resolvedFamilyId = payerFamilyId;
+          message =
+            'Invitation acceptée en observateur : vous rejoignez ce foyer.';
         }
-        await this.prisma.familyMember.create({
-          data: {
-            familyId: payerFamilyId,
-            memberId: activeProfile.memberId,
-            linkRole: FamilyMemberLinkRole.MEMBER,
-          },
-        });
-        resolvedFamilyId = payerFamilyId;
-        message =
-          'Invitation acceptée en observateur : vous rejoignez directement ce foyer.';
       } else if (activeProfile.contactId) {
         const existing = await this.prisma.familyMember.findFirst({
           where: {
@@ -332,5 +439,62 @@ export class FamilyInviteService {
       familyId: resolvedFamilyId,
       familyLabel: fam?.label ?? null,
     };
+  }
+
+  /**
+   * Liste les invitations encore valides (non consommées, non expirées)
+   * adressées à un email donné dans un club donné. Utilisé par le portail
+   * membre pour afficher une notification in-app après connexion — pas
+   * besoin pour le destinataire de passer par le mail.
+   */
+  async listPendingForEmail(
+    clubId: string,
+    email: string,
+  ): Promise<
+    Array<{
+      id: string;
+      code: string;
+      role: FamilyInviteRole;
+      familyLabel: string | null;
+      inviterName: string;
+      expiresAt: Date;
+    }>
+  > {
+    const normalized = email.trim().toLowerCase();
+    if (!normalized) return [];
+    const rows = await this.prisma.familyInvite.findMany({
+      where: {
+        clubId,
+        recipientEmail: normalized,
+        consumedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      include: {
+        family: { select: { label: true } },
+      },
+    });
+    if (rows.length === 0) return [];
+    // Récupère les inviteurs en batch
+    const inviterIds = [...new Set(rows.map((r) => r.createdByUserId))];
+    const inviters = await this.prisma.user.findMany({
+      where: { id: { in: inviterIds } },
+      select: { id: true, displayName: true, email: true },
+    });
+    const inviterMap = new Map(
+      inviters.map((u) => [
+        u.id,
+        u.displayName?.trim() || u.email || 'Un membre du club',
+      ]),
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      code: r.code,
+      role: r.role,
+      familyLabel: r.family.label ?? null,
+      inviterName: inviterMap.get(r.createdByUserId) ?? 'Un membre du club',
+      expiresAt: r.expiresAt,
+    }));
   }
 }

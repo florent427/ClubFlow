@@ -1,4 +1,4 @@
-import { Field, ID, Int, ObjectType, registerEnumType } from '@nestjs/graphql';
+import { Field, Float, ID, Int, ObjectType, registerEnumType } from '@nestjs/graphql';
 
 export enum VitrinePageStatusEnum {
   DRAFT = 'DRAFT',
@@ -12,6 +12,16 @@ export enum VitrineArticleStatusEnum {
   ARCHIVED = 'ARCHIVED',
 }
 registerEnumType(VitrineArticleStatusEnum, { name: 'VitrineArticleStatus' });
+
+export enum VitrineArticleGenerationStatusEnum {
+  NONE = 'NONE',
+  PENDING = 'PENDING',
+  DONE = 'DONE',
+  FAILED = 'FAILED',
+}
+registerEnumType(VitrineArticleGenerationStatusEnum, {
+  name: 'VitrineArticleGenerationStatus',
+});
 
 @ObjectType()
 export class VitrinePageGraph {
@@ -60,6 +70,15 @@ export class VitrinePageRevisionGraph {
 }
 
 @ObjectType()
+export class VitrineArticleFaqItemGraph {
+  @Field()
+  question!: string;
+
+  @Field()
+  answer!: string;
+}
+
+@ObjectType()
 export class VitrineArticleGraph {
   @Field(() => ID)
   id!: string;
@@ -80,6 +99,12 @@ export class VitrineArticleGraph {
   @Field(() => String, { nullable: true })
   coverImageUrl!: string | null;
 
+  @Field(() => ID, { nullable: true })
+  coverImageId!: string | null;
+
+  @Field(() => String, { nullable: true })
+  coverImageAlt!: string | null;
+
   @Field(() => VitrineArticleStatusEnum)
   status!: VitrineArticleStatusEnum;
 
@@ -88,6 +113,64 @@ export class VitrineArticleGraph {
 
   @Field()
   updatedAt!: Date;
+
+  // --- SEO ---
+  @Field(() => String, { nullable: true })
+  seoTitle!: string | null;
+
+  @Field(() => String, { nullable: true })
+  seoDescription!: string | null;
+
+  @Field(() => [String])
+  seoKeywords!: string[];
+
+  @Field(() => String, { nullable: true })
+  seoH1!: string | null;
+
+  @Field(() => [VitrineArticleFaqItemGraph])
+  seoFaq!: VitrineArticleFaqItemGraph[];
+
+  @Field(() => String, { nullable: true })
+  seoCanonicalUrl!: string | null;
+
+  @Field(() => Boolean)
+  seoNoindex!: boolean;
+
+  @Field(() => ID, { nullable: true })
+  seoOgImageId!: string | null;
+
+  @Field(() => String, { nullable: true })
+  seoOgImageUrl!: string | null;
+
+  // --- Génération IA en arrière-plan ---
+  @Field(() => VitrineArticleGenerationStatusEnum)
+  generationStatus!: VitrineArticleGenerationStatusEnum;
+
+  @Field(() => String, { nullable: true })
+  generationProgress!: string | null;
+
+  @Field(() => String, { nullable: true })
+  generationError!: string | null;
+
+  @Field(() => [String])
+  generationWarnings!: string[];
+
+  // --- Catégories ---
+  @Field(() => [ArticleCategoryLinkGraph])
+  categories!: ArticleCategoryLinkGraph[];
+}
+
+/** Catégorie liée à un article (minimal — id + slug + name + color). */
+@ObjectType()
+export class ArticleCategoryLinkGraph {
+  @Field(() => ID)
+  id!: string;
+  @Field()
+  slug!: string;
+  @Field()
+  name!: string;
+  @Field(() => String, { nullable: true })
+  color!: string | null;
 }
 
 @ObjectType()
@@ -232,4 +315,72 @@ export class VitrineEditTokenGraph {
 
   @Field()
   vitrineBaseUrl!: string;
+}
+
+// ============================================
+// Catégorie
+// ============================================
+
+@ObjectType()
+export class VitrineCategoryGraph {
+  @Field(() => ID) id!: string;
+  @Field() slug!: string;
+  @Field() name!: string;
+  @Field(() => String, { nullable: true }) description!: string | null;
+  @Field(() => String, { nullable: true }) color!: string | null;
+  @Field(() => Int) sortOrder!: number;
+  @Field(() => Int) articleCount!: number;
+  @Field() createdAt!: Date;
+  @Field() updatedAt!: Date;
+}
+
+// ============================================
+// Commentaire
+// ============================================
+
+export enum VitrineCommentStatusEnum {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  NEEDS_REVIEW = 'NEEDS_REVIEW',
+  REJECTED = 'REJECTED',
+  SPAM = 'SPAM',
+}
+registerEnumType(VitrineCommentStatusEnum, { name: 'VitrineCommentStatus' });
+
+@ObjectType()
+export class VitrineCommentGraph {
+  @Field(() => ID) id!: string;
+  @Field(() => ID) articleId!: string;
+  @Field() articleSlug!: string;
+  @Field() articleTitle!: string;
+  @Field() authorName!: string;
+  @Field() authorEmail!: string;
+  @Field() body!: string;
+  @Field(() => VitrineCommentStatusEnum) status!: VitrineCommentStatusEnum;
+  @Field(() => Float, { nullable: true }) aiScore!: number | null;
+  @Field(() => String, { nullable: true }) aiCategory!: string | null;
+  @Field(() => String, { nullable: true }) aiReason!: string | null;
+  @Field(() => String, { nullable: true }) adminReplyBody!: string | null;
+  @Field(() => String, { nullable: true }) adminReplyAuthorName!: string | null;
+  @Field(() => Date, { nullable: true }) adminReplyAt!: Date | null;
+  @Field() createdAt!: Date;
+}
+
+@ObjectType()
+export class PublicVitrineCommentGraph {
+  @Field(() => ID) id!: string;
+  @Field() authorName!: string;
+  @Field() body!: string;
+  @Field() createdAt!: Date;
+  @Field(() => String, { nullable: true }) adminReplyBody!: string | null;
+  @Field(() => String, { nullable: true }) adminReplyAuthorName!: string | null;
+  @Field(() => Date, { nullable: true }) adminReplyAt!: Date | null;
+}
+
+@ObjectType()
+export class SubmitCommentResultGraph {
+  @Field() success!: boolean;
+  @Field(() => ID, { nullable: true }) commentId!: string | null;
+  @Field(() => VitrineCommentStatusEnum) status!: VitrineCommentStatusEnum;
+  @Field() message!: string;
 }
