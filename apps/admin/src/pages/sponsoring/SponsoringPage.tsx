@@ -657,7 +657,7 @@ export function SponsoringPage() {
               Annuler
             </button>
             <button
-              type="button"
+              type="submit"
               className="btn-primary"
               disabled={creating}
               form="cf-sponsor-form"

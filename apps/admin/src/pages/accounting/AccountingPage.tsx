@@ -842,7 +842,7 @@ export function AccountingPage() {
               Annuler
             </button>
             <button
-              type="button"
+              type="submit"
               className="btn-primary"
               disabled={creating}
               form="cf-acct-form"

@@ -151,7 +151,7 @@ export function AccountingReviewDrawer({
             Annuler
           </button>
           <button
-            type="button"
+            type="submit"
             className="btn-primary"
             disabled={confirming}
             form="cf-review-form"
