@@ -127,25 +127,77 @@ export class AccountingSuggestionService {
     );
 
     this.logger.log(
-      `Suggestion IA déclenchée pour "${trimmed}" — model=${models.textModel}, ${accounts.length} comptes, ${cohorts.length} cohortes, ${projects.length} projets`,
+      `Suggestion IA déclenchée pour "${trimmed}" — model=${models.textModel} (fallback=${models.textFallbackModel ?? 'none'}), ${accounts.length} comptes, ${cohorts.length} cohortes, ${projects.length} projets`,
     );
 
-    try {
-      const result = await this.openrouter.chatCompletion({
+    // Tente le modèle principal, puis fallback si JSON invalide ou vide.
+    // `response_format: json_object` n'est pas supporté par tous les
+    // modèles (ex: z-ai/glm-*) — on l'omet et on renforce le prompt
+    // pour forcer du JSON pur.
+    const modelsToTry = [models.textModel];
+    if (
+      models.textFallbackModel &&
+      models.textFallbackModel !== models.textModel
+    ) {
+      modelsToTry.push(models.textFallbackModel);
+    }
+
+    const callModel = async (model: string) => {
+      return this.openrouter.chatCompletion({
         apiKey,
-        model: models.textModel,
-        responseFormat: 'json_object',
+        model,
         temperature: 0.1,
-        maxTokens: 600,
+        maxTokens: 800,
         messages: [
           {
             role: 'system',
             content:
-              'Tu es un assistant comptable spécialisé dans les associations sportives françaises. Tu réponds uniquement en JSON strict.',
+              'Tu es un assistant comptable pour associations sportives françaises. RÈGLE ABSOLUE : réponds UNIQUEMENT avec un objet JSON valide, sans texte avant, sans texte après, sans balises markdown. Ta réponse commence par { et finit par }.',
           },
           { role: 'user', content: prompt },
         ],
       });
+    };
+
+    type OpenrouterResult = Awaited<ReturnType<typeof callModel>>;
+    let result: OpenrouterResult | null = null;
+    let lastRaw = '';
+    let lastModel = '';
+    let lastError: string | null = null;
+
+    try {
+      for (const model of modelsToTry) {
+        this.logger.log(`Tentative modèle ${model}…`);
+        try {
+          result = await callModel(model);
+          lastModel = model;
+          lastRaw = result.content ?? '';
+          // Log le raw pour debug (jusqu'à 500 chars)
+          this.logger.log(
+            `Modèle ${model} → ${result.content.length} chars : ${lastRaw.slice(0, 300).replace(/\n/g, ' ')}`,
+          );
+          const probe = this.parseJson(lastRaw);
+          if (probe && typeof probe === 'object') {
+            break;
+          }
+          this.logger.warn(
+            `Modèle ${model} → JSON non parsable, on essaye le fallback si dispo.`,
+          );
+          result = null;
+        } catch (err) {
+          lastError = err instanceof Error ? err.message : String(err);
+          this.logger.warn(`Modèle ${model} → exception : ${lastError}`);
+          result = null;
+        }
+      }
+      if (!result) {
+        return {
+          ...this.emptyResult(),
+          errorMessage: lastError
+            ? `Tous modèles ont échoué : ${lastError.slice(0, 150)}`
+            : `Modèle(s) ${modelsToTry.join(', ')} → réponse vide ou JSON invalide`,
+        };
+      }
 
       // Log usage
       const costCents = result.costCents ?? 0;
@@ -328,14 +380,30 @@ Règles strictes:
   }
 
   private parseJson(content: string): Record<string, unknown> | null {
+    if (!content || !content.trim()) return null;
+    // 1. Nettoyage : retire fences markdown éventuelles
+    let cleaned = content
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```\s*$/i, '')
+      .trim();
+    // 2. Tentative directe
     try {
-      const cleaned = content
-        .replace(/^```(?:json)?\s*/i, '')
-        .replace(/\s*```\s*$/i, '')
-        .trim();
       return JSON.parse(cleaned) as Record<string, unknown>;
     } catch {
-      return null;
+      // fallthrough
     }
+    // 3. Certains modèles (ex: GLM) ajoutent du texte avant/après.
+    //    On cherche le premier { et la dernière } pour extraire l'objet.
+    const first = cleaned.indexOf('{');
+    const last = cleaned.lastIndexOf('}');
+    if (first >= 0 && last > first) {
+      cleaned = cleaned.slice(first, last + 1);
+      try {
+        return JSON.parse(cleaned) as Record<string, unknown>;
+      } catch {
+        // fallthrough
+      }
+    }
+    return null;
   }
 }
