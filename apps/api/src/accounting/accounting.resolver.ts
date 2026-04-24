@@ -493,6 +493,13 @@ export class AccountingResolver {
     return toGraph(entry as unknown as EntryRow);
   }
 
+  // Mutation explicite de seed (fallback UI : bouton "Initialiser le plan")
+  @Mutation(() => Boolean, { name: 'initClubAccountingPlan' })
+  async initClubAccountingPlan(@CurrentClub() club: Club): Promise<boolean> {
+    await this.seedService.seedIfEmpty(club.id);
+    return true;
+  }
+
   // Legacy compat mutation (ancienne UI)
   @Mutation(() => Boolean, { name: 'deleteClubAccountingEntry' })
   async deleteClubAccountingEntry(

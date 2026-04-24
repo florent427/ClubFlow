@@ -8,6 +8,7 @@ import {
   CLUB_ACCOUNTING_ENTRIES,
   CLUB_ACCOUNTING_SUMMARY,
   CREATE_CLUB_ACCOUNTING_ENTRY,
+  INIT_CLUB_ACCOUNTING_PLAN,
   SUBMIT_RECEIPT_FOR_OCR,
   SUGGEST_ACCOUNTING_CATEGORIZATION,
 } from '../../lib/documents';
@@ -145,22 +146,29 @@ export function AccountingPage() {
       fetchPolicy: 'cache-and-network',
       variables: { from: range.from, to: range.to },
     });
-  const { data: accountsData } = useQuery<ClubAccountingAccountsData>(
-    CLUB_ACCOUNTING_ACCOUNTS,
-    { fetchPolicy: 'cache-and-network' },
-  );
-  const { data: cohortsData } = useQuery<ClubAccountingCohortsData>(
-    CLUB_ACCOUNTING_COHORTS,
-    { fetchPolicy: 'cache-and-network' },
-  );
+  const { data: accountsData, refetch: refetchAccounts } =
+    useQuery<ClubAccountingAccountsData>(CLUB_ACCOUNTING_ACCOUNTS, {
+      fetchPolicy: 'cache-and-network',
+    });
+  const { data: cohortsData, refetch: refetchCohorts } =
+    useQuery<ClubAccountingCohortsData>(CLUB_ACCOUNTING_COHORTS, {
+      fetchPolicy: 'cache-and-network',
+    });
+  // Query projets tolérante : si le module PROJECTS n'est pas activé
+  // pour ce club, la query renvoie une erreur 403. On l'ignore pour
+  // que l'UI affiche simplement "Fonctionnement général" comme seule option.
   const { data: projectsData } = useQuery<ClubProjectsData>(CLUB_PROJECTS, {
     fetchPolicy: 'cache-and-network',
+    errorPolicy: 'ignore',
   });
   const [create, { loading: creating }] = useMutation(
     CREATE_CLUB_ACCOUNTING_ENTRY,
   );
   const [suggest] = useMutation<SuggestAccountingCategorizationData>(
     SUGGEST_ACCOUNTING_CATEGORIZATION,
+  );
+  const [initPlan, { loading: initializingPlan }] = useMutation(
+    INIT_CLUB_ACCOUNTING_PLAN,
   );
   const [cancel] = useMutation(CANCEL_CLUB_ACCOUNTING_ENTRY);
   const [submitOcr, { loading: ocrLoading }] =
@@ -461,6 +469,16 @@ export function AccountingPage() {
     }
   }
 
+  async function doInitPlan() {
+    try {
+      await initPlan();
+      await Promise.all([refetchAccounts(), refetchCohorts()]);
+      showToast('Plan comptable initialisé', 'success');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
+
   async function doCancel() {
     if (!confirmDel) return;
     try {
@@ -513,7 +531,16 @@ export function AccountingPage() {
             </span>
             {ocrLoading ? 'Analyse IA…' : 'Scanner un reçu'}
           </button>
-          <button type="button" className="btn-primary" onClick={() => setDrawerOpen(true)}>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={async () => {
+              setDrawerOpen(true);
+              // Force un refetch des comptes pour déclencher le lazy seed
+              // backend si le plan n'est pas encore initialisé.
+              await refetchAccounts();
+            }}
+          >
             <span className="material-symbols-outlined" aria-hidden>add</span>
             Nouvelle écriture
           </button>
@@ -918,14 +945,42 @@ export function AccountingPage() {
               </div>
             </div>
           ) : null}
+          {accounts.length === 0 ? (
+            <div className="cf-alert cf-alert--warning" style={{ marginBottom: 12 }}>
+              <span className="material-symbols-outlined" aria-hidden>
+                warning
+              </span>
+              <div style={{ flex: 1 }}>
+                <strong>Plan comptable non initialisé</strong>
+                <br />
+                <small>
+                  Aucun compte disponible pour ce club. Clique pour seeder les
+                  34 comptes PCG + 5 cohortes par défaut.
+                </small>
+              </div>
+              <button
+                type="button"
+                className="cf-btn cf-btn--sm cf-btn--primary"
+                onClick={() => void doInitPlan()}
+                disabled={initializingPlan}
+              >
+                {initializingPlan ? 'Initialisation…' : 'Initialiser'}
+              </button>
+            </div>
+          ) : null}
           <label className="cf-field">
             <span>Compte comptable *</span>
             <select
               value={accountCode}
               onChange={(e) => setAccountCode(e.target.value)}
               required
+              disabled={availableAccounts.length === 0}
             >
-              <option value="">— Choisir un compte —</option>
+              <option value="">
+                {availableAccounts.length === 0
+                  ? '— Plan comptable vide —'
+                  : '— Choisir un compte —'}
+              </option>
               {availableAccounts.map((a) => (
                 <option key={a.id} value={a.code}>
                   {a.code} — {a.label}

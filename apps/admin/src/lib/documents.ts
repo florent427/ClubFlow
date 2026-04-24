@@ -2160,6 +2160,12 @@ export const SUGGEST_ACCOUNTING_CATEGORIZATION = gql`
   }
 `;
 
+export const INIT_CLUB_ACCOUNTING_PLAN = gql`
+  mutation InitClubAccountingPlan {
+    initClubAccountingPlan
+  }
+`;
+
 export const CONFIRM_ACCOUNTING_EXTRACTION = gql`
   mutation ConfirmAccountingExtraction($input: ConfirmExtractionInput!) {
     confirmAccountingExtraction(input: $input) {
