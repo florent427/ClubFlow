@@ -2699,6 +2699,22 @@ model AccountingEntryLine {
   bankReconciledAt DateTime?
   createdAt        DateTime           @default(now())
 
+  // --- Validation par ligne (flow NEEDS_REVIEW → POSTED granulaire) ---
+  /// Timestamp de validation humaine de la ligne. Null = en attente de
+  /// revue. Quand toutes les lignes "article" (hors contrepartie banque)
+  /// sont validées, l'entry parente passe automatiquement en POSTED.
+  validatedAt       DateTime?
+  validatedByUserId String?
+
+  // --- Traçabilité suggestion IA (pour affichage dans la review UI) ---
+  /// Compte PCG proposé par l'IA. Gardé même si l'user change le compte
+  /// final (pour audit et comparaison).
+  iaSuggestedAccountCode String?
+  /// Phrase d'explication IA du choix (max 300 chars).
+  iaReasoning            String?
+  /// Score de confiance IA sur le compte (0-100).
+  iaConfidencePct        Int?
+
   entry       AccountingEntry         @relation(fields: [entryId], references: [id], onDelete: Cascade)
   allocations AccountingAllocation[]
 

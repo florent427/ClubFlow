@@ -72,6 +72,20 @@ export class AccountingEntryLineGraph {
   @Field(() => Int, { nullable: true })
   vatAmountCents!: number | null;
 
+  // --- Validation granulaire ---
+  @Field(() => Date, { nullable: true })
+  validatedAt!: Date | null;
+
+  // --- Traçabilité IA ---
+  @Field(() => String, { nullable: true })
+  iaSuggestedAccountCode!: string | null;
+
+  @Field(() => String, { nullable: true })
+  iaReasoning!: string | null;
+
+  @Field(() => Int, { nullable: true })
+  iaConfidencePct!: number | null;
+
   @Field(() => [AccountingAllocationGraph])
   allocations!: AccountingAllocationGraph[];
 }

@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
   CANCEL_CLUB_ACCOUNTING_ENTRY,
@@ -8,8 +8,11 @@ import {
   CLUB_ACCOUNTING_ENTRIES,
   CLUB_ACCOUNTING_SUMMARY,
   CREATE_CLUB_ACCOUNTING_ENTRY_QUICK,
+  DELETE_CLUB_ACCOUNTING_ENTRY_PERMANENT,
   INIT_CLUB_ACCOUNTING_PLAN,
   SUBMIT_RECEIPT_FOR_OCR,
+  UNVALIDATE_ACCOUNTING_ENTRY_LINE,
+  VALIDATE_ACCOUNTING_ENTRY_LINE,
 } from '../../lib/documents';
 import { CLUB_PROJECTS } from '../../lib/projects-documents';
 import type {
@@ -164,6 +167,74 @@ export function AccountingPage() {
   const [initPlan, { loading: initializingPlan }] = useMutation(
     INIT_CLUB_ACCOUNTING_PLAN,
   );
+  const [validateLine] = useMutation(VALIDATE_ACCOUNTING_ENTRY_LINE);
+  const [unvalidateLine] = useMutation(UNVALIDATE_ACCOUNTING_ENTRY_LINE);
+  const [deletePermanent] = useMutation(DELETE_CLUB_ACCOUNTING_ENTRY_PERMANENT);
+
+  // Entries expandées (sous-lignes visibles)
+  const [expandedEntryIds, setExpandedEntryIds] = useState<Set<string>>(
+    new Set(),
+  );
+  function toggleExpand(id: string) {
+    setExpandedEntryIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  // Inline edit du compte par ligne dans l'expand
+  const [lineAccountEdits, setLineAccountEdits] = useState<
+    Record<string, string>
+  >({});
+  function setLineAccountEdit(lineId: string, code: string) {
+    setLineAccountEdits((prev) => ({ ...prev, [lineId]: code }));
+  }
+
+  async function doValidateLine(lineId: string, code?: string) {
+    try {
+      await validateLine({
+        variables: {
+          lineId,
+          accountCode: code ?? null,
+        },
+      });
+      showToast('Ligne validée', 'success');
+      await Promise.all([refetchEntries(), refetchSummary()]);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
+
+  async function doUnvalidateLine(lineId: string) {
+    try {
+      await unvalidateLine({ variables: { lineId } });
+      showToast('Ligne dé-validée', 'success');
+      await Promise.all([refetchEntries(), refetchSummary()]);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
+
+  async function doDeletePermanent(entryId: string) {
+    if (
+      !window.confirm(
+        'Suppression définitive ?\n\n' +
+          'Cette action est irréversible mais juridiquement autorisée car ' +
+          "l'écriture n'a pas encore été comptabilisée.\n\n" +
+          'Pour une écriture déjà validée, utilise la contre-passation.',
+      )
+    ) {
+      return;
+    }
+    try {
+      await deletePermanent({ variables: { id: entryId } });
+      showToast('Écriture supprimée définitivement', 'success');
+      await Promise.all([refetchEntries(), refetchSummary()]);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
   const [cancel] = useMutation(CANCEL_CLUB_ACCOUNTING_ENTRY);
   const [submitOcr, { loading: ocrLoading }] =
     useMutation<SubmitReceiptForOcrData>(SUBMIT_RECEIPT_FOR_OCR);
@@ -718,122 +789,398 @@ export function AccountingPage() {
               const firstArticleLine = articleLines[0] ?? e.lines[0];
               const firstAlloc = firstArticleLine?.allocations[0];
               const isMultiArticle = articleLines.length > 1;
+              const isExpanded = expandedEntryIds.has(e.id);
+              const hasUnvalidatedLines = articleLines.some(
+                (l) => !l.validatedAt,
+              );
+              const canExpand = e.status === 'NEEDS_REVIEW' || isMultiArticle;
               return (
-                <tr key={e.id}>
-                  <td>{fmtDate(e.occurredAt)}</td>
-                  <td>
-                    <div>
-                      {e.label}
-                      {isMultiArticle ? (
-                        <span
-                          className="cf-badge cf-badge--info"
-                          style={{
-                            marginLeft: 6,
-                            fontSize: '0.72rem',
-                            padding: '2px 6px',
-                            background: 'rgba(0, 86, 197, 0.12)',
-                            color: '#0056c5',
-                            borderRadius: 3,
-                          }}
-                          title={`${articleLines.length} articles détaillés`}
-                        >
-                          {articleLines.length} articles
-                        </span>
-                      ) : null}
-                    </div>
-                    {firstAlloc && firstAlloc.cohortCode ? (
-                      <small className="cf-muted">
-                        {firstAlloc.cohortCode}
-                        {firstAlloc.disciplineCode
-                          ? ` · ${firstAlloc.disciplineCode}`
-                          : ''}
-                        {firstAlloc.projectTitle
-                          ? ` · ${firstAlloc.projectTitle}`
-                          : ''}
-                      </small>
-                    ) : null}
-                  </td>
-                  <td>
-                    {isMultiArticle ? (
-                      <small
-                        className="cf-muted"
-                        title={articleLines
-                          .map((l) => `${l.accountCode} ${l.accountLabel}`)
-                          .join('\n')}
-                      >
-                        {[...new Set(articleLines.map((l) => l.accountCode))]
-                          .slice(0, 3)
-                          .join(', ')}
-                        {articleLines.length > 3 ? '…' : ''}
-                      </small>
-                    ) : firstArticleLine ? (
-                      <small title={firstArticleLine.accountLabel}>
-                        {firstArticleLine.accountCode}
-                      </small>
-                    ) : (
-                      '—'
-                    )}
-                  </td>
-                  <td>
-                    <span
-                      className={`cf-pill cf-pill--${
-                        e.status === 'POSTED'
-                          ? 'ok'
-                          : e.status === 'NEEDS_REVIEW'
-                            ? 'warn'
-                            : 'muted'
-                      }`}
-                    >
-                      {statusLabel(e.status)}
-                    </span>
-                  </td>
-                  <td>
-                    <small className="cf-muted">{sourceLabel(e.source)}</small>
-                  </td>
-                  <td
-                    style={{
-                      textAlign: 'right',
-                      fontVariantNumeric: 'tabular-nums',
-                    }}
-                  >
-                    {e.kind === 'INCOME' ? '+' : e.kind === 'EXPENSE' ? '−' : '='}{' '}
-                    {fmtEuros(e.amountCents)}
-                  </td>
-                  <td>
-                    {e.status === 'CANCELLED' || e.status === 'LOCKED' ? (
-                      <span className="cf-muted">—</span>
-                    ) : e.status === 'NEEDS_REVIEW' ? (
-                      <>
+                <React.Fragment key={e.id}>
+                  <tr>
+                    <td>
+                      {canExpand ? (
                         <button
                           type="button"
-                          className="cf-btn cf-btn--sm cf-btn--primary"
-                          onClick={() => setConfirmEntry(e)}
+                          className="cf-expand-btn"
+                          onClick={() => toggleExpand(e.id)}
+                          aria-label={isExpanded ? 'Replier' : 'Déplier'}
                         >
-                          Valider
-                        </button>{' '}
+                          <span
+                            className="material-symbols-outlined"
+                            aria-hidden
+                          >
+                            {isExpanded ? 'expand_less' : 'expand_more'}
+                          </span>
+                        </button>
+                      ) : null}
+                      {fmtDate(e.occurredAt)}
+                    </td>
+                    <td>
+                      <div>
+                        {e.label}
+                        {isMultiArticle ? (
+                          <span
+                            className="cf-badge cf-badge--info"
+                            style={{
+                              marginLeft: 6,
+                              fontSize: '0.72rem',
+                              padding: '2px 6px',
+                              background: 'rgba(0, 86, 197, 0.12)',
+                              color: '#0056c5',
+                              borderRadius: 3,
+                            }}
+                            title={`${articleLines.length} articles détaillés`}
+                          >
+                            {articleLines.length} articles
+                          </span>
+                        ) : null}
+                        {hasUnvalidatedLines &&
+                        e.status === 'NEEDS_REVIEW' ? (
+                          <span
+                            style={{
+                              marginLeft: 6,
+                              fontSize: '0.72rem',
+                              color: '#b45309',
+                            }}
+                          >
+                            ⚠{' '}
+                            {
+                              articleLines.filter((l) => !l.validatedAt).length
+                            }
+                            /{articleLines.length} à valider
+                          </span>
+                        ) : null}
+                      </div>
+                      {firstAlloc && firstAlloc.cohortCode ? (
+                        <small className="cf-muted">
+                          {firstAlloc.cohortCode}
+                          {firstAlloc.disciplineCode
+                            ? ` · ${firstAlloc.disciplineCode}`
+                            : ''}
+                          {firstAlloc.projectTitle
+                            ? ` · ${firstAlloc.projectTitle}`
+                            : ''}
+                        </small>
+                      ) : null}
+                    </td>
+                    <td>
+                      {isMultiArticle ? (
+                        <small
+                          className="cf-muted"
+                          title={articleLines
+                            .map((l) => `${l.accountCode} ${l.accountLabel}`)
+                            .join('\n')}
+                        >
+                          {[...new Set(articleLines.map((l) => l.accountCode))]
+                            .slice(0, 3)
+                            .join(', ')}
+                          {articleLines.length > 3 ? '…' : ''}
+                        </small>
+                      ) : firstArticleLine ? (
+                        <small title={firstArticleLine.accountLabel}>
+                          {firstArticleLine.accountCode}
+                        </small>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td>
+                      <span
+                        className={`cf-pill cf-pill--${
+                          e.status === 'POSTED'
+                            ? 'ok'
+                            : e.status === 'NEEDS_REVIEW'
+                              ? 'warn'
+                              : 'muted'
+                        }`}
+                      >
+                        {statusLabel(e.status)}
+                      </span>
+                    </td>
+                    <td>
+                      <small className="cf-muted">
+                        {sourceLabel(e.source)}
+                      </small>
+                    </td>
+                    <td
+                      style={{
+                        textAlign: 'right',
+                        fontVariantNumeric: 'tabular-nums',
+                      }}
+                    >
+                      {e.kind === 'INCOME'
+                        ? '+'
+                        : e.kind === 'EXPENSE'
+                          ? '−'
+                          : '='}{' '}
+                      {fmtEuros(e.amountCents)}
+                    </td>
+                    <td>
+                      {e.status === 'CANCELLED' || e.status === 'LOCKED' ? (
+                        <span className="cf-muted">—</span>
+                      ) : e.status === 'NEEDS_REVIEW' ? (
+                        <>
+                          {!hasUnvalidatedLines ? (
+                            <span
+                              className="cf-muted"
+                              title="Toutes les lignes sont validées — statut POSTED imminent"
+                            >
+                              Prêt
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="cf-btn cf-btn--sm cf-btn--ghost"
+                              onClick={() => toggleExpand(e.id)}
+                              title="Déplie pour valider ligne par ligne"
+                            >
+                              Valider les lignes
+                            </button>
+                          )}{' '}
+                          <button
+                            type="button"
+                            className="btn-ghost btn-ghost--danger"
+                            onClick={() => void doDeletePermanent(e.id)}
+                            title="Suppression définitive (autorisée car non comptabilisée)"
+                          >
+                            Supprimer
+                          </button>
+                        </>
+                      ) : e.source === 'MANUAL' || e.source === 'OCR_AI' ? (
                         <button
                           type="button"
                           className="btn-ghost btn-ghost--danger"
                           onClick={() => setConfirmDel(e)}
+                          title="Contre-passation (annulation comptable avec trace)"
                         >
-                          Rejeter
+                          Contre-passer
                         </button>
-                      </>
-                    ) : e.source === 'MANUAL' || e.source === 'OCR_AI' ? (
-                      <button
-                        type="button"
-                        className="btn-ghost btn-ghost--danger"
-                        onClick={() => setConfirmDel(e)}
-                      >
-                        Annuler
-                      </button>
-                    ) : (
-                      <span className="cf-muted" title="Écriture automatique — crée une contre-passation pour corriger">
-                        Auto
-                      </span>
-                    )}
-                  </td>
-                </tr>
+                      ) : (
+                        <span
+                          className="cf-muted"
+                          title="Écriture automatique — crée une contre-passation pour corriger"
+                        >
+                          Auto
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                  {isExpanded ? (
+                    <tr className="cf-expanded-row">
+                      <td colSpan={7} style={{ padding: 0 }}>
+                        <div className="cf-entry-lines">
+                          <table className="cf-entry-lines__table">
+                            <thead>
+                              <tr>
+                                <th style={{ width: 24 }}></th>
+                                <th>Article</th>
+                                <th>Compte proposé</th>
+                                <th style={{ width: 120 }}>Confiance IA</th>
+                                <th style={{ textAlign: 'right' }}>Montant</th>
+                                <th style={{ width: 200 }}>Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {e.lines.map((l) => {
+                                const isBank =
+                                  l.accountCode === '512000' ||
+                                  l.accountCode === '530000';
+                                const validated = Boolean(l.validatedAt);
+                                const currentEdit =
+                                  lineAccountEdits[l.id] ?? l.accountCode;
+                                const amt = l.debitCents || l.creditCents;
+                                const confLevel = l.iaConfidencePct
+                                  ? l.iaConfidencePct >= 85
+                                    ? 'high'
+                                    : l.iaConfidencePct >= 50
+                                      ? 'medium'
+                                      : 'low'
+                                  : 'medium';
+                                const availablesForSelect =
+                                  availableAccounts.length > 0
+                                    ? availableAccounts
+                                    : accounts;
+                                return (
+                                  <tr
+                                    key={l.id}
+                                    className={
+                                      validated
+                                        ? 'cf-line-row cf-line-row--validated'
+                                        : 'cf-line-row'
+                                    }
+                                  >
+                                    <td>
+                                      {validated ? (
+                                        <span
+                                          className="material-symbols-outlined"
+                                          style={{
+                                            color: '#16a34a',
+                                            fontSize: '1.15rem',
+                                          }}
+                                          aria-label="Validé"
+                                        >
+                                          check_circle
+                                        </span>
+                                      ) : isBank ? (
+                                        <span
+                                          className="material-symbols-outlined"
+                                          style={{
+                                            color: 'var(--cf-text-muted)',
+                                            fontSize: '1rem',
+                                          }}
+                                          aria-label="Contrepartie"
+                                          title="Contrepartie banque (auto-validée)"
+                                        >
+                                          account_balance
+                                        </span>
+                                      ) : (
+                                        <span
+                                          className="material-symbols-outlined"
+                                          style={{
+                                            color: '#ca8a04',
+                                            fontSize: '1.15rem',
+                                          }}
+                                          aria-label="En attente"
+                                        >
+                                          pending
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td>
+                                      <div style={{ fontWeight: 500 }}>
+                                        {l.label ?? '(sans libellé)'}
+                                      </div>
+                                      {!isBank && l.iaReasoning ? (
+                                        <small
+                                          className="cf-muted"
+                                          style={{
+                                            display: 'block',
+                                            marginTop: 2,
+                                            fontStyle: 'italic',
+                                          }}
+                                        >
+                                          <span
+                                            className="material-symbols-outlined"
+                                            aria-hidden
+                                            style={{
+                                              fontSize: '0.9rem',
+                                              verticalAlign: 'middle',
+                                              marginRight: 2,
+                                              color: '#ff6b35',
+                                            }}
+                                          >
+                                            auto_awesome
+                                          </span>
+                                          {l.iaReasoning}
+                                        </small>
+                                      ) : null}
+                                    </td>
+                                    <td>
+                                      {validated || isBank ? (
+                                        <div>
+                                          <strong>{l.accountCode}</strong>
+                                          <br />
+                                          <small className="cf-muted">
+                                            {l.accountLabel}
+                                          </small>
+                                        </div>
+                                      ) : (
+                                        <select
+                                          value={currentEdit}
+                                          onChange={(ev) =>
+                                            setLineAccountEdit(
+                                              l.id,
+                                              ev.target.value,
+                                            )
+                                          }
+                                          style={{
+                                            fontSize: '0.82rem',
+                                            padding: '3px 5px',
+                                            maxWidth: 300,
+                                          }}
+                                        >
+                                          {availablesForSelect.map((a) => (
+                                            <option
+                                              key={a.id}
+                                              value={a.code}
+                                            >
+                                              {a.code} — {a.label}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      )}
+                                    </td>
+                                    <td>
+                                      {l.iaConfidencePct !== null &&
+                                      l.iaConfidencePct !== undefined ? (
+                                        <span
+                                          className={`cf-ia-chip__score cf-ia-chip__score--${confLevel}`}
+                                          title={
+                                            l.iaSuggestedAccountCode
+                                              ? `IA a proposé ${l.iaSuggestedAccountCode}`
+                                              : ''
+                                          }
+                                        >
+                                          {l.iaConfidencePct}%
+                                        </span>
+                                      ) : isBank ? (
+                                        <small className="cf-muted">
+                                          (contrepartie)
+                                        </small>
+                                      ) : (
+                                        <small className="cf-muted">
+                                          IA en cours…
+                                        </small>
+                                      )}
+                                    </td>
+                                    <td
+                                      style={{
+                                        textAlign: 'right',
+                                        fontVariantNumeric: 'tabular-nums',
+                                      }}
+                                    >
+                                      {fmtEuros(amt)}
+                                    </td>
+                                    <td>
+                                      {isBank ? (
+                                        <small className="cf-muted">—</small>
+                                      ) : validated ? (
+                                        <button
+                                          type="button"
+                                          className="btn-ghost btn-ghost--sm"
+                                          onClick={() =>
+                                            void doUnvalidateLine(l.id)
+                                          }
+                                        >
+                                          Dé-valider
+                                        </button>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          className="cf-btn cf-btn--sm cf-btn--primary"
+                                          onClick={() =>
+                                            void doValidateLine(
+                                              l.id,
+                                              currentEdit !== l.accountCode
+                                                ? currentEdit
+                                                : undefined,
+                                            )
+                                          }
+                                        >
+                                          Valider
+                                        </button>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
+                </React.Fragment>
               );
             })}
           </tbody>

@@ -69,6 +69,10 @@ interface EntryRow {
     creditCents: number;
     vatRate: { toNumber: () => number } | null;
     vatAmountCents: number | null;
+    validatedAt: Date | null;
+    iaSuggestedAccountCode: string | null;
+    iaReasoning: string | null;
+    iaConfidencePct: number | null;
     allocations: Array<{
       id: string;
       amountCents: number;
@@ -116,6 +120,10 @@ function toGraph(entry: EntryRow): AccountingEntryGraph {
         creditCents: l.creditCents,
         vatRate: l.vatRate ? l.vatRate.toNumber() : null,
         vatAmountCents: l.vatAmountCents,
+        validatedAt: l.validatedAt,
+        iaSuggestedAccountCode: l.iaSuggestedAccountCode,
+        iaReasoning: l.iaReasoning,
+        iaConfidencePct: l.iaConfidencePct,
         allocations: l.allocations.map(
           (a): AccountingAllocationGraph => ({
             id: a.id,
@@ -530,6 +538,46 @@ export class AccountingResolver {
     });
     const entry = await this.accounting.getEntry(club.id, input.entryId);
     return toGraph(entry as unknown as EntryRow);
+  }
+
+  // =========================================================================
+  // Validation granulaire par ligne
+  // =========================================================================
+
+  @Mutation(() => Boolean, { name: 'validateAccountingEntryLine' })
+  async validateAccountingEntryLine(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('lineId', { type: () => ID }) lineId: string,
+    @Args('accountCode', { type: () => String, nullable: true })
+    accountCode: string | null,
+  ): Promise<boolean> {
+    await this.accounting.validateEntryLine(
+      club.id,
+      user.userId,
+      lineId,
+      accountCode ?? undefined,
+    );
+    return true;
+  }
+
+  @Mutation(() => Boolean, { name: 'unvalidateAccountingEntryLine' })
+  async unvalidateAccountingEntryLine(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('lineId', { type: () => ID }) lineId: string,
+  ): Promise<boolean> {
+    await this.accounting.unvalidateEntryLine(club.id, user.userId, lineId);
+    return true;
+  }
+
+  @Mutation(() => Boolean, { name: 'deleteClubAccountingEntryPermanent' })
+  async deleteClubAccountingEntryPermanent(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<boolean> {
+    return this.accounting.deleteEntryPermanent(club.id, user.userId, id);
   }
 
   // Mutation explicite de seed (fallback UI : bouton "Initialiser le plan")

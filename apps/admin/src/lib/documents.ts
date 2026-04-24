@@ -1815,6 +1815,10 @@ const ACCOUNTING_ENTRY_FIELDS = `
     creditCents
     vatRate
     vatAmountCents
+    validatedAt
+    iaSuggestedAccountCode
+    iaReasoning
+    iaConfidencePct
     allocations {
       id
       amountCents
@@ -2175,6 +2179,27 @@ export const SUGGEST_ACCOUNTING_CATEGORIZATION = gql`
 export const INIT_CLUB_ACCOUNTING_PLAN = gql`
   mutation InitClubAccountingPlan {
     initClubAccountingPlan
+  }
+`;
+
+export const VALIDATE_ACCOUNTING_ENTRY_LINE = gql`
+  mutation ValidateAccountingEntryLine(
+    $lineId: ID!
+    $accountCode: String
+  ) {
+    validateAccountingEntryLine(lineId: $lineId, accountCode: $accountCode)
+  }
+`;
+
+export const UNVALIDATE_ACCOUNTING_ENTRY_LINE = gql`
+  mutation UnvalidateAccountingEntryLine($lineId: ID!) {
+    unvalidateAccountingEntryLine(lineId: $lineId)
+  }
+`;
+
+export const DELETE_CLUB_ACCOUNTING_ENTRY_PERMANENT = gql`
+  mutation DeleteClubAccountingEntryPermanent($id: ID!) {
+    deleteClubAccountingEntryPermanent(id: $id)
   }
 `;
 

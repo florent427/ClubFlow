@@ -1134,6 +1134,10 @@ export type AccountingEntryLineRow = {
   creditCents: number;
   vatRate: number | null;
   vatAmountCents: number | null;
+  validatedAt: string | null;
+  iaSuggestedAccountCode: string | null;
+  iaReasoning: string | null;
+  iaConfidencePct: number | null;
   allocations: AccountingAllocationRow[];
 };
 export type AccountingDocumentRow = {

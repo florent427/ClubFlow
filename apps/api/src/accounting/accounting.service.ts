@@ -699,14 +699,17 @@ export class AccountingService {
             clubId,
             accountCode: p.accountCode,
             accountLabel: p.accountLabel,
-            label: p.userChoseAccount
-              ? p.articleLabel
-              : `${p.articleLabel} — [Compte provisoire, catégorisation IA en cours]`,
+            label: p.articleLabel,
             side: p.side,
             debitCents: p.side === AccountingLineSide.DEBIT ? p.amountCents : 0,
             creditCents:
               p.side === AccountingLineSide.CREDIT ? p.amountCents : 0,
             sortOrder: i,
+            // Si compte choisi par l'user → marqué comme validé direct
+            // (pas besoin de revue IA). Sinon → en attente.
+            ...(p.userChoseAccount
+              ? { validatedAt: new Date(), validatedByUserId: userId }
+              : {}),
           },
         });
         createdLineIds.push({ lineId: line.id, article: p });
@@ -730,7 +733,8 @@ export class AccountingService {
         );
       }
 
-      // Ligne contrepartie banque (total facture)
+      // Ligne contrepartie banque (total facture) — auto-validée car
+      // c'est la contrepartie, pas une ligne "article" à catégoriser.
       await tx.accountingEntryLine.create({
         data: {
           entryId: entry.id,
@@ -743,6 +747,8 @@ export class AccountingService {
           creditCents:
             counterSide === AccountingLineSide.CREDIT ? input.amountCents : 0,
           sortOrder: preparedLines.length,
+          validatedAt: new Date(),
+          validatedByUserId: userId,
         },
       });
 
@@ -865,16 +871,17 @@ export class AccountingService {
             data: {
               accountCode: newAccount.code,
               accountLabel: newAccount.label,
-              label:
-                `${art.articleLabel} — [IA ${confPct}% : ${suggestion.reasoning ?? ''}]`.slice(
-                  0,
-                  200,
-                ),
+              // Label propre (juste le nom de l'article) — reasoning
+              // stocké dans iaReasoning pour affichage dédié UI.
+              label: art.articleLabel,
               side: newSide,
               debitCents:
                 newSide === AccountingLineSide.DEBIT ? art.amountCents : 0,
               creditCents:
                 newSide === AccountingLineSide.CREDIT ? art.amountCents : 0,
+              iaSuggestedAccountCode: newAccount.code,
+              iaReasoning: suggestion.reasoning?.slice(0, 500) ?? null,
+              iaConfidencePct: confPct,
             },
           });
           return { status: 'ok' as const, lineId: updated.id };
@@ -882,7 +889,7 @@ export class AccountingService {
 
         if (updateResult.status === 'ok') {
           this.logger.log(
-            `[Entry ${entryId}] ✅ Article "${art.articleLabel}" → ${newAccount.code} "${newAccount.label}" (${Math.round((suggestion.confidencePerField.accountCode ?? 0) * 100)}%)`,
+            `[Entry ${entryId}] ✅ Article "${art.articleLabel}" → ${newAccount.code} "${newAccount.label}" (${Math.round((suggestion.confidencePerField.accountCode ?? 0) * 100)}%) — ${suggestion.reasoning?.slice(0, 100) ?? ''}`,
           );
         } else {
           this.logger.warn(
@@ -1148,6 +1155,206 @@ export class AccountingService {
     });
 
     return contra;
+  }
+
+  // ========================================================================
+  // Validation granulaire par ligne
+  // ========================================================================
+
+  /**
+   * Valide UNE ligne comptable (le user accepte le compte proposé par
+   * l'IA, éventuellement après correction). Si toutes les lignes
+   * "article" de l'entry sont validées, l'entry bascule automatiquement
+   * en POSTED (comptabilisée).
+   *
+   * Contrepartie banque (512/530) est auto-validée à la création — pas
+   * besoin de l'attendre.
+   */
+  async validateEntryLine(
+    clubId: string,
+    userId: string,
+    lineId: string,
+    newAccountCode?: string,
+  ): Promise<{
+    lineId: string;
+    entryPostedAutomatically: boolean;
+  }> {
+    const line = await this.prisma.accountingEntryLine.findFirst({
+      where: { id: lineId, clubId },
+      include: { entry: true },
+    });
+    if (!line) throw new NotFoundException('Ligne introuvable');
+    if (line.entry.status !== AccountingEntryStatus.NEEDS_REVIEW) {
+      throw new BadRequestException(
+        `Impossible de valider une ligne d'une écriture en statut ${line.entry.status}.`,
+      );
+    }
+    await this.period.assertDateIsOpen(clubId, line.entry.occurredAt);
+
+    // Si nouveau compte fourni → on change le compte + on recalcule side
+    let updatedLine = line;
+    if (newAccountCode && newAccountCode !== line.accountCode) {
+      const newAccount = await this.lookupAccount(clubId, newAccountCode);
+      const newSide = this.deriveSide(
+        newAccount.kind,
+        line.entry.kind,
+        newAccount.code,
+      );
+      const amt = line.debitCents + line.creditCents;
+      updatedLine = (await this.prisma.accountingEntryLine.update({
+        where: { id: lineId },
+        data: {
+          accountCode: newAccount.code,
+          accountLabel: newAccount.label,
+          side: newSide,
+          debitCents: newSide === AccountingLineSide.DEBIT ? amt : 0,
+          creditCents: newSide === AccountingLineSide.CREDIT ? amt : 0,
+          validatedAt: new Date(),
+          validatedByUserId: userId,
+        },
+        include: { entry: true },
+      })) as typeof line;
+    } else {
+      updatedLine = (await this.prisma.accountingEntryLine.update({
+        where: { id: lineId },
+        data: { validatedAt: new Date(), validatedByUserId: userId },
+        include: { entry: true },
+      })) as typeof line;
+    }
+
+    await this.audit.log({
+      clubId,
+      userId,
+      entryId: line.entry.id,
+      action: AccountingAuditAction.UPDATE,
+      metadata: {
+        source: 'LINE_VALIDATION',
+        lineId,
+        accountCode: updatedLine.accountCode,
+        changed: newAccountCode ? { old: line.accountCode, new: updatedLine.accountCode } : null,
+      },
+    });
+
+    // Vérifie si toutes les lignes de l'entry sont validées → auto POSTED
+    const unvalidated = await this.prisma.accountingEntryLine.count({
+      where: {
+        entryId: line.entry.id,
+        validatedAt: null,
+      },
+    });
+
+    let entryPostedAutomatically = false;
+    if (unvalidated === 0) {
+      await this.prisma.accountingEntry.update({
+        where: { id: line.entry.id },
+        data: { status: AccountingEntryStatus.POSTED },
+      });
+      entryPostedAutomatically = true;
+      await this.audit.log({
+        clubId,
+        userId,
+        entryId: line.entry.id,
+        action: AccountingAuditAction.UPDATE,
+        metadata: { source: 'AUTO_POSTED_AFTER_ALL_LINES_VALIDATED' },
+      });
+      this.logger.log(
+        `[Entry ${line.entry.id}] Toutes les lignes validées → status POSTED`,
+      );
+    }
+
+    return { lineId, entryPostedAutomatically };
+  }
+
+  /**
+   * Rejette une ligne : remet validatedAt=null. Utilisé si l'user a
+   * validé par erreur et veut corriger avant que l'entry passe POSTED.
+   * N'est possible QUE tant que l'entry est NEEDS_REVIEW.
+   */
+  async unvalidateEntryLine(
+    clubId: string,
+    userId: string,
+    lineId: string,
+  ): Promise<void> {
+    const line = await this.prisma.accountingEntryLine.findFirst({
+      where: { id: lineId, clubId },
+      include: { entry: true },
+    });
+    if (!line) throw new NotFoundException('Ligne introuvable');
+    if (line.entry.status !== AccountingEntryStatus.NEEDS_REVIEW) {
+      throw new BadRequestException(
+        'Impossible de dé-valider une ligne déjà comptabilisée.',
+      );
+    }
+    await this.prisma.accountingEntryLine.update({
+      where: { id: lineId },
+      data: { validatedAt: null, validatedByUserId: null },
+    });
+    await this.audit.log({
+      clubId,
+      userId,
+      entryId: line.entry.id,
+      action: AccountingAuditAction.UPDATE,
+      metadata: { source: 'LINE_UNVALIDATION', lineId },
+    });
+  }
+
+  // ========================================================================
+  // Suppression (dur) — UNIQUEMENT si écriture non comptabilisée
+  // ========================================================================
+
+  /**
+   * Supprime définitivement une écriture et ses lignes/allocations.
+   *
+   * ⚠️ IMPORTANT : juridiquement, ce n'est autorisé QUE si l'écriture
+   * n'a pas encore été comptabilisée (statuts DRAFT, NEEDS_REVIEW,
+   * CANCELLED). Pour une écriture POSTED ou LOCKED, il faut une
+   * contre-passation (`createContraEntry`) qui laisse une trace.
+   *
+   * Référence : art. L123-22 Code de commerce, PCG obligation de piste
+   * d'audit fiable (art. A.47 A-1 LPF).
+   */
+  async deleteEntryPermanent(
+    clubId: string,
+    userId: string,
+    entryId: string,
+  ): Promise<boolean> {
+    const entry = await this.prisma.accountingEntry.findFirst({
+      where: { id: entryId, clubId },
+    });
+    if (!entry) throw new NotFoundException('Écriture introuvable');
+    if (
+      entry.status === AccountingEntryStatus.POSTED ||
+      entry.status === AccountingEntryStatus.LOCKED
+    ) {
+      throw new ForbiddenException(
+        `Suppression interdite pour une écriture ${entry.status}. ` +
+          `Juridiquement, une écriture comptabilisée doit être conservée : ` +
+          `utilise une contre-passation pour l'annuler.`,
+      );
+    }
+
+    // Soft-block : les entries avec un paymentId (auto depuis encaissement)
+    // ne peuvent pas être supprimées non plus, même en NEEDS_REVIEW — elles
+    // correspondent à un flux financier réel.
+    if (entry.paymentId) {
+      throw new ForbiddenException(
+        'Cette écriture est liée à un paiement réel, suppression interdite. ' +
+          'Utilise une contre-passation.',
+      );
+    }
+
+    await this.prisma.accountingEntry.delete({ where: { id: entryId } });
+    await this.audit.log({
+      clubId,
+      userId,
+      entryId,
+      action: AccountingAuditAction.CANCEL,
+      metadata: { source: 'PERMANENT_DELETE', priorStatus: entry.status },
+    });
+    this.logger.log(
+      `Entry ${entryId} supprimée définitivement par user ${userId} (statut ${entry.status}).`,
+    );
+    return true;
   }
 
   // ========================================================================

@@ -11383,6 +11383,61 @@ a:focus-visible {
   border-radius: 3px;
 }
 
+/* Expand bouton + sous-lignes dans la liste comptable */
+.cf-expand-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  margin-right: 6px;
+  color: var(--cf-text-muted, #475569);
+  vertical-align: middle;
+  border-radius: 3px;
+}
+.cf-expand-btn:hover {
+  background: rgba(15, 23, 42, 0.06);
+  color: var(--cf-primary, #000666);
+}
+.cf-expand-btn .material-symbols-outlined {
+  font-size: 1.15rem;
+  vertical-align: middle;
+}
+.cf-expanded-row {
+  background: rgba(15, 23, 42, 0.02);
+}
+.cf-entry-lines {
+  padding: 12px 20px;
+  border-left: 3px solid var(--cf-accent, #ff6b35);
+  background: rgba(255, 107, 53, 0.02);
+}
+.cf-entry-lines__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.cf-entry-lines__table thead th {
+  text-align: left;
+  padding: 4px 8px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--cf-text-muted, #475569);
+  border-bottom: 1px solid var(--cf-border-light, #f1f5f9);
+}
+.cf-entry-lines__table td {
+  padding: 8px;
+  vertical-align: top;
+}
+.cf-line-row {
+  border-bottom: 1px solid var(--cf-border-light, #f1f5f9);
+}
+.cf-line-row:last-child {
+  border-bottom: none;
+}
+.cf-line-row--validated {
+  background: rgba(22, 163, 74, 0.03);
+}
+
 /* Masque la bulle flottante Aïko quand un drawer ou modal est ouvert :
  * elle chevauche les actions du drawer (boutons Créer/Annuler en
  * bottom-right) et parasite l'interaction. Le data-attribute est posé
