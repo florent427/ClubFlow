@@ -906,13 +906,53 @@ export type ShopOrdersQueryData = { shopOrders: ShopOrder[] };
 export type MarkShopOrderPaidMutationData = { markShopOrderPaid: ShopOrder };
 export type CancelShopOrderMutationData = { cancelShopOrder: ShopOrder };
 
-export type SponsorshipDealStatusGql = 'ACTIVE' | 'CLOSED';
+export type SponsorshipDealStatusGql =
+  | 'DRAFT'
+  | 'ACTIVE'
+  | 'CLOSED'
+  | 'CANCELLED';
+export type SponsorshipKindGql = 'CASH' | 'IN_KIND';
+export type SponsorshipDocumentKindGql =
+  | 'CONTRACT'
+  | 'INVOICE'
+  | 'RECEIPT'
+  | 'OTHER';
+
+export type SponsorshipInstallmentRow = {
+  id: string;
+  expectedAmountCents: number;
+  receivedAmountCents: number | null;
+  expectedAt: string | null;
+  receivedAt: string | null;
+  paymentId: string | null;
+  accountingEntryId: string | null;
+  createdAt: string;
+};
+export type SponsorshipDocumentRow = {
+  id: string;
+  mediaAssetId: string;
+  kind: SponsorshipDocumentKindGql;
+  fileName: string;
+  publicUrl: string;
+  mimeType: string;
+};
 export type SponsorshipDeal = {
   id: string;
   sponsorName: string;
+  kind: SponsorshipKindGql;
   status: SponsorshipDealStatusGql;
+  valueCents: number | null;
   amountCents: number | null;
+  inKindDescription: string | null;
+  projectId: string | null;
+  projectTitle: string | null;
+  contactId: string | null;
+  contactName: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
   notes: string | null;
+  installments: SponsorshipInstallmentRow[];
+  documents: SponsorshipDocumentRow[];
   createdAt: string;
   updatedAt: string;
 };
@@ -926,13 +966,60 @@ export type UpdateClubSponsorshipDealData = {
   updateClubSponsorshipDeal: SponsorshipDeal;
 };
 
-export type GrantApplicationStatusGql = 'DRAFT' | 'SUBMITTED' | 'ARCHIVED';
+export type GrantApplicationStatusGql =
+  | 'DRAFT'
+  | 'REQUESTED'
+  | 'GRANTED'
+  | 'PARTIALLY_PAID'
+  | 'PAID'
+  | 'REPORTED'
+  | 'SETTLED'
+  | 'REJECTED'
+  | 'ARCHIVED'
+  // legacy value for rows not yet migrated, kept for compat
+  | 'SUBMITTED';
+export type GrantDocumentKindGql =
+  | 'APPLICATION'
+  | 'DECISION'
+  | 'INVOICE'
+  | 'REPORT'
+  | 'OTHER';
+export type GrantInstallmentRow = {
+  id: string;
+  expectedAmountCents: number;
+  receivedAmountCents: number | null;
+  expectedAt: string | null;
+  receivedAt: string | null;
+  paymentId: string | null;
+  accountingEntryId: string | null;
+  notes: string | null;
+  createdAt: string;
+};
+export type GrantDocumentRow = {
+  id: string;
+  mediaAssetId: string;
+  kind: GrantDocumentKindGql;
+  fileName: string;
+  publicUrl: string;
+  mimeType: string;
+};
 export type GrantApplication = {
   id: string;
   title: string;
+  fundingBody: string | null;
   status: GrantApplicationStatusGql;
+  requestedAmountCents: number | null;
+  grantedAmountCents: number | null;
   amountCents: number | null;
+  projectId: string | null;
+  projectTitle: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  reportDueAt: string | null;
+  reportSubmittedAt: string | null;
   notes: string | null;
+  installments: GrantInstallmentRow[];
+  documents: GrantDocumentRow[];
   createdAt: string;
   updatedAt: string;
 };
@@ -950,6 +1037,15 @@ export type SubmitClubGrantApplicationData = {
 };
 export type ArchiveClubGrantApplicationData = {
   archiveClubGrantApplication: GrantApplication;
+};
+
+export type SubmitReceiptForOcrData = {
+  submitReceiptForOcr: {
+    extractionId: string | null;
+    entryId: string | null;
+    duplicateOfEntryId: string | null;
+    budgetBlocked: boolean;
+  };
 };
 
 export type AccountingEntryKindGql =

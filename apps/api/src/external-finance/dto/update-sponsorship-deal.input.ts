@@ -1,7 +1,5 @@
 import { Field, ID, InputType, Int } from '@nestjs/graphql';
-import { SponsorshipDealStatus } from '@prisma/client';
 import {
-  IsEnum,
   IsInt,
   IsOptional,
   IsString,
@@ -28,16 +26,72 @@ export class UpdateSponsorshipDealInput {
   @IsOptional()
   @IsInt()
   @Min(0)
-  amountCents?: number | null;
+  valueCents?: number | null;
 
-  @Field(() => String, { nullable: true })
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  inKindDescription?: string | null;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsUUID()
+  projectId?: string | null;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsUUID()
+  contactId?: string | null;
+
+  @Field(() => Date, { nullable: true })
+  @IsOptional()
+  startsAt?: Date | null;
+
+  @Field(() => Date, { nullable: true })
+  @IsOptional()
+  endsAt?: Date | null;
+
+  @Field({ nullable: true })
   @IsOptional()
   @IsString()
   @MaxLength(2000)
   notes?: string | null;
+}
 
-  @Field(() => SponsorshipDealStatus, { nullable: true })
+@InputType()
+export class CreateSponsorshipInstallmentInput {
+  @Field(() => ID)
+  @IsUUID()
+  dealId!: string;
+
+  @Field(() => Int)
+  @IsInt()
+  @Min(1)
+  expectedAmountCents!: number;
+
+  @Field(() => Date, { nullable: true })
   @IsOptional()
-  @IsEnum(SponsorshipDealStatus)
-  status?: SponsorshipDealStatus;
+  expectedAt?: Date;
+}
+
+@InputType()
+export class MarkSponsorshipInstallmentReceivedInput {
+  @Field(() => ID)
+  @IsUUID()
+  id!: string;
+
+  @Field(() => Int)
+  @IsInt()
+  @Min(1)
+  receivedAmountCents!: number;
+
+  @Field(() => Date, { nullable: true })
+  @IsOptional()
+  receivedAt?: Date;
+
+  @Field(() => ID, { nullable: true })
+  @IsOptional()
+  @IsUUID()
+  paymentId?: string;
 }

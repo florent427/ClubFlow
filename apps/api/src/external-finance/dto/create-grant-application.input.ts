@@ -1,5 +1,13 @@
 import { Field, InputType, Int } from '@nestjs/graphql';
-import { IsInt, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
+import {
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 @InputType()
 export class CreateGrantApplicationInput {
@@ -9,13 +17,36 @@ export class CreateGrantApplicationInput {
   @MaxLength(200)
   title!: string;
 
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  fundingBody?: string;
+
   @Field(() => Int, { nullable: true })
   @IsOptional()
   @IsInt()
   @Min(0)
-  amountCents?: number;
+  requestedAmountCents?: number;
 
-  @Field(() => String, { nullable: true })
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsUUID()
+  projectId?: string;
+
+  @Field(() => Date, { nullable: true })
+  @IsOptional()
+  startsAt?: Date;
+
+  @Field(() => Date, { nullable: true })
+  @IsOptional()
+  endsAt?: Date;
+
+  @Field(() => Date, { nullable: true })
+  @IsOptional()
+  reportDueAt?: Date;
+
+  @Field({ nullable: true })
   @IsOptional()
   @IsString()
   @MaxLength(2000)

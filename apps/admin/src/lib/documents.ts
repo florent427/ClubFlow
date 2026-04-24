@@ -1719,9 +1719,36 @@ export const CANCEL_SHOP_ORDER = gql`
 const SPONSORSHIP_FIELDS = `
   id
   sponsorName
+  kind
   status
+  valueCents
   amountCents
+  inKindDescription
+  projectId
+  projectTitle
+  contactId
+  contactName
+  startsAt
+  endsAt
   notes
+  installments {
+    id
+    expectedAmountCents
+    receivedAmountCents
+    expectedAt
+    receivedAt
+    paymentId
+    accountingEntryId
+    createdAt
+  }
+  documents {
+    id
+    mediaAssetId
+    kind
+    fileName
+    publicUrl
+    mimeType
+  }
   createdAt
   updatedAt
 `;
@@ -1729,9 +1756,37 @@ const SPONSORSHIP_FIELDS = `
 const GRANT_FIELDS = `
   id
   title
+  fundingBody
   status
+  requestedAmountCents
+  grantedAmountCents
   amountCents
+  projectId
+  projectTitle
+  startsAt
+  endsAt
+  reportDueAt
+  reportSubmittedAt
   notes
+  installments {
+    id
+    expectedAmountCents
+    receivedAmountCents
+    expectedAt
+    receivedAt
+    paymentId
+    accountingEntryId
+    notes
+    createdAt
+  }
+  documents {
+    id
+    mediaAssetId
+    kind
+    fileName
+    publicUrl
+    mimeType
+  }
   createdAt
   updatedAt
 `;
@@ -1807,6 +1862,78 @@ export const UPDATE_CLUB_SPONSORSHIP_DEAL = gql`
   }
 `;
 
+export const ACTIVATE_CLUB_SPONSORSHIP_DEAL = gql`
+  mutation ActivateClubSponsorshipDeal($id: ID!) {
+    activateClubSponsorshipDeal(id: $id) {
+      ${SPONSORSHIP_FIELDS}
+    }
+  }
+`;
+
+export const CLOSE_CLUB_SPONSORSHIP_DEAL = gql`
+  mutation CloseClubSponsorshipDeal($id: ID!) {
+    closeClubSponsorshipDeal(id: $id) {
+      ${SPONSORSHIP_FIELDS}
+    }
+  }
+`;
+
+export const CANCEL_CLUB_SPONSORSHIP_DEAL = gql`
+  mutation CancelClubSponsorshipDeal($id: ID!) {
+    cancelClubSponsorshipDeal(id: $id) {
+      ${SPONSORSHIP_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_CLUB_SPONSORSHIP_INSTALLMENT = gql`
+  mutation CreateClubSponsorshipInstallment(
+    $input: CreateSponsorshipInstallmentInput!
+  ) {
+    createClubSponsorshipInstallment(input: $input) {
+      id
+    }
+  }
+`;
+
+export const MARK_CLUB_SPONSORSHIP_INSTALLMENT_RECEIVED = gql`
+  mutation MarkClubSponsorshipInstallmentReceived(
+    $input: MarkSponsorshipInstallmentReceivedInput!
+  ) {
+    markClubSponsorshipInstallmentReceived(input: $input) {
+      id
+      receivedAt
+      receivedAmountCents
+    }
+  }
+`;
+
+export const DELETE_CLUB_SPONSORSHIP_INSTALLMENT = gql`
+  mutation DeleteClubSponsorshipInstallment($id: ID!) {
+    deleteClubSponsorshipInstallment(id: $id)
+  }
+`;
+
+export const ATTACH_CLUB_SPONSORSHIP_DOCUMENT = gql`
+  mutation AttachClubSponsorshipDocument(
+    $dealId: ID!
+    $mediaAssetId: ID!
+    $kind: SponsorshipDocumentKind
+  ) {
+    attachClubSponsorshipDocument(
+      dealId: $dealId
+      mediaAssetId: $mediaAssetId
+      kind: $kind
+    )
+  }
+`;
+
+export const DETACH_CLUB_SPONSORSHIP_DOCUMENT = gql`
+  mutation DetachClubSponsorshipDocument($documentId: ID!) {
+    detachClubSponsorshipDocument(documentId: $documentId)
+  }
+`;
+
 export const DELETE_CLUB_SPONSORSHIP_DEAL = gql`
   mutation DeleteClubSponsorshipDeal($id: ID!) {
     deleteClubSponsorshipDeal(id: $id)
@@ -1850,6 +1977,84 @@ export const ARCHIVE_CLUB_GRANT_APPLICATION = gql`
     archiveClubGrantApplication(id: $id) {
       ${GRANT_FIELDS}
     }
+  }
+`;
+
+export const MARK_CLUB_GRANT_GRANTED = gql`
+  mutation MarkClubGrantGranted($input: MarkGrantGrantedInput!) {
+    markClubGrantGranted(input: $input) {
+      ${GRANT_FIELDS}
+    }
+  }
+`;
+
+export const REJECT_CLUB_GRANT_APPLICATION = gql`
+  mutation RejectClubGrantApplication($id: ID!) {
+    rejectClubGrantApplication(id: $id) {
+      ${GRANT_FIELDS}
+    }
+  }
+`;
+
+export const MARK_CLUB_GRANT_REPORTED = gql`
+  mutation MarkClubGrantReported($id: ID!) {
+    markClubGrantReported(id: $id) {
+      ${GRANT_FIELDS}
+    }
+  }
+`;
+
+export const SETTLE_CLUB_GRANT_APPLICATION = gql`
+  mutation SettleClubGrantApplication($id: ID!) {
+    settleClubGrantApplication(id: $id) {
+      ${GRANT_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_CLUB_GRANT_INSTALLMENT = gql`
+  mutation CreateClubGrantInstallment($input: CreateGrantInstallmentInput!) {
+    createClubGrantInstallment(input: $input) {
+      id
+    }
+  }
+`;
+
+export const MARK_CLUB_GRANT_INSTALLMENT_RECEIVED = gql`
+  mutation MarkClubGrantInstallmentReceived(
+    $input: MarkGrantInstallmentReceivedInput!
+  ) {
+    markClubGrantInstallmentReceived(input: $input) {
+      id
+      receivedAt
+      receivedAmountCents
+    }
+  }
+`;
+
+export const DELETE_CLUB_GRANT_INSTALLMENT = gql`
+  mutation DeleteClubGrantInstallment($id: ID!) {
+    deleteClubGrantInstallment(id: $id)
+  }
+`;
+
+export const ATTACH_CLUB_GRANT_DOCUMENT = gql`
+  mutation AttachClubGrantDocument(
+    $grantId: ID!
+    $mediaAssetId: ID!
+    $kind: GrantDocumentKind
+  ) {
+    attachClubGrantDocument(
+      grantId: $grantId
+      mediaAssetId: $mediaAssetId
+      kind: $kind
+    )
+  }
+`;
+
+export const DETACH_CLUB_GRANT_DOCUMENT = gql`
+  mutation DetachClubGrantDocument($documentId: ID!) {
+    detachClubGrantDocument(documentId: $documentId)
   }
 `;
 
@@ -1918,6 +2123,25 @@ export const CLUB_ACCOUNTING_COHORTS = gql`
 export const CANCEL_CLUB_ACCOUNTING_ENTRY = gql`
   mutation CancelClubAccountingEntry($input: CancelAccountingEntryInput!) {
     cancelClubAccountingEntry(input: $input) {
+      ${ACCOUNTING_ENTRY_FIELDS}
+    }
+  }
+`;
+
+export const SUBMIT_RECEIPT_FOR_OCR = gql`
+  mutation SubmitReceiptForOcr($mediaAssetId: ID!) {
+    submitReceiptForOcr(mediaAssetId: $mediaAssetId) {
+      extractionId
+      entryId
+      duplicateOfEntryId
+      budgetBlocked
+    }
+  }
+`;
+
+export const CONFIRM_ACCOUNTING_EXTRACTION = gql`
+  mutation ConfirmAccountingExtraction($input: ConfirmExtractionInput!) {
+    confirmAccountingExtraction(input: $input) {
       ${ACCOUNTING_ENTRY_FIELDS}
     }
   }

@@ -1,7 +1,5 @@
 import { Field, ID, InputType, Int } from '@nestjs/graphql';
-import { GrantApplicationStatus } from '@prisma/client';
 import {
-  IsEnum,
   IsInt,
   IsOptional,
   IsString,
@@ -24,20 +22,99 @@ export class UpdateGrantApplicationInput {
   @MaxLength(200)
   title?: string;
 
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  fundingBody?: string;
+
   @Field(() => Int, { nullable: true })
   @IsOptional()
   @IsInt()
   @Min(0)
-  amountCents?: number | null;
+  requestedAmountCents?: number | null;
 
-  @Field(() => String, { nullable: true })
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  grantedAmountCents?: number | null;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsUUID()
+  projectId?: string | null;
+
+  @Field(() => Date, { nullable: true })
+  @IsOptional()
+  startsAt?: Date | null;
+
+  @Field(() => Date, { nullable: true })
+  @IsOptional()
+  endsAt?: Date | null;
+
+  @Field(() => Date, { nullable: true })
+  @IsOptional()
+  reportDueAt?: Date | null;
+
+  @Field({ nullable: true })
   @IsOptional()
   @IsString()
   @MaxLength(2000)
   notes?: string | null;
+}
 
-  @Field(() => GrantApplicationStatus, { nullable: true })
+@InputType()
+export class MarkGrantGrantedInput {
+  @Field(() => ID)
+  @IsUUID()
+  id!: string;
+
+  @Field(() => Int)
+  @IsInt()
+  @Min(1)
+  grantedAmountCents!: number;
+}
+
+@InputType()
+export class CreateGrantInstallmentInput {
+  @Field(() => ID)
+  @IsUUID()
+  grantId!: string;
+
+  @Field(() => Int)
+  @IsInt()
+  @Min(1)
+  expectedAmountCents!: number;
+
+  @Field(() => Date, { nullable: true })
   @IsOptional()
-  @IsEnum(GrantApplicationStatus)
-  status?: GrantApplicationStatus;
+  expectedAt?: Date;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  notes?: string;
+}
+
+@InputType()
+export class MarkGrantInstallmentReceivedInput {
+  @Field(() => ID)
+  @IsUUID()
+  id!: string;
+
+  @Field(() => Int)
+  @IsInt()
+  @Min(1)
+  receivedAmountCents!: number;
+
+  @Field(() => Date, { nullable: true })
+  @IsOptional()
+  receivedAt?: Date;
+
+  @Field(() => ID, { nullable: true })
+  @IsOptional()
+  @IsUUID()
+  paymentId?: string;
 }

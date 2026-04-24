@@ -21,7 +21,9 @@ import { AccountingAuditService } from './accounting-audit.service';
 import { AccountingMappingService } from './accounting-mapping.service';
 import { AccountingPeriodService } from './accounting-period.service';
 import { AccountingService } from './accounting.service';
+import { ReceiptOcrService } from './receipt-ocr.service';
 import { CancelAccountingEntryInput } from './dto/cancel-accounting-entry.input';
+import { ConfirmExtractionInput } from './dto/confirm-extraction.input';
 import { CreateAccountingEntryInput } from './dto/create-accounting-entry.input';
 import {
   AccountingAccountGraph,
@@ -35,6 +37,7 @@ import {
   AccountingEntryLineGraph,
 } from './models/accounting-entry.model';
 import { AccountingSummaryGraph } from './models/accounting-summary.model';
+import { ReceiptOcrResultGraph } from './models/receipt-ocr-result.model';
 
 interface EntryRow {
   id: string;
@@ -153,6 +156,7 @@ export class AccountingResolver {
     private readonly mappingService: AccountingMappingService,
     private readonly periodService: AccountingPeriodService,
     private readonly auditService: AccountingAuditService,
+    private readonly receiptOcr: ReceiptOcrService,
   ) {}
 
   // =========================================================================
@@ -391,6 +395,49 @@ export class AccountingResolver {
   ): Promise<boolean> {
     await this.periodService.closeFiscalYear(club.id, year, user.userId);
     return true;
+  }
+
+  // =========================================================================
+  // OCR IA — pipeline reçus/factures
+  // =========================================================================
+
+  @Mutation(() => ReceiptOcrResultGraph, { name: 'submitReceiptForOcr' })
+  async submitReceiptForOcr(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('mediaAssetId', { type: () => ID }) mediaAssetId: string,
+  ): Promise<ReceiptOcrResultGraph> {
+    const result = await this.receiptOcr.extractFromMediaAsset(
+      club.id,
+      mediaAssetId,
+      user.userId,
+    );
+    return {
+      extractionId: result.extractionId || null,
+      entryId: result.entryId,
+      duplicateOfEntryId: result.duplicateOfEntryId,
+      budgetBlocked: result.budgetBlocked,
+    };
+  }
+
+  @Mutation(() => AccountingEntryGraph, { name: 'confirmAccountingExtraction' })
+  async confirmAccountingExtraction(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('input') input: ConfirmExtractionInput,
+  ): Promise<AccountingEntryGraph> {
+    await this.accounting.confirmExtraction(club.id, user.userId, input.entryId, {
+      label: input.label,
+      amountCents: input.amountCents,
+      occurredAt: input.occurredAt,
+      accountCode: input.accountCode,
+      projectId: input.projectId ?? null,
+      cohortCode: input.cohortCode ?? null,
+      disciplineCode: input.disciplineCode ?? null,
+      kind: 'EXPENSE' as const,
+    });
+    const entry = await this.accounting.getEntry(club.id, input.entryId);
+    return toGraph(entry as unknown as EntryRow);
   }
 
   // Legacy compat mutation (ancienne UI)
