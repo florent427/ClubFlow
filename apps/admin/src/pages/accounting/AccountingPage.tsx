@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
   CANCEL_CLUB_ACCOUNTING_ENTRY,
@@ -9,14 +9,19 @@ import {
   CLUB_ACCOUNTING_SUMMARY,
   CREATE_CLUB_ACCOUNTING_ENTRY,
   SUBMIT_RECEIPT_FOR_OCR,
+  SUGGEST_ACCOUNTING_CATEGORIZATION,
 } from '../../lib/documents';
+import { CLUB_PROJECTS } from '../../lib/projects-documents';
 import type {
   AccountingEntry,
+  AccountingSuggestion,
   ClubAccountingAccountsData,
   ClubAccountingCohortsData,
   ClubAccountingEntriesData,
   ClubAccountingSummaryData,
+  ClubProjectsData,
   SubmitReceiptForOcrData,
+  SuggestAccountingCategorizationData,
 } from '../../lib/types';
 import { useToast } from '../../components/ToastProvider';
 import { ConfirmModal, Drawer, EmptyState } from '../../components/ui';
@@ -90,6 +95,20 @@ function sourceLabel(source: string): string {
   }
 }
 
+function formatConfidence(score: number | null | undefined): string {
+  if (score === null || score === undefined) return '';
+  return `${Math.round(score * 100)}%`;
+}
+
+function confidenceLevel(
+  score: number | null | undefined,
+): 'high' | 'medium' | 'low' {
+  if (score === null || score === undefined) return 'medium';
+  if (score >= 0.85) return 'high';
+  if (score >= 0.5) return 'medium';
+  return 'low';
+}
+
 function statusLabel(status: string): string {
   switch (status) {
     case 'DRAFT':
@@ -134,8 +153,14 @@ export function AccountingPage() {
     CLUB_ACCOUNTING_COHORTS,
     { fetchPolicy: 'cache-and-network' },
   );
+  const { data: projectsData } = useQuery<ClubProjectsData>(CLUB_PROJECTS, {
+    fetchPolicy: 'cache-and-network',
+  });
   const [create, { loading: creating }] = useMutation(
     CREATE_CLUB_ACCOUNTING_ENTRY,
+  );
+  const [suggest] = useMutation<SuggestAccountingCategorizationData>(
+    SUGGEST_ACCOUNTING_CATEGORIZATION,
   );
   const [cancel] = useMutation(CANCEL_CLUB_ACCOUNTING_ENTRY);
   const [submitOcr, { loading: ocrLoading }] =
@@ -164,6 +189,13 @@ export function AccountingPage() {
   const [cohortCode, setCohortCode] = useState('');
   const [disciplineCode, setDisciplineCode] = useState('');
   const [freeformTagsStr, setFreeformTagsStr] = useState('');
+  const [projectId, setProjectId] = useState('');
+  // Suggestion IA (débouncée quand le libellé change)
+  const [suggestion, setSuggestion] = useState<AccountingSuggestion | null>(
+    null,
+  );
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const suggestTimerRef = useRef<number | null>(null);
 
   const entries = entriesData?.clubAccountingEntries ?? [];
   const filtered = useMemo(() => {
@@ -177,6 +209,7 @@ export function AccountingPage() {
   const summary = summaryData?.clubAccountingSummary;
   const accounts = accountsData?.clubAccountingAccounts ?? [];
   const cohorts = cohortsData?.clubAccountingCohorts ?? [];
+  const projects = projectsData?.clubProjects ?? [];
 
   // Filtre les comptes selon le kind sélectionné
   const availableAccounts = useMemo(() => {
@@ -197,6 +230,68 @@ export function AccountingPage() {
     const n = Number(cleaned);
     if (!Number.isFinite(n) || n < 0) return null;
     return Math.round(n * 100);
+  }
+
+  // Suggestion IA débounceée : déclenchée 700ms après la dernière
+  // modification du libellé (ou du montant), tant que le drawer est
+  // ouvert et que le libellé fait au moins 3 caractères.
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const trimmed = label.trim();
+    if (trimmed.length < 3) {
+      setSuggestion(null);
+      return;
+    }
+    if (suggestTimerRef.current !== null) {
+      window.clearTimeout(suggestTimerRef.current);
+    }
+    suggestTimerRef.current = window.setTimeout(() => {
+      void (async () => {
+        setSuggestLoading(true);
+        try {
+          const amountCents = parseEuros(amountEuros);
+          const res = await suggest({
+            variables: {
+              input: {
+                label: trimmed,
+                kind,
+                ...(amountCents !== null ? { amountCents } : {}),
+              },
+            },
+          });
+          setSuggestion(res.data?.suggestAccountingCategorization ?? null);
+        } catch {
+          // Silencieux : si l'IA échoue on n'affiche rien
+          setSuggestion(null);
+        } finally {
+          setSuggestLoading(false);
+        }
+      })();
+    }, 700);
+    return () => {
+      if (suggestTimerRef.current !== null) {
+        window.clearTimeout(suggestTimerRef.current);
+      }
+    };
+  }, [label, amountEuros, kind, drawerOpen, suggest]);
+
+  function applySuggestion(field: 'account' | 'cohort' | 'project' | 'discipline' | 'all') {
+    if (!suggestion) return;
+    if ((field === 'account' || field === 'all') && suggestion.accountCode) {
+      setAccountCode(suggestion.accountCode);
+    }
+    if ((field === 'cohort' || field === 'all') && suggestion.cohortCode) {
+      setCohortCode(suggestion.cohortCode);
+    }
+    if ((field === 'project' || field === 'all') && suggestion.projectId) {
+      setProjectId(suggestion.projectId);
+    }
+    if (
+      (field === 'discipline' || field === 'all') &&
+      suggestion.disciplineCode
+    ) {
+      setDisciplineCode(suggestion.disciplineCode);
+    }
   }
 
   async function onSubmit(e: FormEvent) {
@@ -230,6 +325,7 @@ export function AccountingPage() {
             ...(occurredOn
               ? { occurredAt: new Date(occurredOn).toISOString() }
               : {}),
+            ...(projectId ? { projectId } : {}),
             ...(cohortCode ? { cohortCode } : {}),
             ...(disciplineCode ? { disciplineCode } : {}),
             ...(tags.length > 0 ? { freeformTags: tags } : {}),
@@ -246,6 +342,8 @@ export function AccountingPage() {
       setCohortCode('');
       setDisciplineCode('');
       setFreeformTagsStr('');
+      setProjectId('');
+      setSuggestion(null);
       await Promise.all([refetchEntries(), refetchSummary()]);
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Erreur', 'error');
@@ -726,6 +824,100 @@ export function AccountingPage() {
               required
             />
           </label>
+          {suggestLoading ? (
+            <div className="cf-ia-suggestion cf-ia-suggestion--loading">
+              <span className="material-symbols-outlined" aria-hidden>
+                auto_awesome
+              </span>
+              Analyse IA en cours…
+            </div>
+          ) : suggestion &&
+            (suggestion.accountCode ||
+              suggestion.projectId ||
+              suggestion.cohortCode ||
+              suggestion.disciplineCode) ? (
+            <div className="cf-ia-suggestion">
+              <div className="cf-ia-suggestion__head">
+                <span className="material-symbols-outlined" aria-hidden>
+                  auto_awesome
+                </span>
+                <strong>Suggestion IA</strong>
+                <button
+                  type="button"
+                  className="cf-btn cf-btn--sm cf-btn--primary"
+                  onClick={() => applySuggestion('all')}
+                >
+                  Tout accepter
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost btn-ghost--sm"
+                  onClick={() => setSuggestion(null)}
+                >
+                  Ignorer
+                </button>
+              </div>
+              {suggestion.reasoning ? (
+                <p className="cf-ia-suggestion__reasoning">
+                  {suggestion.reasoning}
+                </p>
+              ) : null}
+              <div className="cf-ia-suggestion__fields">
+                {suggestion.accountCode ? (
+                  <button
+                    type="button"
+                    className={`cf-ia-chip cf-ia-chip--${confidenceLevel(suggestion.confidenceAccount)}`}
+                    onClick={() => applySuggestion('account')}
+                  >
+                    <small>Compte</small>
+                    {suggestion.accountCode} — {suggestion.accountLabel}
+                    <span className="cf-ia-chip__score">
+                      {formatConfidence(suggestion.confidenceAccount)}
+                    </span>
+                  </button>
+                ) : null}
+                {suggestion.projectId && suggestion.projectTitle ? (
+                  <button
+                    type="button"
+                    className={`cf-ia-chip cf-ia-chip--${confidenceLevel(suggestion.confidenceProject)}`}
+                    onClick={() => applySuggestion('project')}
+                  >
+                    <small>Projet</small>
+                    {suggestion.projectTitle}
+                    <span className="cf-ia-chip__score">
+                      {formatConfidence(suggestion.confidenceProject)}
+                    </span>
+                  </button>
+                ) : null}
+                {suggestion.cohortCode ? (
+                  <button
+                    type="button"
+                    className={`cf-ia-chip cf-ia-chip--${confidenceLevel(suggestion.confidenceCohort)}`}
+                    onClick={() => applySuggestion('cohort')}
+                  >
+                    <small>Cohorte</small>
+                    {suggestion.cohortCode}
+                    <span className="cf-ia-chip__score">
+                      {formatConfidence(suggestion.confidenceCohort)}
+                    </span>
+                  </button>
+                ) : null}
+                {suggestion.disciplineCode ? (
+                  <button
+                    type="button"
+                    className={`cf-ia-chip cf-ia-chip--${confidenceLevel(suggestion.confidenceDiscipline)}`}
+                    onClick={() => applySuggestion('discipline')}
+                  >
+                    <small>Discipline</small>
+                    {suggestion.disciplineCode}
+                    <span className="cf-ia-chip__score">
+                      {formatConfidence(suggestion.confidenceDiscipline)}
+                    </span>
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
           <label className="cf-field">
             <span>Compte comptable *</span>
             <select
@@ -762,6 +954,22 @@ export function AccountingPage() {
           </label>
           <fieldset className="cf-fieldset">
             <legend>Analytique (optionnel)</legend>
+            <label className="cf-field">
+              <span>Projet</span>
+              <select
+                value={projectId}
+                onChange={(e) => setProjectId(e.target.value)}
+              >
+                <option value="">— Fonctionnement général —</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.title}
+                    {p.status === 'ACTIVE' ? ' · actif' : ''}
+                    {p.status === 'PLANNED' ? ' · prévu' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label className="cf-field">
               <span>Cohorte</span>
               <select

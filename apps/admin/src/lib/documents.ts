@@ -2139,6 +2139,27 @@ export const SUBMIT_RECEIPT_FOR_OCR = gql`
   }
 `;
 
+export const SUGGEST_ACCOUNTING_CATEGORIZATION = gql`
+  mutation SuggestAccountingCategorization(
+    $input: SuggestAccountingCategorizationInput!
+  ) {
+    suggestAccountingCategorization(input: $input) {
+      accountCode
+      accountLabel
+      cohortCode
+      projectId
+      projectTitle
+      disciplineCode
+      confidenceAccount
+      confidenceCohort
+      confidenceProject
+      confidenceDiscipline
+      reasoning
+      budgetBlocked
+    }
+  }
+`;
+
 export const CONFIRM_ACCOUNTING_EXTRACTION = gql`
   mutation ConfirmAccountingExtraction($input: ConfirmExtractionInput!) {
     confirmAccountingExtraction(input: $input) {

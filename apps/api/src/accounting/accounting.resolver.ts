@@ -20,7 +20,9 @@ import { AccountingAllocationService } from './accounting-allocation.service';
 import { AccountingAuditService } from './accounting-audit.service';
 import { AccountingMappingService } from './accounting-mapping.service';
 import { AccountingPeriodService } from './accounting-period.service';
+import { AccountingSeedService } from './accounting-seed.service';
 import { AccountingService } from './accounting.service';
+import { AccountingSuggestionService } from './accounting-suggestion.service';
 import { ReceiptOcrService } from './receipt-ocr.service';
 import { CancelAccountingEntryInput } from './dto/cancel-accounting-entry.input';
 import { ConfirmExtractionInput } from './dto/confirm-extraction.input';
@@ -36,8 +38,10 @@ import {
   AccountingEntryGraph,
   AccountingEntryLineGraph,
 } from './models/accounting-entry.model';
+import { AccountingSuggestionGraph } from './models/accounting-suggestion.model';
 import { AccountingSummaryGraph } from './models/accounting-summary.model';
 import { ReceiptOcrResultGraph } from './models/receipt-ocr-result.model';
+import { SuggestAccountingCategorizationInput } from './dto/suggest-accounting-categorization.input';
 
 interface EntryRow {
   id: string;
@@ -157,6 +161,8 @@ export class AccountingResolver {
     private readonly periodService: AccountingPeriodService,
     private readonly auditService: AccountingAuditService,
     private readonly receiptOcr: ReceiptOcrService,
+    private readonly seedService: AccountingSeedService,
+    private readonly suggestionService: AccountingSuggestionService,
   ) {}
 
   // =========================================================================
@@ -227,7 +233,14 @@ export class AccountingResolver {
   async clubAccountingAccounts(
     @CurrentClub() club: Club,
   ): Promise<AccountingAccountGraph[]> {
-    const rows = await this.mappingService.listAccounts(club.id);
+    let rows = await this.mappingService.listAccounts(club.id);
+    // Lazy-init : si aucun compte pour ce club (module activé récemment,
+    // migration pas passée, etc.), on seed automatiquement puis on
+    // relit la liste.
+    if (rows.length === 0) {
+      await this.seedService.seedIfEmpty(club.id);
+      rows = await this.mappingService.listAccounts(club.id);
+    }
     return rows.map((r) => ({
       id: r.id,
       code: r.code,
@@ -243,7 +256,11 @@ export class AccountingResolver {
   async clubAccountingCohorts(
     @CurrentClub() club: Club,
   ): Promise<AccountingCohortGraph[]> {
-    const rows = await this.periodService.listCohorts(club.id);
+    let rows = await this.periodService.listCohorts(club.id);
+    if (rows.length === 0) {
+      await this.seedService.seedIfEmpty(club.id);
+      rows = await this.periodService.listCohorts(club.id);
+    }
     return rows.map((r) => ({
       id: r.id,
       code: r.code,
@@ -395,6 +412,42 @@ export class AccountingResolver {
   ): Promise<boolean> {
     await this.periodService.closeFiscalYear(club.id, year, user.userId);
     return true;
+  }
+
+  // =========================================================================
+  // Suggestion IA de catégorisation (saisie manuelle)
+  // =========================================================================
+
+  @Mutation(() => AccountingSuggestionGraph, {
+    name: 'suggestAccountingCategorization',
+  })
+  async suggestAccountingCategorization(
+    @CurrentClub() club: Club,
+    @Args('input') input: SuggestAccountingCategorizationInput,
+  ): Promise<AccountingSuggestionGraph> {
+    const result = await this.suggestionService.suggest(club.id, {
+      label: input.label,
+      amountCents: input.amountCents ?? null,
+      kind:
+        input.kind === 'INCOME' || input.kind === 'EXPENSE' ||
+        input.kind === 'IN_KIND'
+          ? input.kind
+          : undefined,
+    });
+    return {
+      accountCode: result.accountCode,
+      accountLabel: result.accountLabel,
+      cohortCode: result.cohortCode,
+      projectId: result.projectId,
+      projectTitle: result.projectTitle,
+      disciplineCode: result.disciplineCode,
+      confidenceAccount: result.confidencePerField.accountCode ?? null,
+      confidenceCohort: result.confidencePerField.cohortCode ?? null,
+      confidenceProject: result.confidencePerField.projectId ?? null,
+      confidenceDiscipline: result.confidencePerField.disciplineCode ?? null,
+      reasoning: result.reasoning,
+      budgetBlocked: result.budgetBlocked,
+    };
   }
 
   // =========================================================================

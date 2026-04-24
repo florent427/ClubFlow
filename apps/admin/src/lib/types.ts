@@ -1048,6 +1048,35 @@ export type SubmitReceiptForOcrData = {
   };
 };
 
+export type AccountingSuggestion = {
+  accountCode: string | null;
+  accountLabel: string | null;
+  cohortCode: string | null;
+  projectId: string | null;
+  projectTitle: string | null;
+  disciplineCode: string | null;
+  confidenceAccount: number | null;
+  confidenceCohort: number | null;
+  confidenceProject: number | null;
+  confidenceDiscipline: number | null;
+  reasoning: string | null;
+  budgetBlocked: boolean;
+};
+export type SuggestAccountingCategorizationData = {
+  suggestAccountingCategorization: AccountingSuggestion;
+};
+
+export type ClubProjectRow = {
+  id: string;
+  slug: string;
+  title: string;
+  summary: string | null;
+  status: string;
+};
+export type ClubProjectsData = {
+  clubProjects: ClubProjectRow[];
+};
+
 export type AccountingEntryKindGql =
   | 'INCOME'
   | 'EXPENSE'

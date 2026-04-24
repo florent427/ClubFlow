@@ -10,6 +10,8 @@ import { AccountingAuditService } from './accounting-audit.service';
 import { AccountingExportService } from './accounting-export.service';
 import { AccountingMappingService } from './accounting-mapping.service';
 import { AccountingPeriodService } from './accounting-period.service';
+import { AccountingSeedService } from './accounting-seed.service';
+import { AccountingSuggestionService } from './accounting-suggestion.service';
 import { ReceiptOcrService } from './receipt-ocr.service';
 
 @Module({
@@ -22,6 +24,8 @@ import { ReceiptOcrService } from './receipt-ocr.service';
     AccountingPeriodService,
     AccountingAuditService,
     AccountingExportService,
+    AccountingSeedService,
+    AccountingSuggestionService,
     ReceiptOcrService,
     AccountingResolver,
     ClubModuleEnabledGuard,
@@ -33,6 +37,8 @@ import { ReceiptOcrService } from './receipt-ocr.service';
     AccountingPeriodService,
     AccountingAuditService,
     AccountingExportService,
+    AccountingSeedService,
+    AccountingSuggestionService,
     ReceiptOcrService,
   ],
 })
