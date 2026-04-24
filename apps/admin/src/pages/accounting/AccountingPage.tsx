@@ -301,33 +301,48 @@ export function AccountingPage() {
       return;
     }
 
-    // Si la suggestion IA n'est pas encore disponible, on la récupère
-    // synchrone maintenant (l'utilisateur a cliqué avant que le debounce
-    // 700ms ne se déclenche).
+    // Force un refetch des comptes + cohortes en parallèle de l'appel IA
+    // pour garantir que la popup ait une liste à jour même si le cache
+    // Apollo est stale (ex: seed lazy qui vient d'être déclenché).
+    setAccountModalFetching(true);
     let effectiveSuggestion = suggestion;
-    if (!effectiveSuggestion) {
-      setAccountModalFetching(true);
-      try {
-        const res = await suggest({
-          variables: {
-            input: {
-              label: l,
-              kind,
-              ...(amountCents !== null ? { amountCents } : {}),
-            },
-          },
-        });
-        effectiveSuggestion =
-          res.data?.suggestAccountingCategorization ?? null;
-        setSuggestion(effectiveSuggestion);
-      } catch {
-        effectiveSuggestion = null;
-      } finally {
-        setAccountModalFetching(false);
+    try {
+      const [accountsRes, suggestionRes] = await Promise.all([
+        refetchAccounts(),
+        effectiveSuggestion
+          ? Promise.resolve(null)
+          : suggest({
+              variables: {
+                input: {
+                  label: l,
+                  kind,
+                  ...(amountCents !== null ? { amountCents } : {}),
+                },
+              },
+            }),
+      ]);
+      // Debug : si toujours 0 comptes après refetch, probablement un
+      // mismatch club/auth. On affiche un toast pour aider au diag.
+      const freshAccounts =
+        accountsRes?.data?.clubAccountingAccounts ?? [];
+      if (freshAccounts.length === 0) {
+        showToast(
+          'Plan comptable vide après refetch — cliquez sur "Initialiser" ou vérifiez la console réseau.',
+          'warning',
+        );
       }
+      if (suggestionRes && 'data' in suggestionRes) {
+        effectiveSuggestion =
+          suggestionRes.data?.suggestAccountingCategorization ?? null;
+        setSuggestion(effectiveSuggestion);
+      }
+    } catch (err) {
+      console.error('[accounting submit] erreur', err);
+      effectiveSuggestion = null;
+    } finally {
+      setAccountModalFetching(false);
     }
 
-    // Pré-sélectionne le compte suggéré (ou vide si l'IA n'a rien proposé)
     setAccountModalCode(effectiveSuggestion?.accountCode ?? '');
     setAccountModalOpen(true);
   }
@@ -1099,13 +1114,46 @@ export function AccountingPage() {
                 required
                 disabled={availableAccounts.length === 0}
               >
-                <option value="">— Choisir un compte —</option>
+                <option value="">
+                  {availableAccounts.length === 0
+                    ? '— Plan comptable vide —'
+                    : '— Choisir un compte —'}
+                </option>
                 {availableAccounts.map((a) => (
                   <option key={a.id} value={a.code}>
                     {a.code} — {a.label}
                   </option>
                 ))}
               </select>
+              {availableAccounts.length === 0 ? (
+                <div
+                  className="cf-alert cf-alert--warning"
+                  style={{ marginTop: 8 }}
+                >
+                  <span className="material-symbols-outlined" aria-hidden>
+                    warning
+                  </span>
+                  <div style={{ flex: 1 }}>
+                    <strong>Aucun compte disponible</strong>
+                    <br />
+                    <small>
+                      Le plan comptable n'est pas chargé. Cliquez pour le
+                      seeder (34 comptes PCG + 5 cohortes).
+                    </small>
+                  </div>
+                  <button
+                    type="button"
+                    className="cf-btn cf-btn--sm cf-btn--primary"
+                    onClick={async () => {
+                      await doInitPlan();
+                      await refetchAccounts();
+                    }}
+                    disabled={initializingPlan}
+                  >
+                    {initializingPlan ? 'Initialisation…' : 'Initialiser'}
+                  </button>
+                </div>
+              ) : null}
               {suggestion?.accountCode &&
               accountModalCode !== suggestion.accountCode ? (
                 <button
