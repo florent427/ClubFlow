@@ -2156,6 +2156,7 @@ export const SUGGEST_ACCOUNTING_CATEGORIZATION = gql`
       confidenceDiscipline
       reasoning
       budgetBlocked
+      errorMessage
     }
   }
 `;

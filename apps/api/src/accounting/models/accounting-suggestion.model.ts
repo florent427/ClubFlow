@@ -37,4 +37,8 @@ export class AccountingSuggestionGraph {
 
   @Field()
   budgetBlocked!: boolean;
+
+  /** Message d'erreur si l'IA n'a pas pu catégoriser (model down, quota, parse failed, compte inconnu…). */
+  @Field(() => String, { nullable: true })
+  errorMessage!: string | null;
 }

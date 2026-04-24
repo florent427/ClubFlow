@@ -1099,10 +1099,26 @@ export function AccountingPage() {
                 <span className="material-symbols-outlined" aria-hidden>
                   info
                 </span>
-                <small>
-                  L'IA n'a pas pu proposer de compte — choisis manuellement
-                  ci-dessous.
-                </small>
+                <div style={{ flex: 1 }}>
+                  <small>
+                    L'IA n'a pas pu proposer de compte — choisis manuellement
+                    ci-dessous.
+                  </small>
+                  {suggestion?.errorMessage ? (
+                    <>
+                      <br />
+                      <small
+                        style={{
+                          color: '#b91c1c',
+                          fontFamily: 'monospace',
+                          fontSize: '0.75rem',
+                        }}
+                      >
+                        ⚠ {suggestion.errorMessage}
+                      </small>
+                    </>
+                  ) : null}
+                </div>
               </div>
             )}
 

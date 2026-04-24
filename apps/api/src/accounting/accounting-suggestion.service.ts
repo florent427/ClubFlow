@@ -26,6 +26,8 @@ export interface SuggestionResult {
   };
   reasoning: string | null;
   budgetBlocked: boolean;
+  /** Message d'erreur remonté au frontend si l'appel IA a échoué. */
+  errorMessage: string | null;
 }
 
 /**
@@ -57,8 +59,10 @@ export class AccountingSuggestionService {
   ): Promise<SuggestionResult> {
     const trimmed = input.label.trim();
     if (trimmed.length < 3) {
-      // Libellé trop court pour une suggestion pertinente
-      return this.emptyResult();
+      return {
+        ...this.emptyResult(),
+        errorMessage: 'Libellé trop court (< 3 caractères)',
+      };
     }
 
     // Check budget IA — si hard cap atteint, on retourne une suggestion vide
@@ -67,7 +71,11 @@ export class AccountingSuggestionService {
       this.logger.warn(
         `Club ${clubId} a dépassé son budget IA, suggestion catégorisation indisponible.`,
       );
-      return { ...this.emptyResult(), budgetBlocked: true };
+      return {
+        ...this.emptyResult(),
+        budgetBlocked: true,
+        errorMessage: 'Budget IA mensuel atteint',
+      };
     }
 
     const [accounts, cohorts, projects] = await Promise.all([
@@ -90,9 +98,10 @@ export class AccountingSuggestionService {
     ]);
 
     if (accounts.length === 0) {
-      // Plan comptable pas encore seedé — on renvoie une suggestion vide
-      // plutôt que d'appeler l'IA inutilement.
-      return this.emptyResult();
+      return {
+        ...this.emptyResult(),
+        errorMessage: 'Plan comptable non initialisé pour ce club',
+      };
     }
 
     // Filtre comptes selon kind si fourni
@@ -115,6 +124,10 @@ export class AccountingSuggestionService {
       relevantAccounts,
       cohorts,
       projects,
+    );
+
+    this.logger.log(
+      `Suggestion IA déclenchée pour "${trimmed}" — model=${models.textModel}, ${accounts.length} comptes, ${cohorts.length} cohortes, ${projects.length} projets`,
     );
 
     try {
@@ -154,7 +167,15 @@ export class AccountingSuggestionService {
       );
 
       const parsed = this.parseJson(result.content);
-      if (!parsed) return this.emptyResult();
+      if (!parsed) {
+        this.logger.warn(
+          `Suggestion IA JSON invalide pour "${trimmed}" — raw: ${result.content.slice(0, 200)}`,
+        );
+        return {
+          ...this.emptyResult(),
+          errorMessage: `JSON invalide renvoyé par ${result.model}`,
+        };
+      }
 
       const accountCode =
         typeof parsed.accountCode === 'string' ? parsed.accountCode : null;
@@ -167,6 +188,22 @@ export class AccountingSuggestionService {
       const matchedProject = projectId
         ? projects.find((p) => p.id === projectId)
         : null;
+
+      // Debug : log le résultat du parse pour diagnostic
+      this.logger.log(
+        `Suggestion IA parsée : account=${accountCode} (match=${!!matchedAccount}), project=${projectId}, cohort=${parsed.cohortCode}, discipline=${parsed.disciplineCode}`,
+      );
+
+      // Si l'IA a renvoyé un code qui ne matche pas le plan, on flag
+      // l'erreur pour que le user sache
+      let errorMessage: string | null = null;
+      if (accountCode && !matchedAccount) {
+        errorMessage = `IA a proposé le compte "${accountCode}" qui n'existe pas dans le plan comptable`;
+        this.logger.warn(errorMessage);
+      } else if (!accountCode) {
+        errorMessage = 'IA n\u2019a pas proposé de compte (response sans accountCode)';
+        this.logger.warn(`${errorMessage} — raw: ${result.content.slice(0, 300)}`);
+      }
 
       return {
         accountCode: matchedAccount?.code ?? null,
@@ -192,12 +229,15 @@ export class AccountingSuggestionService {
             ? parsed.reasoning.slice(0, 300)
             : null,
         budgetBlocked: false,
+        errorMessage,
       };
     } catch (err) {
-      this.logger.warn(
-        `Suggestion IA échec pour "${trimmed}" : ${err instanceof Error ? err.message : err}`,
-      );
-      return this.emptyResult();
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Suggestion IA échec pour "${trimmed}" : ${msg}`);
+      return {
+        ...this.emptyResult(),
+        errorMessage: `Appel OpenRouter échoué : ${msg.slice(0, 200)}`,
+      };
     }
   }
 
@@ -212,6 +252,7 @@ export class AccountingSuggestionService {
       confidencePerField: {},
       reasoning: null,
       budgetBlocked: false,
+      errorMessage: null,
     };
   }
 

@@ -447,6 +447,7 @@ export class AccountingResolver {
       confidenceDiscipline: result.confidencePerField.disciplineCode ?? null,
       reasoning: result.reasoning,
       budgetBlocked: result.budgetBlocked,
+      errorMessage: result.errorMessage,
     };
   }
 

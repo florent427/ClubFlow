@@ -1061,6 +1061,7 @@ export type AccountingSuggestion = {
   confidenceDiscipline: number | null;
   reasoning: string | null;
   budgetBlocked: boolean;
+  errorMessage: string | null;
 };
 export type SuggestAccountingCategorizationData = {
   suggestAccountingCategorization: AccountingSuggestion;
