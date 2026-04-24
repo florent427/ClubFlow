@@ -11344,6 +11344,45 @@ a:focus-visible {
   background: rgba(220, 38, 38, 0.04);
 }
 
+/* Tableau articles — saisie facture multi-lignes */
+.cf-articles-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.cf-articles-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--cf-surface-card, #fff);
+  border: 1px solid var(--cf-border, #e2e8f0);
+  border-radius: 6px;
+}
+.cf-articles-row input {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.88rem;
+  border: 1px solid var(--cf-border-light, #f1f5f9);
+  border-radius: 4px;
+  background: #fff;
+}
+.cf-articles-row input:focus {
+  outline: 2px solid var(--cf-secondary, #0056c5);
+  outline-offset: -1px;
+  border-color: var(--cf-secondary, #0056c5);
+}
+.cf-articles-idx {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--cf-text-muted, #475569);
+  min-width: 24px;
+  text-align: center;
+  padding: 2px 4px;
+  background: rgba(15, 23, 42, 0.06);
+  border-radius: 3px;
+}
+
 /* Masque la bulle flottante Aïko quand un drawer ou modal est ouvert :
  * elle chevauche les actions du drawer (boutons Créer/Annuler en
  * bottom-right) et parasite l'interaction. Le data-attribute est posé

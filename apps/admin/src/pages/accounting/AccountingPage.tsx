@@ -191,6 +191,34 @@ export function AccountingPage() {
   const [disciplineCode, setDisciplineCode] = useState('');
   const [freeformTagsStr, setFreeformTagsStr] = useState('');
   const [projectId, setProjectId] = useState('');
+  // Mode facture multi-articles : quand l'utilisateur ajoute ≥ 1 article,
+  // la saisie passe en mode détaillé (1 ligne comptable par article).
+  // L'IA catégorisera CHAQUE article indépendamment (ex: ordi 1200€ →
+  // immobilisation 218300, souris 30€ → charge 606400).
+  const [articles, setArticles] = useState<
+    Array<{ id: string; label: string; amountEuros: string }>
+  >([]);
+
+  function addArticle() {
+    setArticles((prev) => [
+      ...prev,
+      {
+        id: `art-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        label: '',
+        amountEuros: '',
+      },
+    ]);
+  }
+
+  function updateArticle(id: string, patch: Partial<{ label: string; amountEuros: string }>) {
+    setArticles((prev) =>
+      prev.map((a) => (a.id === id ? { ...a, ...patch } : a)),
+    );
+  }
+
+  function removeArticle(id: string) {
+    setArticles((prev) => prev.filter((a) => a.id !== id));
+  }
 
   const entries = entriesData?.clubAccountingEntries ?? [];
   const filtered = useMemo(() => {
@@ -244,11 +272,39 @@ export function AccountingPage() {
       showToast('Libellé requis', 'error');
       return;
     }
-    const amountCents = parseEuros(amountEuros);
-    if (amountCents === null) {
-      showToast('Montant invalide', 'error');
-      return;
+
+    // Mode multi-articles : les articles remplissent le tableau.
+    // Le montant global est la somme. On ignore le champ amountEuros
+    // en mode détaillé.
+    let amountCents: number | null = null;
+    let articlesPayload:
+      | Array<{ label: string; amountCents: number }>
+      | undefined;
+    if (articles.length > 0) {
+      const parsedArticles: Array<{ label: string; amountCents: number }> = [];
+      for (const art of articles) {
+        const lab = art.label.trim();
+        const amt = parseEuros(art.amountEuros);
+        if (lab.length === 0) {
+          showToast('Libellé article manquant', 'error');
+          return;
+        }
+        if (amt === null || amt <= 0) {
+          showToast(`Montant invalide pour l'article "${lab}"`, 'error');
+          return;
+        }
+        parsedArticles.push({ label: lab, amountCents: amt });
+      }
+      amountCents = parsedArticles.reduce((s, a) => s + a.amountCents, 0);
+      articlesPayload = parsedArticles;
+    } else {
+      amountCents = parseEuros(amountEuros);
+      if (amountCents === null) {
+        showToast('Montant invalide', 'error');
+        return;
+      }
     }
+
     const tags = freeformTagsStr
       .split(',')
       .map((t) => t.trim())
@@ -260,6 +316,9 @@ export function AccountingPage() {
             kind,
             label: l,
             amountCents,
+            ...(articlesPayload && articlesPayload.length > 0
+              ? { articles: articlesPayload }
+              : {}),
             ...(occurredOn
               ? { occurredAt: new Date(occurredOn).toISOString() }
               : {}),
@@ -270,8 +329,11 @@ export function AccountingPage() {
           },
         },
       });
+      const articlesInfo = articlesPayload
+        ? ` (${articlesPayload.length} articles, catégorisation par ligne)`
+        : '';
       showToast(
-        '✨ Écriture créée — catégorisation IA en cours en arrière-plan.',
+        `✨ Écriture créée${articlesInfo} — IA en cours en arrière-plan.`,
         'success',
       );
       setDrawerOpen(false);
@@ -283,10 +345,9 @@ export function AccountingPage() {
       setDisciplineCode('');
       setFreeformTagsStr('');
       setProjectId('');
+      setArticles([]);
       setStatusFilter('NEEDS_REVIEW');
-      // Refetch plusieurs fois pour attraper la mise à jour IA en background
       await Promise.all([refetchEntries(), refetchSummary()]);
-      // Second refetch après 4s pour récupérer la suggestion IA appliquée
       setTimeout(() => {
         void refetchEntries();
         void refetchSummary();
@@ -832,17 +893,122 @@ export function AccountingPage() {
               "À valider" pour corriger la suggestion si besoin.
             </p>
           )}
-          <label className="cf-field">
-            <span>Montant (€) *</span>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={amountEuros}
-              onChange={(e) => setAmountEuros(e.target.value)}
-              placeholder="ex : 120,50"
-              required
-            />
-          </label>
+          {articles.length === 0 ? (
+            <label className="cf-field">
+              <span>Montant total (€) *</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={amountEuros}
+                onChange={(e) => setAmountEuros(e.target.value)}
+                placeholder="ex : 120,50"
+                required
+              />
+            </label>
+          ) : (
+            <div
+              className="cf-field"
+              style={{
+                padding: '0.5rem 0.75rem',
+                background: 'rgba(0, 6, 102, 0.03)',
+                borderRadius: 6,
+                fontSize: '0.9rem',
+              }}
+            >
+              <strong>Mode facture multi-articles</strong> — total :{' '}
+              <span
+                style={{
+                  fontVariantNumeric: 'tabular-nums',
+                  fontWeight: 600,
+                  color: 'var(--cf-primary, #000666)',
+                }}
+              >
+                {fmtEuros(
+                  articles.reduce(
+                    (s, a) => s + (parseEuros(a.amountEuros) ?? 0),
+                    0,
+                  ),
+                )}
+              </span>
+            </div>
+          )}
+
+          {/* Section articles (mode facture multi-lignes) */}
+          <fieldset
+            className="cf-fieldset"
+            style={{ marginTop: articles.length > 0 ? 8 : 16 }}
+          >
+            <legend>
+              Articles{' '}
+              {articles.length > 0 ? (
+                <span className="cf-muted">
+                  ({articles.length} ligne{articles.length > 1 ? 's' : ''})
+                </span>
+              ) : (
+                <span className="cf-muted">
+                  (optionnel — pour une facture multi-articles)
+                </span>
+              )}
+            </legend>
+            {articles.length === 0 ? (
+              <p className="cf-muted" style={{ fontSize: '0.85rem' }}>
+                Si la facture contient plusieurs articles de nature différente
+                (ex: <em>un ordinateur + une souris</em>), ajoute-les
+                individuellement. L'IA catégorisera chaque article séparément
+                (charge vs immobilisation selon le montant).
+              </p>
+            ) : (
+              <div className="cf-articles-list">
+                {articles.map((art, idx) => (
+                  <div key={art.id} className="cf-articles-row">
+                    <span className="cf-articles-idx">#{idx + 1}</span>
+                    <input
+                      type="text"
+                      value={art.label}
+                      onChange={(e) =>
+                        updateArticle(art.id, { label: e.target.value })
+                      }
+                      placeholder="Désignation (ex: Ordinateur portable)"
+                      maxLength={200}
+                      style={{ flex: 2 }}
+                    />
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={art.amountEuros}
+                      onChange={(e) =>
+                        updateArticle(art.id, { amountEuros: e.target.value })
+                      }
+                      placeholder="Montant"
+                      style={{ flex: 1, maxWidth: 120 }}
+                    />
+                    <button
+                      type="button"
+                      className="btn-ghost btn-ghost--danger btn-ghost--sm"
+                      onClick={() => removeArticle(art.id)}
+                      aria-label="Retirer"
+                    >
+                      <span className="material-symbols-outlined" aria-hidden>
+                        close
+                      </span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button
+              type="button"
+              className="cf-btn cf-btn--sm cf-btn--ghost"
+              onClick={addArticle}
+              style={{ marginTop: 6 }}
+            >
+              <span className="material-symbols-outlined" aria-hidden>
+                add
+              </span>
+              Ajouter un article
+            </button>
+          </fieldset>
+
           <label className="cf-field">
             <span>Date</span>
             <input

@@ -440,6 +440,11 @@ export class AccountingResolver {
       freeformTags: input.freeformTags ?? [],
       documentMediaAssetIds: input.documentMediaAssetIds ?? [],
       vatAmountCents: input.vatAmountCents ?? null,
+      articles: input.articles?.map((a) => ({
+        label: a.label,
+        amountCents: a.amountCents,
+        accountCode: a.accountCode ?? null,
+      })),
     });
     return {
       id: result.id,
