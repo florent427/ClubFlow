@@ -452,6 +452,10 @@ export class AccountingResolver {
         label: a.label,
         amountCents: a.amountCents,
         accountCode: a.accountCode ?? null,
+        // Override analytique par article (cas facture mixte)
+        projectId: a.projectId ?? null,
+        cohortCode: a.cohortCode ?? null,
+        disciplineCode: a.disciplineCode ?? null,
       })),
     });
     return {
@@ -568,6 +572,31 @@ export class AccountingResolver {
     @Args('lineId', { type: () => ID }) lineId: string,
   ): Promise<boolean> {
     await this.accounting.unvalidateEntryLine(club.id, user.userId, lineId);
+    return true;
+  }
+
+  /**
+   * Édition post-création de la ventilation analytique d'une ligne.
+   * Cas typique : facture mixte où on corrige après coup le projet
+   * d'un article (ex : Tatamis → Coupe SKSR, Sifflet → reste fonc général).
+   */
+  @Mutation(() => Boolean, { name: 'updateAccountingLineAllocation' })
+  async updateAccountingLineAllocation(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('lineId', { type: () => ID }) lineId: string,
+    @Args('projectId', { type: () => ID, nullable: true })
+    projectId: string | null,
+    @Args('cohortCode', { type: () => String, nullable: true })
+    cohortCode: string | null,
+    @Args('disciplineCode', { type: () => String, nullable: true })
+    disciplineCode: string | null,
+  ): Promise<boolean> {
+    await this.accounting.updateLineAllocation(club.id, user.userId, lineId, {
+      projectId,
+      cohortCode,
+      disciplineCode,
+    });
     return true;
   }
 

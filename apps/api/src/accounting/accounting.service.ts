@@ -603,7 +603,15 @@ export class AccountingService {
     userId: string,
     input: Omit<ManualEntryInput, 'accountCode'> & {
       kind: AccountingEntryKind;
-      articles?: Array<{ label: string; amountCents: number; accountCode?: string | null }>;
+      articles?: Array<{
+        label: string;
+        amountCents: number;
+        accountCode?: string | null;
+        /** Override analytique par article (facture mixte) */
+        projectId?: string | null;
+        cohortCode?: string | null;
+        disciplineCode?: string | null;
+      }>;
     },
   ): Promise<{ id: string; pendingCategorization: boolean }> {
     const occurredAt = input.occurredAt ?? new Date();
@@ -645,7 +653,8 @@ export class AccountingService {
     const bankAccount = await this.lookupAccount(clubId, bankCode);
 
     // Pour chaque article : résout le compte (soit fourni par user, soit
-    // fallback en attente d'IA), calcule le côté débit/crédit.
+    // fallback en attente d'IA), calcule le côté débit/crédit, et
+    // résout la ventilation analytique (override par article → défaut entry).
     interface PreparedLine {
       articleLabel: string;
       amountCents: number;
@@ -653,6 +662,10 @@ export class AccountingService {
       accountLabel: string;
       side: AccountingLineSide;
       userChoseAccount: boolean; // true = ne pas override avec IA
+      // Analytique effective pour cette ligne (override article > défaut entry)
+      projectId: string | null;
+      cohortCode: string | null;
+      disciplineCode: string | null;
     }
 
     const preparedLines: PreparedLine[] = [];
@@ -667,6 +680,12 @@ export class AccountingService {
         accountLabel: account.label,
         side,
         userChoseAccount: Boolean(art.accountCode),
+        // Override par article SINON fallback sur la valeur globale de
+        // l'écriture. Cas d'usage : facture Budo avec Tatamis → projet
+        // "Coupe SKSR" et Sifflet → Fonctionnement général.
+        projectId: art.projectId ?? input.projectId ?? null,
+        cohortCode: art.cohortCode ?? input.cohortCode ?? null,
+        disciplineCode: art.disciplineCode ?? input.disciplineCode ?? null,
       });
     }
 
@@ -723,9 +742,9 @@ export class AccountingService {
         });
         createdLineIds.push({ lineId: line.id, article: p });
 
-        // Allocation analytique par ligne (projet / cohorte / discipline
-        // sont globaux à l'écriture mais appliqués par ligne pour que
-        // l'analytique fonctionne au niveau granulaire).
+        // Allocation analytique par ligne — utilise `p.projectId` /
+        // `p.cohortCode` / `p.disciplineCode` déjà résolus (override
+        // article ou défaut entry). Les freeformTags restent globaux.
         await this.allocation.persistAllocationsForLine(
           tx,
           line.id,
@@ -733,9 +752,9 @@ export class AccountingService {
           [
             {
               amountCents: p.amountCents,
-              projectId: input.projectId ?? null,
-              cohortCode: input.cohortCode ?? null,
-              disciplineCode: input.disciplineCode ?? null,
+              projectId: p.projectId,
+              cohortCode: p.cohortCode,
+              disciplineCode: p.disciplineCode,
               freeformTags: input.freeformTags ?? [],
             },
           ],
@@ -1402,6 +1421,94 @@ export class AccountingService {
       reasoning: suggestion.reasoning,
       errorMessage: null,
     };
+  }
+
+  /**
+   * Met à jour la ventilation analytique d'une ligne existante (projet,
+   * cohorte, discipline). Utile pour corriger l'analytique d'un article
+   * après création — cas typique : facture mixte où tu t'aperçois
+   * après coup qu'un article devait être sur un autre projet.
+   *
+   * Interdit si l'entry est LOCKED (clôture mensuelle). Autorisé en
+   * NEEDS_REVIEW et POSTED (modifier l'analytique n'altère pas la
+   * balance ni le compte, juste la ventilation analytique).
+   */
+  async updateLineAllocation(
+    clubId: string,
+    userId: string,
+    lineId: string,
+    patch: {
+      projectId?: string | null;
+      cohortCode?: string | null;
+      disciplineCode?: string | null;
+    },
+  ): Promise<void> {
+    const line = await this.prisma.accountingEntryLine.findFirst({
+      where: { id: lineId, clubId },
+      include: {
+        entry: true,
+        allocations: { orderBy: { createdAt: 'asc' } },
+      },
+    });
+    if (!line) throw new NotFoundException('Ligne introuvable');
+    if (line.entry.status === AccountingEntryStatus.LOCKED) {
+      throw new ForbiddenException(
+        'Impossible de modifier l\u2019analytique d\u2019une écriture verrouillée.',
+      );
+    }
+
+    // Cas attendu : une allocation par ligne (créée par createQuickEntry).
+    // Si aucune, on en crée une avec le montant total ligne.
+    const first = line.allocations[0];
+    if (!first) {
+      await this.prisma.accountingAllocation.create({
+        data: {
+          lineId,
+          clubId,
+          amountCents: line.debitCents || line.creditCents,
+          projectId: patch.projectId ?? null,
+          cohortCode: patch.cohortCode ?? null,
+          disciplineCode: patch.disciplineCode ?? null,
+          dynamicGroupIdsSnapshot: [],
+          dynamicGroupLabelsSnapshot: [],
+          freeformTags: [],
+        },
+      });
+    } else {
+      const data: Prisma.AccountingAllocationUpdateInput = {};
+      if ('projectId' in patch) {
+        data.project = patch.projectId
+          ? { connect: { id: patch.projectId } }
+          : { disconnect: true };
+      }
+      if ('cohortCode' in patch) {
+        // `cohortCode` est une relation composite sur (clubId, code).
+        // On passe par le champ scalaire plutôt que la relation.
+        (data as Record<string, unknown>).cohortCode = patch.cohortCode;
+      }
+      if ('disciplineCode' in patch) {
+        data.disciplineCode = patch.disciplineCode;
+      }
+      await this.prisma.accountingAllocation.update({
+        where: { id: first.id },
+        data,
+      });
+    }
+
+    await this.audit.log({
+      clubId,
+      userId,
+      entryId: line.entry.id,
+      action: AccountingAuditAction.UPDATE,
+      metadata: {
+        source: 'UPDATE_ALLOCATION',
+        lineId,
+        patch,
+      },
+    });
+    this.logger.log(
+      `[Entry ${line.entry.id}] Analytique ligne ${lineId} mise à jour par user ${userId}`,
+    );
   }
 
   /**

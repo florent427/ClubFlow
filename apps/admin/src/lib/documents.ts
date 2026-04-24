@@ -2208,6 +2208,22 @@ export const RERUN_ACCOUNTING_AI_FOR_LINE = gql`
   }
 `;
 
+export const UPDATE_ACCOUNTING_LINE_ALLOCATION = gql`
+  mutation UpdateAccountingLineAllocation(
+    $lineId: ID!
+    $projectId: ID
+    $cohortCode: String
+    $disciplineCode: String
+  ) {
+    updateAccountingLineAllocation(
+      lineId: $lineId
+      projectId: $projectId
+      cohortCode: $cohortCode
+      disciplineCode: $disciplineCode
+    )
+  }
+`;
+
 export const DELETE_CLUB_ACCOUNTING_ENTRY_PERMANENT = gql`
   mutation DeleteClubAccountingEntryPermanent($id: ID!) {
     deleteClubAccountingEntryPermanent(id: $id)

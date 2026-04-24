@@ -13,6 +13,7 @@ import {
   RERUN_ACCOUNTING_AI_FOR_LINE,
   SUBMIT_RECEIPT_FOR_OCR,
   UNVALIDATE_ACCOUNTING_ENTRY_LINE,
+  UPDATE_ACCOUNTING_LINE_ALLOCATION,
   VALIDATE_ACCOUNTING_ENTRY_LINE,
 } from '../../lib/documents';
 import { CLUB_PROJECTS } from '../../lib/projects-documents';
@@ -171,7 +172,12 @@ export function AccountingPage() {
   const [validateLine] = useMutation(VALIDATE_ACCOUNTING_ENTRY_LINE);
   const [unvalidateLine] = useMutation(UNVALIDATE_ACCOUNTING_ENTRY_LINE);
   const [rerunAiLine] = useMutation(RERUN_ACCOUNTING_AI_FOR_LINE);
+  const [updateAllocation] = useMutation(UPDATE_ACCOUNTING_LINE_ALLOCATION);
   const [deletePermanent] = useMutation(DELETE_CLUB_ACCOUNTING_ENTRY_PERMANENT);
+  // Id de la ligne sous-déployée dont le popover "Modifier analytique" est ouvert
+  const [allocPopoverLineId, setAllocPopoverLineId] = useState<string | null>(
+    null,
+  );
   // Lignes en cours de relance IA (pour désactiver le bouton + afficher un spinner)
   const [rerunningLineIds, setRerunningLineIds] = useState<Set<string>>(
     new Set(),
@@ -216,6 +222,34 @@ export function AccountingPage() {
     try {
       await unvalidateLine({ variables: { lineId } });
       showToast('Ligne dé-validée', 'success');
+      await Promise.all([refetchEntries(), refetchSummary()]);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
+
+  /**
+   * Mise à jour de la ventilation analytique d'une ligne existante.
+   * Utilisé depuis le popover "Modifier analytique" dans les sous-lignes.
+   */
+  async function doUpdateAllocation(
+    lineId: string,
+    patch: {
+      projectId?: string | null;
+      cohortCode?: string | null;
+      disciplineCode?: string | null;
+    },
+  ) {
+    try {
+      await updateAllocation({
+        variables: {
+          lineId,
+          projectId: patch.projectId ?? null,
+          cohortCode: patch.cohortCode ?? null,
+          disciplineCode: patch.disciplineCode ?? null,
+        },
+      });
+      showToast('Analytique mise à jour', 'success');
       await Promise.all([refetchEntries(), refetchSummary()]);
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Erreur', 'error');
@@ -323,8 +357,19 @@ export function AccountingPage() {
   // L'IA catégorisera CHAQUE article indépendamment (ex: ordi 1200€ →
   // immobilisation 218300, souris 30€ → charge 606400).
   const [articles, setArticles] = useState<
-    Array<{ id: string; label: string; amountEuros: string }>
+    Array<{
+      id: string;
+      label: string;
+      amountEuros: string;
+      // Override analytique par article (null = hérite du défaut entry)
+      projectId: string | null;
+      cohortCode: string | null;
+      disciplineCode: string | null;
+    }>
   >([]);
+  // Id de l'article dont le popover "Analytique" est ouvert (null = fermé)
+  const [analyticsPopoverFor, setAnalyticsPopoverFor] =
+    useState<string | null>(null);
 
   function addArticle() {
     setArticles((prev) => [
@@ -333,11 +378,23 @@ export function AccountingPage() {
         id: `art-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         label: '',
         amountEuros: '',
+        projectId: null,
+        cohortCode: null,
+        disciplineCode: null,
       },
     ]);
   }
 
-  function updateArticle(id: string, patch: Partial<{ label: string; amountEuros: string }>) {
+  function updateArticle(
+    id: string,
+    patch: Partial<{
+      label: string;
+      amountEuros: string;
+      projectId: string | null;
+      cohortCode: string | null;
+      disciplineCode: string | null;
+    }>,
+  ) {
     setArticles((prev) =>
       prev.map((a) => (a.id === id ? { ...a, ...patch } : a)),
     );
@@ -429,10 +486,22 @@ export function AccountingPage() {
     // en mode détaillé.
     let amountCents: number | null = null;
     let articlesPayload:
-      | Array<{ label: string; amountCents: number }>
+      | Array<{
+          label: string;
+          amountCents: number;
+          projectId?: string | null;
+          cohortCode?: string | null;
+          disciplineCode?: string | null;
+        }>
       | undefined;
     if (articles.length > 0) {
-      const parsedArticles: Array<{ label: string; amountCents: number }> = [];
+      const parsedArticles: Array<{
+        label: string;
+        amountCents: number;
+        projectId?: string | null;
+        cohortCode?: string | null;
+        disciplineCode?: string | null;
+      }> = [];
       for (const art of articles) {
         const lab = art.label.trim();
         const amt = parseEuros(art.amountEuros);
@@ -444,7 +513,18 @@ export function AccountingPage() {
           showToast(`Montant invalide pour l'article "${lab}"`, 'error');
           return;
         }
-        parsedArticles.push({ label: lab, amountCents: amt });
+        parsedArticles.push({
+          label: lab,
+          amountCents: amt,
+          // N'envoie que si l'utilisateur a cliqué "Modifier analytique"
+          // pour CET article. Sinon null → hérite du défaut entry côté
+          // service.
+          ...(art.projectId ? { projectId: art.projectId } : {}),
+          ...(art.cohortCode ? { cohortCode: art.cohortCode } : {}),
+          ...(art.disciplineCode
+            ? { disciplineCode: art.disciplineCode }
+            : {}),
+        });
       }
       amountCents = parsedArticles.reduce((s, a) => s + a.amountCents, 0);
       articlesPayload = parsedArticles;
@@ -497,6 +577,7 @@ export function AccountingPage() {
       setFreeformTagsStr('');
       setProjectId('');
       setArticles([]);
+      setAnalyticsPopoverFor(null);
       setStatusFilter('NEEDS_REVIEW');
       await Promise.all([refetchEntries(), refetchSummary()]);
       setTimeout(() => {
@@ -886,6 +967,20 @@ export function AccountingPage() {
               const firstArticleLine = articleLines[0] ?? e.lines[0];
               const firstAlloc = firstArticleLine?.allocations[0];
               const isMultiArticle = articleLines.length > 1;
+              // Calcule si les lignes d'articles ont des projets/cohortes
+              // DIFFÉRENTS entre elles (cas facture mixte).
+              const uniqueProjectIds = new Set(
+                articleLines
+                  .map((l) => l.allocations[0]?.projectId ?? null)
+                  .map((p) => p ?? '__NONE__'),
+              );
+              const projectsAreMixed = uniqueProjectIds.size > 1;
+              const uniqueCohortCodes = new Set(
+                articleLines
+                  .map((l) => l.allocations[0]?.cohortCode ?? null)
+                  .map((c) => c ?? '__NONE__'),
+              );
+              const cohortsAreMixed = uniqueCohortCodes.size > 1;
               const isExpanded = expandedEntryIds.has(e.id);
               const hasUnvalidatedLines = articleLines.some(
                 (l) => !l.validatedAt,
@@ -951,9 +1046,46 @@ export function AccountingPage() {
                       {firstAlloc &&
                       (firstAlloc.cohortCode ||
                         firstAlloc.disciplineCode ||
-                        firstAlloc.projectTitle) ? (
-                        <small className="cf-muted">
-                          {firstAlloc.projectTitle ? (
+                        firstAlloc.projectTitle ||
+                        projectsAreMixed ||
+                        cohortsAreMixed) ? (
+                        <small
+                          className="cf-muted"
+                          title={
+                            projectsAreMixed
+                              ? articleLines
+                                  .map(
+                                    (l) =>
+                                      `${l.label ?? '(sans libellé)'} → ${
+                                        l.allocations[0]?.projectTitle ??
+                                        '(sans projet)'
+                                      }`,
+                                  )
+                                  .join('\n')
+                              : undefined
+                          }
+                        >
+                          {projectsAreMixed ? (
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 3,
+                                marginRight: 6,
+                                color: '#ff6b35',
+                                fontWeight: 500,
+                              }}
+                            >
+                              <span
+                                className="material-symbols-outlined"
+                                aria-hidden
+                                style={{ fontSize: '0.85rem' }}
+                              >
+                                folder
+                              </span>
+                              Mixte ({uniqueProjectIds.size})
+                            </span>
+                          ) : firstAlloc.projectTitle ? (
                             <span
                               style={{
                                 display: 'inline-flex',
@@ -972,7 +1104,7 @@ export function AccountingPage() {
                               {firstAlloc.projectTitle}
                             </span>
                           ) : null}
-                          {firstAlloc.cohortCode ? (
+                          {!cohortsAreMixed && firstAlloc.cohortCode ? (
                             <span style={{ marginRight: 6 }}>
                               {firstAlloc.cohortCode}
                             </span>
@@ -1095,7 +1227,8 @@ export function AccountingPage() {
                                 <th style={{ width: 24 }}></th>
                                 <th>Article</th>
                                 <th>Compte proposé</th>
-                                <th style={{ width: 120 }}>Confiance IA</th>
+                                <th style={{ width: 160 }}>Analytique</th>
+                                <th style={{ width: 100 }}>Confiance IA</th>
                                 <th style={{ textAlign: 'right' }}>Montant</th>
                                 <th style={{ width: 200 }}>Actions</th>
                               </tr>
@@ -1243,6 +1376,196 @@ export function AccountingPage() {
                                             </option>
                                           ))}
                                         </select>
+                                      )}
+                                    </td>
+                                    <td style={{ position: 'relative' }}>
+                                      {isBank ? (
+                                        <small className="cf-muted">—</small>
+                                      ) : (
+                                        <>
+                                          <button
+                                            type="button"
+                                            className="btn-ghost btn-ghost--sm"
+                                            disabled={
+                                              e.status === 'LOCKED' ||
+                                              e.status === 'CANCELLED'
+                                            }
+                                            onClick={() =>
+                                              setAllocPopoverLineId(
+                                                allocPopoverLineId === l.id
+                                                  ? null
+                                                  : l.id,
+                                              )
+                                            }
+                                            title={
+                                              e.status === 'LOCKED'
+                                                ? 'Écriture verrouillée'
+                                                : 'Modifier l\u2019analytique'
+                                            }
+                                            style={{
+                                              padding: '2px 6px',
+                                              fontSize: '0.8rem',
+                                              textAlign: 'left',
+                                              width: '100%',
+                                              justifyContent: 'flex-start',
+                                            }}
+                                          >
+                                            <span
+                                              className="material-symbols-outlined"
+                                              aria-hidden
+                                              style={{
+                                                fontSize: '0.85rem',
+                                                verticalAlign: 'middle',
+                                                marginRight: 3,
+                                              }}
+                                            >
+                                              folder
+                                            </span>
+                                            {l.allocations[0]?.projectTitle ??
+                                              '(sans projet)'}
+                                          </button>
+                                          {l.allocations[0]?.cohortCode ||
+                                          l.allocations[0]?.disciplineCode ? (
+                                            <small
+                                              className="cf-muted"
+                                              style={{
+                                                display: 'block',
+                                                marginTop: 2,
+                                                fontSize: '0.72rem',
+                                              }}
+                                            >
+                                              {l.allocations[0]?.cohortCode ??
+                                                ''}
+                                              {l.allocations[0]?.cohortCode &&
+                                              l.allocations[0]?.disciplineCode
+                                                ? ' · '
+                                                : ''}
+                                              {l.allocations[0]
+                                                ?.disciplineCode ?? ''}
+                                            </small>
+                                          ) : null}
+                                          {allocPopoverLineId === l.id ? (
+                                            <div
+                                              style={{
+                                                position: 'absolute',
+                                                top: '100%',
+                                                left: 0,
+                                                zIndex: 10,
+                                                marginTop: 4,
+                                                padding: 12,
+                                                background: 'white',
+                                                border:
+                                                  '1px solid rgba(15, 23, 42, 0.12)',
+                                                borderRadius: 6,
+                                                boxShadow:
+                                                  '0 4px 14px rgba(15, 23, 42, 0.1)',
+                                                minWidth: 300,
+                                              }}
+                                            >
+                                              <div
+                                                style={{
+                                                  fontSize: '0.85rem',
+                                                  fontWeight: 600,
+                                                  marginBottom: 8,
+                                                }}
+                                              >
+                                                Analytique de cette ligne
+                                              </div>
+                                              <label
+                                                className="cf-field"
+                                                style={{ marginBottom: 6 }}
+                                              >
+                                                <span
+                                                  style={{ fontSize: '0.8rem' }}
+                                                >
+                                                  Projet
+                                                </span>
+                                                <select
+                                                  defaultValue={
+                                                    l.allocations[0]
+                                                      ?.projectId ?? ''
+                                                  }
+                                                  onChange={(ev) =>
+                                                    void doUpdateAllocation(
+                                                      l.id,
+                                                      {
+                                                        projectId:
+                                                          ev.target.value ||
+                                                          null,
+                                                      },
+                                                    )
+                                                  }
+                                                >
+                                                  <option value="">
+                                                    (sans projet)
+                                                  </option>
+                                                  {projects.map((p) => (
+                                                    <option
+                                                      key={p.id}
+                                                      value={p.id}
+                                                    >
+                                                      {p.title}
+                                                    </option>
+                                                  ))}
+                                                </select>
+                                              </label>
+                                              <label
+                                                className="cf-field"
+                                                style={{ marginBottom: 6 }}
+                                              >
+                                                <span
+                                                  style={{ fontSize: '0.8rem' }}
+                                                >
+                                                  Cohorte
+                                                </span>
+                                                <select
+                                                  defaultValue={
+                                                    l.allocations[0]
+                                                      ?.cohortCode ?? ''
+                                                  }
+                                                  onChange={(ev) =>
+                                                    void doUpdateAllocation(
+                                                      l.id,
+                                                      {
+                                                        cohortCode:
+                                                          ev.target.value ||
+                                                          null,
+                                                      },
+                                                    )
+                                                  }
+                                                >
+                                                  <option value="">
+                                                    (aucune)
+                                                  </option>
+                                                  {cohorts.map((c) => (
+                                                    <option
+                                                      key={c.id}
+                                                      value={c.code}
+                                                    >
+                                                      {c.label}
+                                                    </option>
+                                                  ))}
+                                                </select>
+                                              </label>
+                                              <div
+                                                style={{
+                                                  display: 'flex',
+                                                  justifyContent: 'flex-end',
+                                                }}
+                                              >
+                                                <button
+                                                  type="button"
+                                                  className="cf-btn cf-btn--sm cf-btn--primary"
+                                                  onClick={() =>
+                                                    setAllocPopoverLineId(null)
+                                                  }
+                                                >
+                                                  Fermer
+                                                </button>
+                                              </div>
+                                            </div>
+                                          ) : null}
+                                        </>
                                       )}
                                     </td>
                                     <td>
@@ -1518,41 +1841,242 @@ export function AccountingPage() {
               </p>
             ) : (
               <div className="cf-articles-list">
-                {articles.map((art, idx) => (
-                  <div key={art.id} className="cf-articles-row">
-                    <span className="cf-articles-idx">#{idx + 1}</span>
-                    <input
-                      type="text"
-                      value={art.label}
-                      onChange={(e) =>
-                        updateArticle(art.id, { label: e.target.value })
-                      }
-                      placeholder="Désignation (ex: Ordinateur portable)"
-                      maxLength={200}
-                      style={{ flex: 2 }}
-                    />
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={art.amountEuros}
-                      onChange={(e) =>
-                        updateArticle(art.id, { amountEuros: e.target.value })
-                      }
-                      placeholder="Montant"
-                      style={{ flex: 1, maxWidth: 120 }}
-                    />
-                    <button
-                      type="button"
-                      className="btn-ghost btn-ghost--danger btn-ghost--sm"
-                      onClick={() => removeArticle(art.id)}
-                      aria-label="Retirer"
+                {articles.map((art, idx) => {
+                  const hasOverride =
+                    art.projectId || art.cohortCode || art.disciplineCode;
+                  const overrideProject = projects.find(
+                    (p) => p.id === art.projectId,
+                  );
+                  const popoverOpen = analyticsPopoverFor === art.id;
+                  return (
+                    <div
+                      key={art.id}
+                      style={{ position: 'relative' }}
                     >
-                      <span className="material-symbols-outlined" aria-hidden>
-                        close
-                      </span>
-                    </button>
-                  </div>
-                ))}
+                      <div className="cf-articles-row">
+                        <span className="cf-articles-idx">#{idx + 1}</span>
+                        <input
+                          type="text"
+                          value={art.label}
+                          onChange={(e) =>
+                            updateArticle(art.id, { label: e.target.value })
+                          }
+                          placeholder="Désignation (ex: Ordinateur portable)"
+                          maxLength={200}
+                          style={{ flex: 2 }}
+                        />
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={art.amountEuros}
+                          onChange={(e) =>
+                            updateArticle(art.id, {
+                              amountEuros: e.target.value,
+                            })
+                          }
+                          placeholder="Montant"
+                          style={{ flex: 1, maxWidth: 120 }}
+                        />
+                        <button
+                          type="button"
+                          className={
+                            hasOverride
+                              ? 'btn-ghost btn-ghost--sm cf-analytic-btn--active'
+                              : 'btn-ghost btn-ghost--sm'
+                          }
+                          onClick={() =>
+                            setAnalyticsPopoverFor(
+                              popoverOpen ? null : art.id,
+                            )
+                          }
+                          title={
+                            hasOverride
+                              ? `Analytique surchargée${
+                                  overrideProject
+                                    ? ` — ${overrideProject.title}`
+                                    : ''
+                                }`
+                              : 'Analytique (hérite du défaut)'
+                          }
+                          style={{
+                            padding: '4px 6px',
+                            minWidth: 0,
+                          }}
+                        >
+                          <span
+                            className="material-symbols-outlined"
+                            aria-hidden
+                            style={{
+                              fontSize: '1rem',
+                              verticalAlign: 'middle',
+                              color: hasOverride ? '#ff6b35' : undefined,
+                            }}
+                          >
+                            folder
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-ghost btn-ghost--danger btn-ghost--sm"
+                          onClick={() => removeArticle(art.id)}
+                          aria-label="Retirer"
+                        >
+                          <span
+                            className="material-symbols-outlined"
+                            aria-hidden
+                          >
+                            close
+                          </span>
+                        </button>
+                      </div>
+                      {hasOverride ? (
+                        <small
+                          className="cf-muted"
+                          style={{
+                            display: 'block',
+                            marginLeft: 32,
+                            marginTop: 2,
+                            fontStyle: 'italic',
+                          }}
+                        >
+                          📁{' '}
+                          {overrideProject
+                            ? overrideProject.title
+                            : '(sans projet)'}
+                          {art.cohortCode ? ` · ${art.cohortCode}` : ''}
+                          {art.disciplineCode
+                            ? ` · ${art.disciplineCode}`
+                            : ''}
+                        </small>
+                      ) : null}
+                      {popoverOpen ? (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            top: '100%',
+                            right: 0,
+                            zIndex: 10,
+                            marginTop: 4,
+                            padding: 12,
+                            background: 'white',
+                            border: '1px solid rgba(15, 23, 42, 0.12)',
+                            borderRadius: 6,
+                            boxShadow: '0 4px 14px rgba(15, 23, 42, 0.1)',
+                            minWidth: 320,
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: '0.85rem',
+                              fontWeight: 600,
+                              marginBottom: 8,
+                            }}
+                          >
+                            Analytique de cet article
+                          </div>
+                          <small
+                            className="cf-muted"
+                            style={{ display: 'block', marginBottom: 8 }}
+                          >
+                            Laisse vide pour hériter du défaut de l'écriture.
+                          </small>
+                          <label
+                            className="cf-field"
+                            style={{ marginBottom: 6 }}
+                          >
+                            <span style={{ fontSize: '0.8rem' }}>
+                              Projet
+                            </span>
+                            <select
+                              value={art.projectId ?? ''}
+                              onChange={(e) =>
+                                updateArticle(art.id, {
+                                  projectId: e.target.value || null,
+                                })
+                              }
+                            >
+                              <option value="">(hériter)</option>
+                              {projects.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.title}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label
+                            className="cf-field"
+                            style={{ marginBottom: 6 }}
+                          >
+                            <span style={{ fontSize: '0.8rem' }}>
+                              Cohorte
+                            </span>
+                            <select
+                              value={art.cohortCode ?? ''}
+                              onChange={(e) =>
+                                updateArticle(art.id, {
+                                  cohortCode: e.target.value || null,
+                                })
+                              }
+                            >
+                              <option value="">(hériter)</option>
+                              {cohorts.map((c) => (
+                                <option key={c.id} value={c.code}>
+                                  {c.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label
+                            className="cf-field"
+                            style={{ marginBottom: 8 }}
+                          >
+                            <span style={{ fontSize: '0.8rem' }}>
+                              Discipline
+                            </span>
+                            <input
+                              type="text"
+                              value={art.disciplineCode ?? ''}
+                              placeholder="(hériter)"
+                              onChange={(e) =>
+                                updateArticle(art.id, {
+                                  disciplineCode: e.target.value || null,
+                                })
+                              }
+                            />
+                          </label>
+                          <div
+                            style={{
+                              display: 'flex',
+                              gap: 6,
+                              justifyContent: 'flex-end',
+                            }}
+                          >
+                            <button
+                              type="button"
+                              className="btn-ghost btn-ghost--sm"
+                              onClick={() =>
+                                updateArticle(art.id, {
+                                  projectId: null,
+                                  cohortCode: null,
+                                  disciplineCode: null,
+                                })
+                              }
+                            >
+                              Réinitialiser
+                            </button>
+                            <button
+                              type="button"
+                              className="cf-btn cf-btn--sm cf-btn--primary"
+                              onClick={() => setAnalyticsPopoverFor(null)}
+                            >
+                              OK
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </div>
             )}
             <button

@@ -39,6 +39,27 @@ export class QuickEntryArticleInput {
   @IsOptional()
   @IsString()
   accountCode?: string;
+
+  /**
+   * Override de la ventilation analytique POUR CET ARTICLE. Si `null`,
+   * on utilise le `projectId` / `cohortCode` / `disciplineCode` global
+   * de l'écriture. Permet les factures mixtes (ex : Tatamis → projet
+   * "Coupe SKSR", Sifflet → Fonctionnement général).
+   */
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsUUID()
+  projectId?: string;
+
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsString()
+  cohortCode?: string;
+
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsString()
+  disciplineCode?: string;
 }
 
 /**
