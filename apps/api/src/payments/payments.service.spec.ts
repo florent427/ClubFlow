@@ -11,7 +11,7 @@ describe('PaymentsService / Stripe webhook', () => {
   let prisma: {
     stripeWebhookEvent: { findUnique: jest.Mock; create: jest.Mock };
     invoice: { findFirst: jest.Mock };
-    payment: { aggregate: jest.Mock };
+    payment: { aggregate: jest.Mock; findFirst: jest.Mock };
     $transaction: jest.Mock;
   };
   let accounting: { recordIncomeFromPayment: jest.Mock };
@@ -39,6 +39,7 @@ describe('PaymentsService / Stripe webhook', () => {
         aggregate: jest
           .fn()
           .mockResolvedValue({ _sum: { amountCents: null } }),
+        findFirst: jest.fn().mockResolvedValue(null),
       },
       $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
         const tx = {

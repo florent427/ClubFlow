@@ -10895,3 +10895,291 @@ a:focus-visible {
     grid-template-columns: 1fr;
   }
 }
+
+/* ============================================================================
+ * Module Comptabilité analytique v1.5 — styles dédiés
+ * ========================================================================= */
+
+/* Cards Subventions / Sponsoring — pattern expandable */
+.cf-grant-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.cf-grant-card {
+  background: var(--cf-surface-card, #fff);
+  border: 1px solid var(--cf-border, #e2e8f0);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: box-shadow 120ms ease;
+}
+.cf-grant-card.is-open {
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+  border-color: var(--cf-secondary, #0056c5);
+}
+.cf-grant-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1rem;
+  cursor: pointer;
+  gap: 1rem;
+  user-select: none;
+}
+.cf-grant-card__head:hover {
+  background: rgba(0, 6, 102, 0.02);
+}
+.cf-grant-card__head h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 0.2rem;
+  color: var(--cf-primary, #000666);
+}
+.cf-grant-card__head small {
+  font-size: 0.8rem;
+}
+.cf-grant-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+.cf-grant-card__meta strong {
+  font-variant-numeric: tabular-nums;
+  font-size: 1rem;
+  color: var(--cf-primary, #000666);
+}
+.cf-grant-card__body {
+  padding: 1rem;
+  border-top: 1px solid var(--cf-border, #e2e8f0);
+  background: rgba(15, 23, 42, 0.015);
+}
+.cf-grant-card__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.cf-grant-card__row > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.cf-grant-card__row label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.cf-grant-card__row strong {
+  font-size: 0.95rem;
+  color: var(--cf-text, #0f172a);
+}
+.cf-grant-card__section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 1rem 0 0.4rem;
+}
+.cf-grant-card__section-head h4 {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--cf-text-muted, #475569);
+}
+.cf-grant-card__installments {
+  margin-bottom: 1rem;
+}
+.cf-grant-card__inkind {
+  padding: 0.75rem 1rem;
+  background: rgba(255, 180, 0, 0.06);
+  border-left: 3px solid var(--cf-accent, #ff6b35);
+  border-radius: 0 6px 6px 0;
+  margin: 0.75rem 0;
+}
+.cf-grant-card__inkind strong {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.85rem;
+}
+.cf-grant-card__inkind p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--cf-text, #0f172a);
+}
+.cf-grant-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--cf-border-light, #f1f5f9);
+}
+.cf-grant-card__notes {
+  margin: 0.75rem 0 0;
+  padding: 0.6rem 0.85rem;
+  background: rgba(0, 6, 102, 0.03);
+  border-radius: 6px;
+  font-size: 0.88rem;
+  color: var(--cf-text-muted, #475569);
+  white-space: pre-wrap;
+}
+
+.cf-table--compact th,
+.cf-table--compact td {
+  padding: 0.45rem 0.65rem;
+  font-size: 0.88rem;
+}
+
+/* OCR review drawer */
+.cf-ocr-preview {
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: rgba(0, 6, 102, 0.03);
+  border-radius: 8px;
+  text-align: center;
+}
+.cf-ocr-preview img {
+  max-width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+  border-radius: 6px;
+}
+.cf-ocr-preview__pdf {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  background: #fff;
+  border: 1px solid var(--cf-border, #e2e8f0);
+  border-radius: 6px;
+  color: var(--cf-secondary, #0056c5);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+.cf-ocr-field {
+  position: relative;
+}
+.cf-ocr-field--high input,
+.cf-ocr-field--high select {
+  border-left: 3px solid #16a34a;
+}
+.cf-ocr-field--medium input,
+.cf-ocr-field--medium select {
+  border-left: 3px solid #ca8a04;
+  background: rgba(254, 249, 195, 0.3);
+}
+.cf-ocr-field--low input,
+.cf-ocr-field--low select {
+  border-left: 3px solid #dc2626;
+  background: rgba(254, 226, 226, 0.3);
+}
+.cf-ocr-hint {
+  margin-left: 0.5rem;
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  background: rgba(15, 23, 42, 0.08);
+  color: var(--cf-text-muted, #475569);
+  vertical-align: middle;
+}
+.cf-ocr-field--high .cf-ocr-hint {
+  background: rgba(22, 163, 74, 0.12);
+  color: #15803d;
+}
+.cf-ocr-field--medium .cf-ocr-hint {
+  background: rgba(202, 138, 4, 0.12);
+  color: #854d0e;
+}
+.cf-ocr-field--low .cf-ocr-hint {
+  background: rgba(220, 38, 38, 0.12);
+  color: #991b1b;
+}
+
+/* Documents section (subventions + sponsoring) */
+.cf-docs-section {
+  margin: 1rem 0;
+  padding: 0.75rem;
+  background: var(--cf-surface-card, #fff);
+  border: 1px solid var(--cf-border-light, #f1f5f9);
+  border-radius: 8px;
+}
+.cf-docs-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.cf-docs-section__head h4 {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--cf-text-muted, #475569);
+}
+.cf-docs-section__upload {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.cf-docs-section__upload select {
+  font-size: 0.82rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--cf-border, #e2e8f0);
+  border-radius: 4px;
+}
+.cf-docs-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.cf-docs-list__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.02);
+  font-size: 0.88rem;
+}
+.cf-docs-list__item:hover {
+  background: rgba(0, 6, 102, 0.04);
+}
+.cf-docs-list__item a {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--cf-text, #0f172a);
+  text-decoration: none;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cf-docs-list__item a:hover {
+  color: var(--cf-secondary, #0056c5);
+}
+.cf-docs-list__item small {
+  margin-left: auto;
+  font-size: 0.72rem;
+}
+
+/* Boutons sm */
+.cf-btn--sm {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.82rem;
+}
+.btn-ghost--sm {
+  padding: 0.25rem 0.4rem;
+  font-size: 0.82rem;
+}
+

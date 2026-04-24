@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
   ACTIVATE_CLUB_SPONSORSHIP_DEAL,
+  ATTACH_CLUB_SPONSORSHIP_DOCUMENT,
   CANCEL_CLUB_SPONSORSHIP_DEAL,
   CLOSE_CLUB_SPONSORSHIP_DEAL,
   CLUB_SPONSORSHIP_DEALS,
@@ -10,6 +11,7 @@ import {
   CREATE_CLUB_SPONSORSHIP_INSTALLMENT,
   DELETE_CLUB_SPONSORSHIP_DEAL,
   DELETE_CLUB_SPONSORSHIP_INSTALLMENT,
+  DETACH_CLUB_SPONSORSHIP_DOCUMENT,
   MARK_CLUB_SPONSORSHIP_INSTALLMENT_RECEIVED,
   UPDATE_CLUB_SPONSORSHIP_DEAL,
 } from '../../lib/documents';
@@ -17,11 +19,13 @@ import type {
   ClubSponsorshipDealsData,
   SponsorshipDeal,
   SponsorshipDealStatusGql,
+  SponsorshipDocumentKindGql,
   SponsorshipInstallmentRow,
   SponsorshipKindGql,
 } from '../../lib/types';
 import { useToast } from '../../components/ToastProvider';
 import { ConfirmModal, Drawer, EmptyState } from '../../components/ui';
+import { DocumentUploadSection } from '../accounting/DocumentUploadSection';
 
 function fmtEuros(cents: number | null): string {
   if (cents === null || cents === undefined) return '—';
@@ -79,6 +83,18 @@ export function SponsoringPage() {
     MARK_CLUB_SPONSORSHIP_INSTALLMENT_RECEIVED,
   );
   const [removeInstallment] = useMutation(DELETE_CLUB_SPONSORSHIP_INSTALLMENT);
+  const [attachDoc] = useMutation(ATTACH_CLUB_SPONSORSHIP_DOCUMENT);
+  const [detachDoc] = useMutation(DETACH_CLUB_SPONSORSHIP_DOCUMENT);
+
+  const SPONSOR_DOC_KINDS: Array<{
+    value: SponsorshipDocumentKindGql;
+    label: string;
+  }> = [
+    { value: 'CONTRACT', label: 'Contrat' },
+    { value: 'INVOICE', label: 'Facture' },
+    { value: 'RECEIPT', label: 'Reçu' },
+    { value: 'OTHER', label: 'Autre' },
+  ];
 
   const [tab, setTab] = useState<'ALL' | 'CASH' | 'IN_KIND'>('ALL');
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -557,6 +573,20 @@ export function SponsoringPage() {
                         <p>{d.inKindDescription}</p>
                       </div>
                     ) : null}
+
+                    <DocumentUploadSection
+                      documents={d.documents}
+                      kindOptions={SPONSOR_DOC_KINDS}
+                      defaultKind="CONTRACT"
+                      attachMutation={attachDoc}
+                      detachMutation={detachDoc}
+                      attachVariablesFor={(mediaAssetId, kind) => ({
+                        dealId: d.id,
+                        mediaAssetId,
+                        kind,
+                      })}
+                      onChanged={() => void refetch()}
+                    />
 
                     <div className="cf-grant-card__actions">
                       {d.status === 'DRAFT' ? (

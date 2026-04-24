@@ -591,6 +591,12 @@ export class AccountingService {
   ) {
     const entry = await this.prisma.accountingEntry.findFirst({
       where: { id: entryId, clubId, status: AccountingEntryStatus.NEEDS_REVIEW },
+      include: {
+        lines: {
+          include: { allocations: true },
+          orderBy: { sortOrder: 'asc' },
+        },
+      },
     });
     if (!entry) {
       throw new NotFoundException(
@@ -600,19 +606,93 @@ export class AccountingService {
     const occurredAt = corrections.occurredAt ?? entry.occurredAt;
     await this.period.assertDateIsOpen(clubId, occurredAt);
 
-    const updated = await this.prisma.accountingEntry.update({
-      where: { id: entryId },
-      data: {
-        status: AccountingEntryStatus.POSTED,
-        ...(corrections.label !== undefined && { label: corrections.label }),
-        ...(corrections.amountCents !== undefined && {
-          amountCents: corrections.amountCents,
-        }),
-        ...(corrections.occurredAt
-          ? { occurredAt: corrections.occurredAt }
-          : {}),
-        updatedAt: new Date(),
-      },
+    const newAmount = corrections.amountCents ?? entry.amountCents;
+    const needsAccountChange =
+      corrections.accountCode && entry.lines.length > 0
+        ? corrections.accountCode !== entry.lines[0].accountCode
+        : false;
+
+    // Récupère le nouveau compte + le compte banque (pour contrepartie)
+    let newAccount: {
+      code: string;
+      label: string;
+      kind: AccountingAccountKind;
+    } | null = null;
+    if (needsAccountChange && corrections.accountCode) {
+      newAccount = await this.lookupAccount(clubId, corrections.accountCode);
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // 1. Update entry header
+      const e = await tx.accountingEntry.update({
+        where: { id: entryId },
+        data: {
+          status: AccountingEntryStatus.POSTED,
+          ...(corrections.label !== undefined && { label: corrections.label }),
+          ...(corrections.amountCents !== undefined && {
+            amountCents: corrections.amountCents,
+          }),
+          ...(corrections.occurredAt
+            ? { occurredAt: corrections.occurredAt }
+            : {}),
+          updatedAt: new Date(),
+        },
+      });
+
+      // 2. Update les lignes (montant + éventuellement compte)
+      for (const line of entry.lines) {
+        const isExpenseSide = line.debitCents > 0 && line.creditCents === 0;
+        const isIncomeSide = line.creditCents > 0 && line.debitCents === 0;
+        const dataLine: Record<string, unknown> = {};
+        if (corrections.amountCents !== undefined) {
+          if (isExpenseSide) dataLine.debitCents = newAmount;
+          if (isIncomeSide) dataLine.creditCents = newAmount;
+        }
+        // Change le compte uniquement sur la ligne "principale" (la non-banque)
+        const isBankLine =
+          line.accountCode === '512000' || line.accountCode === '530000';
+        if (newAccount && !isBankLine) {
+          dataLine.accountCode = newAccount.code;
+          dataLine.accountLabel = newAccount.label;
+        }
+        if (Object.keys(dataLine).length > 0) {
+          await tx.accountingEntryLine.update({
+            where: { id: line.id },
+            data: dataLine,
+          });
+        }
+      }
+
+      // 3. Update allocations (cohorte + discipline + projet + montant)
+      //    On met à jour uniquement la première allocation de la ligne "hors
+      //    banque" (là où l'analytique est portée).
+      const mainLine = entry.lines.find(
+        (l) => l.accountCode !== '512000' && l.accountCode !== '530000',
+      );
+      if (mainLine && mainLine.allocations.length > 0) {
+        const firstAlloc = mainLine.allocations[0];
+        const allocData: Record<string, unknown> = {};
+        if (corrections.amountCents !== undefined) {
+          allocData.amountCents = newAmount;
+        }
+        if (corrections.cohortCode !== undefined) {
+          allocData.cohortCode = corrections.cohortCode ?? null;
+        }
+        if (corrections.disciplineCode !== undefined) {
+          allocData.disciplineCode = corrections.disciplineCode ?? null;
+        }
+        if (corrections.projectId !== undefined) {
+          allocData.projectId = corrections.projectId ?? null;
+        }
+        if (Object.keys(allocData).length > 0) {
+          await tx.accountingAllocation.update({
+            where: { id: firstAlloc.id },
+            data: allocData,
+          });
+        }
+      }
+
+      return e;
     });
 
     await this.audit.log({
@@ -620,7 +700,7 @@ export class AccountingService {
       userId,
       entryId,
       action: AccountingAuditAction.UPDATE,
-      metadata: { source: 'OCR_CONFIRM', corrections },
+      metadata: { source: 'OCR_CONFIRM', corrections: { ...corrections } },
     });
 
     return updated;

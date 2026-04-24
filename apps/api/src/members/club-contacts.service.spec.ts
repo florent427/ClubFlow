@@ -5,6 +5,7 @@ import {
 import { Test, TestingModule } from '@nestjs/testing';
 import { MemberCivility, MemberStatus } from '@prisma/client';
 import { FamiliesService } from '../families/families.service';
+import { MemberPseudoService } from '../messaging/member-pseudo.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   ClubContactsService,
@@ -13,16 +14,26 @@ import {
 
 describe('ClubContactsService', () => {
   let service: ClubContactsService;
-  let families: { syncAllContactPayerMemberLinksForClub: jest.Mock };
+  let families: {
+    syncAllContactPayerMemberLinksForClub: jest.Mock;
+    migrateContactPayerLinksToMember: jest.Mock;
+  };
   let prisma: {
     contact: {
       findMany: jest.Mock;
       findFirst: jest.Mock;
       update: jest.Mock;
       delete: jest.Mock;
+      count: jest.Mock;
     };
-    user: { update: jest.Mock };
-    member: { findFirst: jest.Mock; findMany: jest.Mock; create: jest.Mock };
+    user: { update: jest.Mock; delete: jest.Mock };
+    member: {
+      findFirst: jest.Mock;
+      findMany: jest.Mock;
+      create: jest.Mock;
+      count: jest.Mock;
+    };
+    clubMembership: { count: jest.Mock };
     $transaction: jest.Mock;
   };
 
@@ -49,6 +60,7 @@ describe('ClubContactsService', () => {
   beforeEach(async () => {
     families = {
       syncAllContactPayerMemberLinksForClub: jest.fn().mockResolvedValue(undefined),
+      migrateContactPayerLinksToMember: jest.fn().mockResolvedValue(undefined),
     };
     prisma = {
       contact: {
@@ -56,21 +68,28 @@ describe('ClubContactsService', () => {
         findFirst: jest.fn(),
         update: jest.fn(),
         delete: jest.fn(),
+        count: jest.fn().mockResolvedValue(0),
       },
-      user: { update: jest.fn().mockResolvedValue({}) },
+      user: { update: jest.fn().mockResolvedValue({}), delete: jest.fn() },
       member: {
         findFirst: jest.fn(),
         findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn(),
+        count: jest.fn().mockResolvedValue(1),
       },
+      clubMembership: { count: jest.fn().mockResolvedValue(0) },
       $transaction: jest.fn((ops: unknown[]) => Promise.all(ops)),
     };
 
+    const memberPseudo = {
+      pickAvailablePseudo: jest.fn().mockResolvedValue('pseudo-generated'),
+    };
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [
         ClubContactsService,
         { provide: PrismaService, useValue: prisma },
         { provide: FamiliesService, useValue: families },
+        { provide: MemberPseudoService, useValue: memberPseudo },
       ],
     }).compile();
 
@@ -181,7 +200,7 @@ describe('ClubContactsService', () => {
 
       expect(res.memberId).toBe('mem-new');
       expect(prisma.member.create).toHaveBeenCalledWith({
-        data: {
+        data: expect.objectContaining({
           clubId,
           userId,
           firstName: 'Jean',
@@ -189,7 +208,7 @@ describe('ClubContactsService', () => {
           civility: PROMOTE_CONTACT_DEFAULT_CIVILITY,
           email: 'a@b.c',
           status: MemberStatus.ACTIVE,
-        },
+        }),
         select: { id: true },
       });
       expect(PROMOTE_CONTACT_DEFAULT_CIVILITY).toBe(MemberCivility.MR);

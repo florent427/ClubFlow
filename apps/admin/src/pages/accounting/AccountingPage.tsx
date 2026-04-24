@@ -7,7 +7,6 @@ import {
   CLUB_ACCOUNTING_COHORTS,
   CLUB_ACCOUNTING_ENTRIES,
   CLUB_ACCOUNTING_SUMMARY,
-  CONFIRM_ACCOUNTING_EXTRACTION,
   CREATE_CLUB_ACCOUNTING_ENTRY,
   SUBMIT_RECEIPT_FOR_OCR,
 } from '../../lib/documents';
@@ -23,6 +22,7 @@ import { useToast } from '../../components/ToastProvider';
 import { ConfirmModal, Drawer, EmptyState } from '../../components/ui';
 import { downloadCsv, toCsv } from '../../lib/csv-export';
 import { getClubId, getToken } from '../../lib/storage';
+import { AccountingReviewDrawer } from './AccountingReviewDrawer';
 
 type Period = 'ALL' | 'MONTH' | 'YEAR' | 'CUSTOM';
 
@@ -140,9 +140,6 @@ export function AccountingPage() {
   const [cancel] = useMutation(CANCEL_CLUB_ACCOUNTING_ENTRY);
   const [submitOcr, { loading: ocrLoading }] =
     useMutation<SubmitReceiptForOcrData>(SUBMIT_RECEIPT_FOR_OCR);
-  const [confirmExtraction, { loading: confirming }] = useMutation(
-    CONFIRM_ACCOUNTING_EXTRACTION,
-  );
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -262,6 +259,49 @@ export function AccountingPage() {
     );
   }
 
+  async function onDownloadFec() {
+    const token = getToken();
+    const clubId = getClubId();
+    if (!token || !clubId) {
+      showToast('Session invalide', 'error');
+      return;
+    }
+    try {
+      const params = new URLSearchParams();
+      if (range.from) params.set('from', range.from);
+      if (range.to) params.set('to', range.to);
+      const res = await fetch(
+        `${apiBase()}/accounting/export/fec?${params.toString()}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'X-Club-Id': clubId,
+          },
+        },
+      );
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`Export échoué (${res.status}) : ${txt.slice(0, 200)}`);
+      }
+      // Récupère le nom de fichier depuis Content-Disposition
+      const disposition = res.headers.get('Content-Disposition') ?? '';
+      const match = disposition.match(/filename="([^"]+)"/);
+      const fname = match?.[1] ?? `FEC-${Date.now()}.txt`;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fname;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('Fichier FEC téléchargé', 'success');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
+
   async function onUploadReceipt(file: File) {
     const token = getToken();
     const clubId = getClubId();
@@ -320,20 +360,6 @@ export function AccountingPage() {
       showToast(err instanceof Error ? err.message : 'Erreur', 'error');
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  }
-
-  async function doConfirmEntry() {
-    if (!confirmEntry) return;
-    try {
-      await confirmExtraction({
-        variables: { input: { entryId: confirmEntry.id } },
-      });
-      showToast('Écriture validée', 'success');
-      setConfirmEntry(null);
-      await Promise.all([refetchEntries(), refetchSummary()]);
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
     }
   }
 
@@ -499,33 +525,43 @@ export function AccountingPage() {
             </label>
           </>
         ) : null}
-        <button
-          type="button"
-          className="cf-btn cf-btn--ghost"
-          onClick={() => {
-            const csv = toCsv(
-              ['Date', 'Libellé', 'Type', 'Statut', 'Source', 'Montant (€)', 'Compte'],
-              filtered.map((e) => [
-                e.occurredAt.slice(0, 10),
-                e.label,
-                e.kind,
-                statusLabel(e.status),
-                sourceLabel(e.source),
-                ((e.kind === 'INCOME' ? 1 : -1) * (e.amountCents / 100)).toFixed(
-                  2,
-                ),
-                e.lines[0]?.accountCode ?? '',
-              ]),
-            );
-            const ts = new Date().toISOString().slice(0, 10);
-            downloadCsv(`comptabilite-${ts}.csv`, csv);
-          }}
-          disabled={!filtered.length}
-          style={{ marginLeft: 'auto' }}
-        >
-          <span className="material-symbols-outlined">download</span>
-          Exporter CSV
-        </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <button
+            type="button"
+            className="cf-btn cf-btn--ghost"
+            onClick={() => {
+              const csv = toCsv(
+                ['Date', 'Libellé', 'Type', 'Statut', 'Source', 'Montant (€)', 'Compte'],
+                filtered.map((e) => [
+                  e.occurredAt.slice(0, 10),
+                  e.label,
+                  e.kind,
+                  statusLabel(e.status),
+                  sourceLabel(e.source),
+                  ((e.kind === 'INCOME' ? 1 : -1) * (e.amountCents / 100)).toFixed(
+                    2,
+                  ),
+                  e.lines[0]?.accountCode ?? '',
+                ]),
+              );
+              const ts = new Date().toISOString().slice(0, 10);
+              downloadCsv(`comptabilite-${ts}.csv`, csv);
+            }}
+            disabled={!filtered.length}
+          >
+            <span className="material-symbols-outlined">download</span>
+            Export CSV
+          </button>
+          <button
+            type="button"
+            className="cf-btn cf-btn--ghost"
+            onClick={() => void onDownloadFec()}
+            title="Fichier des Écritures Comptables (format officiel contrôle fiscal)"
+          >
+            <span className="material-symbols-outlined">verified</span>
+            Export FEC
+          </button>
+        </div>
       </div>
 
       {loading && entries.length === 0 ? (
@@ -777,34 +813,12 @@ export function AccountingPage() {
         onCancel={() => setConfirmDel(null)}
       />
 
-      <ConfirmModal
-        open={confirmEntry !== null}
-        title="Valider cette écriture ?"
-        message={
-          confirmEntry ? (
-            <div>
-              <p>
-                <strong>{confirmEntry.label}</strong>
-                <br />
-                <span className="cf-muted">
-                  {confirmEntry.lines[0]?.accountCode} —{' '}
-                  {confirmEntry.lines[0]?.accountLabel}
-                </span>
-                <br />
-                <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  {fmtEuros(confirmEntry.amountCents)}
-                </span>
-              </p>
-              <p className="cf-muted">
-                L'écriture passera en POSTED (validée). Pour corriger les
-                champs, ouvre d'abord le détail.
-              </p>
-            </div>
-          ) : undefined
-        }
-        confirmLabel={confirming ? 'Validation…' : 'Valider'}
-        onConfirm={() => void doConfirmEntry()}
-        onCancel={() => setConfirmEntry(null)}
+      <AccountingReviewDrawer
+        entry={confirmEntry}
+        onClose={() => setConfirmEntry(null)}
+        onSaved={async () => {
+          await Promise.all([refetchEntries(), refetchSummary()]);
+        }}
       />
     </div>
   );

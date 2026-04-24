@@ -3,11 +3,13 @@ import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
   ARCHIVE_CLUB_GRANT_APPLICATION,
+  ATTACH_CLUB_GRANT_DOCUMENT,
   CLUB_GRANT_APPLICATIONS,
   CREATE_CLUB_GRANT_APPLICATION,
   CREATE_CLUB_GRANT_INSTALLMENT,
   DELETE_CLUB_GRANT_APPLICATION,
   DELETE_CLUB_GRANT_INSTALLMENT,
+  DETACH_CLUB_GRANT_DOCUMENT,
   MARK_CLUB_GRANT_GRANTED,
   MARK_CLUB_GRANT_INSTALLMENT_RECEIVED,
   MARK_CLUB_GRANT_REPORTED,
@@ -20,10 +22,12 @@ import type {
   ClubGrantApplicationsData,
   GrantApplication,
   GrantApplicationStatusGql,
+  GrantDocumentKindGql,
   GrantInstallmentRow,
 } from '../../lib/types';
 import { useToast } from '../../components/ToastProvider';
 import { ConfirmModal, Drawer, EmptyState } from '../../components/ui';
+import { DocumentUploadSection } from '../accounting/DocumentUploadSection';
 
 function fmtEuros(cents: number | null): string {
   if (cents === null || cents === undefined) return '—';
@@ -96,6 +100,17 @@ export function SubsidiesPage() {
     MARK_CLUB_GRANT_INSTALLMENT_RECEIVED,
   );
   const [removeInstallment] = useMutation(DELETE_CLUB_GRANT_INSTALLMENT);
+  const [attachDoc] = useMutation(ATTACH_CLUB_GRANT_DOCUMENT);
+  const [detachDoc] = useMutation(DETACH_CLUB_GRANT_DOCUMENT);
+
+  const GRANT_DOC_KINDS: Array<{ value: GrantDocumentKindGql; label: string }> =
+    [
+      { value: 'APPLICATION', label: 'Dossier de demande' },
+      { value: 'DECISION', label: 'Décision d\u2019attribution' },
+      { value: 'INVOICE', label: 'Facture / Justif' },
+      { value: 'REPORT', label: 'Rapport d\u2019emploi des fonds' },
+      { value: 'OTHER', label: 'Autre' },
+    ];
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<GrantApplication | null>(null);
@@ -578,6 +593,21 @@ export function SubsidiesPage() {
                         </table>
                       )}
                     </div>
+
+                    {/* Documents */}
+                    <DocumentUploadSection
+                      documents={a.documents}
+                      kindOptions={GRANT_DOC_KINDS}
+                      defaultKind="OTHER"
+                      attachMutation={attachDoc}
+                      detachMutation={detachDoc}
+                      attachVariablesFor={(mediaAssetId, kind) => ({
+                        grantId: a.id,
+                        mediaAssetId,
+                        kind,
+                      })}
+                      onChanged={() => void refetch()}
+                    />
 
                     {/* Actions workflow */}
                     <div className="cf-grant-card__actions">
