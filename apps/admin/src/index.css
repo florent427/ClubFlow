@@ -11344,3 +11344,14 @@ a:focus-visible {
   background: rgba(220, 38, 38, 0.04);
 }
 
+/* Masque la bulle flottante Aïko quand un drawer ou modal est ouvert :
+ * elle chevauche les actions du drawer (boutons Créer/Annuler en
+ * bottom-right) et parasite l'interaction. Le data-attribute est posé
+ * par Drawer.tsx / ConfirmModal.tsx via `bumpOverlay()`. */
+body[data-overlay-active='true'] .cf-aiko-bubble,
+body[data-overlay-active='true'] .cf-aiko-panel {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.9);
+}
+

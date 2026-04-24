@@ -135,6 +135,7 @@ export function AikoChatWidget() {
       ) : null}
       <button
         type="button"
+        className="cf-aiko-bubble"
         aria-label={open ? 'Fermer Aïko' : 'Ouvrir Aïko'}
         onClick={() => setOpen((v) => !v)}
         style={{
@@ -153,7 +154,7 @@ export function AikoChatWidget() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+          transition: 'transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease',
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.transform = 'scale(1.08)';
@@ -396,6 +397,7 @@ function AikoPanel({
     <div
       role="dialog"
       aria-label="Chat Aïko"
+      className="cf-aiko-panel"
       style={{
         position: 'fixed',
         bottom: 100,

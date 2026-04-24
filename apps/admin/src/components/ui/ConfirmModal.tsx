@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import type { ReactNode } from 'react';
+import { bumpOverlay } from './Drawer';
 
 export function ConfirmModal({
   open,
@@ -24,11 +25,15 @@ export function ConfirmModal({
 }) {
   useEffect(() => {
     if (!open) return;
+    bumpOverlay(1);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !loading) onCancel();
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      bumpOverlay(-1);
+    };
   }, [open, loading, onCancel]);
   if (!open) return null;
   return (

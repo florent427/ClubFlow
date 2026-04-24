@@ -1,6 +1,24 @@
 import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 
+/**
+ * Compteur partagé des overlays actifs (drawers + modals). Incrémenté à
+ * chaque ouverture, décrémenté à la fermeture. Permet de :
+ *  - Poser `data-overlay-active="true"` sur <body> pour que les styles
+ *    CSS globaux (ex: masquer la bulle flottante Aïko) puissent réagir.
+ *  - Supporter plusieurs overlays empilés (drawer + modal par-dessus) :
+ *    l'attribut reste tant qu'au moins un overlay est actif.
+ */
+let overlayCount = 0;
+export function bumpOverlay(delta: 1 | -1): void {
+  overlayCount = Math.max(0, overlayCount + delta);
+  if (overlayCount > 0) {
+    document.body.dataset.overlayActive = 'true';
+  } else {
+    delete document.body.dataset.overlayActive;
+  }
+}
+
 export function Drawer({
   open,
   title,
@@ -18,11 +36,15 @@ export function Drawer({
 }) {
   useEffect(() => {
     if (!open) return;
+    bumpOverlay(1);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      bumpOverlay(-1);
+    };
   }, [open, onClose]);
   if (!open) return null;
   return (
