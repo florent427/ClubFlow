@@ -166,6 +166,10 @@ export function MemberLayout() {
             <span className="mp-ico material-symbols-outlined">event</span>
             Événements
           </NavLink>
+          <NavLink to="/mes-projets" className={navClass}>
+            <span className="mp-ico material-symbols-outlined">rocket_launch</span>
+            Mes projets
+          </NavLink>
           <NavLink to="/reservations" className={navClass}>
             <span className="mp-ico material-symbols-outlined">event_available</span>
             Réservations

@@ -12,6 +12,7 @@ const STATIC_PAGES = [
   '/equipe',
   '/galerie',
   '/actualites',
+  '/blog',
   '/competitions',
   '/contact',
 ];
@@ -37,7 +38,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const club = await resolveCurrentClub();
     const articles = await fetchArticles(club.slug, 100);
     const articleEntries: MetadataRoute.Sitemap = articles.map((a) => ({
-      url: `${baseUrl}/actualites/${a.slug}`,
+      url: `${baseUrl}/blog/${a.slug}`,
       lastModified: a.publishedAt ? new Date(a.publishedAt) : now,
       changeFrequency: 'monthly',
       priority: 0.6,

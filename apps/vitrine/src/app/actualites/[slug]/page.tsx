@@ -8,18 +8,19 @@ import { fetchArticle, fetchArticleComments } from '@/lib/page-fetchers';
 import { PageHero } from '@/blocks/PageHero';
 import { JsonLd, buildArticleLd, buildFaqLd } from '@/components/JsonLd';
 import { ArticleComments } from '@/components/ArticleComments';
+import { PptxHandlersBoundary } from '@/components/PptxHandlers';
 
 interface RouteParams {
   params: Promise<{ slug: string }>;
 }
 
-export async function generateMetadata(
-  { params }: RouteParams,
-): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: RouteParams): Promise<Metadata> {
   const { slug } = await params;
   const club = await resolveCurrentClub();
   const article = await fetchArticle(club.slug, slug);
-  if (!article) return { title: 'Article introuvable' };
+  if (!article) return { title: 'Actualité introuvable' };
   const title = article.seoTitle || article.title;
   const description = article.seoDescription || article.excerpt || undefined;
   const ogImage = article.seoOgImageUrl || article.coverImageUrl;
@@ -66,12 +67,10 @@ function formatDate(iso: string | null): string {
 }
 
 /**
- * Rendu du body JSON.
- *
- * Format moderne : `{ format: 'html', html: '<h2>...</h2><p>...</p>' }` — rendu
- *   via `dangerouslySetInnerHTML` (l'HTML vient d'un admin authentifié qui
- *   utilise Tiptap, la sanitization est faite côté éditeur).
- * Format historique : `string[]` (paragraphes, markdown léger) — rendu plain.
+ * Rendu du body JSON. Même logique que /blog/[slug] — actualités et blog
+ * partagent la même structure (VitrineArticle). Le fichier est dupliqué
+ * pour isoler la configuration du canal (back-link, breadcrumb, URL
+ * canonique JSON-LD).
  */
 function renderBody(bodyJson: string): ReactElement {
   try {
@@ -142,7 +141,7 @@ function renderBody(bodyJson: string): ReactElement {
   }
 }
 
-export default async function ArticlePage({ params }: RouteParams) {
+export default async function ActualiteDetailPage({ params }: RouteParams) {
   const { slug } = await params;
   const club = await resolveCurrentClub();
   const article = await fetchArticle(club.slug, slug);
@@ -154,7 +153,7 @@ export default async function ArticlePage({ params }: RouteParams) {
   const proto =
     process.env.NODE_ENV === 'production'
       ? 'https'
-      : hdrs.get('x-forwarded-proto') ?? 'http';
+      : (hdrs.get('x-forwarded-proto') ?? 'http');
   const articleLd = buildArticleLd({
     title: article.seoTitle || article.title,
     description: article.seoDescription || article.excerpt,
@@ -175,7 +174,7 @@ export default async function ArticlePage({ params }: RouteParams) {
       {faqLd ? <JsonLd data={faqLd} /> : null}
       <PageHero
         label={formatDate(article.publishedAt)}
-        kanji="新"
+        kanji="報"
         title={article.title}
         subtitle={article.excerpt ?? undefined}
       />
@@ -222,7 +221,7 @@ export default async function ArticlePage({ params }: RouteParams) {
       ) : null}
       <section className="section" style={{ paddingTop: 0 }}>
         <div className="container article-container">
-          {renderBody(article.bodyJson)}
+          <PptxHandlersBoundary>{renderBody(article.bodyJson)}</PptxHandlersBoundary>
 
           {article.seoFaq && article.seoFaq.length > 0 ? (
             <aside className="article-faq">

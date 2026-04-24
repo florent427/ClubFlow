@@ -36,6 +36,7 @@ import {
 } from './dto/vitrine-inputs';
 import {
   VitrineAnnouncementGraph,
+  VitrineArticleChannelEnum,
   VitrineArticleGenerationStatusEnum,
   VitrineArticleGraph,
   VitrineArticleStatusEnum,
@@ -97,8 +98,11 @@ interface ArticleRowForGraph {
   coverImageAlt?: string | null;
   coverImage?: { publicUrl: string } | null;
   status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+  channel?: 'NEWS' | 'BLOG';
   publishedAt: Date | null;
   updatedAt: Date;
+  pinned?: boolean;
+  sortOrder?: number;
   seoTitle?: string | null;
   seoDescription?: string | null;
   seoKeywords?: string[];
@@ -148,8 +152,11 @@ function articleToGraph(article: ArticleRowForGraph): VitrineArticleGraph {
     coverImageId: article.coverImageId ?? null,
     coverImageAlt: article.coverImageAlt ?? null,
     status: article.status as VitrineArticleStatusEnum,
+    channel: (article.channel ?? 'BLOG') as VitrineArticleChannelEnum,
     publishedAt: article.publishedAt,
     updatedAt: article.updatedAt,
+    pinned: (article.pinned ?? false) as boolean,
+    sortOrder: (article.sortOrder ?? 0) as number,
     seoTitle: article.seoTitle ?? null,
     seoDescription: article.seoDescription ?? null,
     seoKeywords: article.seoKeywords ?? [],
@@ -422,8 +429,15 @@ export class VitrineAdminResolver {
   @Query(() => [VitrineArticleGraph], { name: 'clubVitrineArticles' })
   async clubVitrineArticles(
     @CurrentClub() club: Club,
+    @Args('channel', {
+      type: () => VitrineArticleChannelEnum,
+      nullable: true,
+      description:
+        "Filtre les articles par canal (NEWS ou BLOG). Omis = tous les canaux, comportement par défaut pour rétrocompat.",
+    })
+    channel?: VitrineArticleChannelEnum,
   ): Promise<VitrineArticleGraph[]> {
-    const rows = await this.content.listArticlesAdmin(club.id);
+    const rows = await this.content.listArticlesAdmin(club.id, channel ?? null);
     return rows.map((r) => articleToGraph(r));
   }
 
@@ -445,6 +459,7 @@ export class VitrineAdminResolver {
       coverImageId: input.coverImageId ?? null,
       coverImageAlt: input.coverImageAlt ?? null,
       publishNow: input.publishNow ?? false,
+      channel: input.channel,
       seoTitle: input.seoTitle ?? null,
       seoDescription: input.seoDescription ?? null,
       seoKeywords: input.seoKeywords ?? [],
@@ -455,8 +470,10 @@ export class VitrineAdminResolver {
       seoOgImageId: input.seoOgImageId ?? null,
     });
     const fresh = await this.content.getArticleByIdAdmin(club.id, row.id);
+    // Revalide les deux canaux : un article NEWS peut aussi bien s'afficher
+    // en page d'accueil via /actualites que sur /blog si basculé plus tard.
     void this.isr.revalidate(club.slug, {
-      paths: ['/', '/actualites'],
+      paths: ['/', '/actualites', '/blog'],
       tags: [`vitrine-articles:${club.slug}`],
     });
     return articleToGraph((fresh ?? row) as ArticleRowForGraph);
@@ -593,6 +610,93 @@ export class VitrineAdminResolver {
       });
     }
     return deleted;
+  }
+
+  // ---------- Pin / réordonnancement (drag-and-drop) ----------
+
+  @Mutation(() => Boolean, {
+    description:
+      "Applique un ordre personnalisé (drag-and-drop) aux articles. Les index fournis deviennent les sortOrder (× 10 pour laisser de la marge).",
+  })
+  async reorderVitrineArticles(
+    @CurrentClub() club: Club,
+    @Args('orderedIds', { type: () => [ID] }) orderedIds: string[],
+  ): Promise<boolean> {
+    await this.content.reorderArticles(club.id, orderedIds);
+    void this.isr.revalidate(club.slug, {
+      paths: ['/', '/blog'],
+      tags: [`vitrine-articles:${club.slug}`],
+    });
+    return true;
+  }
+
+  @Mutation(() => Boolean, {
+    description:
+      "Applique un ordre personnalisé (drag-and-drop) aux annonces.",
+  })
+  async reorderVitrineAnnouncements(
+    @CurrentClub() club: Club,
+    @Args('orderedIds', { type: () => [ID] }) orderedIds: string[],
+  ): Promise<boolean> {
+    await this.content.reorderAnnouncements(club.id, orderedIds);
+    void this.isr.revalidate(club.slug, {
+      paths: ['/', '/actualites'],
+      tags: [`vitrine-announcements:${club.slug}`],
+    });
+    return true;
+  }
+
+  @Mutation(() => VitrineArticleGraph, {
+    description:
+      "Épingle ou désépingle un article (affichage en tête de la liste /blog).",
+  })
+  async setVitrineArticlePinned(
+    @CurrentClub() club: Club,
+    @Args('id', { type: () => ID }) id: string,
+    @Args('pinned') pinned: boolean,
+  ): Promise<VitrineArticleGraph> {
+    const row = await this.content.setArticlePinned(club.id, id, pinned);
+    void this.isr.revalidate(club.slug, {
+      paths: ['/', '/blog'],
+      tags: [`vitrine-articles:${club.slug}`],
+    });
+    return row as unknown as VitrineArticleGraph;
+  }
+
+  @Mutation(() => VitrineAnnouncementGraph, {
+    description: "Épingle ou désépingle une annonce.",
+  })
+  async setVitrineAnnouncementPinned(
+    @CurrentClub() club: Club,
+    @Args('id', { type: () => ID }) id: string,
+    @Args('pinned') pinned: boolean,
+  ): Promise<VitrineAnnouncementGraph> {
+    const row = await this.content.setAnnouncementPinned(club.id, id, pinned);
+    void this.isr.revalidate(club.slug, {
+      paths: ['/', '/actualites'],
+      tags: [`vitrine-announcements:${club.slug}`],
+    });
+    return row;
+  }
+
+  // ---------- Bascule de canal (actualités ↔ blog) ----------
+
+  @Mutation(() => VitrineArticleGraph, {
+    description:
+      "Bascule un article entre les canaux NEWS (/actualites) et BLOG (/blog). L'article conserve son id, slug, SEO, catégories et commentaires — seul son emplacement public change. Remplace les anciens promote/demote.",
+  })
+  async setVitrineArticleChannel(
+    @CurrentClub() club: Club,
+    @Args('id', { type: () => ID }) id: string,
+    @Args('channel', { type: () => VitrineArticleChannelEnum })
+    channel: VitrineArticleChannelEnum,
+  ): Promise<VitrineArticleGraph> {
+    const row = await this.content.setArticleChannel(club.id, id, channel);
+    void this.isr.revalidate(club.slug, {
+      paths: ['/', '/actualites', '/blog'],
+      tags: [`vitrine-articles:${club.slug}`],
+    });
+    return row as unknown as VitrineArticleGraph;
   }
 
   // ---------- Galerie ----------

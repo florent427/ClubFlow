@@ -7,6 +7,8 @@ import Placeholder from '@tiptap/extension-placeholder';
 import { useEffect, useRef, useState } from 'react';
 import { getClubId, getToken } from '../../lib/storage';
 import { ResizableImage } from './ResizableImageExtension';
+import { VitrineVideo } from './VideoExtension';
+import { VitrinePptx, attachPptxToolbarHandlers } from './PptxExtension';
 
 interface Props {
   value: string; // HTML initial
@@ -43,7 +45,13 @@ export function TiptapEditor({
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [linkHref, setLinkHref] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoFileInputRef = useRef<HTMLInputElement>(null);
+  const pptxFileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [videoDialogOpen, setVideoDialogOpen] = useState(false);
+  const [videoUrl, setVideoUrl] = useState('');
+  const [videoTitle, setVideoTitle] = useState('');
+  const editorWrapRef = useRef<HTMLDivElement>(null);
 
   const editor = useEditor({
     extensions: [
@@ -57,6 +65,8 @@ export function TiptapEditor({
         HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' },
       }),
       ResizableImage.configure({ inline: false, allowBase64: false }),
+      VitrineVideo,
+      VitrinePptx,
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       Placeholder.configure({ placeholder, emptyEditorClass: 'is-empty' }),
     ],
@@ -75,6 +85,16 @@ export function TiptapEditor({
       editor.commands.setContent(value, { emitUpdate: false });
     }
   }, [value, editor]);
+
+  // Active les boutons interactifs des figures PPTX (plein écran, bascule
+  // Office/Google Docs) à l'intérieur de l'éditeur — sinon les clics sur
+  // les boutons générés par renderHTML seraient inertes (Tiptap ne les
+  // réhydrate pas, c'est un contentEditable brut).
+  useEffect(() => {
+    const root = editorWrapRef.current;
+    if (!root) return;
+    return attachPptxToolbarHandlers(root);
+  }, []);
 
   if (!editor) return <p className="muted">Initialisation\u2026</p>;
 
@@ -109,6 +129,126 @@ export function TiptapEditor({
     }
   }
 
+  async function uploadMediaFile(
+    file: File,
+    kind: 'video' | 'document',
+  ): Promise<{
+    id: string;
+    publicUrl: string;
+    fileName: string;
+    /** Spécifique PPTX : URL du PDF de preview (LibreOffice) si générée. */
+    pdfUrl?: string | null;
+  } | null> {
+    const token = getToken();
+    const clubId = getClubId();
+    if (!token || !clubId) {
+      alert('Session expirée. Reconnecte-toi.');
+      return null;
+    }
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${apiBase()}/media/upload?kind=${kind}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Club-Id': clubId,
+      },
+      body: form,
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      throw new Error(`HTTP ${res.status}${txt ? ` : ${txt}` : ''}`);
+    }
+    return res.json() as Promise<{
+      id: string;
+      publicUrl: string;
+      fileName: string;
+      pdfUrl?: string | null;
+    }>;
+  }
+
+  async function handleVideoFileUpload(
+    e: React.ChangeEvent<HTMLInputElement>,
+  ): Promise<void> {
+    const file = e.target.files?.[0];
+    if (!file || !editor) return;
+    setUploading(true);
+    try {
+      const asset = await uploadMediaFile(file, 'video');
+      if (!asset) return;
+      editor
+        .chain()
+        .focus()
+        .insertVitrineVideo({
+          src: asset.publicUrl,
+          provider: 'file',
+          title: file.name,
+        })
+        .run();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Échec upload vidéo');
+    } finally {
+      setUploading(false);
+      if (videoFileInputRef.current) videoFileInputRef.current.value = '';
+    }
+  }
+
+  async function handlePptxUpload(
+    e: React.ChangeEvent<HTMLInputElement>,
+  ): Promise<void> {
+    const file = e.target.files?.[0];
+    if (!file || !editor) return;
+    setUploading(true);
+    try {
+      const asset = await uploadMediaFile(file, 'document');
+      if (!asset) return;
+      editor
+        .chain()
+        .focus()
+        .insertVitrinePptx({
+          src: asset.publicUrl,
+          // LibreOffice a pu convertir le PPTX en PDF → on prend cette URL
+          // pour le lecteur natif navigateur (marche partout, plein écran OK).
+          pdfSrc: asset.pdfUrl ?? null,
+          title: file.name.replace(/\.(pptx?|odp)$/i, ''),
+        })
+        .run();
+      if (!asset.pdfUrl) {
+        // Non-bloquant : on avertit l'admin que le preview retombera sur
+        // Office Online, qui nécessite une URL publique Internet.
+        console.info(
+          'PPTX uploadé sans PDF preview — LibreOffice indisponible ou conversion échouée côté serveur. ' +
+            "Le viewer Office Online sera utilisé (nécessite une URL publique en production).",
+        );
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Échec upload présentation');
+    } finally {
+      setUploading(false);
+      if (pptxFileInputRef.current) pptxFileInputRef.current.value = '';
+    }
+  }
+
+  function applyVideoUrl(): void {
+    if (!editor) return;
+    const url = videoUrl.trim();
+    if (!url) {
+      setVideoDialogOpen(false);
+      return;
+    }
+    editor
+      .chain()
+      .focus()
+      .insertVitrineVideo({
+        src: url,
+        title: videoTitle.trim() || null,
+      })
+      .run();
+    setVideoDialogOpen(false);
+    setVideoUrl('');
+    setVideoTitle('');
+  }
+
   function applyLink(): void {
     if (!editor) return;
     const href = linkHref.trim();
@@ -131,7 +271,7 @@ export function TiptapEditor({
   const wordCount = plainText.trim() ? plainText.trim().split(/\s+/).length : 0;
 
   return (
-    <div className="tiptap-wrap">
+    <div className="tiptap-wrap" ref={editorWrapRef}>
       <Toolbar
         editor={editor}
         onOpenLink={() => {
@@ -142,6 +282,13 @@ export function TiptapEditor({
           setLinkDialogOpen(true);
         }}
         onUploadImage={() => fileInputRef.current?.click()}
+        onInsertVideoUrl={() => {
+          setVideoUrl('');
+          setVideoTitle('');
+          setVideoDialogOpen(true);
+        }}
+        onUploadVideoFile={() => videoFileInputRef.current?.click()}
+        onUploadPptx={() => pptxFileInputRef.current?.click()}
         uploading={uploading}
       />
       <input
@@ -150,6 +297,20 @@ export function TiptapEditor({
         accept="image/*"
         style={{ display: 'none' }}
         onChange={(e) => void handleImageUpload(e)}
+      />
+      <input
+        ref={videoFileInputRef}
+        type="file"
+        accept="video/mp4,video/webm,video/ogg,video/quicktime"
+        style={{ display: 'none' }}
+        onChange={(e) => void handleVideoFileUpload(e)}
+      />
+      <input
+        ref={pptxFileInputRef}
+        type="file"
+        accept=".pptx,.ppt,.odp,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint,application/vnd.oasis.opendocument.presentation"
+        style={{ display: 'none' }}
+        onChange={(e) => void handlePptxUpload(e)}
       />
       <div className="tiptap-editor">
         <EditorContent editor={editor} />
@@ -174,6 +335,105 @@ export function TiptapEditor({
           </span>
         ) : null}
       </div>
+
+      {videoDialogOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setVideoDialogOpen(false);
+          }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.55)',
+            zIndex: 3000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <div
+            style={{
+              background: '#fff',
+              padding: 20,
+              borderRadius: 12,
+              width: 'min(480px, 92vw)',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+            }}
+          >
+            <h3 style={{ marginTop: 0 }}>Insérer une vidéo (YouTube / Vimeo)</h3>
+            <label className="field">
+              <span>URL de la vidéo</span>
+              <input
+                type="url"
+                value={videoUrl}
+                onChange={(e) => setVideoUrl(e.target.value)}
+                placeholder="https://www.youtube.com/watch?v=…  ou  https://vimeo.com/…"
+                autoFocus
+                style={{
+                  width: '100%',
+                  padding: 8,
+                  border: '1px solid #d1d5db',
+                  borderRadius: 6,
+                  fontSize: 14,
+                  boxSizing: 'border-box',
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') applyVideoUrl();
+                  if (e.key === 'Escape') setVideoDialogOpen(false);
+                }}
+              />
+            </label>
+            <label className="field" style={{ marginTop: 10 }}>
+              <span>Titre (optionnel)</span>
+              <input
+                type="text"
+                value={videoTitle}
+                onChange={(e) => setVideoTitle(e.target.value)}
+                placeholder="Ex. Stage de karaté décembre 2026"
+                style={{
+                  width: '100%',
+                  padding: 8,
+                  border: '1px solid #d1d5db',
+                  borderRadius: 6,
+                  fontSize: 14,
+                  boxSizing: 'border-box',
+                }}
+              />
+            </label>
+            <p style={{ fontSize: 12, color: '#64748b', margin: '10px 0' }}>
+              L'URL YouTube <code>watch?v=…</code> ou{' '}
+              <code>youtu.be/…</code> est convertie automatiquement en
+              iframe embed. Idem pour Vimeo. Pour un fichier MP4 /
+              WebM, utilise le bouton « 📹 » de la toolbar.
+            </p>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: 8,
+                marginTop: 12,
+              }}
+            >
+              <button
+                type="button"
+                className="btn btn-tight btn-ghost"
+                onClick={() => setVideoDialogOpen(false)}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                className="btn btn-tight"
+                onClick={applyVideoUrl}
+              >
+                Insérer
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {linkDialogOpen ? (
         <div
@@ -258,11 +518,17 @@ function Toolbar({
   editor,
   onOpenLink,
   onUploadImage,
+  onInsertVideoUrl,
+  onUploadVideoFile,
+  onUploadPptx,
   uploading,
 }: {
   editor: Editor;
   onOpenLink: () => void;
   onUploadImage: () => void;
+  onInsertVideoUrl: () => void;
+  onUploadVideoFile: () => void;
+  onUploadPptx: () => void;
   uploading: boolean;
 }) {
   const btn = (
@@ -429,6 +695,26 @@ function Toolbar({
           onUploadImage,
           false,
           'Insérer une image',
+          uploading,
+        )}
+        {btn(
+          '▶',
+          onInsertVideoUrl,
+          false,
+          'Insérer une vidéo YouTube / Vimeo (via URL)',
+        )}
+        {btn(
+          uploading ? '…' : '📹',
+          onUploadVideoFile,
+          false,
+          'Uploader un fichier vidéo (MP4 / WebM / OGG / MOV)',
+          uploading,
+        )}
+        {btn(
+          uploading ? '…' : '📊',
+          onUploadPptx,
+          false,
+          'Uploader une présentation PowerPoint (.pptx) — lecteur inline',
           uploading,
         )}
         {btn(

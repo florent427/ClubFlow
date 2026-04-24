@@ -67,7 +67,7 @@ export function FeaturedArticlesSection({
                 key={a.slug}
                 className={i === 0 ? styles.featured : styles.card}
               >
-                <Link href={`/actualites/${a.slug}`} className={styles.link}>
+                <Link href={`/blog/${a.slug}`} className={styles.link}>
                   {a.coverImageUrl ? (
                     <div
                       className={styles.cover}

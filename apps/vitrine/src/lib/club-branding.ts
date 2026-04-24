@@ -95,6 +95,7 @@ const FALLBACK_BRANDING: ClubBranding = {
           { href: '/tarifs', label: 'Tarifs' },
           { href: '/galerie', label: 'Galerie' },
           { href: '/actualites', label: 'Actualités' },
+          { href: '/blog', label: 'Blog' },
           { href: '/competitions', label: 'Compétitions' },
           { href: '/contact', label: 'Contact' },
           {

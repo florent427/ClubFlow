@@ -795,18 +795,63 @@ export function MemberDetailDrawer({
       </>
     ) : (
       <>
-        <header className="family-drawer__head">
-          <div>
-            <p className="members-loom__eyebrow">Fiche membre</p>
-            <h2 className="family-drawer__title" id="member-drawer-title">
-              {member.firstName} {member.lastName}
-            </h2>
+        <header className="family-drawer__head member-drawer__head">
+          <div className="member-drawer__hero">
+            {member.photoUrl ? (
+              <img
+                src={member.photoUrl}
+                alt=""
+                className="member-drawer__avatar"
+                draggable={false}
+              />
+            ) : (
+              <span
+                className="member-drawer__avatar member-drawer__avatar--empty"
+                aria-hidden
+              >
+                {(member.firstName?.[0] ?? '') + (member.lastName?.[0] ?? '')}
+              </span>
+            )}
+            <div className="member-drawer__hero-text">
+              <p className="members-loom__eyebrow">Fiche membre</p>
+              <h2 className="family-drawer__title" id="member-drawer-title">
+                {member.firstName} {member.lastName}
+              </h2>
+              <div className="member-drawer__badges">
+                <span
+                  className={`cf-badge cf-badge--${member.status === 'ACTIVE' ? 'success' : 'neutral'}`}
+                >
+                  {member.status === 'ACTIVE' ? 'Actif' : 'Inactif'}
+                </span>
+                {member.gradeLevel?.label ? (
+                  <span className="cf-badge cf-badge--info">
+                    <span
+                      className="material-symbols-outlined"
+                      aria-hidden
+                    >
+                      military_tech
+                    </span>
+                    {member.gradeLevel.label}
+                  </span>
+                ) : null}
+                {member.roles.slice(0, 2).map((r) => (
+                  <span key={r} className="cf-badge cf-badge--muted">
+                    {r}
+                  </span>
+                ))}
+                {member.roles.length > 2 ? (
+                  <span className="cf-badge cf-badge--muted">
+                    +{member.roles.length - 2}
+                  </span>
+                ) : null}
+              </div>
+            </div>
           </div>
           <div className="family-drawer__head-actions">
             {commEnabled ? (
               <button
                 type="button"
-                className="btn btn-ghost btn-tight"
+                className="member-drawer__icon-btn"
                 title="Envoyer un message"
                 onClick={() => setQuickMsgOpen(true)}
                 aria-label="Envoyer un message"
@@ -818,10 +863,14 @@ export function MemberDetailDrawer({
             ) : null}
             <button
               type="button"
-              className="btn btn-ghost btn-tight"
+              className="member-drawer__icon-btn member-drawer__icon-btn--close"
               onClick={requestClose}
+              title="Fermer la fiche"
+              aria-label="Fermer la fiche"
             >
-              Fermer
+              <span className="material-symbols-outlined" aria-hidden>
+                close
+              </span>
             </button>
           </div>
         </header>
@@ -873,7 +922,12 @@ export function MemberDetailDrawer({
           className="family-drawer__section members-form"
           onSubmit={(e) => void onEditSubmit(e)}
         >
-          <h3 className="family-drawer__h">Identité & rôles métier</h3>
+          <h3 className="family-drawer__h">
+            <span className="material-symbols-outlined" aria-hidden>
+              badge
+            </span>
+            Identité &amp; rôles métier
+          </h3>
           <MemberPhotoField
             key={memberId}
             idPrefix="drawer-member-photo"
@@ -1249,7 +1303,12 @@ export function MemberDetailDrawer({
 
         {activeTab === 'family' ? (
         <div className="family-drawer__section">
-          <h3 className="family-drawer__h">Foyer</h3>
+          <h3 className="family-drawer__h">
+            <span className="material-symbols-outlined" aria-hidden>
+              groups
+            </span>
+            Foyer
+          </h3>
           {familyFormError ? (
             <p className="form-error">{familyFormError}</p>
           ) : null}

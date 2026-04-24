@@ -40,28 +40,10 @@ import {
  * pré-remplit le formulaire de création avec les valeurs du créneau source.
  */
 
-function formatSlotRange(startsAt: string, endsAt: string): string {
-  try {
-    const a = new Date(startsAt);
-    const b = new Date(endsAt);
-    return (
-      a.toLocaleString('fr-FR', {
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-        hour: '2-digit',
-        minute: '2-digit',
-      }) +
-      ' — ' +
-      b.toLocaleTimeString('fr-FR', {
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    );
-  } catch {
-    return '—';
-  }
-}
+// Fonction historique utilisée par l'ancienne table de créneaux supprimée
+// lors de la refonte v2. Conservée commentée en cas de réintroduction
+// d'une vue liste dans un futur onglet :
+// function formatSlotRange(startsAt: string, endsAt: string): string { ... }
 
 /** Convertit une date ISO en valeur datetime-local (YYYY-MM-DDTHH:mm). */
 function toLocalDatetime(iso: string): string {
@@ -100,6 +82,15 @@ export function PlanningPage() {
   /** Indique qu'on est en mode duplication (pré-remplissage). */
   const [dupSource, setDupSource] = useState<string | null>(null);
 
+  /** Création via drawer/modal (au lieu du form aside permanent historique). */
+  const [venueModalOpen, setVenueModalOpen] = useState(false);
+  const [slotDrawerOpen, setSlotDrawerOpen] = useState(false);
+
+  /** Recherche + filtres affichés dans la toolbar du calendrier. */
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterCoachId, setFilterCoachId] = useState('');
+  const [filterVenueId, setFilterVenueId] = useState('');
+
   /**
    * Modal édition/création.
    * - mode 'edit'  : double-clic sur un créneau existant
@@ -127,6 +118,7 @@ export function PlanningPage() {
         setVenueName('');
         setVenueAddress('');
         setFormError(null);
+        setVenueModalOpen(false);
         void refetchVenues();
       },
       onError: (e) => setFormError(e.message),
@@ -168,6 +160,50 @@ export function PlanningPage() {
   }, [membersData]);
 
   const slots = slotsData?.clubCourseSlots ?? [];
+
+  /** Filtre actif ? Utilisé par la toolbar pour afficher un bouton "Réinitialiser". */
+  const hasActiveFilter =
+    searchQuery.trim() !== '' ||
+    filterCoachId !== '' ||
+    filterVenueId !== '';
+
+  /**
+   * Slots affichés après application de la recherche texte et des filtres
+   * coach/lieu. La grille calendrier et la vue mois consomment le résultat
+   * filtré — on garde ainsi une lecture ciblée sans toucher au backend.
+   */
+  const filteredSlots = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return slots.filter((s) => {
+      if (filterCoachId && s.coachMemberId !== filterCoachId) return false;
+      if (filterVenueId && s.venueId !== filterVenueId) return false;
+      if (q && !s.title.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [slots, searchQuery, filterCoachId, filterVenueId]);
+
+  /** KPIs visibles dans le header — compte sur la semaine pivot courante. */
+  const kpis = useMemo(() => {
+    const weekStart = startOfWeek(pivotDate, { weekStartsOn: 1 });
+    const weekEnd = addDays(weekStart, 7);
+    const coursesThisWeek = slots.filter((s) => {
+      const d = new Date(s.startsAt);
+      return d >= weekStart && d < weekEnd;
+    }).length;
+    const coachesThisWeek = new Set(
+      slots
+        .filter((s) => {
+          const d = new Date(s.startsAt);
+          return d >= weekStart && d < weekEnd;
+        })
+        .map((s) => s.coachMemberId),
+    ).size;
+    return {
+      coursesThisWeek,
+      coachesThisWeek,
+      venues: venuesData?.clubVenues?.length ?? 0,
+    };
+  }, [slots, pivotDate, venuesData]);
 
   const memberNameById = useMemo(() => {
     const members = membersData?.clubMembers ?? [];
@@ -215,7 +251,8 @@ export function PlanningPage() {
     [updateSlot],
   );
 
-  /** Pré-remplit le formulaire avec les valeurs d'un créneau existant. */
+  /** Pré-remplit le formulaire avec les valeurs d'un créneau existant
+   * puis ouvre le drawer de création. */
   function duplicateSlot(slotId: string) {
     const source = slots.find((s) => s.id === slotId);
     if (!source) return;
@@ -227,7 +264,7 @@ export function PlanningPage() {
     setSlotGroupId(source.dynamicGroupId ?? '');
     setDupSource(source.title);
     setFormError(null);
-    document.getElementById('slot-form')?.scrollIntoView({ behavior: 'smooth' });
+    setSlotDrawerOpen(true);
   }
 
   function clearDuplication() {
@@ -298,11 +335,19 @@ export function PlanningPage() {
       }
       if (weeks > 1) {
         showToast(`${weeks} créneaux créés`, 'success');
+      } else {
+        showToast('Créneau créé', 'success');
       }
       setSlotRepeatWeeks('1');
+      setSlotDrawerOpen(false);
     } catch {
       // error already shown via onError handler
     }
+  }
+
+  function openSlotDrawer() {
+    clearDuplication();
+    setSlotDrawerOpen(true);
   }
 
   function viewLabel(v: PlanningView): string {
@@ -402,7 +447,8 @@ export function PlanningPage() {
   }
 
   return (
-    <div className="members-loom">
+    <div className="members-loom planning-v2">
+      {/* ═══ Modal édition créneau existant (drag sur grille → clic) ═══ */}
       <CourseSlotDetailModal
         open={slotModalMode !== null}
         onClose={closeSlotModal}
@@ -428,49 +474,475 @@ export function PlanningPage() {
             : undefined
         }
       />
-      <header className="members-loom__hero">
-        <p className="members-loom__eyebrow">Module Planning</p>
-        <h1 className="members-loom__title">Lieux et créneaux cours</h1>
-        <p className="members-loom__lede">
-          Calendrier : déplacez et redimensionnez les créneaux (pas de 15 min,
-          validation UTC côté serveur). Les professeurs sont des membres actifs
-          avec le rôle <strong>COACH</strong>.
-        </p>
+
+      {/* ═══ Modal création lieu ═══ */}
+      {venueModalOpen ? (
+        <>
+          <div
+            className="cf-modal-backdrop"
+            role="presentation"
+            onClick={() => setVenueModalOpen(false)}
+          />
+          <div
+            className="cf-modal cf-modal--confirm planning-venue-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="planning-venue-title"
+          >
+            <h2 id="planning-venue-title" className="cf-modal-title">
+              <span className="material-symbols-outlined" aria-hidden>
+                location_on
+              </span>
+              Nouveau lieu
+            </h2>
+            {formError ? (
+              <p className="form-error">{formError}</p>
+            ) : null}
+            <form
+              className="members-form"
+              onSubmit={(e) => void onCreateVenue(e)}
+            >
+              <label className="field">
+                <span>Nom</span>
+                <input
+                  value={venueName}
+                  onChange={(e) => setVenueName(e.target.value)}
+                  placeholder="Dojo principal"
+                  required
+                  autoFocus
+                />
+              </label>
+              <label className="field">
+                <span>Adresse (optionnel)</span>
+                <input
+                  value={venueAddress}
+                  onChange={(e) => setVenueAddress(e.target.value)}
+                  placeholder="12 rue du sport, 75000 Paris"
+                />
+              </label>
+              <div className="cf-modal-actions">
+                <button
+                  type="button"
+                  className="cf-btn cf-btn--ghost"
+                  onClick={() => setVenueModalOpen(false)}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="cf-btn cf-btn--primary"
+                  disabled={creatingVenue}
+                >
+                  {creatingVenue ? 'Création…' : 'Ajouter le lieu'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </>
+      ) : null}
+
+      {/* ═══ Drawer création créneau ═══ */}
+      {slotDrawerOpen ? (
+        <>
+          <div
+            className="family-drawer-backdrop"
+            role="presentation"
+            onClick={() => setSlotDrawerOpen(false)}
+          />
+          <aside
+            className="family-drawer planning-slot-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="planning-slot-drawer-title"
+          >
+            <header className="family-drawer__head member-drawer__head">
+              <div className="member-drawer__hero">
+                <span
+                  className="member-drawer__avatar member-drawer__avatar--empty"
+                  aria-hidden
+                >
+                  <span className="material-symbols-outlined">
+                    add_circle
+                  </span>
+                </span>
+                <div className="member-drawer__hero-text">
+                  <p className="members-loom__eyebrow">Planning</p>
+                  <h2
+                    className="family-drawer__title"
+                    id="planning-slot-drawer-title"
+                  >
+                    {dupSource ? 'Dupliquer un créneau' : 'Nouveau créneau'}
+                  </h2>
+                  {dupSource ? (
+                    <p className="cf-text-muted" style={{ margin: 0 }}>
+                      Pré-rempli depuis «&nbsp;{dupSource}&nbsp;»
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="member-drawer__icon-btn member-drawer__icon-btn--close"
+                onClick={() => setSlotDrawerOpen(false)}
+                aria-label="Fermer"
+                title="Fermer"
+              >
+                <span className="material-symbols-outlined" aria-hidden>
+                  close
+                </span>
+              </button>
+            </header>
+
+            <form
+              className="members-form family-drawer__section"
+              onSubmit={(e) => void onCreateSlot(e)}
+            >
+              {formError ? (
+                <p className="form-error">{formError}</p>
+              ) : null}
+              {dupSource ? (
+                <div className="planning-dup-banner">
+                  <span className="material-symbols-outlined" aria-hidden>
+                    content_copy
+                  </span>
+                  <span>Copie de « {dupSource} »</span>
+                  <button type="button" onClick={clearDuplication}>
+                    Annuler
+                  </button>
+                </div>
+              ) : null}
+              <label className="field">
+                <span>Titre du cours</span>
+                <input
+                  value={slotTitle}
+                  onChange={(e) => setSlotTitle(e.target.value)}
+                  placeholder="Ex. Karaté enfants ceinture blanche"
+                  required
+                  autoFocus
+                />
+              </label>
+              <div className="cf-form__row">
+                <label className="field">
+                  <span>Lieu</span>
+                  <select
+                    value={slotVenueId}
+                    onChange={(e) => setSlotVenueId(e.target.value)}
+                    required
+                  >
+                    <option value="">— Choisir —</option>
+                    {(venuesData?.clubVenues ?? []).map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Professeur</span>
+                  <select
+                    value={slotCoachId}
+                    onChange={(e) => setSlotCoachId(e.target.value)}
+                    required
+                  >
+                    <option value="">— Choisir —</option>
+                    {coaches.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.firstName} {c.lastName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {coaches.length === 0 ? (
+                <p className="cf-text-muted">
+                  Aucun professeur.{' '}
+                  <Link to="/members" className="cf-link">
+                    Ouvrez un membre
+                  </Link>{' '}
+                  et cochez le rôle système <strong>COACH</strong>.
+                </p>
+              ) : null}
+              <div className="cf-form__row">
+                <label className="field">
+                  <span>Début</span>
+                  <input
+                    type="datetime-local"
+                    value={slotStarts}
+                    onChange={(e) => setSlotStarts(e.target.value)}
+                    required
+                  />
+                </label>
+                <label className="field">
+                  <span>Fin</span>
+                  <input
+                    type="datetime-local"
+                    value={slotEnds}
+                    onChange={(e) => setSlotEnds(e.target.value)}
+                    required
+                  />
+                </label>
+              </div>
+              <label className="field">
+                <span>Groupe dynamique (optionnel)</span>
+                <select
+                  value={slotGroupId}
+                  onChange={(e) => setSlotGroupId(e.target.value)}
+                >
+                  <option value="">— Aucun —</option>
+                  {(groupsData?.clubDynamicGroups ?? []).map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>Répéter chaque semaine pendant (1–52)</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={52}
+                  value={slotRepeatWeeks}
+                  onChange={(e) => setSlotRepeatWeeks(e.target.value)}
+                />
+                <small className="cf-text-muted">
+                  1 = pas de répétition. Crée une occurrence hebdomadaire à la
+                  même heure.
+                </small>
+              </label>
+              <div className="cf-form__actions">
+                <button
+                  type="button"
+                  className="cf-btn cf-btn--ghost"
+                  onClick={() => setSlotDrawerOpen(false)}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="cf-btn cf-btn--primary"
+                  disabled={
+                    creatingSlot ||
+                    (venuesData?.clubVenues ?? []).length === 0
+                  }
+                >
+                  {creatingSlot
+                    ? 'Création…'
+                    : dupSource
+                      ? 'Créer la copie'
+                      : parseInt(slotRepeatWeeks, 10) > 1
+                        ? `Créer ${parseInt(slotRepeatWeeks, 10)} créneaux`
+                        : 'Créer le créneau'}
+                </button>
+              </div>
+              {(venuesData?.clubVenues ?? []).length === 0 ? (
+                <p className="cf-text-warning">
+                  Créez d&rsquo;abord un lieu (bouton «&nbsp;+ Lieu&nbsp;»
+                  dans l&rsquo;entête).
+                </p>
+              ) : null}
+            </form>
+          </aside>
+        </>
+      ) : null}
+
+      {/* ═══ Hero : titre + CTAs ═══ */}
+      <header className="members-loom__hero members-loom__hero--nested">
+        <div className="members-hero__actions">
+          <div>
+            <p className="members-loom__eyebrow">Module Planning</p>
+            <h1 className="members-loom__title">Planning sportif</h1>
+            <p className="members-loom__lede">
+              Glisser-déposer pour déplacer un créneau (pas de 15&nbsp;min).
+              Cliquer sur une cellule vide pour créer, ou utiliser le bouton
+              «&nbsp;Nouveau créneau&nbsp;». Les professeurs sont les membres
+              avec le rôle <strong>COACH</strong>.
+            </p>
+          </div>
+          <div className="members-hero__ctas">
+            <button
+              type="button"
+              className="cf-btn cf-btn--ghost"
+              onClick={() => setVenueModalOpen(true)}
+            >
+              <span className="material-symbols-outlined" aria-hidden>
+                location_on
+              </span>
+              Nouveau lieu
+            </button>
+            <button
+              type="button"
+              className="cf-btn cf-btn--primary members-hero__cta"
+              onClick={openSlotDrawer}
+              disabled={(venuesData?.clubVenues ?? []).length === 0}
+              title={
+                (venuesData?.clubVenues ?? []).length === 0
+                  ? 'Créez d’abord un lieu'
+                  : 'Créer un nouveau créneau'
+              }
+            >
+              <span className="material-symbols-outlined" aria-hidden>
+                add
+              </span>
+              Nouveau créneau
+            </button>
+          </div>
+        </div>
       </header>
 
+      {/* ═══ KPI row ═══ */}
+      {slots.length > 0 ? (
+        <div className="members-kpis planning-kpis">
+          <div className="members-kpi">
+            <span className="members-kpi__label">Cours cette semaine</span>
+            <span className="members-kpi__value">{kpis.coursesThisWeek}</span>
+            <span className="members-kpi__hint">
+              semaine du{' '}
+              {startOfWeek(pivotDate, { weekStartsOn: 1 }).toLocaleDateString(
+                'fr-FR',
+                { day: '2-digit', month: 'short' },
+              )}
+            </span>
+          </div>
+          <div className="members-kpi">
+            <span className="members-kpi__label">Coaches mobilisés</span>
+            <span className="members-kpi__value">{kpis.coachesThisWeek}</span>
+            <span className="members-kpi__hint">
+              sur {coaches.length} professeur{coaches.length > 1 ? 's' : ''}
+            </span>
+          </div>
+          <div className="members-kpi">
+            <span className="members-kpi__label">Lieux</span>
+            <span className="members-kpi__value">{kpis.venues}</span>
+            <span className="members-kpi__hint">
+              configurés dans ce club
+            </span>
+          </div>
+          <div className="members-kpi">
+            <span className="members-kpi__label">Total créneaux</span>
+            <span className="members-kpi__value">{slots.length}</span>
+            <span className="members-kpi__hint">
+              toutes dates confondues
+            </span>
+          </div>
+        </div>
+      ) : null}
+
+      {/* ═══ Toolbar : vue + navigation ═══ */}
       <div className="planning-toolbar">
-        <div className="planning-toolbar__views" role="tablist" aria-label="Vue calendrier">
+        <div
+          className="cf-segmented"
+          role="tablist"
+          aria-label="Vue calendrier"
+        >
           {(['month', 'week', 'day'] as const).map((v) => (
             <button
               key={v}
               type="button"
               role="tab"
               aria-selected={view === v}
-              className={`btn btn-tight${view === v ? ' btn-primary' : ' btn-ghost'}`}
+              className={`cf-segmented__btn${view === v ? ' cf-segmented__btn--active' : ''}`}
               onClick={() => setView(v)}
             >
               {viewLabel(v)}
             </button>
           ))}
         </div>
-        <div className="planning-toolbar__nav">
-          <button type="button" className="btn btn-ghost btn-tight" onClick={goPrev}>
-            <span className="material-symbols-outlined">chevron_left</span>
+        <div className="planning-toolbar__nav" role="group" aria-label="Navigation temporelle">
+          <button
+            type="button"
+            className="cf-btn cf-btn--ghost cf-btn--sm"
+            onClick={goPrev}
+            aria-label="Période précédente"
+          >
+            <span className="material-symbols-outlined" aria-hidden>
+              chevron_left
+            </span>
           </button>
-          <button type="button" className="btn btn-ghost btn-tight" onClick={goToday}>
+          <button
+            type="button"
+            className="cf-btn cf-btn--ghost cf-btn--sm"
+            onClick={goToday}
+          >
             Aujourd’hui
           </button>
-          <button type="button" className="btn btn-ghost btn-tight" onClick={goNext}>
-            <span className="material-symbols-outlined">chevron_right</span>
+          <button
+            type="button"
+            className="cf-btn cf-btn--ghost cf-btn--sm"
+            onClick={goNext}
+            aria-label="Période suivante"
+          >
+            <span className="material-symbols-outlined" aria-hidden>
+              chevron_right
+            </span>
           </button>
         </div>
       </div>
 
-      <section className="planning-calendar-shell members-panel">
+      {/* ═══ Filter bar : recherche + coach + lieu ═══ */}
+      <div className="cf-toolbar planning-filters">
+        <label className="field planning-filters__search">
+          <span>Rechercher un cours</span>
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Titre du cours…"
+            autoComplete="off"
+          />
+        </label>
+        <label className="field">
+          <span>Coach</span>
+          <select
+            value={filterCoachId}
+            onChange={(e) => setFilterCoachId(e.target.value)}
+          >
+            <option value="">Tous les coaches</option>
+            {coaches.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.firstName} {c.lastName}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Lieu</span>
+          <select
+            value={filterVenueId}
+            onChange={(e) => setFilterVenueId(e.target.value)}
+          >
+            <option value="">Tous les lieux</option>
+            {(venuesData?.clubVenues ?? []).map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {hasActiveFilter ? (
+          <button
+            type="button"
+            className="cf-btn cf-btn--ghost cf-btn--sm planning-filters__reset"
+            onClick={() => {
+              setSearchQuery('');
+              setFilterCoachId('');
+              setFilterVenueId('');
+            }}
+          >
+            <span className="material-symbols-outlined" aria-hidden>
+              close
+            </span>
+            Réinitialiser ({filteredSlots.length}/{slots.length})
+          </button>
+        ) : null}
+      </div>
+
+      {/* ═══ Calendar full-width ═══ */}
+      <section className="planning-calendar-shell planning-calendar-shell--full">
         {view === 'month' ? (
           <PlanningMonthView
             monthPivot={monthPivot}
-            slots={slots}
+            slots={filteredSlots}
             onSelectDay={(d) => {
               setPivotDate(d);
               setView('week');
@@ -479,7 +951,7 @@ export function PlanningPage() {
         ) : (
           <PlanningTimeGrid
             days={view === 'day' ? [pivotDate] : weekDays}
-            slots={slots}
+            slots={filteredSlots}
             coachNameById={memberNameById}
             venueNameById={venueNameById}
             groupNameById={groupNameById}
@@ -498,229 +970,22 @@ export function PlanningPage() {
         )}
       </section>
 
-      <div className="members-loom__grid">
-        <section className="members-panel members-panel--table">
-          <h2 className="members-panel__h">Liste des créneaux</h2>
-          {formError ? <p className="form-error">{formError}</p> : null}
-          {slots.length === 0 ? (
-            <p className="muted">Aucun créneau. Ajoutez un lieu puis un cours.</p>
-          ) : (
-            <div className="members-table-wrap">
-              <table className="members-table">
-                <thead>
-                  <tr>
-                    <th>Cours</th>
-                    <th>Lieu</th>
-                    <th>Professeur</th>
-                    <th>Horaire</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {slots.map((s) => (
-                    <tr key={s.id}>
-                      <td>
-                        <span className="members-table__name">{s.title}</span>
-                        {s.dynamicGroupId ? (
-                          <span className="members-table__sub">Groupe lié</span>
-                        ) : null}
-                      </td>
-                      <td>{venueNameById.get(s.venueId) ?? s.venueId}</td>
-                      <td>
-                        {memberNameById.get(s.coachMemberId) ?? s.coachMemberId}
-                      </td>
-                      <td>{formatSlotRange(s.startsAt, s.endsAt)}</td>
-                      <td>
-                        <div className="planning-slot-actions">
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-tight"
-                            title="Dupliquer ce créneau"
-                            onClick={() => duplicateSlot(s.id)}
-                          >
-                            <span
-                              className="material-symbols-outlined"
-                              style={{ fontSize: '1rem' }}
-                            >
-                              content_copy
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-tight"
-                            onClick={() => {
-                              if (confirm('Supprimer ce créneau ?')) {
-                                void deleteSlot({ variables: { id: s.id } });
-                              }
-                            }}
-                          >
-                            Supprimer
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-
-        <aside className="members-panel members-panel--aside">
-          <h2 className="members-panel__h">Nouveau lieu</h2>
-          <form className="members-form" onSubmit={(e) => void onCreateVenue(e)}>
-            <label className="field">
-              <span>Nom</span>
-              <input
-                value={venueName}
-                onChange={(e) => setVenueName(e.target.value)}
-                placeholder="Dojo principal"
-                required
-              />
-            </label>
-            <label className="field">
-              <span>Adresse (optionnel)</span>
-              <input
-                value={venueAddress}
-                onChange={(e) => setVenueAddress(e.target.value)}
-              />
-            </label>
-            <button
-              type="submit"
-              className="btn btn-primary members-form__submit"
-              disabled={creatingVenue}
-            >
-              {creatingVenue ? 'Création…' : 'Ajouter le lieu'}
-            </button>
-          </form>
-
-          <h2 className="members-panel__h" style={{ marginTop: '1.5rem' }} id="slot-form">
-            {dupSource ? 'Dupliquer un créneau' : 'Nouveau créneau'}
-          </h2>
-
-          {dupSource ? (
-            <div className="planning-dup-banner">
-              <span className="material-symbols-outlined">content_copy</span>
-              Pré-rempli depuis « {dupSource} »
-              <button type="button" onClick={clearDuplication}>
-                Annuler
-              </button>
-            </div>
-          ) : null}
-
-          <form className="members-form" onSubmit={(e) => void onCreateSlot(e)}>
-            <label className="field">
-              <span>Titre</span>
-              <input
-                value={slotTitle}
-                onChange={(e) => setSlotTitle(e.target.value)}
-                required
-              />
-            </label>
-            <label className="field">
-              <span>Lieu</span>
-              <select
-                value={slotVenueId}
-                onChange={(e) => setSlotVenueId(e.target.value)}
-                required
-              >
-                <option value="">— Choisir —</option>
-                {(venuesData?.clubVenues ?? []).map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span>Professeur (COACH)</span>
-              <select
-                value={slotCoachId}
-                onChange={(e) => setSlotCoachId(e.target.value)}
-                required
-              >
-                <option value="">— Choisir —</option>
-                {coaches.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.firstName} {c.lastName}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {coaches.length === 0 ? (
-              <p className="muted">
-                Aucun professeur.{' '}
-                <Link to="/members" className="cf-link">
-                  Ouvrez un membre
-                </Link>{' '}
-                et cochez le rôle système <strong>COACH</strong> dans les rôles.
-              </p>
-            ) : null}
-            <label className="field">
-              <span>Début</span>
-              <input
-                type="datetime-local"
-                value={slotStarts}
-                onChange={(e) => setSlotStarts(e.target.value)}
-                required
-              />
-            </label>
-            <label className="field">
-              <span>Fin</span>
-              <input
-                type="datetime-local"
-                value={slotEnds}
-                onChange={(e) => setSlotEnds(e.target.value)}
-                required
-              />
-            </label>
-            <label className="field">
-              <span>Groupe dynamique (optionnel)</span>
-              <select
-                value={slotGroupId}
-                onChange={(e) => setSlotGroupId(e.target.value)}
-              >
-                <option value="">— Aucun —</option>
-                {(groupsData?.clubDynamicGroups ?? []).map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span>Répéter chaque semaine pendant (1–52)</span>
-              <input
-                type="number"
-                min={1}
-                max={52}
-                value={slotRepeatWeeks}
-                onChange={(e) => setSlotRepeatWeeks(e.target.value)}
-              />
-              <small className="muted">
-                1 = pas de répétition. Crée une occurrence par semaine à la même
-                heure.
-              </small>
-            </label>
-            <button
-              type="submit"
-              className="btn btn-primary members-form__submit"
-              disabled={creatingSlot || (venuesData?.clubVenues ?? []).length === 0}
-            >
-              {creatingSlot
-                ? 'Création…'
-                : dupSource
-                  ? 'Créer la copie'
-                  : parseInt(slotRepeatWeeks, 10) > 1
-                    ? `Créer ${parseInt(slotRepeatWeeks, 10)} créneaux`
-                    : 'Créer le créneau'}
-            </button>
-            {(venuesData?.clubVenues ?? []).length === 0 ? (
-              <p className="muted">Créez d'abord un lieu.</p>
-            ) : null}
-          </form>
-        </aside>
-      </div>
+      {/* ═══ Empty state global : aucun lieu configuré ═══ */}
+      {(venuesData?.clubVenues ?? []).length === 0 && slots.length === 0 ? (
+        <div className="cf-alert cf-alert--info" role="status">
+          <span className="material-symbols-outlined" aria-hidden>
+            info
+          </span>
+          <div className="cf-alert__content">
+            <strong>Commencez par créer un lieu</strong>
+            <span>
+              Un lieu (dojo, gymnase…) est nécessaire avant de pouvoir
+              planifier un créneau. Cliquez sur «&nbsp;Nouveau lieu&nbsp;»
+              dans l’entête.
+            </span>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

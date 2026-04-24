@@ -17,4 +17,5 @@ export const ENABLE_REQUIRES: Record<ModuleCode, ModuleCode[]> = {
   [ModuleCode.CLUB_LIFE]: [ModuleCode.MEMBERS],
   [ModuleCode.EVENTS]: [ModuleCode.MEMBERS],
   [ModuleCode.BOOKING]: [ModuleCode.MEMBERS],
+  [ModuleCode.PROJECTS]: [ModuleCode.MEMBERS],
 };

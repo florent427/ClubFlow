@@ -143,6 +143,7 @@ export class AgentResolver {
       club.id,
       user.userId,
       input.title ?? null,
+      input.projectId ?? null,
     );
     const row = await this.prisma.agentConversation.findUnique({
       where: { id: conv.id },

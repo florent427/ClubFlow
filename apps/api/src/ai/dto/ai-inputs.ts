@@ -1,6 +1,7 @@
 import { Field, InputType, Int } from '@nestjs/graphql';
 import {
   IsBoolean,
+  IsEnum,
   IsInt,
   IsOptional,
   IsString,
@@ -9,6 +10,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { VitrineArticleChannelEnum } from '../../vitrine/models/vitrine-models';
 
 @InputType()
 export class UpdateAiSettingsInput {
@@ -92,4 +94,13 @@ export class GenerateVitrineArticleDraftInput {
   @IsOptional()
   @IsBoolean()
   useWebSearch?: boolean;
+
+  @Field(() => VitrineArticleChannelEnum, {
+    nullable: true,
+    description:
+      "Canal de publication du brouillon généré (NEWS = /actualites, BLOG = /blog). Défaut BLOG. Même pipeline IA pour les deux canaux.",
+  })
+  @IsOptional()
+  @IsEnum(VitrineArticleChannelEnum)
+  channel?: VitrineArticleChannelEnum;
 }

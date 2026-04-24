@@ -424,59 +424,61 @@ export function VitrineArticleEditor() {
 
   return (
     <>
-      <header className="members-loom__hero members-loom__hero--nested">
-        <div className="members-hero__actions">
-          <div>
-            <p className="members-loom__eyebrow">
-              <Link to="/vitrine/articles">← Articles</Link>
-            </p>
-            <h1 className="members-loom__title" style={{ fontSize: 20 }}>
-              {article.status === 'DRAFT' ? 'Brouillon' : 'Article publié'}
-              {dirty ? (
-                <span
-                  style={{
-                    fontSize: 12,
-                    color: '#b45309',
-                    marginLeft: 10,
-                    fontWeight: 500,
-                  }}
-                >
-                  Modifications non enregistrées
-                </span>
-              ) : null}
-            </h1>
+      <div className="article-editor__stickybar">
+        <header className="members-loom__hero members-loom__hero--nested">
+          <div className="members-hero__actions">
+            <div>
+              <p className="members-loom__eyebrow">
+                <Link to="/vitrine/articles">← Articles</Link>
+              </p>
+              <h1 className="members-loom__title" style={{ fontSize: 20 }}>
+                {article.status === 'DRAFT' ? 'Brouillon' : 'Article publié'}
+                {dirty ? (
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color: '#b45309',
+                      marginLeft: 10,
+                      fontWeight: 500,
+                    }}
+                  >
+                    Modifications non enregistrées
+                  </span>
+                ) : null}
+              </h1>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn btn-tight btn-ghost"
+                onClick={() => navigate('/vitrine/articles')}
+              >
+                Retour
+              </button>
+              <button
+                type="button"
+                className="btn btn-tight"
+                onClick={() => void save()}
+                disabled={saving || !dirty}
+              >
+                {saving ? 'Enregistrement\u2026' : 'Enregistrer'}
+              </button>
+              <button
+                type="button"
+                className={`btn btn-tight ${
+                  article.status === 'PUBLISHED' ? 'btn-ghost' : 'btn-primary'
+                }`}
+                onClick={() => void togglePublish()}
+                disabled={statusSaving}
+              >
+                {article.status === 'PUBLISHED'
+                  ? 'Dépublier'
+                  : 'Enregistrer & publier'}
+              </button>
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              className="btn btn-tight btn-ghost"
-              onClick={() => navigate('/vitrine/articles')}
-            >
-              Retour
-            </button>
-            <button
-              type="button"
-              className="btn btn-tight"
-              onClick={() => void save()}
-              disabled={saving || !dirty}
-            >
-              {saving ? 'Enregistrement\u2026' : 'Enregistrer'}
-            </button>
-            <button
-              type="button"
-              className={`btn btn-tight ${
-                article.status === 'PUBLISHED' ? 'btn-ghost' : 'btn-primary'
-              }`}
-              onClick={() => void togglePublish()}
-              disabled={statusSaving}
-            >
-              {article.status === 'PUBLISHED'
-                ? 'Dépublier'
-                : 'Enregistrer & publier'}
-            </button>
-          </div>
-        </div>
-      </header>
+        </header>
+      </div>
 
       {/* Banner warnings IA : quand la génération s'est terminée avec des
           avertissements non-bloquants (ex. image featured qui n'a pas pu

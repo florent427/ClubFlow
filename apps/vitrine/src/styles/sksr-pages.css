@@ -4111,3 +4111,221 @@
   }
   .article-comments__reply::before { left: -15px; }
 }
+
+/* ------------------------------------------------------------------
+ * Page /actualites : liste d'annonces courtes (VitrineAnnouncement).
+ * À distinguer des articles de blog (article-card / article-grid).
+ * ------------------------------------------------------------------ */
+.announcement-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.announcement-card {
+  background: var(--paper, #fff);
+  border: 1px solid var(--line, #e8e4da);
+  border-radius: 14px;
+  padding: 24px 26px;
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.announcement-card:hover {
+  border-color: var(--goldBright, #d4af37);
+  box-shadow: 0 4px 10px rgba(17, 24, 39, 0.06);
+}
+
+.announcement-card--pinned {
+  border-color: var(--vermillion, #8b1a1a);
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0.06) 0%, #fff 100%);
+}
+
+.announcement-card__head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+
+.announcement-card__pin {
+  font-size: 1.1em;
+  flex-shrink: 0;
+}
+
+.announcement-card__title {
+  font-family: var(--serif, 'Cormorant Garamond', serif);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--ink, #0a0a0a);
+  margin: 0;
+  flex-grow: 1;
+  line-height: 1.2;
+}
+
+.announcement-card__date {
+  font-size: 0.85rem;
+  color: var(--muted, #6b6557);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+  flex-shrink: 0;
+}
+
+.announcement-card__body {
+  color: var(--ink2, #2a2a2a);
+  line-height: 1.7;
+  font-size: 1rem;
+}
+
+.announcement-card__body p {
+  margin: 0 0 0.9em;
+}
+
+.announcement-card__body p:last-child {
+  margin-bottom: 0;
+}
+
+/* ==================================================================
+ * Articles : figures vidéo (YouTube / Vimeo / MP4) et PPTX inline.
+ * Rendus via les extensions Tiptap VitrineVideo et VitrinePptx dans
+ * l'éditeur admin ; le HTML sérialisé est consommé ici tel quel.
+ * ================================================================== */
+.tiptap-video-figure,
+.tiptap-pptx-figure {
+  margin: 2em auto;
+  max-width: 100%;
+  padding: 0;
+}
+
+.tiptap-video-figure[data-align='left'] {
+  margin-left: 0;
+  margin-right: auto;
+}
+.tiptap-video-figure[data-align='right'] {
+  margin-left: auto;
+  margin-right: 0;
+}
+
+.tiptap-video-figure {
+  aspect-ratio: 16 / 9;
+  position: relative;
+  background: #000;
+  border-radius: 10px;
+  overflow: hidden;
+  width: 100%;
+  max-width: 820px;
+}
+.tiptap-video-figure iframe,
+.tiptap-video-figure video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+
+.tiptap-pptx-figure {
+  width: 100%;
+  max-width: 820px;
+  border: 1px solid var(--line, #e8e4da);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--paper, #fff);
+}
+.tiptap-pptx-figure iframe {
+  display: block;
+  width: 100%;
+  height: 520px;
+  border: 0;
+}
+.tiptap-pptx-figcaption {
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--muted, #6b6557);
+  background: var(--paper, #fff);
+  border-top: 1px solid var(--line, #e8e4da);
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.tiptap-pptx-figcaption a {
+  color: var(--vermillion, #8b1a1a);
+  text-decoration: none;
+  font-weight: 500;
+}
+.tiptap-pptx-figcaption a:hover {
+  text-decoration: underline;
+}
+
+/* PPTX toolbar (bascule viewer / plein écran / télécharger). */
+.tiptap-pptx__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--line, #e8e4da);
+}
+.tiptap-pptx__btn {
+  appearance: none;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  border-radius: 6px;
+  padding: 5px 11px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #334155;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  line-height: 1.2;
+  font-family: var(--sans, inherit);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.tiptap-pptx__btn:hover {
+  background: #e2e8f0;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+.tiptap-pptx__btn--accent {
+  background: var(--vermillion, #8b1a1a);
+  color: #fff;
+  border-color: var(--vermillion, #8b1a1a);
+}
+.tiptap-pptx__btn--accent:hover {
+  background: #a11f1f;
+  border-color: #a11f1f;
+  color: #fff;
+}
+
+.tiptap-pptx-figure:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  background: #000;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+}
+.tiptap-pptx-figure:fullscreen iframe {
+  flex: 1;
+  height: auto;
+}
+.tiptap-pptx-figure:fullscreen .tiptap-pptx__toolbar,
+.tiptap-pptx-figure:fullscreen .tiptap-pptx-figcaption {
+  background: #0f172a;
+  color: #f1f5f9;
+  border-color: #334155;
+}
+.tiptap-pptx-figure:fullscreen .tiptap-pptx__btn {
+  background: #1e293b;
+  color: #f1f5f9;
+  border-color: #475569;
+}

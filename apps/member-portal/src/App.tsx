@@ -25,6 +25,8 @@ import { BookingPage } from './pages/BookingPage';
 import { BlogListPage, BlogPostPage } from './pages/BlogPage';
 import { ShopPage } from './pages/ShopPage';
 import { AdhesionPage } from './pages/AdhesionPage';
+import { MyProjectsPage } from './pages/MyProjectsPage';
+import { MyProjectUploadPage } from './pages/MyProjectUploadPage';
 import { JoinFamilyInvitePage } from './pages/JoinFamilyInvitePage';
 import { PublicSiteLayout } from './pages/public/PublicSiteLayout';
 import { PublicHomePage } from './pages/public/PublicHomePage';
@@ -105,6 +107,11 @@ export default function App() {
               <Route path="/blog" element={<BlogListPage />} />
               <Route path="/blog/:slug" element={<BlogPostPage />} />
               <Route path="/boutique" element={<ShopPage />} />
+              <Route path="/mes-projets" element={<MyProjectsPage />} />
+              <Route
+                path="/mes-projets/:projectId"
+                element={<MyProjectUploadPage />}
+              />
               </Route>
             </Route>
             <Route

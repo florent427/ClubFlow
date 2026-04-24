@@ -314,13 +314,22 @@ export function PlanningTimeGrid({
           }}
         >
           <div aria-hidden className="planning-time-grid__corner" />
-          {days.map((d) => (
-            <div key={dayKey(d)} className="planning-time-grid__head">
+          {days.map((d) => {
+            const today =
+              d.getFullYear() === new Date().getFullYear() &&
+              d.getMonth() === new Date().getMonth() &&
+              d.getDate() === new Date().getDate();
+            return (
+            <div
+              key={dayKey(d)}
+              className={`planning-time-grid__head${today ? ' planning-time-grid__head--today' : ''}`}
+            >
               {onDayHeaderClick ? (
                 <button
                   type="button"
-                  className="planning-time-grid__head-btn"
+                  className={`planning-time-grid__head-btn${today ? ' planning-time-grid__head-btn--today' : ''}`}
                   onClick={() => onDayHeaderClick(d)}
+                  aria-current={today ? 'date' : undefined}
                 >
                   <span className="planning-time-grid__dow">
                     {d
@@ -352,7 +361,8 @@ export function PlanningTimeGrid({
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
 
           <div
             className="planning-time-grid__hours"

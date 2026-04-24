@@ -18,6 +18,7 @@ const MODULE_LABELS: Record<ModuleCode, string> = {
   [ModuleCode.CLUB_LIFE]: 'Vie du club',
   [ModuleCode.EVENTS]: 'Événements',
   [ModuleCode.BOOKING]: 'Réservations',
+  [ModuleCode.PROJECTS]: 'Événements / Projets',
 };
 
 @Injectable()

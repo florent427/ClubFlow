@@ -193,21 +193,37 @@ export function VitrineHomePage() {
             marginTop: 16,
           }}
         >
-          <Link to="/vitrine/articles" className="card-link">
-            <h3>Articles</h3>
-            <p className="muted">Actualités publiées sur le site.</p>
+          <Link
+            to="/vitrine/articles?channel=NEWS"
+            className="card-link"
+          >
+            <h3>Actualités</h3>
+            <p className="muted">
+              Brèves publiées sur <code>/actualites</code>. Même éditeur,
+              même SEO, même génération IA que le Blog — juste un canal
+              différent.
+            </p>
+          </Link>
+          <Link
+            to="/vitrine/articles?channel=BLOG"
+            className="card-link"
+          >
+            <h3>Blog</h3>
+            <p className="muted">
+              Articles de fond publiés sur <code>/blog</code>. Basculables
+              vers Actualités et inversement sans perte.
+            </p>
           </Link>
           <Link to="/vitrine/categories" className="card-link">
             <h3>Catégories</h3>
-            <p className="muted">Organise tes articles par thème.</p>
+            <p className="muted">
+              Organise tes contenus par thème (s'applique aux actualités
+              et au blog).
+            </p>
           </Link>
           <Link to="/vitrine/commentaires" className="card-link">
             <h3>Commentaires</h3>
             <p className="muted">Modération IA + validation manuelle.</p>
-          </Link>
-          <Link to="/vitrine/annonces" className="card-link">
-            <h3>Annonces</h3>
-            <p className="muted">Messages courts et épinglés.</p>
           </Link>
           <Link to="/vitrine/galerie" className="card-link">
             <h3>Galerie</h3>

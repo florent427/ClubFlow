@@ -101,6 +101,23 @@ export function MembersDirectoryPage() {
   const gradeLevels = gradesData?.clubGradeLevels ?? [];
   const roleDefinitions = roleDefsData?.clubRoleDefinitions ?? [];
 
+  /**
+   * KPI pour l'header de page : total / actifs / coaches / board.
+   * Recalculé dès que `members` change — cheap (O(n) sur un tableau
+   * habituellement <500 lignes).
+   */
+  const kpi = useMemo(() => {
+    const total = members.length;
+    const active = members.filter((m) => m.status === 'ACTIVE').length;
+    const coaches = members.filter((m) => m.roles.includes('COACH')).length;
+    const board = members.filter((m) => m.roles.includes('BOARD')).length;
+    return { total, active, coaches, board };
+  }, [members]);
+  // groups affiché plus tard dans la page : on garde la variable pour ne pas
+  // casser l'éventuelle autre utilisation, mais on ne l'affiche plus dans la
+  // section du bas (doublon avec la sidebar / sous-menu /members/dynamic-groups).
+  void groups;
+
   const hasActiveFilters =
     filterGradeIds.length > 0 ||
     filterAgeMin.trim() !== '' ||
@@ -183,26 +200,19 @@ export function MembersDirectoryPage() {
   return (
     <>
       {cartAlertsCount > 0 ? (
-        <div
-          role="alert"
-          style={{
-            background: 'rgba(220, 38, 38, 0.1)',
-            border: '1px solid rgba(220, 38, 38, 0.35)',
-            color: '#991b1b',
-            padding: '10px 14px',
-            borderRadius: 8,
-            marginBottom: 12,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: 12,
-          }}
-        >
-          <span>
-            {cartAlertsCount} ligne(s) de projets d&rsquo;adhésion en
-            attente d&rsquo;assignation manuelle.
+        <div className="cf-alert cf-alert--warning" role="alert">
+          <span className="material-symbols-outlined" aria-hidden>
+            warning
           </span>
-          <Link to="/members/adhesions" className="btn btn-tight">
+          <div className="cf-alert__content">
+            <strong>Adhésions en attente d’assignation</strong>
+            <span>
+              {cartAlertsCount} ligne{cartAlertsCount > 1 ? 's' : ''} de projet
+              {cartAlertsCount > 1 ? 's' : ''} d’adhésion nécessite
+              {cartAlertsCount > 1 ? 'nt' : ''} une action manuelle.
+            </span>
+          </div>
+          <Link to="/members/adhesions" className="cf-btn cf-btn--primary cf-btn--sm">
             Ouvrir les projets
           </Link>
         </div>
@@ -213,19 +223,53 @@ export function MembersDirectoryPage() {
             <p className="members-loom__eyebrow">Module Membres</p>
             <h1 className="members-loom__title">Référentiel adhérents</h1>
             <p className="members-loom__lede">
-              Annuaire, grades et rôles personnalisés — conception ClubFlow
-              (Stitch Athletic Editorial). Cliquez sur une ligne pour ouvrir la
-              fiche.
+              Annuaire, grades et rôles personnalisés. Cliquez sur une ligne
+              pour ouvrir la fiche.
             </p>
           </div>
-          <Link
-            to="/members/new"
-            className="btn btn-primary members-hero__cta"
-          >
-            Nouveau membre
-          </Link>
+          <div className="members-hero__ctas">
+            <Link
+              to="/members/new"
+              className="cf-btn cf-btn--primary members-hero__cta"
+            >
+              <span className="material-symbols-outlined" aria-hidden>
+                person_add
+              </span>
+              Nouveau membre
+            </Link>
+          </div>
         </div>
       </header>
+
+      {/* KPI row : synthèse du référentiel en un coup d'œil */}
+      {!loading && members.length > 0 ? (
+        <div className="members-kpis">
+          <div className="members-kpi">
+            <span className="members-kpi__label">Total</span>
+            <span className="members-kpi__value">{kpi.total}</span>
+            <span className="members-kpi__hint">inscrits au club</span>
+          </div>
+          <div className="members-kpi">
+            <span className="members-kpi__label">Actifs</span>
+            <span className="members-kpi__value">{kpi.active}</span>
+            <span className="members-kpi__hint">
+              {kpi.total > 0
+                ? `${Math.round((kpi.active / kpi.total) * 100)} % du total`
+                : ''}
+            </span>
+          </div>
+          <div className="members-kpi">
+            <span className="members-kpi__label">Coaches</span>
+            <span className="members-kpi__value">{kpi.coaches}</span>
+            <span className="members-kpi__hint">rôle COACH assigné</span>
+          </div>
+          <div className="members-kpi">
+            <span className="members-kpi__label">Bureau</span>
+            <span className="members-kpi__value">{kpi.board}</span>
+            <span className="members-kpi__hint">rôle BOARD assigné</span>
+          </div>
+        </div>
+      ) : null}
 
       <div className="members-loom__grid members-loom__grid--single">
         <section className="members-panel members-panel--table">
@@ -533,36 +577,6 @@ export function MembersDirectoryPage() {
             </div>
           )}
 
-          <div className="members-groups">
-            <h3 className="members-groups__h">Groupes dynamiques</h3>
-            <p className="muted members-groups__hint">
-              Composition recalculée quand l’âge ou le grade change (API).
-            </p>
-            <ul className="members-groups__list">
-              {groups.length === 0 ? (
-                <li className="muted">Aucun groupe défini.</li>
-              ) : (
-                groups.map((g) => (
-                  <li key={g.id} className="members-groups__item">
-                    <div>
-                      <strong>{g.name}</strong>
-                      <span className="members-groups__meta">
-                        {g.minAge != null || g.maxAge != null
-                          ? `Âge ${g.minAge ?? '…'}–${g.maxAge ?? '…'} · `
-                          : ''}
-                        {g.gradeFilters.length > 0
-                          ? g.gradeFilters.map((gf) => gf.label).join(', ')
-                          : 'Tous grades'}
-                      </span>
-                    </div>
-                    <span className="members-groups__count">
-                      {g.matchingActiveMembersCount}
-                    </span>
-                  </li>
-                ))
-              )}
-            </ul>
-          </div>
         </section>
       </div>
 

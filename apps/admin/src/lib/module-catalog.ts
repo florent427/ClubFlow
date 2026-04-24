@@ -14,7 +14,8 @@ export type ModuleCodeStr =
   | 'SHOP'
   | 'CLUB_LIFE'
   | 'EVENTS'
-  | 'BOOKING';
+  | 'BOOKING'
+  | 'PROJECTS';
 
 export type ModuleCatalogEntry = {
   code: ModuleCodeStr;
@@ -125,5 +126,13 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
     required: false,
     description: 'Créneaux réservables (ex. salle, matériel) pour adhérents.',
     dependsOn: ['PLANNING'],
+  },
+  {
+    code: 'PROJECTS',
+    label: 'Événements / Projets',
+    required: false,
+    description:
+      'Projets longs (gala, stage, subvention) avec sections structurées, contributeurs, phase Live modérée et comptes-rendus IA.',
+    dependsOn: ['MEMBERS'],
   },
 ];

@@ -6,12 +6,15 @@ import { fetchGraphQL } from './graphql-client';
  * certains blocs (FeaturedArticles, Announcements, Gallery).
  */
 
+export type VitrineArticleChannel = 'NEWS' | 'BLOG';
+
 export interface VitrineArticleSummary {
   slug: string;
   title: string;
   excerpt: string | null;
   coverImageUrl: string | null;
   publishedAt: string | null;
+  channel?: VitrineArticleChannel;
 }
 
 export interface VitrineArticleCategory {
@@ -33,6 +36,7 @@ export interface VitrineArticleFull extends VitrineArticleSummary {
   seoOgImageUrl: string | null;
   seoFaq: Array<{ question: string; answer: string }>;
   categories: VitrineArticleCategory[];
+  channel: VitrineArticleChannel;
 }
 
 export interface VitrineCategoryPublic {
@@ -70,13 +74,22 @@ export interface VitrineGalleryPhotoPublic {
 }
 
 const LIST_ARTICLES = /* GraphQL */ `
-  query PublicVitrineArticles($clubSlug: String!, $limit: Int) {
-    publicVitrineArticles(clubSlug: $clubSlug, limit: $limit) {
+  query PublicVitrineArticles(
+    $clubSlug: String!
+    $limit: Int
+    $channel: VitrineArticleChannel
+  ) {
+    publicVitrineArticles(
+      clubSlug: $clubSlug
+      limit: $limit
+      channel: $channel
+    ) {
       slug
       title
       excerpt
       coverImageUrl
       publishedAt
+      channel
     }
   }
 `;
@@ -91,6 +104,7 @@ const GET_ARTICLE = /* GraphQL */ `
       coverImageUrl
       coverImageAlt
       publishedAt
+      channel
       seoTitle
       seoDescription
       seoKeywords
@@ -191,13 +205,14 @@ const LIST_GALLERY = /* GraphQL */ `
 export async function fetchArticles(
   clubSlug: string,
   limit = 20,
+  channel: VitrineArticleChannel | null = null,
 ): Promise<VitrineArticleSummary[]> {
   try {
     const data = await fetchGraphQL<{
       publicVitrineArticles: VitrineArticleSummary[];
     }>(
       LIST_ARTICLES,
-      { clubSlug, limit },
+      { clubSlug, limit, channel: channel ?? null },
       { revalidate: 120, tags: [`vitrine-articles:${clubSlug}`] },
     );
     return data.publicVitrineArticles;

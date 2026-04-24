@@ -12,6 +12,7 @@ import {
   MaxLength,
 } from 'class-validator';
 import {
+  VitrineArticleChannelEnum,
   VitrineArticleStatusEnum,
   VitrinePageStatusEnum,
 } from '../models/vitrine-models';
@@ -192,6 +193,15 @@ export class CreateVitrineArticleInput {
 
   @Field(() => Boolean, { nullable: true }) @IsOptional() @IsBoolean()
   publishNow?: boolean;
+
+  @Field(() => VitrineArticleChannelEnum, {
+    nullable: true,
+    description:
+      "Canal de publication (NEWS = /actualites, BLOG = /blog). Défaut BLOG.",
+  })
+  @IsOptional()
+  @IsEnum(VitrineArticleChannelEnum)
+  channel?: VitrineArticleChannelEnum;
 
   // ---- SEO ----
   @Field(() => String, { nullable: true }) @IsOptional() @IsString() @MaxLength(200)

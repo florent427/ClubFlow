@@ -21,6 +21,7 @@ import { CommunicationPage } from './pages/CommunicationPage';
 import { BillingPage } from './pages/billing/BillingPage';
 import { ClubLifePage } from './pages/club-life/ClubLifePage';
 import { EventsPage } from './pages/events/EventsPage';
+import { ProjectsPage } from './pages/projects/ProjectsPage';
 import { BookingPage } from './pages/booking/BookingPage';
 import { BlogPage } from './pages/blog/BlogPage';
 import { ShopPage } from './pages/shop/ShopPage';
@@ -40,7 +41,9 @@ import { AgentAuditPage } from './pages/agent/AgentAuditPage';
 import { VitrineHomePage } from './pages/vitrine/VitrineHomePage';
 import { VitrinePageEditor } from './pages/vitrine/VitrinePageEditor';
 import { VitrineArticlesPage } from './pages/vitrine/VitrineArticlesPage';
-import { VitrineAnnouncementsPage } from './pages/vitrine/VitrineAnnouncementsPage';
+// VitrineAnnouncementsPage déprécié : annonces et articles fusionnés dans
+// VitrineArticlesPage via le champ `channel`. On redirige /vitrine/annonces
+// vers /vitrine/articles?channel=NEWS.
 import { VitrineGalleryPage } from './pages/vitrine/VitrineGalleryPage';
 import { VitrineSettingsPage } from './pages/vitrine/VitrineSettingsPage';
 import { MediaLibraryPage } from './pages/vitrine/MediaLibraryPage';
@@ -103,6 +106,7 @@ export default function App() {
             <Route path="billing" element={<BillingPage />} />
             <Route path="vie-du-club" element={<ClubLifePage />} />
             <Route path="evenements" element={<EventsPage />} />
+            <Route path="projets" element={<ProjectsPage />} />
             <Route path="reservations" element={<BookingPage />} />
             <Route path="blog" element={<BlogPage />} />
             <Route path="boutique" element={<ShopPage />} />
@@ -115,7 +119,10 @@ export default function App() {
               <Route path="articles/:id" element={<VitrineArticleEditor />} />
               <Route path="categories" element={<VitrineCategoriesPage />} />
               <Route path="commentaires" element={<VitrineCommentsPage />} />
-              <Route path="annonces" element={<VitrineAnnouncementsPage />} />
+              <Route
+                path="annonces"
+                element={<Navigate to="/vitrine/articles?channel=NEWS" replace />}
+              />
               <Route path="galerie" element={<VitrineGalleryPage />} />
               <Route path="medias" element={<MediaLibraryPage />} />
               <Route path="settings" element={<VitrineSettingsPage />} />

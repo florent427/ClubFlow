@@ -49,12 +49,18 @@ export class MediaController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
-      limits: { fileSize: MediaAssetsService.MAX_BYTES, files: 1 },
+      // Limite multer à 100 Mo (vidéos / PPTX) ; le service valide ensuite
+      // la taille précise en fonction du kind (10 Mo pour IMAGE, 100 Mo pour
+      // DOCUMENT / OTHER).
+      limits: {
+        fileSize: MediaAssetsService.MAX_LARGE_BYTES,
+        files: 1,
+      },
     }),
   )
   async upload(
     @Req() req: Request,
-    @Query('kind') kind: 'image' | 'document' | undefined,
+    @Query('kind') kind: 'image' | 'document' | 'video' | undefined,
     @Query('ownerKind') ownerKind: string | undefined,
     @Query('ownerId') ownerId: string | undefined,
     @UploadedFile() file: Express.Multer.File | undefined,
@@ -68,10 +74,51 @@ export class MediaController {
     const owner =
       ownerKind && ownerId ? { kind: ownerKind, id: ownerId } : null;
     const userId = (req.user as { userId?: string } | undefined)?.userId ?? null;
+
+    // Détection PPTX : on route vers `uploadPresentationWithPdf` qui tente
+    // la conversion LibreOffice pour générer un PDF preview utilisable dans
+    // tous les navigateurs (contrairement à Office Online qui exige une
+    // URL Internet publique).
+    const isPresentation =
+      kind === 'document' &&
+      new Set([
+        'application/vnd.ms-powerpoint',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'application/vnd.oasis.opendocument.presentation',
+      ]).has(file.mimetype);
+
+    if (isPresentation) {
+      const { source, pdf } = await this.service.uploadPresentationWithPdf(
+        clubId,
+        userId,
+        file,
+        owner,
+      );
+      return {
+        id: source.id,
+        clubId: source.clubId,
+        kind: source.kind,
+        fileName: source.fileName,
+        mimeType: source.mimeType,
+        sizeBytes: source.sizeBytes,
+        publicUrl: source.publicUrl,
+        ownerKind: source.ownerKind,
+        ownerId: source.ownerId,
+        createdAt: source.createdAt.toISOString(),
+        // Champs spécifiques présentation : URL PDF de preview si LibreOffice
+        // a pu convertir. Le frontend privilégie cette URL (iframe native)
+        // et retombe sur Office Online Viewer si null.
+        pdfUrl: pdf?.publicUrl ?? null,
+        pdfAssetId: pdf?.id ?? null,
+      };
+    }
+
     const row =
       kind === 'document'
         ? await this.service.uploadDocument(clubId, userId, file, owner)
-        : await this.service.uploadImage(clubId, userId, file, owner);
+        : kind === 'video'
+          ? await this.service.uploadVideo(clubId, userId, file, owner)
+          : await this.service.uploadImage(clubId, userId, file, owner);
     return {
       id: row.id,
       clubId: row.clubId,

@@ -13,6 +13,7 @@ import {
   SubmitCommentResultGraph,
   SubmitVitrineContactResult,
   VitrineAnnouncementGraph,
+  VitrineArticleChannelEnum,
   VitrineArticleGenerationStatusEnum,
   VitrineArticleGraph,
   VitrineArticleStatusEnum,
@@ -113,8 +114,11 @@ export class VitrinePublicResolver {
     coverImageId: string | null;
     coverImageAlt: string | null;
     status: string;
+    channel?: 'NEWS' | 'BLOG';
     publishedAt: Date | null;
     updatedAt: Date;
+    pinned?: boolean;
+    sortOrder?: number;
     seoTitle: string | null;
     seoDescription: string | null;
     seoKeywords: string[];
@@ -158,8 +162,11 @@ export class VitrinePublicResolver {
       coverImageId: row.coverImageId,
       coverImageAlt: row.coverImageAlt,
       status: row.status as VitrineArticleStatusEnum,
+      channel: (row.channel ?? 'BLOG') as VitrineArticleChannelEnum,
       publishedAt: row.publishedAt,
       updatedAt: row.updatedAt,
+      pinned: (row.pinned ?? false) as boolean,
+      sortOrder: (row.sortOrder ?? 0) as number,
       seoTitle: row.seoTitle,
       seoDescription: row.seoDescription,
       seoKeywords: row.seoKeywords ?? [],
@@ -188,9 +195,20 @@ export class VitrinePublicResolver {
   async publicVitrineArticles(
     @Args('clubSlug') clubSlug: string,
     @Args('limit', { nullable: true, type: () => Int }) limit?: number,
+    @Args('channel', {
+      type: () => VitrineArticleChannelEnum,
+      nullable: true,
+      description:
+        "Filtre par canal : NEWS (/actualites) ou BLOG (/blog). Omis = tous canaux (rétrocompat).",
+    })
+    channel?: VitrineArticleChannelEnum,
   ): Promise<VitrineArticleGraph[]> {
     const club = await this.getClubBySlugOrThrow(clubSlug);
-    const rows = await this.content.listArticlesPublic(club.id, limit ?? 20);
+    const rows = await this.content.listArticlesPublic(
+      club.id,
+      limit ?? 20,
+      channel ?? null,
+    );
     const assetIds = new Set<string>();
     for (const r of rows) {
       if (r.coverImageId) assetIds.add(r.coverImageId);

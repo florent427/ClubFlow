@@ -36,6 +36,7 @@
     "class-validator": "^0.14.3",
     "graphql": "^16.12.0",
     "graphql-scalars": "^1.25.0",
+    "libreoffice-convert": "^1.8.1",
     "mammoth": "^1.12.0",
     "multer": "^2.1.1",
     "nodemailer": "^7.0.9",

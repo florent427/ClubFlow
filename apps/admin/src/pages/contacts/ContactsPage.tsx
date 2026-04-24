@@ -106,6 +106,9 @@ export function ContactsPage() {
     }
   }
 
+  const verifiedCount = contacts.filter((c) => c.emailVerified).length;
+  const linkedCount = contacts.filter((c) => c.linkedMemberId).length;
+
   return (
     <>
       <header className="members-loom__hero members-loom__hero--nested">
@@ -123,11 +126,14 @@ export function ContactsPage() {
           <div className="contacts-hero-sync">
             <button
               type="button"
-              className="btn btn-ghost"
+              className="cf-btn cf-btn--ghost"
               disabled={syncLoading}
               title="Rattache les comptes (e-mail vérifié) aux fiches membre payeur ou adhérent seul lorsque l’e-mail est identique."
               onClick={() => void onSyncLinks()}
             >
+              <span className="material-symbols-outlined" aria-hidden>
+                sync
+              </span>
               {syncLoading ? 'Mise à jour…' : 'Mettre à jour les liaisons'}
             </button>
             {syncMessage ? (
@@ -144,6 +150,32 @@ export function ContactsPage() {
         </div>
       </header>
 
+      {contacts.length > 0 ? (
+        <div className="members-kpis">
+          <div className="members-kpi">
+            <span className="members-kpi__label">Contacts</span>
+            <span className="members-kpi__value">{contacts.length}</span>
+            <span className="members-kpi__hint">comptes portail du club</span>
+          </div>
+          <div className="members-kpi">
+            <span className="members-kpi__label">E-mail vérifié</span>
+            <span className="members-kpi__value">{verifiedCount}</span>
+            <span className="members-kpi__hint">
+              {contacts.length > 0
+                ? `${Math.round((verifiedCount / contacts.length) * 100)} % du total`
+                : ''}
+            </span>
+          </div>
+          <div className="members-kpi">
+            <span className="members-kpi__label">Rattachés membre</span>
+            <span className="members-kpi__value">{linkedCount}</span>
+            <span className="members-kpi__hint">
+              fiches membre associées
+            </span>
+          </div>
+        </div>
+      ) : null}
+
       <div className="members-loom__grid members-loom__grid--single">
         <section className="members-panel members-panel--table">
           <h2 className="members-panel__h">Liste des contacts</h2>
@@ -158,37 +190,34 @@ export function ContactsPage() {
                 autoComplete="off"
               />
             </label>
-            <div className="contacts-filter" role="group" aria-label="Filtre e-mail vérifié">
+            <div
+              className="cf-segmented"
+              role="group"
+              aria-label="Filtre e-mail vérifié"
+            >
               <button
                 type="button"
-                className={
-                  verified === 'all' ? 'btn btn-primary btn-tight' : 'btn btn-ghost btn-tight'
-                }
+                className={`cf-segmented__btn${verified === 'all' ? ' cf-segmented__btn--active' : ''}`}
                 onClick={() => setVerified('all')}
               >
                 Tous
               </button>
               <button
                 type="button"
-                className={
-                  verified === 'yes'
-                    ? 'btn btn-primary btn-tight'
-                    : 'btn btn-ghost btn-tight'
-                }
+                className={`cf-segmented__btn${verified === 'yes' ? ' cf-segmented__btn--active' : ''}`}
                 onClick={() => setVerified('yes')}
               >
-                E-mail vérifié
+                <span className="material-symbols-outlined" aria-hidden>
+                  verified
+                </span>
+                Vérifiés
               </button>
               <button
                 type="button"
-                className={
-                  verified === 'no'
-                    ? 'btn btn-primary btn-tight'
-                    : 'btn btn-ghost btn-tight'
-                }
+                className={`cf-segmented__btn${verified === 'no' ? ' cf-segmented__btn--active' : ''}`}
                 onClick={() => setVerified('no')}
               >
-                Non vérifié
+                Non vérifiés
               </button>
             </div>
           </div>
@@ -228,21 +257,45 @@ export function ContactsPage() {
                         }
                       }}
                     >
-                      <td>{c.lastName}</td>
+                      <td>
+                        <span className="members-table__name">{c.lastName}</span>
+                      </td>
                       <td>{c.firstName}</td>
                       <td>{c.email}</td>
-                      <td>{c.emailVerified ? 'Oui' : 'Non'}</td>
+                      <td>
+                        {c.emailVerified ? (
+                          <span className="cf-badge cf-badge--success">
+                            <span
+                              className="material-symbols-outlined"
+                              aria-hidden
+                            >
+                              verified
+                            </span>
+                            Vérifié
+                          </span>
+                        ) : (
+                          <span className="cf-badge cf-badge--neutral">
+                            Non vérifié
+                          </span>
+                        )}
+                      </td>
                       <td onClick={(e) => e.stopPropagation()}>
                         {c.linkedMemberId ? (
                           <button
                             type="button"
-                            className="btn btn-ghost btn-tight"
+                            className="cf-btn cf-btn--sm cf-btn--ghost"
                             onClick={() => openLinkedMember(c)}
                           >
-                            Ouvrir la fiche membre
+                            <span
+                              className="material-symbols-outlined"
+                              aria-hidden
+                            >
+                              open_in_new
+                            </span>
+                            Fiche membre
                           </button>
                         ) : (
-                          <span className="muted">—</span>
+                          <span className="cf-text-muted">—</span>
                         )}
                       </td>
                     </tr>

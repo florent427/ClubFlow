@@ -290,6 +290,20 @@ export function MembersDynamicGroupsPage() {
   const groups = data?.clubDynamicGroups ?? [];
   const gradeById = useMemo(() => new Map(grades.map((g) => [g.id, g])), [grades]);
 
+  // KPI : synthèse rapide pour le header de page.
+  const kpi = useMemo(() => {
+    const totalGroups = groups.length;
+    const totalMatched = groups.reduce(
+      (sum, g) => sum + g.matchingActiveMembersCount,
+      0,
+    );
+    const openGroups = groups.filter(
+      (g) =>
+        g.minAge == null && g.maxAge == null && g.gradeFilters.length === 0,
+    ).length;
+    return { totalGroups, totalMatched, openGroups };
+  }, [groups]);
+
   async function handleCreate(form: FormState) {
     setMsg(null);
     const min = parseOptionalAge(form.minAge);
@@ -379,13 +393,43 @@ export function MembersDynamicGroupsPage() {
         </p>
       </header>
 
-      <div className="members-manage">
+      <div className="members-manage dyn-group-manage">
         {msg ? <p className="form-error">{msg}</p> : null}
         {error ? <p className="form-error">{error.message}</p> : null}
 
+        {/* Synthèse haute niveau : 3 KPI visibles en un coup d'œil */}
+        {groups.length > 0 ? (
+          <div className="dyn-group-kpis">
+            <div className="dyn-group-kpi">
+              <span className="dyn-group-kpi__label">Groupes</span>
+              <span className="dyn-group-kpi__value">{kpi.totalGroups}</span>
+            </div>
+            <div className="dyn-group-kpi">
+              <span className="dyn-group-kpi__label">Membres ciblés</span>
+              <span className="dyn-group-kpi__value">{kpi.totalMatched}</span>
+              <span className="dyn-group-kpi__hint">
+                somme des effectifs (doublons possibles entre groupes)
+              </span>
+            </div>
+            <div className="dyn-group-kpi">
+              <span className="dyn-group-kpi__label">Sans critère</span>
+              <span className="dyn-group-kpi__value">{kpi.openGroups}</span>
+              <span className="dyn-group-kpi__hint">
+                groupe{kpi.openGroups > 1 ? 's' : ''} qui cible
+                {kpi.openGroups > 1 ? 'nt' : ''} tout le monde
+              </span>
+            </div>
+          </div>
+        ) : null}
+
         <div className="dyn-group-layout">
           <section className="members-panel dyn-group-panel">
-            <h2 className="members-panel__h">Nouveau groupe</h2>
+            <h2 className="members-panel__h">
+              <span className="material-symbols-outlined dyn-group-panel__ico" aria-hidden>
+                add_circle
+              </span>
+              Nouveau groupe
+            </h2>
             <p className="muted dyn-group-panel__lede">
               Les critères sont combinés en « ET ». Sans grade coché =
               tous les grades.
@@ -399,87 +443,140 @@ export function MembersDynamicGroupsPage() {
             />
           </section>
 
-          <section className="members-panel members-panel--table dyn-group-panel">
+          <section className="members-panel dyn-group-panel dyn-group-panel--list">
             <h2 className="members-panel__h">
+              <span className="material-symbols-outlined dyn-group-panel__ico" aria-hidden>
+                group
+              </span>
               Groupes existants{' '}
               <span className="muted">({groups.length})</span>
             </h2>
             {loading ? (
               <p className="muted">Chargement…</p>
             ) : groups.length === 0 ? (
-              <p className="muted">
-                Aucun groupe pour le moment. Créez-en un à gauche.
-              </p>
+              <div className="dyn-group-empty">
+                <span className="material-symbols-outlined" aria-hidden>
+                  group_add
+                </span>
+                <p>
+                  Aucun groupe pour le moment.
+                  <br />
+                  <small>Créez-en un à gauche pour cibler vos membres.</small>
+                </p>
+              </div>
             ) : (
-              <div className="members-table-wrap">
-                <table className="members-table">
-                  <thead>
-                    <tr>
-                      <th>Nom</th>
-                      <th>Âges</th>
-                      <th>Grades</th>
-                      <th>Effectif</th>
-                      <th aria-hidden />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {groups.map((g) => (
-                      <tr
-                        key={g.id}
-                        className={
-                          editing?.id === g.id
-                            ? 'members-table__row--clickable dyn-group-row--active'
-                            : 'members-table__row--clickable'
-                        }
+              <ul className="dyn-group-cards">
+                {groups.map((g) => {
+                  const hasCriteria =
+                    g.minAge != null ||
+                    g.maxAge != null ||
+                    g.gradeFilters.length > 0;
+                  const ageLabel =
+                    g.minAge == null && g.maxAge == null
+                      ? null
+                      : g.minAge != null && g.maxAge != null
+                        ? `${g.minAge}–${g.maxAge} ans`
+                        : g.minAge != null
+                          ? `${g.minAge}+ ans`
+                          : `≤${g.maxAge} ans`;
+                  return (
+                    <li
+                      key={g.id}
+                      className={
+                        editing?.id === g.id
+                          ? 'dyn-group-card dyn-group-card--active'
+                          : 'dyn-group-card'
+                      }
+                    >
+                      <button
+                        type="button"
+                        className="dyn-group-card__body"
+                        onClick={() => setEditing(g)}
+                        aria-label={`Modifier ${g.name}`}
                       >
-                        <td>
-                          <button
-                            type="button"
-                            className="link-like"
-                            onClick={() => setEditing(g)}
-                          >
+                        <div className="dyn-group-card__head">
+                          <strong className="dyn-group-card__name">
                             {g.name}
-                          </button>
-                        </td>
-                        <td>
-                          {g.minAge == null && g.maxAge == null
-                            ? 'Tous'
-                            : `${g.minAge ?? '—'} — ${g.maxAge ?? '—'}`}
-                        </td>
-                        <td>
-                          {g.gradeFilters.length === 0
-                            ? 'Tous'
-                            : g.gradeFilters
+                          </strong>
+                          <span
+                            className={`dyn-group-card__count${g.matchingActiveMembersCount === 0 ? ' dyn-group-card__count--zero' : ''}`}
+                            title={`${g.matchingActiveMembersCount} membre(s) correspondant(s)`}
+                          >
+                            <span className="material-symbols-outlined" aria-hidden>
+                              person
+                            </span>
+                            {g.matchingActiveMembersCount}
+                          </span>
+                        </div>
+                        <div className="dyn-group-card__criteria">
+                          {ageLabel ? (
+                            <span className="dyn-group-card__chip">
+                              <span
+                                className="material-symbols-outlined"
+                                aria-hidden
+                              >
+                                cake
+                              </span>
+                              {ageLabel}
+                            </span>
+                          ) : null}
+                          {g.gradeFilters.length > 0 ? (
+                            <span
+                              className="dyn-group-card__chip"
+                              title={g.gradeFilters
                                 .map(
                                   (gf) =>
                                     gradeById.get(gf.id)?.label ?? gf.id,
                                 )
                                 .join(', ')}
-                        </td>
-                        <td>
-                          <strong>{g.matchingActiveMembersCount}</strong>
-                        </td>
-                        <td className="members-table__actions">
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-tight"
-                            onClick={() => setEditing(g)}
-                          >
-                            Modifier
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-tight members-table__danger"
-                            onClick={() => void onDelete(g.id, g.name)}
-                          >
-                            Supprimer
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                            >
+                              <span
+                                className="material-symbols-outlined"
+                                aria-hidden
+                              >
+                                military_tech
+                              </span>
+                              {g.gradeFilters.length} grade
+                              {g.gradeFilters.length > 1 ? 's' : ''}
+                            </span>
+                          ) : null}
+                          {!hasCriteria ? (
+                            <span className="dyn-group-card__chip dyn-group-card__chip--open">
+                              <span
+                                className="material-symbols-outlined"
+                                aria-hidden
+                              >
+                                public
+                              </span>
+                              Tous les membres
+                            </span>
+                          ) : null}
+                        </div>
+                      </button>
+                      <div className="dyn-group-card__actions">
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-tight"
+                          onClick={() => setEditing(g)}
+                        >
+                          Modifier
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-tight dyn-group-card__danger"
+                          onClick={() => void onDelete(g.id, g.name)}
+                          title="Supprimer"
+                          aria-label={`Supprimer ${g.name}`}
+                        >
+                          <span className="material-symbols-outlined" aria-hidden>
+                            delete
+                          </span>
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
           </section>
         </div>

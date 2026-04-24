@@ -1,16 +1,29 @@
 import { useMutation, useQuery } from '@apollo/client/react';
 import { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   CLUB_VITRINE_ARTICLES,
   CREATE_VITRINE_ARTICLE,
   DELETE_VITRINE_ARTICLE,
+  REORDER_VITRINE_ARTICLES,
+  SET_VITRINE_ARTICLE_CHANNEL,
+  SET_VITRINE_ARTICLE_PINNED,
   SET_VITRINE_ARTICLE_STATUS,
   type ClubVitrineArticlesData,
   type CreateVitrineArticleData,
+  type VitrineArticleChannel,
 } from '../../lib/vitrine-documents';
 import { useToast } from '../../components/ToastProvider';
 import { AiArticleGeneratorModal } from '../../components/AiArticleGeneratorModal';
+
+type ChannelTab = 'ALL' | VitrineArticleChannel;
+
+function channelLabel(c: VitrineArticleChannel): string {
+  return c === 'NEWS' ? 'Actualité' : 'Blog';
+}
+function publicPathForChannel(c: VitrineArticleChannel, slug: string): string {
+  return c === 'NEWS' ? `/actualites/${slug}` : `/blog/${slug}`;
+}
 
 /**
  * Hub articles vitrine — point d'entrée.
@@ -25,10 +38,27 @@ import { AiArticleGeneratorModal } from '../../components/AiArticleGeneratorModa
 export function VitrineArticlesPage() {
   const { showToast } = useToast();
   const navigate = useNavigate();
+  // Onglet canal — persisté dans l'URL (`?channel=NEWS|BLOG|ALL`) pour que
+  // les liens d'onglet partagés et le back-browser fonctionnent.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlChannel = searchParams.get('channel');
+  const activeChannel: ChannelTab =
+    urlChannel === 'NEWS' || urlChannel === 'BLOG' ? urlChannel : 'ALL';
+  const queryChannel: VitrineArticleChannel | undefined =
+    activeChannel === 'ALL' ? undefined : activeChannel;
+
+  function setChannel(next: ChannelTab): void {
+    const params = new URLSearchParams(searchParams);
+    if (next === 'ALL') params.delete('channel');
+    else params.set('channel', next);
+    setSearchParams(params, { replace: true });
+  }
+
   // Polling toutes les 3s tant qu'un article est en PENDING (génération IA
   // en cours). Dès que tout est DONE/FAILED, plus de refetch.
-  const { data, loading, error, startPolling, stopPolling } =
+  const { data, loading, error, startPolling, stopPolling, refetch } =
     useQuery<ClubVitrineArticlesData>(CLUB_VITRINE_ARTICLES, {
+      variables: { channel: queryChannel },
       fetchPolicy: 'cache-and-network',
     });
   const hasPending = useMemo(
@@ -45,19 +75,43 @@ export function VitrineArticlesPage() {
   }, [hasPending, startPolling, stopPolling]);
   const [createArticle, { loading: creating }] =
     useMutation<CreateVitrineArticleData>(CREATE_VITRINE_ARTICLE, {
-      refetchQueries: [{ query: CLUB_VITRINE_ARTICLES }],
+      onCompleted: () => void refetch(),
     });
   const [setStatus] = useMutation(SET_VITRINE_ARTICLE_STATUS, {
-    refetchQueries: [{ query: CLUB_VITRINE_ARTICLES }],
+    onCompleted: () => void refetch(),
   });
+  // Après une mutation on refetch avec le filtre courant pour que la vue
+  // reste cohérente — un simple refetch() couvre ALL/NEWS/BLOG.
+  const refetchCurrent = () => refetch();
   const [deleteArticle] = useMutation(DELETE_VITRINE_ARTICLE, {
-    refetchQueries: [{ query: CLUB_VITRINE_ARTICLES }],
+    onCompleted: refetchCurrent,
+  });
+  const [setPinned] = useMutation(SET_VITRINE_ARTICLE_PINNED, {
+    onCompleted: refetchCurrent,
+  });
+  const [reorder] = useMutation(REORDER_VITRINE_ARTICLES, {
+    onCompleted: refetchCurrent,
+  });
+  const [setArticleChannelMut] = useMutation(SET_VITRINE_ARTICLE_CHANNEL, {
+    onCompleted: refetchCurrent,
   });
 
   const [aiOpen, setAiOpen] = useState(false);
+  // Drag-and-drop : piste l'ordre localement le temps que la mutation
+  // réordonne côté serveur, pour éviter un « saut » visuel.
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [localOrder, setLocalOrder] = useState<string[] | null>(null);
   const [statusFilter, setStatusFilter] = useState<
     'ALL' | 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
   >('ALL');
+
+  /**
+   * Canal utilisé à la création : si un onglet spécifique est sélectionné,
+   * on crée dans ce canal. En mode « Tous », on retombe sur BLOG par défaut
+   * (l'admin peut basculer ensuite via le bouton « → Actualités / Blog »).
+   */
+  const createChannel: VitrineArticleChannel =
+    activeChannel === 'ALL' ? 'BLOG' : activeChannel;
 
   async function createEmptyDraft(): Promise<void> {
     try {
@@ -65,16 +119,25 @@ export function VitrineArticlesPage() {
       const res = await createArticle({
         variables: {
           input: {
-            title: 'Nouvel article',
+            title:
+              createChannel === 'NEWS'
+                ? 'Nouvelle actualité'
+                : 'Nouvel article',
             excerpt: null,
             bodyJson: emptyBody,
             publishNow: false,
+            channel: createChannel,
           },
         },
       });
       const id = res.data?.createVitrineArticle.id;
       if (!id) throw new Error('ID manquant');
-      showToast('Brouillon créé. Ouverture de l\u2019éditeur\u2026', 'success');
+      showToast(
+        createChannel === 'NEWS'
+          ? 'Brouillon d\u2019actualité créé. Ouverture de l\u2019éditeur\u2026'
+          : 'Brouillon de blog créé. Ouverture de l\u2019éditeur\u2026',
+        'success',
+      );
       navigate(`/vitrine/articles/${id}`);
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Échec', 'error');
@@ -95,11 +158,88 @@ export function VitrineArticlesPage() {
     // apparaît.
   }
 
+  // ---------- Drag and drop (ordre manuel) ----------
+  function onDragStart(id: string): void {
+    setDragId(id);
+  }
+  function onDragOver(e: React.DragEvent, overId: string): void {
+    e.preventDefault();
+    if (!dragId || dragId === overId) return;
+    const current = localOrder ?? articles.map((a) => a.id);
+    const from = current.indexOf(dragId);
+    const to = current.indexOf(overId);
+    if (from < 0 || to < 0) return;
+    const next = [...current];
+    next.splice(from, 1);
+    next.splice(to, 0, dragId);
+    setLocalOrder(next);
+  }
+  async function onDragEnd(): Promise<void> {
+    if (!localOrder) {
+      setDragId(null);
+      return;
+    }
+    try {
+      await reorder({ variables: { orderedIds: localOrder } });
+      showToast('Ordre mis à jour', 'success');
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : 'Impossible de réordonner',
+        'error',
+      );
+    } finally {
+      setDragId(null);
+      setLocalOrder(null);
+    }
+  }
+
+  async function togglePin(id: string, next: boolean): Promise<void> {
+    try {
+      await setPinned({ variables: { id, pinned: next } });
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
+
+  async function switchChannel(
+    id: string,
+    title: string,
+    currentChannel: VitrineArticleChannel,
+  ): Promise<void> {
+    const nextChannel: VitrineArticleChannel =
+      currentChannel === 'NEWS' ? 'BLOG' : 'NEWS';
+    const nextLabel = channelLabel(nextChannel);
+    const confirmMsg =
+      `Basculer « ${title} » vers le canal ${nextLabel} ?\n\n` +
+      `L'article conserve son titre, son contenu, son SEO, ses catégories ` +
+      `et ses commentaires. Il apparaîtra désormais sur ` +
+      `${nextChannel === 'NEWS' ? '/actualites' : '/blog'} à la place de ` +
+      `${currentChannel === 'NEWS' ? '/actualites' : '/blog'}.`;
+    if (!window.confirm(confirmMsg)) return;
+    try {
+      await setArticleChannelMut({
+        variables: { id, channel: nextChannel },
+      });
+      showToast(`Article basculé vers ${nextLabel}`, 'success');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
+
   const articles = data?.clubVitrineArticles ?? [];
+  // Si on est en cours de drag local, on applique l'ordre optimistique.
+  const orderedArticles = localOrder
+    ? localOrder
+        .map((id) => articles.find((a) => a.id === id))
+        .filter((a): a is (typeof articles)[number] => a != null)
+        .concat(
+          articles.filter((a) => !localOrder.includes(a.id)),
+        )
+    : articles;
   const filtered =
     statusFilter === 'ALL'
-      ? articles
-      : articles.filter((a) => a.status === statusFilter);
+      ? orderedArticles
+      : orderedArticles.filter((a) => a.status === statusFilter);
 
   const counts = {
     total: articles.length,
@@ -117,12 +257,37 @@ export function VitrineArticlesPage() {
               <Link to="/vitrine">← Site vitrine</Link>
             </p>
             <h1 className="members-loom__title">
-              Articles <span className="muted">({counts.total})</span>
+              {activeChannel === 'NEWS'
+                ? 'Actualités'
+                : activeChannel === 'BLOG'
+                  ? 'Blog'
+                  : 'Articles'}{' '}
+              <span className="muted">({counts.total})</span>
             </h1>
             <p className="muted" style={{ marginTop: 4 }}>
-              Rédigez manuellement ou laissez l'IA générer un article complet
-              optimisé SEO 2026.
+              Même éditeur, même SEO, même génération IA pour les deux
+              canaux. <strong>Actualités</strong> publie sur{' '}
+              <code>/actualites</code>, <strong>Blog</strong> sur{' '}
+              <code>/blog</code>. On peut basculer un article d'un canal à
+              l'autre d'un clic.
             </p>
+            <div className="article-hub__filters" style={{ marginTop: 12 }}>
+              <TabChip
+                label="Tous"
+                active={activeChannel === 'ALL'}
+                onClick={() => setChannel('ALL')}
+              />
+              <TabChip
+                label="Actualités"
+                active={activeChannel === 'NEWS'}
+                onClick={() => setChannel('NEWS')}
+              />
+              <TabChip
+                label="Blog"
+                active={activeChannel === 'BLOG'}
+                onClick={() => setChannel('BLOG')}
+              />
+            </div>
           </div>
         </div>
       </header>
@@ -233,7 +398,21 @@ export function VitrineArticlesPage() {
         ) : (
           <div className="article-list">
             {filtered.map((a) => (
-              <article key={a.id} className="article-row">
+              <article
+                key={a.id}
+                className={`article-row${a.pinned ? ' article-row--pinned' : ''}${dragId === a.id ? ' article-row--dragging' : ''}`}
+                draggable
+                onDragStart={() => onDragStart(a.id)}
+                onDragOver={(e) => onDragOver(e, a.id)}
+                onDragEnd={() => void onDragEnd()}
+              >
+                <span
+                  className="article-row__drag-handle"
+                  title="Glisser-déposer pour réordonner"
+                  aria-hidden
+                >
+                  ⋮⋮
+                </span>
                 {a.coverImageUrl ? (
                   <Link
                     to={`/vitrine/articles/${a.id}`}
@@ -255,6 +434,7 @@ export function VitrineArticlesPage() {
                       to={`/vitrine/articles/${a.id}`}
                       className="article-row__title"
                     >
+                      {a.pinned ? '📌 ' : ''}
                       {a.title}
                     </Link>
                     <StatusBadge status={a.status} />
@@ -297,7 +477,11 @@ export function VitrineArticlesPage() {
                     <p className="article-row__excerpt">{a.excerpt}</p>
                   ) : null}
                   <div className="article-row__meta">
-                    <code>/actualites/{a.slug}</code>
+                    <code>{publicPathForChannel(a.channel, a.slug)}</code>
+                    <span className="muted">·</span>
+                    <span className="muted" title={`Canal ${a.channel}`}>
+                      {a.channel === 'NEWS' ? '📰 Actualité' : '✍ Blog'}
+                    </span>
                     <span className="muted">·</span>
                     <span className="muted">
                       {a.publishedAt
@@ -321,6 +505,14 @@ export function VitrineArticlesPage() {
                   >
                     Éditer
                   </Link>
+                  <button
+                    type="button"
+                    className="btn btn-tight btn-ghost"
+                    title={a.pinned ? 'Désépingler' : 'Épingler en haut'}
+                    onClick={() => void togglePin(a.id, !a.pinned)}
+                  >
+                    {a.pinned ? '📌 Désépingler' : '📌 Épingler'}
+                  </button>
                   {a.status !== 'PUBLISHED' ? (
                     <button
                       type="button"
@@ -353,6 +545,20 @@ export function VitrineArticlesPage() {
                   <button
                     type="button"
                     className="btn btn-tight btn-ghost"
+                    title={
+                      a.channel === 'NEWS'
+                        ? 'Basculer cet article vers le Blog (contenu de fond)'
+                        : 'Basculer cet article vers les Actualités'
+                    }
+                    onClick={() =>
+                      void switchChannel(a.id, a.title, a.channel)
+                    }
+                  >
+                    {a.channel === 'NEWS' ? '→ Blog' : '→ Actualités'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-tight btn-ghost"
                     onClick={() => {
                       if (window.confirm(`Supprimer \u00ab ${a.title} \u00bb ?`)) {
                         void deleteArticle({ variables: { id: a.id } });
@@ -372,6 +578,7 @@ export function VitrineArticlesPage() {
         open={aiOpen}
         onClose={() => setAiOpen(false)}
         onGenerationStarted={handleGenerationStarted}
+        channel={createChannel}
       />
     </>
   );
@@ -391,6 +598,28 @@ function FilterChip({
       type="button"
       onClick={onClick}
       className={active ? 'filter-chip filter-chip--active' : 'filter-chip'}
+    >
+      {label}
+    </button>
+  );
+}
+
+/** Onglet de canal (Tous / Actualités / Blog) — variante visuelle du FilterChip. */
+function TabChip({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={active ? 'filter-chip filter-chip--active' : 'filter-chip'}
+      style={{ fontWeight: active ? 600 : 500 }}
     >
       {label}
     </button>

@@ -91,6 +91,8 @@ model Club {
   vitrineGalleryPhotos VitrineGalleryPhoto[]
   vitrineCategories    VitrineCategory[]
   mediaAssets          MediaAsset[]
+  clubProjects         ClubProject[]
+  distributionLists    DistributionList[]
 
   /// Clé API OpenRouter (chiffrée AES-256-GCM, base64).
   /// null = fonctionnalités IA désactivées pour ce club.
@@ -125,6 +127,12 @@ enum AiUsageFeature {
   ARTICLE_GENERATION
   IMAGE_GENERATION
   AGENT_CHAT
+  /// Modération IA des items live uploadés par les contributeurs projet
+  /// (vision pertinence + qualité).
+  PROJECT_MODERATION
+  /// Génération de comptes-rendus projet (3 presets : COMPETITIF, FESTIF,
+  /// BILAN) via le module Projets.
+  PROJECT_REPORT
   OTHER
 }
 
@@ -156,15 +164,22 @@ model AgentConversation {
   id        String   @id @default(uuid())
   clubId    String
   userId    String
+  /// Scope projet : si non null, la conversation est cantonnée au projet X,
+  /// seuls les outils `scope = 'PROJECT'` seront exposés à l'agent + le
+  /// system prompt est enrichi du contexte projet (titre, contributeurs,
+  /// items live récents). Null = agent club classique (portée historique).
+  projectId String?
   title     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   archived  Boolean  @default(false)
 
-  club     Club            @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  club     Club           @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  project  ClubProject?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   messages AgentMessage[]
 
   @@index([clubId, userId, updatedAt])
+  @@index([projectId])
 }
 
 /// Message individuel dans une conversation (user, assistant, tool result).
@@ -266,6 +281,10 @@ enum MembershipRole {
   /// vitrine (pages, articles, annonces, galerie, médias) sans les droits
   /// financiers/administratifs complets.
   COMM_MANAGER
+  /// Chef de projet — peut créer, administrer et archiver des ClubProject
+  /// sans avoir tous les droits CLUB_ADMIN. Ne donne PAS accès aux autres
+  /// modules (compta, membres hors projet, paramètres club).
+  PROJECT_MANAGER
 }
 
 model User {
@@ -310,6 +329,7 @@ model Contact {
   familyMemberPayerLinks FamilyMember[]   @relation("FamilyMemberPayerContact")
   paymentsAsPaidBy       Payment[]        @relation("PaymentPaidByContact")
   membershipCartsAsPayer MembershipCart[] @relation("CartPayerContact")
+  projectContributions   ProjectContributor[]
 
   @@unique([userId, clubId])
 }
@@ -549,6 +569,7 @@ model Member {
   licenseNumber          String?
   membershipCartItems    MembershipCartItem[]
   membershipCartsAsPayer MembershipCart[]     @relation("CartPayerMember")
+  projectContributions   ProjectContributor[]
 
   @@unique([clubId, userId])
   @@unique([clubId, pseudo])
@@ -1143,6 +1164,9 @@ model MessageCampaign {
   body           String
   channel        CommunicationChannel
   dynamicGroupId String?
+  /// Rattachement optionnel à un ClubProject (pour le futur module
+  /// Communications scopé projet + traçabilité analytique).
+  projectId      String?
   status         MessageCampaignStatus @default(DRAFT)
   sentAt         DateTime?
   createdAt      DateTime              @default(now())
@@ -1150,9 +1174,11 @@ model MessageCampaign {
 
   club         Club                       @relation(fields: [clubId], references: [id], onDelete: Cascade)
   dynamicGroup DynamicGroup?              @relation(fields: [dynamicGroupId], references: [id], onDelete: SetNull)
+  project      ClubProject?               @relation(fields: [projectId], references: [id], onDelete: SetNull)
   recipients   MessageCampaignRecipient[]
 
   @@index([clubId])
+  @@index([projectId])
 }
 
 model MessageCampaignRecipient {
@@ -1227,13 +1253,19 @@ model AccountingEntry {
   label       String
   amountCents Int
   paymentId   String?
+  /// Rattachement analytique optionnel à un ClubProject. Null = écriture
+  /// générale club. Permet de projeter un P&L par projet une fois le
+  /// module compta activé.
+  projectId   String?
   occurredAt  DateTime            @default(now())
   createdAt   DateTime            @default(now())
 
-  club    Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  payment Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  club    Club         @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  payment Payment?     @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  project ClubProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@index([clubId, occurredAt])
+  @@index([clubId, projectId])
 }
 
 enum GrantApplicationStatus {
@@ -1362,6 +1394,10 @@ enum ClubEventRegistrationStatus {
 model ClubEvent {
   id                       String          @id @default(uuid())
   clubId                   String
+  /// Rattachement optionnel à un ClubProject (un projet peut regrouper N
+  /// events datés — ex. « Gala 2026 » a une soirée + une répétition
+  /// rattachées). Null = event autonome (cours hebdo, stage simple).
+  projectId                String?
   title                    String
   description              String?
   location                 String?
@@ -1377,11 +1413,13 @@ model ClubEvent {
   createdAt                DateTime        @default(now())
   updatedAt                DateTime        @updatedAt
 
+  project       ClubProject?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
   registrations ClubEventRegistration[]
   attachments   ClubEventAttachment[]
 
   @@index([clubId, startsAt])
   @@index([clubId, status])
+  @@index([projectId])
 }
 
 model ClubEventRegistration {
@@ -1582,6 +1620,16 @@ enum VitrineArticleStatus {
   ARCHIVED
 }
 
+/// Canal de publication d'un VitrineArticle : « actualités » (brèves du
+/// quotidien affichées sur /actualites) ou « blog » (articles de fond sur
+/// /blog). Les deux canaux partagent la même structure (SEO, catégories,
+/// commentaires, IA), ils sont juste filtrés sur le site public et
+/// regroupés dans deux onglets côté admin.
+enum VitrineArticleChannel {
+  NEWS
+  BLOG
+}
+
 enum MediaAssetKind {
   IMAGE
   DOCUMENT
@@ -1726,8 +1774,19 @@ model VitrineArticle {
   bodyJson     Json
   coverImageId String?
   status       VitrineArticleStatus @default(DRAFT)
+  /// Canal : actualité courte (NEWS) ou article de fond (BLOG). Filtre
+  /// les deux listes publiques /actualites et /blog, et groupe les deux
+  /// onglets dans l'admin — création, SEO, catégories, commentaires,
+  /// génération IA et tampon acquitté identiques quelle que soit la valeur.
+  channel      VitrineArticleChannel @default(BLOG)
   publishedAt  DateTime?
   authorUserId String?
+  /// Épinglé en tête de la liste de son canal (/actualites ou /blog).
+  pinned       Boolean              @default(false)
+  /// Ordre manuel (drag-and-drop admin). Plus petit = plus haut. Les
+  /// articles épinglés sont triés entre eux par sortOrder avant les non
+  /// épinglés (eux-mêmes triés par publishedAt desc).
+  sortOrder    Int                  @default(0)
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
 
@@ -1758,6 +1817,7 @@ model VitrineArticle {
 
   @@unique([clubId, slug])
   @@index([clubId, status, publishedAt])
+  @@index([clubId, channel, status, publishedAt])
   @@index([clubId, generationStatus])
 }
 
@@ -1768,6 +1828,10 @@ model VitrineAnnouncement {
   title       String
   body        String
   pinned      Boolean   @default(false)
+  /// Ordre manuel (drag-and-drop admin). Plus petit = plus haut. Les
+  /// annonces épinglées sont triées entre elles par sortOrder avant les non
+  /// épinglées.
+  sortOrder   Int       @default(0)
   publishedAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -1817,6 +1881,369 @@ model MediaAsset {
   articleCovers  VitrineArticle[]      @relation("VitrineArticleCover")
   articleOgImages VitrineArticle[]     @relation("VitrineArticleOgImage")
   ogPages        VitrinePage[]         @relation("VitrinePageOgImage")
+  projectPosters ClubProject[]         @relation("ProjectPoster")
+  projectCovers  ClubProject[]         @relation("ProjectCover")
+  projectLiveItems ProjectLiveItem[]   @relation("ProjectLiveItemMedia")
 
   @@index([clubId, ownerKind, ownerId])
+}
+// ============================================================================
+// Module PROJETS  (v1 — cf. plan glowing-bubbling-llama.md)
+// ----------------------------------------------------------------------------
+// ClubProject + sections built-in (Bénévolat/Admin/Com/Live + Accounting r-o),
+// phases LIVE multiples, contributeurs polymorphes, items (photos/vidéos)
+// modérés IA puis humain, comptes-rendus IA, listes de diffusion RGPD.
+// ============================================================================
+
+enum ProjectStatus {
+  PLANNED
+  ACTIVE
+  CLOSED
+  ARCHIVED
+}
+
+enum ProjectLivePhaseState {
+  UPCOMING
+  LIVE
+  CLOSED
+}
+
+enum ProjectSectionKind {
+  VOLUNTEERS
+  ADMIN
+  COMMUNICATION
+  LIVE
+  ACCOUNTING
+  CUSTOM
+}
+
+enum ProjectContributorRole {
+  CONTRIBUTOR
+}
+
+enum ProjectLiveItemKind {
+  PHOTO
+  VIDEO
+  /// Soumission texte libre (témoignage, caption, anecdote). `textContent`
+  /// est renseigné, `mediaAssetId` reste null. Utilisé pour enrichir les
+  /// comptes-rendus sans nécessiter une photo ou une vidéo.
+  TEXT
+}
+
+enum ProjectLiveItemAiDecision {
+  PENDING
+  APPROVED
+  REJECTED
+  ERROR
+}
+
+enum ProjectLiveItemHumanDecision {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ProjectLiveItemPublication {
+  NONE
+  VITRINE_NEWS
+  VITRINE_BLOG
+  MEMBER_ANNOUNCEMENT
+}
+
+enum ProjectReportTemplate {
+  COMPETITIF
+  FESTIF
+  BILAN
+  /// Génération avec prompt personnalisé fourni par l'admin (ex. « fais un
+  /// compte-rendu des performances de nos athlètes »). Le champ `customPrompt`
+  /// de `ProjectReport` est alors renseigné et remplace le preset de ton.
+  CUSTOM
+}
+
+enum ProjectReportStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum DistributionMailStatus {
+  DRAFT
+  SENT
+  FAILED
+  UNSUBSCRIBED
+}
+
+/// Événement / Projet long-terme (au-delà d'un ClubEvent simple).
+/// Créé avec 4 sections built-in (VOLUNTEERS, ADMIN, COMMUNICATION, LIVE),
+/// et une 5e section ACCOUNTING en lecture seule si le module compta est
+/// actif. Rename + reorder des sections possibles dès v1.
+model ClubProject {
+  id            String        @id @default(uuid())
+  clubId        String
+  slug          String
+  title         String
+  summary       String?
+  description   String?
+  status        ProjectStatus @default(PLANNED)
+  startsAt      DateTime?
+  endsAt        DateTime?
+  posterAssetId String?
+  coverImageId  String?
+  budgetPlannedCents Int?
+
+  /// Quotas par contributeur par phase LIVE — configurables par projet.
+  maxPhotosPerContributorPerPhase Int     @default(10)
+  maxVideosPerContributorPerPhase Int     @default(3)
+  maxTextsPerContributorPerPhase  Int     @default(20)
+  /// Toggle admin : afficher la liste des contributeurs en bas d'un
+  /// compte-rendu publié (respect des contributeurs anonymes).
+  showContributorCredits          Boolean @default(true)
+
+  createdByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  club          Club                  @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  posterAsset   MediaAsset?           @relation("ProjectPoster", fields: [posterAssetId], references: [id], onDelete: SetNull)
+  coverImage    MediaAsset?           @relation("ProjectCover", fields: [coverImageId], references: [id], onDelete: SetNull)
+  sections      ProjectSection[]
+  livePhases    ProjectLivePhase[]
+  contributors  ProjectContributor[]
+  liveItems     ProjectLiveItem[]
+  reports       ProjectReport[]
+  distributions ProjectDistribution[]
+  events        ClubEvent[]
+  accountingEntries  AccountingEntry[]
+  messageCampaigns   MessageCampaign[]
+  agentConversations AgentConversation[]
+
+  @@unique([clubId, slug])
+  @@index([clubId, status])
+}
+
+/// Section structurée d'un projet (wiki rich-text + documents joints via
+/// MediaAsset.ownerKind='PROJECT_SECTION'). V1 : 4 kinds built-in + ACCOUNTING
+/// lecture seule conditionnelle. Renommable, réordonnable.
+model ProjectSection {
+  id        String             @id @default(uuid())
+  projectId String
+  kind      ProjectSectionKind
+  label     String
+  sortOrder Int                @default(0)
+  /// Wiki Tiptap JSON — contenu longue forme édité depuis l'admin.
+  bodyJson  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project ClubProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, sortOrder])
+}
+
+/// Phase LIVE d'un projet — un projet peut avoir N phases (ex. stage 3 jours).
+/// Chaque phase a son cycle `UPCOMING → LIVE → CLOSED` et ses propres quotas
+/// contributeurs (les quotas sont comptés sur `phaseId` + `contributorId`).
+model ProjectLivePhase {
+  id        String                @id @default(uuid())
+  projectId String
+  label     String
+  startsAt  DateTime
+  endsAt    DateTime
+  state     ProjectLivePhaseState @default(UPCOMING)
+  openedAt  DateTime?
+  closedAt  DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project   ClubProject       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  liveItems ProjectLiveItem[]
+
+  @@index([projectId, startsAt])
+}
+
+/// Contributeur d'un projet — polymorphe Member OU Contact (exactement un).
+/// Portée par projet, rôle unique `CONTRIBUTOR` en v1, révocation manuelle
+/// via `revokedAt` + raison, désactivation auto via hook Member.status.
+model ProjectContributor {
+  id            String                 @id @default(uuid())
+  projectId     String
+  memberId      String?
+  contactId     String?
+  role          ProjectContributorRole @default(CONTRIBUTOR)
+  addedByUserId String
+  addedAt       DateTime               @default(now())
+  revokedAt     DateTime?
+  revokedReason String?
+
+  project   ClubProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  member    Member?            @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  contact   Contact?           @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  liveItems ProjectLiveItem[]
+
+  @@index([projectId, revokedAt])
+  @@index([memberId])
+  @@index([contactId])
+}
+
+/// Item uploadé pendant la phase LIVE (photo ou vidéo). Pipeline :
+///   PENDING (IA) → APPROVED/REJECTED/ERROR (aiDecision)
+///   PENDING (humain) → APPROVED/REJECTED (humanDecision, override possible)
+///   publishedTo : NONE par défaut, VITRINE_NEWS / VITRINE_BLOG /
+///     MEMBER_ANNOUNCEMENT selon ce que l'admin publie.
+model ProjectLiveItem {
+  id             String                       @id @default(uuid())
+  projectId      String
+  phaseId        String?
+  contributorId  String
+  kind           ProjectLiveItemKind
+  /// Nullable pour permettre les items de kind=TEXT (le textContent est
+  /// alors renseigné à la place). Requis pour PHOTO et VIDEO — validation
+  /// applicative dans `project-live-item.service.ts::submit()`.
+  mediaAssetId   String?
+  /// Contenu texte brut (max 4000 chars), pour kind=TEXT uniquement.
+  /// Stocké tel quel, la modération IA texte peut le parcourir ensuite.
+  textContent    String?
+  submittedAt    DateTime                     @default(now())
+  /// False si l'upload a eu lieu après ProjectLivePhase.state=CLOSED.
+  /// L'UI affiche alors un badge « ajout tardif ».
+  submittedDuringLive Boolean                 @default(true)
+
+  aiDecision     ProjectLiveItemAiDecision    @default(PENDING)
+  aiReason       String?
+  aiScore        Float?
+  aiCheckedAt    DateTime?
+
+  humanDecision  ProjectLiveItemHumanDecision @default(PENDING)
+  humanDecidedBy String?
+  humanDecidedAt DateTime?
+
+  publishedTo    ProjectLiveItemPublication   @default(NONE)
+  publishedRefId String?
+
+  project     ClubProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  phase       ProjectLivePhase?  @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+  contributor ProjectContributor @relation(fields: [contributorId], references: [id], onDelete: Cascade)
+  mediaAsset  MediaAsset?        @relation("ProjectLiveItemMedia", fields: [mediaAssetId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, submittedAt])
+  @@index([projectId, aiDecision, humanDecision])
+  @@index([contributorId, phaseId, kind])
+}
+
+/// Compte-rendu IA d'un projet. 3 templates (COMPETITIF / FESTIF / BILAN),
+/// draft édité en Tiptap par l'admin puis publié comme VitrineArticle.
+/// Stocke les contributeurs crédités pour l'attribution en bas d'article.
+model ProjectReport {
+  id             String                     @id @default(uuid())
+  projectId      String
+  template       ProjectReportTemplate
+  status         ProjectReportStatus        @default(DRAFT)
+  title          String
+  /// Prompt libre saisi par l'admin. Renseigné uniquement pour
+  /// template=CUSTOM, null pour les 3 presets prédéfinis. Max 2000 chars.
+  customPrompt   String?
+  bodyJson       Json
+  /// IDs des ProjectLiveItem effectivement utilisés par le générateur IA.
+  sourceLiveItemIds            String[]     @default([])
+  /// IDs Member cités / crédités (union Member + Contact via deux colonnes
+  /// parallèles — pattern FamilyMember).
+  sourceContributorMemberIds   String[]     @default([])
+  sourceContributorContactIds  String[]     @default([])
+  publishedTo    ProjectLiveItemPublication @default(NONE)
+  publishedRefId String?
+  generatedByAgentConversationId String?
+  createdByUserId String
+  createdAt       DateTime @default(now())
+  publishedAt     DateTime?
+  updatedAt       DateTime @updatedAt
+
+  project ClubProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, status])
+}
+
+/// Liste de diffusion club-level (réutilisable entre projets). Ex. « Mairie »,
+/// « Partenaires », « Presse locale ». V2 — anticipé en v1 pour le schéma.
+model DistributionList {
+  id          String @id @default(uuid())
+  clubId      String
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  club          Club                  @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  contacts      DistributionContact[]
+  distributions ProjectDistribution[]
+
+  @@unique([clubId, name])
+}
+
+/// Contact d'une liste de diffusion — RGPD : consentement daté + source
+/// obligatoires, unsubscribe trace via `consentRevokedAt`.
+model DistributionContact {
+  id               String    @id @default(uuid())
+  listId           String
+  firstName        String?
+  lastName         String?
+  organization     String?
+  email            String
+  phone            String?
+  consentGivenAt   DateTime
+  consentSource    String
+  consentRevokedAt DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  list  DistributionList   @relation(fields: [listId], references: [id], onDelete: Cascade)
+  sends DistributionSend[]
+
+  @@unique([listId, email])
+  @@index([email])
+}
+
+/// Envoi d'un mail projet → liste de diffusion (v2). Draft IA éditable puis
+/// envoi via ClubSendingDomain + SPF/DKIM. Un `DistributionSend` par destinataire
+/// avec token unsubscribe unique.
+model ProjectDistribution {
+  id                    String    @id @default(uuid())
+  projectId             String
+  listId                String
+  subject               String
+  bodyHtml              String
+  bodyText              String?
+  attachedMediaAssetIds String[]  @default([])
+  aiDraftedAt           DateTime?
+  createdByUserId       String
+  createdAt             DateTime  @default(now())
+  sentAt                DateTime?
+
+  project ClubProject       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  list    DistributionList  @relation(fields: [listId], references: [id], onDelete: Cascade)
+  sends   DistributionSend[]
+
+  @@index([projectId])
+  @@index([listId])
+}
+
+/// Log immuable d'envoi pour audit RGPD — un send par (distribution, contact).
+/// Seule la colonne `openedAt` est updatable (pixel tracking optionnel).
+model DistributionSend {
+  id               String                 @id @default(uuid())
+  distributionId   String
+  contactId        String
+  /// Copie figée de l'email au moment de l'envoi (audit RGPD, évite de
+  /// perdre la trace si le contact est modifié/supprimé après).
+  email            String
+  status           DistributionMailStatus @default(DRAFT)
+  /// Token unique pour le lien unsubscribe dans le mail.
+  unsubscribeToken String                 @unique
+  sentAt           DateTime?
+  deliveredAt      DateTime?
+  openedAt         DateTime?
+  errorMessage     String?
+
+  distribution ProjectDistribution @relation(fields: [distributionId], references: [id], onDelete: Cascade)
+  contact      DistributionContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([distributionId, status])
 }

@@ -537,28 +537,55 @@ export function AdhesionSettingsPage() {
       </header>
 
       {!membersOn ? (
-        <p className="form-error" role="status">
-          Activez aussi le module « Membres » pour utiliser les grades sur les
-          formules.
-        </p>
+        <div className="cf-alert cf-alert--warning" role="status">
+          <span className="material-symbols-outlined" aria-hidden>
+            info
+          </span>
+          <div className="cf-alert__content">
+            <strong>Module Membres désactivé</strong>
+            <span>
+              Activez-le pour utiliser les grades sur les formules d’adhésion.
+            </span>
+          </div>
+        </div>
       ) : null}
 
       {!activeSeason ? (
-        <p className="form-error" role="status">
-          Aucune saison active : créez une saison ou activez-en une dans la
-          liste.
-        </p>
+        <div className="cf-alert cf-alert--danger" role="status">
+          <span className="material-symbols-outlined" aria-hidden>
+            warning
+          </span>
+          <div className="cf-alert__content">
+            <strong>Aucune saison active</strong>
+            <span>
+              Créez une saison ou activez-en une dans la liste pour émettre
+              des cotisations.
+            </span>
+          </div>
+        </div>
       ) : (
-        <p className="muted">
-          Saison active : <strong>{activeSeason.label}</strong> (
-          {activeSeason.startsOn.slice(0, 10)} →{' '}
-          {activeSeason.endsOn.slice(0, 10)})
-        </p>
+        <div className="cf-alert cf-alert--info" role="status">
+          <span className="material-symbols-outlined" aria-hidden>
+            event_available
+          </span>
+          <div className="cf-alert__content">
+            <strong>Saison active : {activeSeason.label}</strong>
+            <span>
+              Du {activeSeason.startsOn.slice(0, 10)} au{' '}
+              {activeSeason.endsOn.slice(0, 10)}
+            </span>
+          </div>
+        </div>
       )}
 
       <div className="members-manage">
         <section className="members-panel">
-          <h2 className="members-panel__h">Saisons</h2>
+          <h2 className="members-panel__h">
+            <span className="material-symbols-outlined" aria-hidden>
+              calendar_month
+            </span>
+            Saisons
+          </h2>
           {seasonMsg ? <p className="form-error">{seasonMsg}</p> : null}
           <form className="members-form" onSubmit={(e) => void onCreateSeason(e)}>
             <div className="members-form--inline">
@@ -702,7 +729,12 @@ export function AdhesionSettingsPage() {
         </section>
 
         <section className="members-panel">
-          <h2 className="members-panel__h">Formules d’adhésion</h2>
+          <h2 className="members-panel__h">
+            <span className="material-symbols-outlined" aria-hidden>
+              card_membership
+            </span>
+            Formules d’adhésion
+          </h2>
           {!membersOn ? (
             <p className="form-error">
               Activez le module « Membres » pour gérer les grades utilisés comme

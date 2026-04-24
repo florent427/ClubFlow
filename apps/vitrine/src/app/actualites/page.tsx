@@ -3,9 +3,7 @@ import Link from 'next/link';
 import { resolveCurrentClub } from '@/lib/club-resolution';
 import {
   fetchArticles,
-  fetchCategories,
   type VitrineArticleSummary,
-  type VitrineCategoryPublic,
 } from '@/lib/page-fetchers';
 import { PageHero } from '@/blocks/PageHero';
 import { buildPageMetadata } from '@/lib/seo';
@@ -14,7 +12,8 @@ export async function generateMetadata(): Promise<Metadata> {
   return buildPageMetadata({
     pageSlug: 'actualites',
     fallbackTitle: 'Actualités',
-    fallbackDescription: 'Articles et annonces récentes du club.',
+    fallbackDescription:
+      'Brèves et actualités récentes du club.',
   });
 }
 
@@ -30,42 +29,31 @@ function formatDate(iso: string | null): string {
 /**
  * Page publique des actualités.
  *
- * Affiche les vrais articles publiés (VitrineArticle status=PUBLISHED),
- * pas une section statique de template. Nav catégories au-dessus,
- * grille d'articles en-dessous.
+ * Liste les articles publiés avec `channel = NEWS`. Même structure et
+ * même rendu que `/blog` — seul le filtre diffère. Chaque article a sa
+ * page de détail, ses catégories, ses commentaires, son SEO, etc.
  */
 export default async function ActualitesPage() {
   const club = await resolveCurrentClub();
-  const [articles, categories] = await Promise.all([
-    fetchArticles(club.slug, 50),
-    fetchCategories(club.slug),
-  ]);
+  const articles = await fetchArticles(club.slug, 50, 'NEWS');
 
   return (
     <article>
       <PageHero
         label="Actualités"
-        kanji="新"
+        kanji="報"
         title="Les dernières nouvelles"
-        subtitle="Articles, récits de stages, résultats et annonces du club."
+        subtitle="Brèves, annonces et informations récentes du club."
       />
 
       <section className="section">
         <div className="container">
-          {categories.length > 0 ? (
-            <CategoryNav
-              categories={categories.filter((c) => c.articleCount > 0)}
-              currentSlug={null}
-              totalArticles={articles.length}
-            />
-          ) : null}
-
           {articles.length === 0 ? (
             <p
               className="muted"
               style={{ textAlign: 'center', padding: '48px 0' }}
             >
-              Aucun article publié pour le moment.
+              Aucune actualité publiée pour le moment.
             </p>
           ) : (
             <div className="article-grid">
@@ -77,57 +65,6 @@ export default async function ActualitesPage() {
         </div>
       </section>
     </article>
-  );
-}
-
-function CategoryNav({
-  categories,
-  currentSlug,
-  totalArticles,
-}: {
-  categories: VitrineCategoryPublic[];
-  currentSlug: string | null;
-  totalArticles: number;
-}) {
-  return (
-    <nav className="category-nav">
-      <Link
-        href="/actualites"
-        className={
-          currentSlug === null
-            ? 'category-nav__link category-nav__link--active'
-            : 'category-nav__link'
-        }
-      >
-        Toutes{' '}
-        <span className="muted" style={{ opacity: 0.6 }}>
-          ({totalArticles})
-        </span>
-      </Link>
-      {categories.map((c) => (
-        <Link
-          key={c.id}
-          href={`/actualites/categorie/${c.slug}`}
-          className={
-            c.slug === currentSlug
-              ? 'category-nav__link category-nav__link--active'
-              : 'category-nav__link'
-          }
-          style={
-            c.color && c.slug === currentSlug
-              ? { background: c.color, color: '#fff', borderColor: c.color }
-              : c.color
-                ? { color: c.color }
-                : undefined
-          }
-        >
-          {c.name}{' '}
-          <span className="muted" style={{ opacity: 0.6 }}>
-            ({c.articleCount})
-          </span>
-        </Link>
-      ))}
-    </nav>
   );
 }
 

@@ -18,6 +18,13 @@ export interface StartGenerationInput {
   inlineImageCount?: number;
   useAiImages?: boolean;
   useWebSearch?: boolean;
+  /**
+   * Canal de publication cible : « NEWS » (actualités courtes /actualites)
+   * ou « BLOG » (articles de fond /blog). Défaut BLOG. La pipeline IA est
+   * identique quelle que soit la valeur — seul le placement du brouillon
+   * dans l'onglet admin et sur le site public change.
+   */
+  channel?: 'NEWS' | 'BLOG';
 }
 
 /**
@@ -101,6 +108,7 @@ export class VitrineArticleGenerationService implements OnApplicationBootstrap {
       title: '⏳ Génération IA en cours…',
       bodyJson: placeholder as unknown as Prisma.InputJsonValue,
       publishNow: false,
+      channel: input.channel,
     });
 
     await this.prisma.vitrineArticle.update({

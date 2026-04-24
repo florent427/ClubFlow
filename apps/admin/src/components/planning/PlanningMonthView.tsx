@@ -15,6 +15,15 @@ function isSameMonthLocal(a: Date, b: Date): boolean {
   );
 }
 
+function isTodayLocal(d: Date): boolean {
+  const now = new Date();
+  return (
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  );
+}
+
 type PlanningMonthViewProps = {
   /** N'importe quel jour du mois affiché (sera normalisé au mois). */
   monthPivot: Date;
@@ -53,13 +62,22 @@ export function PlanningMonthView({
       <div className="planning-month__grid">
         {days.map((d: Date) => {
           const inMonth = isSameMonthLocal(d, monthStart);
+          const today = isTodayLocal(d);
           const n = countForDay(d);
+          const classes = [
+            'planning-month__cell',
+            !inMonth && 'planning-month__cell--muted',
+            today && 'planning-month__cell--today',
+          ]
+            .filter(Boolean)
+            .join(' ');
           return (
             <button
               key={d.toISOString()}
               type="button"
-              className={`planning-month__cell${inMonth ? '' : ' planning-month__cell--muted'}`}
+              className={classes}
               onClick={() => onSelectDay(d)}
+              aria-current={today ? 'date' : undefined}
             >
               <span className="planning-month__daynum">
                 {format(d, 'd')}

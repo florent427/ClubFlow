@@ -93,8 +93,11 @@ export const VITRINE_ARTICLE_FULL_FRAGMENT = gql`
     excerpt
     bodyJson
     status
+    channel
     publishedAt
     updatedAt
+    pinned
+    sortOrder
     coverImageUrl
     coverImageId
     coverImageAlt
@@ -124,8 +127,8 @@ export const VITRINE_ARTICLE_FULL_FRAGMENT = gql`
 `;
 
 export const CLUB_VITRINE_ARTICLES = gql`
-  query ClubVitrineArticles {
-    clubVitrineArticles {
+  query ClubVitrineArticles($channel: VitrineArticleChannel) {
+    clubVitrineArticles(channel: $channel) {
       ...VitrineArticleFull
     }
   }
@@ -173,6 +176,7 @@ export const CLUB_VITRINE_ANNOUNCEMENTS = gql`
       title
       body
       pinned
+      sortOrder
       publishedAt
     }
   }
@@ -205,6 +209,56 @@ export const UPDATE_VITRINE_ANNOUNCEMENT = gql`
 export const DELETE_VITRINE_ANNOUNCEMENT = gql`
   mutation DeleteVitrineAnnouncement($id: ID!) {
     deleteVitrineAnnouncement(id: $id)
+  }
+`;
+
+// Pin / réordonnancement ------------------------------------------------
+
+export const SET_VITRINE_ARTICLE_PINNED = gql`
+  mutation SetVitrineArticlePinned($id: ID!, $pinned: Boolean!) {
+    setVitrineArticlePinned(id: $id, pinned: $pinned) {
+      id
+      pinned
+      sortOrder
+    }
+  }
+`;
+
+export const SET_VITRINE_ANNOUNCEMENT_PINNED = gql`
+  mutation SetVitrineAnnouncementPinned($id: ID!, $pinned: Boolean!) {
+    setVitrineAnnouncementPinned(id: $id, pinned: $pinned) {
+      id
+      pinned
+      sortOrder
+    }
+  }
+`;
+
+export const REORDER_VITRINE_ARTICLES = gql`
+  mutation ReorderVitrineArticles($orderedIds: [ID!]!) {
+    reorderVitrineArticles(orderedIds: $orderedIds)
+  }
+`;
+
+export const REORDER_VITRINE_ANNOUNCEMENTS = gql`
+  mutation ReorderVitrineAnnouncements($orderedIds: [ID!]!) {
+    reorderVitrineAnnouncements(orderedIds: $orderedIds)
+  }
+`;
+
+// Bascule de canal (actualités ↔ blog) -------------------------------
+
+export const SET_VITRINE_ARTICLE_CHANNEL = gql`
+  mutation SetVitrineArticleChannel(
+    $id: ID!
+    $channel: VitrineArticleChannel!
+  ) {
+    setVitrineArticleChannel(id: $id, channel: $channel) {
+      id
+      channel
+      slug
+      title
+    }
   }
 `;
 
@@ -383,6 +437,8 @@ export interface ArticleCategoryLink {
   color: string | null;
 }
 
+export type VitrineArticleChannel = 'NEWS' | 'BLOG';
+
 export interface AdminVitrineArticle {
   id: string;
   slug: string;
@@ -390,8 +446,11 @@ export interface AdminVitrineArticle {
   excerpt: string | null;
   bodyJson: string;
   status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+  channel: VitrineArticleChannel;
   publishedAt: string | null;
   updatedAt: string;
+  pinned: boolean;
+  sortOrder: number;
   coverImageUrl: string | null;
   coverImageId: string | null;
   coverImageAlt: string | null;
@@ -428,6 +487,7 @@ export interface AdminVitrineAnnouncement {
   title: string;
   body: string;
   pinned: boolean;
+  sortOrder: number;
   publishedAt: string | null;
 }
 

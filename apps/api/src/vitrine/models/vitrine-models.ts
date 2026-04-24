@@ -23,6 +23,16 @@ registerEnumType(VitrineArticleGenerationStatusEnum, {
   name: 'VitrineArticleGenerationStatus',
 });
 
+export enum VitrineArticleChannelEnum {
+  NEWS = 'NEWS',
+  BLOG = 'BLOG',
+}
+registerEnumType(VitrineArticleChannelEnum, {
+  name: 'VitrineArticleChannel',
+  description:
+    "Canal de publication d'un article : NEWS (affiché sur /actualites, brèves courtes) ou BLOG (affiché sur /blog, articles de fond). Même structure et mêmes fonctionnalités de création.",
+});
+
 @ObjectType()
 export class VitrinePageGraph {
   @Field(() => ID)
@@ -108,11 +118,27 @@ export class VitrineArticleGraph {
   @Field(() => VitrineArticleStatusEnum)
   status!: VitrineArticleStatusEnum;
 
+  @Field(() => VitrineArticleChannelEnum, {
+    description:
+      "Canal de publication (NEWS = /actualites, BLOG = /blog). Même UX de création, seul l'emplacement public change.",
+  })
+  channel!: VitrineArticleChannelEnum;
+
   @Field(() => Date, { nullable: true })
   publishedAt!: Date | null;
 
   @Field()
   updatedAt!: Date;
+
+  @Field(() => Boolean, {
+    description: 'Article épinglé en tête de la liste /blog.',
+  })
+  pinned!: boolean;
+
+  @Field(() => Int, {
+    description: 'Ordre manuel (drag-and-drop). Plus petit = plus haut.',
+  })
+  sortOrder!: number;
 
   // --- SEO ---
   @Field(() => String, { nullable: true })
@@ -186,6 +212,11 @@ export class VitrineAnnouncementGraph {
 
   @Field()
   pinned!: boolean;
+
+  @Field(() => Int, {
+    description: 'Ordre manuel (drag-and-drop).',
+  })
+  sortOrder!: number;
 
   @Field(() => Date, { nullable: true })
   publishedAt!: Date | null;

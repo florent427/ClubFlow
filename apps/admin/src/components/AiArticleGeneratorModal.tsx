@@ -15,6 +15,12 @@ interface Props {
   /** Callback appelé dès que la génération est lancée (background).
    *  Reçoit l'ID de l'article PENDING nouvellement créé. */
   onGenerationStarted: (articleId: string) => void;
+  /**
+   * Canal de publication cible du brouillon (NEWS /actualites vs BLOG
+   * /blog). Défaut BLOG. Le choix est transmis au backend, la pipeline IA
+   * elle-même est strictement identique pour les deux canaux.
+   */
+  channel?: 'NEWS' | 'BLOG';
 }
 
 /**
@@ -27,6 +33,7 @@ export function AiArticleGeneratorModal({
   open,
   onClose,
   onGenerationStarted,
+  channel,
 }: Props) {
   const { showToast } = useToast();
   const { data } = useQuery<{ clubAiSettings: AiSettings }>(CLUB_AI_SETTINGS, {
@@ -71,6 +78,7 @@ export function AiArticleGeneratorModal({
             inlineImageCount: inlineCount,
             useAiImages: imageMode === 'ai',
             useWebSearch,
+            channel,
           },
         },
       });

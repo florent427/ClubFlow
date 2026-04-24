@@ -24,6 +24,7 @@ import { PublicSiteModule } from '../public-site/public-site.module';
 import { VitrineModule } from '../vitrine/vitrine.module';
 import { AiModule } from '../ai/ai.module';
 import { AgentModule } from '../agent/agent.module';
+import { ProjectsModule } from '../projects/projects.module';
 import { MediaModule } from '../media/media.module';
 import { MembersModule } from '../members/members.module';
 import { MembershipModule } from '../membership/membership.module';
@@ -92,6 +93,8 @@ import '../viewer/dto/viewer-update-my-pseudo.input';
 import '../viewer/dto/viewer-update-my-profile.input';
 import '../viewer/models/viewer-checkout-session.model';
 import '../clubs/dto/update-club-branding.input';
+import '../projects/models/club-project.model';
+import '../projects/dto/project.inputs';
 
 @Module({
   imports: [
@@ -135,6 +138,7 @@ import '../clubs/dto/update-club-branding.input';
     VitrineModule,
     AiModule,
     AgentModule,
+    ProjectsModule,
   ],
 })
 export class GraphqlAppModule {}

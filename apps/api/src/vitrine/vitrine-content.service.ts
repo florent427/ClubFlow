@@ -7,6 +7,7 @@ import { Prisma } from '@prisma/client';
 import type {
   VitrineAnnouncement,
   VitrineArticle,
+  VitrineArticleChannel,
   VitrineArticleStatus,
   VitrineGalleryPhoto,
 } from '@prisma/client';
@@ -23,6 +24,61 @@ function slugify(input: string): string {
   return base.length > 0 ? base : 'article';
 }
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/**
+ * Extrait un texte brut exploitable depuis un `bodyJson` d'article (qui peut
+ * être `{ format: 'html', html: '...' }` ou un `string[]` legacy ou un JSON
+ * inconnu). Tronque à `maxChars` en coupant au dernier espace propre.
+ */
+function extractPlainBody(
+  bodyJson: unknown,
+  opts: { fallbackExcerpt?: string | null; maxChars: number },
+): string {
+  const fallback = opts.fallbackExcerpt?.trim();
+  let raw = '';
+  if (
+    bodyJson &&
+    typeof bodyJson === 'object' &&
+    !Array.isArray(bodyJson) &&
+    (bodyJson as Record<string, unknown>).format === 'html' &&
+    typeof (bodyJson as Record<string, unknown>).html === 'string'
+  ) {
+    // Strip HTML tags, decode quelques entités courantes.
+    raw = (bodyJson as { html: string }).html
+      .replace(/<\s*br\s*\/?\s*>/gi, '\n')
+      .replace(/<\s*\/p\s*>/gi, '\n\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#039;/gi, "'")
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  } else if (Array.isArray(bodyJson)) {
+    raw = (bodyJson as unknown[])
+      .filter((s): s is string => typeof s === 'string')
+      .join('\n\n')
+      .trim();
+  } else if (typeof bodyJson === 'string') {
+    raw = bodyJson.trim();
+  }
+  if (!raw && fallback) return fallback;
+  if (raw.length <= opts.maxChars) return raw || fallback || '';
+  const cutAt = raw.lastIndexOf(' ', opts.maxChars);
+  const hard = cutAt > opts.maxChars / 2 ? cutAt : opts.maxChars;
+  return `${raw.slice(0, hard).trim()}…`;
+}
+
 /**
  * CRUD pour les contenus vitrine : articles, annonces, photos de galerie.
  *
@@ -36,10 +92,18 @@ export class VitrineContentService {
 
   // ---------- Articles ----------
 
-  async listArticlesAdmin(clubId: string) {
+  async listArticlesAdmin(
+    clubId: string,
+    channel: VitrineArticleChannel | null = null,
+  ) {
     return this.prisma.vitrineArticle.findMany({
-      where: { clubId },
+      where: {
+        clubId,
+        ...(channel ? { channel } : {}),
+      },
       orderBy: [
+        { pinned: 'desc' },
+        { sortOrder: 'asc' },
         { publishedAt: { sort: 'desc', nulls: 'last' } },
         { createdAt: 'desc' },
       ],
@@ -66,14 +130,23 @@ export class VitrineContentService {
     });
   }
 
-  async listArticlesPublic(clubId: string, limit = 20) {
+  async listArticlesPublic(
+    clubId: string,
+    limit = 20,
+    channel: VitrineArticleChannel | null = null,
+  ) {
     return this.prisma.vitrineArticle.findMany({
       where: {
         clubId,
         status: 'PUBLISHED',
         publishedAt: { not: null },
+        ...(channel ? { channel } : {}),
       },
-      orderBy: { publishedAt: 'desc' },
+      orderBy: [
+        { pinned: 'desc' },
+        { sortOrder: 'asc' },
+        { publishedAt: 'desc' },
+      ],
       take: Math.max(1, Math.min(50, limit)),
       include: {
         categories: {
@@ -112,6 +185,12 @@ export class VitrineContentService {
       coverImageId?: string | null;
       coverImageAlt?: string | null;
       publishNow?: boolean;
+      /**
+       * Canal de publication. Si absent → BLOG (comportement historique).
+       * Permet de créer un brouillon directement dans l'onglet actualités
+       * ou blog sans avoir à basculer ensuite.
+       */
+      channel?: VitrineArticleChannel;
       seoTitle?: string | null;
       seoDescription?: string | null;
       seoKeywords?: string[];
@@ -136,6 +215,7 @@ export class VitrineContentService {
         coverImageId: input.coverImageId ?? null,
         coverImageAlt: input.coverImageAlt ?? null,
         status: publishNow ? 'PUBLISHED' : 'DRAFT',
+        channel: input.channel ?? 'BLOG',
         publishedAt: publishNow ? new Date() : null,
         seoTitle: input.seoTitle ?? null,
         seoDescription: input.seoDescription ?? null,
@@ -269,6 +349,7 @@ export class VitrineContentService {
       where: { clubId },
       orderBy: [
         { pinned: 'desc' },
+        { sortOrder: 'asc' },
         { publishedAt: { sort: 'desc', nulls: 'last' } },
         { createdAt: 'desc' },
       ],
@@ -280,7 +361,11 @@ export class VitrineContentService {
   ): Promise<VitrineAnnouncement[]> {
     return this.prisma.vitrineAnnouncement.findMany({
       where: { clubId, publishedAt: { not: null } },
-      orderBy: [{ pinned: 'desc' }, { publishedAt: 'desc' }],
+      orderBy: [
+        { pinned: 'desc' },
+        { sortOrder: 'asc' },
+        { publishedAt: 'desc' },
+      ],
       take: 20,
     });
   }
@@ -340,6 +425,121 @@ export class VitrineContentService {
     if (!existing) return false;
     await this.prisma.vitrineAnnouncement.delete({ where: { id: existing.id } });
     return true;
+  }
+
+  // ---------- Pin / réordonnancement ----------
+
+  /**
+   * Applique un ordre personnalisé (issu d'un drag-and-drop admin) à une
+   * liste d'articles. Chaque item de `orderedIds` reçoit un `sortOrder`
+   * = index * 10 (pas 10 pour laisser de la marge pour des insertions
+   * futures sans tout renuméroter).
+   */
+  async reorderArticles(
+    clubId: string,
+    orderedIds: string[],
+  ): Promise<void> {
+    if (orderedIds.length === 0) return;
+    // Vérifie que tous les articles appartiennent au club.
+    const rows = await this.prisma.vitrineArticle.findMany({
+      where: { clubId, id: { in: orderedIds } },
+      select: { id: true },
+    });
+    if (rows.length !== orderedIds.length) {
+      throw new BadRequestException(
+        'Certains articles ne sont pas rattachés à ce club.',
+      );
+    }
+    await this.prisma.$transaction(
+      orderedIds.map((id, i) =>
+        this.prisma.vitrineArticle.update({
+          where: { id },
+          data: { sortOrder: i * 10 },
+        }),
+      ),
+    );
+  }
+
+  async reorderAnnouncements(
+    clubId: string,
+    orderedIds: string[],
+  ): Promise<void> {
+    if (orderedIds.length === 0) return;
+    const rows = await this.prisma.vitrineAnnouncement.findMany({
+      where: { clubId, id: { in: orderedIds } },
+      select: { id: true },
+    });
+    if (rows.length !== orderedIds.length) {
+      throw new BadRequestException(
+        'Certaines annonces ne sont pas rattachées à ce club.',
+      );
+    }
+    await this.prisma.$transaction(
+      orderedIds.map((id, i) =>
+        this.prisma.vitrineAnnouncement.update({
+          where: { id },
+          data: { sortOrder: i * 10 },
+        }),
+      ),
+    );
+  }
+
+  async setArticlePinned(
+    clubId: string,
+    id: string,
+    pinned: boolean,
+  ): Promise<VitrineArticle> {
+    const existing = await this.prisma.vitrineArticle.findFirst({
+      where: { id, clubId },
+    });
+    if (!existing) throw new NotFoundException('Article introuvable');
+    return this.prisma.vitrineArticle.update({
+      where: { id: existing.id },
+      data: { pinned },
+    });
+  }
+
+  async setAnnouncementPinned(
+    clubId: string,
+    id: string,
+    pinned: boolean,
+  ): Promise<VitrineAnnouncement> {
+    const existing = await this.prisma.vitrineAnnouncement.findFirst({
+      where: { id, clubId },
+    });
+    if (!existing) throw new NotFoundException('Annonce introuvable');
+    return this.prisma.vitrineAnnouncement.update({
+      where: { id: existing.id },
+      data: { pinned },
+    });
+  }
+
+  // ---------- Bascule de canal (actualités ↔ blog) ----------
+
+  /**
+   * Bascule un article d'un canal à l'autre (actualités ↔ blog). L'article
+   * conserve son id, son slug, son SEO, ses catégories, ses commentaires et
+   * son statut — seule sa place dans le site public change (il apparaît
+   * désormais sous /actualites au lieu de /blog, ou inversement).
+   *
+   * Remplace l'ancien couple `promoteAnnouncementToArticle` /
+   * `demoteArticleToAnnouncement` : comme actualités et blog partagent
+   * maintenant la même structure, plus besoin de conversion destructive.
+   */
+  async setArticleChannel(
+    clubId: string,
+    articleId: string,
+    channel: VitrineArticleChannel,
+  ): Promise<VitrineArticle> {
+    const existing = await this.prisma.vitrineArticle.findFirst({
+      where: { id: articleId, clubId },
+    });
+    if (!existing) throw new NotFoundException('Article introuvable');
+    if (existing.channel === channel) return existing;
+    return this.prisma.vitrineArticle.update({
+      where: { id: existing.id },
+      data: { channel },
+    });
   }
 
   // ---------- Galerie ----------

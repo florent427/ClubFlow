@@ -124,6 +124,10 @@ export function ContactLayout() {
             <span className="mp-ico material-symbols-outlined">event</span>
             Événements
           </NavLink>
+          <NavLink to="/mes-projets" className={linkClass}>
+            <span className="mp-ico material-symbols-outlined">rocket_launch</span>
+            Mes projets
+          </NavLink>
           <NavLink to="/parametres" className={linkClass}>
             <span className="mp-ico material-symbols-outlined">settings</span>
             Paramètres

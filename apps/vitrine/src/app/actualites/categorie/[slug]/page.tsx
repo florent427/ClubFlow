@@ -24,7 +24,7 @@ export async function generateMetadata({
     title: `${category.name} · Actualités`,
     description:
       category.description ??
-      `Tous les articles dans la catégorie ${category.name}.`,
+      `Toutes les actualités dans la catégorie ${category.name}.`,
   };
 }
 
@@ -37,7 +37,17 @@ function formatDate(iso: string | null): string {
   });
 }
 
-export default async function CategoryPage({ params }: RouteParams) {
+/**
+ * Listing catégoriel des actualités. Jumeau de `/blog/categorie/[slug]` —
+ * même requête `fetchArticlesByCategory`, seul le back-link et la base
+ * path diffèrent.
+ *
+ * Note : les catégories sont partagées entre NEWS et BLOG (pas de scope
+ * par canal). Un article tagué dans une catégorie est accessible par
+ * `/actualites/categorie/<cat>` ET `/blog/categorie/<cat>` si son canal
+ * n'est pas filtré — à revoir si un vrai besoin de segmentation apparaît.
+ */
+export default async function ActualitesCategoryPage({ params }: RouteParams) {
   const { slug } = await params;
   const club = await resolveCurrentClub();
   const [categories, articles] = await Promise.all([
@@ -58,10 +68,6 @@ export default async function CategoryPage({ params }: RouteParams) {
 
       <section className="section">
         <div className="container">
-          {/* Nav sibling-catégories : on affiche TOUJOURS "Toutes" + la
-              catégorie courante + les autres catégories qui ont ≥1 article.
-              Ça garantit que l'utilisateur peut toujours revenir à la vue
-              globale ou changer de catégorie, même si la courante est vide. */}
           <nav className="category-nav">
             <Link href="/actualites" className="category-nav__link">
               Toutes
@@ -98,7 +104,7 @@ export default async function CategoryPage({ params }: RouteParams) {
               className="muted"
               style={{ textAlign: 'center', padding: '48px 0' }}
             >
-              Aucun article publié dans cette catégorie pour le moment.
+              Aucune actualité publiée dans cette catégorie pour le moment.
             </p>
           ) : (
             <div className="article-grid">

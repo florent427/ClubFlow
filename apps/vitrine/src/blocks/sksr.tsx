@@ -667,7 +667,7 @@ export function SksrActuPreview(props: SksrActuPreviewProps) {
         {articles.map((a, i) => (
           <Link
             key={a.slug}
-            href={`/actualites/${a.slug}`}
+            href={`/blog/${a.slug}`}
             className={`actu-card${a.featured ? ' featured' : ''} reveal${i > 0 ? ' d' + i : ''}`}
           >
             <div className="actu-card__img">

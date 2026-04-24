@@ -1,6 +1,7 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AiModule } from '../ai/ai.module';
+import { ProjectsModule } from '../projects/projects.module';
 import { AgentSchemaParserService } from './schema-parser.service';
 import { AgentSanitizerService } from './sanitizer.service';
 import { AgentExecutorService } from './executor.service';
@@ -10,7 +11,7 @@ import { AgentService } from './agent.service';
 import { AgentResolver } from './agent.resolver';
 
 @Module({
-  imports: [PrismaModule, AiModule],
+  imports: [PrismaModule, AiModule, forwardRef(() => ProjectsModule)],
   providers: [
     AgentSchemaParserService,
     AgentSanitizerService,

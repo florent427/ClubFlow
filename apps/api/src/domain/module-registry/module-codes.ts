@@ -14,4 +14,8 @@ export enum ModuleCode {
   CLUB_LIFE = 'CLUB_LIFE',
   EVENTS = 'EVENTS',
   BOOKING = 'BOOKING',
+  /// Projets long-terme (gala, stage international, compétition régionale,
+  /// subvention…) avec sections, contributeurs, phases LIVE, comptes-rendus
+  /// IA et listes de diffusion. Distinct du module EVENTS (simple bookings).
+  PROJECTS = 'PROJECTS',
 }

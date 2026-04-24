@@ -7,11 +7,33 @@ import {
 } from '@nestjs/common';
 import { createHash, randomUUID } from 'crypto';
 import { extname } from 'path';
+import { promisify } from 'util';
 import sharp from 'sharp';
+// libreoffice-convert spawne la CLI `soffice` de LibreOffice en mode
+// headless pour convertir PPTX/PPT/ODP → PDF (ainsi que DOCX, XLSX, etc.).
+// Le binaire doit être installé sur la machine — chemin Windows par défaut :
+// `C:\Program Files\LibreOffice\program\soffice.exe`.
+// Si LibreOffice n'est pas disponible, la conversion échoue silencieusement
+// et le flux upload retombe sur le PPTX brut (le frontend affichera alors
+// Office Online Viewer comme fallback).
+import * as libreConvertLib from 'libreoffice-convert';
 import type { Readable } from 'stream';
 import type { MediaAsset, MediaAssetKind, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MEDIA_STORAGE, type MediaStorageAdapter } from './media-storage.interface';
+
+const libreConvert: (
+  buffer: Buffer,
+  ext: string,
+  filter: string | undefined,
+) => Promise<Buffer> = promisify(
+  (libreConvertLib as { convert: unknown }).convert as (
+    buffer: Buffer,
+    ext: string,
+    filter: string | undefined,
+    cb: (err: Error | null, out: Buffer) => void,
+  ) => void,
+);
 
 /**
  * Service générique d'upload de médias (images et documents).
@@ -46,7 +68,28 @@ export class MediaAssetsService {
     'image/gif',
     'image/svg+xml',
   ]);
-  static readonly ALLOWED_DOCUMENT_MIME = new Set<string>(['application/pdf']);
+  static readonly ALLOWED_DOCUMENT_MIME = new Set<string>([
+    'application/pdf',
+    // PowerPoint / OpenDocument — rendu inline via Office Online Viewer
+    // dans l'éditeur d'articles vitrine.
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'application/vnd.oasis.opendocument.presentation',
+  ]);
+  static readonly ALLOWED_VIDEO_MIME = new Set<string>([
+    // Formats compatibles lecture <video> dans tous les navigateurs modernes.
+    'video/mp4',
+    'video/webm',
+    'video/ogg',
+    'video/quicktime', // .mov — beaucoup d'iPhone l'exportent tel quel
+  ]);
+  /**
+   * Taille max pour les gros fichiers (vidéos, présentations). Plus souple
+   * que la limite standard car ces médias sont lourds par nature. Le frontend
+   * prévient l'utilisateur au-delà et un reverse-proxy peut serrer la vis si
+   * besoin en production.
+   */
+  static readonly MAX_LARGE_BYTES = 100 * 1024 * 1024;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -84,7 +127,7 @@ export class MediaAssetsService {
     return this.uploadGeneric(clubId, userId, file, 'IMAGE', owner);
   }
 
-  /** Upload d'un document (PDF…). */
+  /** Upload d'un document (PDF, PPTX…). */
   async uploadDocument(
     clubId: string,
     userId: string | null,
@@ -97,6 +140,94 @@ export class MediaAssetsService {
     owner?: { kind: string; id: string } | null,
   ): Promise<MediaAsset> {
     return this.uploadGeneric(clubId, userId, file, 'DOCUMENT', owner);
+  }
+
+  /**
+   * Upload spécifique d'une présentation (PPTX / PPT / ODP) avec conversion
+   * PDF automatique via LibreOffice headless.
+   *
+   * Renvoie toujours l'asset PPTX source ; l'asset PDF est optionnel — si
+   * LibreOffice n'est pas installé ou échoue, on log et on continue avec
+   * juste le PPTX (le frontend affichera Office Online Viewer en fallback).
+   *
+   * Le PDF est un `MediaAsset` indépendant (kind=DOCUMENT, mimeType=
+   * application/pdf) lié via `ownerKind='PPTX_PDF_PREVIEW'` +
+   * `ownerId=<pptx-asset-id>` pour pouvoir le retrouver et le nettoyer
+   * quand le PPTX source est supprimé.
+   */
+  async uploadPresentationWithPdf(
+    clubId: string,
+    userId: string | null,
+    file: {
+      originalname: string;
+      mimetype: string;
+      size: number;
+      buffer: Buffer;
+    },
+    owner?: { kind: string; id: string } | null,
+  ): Promise<{ source: MediaAsset; pdf: MediaAsset | null }> {
+    const source = await this.uploadDocument(clubId, userId, file, owner);
+
+    // Tentative de conversion PPTX → PDF. On isole dans un try/catch : toute
+    // erreur (LibreOffice absent, fichier corrompu, format non supporté) est
+    // non-bloquante — l'utilisateur gardera au minimum le téléchargement.
+    try {
+      const pdfBuffer = await libreConvert(file.buffer, '.pdf', undefined);
+      if (!pdfBuffer || pdfBuffer.length === 0) {
+        this.logger.warn(
+          `PPTX→PDF conversion yielded empty buffer (${file.originalname}).`,
+        );
+        return { source, pdf: null };
+      }
+      const pdfId = randomUUID();
+      const pdfKey = this.storageKey(clubId, pdfId, '.pdf');
+      await this.storage.putObject(pdfKey, pdfBuffer, 'application/pdf');
+      const pdfName = file.originalname
+        .replace(/\.(pptx?|odp)$/i, '')
+        .concat('.pdf');
+      const pdf = await this.prisma.mediaAsset.create({
+        data: {
+          id: pdfId,
+          clubId,
+          kind: 'DOCUMENT',
+          ownerKind: 'PPTX_PDF_PREVIEW',
+          ownerId: source.id,
+          fileName: pdfName.slice(0, 255),
+          mimeType: 'application/pdf',
+          sizeBytes: pdfBuffer.byteLength,
+          storagePath: pdfKey,
+          publicUrl: this.publicUrlForAsset(pdfId, pdfKey),
+          widthPx: null,
+          heightPx: null,
+          uploadedByUserId: userId,
+        },
+      });
+      return { source, pdf };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `PPTX→PDF conversion failed (${file.originalname}) — fallback Office viewer. ` +
+          `Cause : ${msg}. ` +
+          "Vérifie que LibreOffice est installé (Windows : " +
+          'C:\\Program Files\\LibreOffice\\program\\soffice.exe).',
+      );
+      return { source, pdf: null };
+    }
+  }
+
+  /** Upload d'une vidéo (MP4/WebM/OGG…). Kind = OTHER. */
+  async uploadVideo(
+    clubId: string,
+    userId: string | null,
+    file: {
+      originalname: string;
+      mimetype: string;
+      size: number;
+      buffer: Buffer;
+    },
+    owner?: { kind: string; id: string } | null,
+  ): Promise<MediaAsset> {
+    return this.uploadGeneric(clubId, userId, file, 'OTHER', owner);
   }
 
   private async uploadGeneric(
@@ -114,15 +245,33 @@ export class MediaAssetsService {
     if (!file || !file.buffer || file.size <= 0) {
       throw new BadRequestException('Fichier vide.');
     }
-    if (file.size > MediaAssetsService.MAX_BYTES) {
+    // Images restent sur la limite serrée (10 Mo) ; documents et vidéos
+    // peuvent monter à 100 Mo car ils sont lourds par nature.
+    const sizeLimit =
+      kind === 'IMAGE'
+        ? MediaAssetsService.MAX_BYTES
+        : MediaAssetsService.MAX_LARGE_BYTES;
+    if (file.size > sizeLimit) {
       throw new BadRequestException(
-        `Fichier trop volumineux (max ${MediaAssetsService.MAX_BYTES / (1024 * 1024)} Mo).`,
+        `Fichier trop volumineux (max ${sizeLimit / (1024 * 1024)} Mo).`,
       );
     }
-    const allowed =
-      kind === 'IMAGE'
-        ? MediaAssetsService.ALLOWED_IMAGE_MIME
-        : MediaAssetsService.ALLOWED_DOCUMENT_MIME;
+    let allowed: Set<string>;
+    switch (kind) {
+      case 'IMAGE':
+        allowed = MediaAssetsService.ALLOWED_IMAGE_MIME;
+        break;
+      case 'DOCUMENT':
+        allowed = MediaAssetsService.ALLOWED_DOCUMENT_MIME;
+        break;
+      case 'OTHER':
+        // Pour l'instant on ne laisse passer que les vidéos. Si d'autres
+        // usages arrivent (audio par ex.), étendre ici.
+        allowed = MediaAssetsService.ALLOWED_VIDEO_MIME;
+        break;
+      default:
+        allowed = new Set();
+    }
     if (!allowed.has(file.mimetype)) {
       throw new BadRequestException(
         `Type de fichier non autorisé (${file.mimetype}).`,

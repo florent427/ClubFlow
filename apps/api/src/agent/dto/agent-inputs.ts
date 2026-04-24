@@ -17,6 +17,16 @@ export class StartAgentConversationInput {
   @IsString()
   @MaxLength(200)
   title?: string;
+
+  /**
+   * Si renseigné, scoping sur un projet : la conversation reçoit un
+   * addendum de system prompt avec le contexte projet. Utilisé par le
+   * panneau « Agent » dans la vue projet admin.
+   */
+  @Field(() => ID, { nullable: true })
+  @IsOptional()
+  @IsUUID()
+  projectId?: string;
 }
 
 @InputType()

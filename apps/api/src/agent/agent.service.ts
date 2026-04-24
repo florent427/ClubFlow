@@ -1,14 +1,17 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { AgentRiskLevel, AgentMessageRole, AgentToolCallStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AiSettingsService } from '../ai/ai-settings.service';
 import { OpenrouterService } from '../ai/openrouter.service';
+import { ProjectAgentContextService } from '../projects/project-agent-context.service';
 import { AgentSchemaParserService } from './schema-parser.service';
 import { AgentSanitizerService } from './sanitizer.service';
 import { AgentExecutorService } from './executor.service';
@@ -183,6 +186,8 @@ export class AgentService {
     private readonly executor: AgentExecutorService,
     private readonly pending: AgentPendingActionsService,
     private readonly attachments: AgentAttachmentProcessorService,
+    @Inject(forwardRef(() => ProjectAgentContextService))
+    private readonly projectAgentCtx: ProjectAgentContextService,
   ) {}
 
   assertGlobalNotKilled(): void {
@@ -242,9 +247,26 @@ export class AgentService {
     clubId: string,
     userId: string,
     title?: string | null,
+    projectId?: string | null,
   ): Promise<{ id: string }> {
+    // Si `projectId` fourni : valider l'appartenance au club avant d'associer
+    // la conversation (protection anti-scoping inter-club).
+    if (projectId) {
+      const project = await this.prisma.clubProject.findFirst({
+        where: { id: projectId, clubId },
+        select: { id: true },
+      });
+      if (!project) {
+        throw new NotFoundException('Projet introuvable pour ce club.');
+      }
+    }
     const conv = await this.prisma.agentConversation.create({
-      data: { clubId, userId, title: title ?? null },
+      data: {
+        clubId,
+        userId,
+        title: title ?? null,
+        projectId: projectId ?? null,
+      },
     });
     return { id: conv.id };
   }
@@ -361,11 +383,17 @@ export class AgentService {
     // Validate conversation belongs to user
     const conv = await this.prisma.agentConversation.findUnique({
       where: { id: opts.conversationId },
-      select: { clubId: true, userId: true },
+      select: { clubId: true, userId: true, projectId: true },
     });
     if (!conv || conv.clubId !== opts.clubId || conv.userId !== opts.userId) {
       throw new NotFoundException('Conversation introuvable.');
     }
+    // Conversation scopée sur un projet : on enrichira le system prompt
+    // avec un bloc de contexte (titre, sections, items live, …) pour
+    // éviter que l'agent ait à faire ses propres queries à chaque tour.
+    const projectContextAddendum = conv.projectId
+      ? await this.projectAgentCtx.buildSystemPromptAddendum(conv.projectId)
+      : null;
 
     // Process attachments (images + documents) — une seule fois à l'arrivée
     // du message. Les bytes image sont stockés en base64 dans attachmentsJson
@@ -405,7 +433,12 @@ export class AgentService {
     });
 
     const llmMessages: LlmChatMessage[] = [
-      { role: 'system', content: SYSTEM_PROMPT },
+      {
+        role: 'system',
+        content: projectContextAddendum
+          ? SYSTEM_PROMPT + projectContextAddendum
+          : SYSTEM_PROMPT,
+      },
     ];
     for (const m of history) {
       if (m.role === 'USER') {

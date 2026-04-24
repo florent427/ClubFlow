@@ -256,6 +256,7 @@ export class AiResolver {
       inlineImageCount: input.inlineImageCount,
       useAiImages: input.useAiImages,
       useWebSearch: input.useWebSearch,
+      channel: input.channel,
     });
     return { articleId };
   }
