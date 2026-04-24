@@ -820,8 +820,15 @@ export class AccountingService {
           ? 'IN_KIND'
           : 'EXPENSE';
 
+    this.logger.log(
+      `[Entry ${entryId}] Catégorisation IA démarrage : ${articles.length} article(s) — kind=${kindArg}`,
+    );
+
     for (const art of articles) {
       try {
+        this.logger.log(
+          `[Entry ${entryId}] 🤖 Article "${art.articleLabel}" (${(art.amountCents / 100).toFixed(2)}€, line=${art.lineId}) — appel IA…`,
+        );
         const suggestion = await this.suggestion.suggest(clubId, {
           label: art.articleLabel,
           amountCents: art.amountCents,
@@ -829,8 +836,8 @@ export class AccountingService {
         });
 
         if (!suggestion.accountCode) {
-          this.logger.log(
-            `IA sans suggestion pour article "${art.articleLabel}" (entry=${entryId}) : ${suggestion.errorMessage ?? 'no account'}`,
+          this.logger.warn(
+            `[Entry ${entryId}] ⚠️ Article "${art.articleLabel}" : IA sans accountCode — ${suggestion.errorMessage ?? 'no account'}`,
           );
           continue;
         }
@@ -841,21 +848,19 @@ export class AccountingService {
         );
         const newSide = this.deriveSide(newAccount.kind, kind, newAccount.code);
 
-        await this.prisma.$transaction(async (tx) => {
+        const updateResult = await this.prisma.$transaction(async (tx) => {
           const entry = await tx.accountingEntry.findUnique({
             where: { id: entryId },
             select: { status: true },
           });
-          if (!entry || entry.status !== AccountingEntryStatus.NEEDS_REVIEW) {
-            // Entry déjà validée entre-temps — ne pas overrider
-            return;
+          if (!entry) return { status: 'entry-missing' as const };
+          if (entry.status !== AccountingEntryStatus.NEEDS_REVIEW) {
+            return { status: `status-${entry.status}` as const };
           }
-
           const confPct = Math.round(
             (suggestion.confidencePerField.accountCode ?? 0) * 100,
           );
-
-          await tx.accountingEntryLine.update({
+          const updated = await tx.accountingEntryLine.update({
             where: { id: art.lineId },
             data: {
               accountCode: newAccount.code,
@@ -872,17 +877,28 @@ export class AccountingService {
                 newSide === AccountingLineSide.CREDIT ? art.amountCents : 0,
             },
           });
+          return { status: 'ok' as const, lineId: updated.id };
         });
 
-        this.logger.log(
-          `Article "${art.articleLabel}" → ${newAccount.code} (${suggestion.confidencePerField.accountCode ?? 0})`,
-        );
+        if (updateResult.status === 'ok') {
+          this.logger.log(
+            `[Entry ${entryId}] ✅ Article "${art.articleLabel}" → ${newAccount.code} "${newAccount.label}" (${Math.round((suggestion.confidencePerField.accountCode ?? 0) * 100)}%)`,
+          );
+        } else {
+          this.logger.warn(
+            `[Entry ${entryId}] ⚠️ Article "${art.articleLabel}" : update skippé (raison=${updateResult.status})`,
+          );
+        }
       } catch (err) {
         this.logger.error(
-          `Categorisation IA article "${art.articleLabel}" (entry=${entryId}) échec : ${err instanceof Error ? err.message : err}`,
+          `[Entry ${entryId}] ❌ Article "${art.articleLabel}" exception : ${err instanceof Error ? err.message : err}`,
         );
       }
     }
+
+    this.logger.log(
+      `[Entry ${entryId}] Catégorisation IA terminée`,
+    );
   }
 
 

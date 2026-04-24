@@ -340,11 +340,53 @@ export class AccountingSuggestionService {
             .join('\n')
         : '  (aucun projet actif — retourne projectId=null)';
 
+    const amountForRule = amountCents ? amountCents / 100 : null;
+    const thresholdCheck = amountForRule
+      ? amountForRule >= 500
+        ? `⚠️ ATTENTION : Le montant saisi (${amountForRule.toFixed(2)} €) est ≥ 500 €. Si le bien est à usage durable (plusieurs années), tu DOIS choisir un compte de classe 2 (IMMOBILISATION), pas un compte de classe 6 (charge). Exemple : tatamis à ${amountForRule.toFixed(2)} € → 215400 (pas 606300).`
+        : `ℹ️ Le montant (${amountForRule.toFixed(2)} €) est < 500 € donc classe 6 (charge) appropriée sauf cas particulier.`
+      : '';
+
     return `Analyse cette saisie comptable et propose la catégorisation la plus pertinente selon le PCG associatif français.
 
 Libellé: "${label}"
 ${amountLine}
 ${kindLine}
+
+${thresholdCheck}
+
+## RÈGLE FISCALE CRITIQUE — CHARGE vs IMMOBILISATION (impérative)
+
+RÈGLE #1 ABSOLUE : Un bien à usage durable dont le prix UNITAIRE est ≥ 500 € HT est une IMMOBILISATION (classe 2). Cette règle s'applique MÊME si l'objet semble "petit" ou "simple" en apparence.
+
+Checklist à appliquer OBLIGATOIREMENT pour une dépense :
+1. Le bien est-il à usage durable (> 1 an) ? Si OUI → continue. Si NON → charge classe 6.
+2. Le montant est-il ≥ 500 € ? Si OUI → IMMOBILISATION classe 2, choisis 205000 / 213500 / 215400 / 218200 / 218300 / 218400 selon la nature. NE MET PAS 606xxx.
+3. Si montant < 500 € → charge directe classe 6 (606xxx).
+
+Exemples explicites (apprends par cœur) :
+- Tatamis à 250 € (petits, consommables) → 606300 "Petit équipement"
+- Tatamis à 750 € → 215400 "Matériel sportif lourd" (≥ 500€, durable = IMMOBILISATION)
+- Tatamis à 2000 € → 215400 (immobilisation)
+- Ring de boxe 3000 € → 215400 (immobilisation)
+- Rings et cages MMA 1500 € → 215400
+- Sifflet 5 € → 606300 (charge)
+- Chronomètre 30 € → 606300 (charge)
+- Gants de boxe 40 € → 606300 (charge)
+- Ordinateur portable 700 € → 218300 "Matériel informatique" (immobilisation)
+- Clavier 30 € → 606400 (charge fournitures bureau)
+- Imprimante professionnelle 450 € → 606300 (charge, < 500€)
+- Imprimante professionnelle 600 € → 218300 (immobilisation)
+- Tapis de sol 400 € → 606300 (charge)
+- Tapis de sol 700 € → 215400 (immobilisation)
+- Chaises empilables 20× lot 400 € → 606300 (charge, lot < 500€)
+- Fauteuil ergonomique 600 € → 218400 "Mobilier" (immobilisation)
+- Licence logiciel annuelle 1200 € → 205000 (immobilisation si pérenne) ou 618000 (si abonnement)
+- Abonnement SaaS mensuel 50 € → 618000 ou 622600 (charge)
+
+RÈGLE #2 : La durabilité prime sur l'apparence. Un "petit objet durable" cher = IMMO. Un "gros objet consommable" cher = charge.
+
+RÈGLE #3 : Si l'article est un CONSOMMABLE (tape, bande, produits d'entretien, énergie, boissons, etc.), c'est TOUJOURS une charge classe 6 quel que soit le montant.
 
 Comptes comptables disponibles:
 ${accountsList}
@@ -354,23 +396,6 @@ ${cohortsList}
 
 Projets actifs du club:
 ${projectsList}
-
-## RÈGLE FISCALE CRITIQUE — CHARGE vs IMMOBILISATION (pour les dépenses)
-
-Un bien à usage durable (plus d'un exercice) doit être classé en IMMOBILISATION (comptes 2xxxxx) si son prix UNITAIRE dépasse 500 € HT. En dessous, c'est une CHARGE directe (comptes 6xxxxx).
-
-Exemples concrets:
-- Tatamis à 250€ → 606300 "Petit équipement" (charge, < 500€)
-- Tatamis à 800€ → 215400 "Matériel sportif lourd" (immobilisation, ≥ 500€)
-- Gants de boxe à 40€ → 606300 (charge, < 500€)
-- Ring de boxe à 3000€ → 215400 (immobilisation, ≥ 500€)
-- Ordinateur portable à 700€ → 218300 (immobilisation)
-- Clavier à 30€ → 606400 (charge, fourniture bureau)
-- Chaises empilables (lot de 20) à 450€ → 606300 (charge)
-- Fauteuil de bureau ergonomique à 600€ → 218400 "Mobilier" (immobilisation)
-- Licence logiciel comptabilité 1200€/an → 205000 (immobilisation si pérenne, sinon 618000)
-
-Applique cette règle au montant ${amountCents ? (amountCents / 100).toFixed(2) + ' €' : '(non précisé)'} pour choisir entre un compte de classe 6 ou de classe 2. Note : le montant saisi est généralement TTC ; si c'est le cas, mentale le seuil reste valable au centime près (la TVA associative étant souvent non-applicable, TTC ≈ HT).
 
 ## FORMAT DE SORTIE — JSON STRICT UNIQUEMENT
 

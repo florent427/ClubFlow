@@ -711,13 +711,36 @@ export function AccountingPage() {
           </thead>
           <tbody>
             {filtered.map((e) => {
-              const firstLine = e.lines[0];
-              const firstAlloc = firstLine?.allocations[0];
+              // Distingue les lignes article (hors banque/caisse = contrepartie)
+              const articleLines = e.lines.filter(
+                (l) => l.accountCode !== '512000' && l.accountCode !== '530000',
+              );
+              const firstArticleLine = articleLines[0] ?? e.lines[0];
+              const firstAlloc = firstArticleLine?.allocations[0];
+              const isMultiArticle = articleLines.length > 1;
               return (
                 <tr key={e.id}>
                   <td>{fmtDate(e.occurredAt)}</td>
                   <td>
-                    <div>{e.label}</div>
+                    <div>
+                      {e.label}
+                      {isMultiArticle ? (
+                        <span
+                          className="cf-badge cf-badge--info"
+                          style={{
+                            marginLeft: 6,
+                            fontSize: '0.72rem',
+                            padding: '2px 6px',
+                            background: 'rgba(0, 86, 197, 0.12)',
+                            color: '#0056c5',
+                            borderRadius: 3,
+                          }}
+                          title={`${articleLines.length} articles détaillés`}
+                        >
+                          {articleLines.length} articles
+                        </span>
+                      ) : null}
+                    </div>
                     {firstAlloc && firstAlloc.cohortCode ? (
                       <small className="cf-muted">
                         {firstAlloc.cohortCode}
@@ -731,9 +754,21 @@ export function AccountingPage() {
                     ) : null}
                   </td>
                   <td>
-                    {firstLine ? (
-                      <small title={firstLine.accountLabel}>
-                        {firstLine.accountCode}
+                    {isMultiArticle ? (
+                      <small
+                        className="cf-muted"
+                        title={articleLines
+                          .map((l) => `${l.accountCode} ${l.accountLabel}`)
+                          .join('\n')}
+                      >
+                        {[...new Set(articleLines.map((l) => l.accountCode))]
+                          .slice(0, 3)
+                          .join(', ')}
+                        {articleLines.length > 3 ? '…' : ''}
+                      </small>
+                    ) : firstArticleLine ? (
+                      <small title={firstArticleLine.accountLabel}>
+                        {firstArticleLine.accountCode}
                       </small>
                     ) : (
                       '—'
