@@ -952,27 +952,128 @@ export type ArchiveClubGrantApplicationData = {
   archiveClubGrantApplication: GrantApplication;
 };
 
-export type AccountingEntryKindGql = 'INCOME' | 'EXPENSE';
+export type AccountingEntryKindGql =
+  | 'INCOME'
+  | 'EXPENSE'
+  | 'IN_KIND'
+  | 'TRANSFER';
+export type AccountingEntryStatusGql =
+  | 'DRAFT'
+  | 'NEEDS_REVIEW'
+  | 'POSTED'
+  | 'LOCKED'
+  | 'CANCELLED';
+export type AccountingEntrySourceGql =
+  | 'MANUAL'
+  | 'OCR_AI'
+  | 'AUTO_MEMBER_PAYMENT'
+  | 'AUTO_SUBSIDY'
+  | 'AUTO_SPONSORSHIP'
+  | 'AUTO_SHOP'
+  | 'AUTO_REFUND'
+  | 'AUTO_STRIPE_FEES';
+export type AccountingLineSideGql = 'AUTO' | 'DEBIT' | 'CREDIT';
+export type AccountingAccountKindGql =
+  | 'INCOME'
+  | 'EXPENSE'
+  | 'ASSET'
+  | 'LIABILITY'
+  | 'NEUTRAL_IN_KIND';
+export type AccountingGenderGql =
+  | 'MALE'
+  | 'FEMALE'
+  | 'OTHER'
+  | 'UNSPECIFIED';
+
+export type AccountingAllocationRow = {
+  id: string;
+  amountCents: number;
+  projectId: string | null;
+  projectTitle: string | null;
+  cohortCode: string | null;
+  gender: AccountingGenderGql | null;
+  disciplineCode: string | null;
+  memberId: string | null;
+  memberName: string | null;
+  dynamicGroupLabels: string[];
+  freeformTags: string[];
+};
+export type AccountingEntryLineRow = {
+  id: string;
+  accountCode: string;
+  accountLabel: string;
+  label: string | null;
+  side: AccountingLineSideGql;
+  debitCents: number;
+  creditCents: number;
+  vatRate: number | null;
+  vatAmountCents: number | null;
+  allocations: AccountingAllocationRow[];
+};
+export type AccountingDocumentRow = {
+  id: string;
+  mediaAssetId: string;
+  fileName: string;
+  publicUrl: string;
+  mimeType: string;
+};
 export type AccountingEntry = {
   id: string;
   clubId: string;
   kind: AccountingEntryKindGql;
+  status: AccountingEntryStatusGql;
+  source: AccountingEntrySourceGql;
   label: string;
   amountCents: number;
+  vatTotalCents: number | null;
   paymentId: string | null;
+  projectId: string | null;
+  contraEntryId: string | null;
   occurredAt: string;
+  createdAt: string;
+  lines: AccountingEntryLineRow[];
+  documents: AccountingDocumentRow[];
 };
 export type ClubAccountingEntriesData = {
   clubAccountingEntries: AccountingEntry[];
+};
+export type ClubAccountingReviewQueueData = {
+  clubAccountingReviewQueue: AccountingEntry[];
 };
 export type AccountingSummary = {
   incomeCents: number;
   expenseCents: number;
   balanceCents: number;
+  inKindCents: number;
+  needsReviewCount: number;
 };
 export type ClubAccountingSummaryData = {
   clubAccountingSummary: AccountingSummary;
 };
 export type CreateClubAccountingEntryData = {
   createClubAccountingEntry: AccountingEntry;
+};
+export type AccountingAccountRow = {
+  id: string;
+  code: string;
+  label: string;
+  kind: AccountingAccountKindGql;
+  isDefault: boolean;
+  isActive: boolean;
+  sortOrder: number;
+};
+export type ClubAccountingAccountsData = {
+  clubAccountingAccounts: AccountingAccountRow[];
+};
+export type AccountingCohortRow = {
+  id: string;
+  code: string;
+  label: string;
+  minAge: number | null;
+  maxAge: number | null;
+  sortOrder: number;
+  isDefault: boolean;
+};
+export type ClubAccountingCohortsData = {
+  clubAccountingCohorts: AccountingCohortRow[];
 };

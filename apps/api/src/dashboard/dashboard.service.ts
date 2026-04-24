@@ -81,7 +81,7 @@ export class DashboardService {
           status: {
             in: [
               GrantApplicationStatus.DRAFT,
-              GrantApplicationStatus.SUBMITTED,
+              GrantApplicationStatus.REQUESTED,
             ],
           },
         },

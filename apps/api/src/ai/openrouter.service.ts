@@ -5,9 +5,18 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
  * Supporte chat completions (texte) et génération d'image via chat.
  */
 
+/** Partie multimodale d'un message : texte ou image_url (vision input). */
+export type ChatContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
+
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
-  content: string;
+  /**
+   * Contenu du message. Soit string (texte simple), soit un array de
+   * `ChatContentPart` pour les requêtes vision (text + images mélangés).
+   */
+  content: string | ChatContentPart[];
 }
 
 export interface ChatCompletionOptions {

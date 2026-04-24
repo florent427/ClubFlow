@@ -1,13 +1,21 @@
 import { registerEnumType } from '@nestjs/graphql';
 import {
+  AccountingAccountKind,
+  AccountingAuditAction,
+  AccountingDocumentKind,
   AccountingEntryKind,
+  AccountingEntrySource,
+  AccountingEntryStatus,
+  AccountingLineSide,
   ClubPaymentMethod,
   ClubSendingDomainPurpose,
   ClubSendingDomainVerificationStatus,
   CommunicationChannel,
   FamilyInviteRole,
   FamilyMemberLinkRole,
+  Gender,
   GrantApplicationStatus,
+  GrantDocumentKind,
   InvoiceLineAdjustmentType,
   InvoiceLineKind,
   InvoiceStatus,
@@ -20,7 +28,10 @@ import {
   MessageCampaignStatus,
   PricingAdjustmentType,
   SponsorshipDealStatus,
+  SponsorshipDocumentKind,
+  SponsorshipKind,
   SubscriptionBillingRhythm,
+  VatMode,
   ChatRoomKind,
   ChatRoomMemberRole,
   ClubSurveyStatus,
@@ -72,11 +83,32 @@ registerEnumType(QuickMessageRecipientType, {
   name: 'QuickMessageRecipientType',
 });
 registerEnumType(AccountingEntryKind, { name: 'AccountingEntryKind' });
+registerEnumType(AccountingEntryStatus, {
+  name: 'AccountingEntryStatus',
+});
+registerEnumType(AccountingEntrySource, {
+  name: 'AccountingEntrySource',
+});
+registerEnumType(AccountingAccountKind, { name: 'AccountingAccountKind' });
+registerEnumType(AccountingLineSide, { name: 'AccountingLineSide' });
+registerEnumType(AccountingAuditAction, {
+  name: 'AccountingAuditAction',
+});
+registerEnumType(AccountingDocumentKind, {
+  name: 'AccountingDocumentKind',
+});
+registerEnumType(Gender, { name: 'Gender' });
+registerEnumType(VatMode, { name: 'VatMode' });
 registerEnumType(GrantApplicationStatus, {
   name: 'GrantApplicationStatus',
 });
+registerEnumType(GrantDocumentKind, { name: 'GrantDocumentKind' });
 registerEnumType(SponsorshipDealStatus, {
   name: 'SponsorshipDealStatus',
+});
+registerEnumType(SponsorshipKind, { name: 'SponsorshipKind' });
+registerEnumType(SponsorshipDocumentKind, {
+  name: 'SponsorshipDocumentKind',
 });
 registerEnumType(ChatRoomKind, { name: 'ChatRoomKind' });
 registerEnumType(ChatRoomMemberRole, { name: 'ChatRoomMemberRole' });

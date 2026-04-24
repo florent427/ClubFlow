@@ -84,7 +84,7 @@ export class SubsidiesResolver {
     if (!existing) throw new NotFoundException('Dossier introuvable');
     const r = await this.prisma.grantApplication.update({
       where: { id },
-      data: { status: GrantApplicationStatus.SUBMITTED },
+      data: { status: GrantApplicationStatus.REQUESTED },
     });
     return r as GrantApplicationGraph;
   }

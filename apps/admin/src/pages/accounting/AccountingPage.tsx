@@ -2,13 +2,17 @@ import { useMutation, useQuery } from '@apollo/client/react';
 import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
+  CANCEL_CLUB_ACCOUNTING_ENTRY,
+  CLUB_ACCOUNTING_ACCOUNTS,
+  CLUB_ACCOUNTING_COHORTS,
   CLUB_ACCOUNTING_ENTRIES,
   CLUB_ACCOUNTING_SUMMARY,
   CREATE_CLUB_ACCOUNTING_ENTRY,
-  DELETE_CLUB_ACCOUNTING_ENTRY,
 } from '../../lib/documents';
 import type {
   AccountingEntry,
+  ClubAccountingAccountsData,
+  ClubAccountingCohortsData,
   ClubAccountingEntriesData,
   ClubAccountingSummaryData,
 } from '../../lib/types';
@@ -59,6 +63,46 @@ function fmtDate(iso: string): string {
   }
 }
 
+function sourceLabel(source: string): string {
+  switch (source) {
+    case 'MANUAL':
+      return 'Saisie';
+    case 'OCR_AI':
+      return 'OCR IA';
+    case 'AUTO_MEMBER_PAYMENT':
+      return 'Cotisation';
+    case 'AUTO_SUBSIDY':
+      return 'Subvention';
+    case 'AUTO_SPONSORSHIP':
+      return 'Sponsor';
+    case 'AUTO_SHOP':
+      return 'Boutique';
+    case 'AUTO_REFUND':
+      return 'Avoir';
+    case 'AUTO_STRIPE_FEES':
+      return 'Frais Stripe';
+    default:
+      return source;
+  }
+}
+
+function statusLabel(status: string): string {
+  switch (status) {
+    case 'DRAFT':
+      return 'Brouillon';
+    case 'NEEDS_REVIEW':
+      return 'À valider';
+    case 'POSTED':
+      return 'Validée';
+    case 'LOCKED':
+      return 'Verrouillée';
+    case 'CANCELLED':
+      return 'Annulée';
+    default:
+      return status;
+  }
+}
+
 export function AccountingPage() {
   const { showToast } = useToast();
   const [period, setPeriod] = useState<Period>('ALL');
@@ -78,26 +122,64 @@ export function AccountingPage() {
       fetchPolicy: 'cache-and-network',
       variables: { from: range.from, to: range.to },
     });
+  const { data: accountsData } = useQuery<ClubAccountingAccountsData>(
+    CLUB_ACCOUNTING_ACCOUNTS,
+    { fetchPolicy: 'cache-and-network' },
+  );
+  const { data: cohortsData } = useQuery<ClubAccountingCohortsData>(
+    CLUB_ACCOUNTING_COHORTS,
+    { fetchPolicy: 'cache-and-network' },
+  );
   const [create, { loading: creating }] = useMutation(
     CREATE_CLUB_ACCOUNTING_ENTRY,
   );
-  const [remove] = useMutation(DELETE_CLUB_ACCOUNTING_ENTRY);
+  const [cancel] = useMutation(CANCEL_CLUB_ACCOUNTING_ENTRY);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [confirmDel, setConfirmDel] = useState<AccountingEntry | null>(null);
-  const [kindFilter, setKindFilter] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL');
+  const [kindFilter, setKindFilter] = useState<
+    'ALL' | 'INCOME' | 'EXPENSE' | 'IN_KIND'
+  >('ALL');
+  const [statusFilter, setStatusFilter] = useState<
+    'ALL' | 'NEEDS_REVIEW' | 'POSTED' | 'LOCKED' | 'CANCELLED'
+  >('ALL');
 
-  const [kind, setKind] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
+  const [kind, setKind] = useState<'INCOME' | 'EXPENSE' | 'IN_KIND'>(
+    'EXPENSE',
+  );
   const [label, setLabel] = useState('');
   const [amountEuros, setAmountEuros] = useState('');
   const [occurredOn, setOccurredOn] = useState('');
+  const [accountCode, setAccountCode] = useState('');
+  const [cohortCode, setCohortCode] = useState('');
+  const [disciplineCode, setDisciplineCode] = useState('');
+  const [freeformTagsStr, setFreeformTagsStr] = useState('');
 
   const entries = entriesData?.clubAccountingEntries ?? [];
-  const filtered = useMemo(
-    () => (kindFilter === 'ALL' ? entries : entries.filter((e) => e.kind === kindFilter)),
-    [entries, kindFilter],
-  );
+  const filtered = useMemo(() => {
+    let rows = entries;
+    if (kindFilter !== 'ALL')
+      rows = rows.filter((e) => e.kind === kindFilter);
+    if (statusFilter !== 'ALL')
+      rows = rows.filter((e) => e.status === statusFilter);
+    return rows;
+  }, [entries, kindFilter, statusFilter]);
   const summary = summaryData?.clubAccountingSummary;
+  const accounts = accountsData?.clubAccountingAccounts ?? [];
+  const cohorts = cohortsData?.clubAccountingCohorts ?? [];
+
+  // Filtre les comptes selon le kind sélectionné
+  const availableAccounts = useMemo(() => {
+    if (kind === 'INCOME')
+      return accounts.filter((a) => a.kind === 'INCOME' && a.isActive);
+    if (kind === 'EXPENSE')
+      return accounts.filter((a) => a.kind === 'EXPENSE' && a.isActive);
+    if (kind === 'IN_KIND')
+      return accounts.filter(
+        (a) => a.kind === 'NEUTRAL_IN_KIND' && a.isActive,
+      );
+    return accounts;
+  }, [accounts, kind]);
 
   function parseEuros(s: string): number | null {
     const cleaned = s.trim().replace(/\s/g, '').replace(',', '.');
@@ -114,11 +196,19 @@ export function AccountingPage() {
       showToast('Libellé requis', 'error');
       return;
     }
+    if (!accountCode) {
+      showToast('Compte comptable requis', 'error');
+      return;
+    }
     const amountCents = parseEuros(amountEuros);
     if (amountCents === null) {
       showToast('Montant invalide', 'error');
       return;
     }
+    const tags = freeformTagsStr
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
     try {
       await create({
         variables: {
@@ -126,7 +216,13 @@ export function AccountingPage() {
             kind,
             label: l,
             amountCents,
-            ...(occurredOn ? { occurredAt: new Date(occurredOn).toISOString() } : {}),
+            accountCode,
+            ...(occurredOn
+              ? { occurredAt: new Date(occurredOn).toISOString() }
+              : {}),
+            ...(cohortCode ? { cohortCode } : {}),
+            ...(disciplineCode ? { disciplineCode } : {}),
+            ...(tags.length > 0 ? { freeformTags: tags } : {}),
           },
         },
       });
@@ -136,17 +232,28 @@ export function AccountingPage() {
       setAmountEuros('');
       setOccurredOn('');
       setKind('EXPENSE');
+      setAccountCode('');
+      setCohortCode('');
+      setDisciplineCode('');
+      setFreeformTagsStr('');
       await Promise.all([refetchEntries(), refetchSummary()]);
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Erreur', 'error');
     }
   }
 
-  async function doDelete() {
+  async function doCancel() {
     if (!confirmDel) return;
     try {
-      await remove({ variables: { id: confirmDel.id } });
-      showToast('Écriture supprimée', 'success');
+      await cancel({
+        variables: {
+          input: {
+            id: confirmDel.id,
+            reason: 'Annulation via UI',
+          },
+        },
+      });
+      showToast('Écriture annulée', 'success');
       setConfirmDel(null);
       await Promise.all([refetchEntries(), refetchSummary()]);
     } catch (err) {
@@ -158,9 +265,11 @@ export function AccountingPage() {
     <div className="cf-page">
       <header className="cf-page-header">
         <div>
-          <h1 className="cf-page-title">Comptabilité</h1>
+          <h1 className="cf-page-title">Comptabilité analytique</h1>
           <p className="cf-page-subtitle">
-            Les paiements encaissés génèrent automatiquement une écriture de recette.
+            Les encaissements de cotisation sont ventilés automatiquement par
+            cohorte, sexe et discipline. Ajoutez vos dépenses manuellement ou
+            via OCR (bientôt).
           </p>
         </div>
         <button type="button" className="btn-primary" onClick={() => setDrawerOpen(true)}>
@@ -183,19 +292,61 @@ export function AccountingPage() {
             <span>Solde</span>
             <strong>{fmtEuros(summary.balanceCents)}</strong>
           </div>
+          {summary.inKindCents > 0 ? (
+            <div className="cf-acct-summary__card">
+              <span>Contributions nature</span>
+              <strong>{fmtEuros(summary.inKindCents)}</strong>
+            </div>
+          ) : null}
+          {summary.needsReviewCount > 0 ? (
+            <div
+              className="cf-acct-summary__card"
+              style={{ background: 'rgba(255, 180, 0, 0.08)' }}
+            >
+              <span>À valider</span>
+              <strong>{summary.needsReviewCount}</strong>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
       <div className="cf-toolbar" style={{ flexWrap: 'wrap', gap: 12 }}>
         <label className="cf-field cf-field--inline">
-          <span>Filtre</span>
+          <span>Type</span>
           <select
             value={kindFilter}
-            onChange={(e) => setKindFilter(e.target.value as 'ALL' | 'INCOME' | 'EXPENSE')}
+            onChange={(e) =>
+              setKindFilter(
+                e.target.value as 'ALL' | 'INCOME' | 'EXPENSE' | 'IN_KIND',
+              )
+            }
           >
-            <option value="ALL">Toutes</option>
+            <option value="ALL">Tous</option>
             <option value="INCOME">Recettes</option>
             <option value="EXPENSE">Dépenses</option>
+            <option value="IN_KIND">Nature (870/871)</option>
+          </select>
+        </label>
+        <label className="cf-field cf-field--inline">
+          <span>Statut</span>
+          <select
+            value={statusFilter}
+            onChange={(e) =>
+              setStatusFilter(
+                e.target.value as
+                  | 'ALL'
+                  | 'NEEDS_REVIEW'
+                  | 'POSTED'
+                  | 'LOCKED'
+                  | 'CANCELLED',
+              )
+            }
+          >
+            <option value="ALL">Tous</option>
+            <option value="POSTED">Validées</option>
+            <option value="NEEDS_REVIEW">À valider</option>
+            <option value="LOCKED">Verrouillées</option>
+            <option value="CANCELLED">Annulées</option>
           </select>
         </label>
         <label className="cf-field cf-field--inline">
@@ -235,14 +386,17 @@ export function AccountingPage() {
           className="cf-btn cf-btn--ghost"
           onClick={() => {
             const csv = toCsv(
-              ['Date', 'Libellé', 'Type', 'Montant (€)', 'Source'],
+              ['Date', 'Libellé', 'Type', 'Statut', 'Source', 'Montant (€)', 'Compte'],
               filtered.map((e) => [
                 e.occurredAt.slice(0, 10),
                 e.label,
-                e.kind === 'INCOME' ? 'Recette' : 'Dépense',
-                ((e.kind === 'INCOME' ? 1 : -1) * (e.amountCents / 100))
-                  .toFixed(2),
-                e.paymentId ? 'Auto (paiement)' : 'Manuelle',
+                e.kind,
+                statusLabel(e.status),
+                sourceLabel(e.source),
+                ((e.kind === 'INCOME' ? 1 : -1) * (e.amountCents / 100)).toFixed(
+                  2,
+                ),
+                e.lines[0]?.accountCode ?? '',
               ]),
             );
             const ts = new Date().toISOString().slice(0, 10);
@@ -262,7 +416,7 @@ export function AccountingPage() {
         <EmptyState
           icon="account_balance"
           title="Aucune écriture"
-          message="Les recettes sont créées automatiquement, ajoutez vos dépenses manuellement."
+          message="Les cotisations sont ventilées automatiquement. Ajoutez vos dépenses manuellement."
         />
       ) : (
         <table className="cf-table">
@@ -270,43 +424,88 @@ export function AccountingPage() {
             <tr>
               <th>Date</th>
               <th>Libellé</th>
-              <th>Type</th>
+              <th>Compte</th>
+              <th>Statut</th>
+              <th>Source</th>
               <th style={{ textAlign: 'right' }}>Montant</th>
               <th />
             </tr>
           </thead>
           <tbody>
-            {filtered.map((e) => (
-              <tr key={e.id}>
-                <td>{fmtDate(e.occurredAt)}</td>
-                <td>{e.label}</td>
-                <td>
-                  <span
-                    className={`cf-pill cf-pill--${e.kind === 'INCOME' ? 'ok' : 'warn'}`}
-                  >
-                    {e.kind === 'INCOME' ? 'Recette' : 'Dépense'}
-                  </span>
-                </td>
-                <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                  {e.kind === 'INCOME' ? '+' : '−'} {fmtEuros(e.amountCents)}
-                </td>
-                <td>
-                  {e.paymentId ? (
-                    <span className="cf-muted" title="Écriture liée à un paiement">
-                      Auto
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      className="btn-ghost btn-ghost--danger"
-                      onClick={() => setConfirmDel(e)}
+            {filtered.map((e) => {
+              const firstLine = e.lines[0];
+              const firstAlloc = firstLine?.allocations[0];
+              return (
+                <tr key={e.id}>
+                  <td>{fmtDate(e.occurredAt)}</td>
+                  <td>
+                    <div>{e.label}</div>
+                    {firstAlloc && firstAlloc.cohortCode ? (
+                      <small className="cf-muted">
+                        {firstAlloc.cohortCode}
+                        {firstAlloc.disciplineCode
+                          ? ` · ${firstAlloc.disciplineCode}`
+                          : ''}
+                        {firstAlloc.projectTitle
+                          ? ` · ${firstAlloc.projectTitle}`
+                          : ''}
+                      </small>
+                    ) : null}
+                  </td>
+                  <td>
+                    {firstLine ? (
+                      <small title={firstLine.accountLabel}>
+                        {firstLine.accountCode}
+                      </small>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                  <td>
+                    <span
+                      className={`cf-pill cf-pill--${
+                        e.status === 'POSTED'
+                          ? 'ok'
+                          : e.status === 'NEEDS_REVIEW'
+                            ? 'warn'
+                            : 'muted'
+                      }`}
                     >
-                      Supprimer
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
+                      {statusLabel(e.status)}
+                    </span>
+                  </td>
+                  <td>
+                    <small className="cf-muted">{sourceLabel(e.source)}</small>
+                  </td>
+                  <td
+                    style={{
+                      textAlign: 'right',
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
+                    {e.kind === 'INCOME' ? '+' : e.kind === 'EXPENSE' ? '−' : '='}{' '}
+                    {fmtEuros(e.amountCents)}
+                  </td>
+                  <td>
+                    {e.status === 'CANCELLED' || e.status === 'LOCKED' ? (
+                      <span className="cf-muted">—</span>
+                    ) : e.source === 'MANUAL' || e.source === 'OCR_AI' ? (
+                      <button
+                        type="button"
+                        className="btn-ghost btn-ghost--danger"
+                        onClick={() => setConfirmDel(e)}
+                      >
+                        Annuler
+                      </button>
+                    ) : (
+                      <span className="cf-muted" title="Écriture automatique — crée une contre-passation pour corriger">
+                        Auto
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -336,10 +535,14 @@ export function AccountingPage() {
             <span>Type *</span>
             <select
               value={kind}
-              onChange={(e) => setKind(e.target.value as 'INCOME' | 'EXPENSE')}
+              onChange={(e) => {
+                setKind(e.target.value as 'INCOME' | 'EXPENSE' | 'IN_KIND');
+                setAccountCode(''); // reset compte quand type change
+              }}
             >
               <option value="EXPENSE">Dépense</option>
               <option value="INCOME">Recette</option>
+              <option value="IN_KIND">Contribution en nature</option>
             </select>
           </label>
           <label className="cf-field">
@@ -351,6 +554,21 @@ export function AccountingPage() {
               maxLength={200}
               required
             />
+          </label>
+          <label className="cf-field">
+            <span>Compte comptable *</span>
+            <select
+              value={accountCode}
+              onChange={(e) => setAccountCode(e.target.value)}
+              required
+            >
+              <option value="">— Choisir un compte —</option>
+              {availableAccounts.map((a) => (
+                <option key={a.id} value={a.code}>
+                  {a.code} — {a.label}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="cf-field">
             <span>Montant (€) *</span>
@@ -371,17 +589,56 @@ export function AccountingPage() {
               onChange={(e) => setOccurredOn(e.target.value)}
             />
           </label>
+          <fieldset className="cf-fieldset">
+            <legend>Analytique (optionnel)</legend>
+            <label className="cf-field">
+              <span>Cohorte</span>
+              <select
+                value={cohortCode}
+                onChange={(e) => setCohortCode(e.target.value)}
+              >
+                <option value="">— Aucune —</option>
+                {cohorts.map((c) => (
+                  <option key={c.id} value={c.code}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="cf-field">
+              <span>Discipline</span>
+              <input
+                type="text"
+                value={disciplineCode}
+                onChange={(e) => setDisciplineCode(e.target.value)}
+                placeholder="ex: karate, judo"
+              />
+            </label>
+            <label className="cf-field">
+              <span>Tags (séparés par virgule)</span>
+              <input
+                type="text"
+                value={freeformTagsStr}
+                onChange={(e) => setFreeformTagsStr(e.target.value)}
+                placeholder="ex: gala, tournoi"
+              />
+            </label>
+          </fieldset>
           <button type="submit" style={{ display: 'none' }} />
         </form>
       </Drawer>
 
       <ConfirmModal
         open={confirmDel !== null}
-        title="Supprimer cette écriture ?"
-        message={confirmDel ? confirmDel.label : undefined}
-        confirmLabel="Supprimer"
+        title="Annuler cette écriture ?"
+        message={
+          confirmDel
+            ? `${confirmDel.label} — L'écriture sera marquée comme annulée (conservée en base pour audit).`
+            : undefined
+        }
+        confirmLabel="Annuler l'écriture"
         danger
-        onConfirm={() => void doDelete()}
+        onConfirm={() => void doCancel()}
         onCancel={() => setConfirmDel(null)}
       />
     </div>

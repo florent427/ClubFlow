@@ -10,4 +10,10 @@ export class AccountingSummaryGraph {
 
   @Field(() => Int)
   balanceCents!: number;
+
+  @Field(() => Int)
+  inKindCents!: number;
+
+  @Field(() => Int)
+  needsReviewCount!: number;
 }

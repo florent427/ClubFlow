@@ -1740,10 +1740,47 @@ const ACCOUNTING_ENTRY_FIELDS = `
   id
   clubId
   kind
+  status
+  source
   label
   amountCents
+  vatTotalCents
   paymentId
+  projectId
+  contraEntryId
   occurredAt
+  createdAt
+  lines {
+    id
+    accountCode
+    accountLabel
+    label
+    side
+    debitCents
+    creditCents
+    vatRate
+    vatAmountCents
+    allocations {
+      id
+      amountCents
+      projectId
+      projectTitle
+      cohortCode
+      gender
+      disciplineCode
+      memberId
+      memberName
+      dynamicGroupLabels
+      freeformTags
+    }
+  }
+  documents {
+    id
+    mediaAssetId
+    fileName
+    publicUrl
+    mimeType
+  }
 `;
 
 export const CLUB_SPONSORSHIP_DEALS = gql`
@@ -1836,6 +1873,60 @@ export const CLUB_ACCOUNTING_SUMMARY = gql`
       incomeCents
       expenseCents
       balanceCents
+      inKindCents
+      needsReviewCount
+    }
+  }
+`;
+
+export const CLUB_ACCOUNTING_REVIEW_QUEUE = gql`
+  query ClubAccountingReviewQueue {
+    clubAccountingReviewQueue {
+      ${ACCOUNTING_ENTRY_FIELDS}
+    }
+  }
+`;
+
+export const CLUB_ACCOUNTING_ACCOUNTS = gql`
+  query ClubAccountingAccounts {
+    clubAccountingAccounts {
+      id
+      code
+      label
+      kind
+      isDefault
+      isActive
+      sortOrder
+    }
+  }
+`;
+
+export const CLUB_ACCOUNTING_COHORTS = gql`
+  query ClubAccountingCohorts {
+    clubAccountingCohorts {
+      id
+      code
+      label
+      minAge
+      maxAge
+      sortOrder
+      isDefault
+    }
+  }
+`;
+
+export const CANCEL_CLUB_ACCOUNTING_ENTRY = gql`
+  mutation CancelClubAccountingEntry($input: CancelAccountingEntryInput!) {
+    cancelClubAccountingEntry(input: $input) {
+      ${ACCOUNTING_ENTRY_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_CLUB_ACCOUNTING_CONTRA_ENTRY = gql`
+  mutation CreateClubAccountingContraEntry($input: CancelAccountingEntryInput!) {
+    createClubAccountingContraEntry(input: $input) {
+      ${ACCOUNTING_ENTRY_FIELDS}
     }
   }
 `;

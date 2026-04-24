@@ -320,7 +320,7 @@ export class PaymentsService {
     if (!trimmedReason) {
       throw new BadRequestException('Motif obligatoire pour un avoir.');
     }
-    return this.prisma.invoice.create({
+    const creditNote = await this.prisma.invoice.create({
       data: {
         clubId,
         familyId: parent.familyId,
@@ -335,6 +335,13 @@ export class PaymentsService {
         creditNoteReason: trimmedReason,
       },
     });
+    // Hook comptable : génère l'entry de contre-passation liée à la
+    // facture parente. Silencieux si module compta désactivé.
+    await this.accounting.createContraEntryForCreditNote(
+      clubId,
+      creditNote.id,
+    );
+    return creditNote;
   }
 
   async voidInvoice(clubId: string, invoiceId: string, reason?: string) {
