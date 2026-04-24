@@ -11305,3 +11305,42 @@ a:focus-visible {
   color: #991b1b;
 }
 
+/* Modal compte comptable suggéré IA */
+.cf-modal--large {
+  max-width: 560px;
+}
+.cf-ia-suggested-account {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: #fff;
+  border: 2px solid var(--cf-border, #e2e8f0);
+  border-radius: 8px;
+  font-size: 0.95rem;
+}
+.cf-ia-suggested-account strong {
+  font-size: 1.1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--cf-primary, #000666);
+  letter-spacing: 0.02em;
+}
+.cf-ia-suggested-account span {
+  color: var(--cf-text, #0f172a);
+  flex: 1;
+}
+.cf-ia-suggested-account--high {
+  border-color: #16a34a;
+  background: rgba(22, 163, 74, 0.04);
+}
+.cf-ia-suggested-account--medium {
+  border-color: #ca8a04;
+  background: rgba(202, 138, 4, 0.04);
+}
+.cf-ia-suggested-account--low {
+  border-color: #dc2626;
+  background: rgba(220, 38, 38, 0.04);
+}
+
