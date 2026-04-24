@@ -304,6 +304,9 @@ export function AccountingPage() {
   const [statusFilter, setStatusFilter] = useState<
     'ALL' | 'NEEDS_REVIEW' | 'POSTED' | 'LOCKED' | 'CANCELLED'
   >('ALL');
+  // Filtre par projet analytique — 'ALL' (aucun filtre), '__NONE__' (entries
+  // sans projet alloué), ou un id de projet.
+  const [projectFilter, setProjectFilter] = useState<string>('ALL');
 
   const [kind, setKind] = useState<'INCOME' | 'EXPENSE' | 'IN_KIND'>(
     'EXPENSE',
@@ -351,8 +354,24 @@ export function AccountingPage() {
       rows = rows.filter((e) => e.kind === kindFilter);
     if (statusFilter !== 'ALL')
       rows = rows.filter((e) => e.status === statusFilter);
+    if (projectFilter !== 'ALL') {
+      if (projectFilter === '__NONE__') {
+        // entries sans allocation projet
+        rows = rows.filter((e) =>
+          e.lines.every((l) =>
+            l.allocations.every((a) => !a.projectId),
+          ),
+        );
+      } else {
+        rows = rows.filter((e) =>
+          e.lines.some((l) =>
+            l.allocations.some((a) => a.projectId === projectFilter),
+          ),
+        );
+      }
+    }
     return rows;
-  }, [entries, kindFilter, statusFilter]);
+  }, [entries, kindFilter, statusFilter, projectFilter]);
   const summary = summaryData?.clubAccountingSummary;
   const accounts = accountsData?.clubAccountingAccounts ?? [];
   const cohorts = cohortsData?.clubAccountingCohorts ?? [];
@@ -749,6 +768,23 @@ export function AccountingPage() {
             <option value="CANCELLED">Annulées</option>
           </select>
         </label>
+        {projects.length > 0 ? (
+          <label className="cf-field cf-field--inline">
+            <span>Projet</span>
+            <select
+              value={projectFilter}
+              onChange={(e) => setProjectFilter(e.target.value)}
+            >
+              <option value="ALL">Tous projets</option>
+              <option value="__NONE__">(sans projet)</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.title}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <label className="cf-field cf-field--inline">
           <span>Période</span>
           <select
@@ -912,15 +948,38 @@ export function AccountingPage() {
                           </span>
                         ) : null}
                       </div>
-                      {firstAlloc && firstAlloc.cohortCode ? (
+                      {firstAlloc &&
+                      (firstAlloc.cohortCode ||
+                        firstAlloc.disciplineCode ||
+                        firstAlloc.projectTitle) ? (
                         <small className="cf-muted">
-                          {firstAlloc.cohortCode}
-                          {firstAlloc.disciplineCode
-                            ? ` · ${firstAlloc.disciplineCode}`
-                            : ''}
-                          {firstAlloc.projectTitle
-                            ? ` · ${firstAlloc.projectTitle}`
-                            : ''}
+                          {firstAlloc.projectTitle ? (
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 3,
+                                marginRight: 6,
+                              }}
+                            >
+                              <span
+                                className="material-symbols-outlined"
+                                aria-hidden
+                                style={{ fontSize: '0.85rem' }}
+                              >
+                                folder
+                              </span>
+                              {firstAlloc.projectTitle}
+                            </span>
+                          ) : null}
+                          {firstAlloc.cohortCode ? (
+                            <span style={{ marginRight: 6 }}>
+                              {firstAlloc.cohortCode}
+                            </span>
+                          ) : null}
+                          {firstAlloc.disciplineCode ? (
+                            <span>{firstAlloc.disciplineCode}</span>
+                          ) : null}
                         </small>
                       ) : null}
                     </td>
