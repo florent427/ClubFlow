@@ -1482,13 +1482,38 @@ export class AccountingService {
       );
     }
 
+    // Snapshot avant suppression (pour audit immuable). Les Date sont
+    // converties en ISO pour stockage JSON propre.
+    const snapshot = {
+      id: entry.id,
+      kind: entry.kind,
+      status: entry.status,
+      source: entry.source,
+      label: entry.label,
+      amountCents: entry.amountCents,
+      occurredAt: entry.occurredAt.toISOString(),
+      createdAt: entry.createdAt.toISOString(),
+    };
+
     await this.prisma.accountingEntry.delete({ where: { id: entryId } });
+
+    // IMPORTANT : `entryId` doit être `null` car l'entry vient d'être
+    // supprimée en cascade (les audit logs précédents rattachés à elle
+    // ont été supprimés aussi). Tenter de créer un nouveau log avec
+    // l'entryId référençant une ligne qui n'existe plus viole la
+    // contrainte FK AccountingAuditLog_entryId_fkey. L'id supprimé est
+    // sauvegardé dans `metadata` pour traçabilité.
     await this.audit.log({
       clubId,
       userId,
-      entryId,
+      entryId: null,
       action: AccountingAuditAction.CANCEL,
-      metadata: { source: 'PERMANENT_DELETE', priorStatus: entry.status },
+      metadata: {
+        source: 'PERMANENT_DELETE',
+        deletedEntryId: entryId,
+        priorStatus: entry.status,
+        snapshot,
+      },
     });
     this.logger.log(
       `Entry ${entryId} supprimée définitivement par user ${userId} (statut ${entry.status}).`,
