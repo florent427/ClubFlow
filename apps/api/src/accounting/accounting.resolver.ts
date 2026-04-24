@@ -27,6 +27,7 @@ import { ReceiptOcrService } from './receipt-ocr.service';
 import { CancelAccountingEntryInput } from './dto/cancel-accounting-entry.input';
 import { ConfirmExtractionInput } from './dto/confirm-extraction.input';
 import { CreateAccountingEntryInput } from './dto/create-accounting-entry.input';
+import { CreateQuickAccountingEntryInput } from './dto/create-quick-entry.input';
 import {
   AccountingAccountGraph,
   AccountingAccountMappingGraph,
@@ -40,6 +41,7 @@ import {
 } from './models/accounting-entry.model';
 import { AccountingSuggestionGraph } from './models/accounting-suggestion.model';
 import { AccountingSummaryGraph } from './models/accounting-summary.model';
+import { QuickEntryResultGraph } from './models/quick-entry-result.model';
 import { ReceiptOcrResultGraph } from './models/receipt-ocr-result.model';
 import { SuggestAccountingCategorizationInput } from './dto/suggest-accounting-categorization.input';
 
@@ -412,6 +414,37 @@ export class AccountingResolver {
   ): Promise<boolean> {
     await this.periodService.closeFiscalYear(club.id, year, user.userId);
     return true;
+  }
+
+  /**
+   * Création "rapide" : entry créée immédiatement en NEEDS_REVIEW avec
+   * compte fallback, l'IA catégorise en background et met à jour le
+   * compte quand elle a fini (~2-5s). L'utilisateur n'attend pas.
+   */
+  @Mutation(() => QuickEntryResultGraph, {
+    name: 'createClubAccountingEntryQuick',
+  })
+  async createClubAccountingEntryQuick(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('input') input: CreateQuickAccountingEntryInput,
+  ): Promise<QuickEntryResultGraph> {
+    const result = await this.accounting.createQuickEntry(club.id, user.userId, {
+      kind: input.kind,
+      label: input.label,
+      amountCents: input.amountCents,
+      occurredAt: input.occurredAt,
+      projectId: input.projectId ?? null,
+      cohortCode: input.cohortCode ?? null,
+      disciplineCode: input.disciplineCode ?? null,
+      freeformTags: input.freeformTags ?? [],
+      documentMediaAssetIds: input.documentMediaAssetIds ?? [],
+      vatAmountCents: input.vatAmountCents ?? null,
+    });
+    return {
+      id: result.id,
+      pendingCategorization: result.pendingCategorization,
+    };
   }
 
   // =========================================================================

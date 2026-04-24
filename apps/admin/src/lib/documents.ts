@@ -2139,6 +2139,17 @@ export const SUBMIT_RECEIPT_FOR_OCR = gql`
   }
 `;
 
+export const CREATE_CLUB_ACCOUNTING_ENTRY_QUICK = gql`
+  mutation CreateClubAccountingEntryQuick(
+    $input: CreateQuickAccountingEntryInput!
+  ) {
+    createClubAccountingEntryQuick(input: $input) {
+      id
+      pendingCategorization
+    }
+  }
+`;
+
 export const SUGGEST_ACCOUNTING_CATEGORIZATION = gql`
   mutation SuggestAccountingCategorization(
     $input: SuggestAccountingCategorizationInput!

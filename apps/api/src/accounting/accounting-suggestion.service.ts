@@ -340,7 +340,7 @@ export class AccountingSuggestionService {
             .join('\n')
         : '  (aucun projet actif — retourne projectId=null)';
 
-    return `Analyse cette saisie comptable et propose la catégorisation la plus pertinente.
+    return `Analyse cette saisie comptable et propose la catégorisation la plus pertinente selon le PCG associatif français.
 
 Libellé: "${label}"
 ${amountLine}
@@ -355,28 +355,49 @@ ${cohortsList}
 Projets actifs du club:
 ${projectsList}
 
-Retourne UN JSON STRICT:
+## RÈGLE FISCALE CRITIQUE — CHARGE vs IMMOBILISATION (pour les dépenses)
+
+Un bien à usage durable (plus d'un exercice) doit être classé en IMMOBILISATION (comptes 2xxxxx) si son prix UNITAIRE dépasse 500 € HT. En dessous, c'est une CHARGE directe (comptes 6xxxxx).
+
+Exemples concrets:
+- Tatamis à 250€ → 606300 "Petit équipement" (charge, < 500€)
+- Tatamis à 800€ → 215400 "Matériel sportif lourd" (immobilisation, ≥ 500€)
+- Gants de boxe à 40€ → 606300 (charge, < 500€)
+- Ring de boxe à 3000€ → 215400 (immobilisation, ≥ 500€)
+- Ordinateur portable à 700€ → 218300 (immobilisation)
+- Clavier à 30€ → 606400 (charge, fourniture bureau)
+- Chaises empilables (lot de 20) à 450€ → 606300 (charge)
+- Fauteuil de bureau ergonomique à 600€ → 218400 "Mobilier" (immobilisation)
+- Licence logiciel comptabilité 1200€/an → 205000 (immobilisation si pérenne, sinon 618000)
+
+Applique cette règle au montant ${amountCents ? (amountCents / 100).toFixed(2) + ' €' : '(non précisé)'} pour choisir entre un compte de classe 6 ou de classe 2. Note : le montant saisi est généralement TTC ; si c'est le cas, mentale le seuil reste valable au centime près (la TVA associative étant souvent non-applicable, TTC ≈ HT).
+
+## FORMAT DE SORTIE — JSON STRICT UNIQUEMENT
+
 {
   "accountCode": "code à 6 chiffres parmi la liste (ou null si aucun pertinent)",
   "cohortCode": "code cohorte parmi la liste (ou null si non applicable)",
   "projectId": "UUID d'un projet actif (ou null si dépense générale)",
   "disciplineCode": "slug minuscule ex 'karate', 'judo' (ou null)",
   "confidencePerField": {
-    "accountCode": "0-1",
-    "cohortCode": "0-1",
-    "projectId": "0-1",
-    "disciplineCode": "0-1"
+    "accountCode": 0.0,
+    "cohortCode": 0.0,
+    "projectId": 0.0,
+    "disciplineCode": 0.0
   },
-  "reasoning": "1 phrase courte expliquant le choix"
+  "reasoning": "1 phrase courte expliquant le choix, mentionnant la règle seuil 500€ si applicable"
 }
 
-Règles strictes:
-- JSON uniquement, pas de texte avant/après.
+## RÈGLES STRICTES
+
+- JSON uniquement, pas de texte avant/après, pas de markdown.
+- Ta réponse commence par { et finit par }.
 - accountCode DOIT être dans la liste fournie (ou null).
-- projectId DOIT être un UUID de la liste (ou null).
+- projectId DOIT être un UUID EXACT de la liste (ou null).
 - cohortCode DOIT être dans la liste (ou null).
 - Pour une dépense générique sans cohorte évidente, cohortCode=null.
-- Pour une dépense liée à un projet (matériel événement, achat spécifique), propose le projet le plus pertinent.`;
+- Pour une dépense liée à un projet (matériel événement, achat spécifique), propose le projet le plus pertinent.
+- Les scores de confiance sont des NOMBRES entre 0 et 1 (pas des strings).`;
   }
 
   private parseJson(content: string): Record<string, unknown> | null {

@@ -40,10 +40,23 @@ interface MappingSeedRow {
 export class AccountingSeedService {
   private readonly logger = new Logger(AccountingSeedService.name);
 
+  /**
+   * Plan comptable curated PCG associatif. 40+ comptes couvrant :
+   * - Charges classe 6 (dépenses courantes < 500€ HT)
+   * - Produits classe 7 (recettes)
+   * - Immobilisations classe 2 (biens durables ≥ 500€ HT, amortis sur
+   *   plusieurs années) : distinction cruciale pour la compta assoc.
+   * - Actif classe 4/5 (tiers, trésorerie)
+   * - Classe 8 contributions en nature
+   *
+   * Règle fiscale : un bien à usage durable (plus d'un exercice) au-delà
+   * de 500€ HT est une immobilisation (classe 2), pas une charge.
+   * L'IA doit utiliser cette règle pour choisir entre 606xxx et 218xxx.
+   */
   private static readonly DEFAULT_ACCOUNTS: AccountSeedRow[] = [
-    // Charges (dépenses)
+    // === Charges (dépenses < 500€ HT) — classe 6 ===
     { code: '606100', label: 'Fournitures non stockables (eau, énergie)', kind: 'EXPENSE', sortOrder: 10 },
-    { code: '606300', label: 'Petit équipement', kind: 'EXPENSE', sortOrder: 11 },
+    { code: '606300', label: 'Petit équipement (< 500€ HT)', kind: 'EXPENSE', sortOrder: 11 },
     { code: '606400', label: 'Fournitures administratives', kind: 'EXPENSE', sortOrder: 12 },
     { code: '606800', label: 'Autres matières et fournitures', kind: 'EXPENSE', sortOrder: 13 },
     { code: '611000', label: 'Sous-traitance générale', kind: 'EXPENSE', sortOrder: 20 },
@@ -60,7 +73,8 @@ export class AccountingSeedService {
     { code: '627000', label: 'Services bancaires (frais Stripe, virements)', kind: 'EXPENSE', sortOrder: 35 },
     { code: '641000', label: 'Rémunérations du personnel', kind: 'EXPENSE', sortOrder: 40 },
     { code: '645000', label: 'Charges sociales', kind: 'EXPENSE', sortOrder: 41 },
-    // Produits (recettes)
+
+    // === Produits (recettes) — classe 7 ===
     { code: '706100', label: 'Cotisations membres (adhésions)', kind: 'INCOME', sortOrder: 50 },
     { code: '708000', label: 'Produits des activités annexes (licences, stages)', kind: 'INCOME', sortOrder: 51 },
     { code: '740000', label: 'Subventions d\u2019exploitation', kind: 'INCOME', sortOrder: 60 },
@@ -70,11 +84,24 @@ export class AccountingSeedService {
     { code: '754000', label: 'Sponsoring / Mécénat', kind: 'INCOME', sortOrder: 70 },
     { code: '756000', label: 'Dons manuels', kind: 'INCOME', sortOrder: 71 },
     { code: '758000', label: 'Produits divers de gestion courante', kind: 'INCOME', sortOrder: 72 },
-    // Actif / trésorerie
+
+    // === Immobilisations (biens durables ≥ 500€ HT) — classe 2 ===
+    // Utiliser ces comptes au lieu des 606xxx quand le bien coûte ≥500€ HT
+    // et sera utilisé pendant plusieurs exercices (matériel sportif lourd,
+    // équipements, aménagements, etc.).
+    { code: '205000', label: 'Concessions, logiciels, licences (immobilisation)', kind: 'ASSET', sortOrder: 73 },
+    { code: '213500', label: 'Installations générales, agencements (immobilisation)', kind: 'ASSET', sortOrder: 74 },
+    { code: '215400', label: 'Matériel sportif lourd ≥ 500€ HT (tatamis, rings, cages, tapis, machines)', kind: 'ASSET', sortOrder: 75 },
+    { code: '218200', label: 'Matériel de transport (véhicules, remorques)', kind: 'ASSET', sortOrder: 76 },
+    { code: '218300', label: 'Matériel de bureau et informatique ≥ 500€ HT (PC, imprimantes pro)', kind: 'ASSET', sortOrder: 77 },
+    { code: '218400', label: 'Mobilier ≥ 500€ HT', kind: 'ASSET', sortOrder: 78 },
+
+    // === Actif / tiers / trésorerie ===
     { code: '411000', label: 'Clients / Cotisants', kind: 'ASSET', sortOrder: 80 },
     { code: '512000', label: 'Banque', kind: 'ASSET', sortOrder: 81 },
     { code: '530000', label: 'Caisse', kind: 'ASSET', sortOrder: 82 },
-    // Contributions en nature
+
+    // === Contributions en nature — classe 8 (neutre) ===
     { code: '860000', label: 'Secours en nature, prestations', kind: 'NEUTRAL_IN_KIND', sortOrder: 90 },
     { code: '861000', label: 'Mise à disposition gratuite de biens', kind: 'NEUTRAL_IN_KIND', sortOrder: 91 },
     { code: '864000', label: 'Personnel bénévole', kind: 'NEUTRAL_IN_KIND', sortOrder: 92 },
@@ -106,87 +133,100 @@ export class AccountingSeedService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Seed complet pour un club si les tables sont vides (idempotent).
-   * Appelé à l'activation du module ou en lazy-init depuis le resolver
-   * si `listAccounts` retourne 0 row.
+   * Seed / top-up du plan comptable pour un club. Idempotent :
+   * - Crée les cohortes manquantes (par code)
+   * - Crée les comptes manquants (par code)
+   * - Crée les mappings manquants (par sourceType)
+   *
+   * Appelé :
+   * - À l'activation du module ACCOUNTING (seed initial pour nouveau club)
+   * - En lazy-init depuis le resolver si listAccounts renvoie 0
+   * - Via la mutation explicite `initClubAccountingPlan` (bouton UI
+   *   "Initialiser le plan", ajoute les nouveaux comptes quand on en
+   *   introduit dans de futures versions sans obliger une migration)
    */
   async seedIfEmpty(clubId: string): Promise<{
     accountsCreated: number;
     cohortsCreated: number;
     mappingsCreated: number;
   }> {
-    const [existingAccounts, existingCohorts] = await Promise.all([
-      this.prisma.accountingAccount.count({ where: { clubId } }),
-      this.prisma.accountingCohort.count({ where: { clubId } }),
-    ]);
-
     let accountsCreated = 0;
     let cohortsCreated = 0;
     let mappingsCreated = 0;
 
-    // 1. Cohortes
-    if (existingCohorts === 0) {
-      for (const c of AccountingSeedService.DEFAULT_COHORTS) {
-        await this.prisma.accountingCohort.create({
-          data: {
-            clubId,
-            code: c.code,
-            label: c.label,
-            minAge: c.minAge,
-            maxAge: c.maxAge,
-            sortOrder: c.sortOrder,
-            isDefault: true,
-          },
-        });
-        cohortsCreated++;
-      }
-    }
-
-    // 2. Plan comptable
-    if (existingAccounts === 0) {
-      for (const a of AccountingSeedService.DEFAULT_ACCOUNTS) {
-        await this.prisma.accountingAccount.create({
-          data: {
-            clubId,
-            code: a.code,
-            label: a.label,
-            kind: a.kind,
-            sortOrder: a.sortOrder,
-            isDefault: true,
-            isActive: true,
-          },
-        });
-        accountsCreated++;
-      }
-    }
-
-    // 3. Mappings (utilise les comptes qu'on vient de créer)
-    const existingMappings = await this.prisma.accountingAccountMapping.count({
-      where: { clubId, sourceId: null },
+    // 1. Cohortes — upsert par (clubId, code)
+    const existingCohorts = await this.prisma.accountingCohort.findMany({
+      where: { clubId },
+      select: { code: true },
     });
-    if (existingMappings === 0) {
-      const allAccounts = await this.prisma.accountingAccount.findMany({
-        where: { clubId },
+    const existingCohortCodes = new Set(existingCohorts.map((c) => c.code));
+    for (const c of AccountingSeedService.DEFAULT_COHORTS) {
+      if (existingCohortCodes.has(c.code)) continue;
+      await this.prisma.accountingCohort.create({
+        data: {
+          clubId,
+          code: c.code,
+          label: c.label,
+          minAge: c.minAge,
+          maxAge: c.maxAge,
+          sortOrder: c.sortOrder,
+          isDefault: true,
+        },
       });
-      const byCode = new Map(allAccounts.map((a) => [a.code, a]));
-      for (const m of AccountingSeedService.DEFAULT_MAPPINGS) {
-        const acc = byCode.get(m.accountCode);
-        if (!acc) continue;
-        try {
-          await this.prisma.accountingAccountMapping.create({
-            data: {
-              clubId,
-              sourceType: m.sourceType,
-              sourceId: null,
-              accountId: acc.id,
-              accountCode: acc.code,
-            },
-          });
-          mappingsCreated++;
-        } catch (err) {
-          // Ignore silencieusement les doublons (race condition possible)
-          if (!(err instanceof Prisma.PrismaClientKnownRequestError)) throw err;
-        }
+      cohortsCreated++;
+    }
+
+    // 2. Plan comptable — upsert par (clubId, code)
+    const existingAccounts = await this.prisma.accountingAccount.findMany({
+      where: { clubId },
+      select: { code: true },
+    });
+    const existingCodes = new Set(existingAccounts.map((a) => a.code));
+    for (const a of AccountingSeedService.DEFAULT_ACCOUNTS) {
+      if (existingCodes.has(a.code)) continue;
+      await this.prisma.accountingAccount.create({
+        data: {
+          clubId,
+          code: a.code,
+          label: a.label,
+          kind: a.kind,
+          sortOrder: a.sortOrder,
+          isDefault: true,
+          isActive: true,
+        },
+      });
+      accountsCreated++;
+    }
+
+    // 3. Mappings — par (clubId, sourceType, sourceId=null)
+    const existingMappings = await this.prisma.accountingAccountMapping.findMany({
+      where: { clubId, sourceId: null },
+      select: { sourceType: true },
+    });
+    const existingMappingTypes = new Set(
+      existingMappings.map((m) => m.sourceType),
+    );
+    const allAccounts = await this.prisma.accountingAccount.findMany({
+      where: { clubId },
+    });
+    const byCode = new Map(allAccounts.map((a) => [a.code, a]));
+    for (const m of AccountingSeedService.DEFAULT_MAPPINGS) {
+      if (existingMappingTypes.has(m.sourceType)) continue;
+      const acc = byCode.get(m.accountCode);
+      if (!acc) continue;
+      try {
+        await this.prisma.accountingAccountMapping.create({
+          data: {
+            clubId,
+            sourceType: m.sourceType,
+            sourceId: null,
+            accountId: acc.id,
+            accountCode: acc.code,
+          },
+        });
+        mappingsCreated++;
+      } catch (err) {
+        if (!(err instanceof Prisma.PrismaClientKnownRequestError)) throw err;
       }
     }
 

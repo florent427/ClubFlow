@@ -7,22 +7,19 @@ import {
   CLUB_ACCOUNTING_COHORTS,
   CLUB_ACCOUNTING_ENTRIES,
   CLUB_ACCOUNTING_SUMMARY,
-  CREATE_CLUB_ACCOUNTING_ENTRY,
+  CREATE_CLUB_ACCOUNTING_ENTRY_QUICK,
   INIT_CLUB_ACCOUNTING_PLAN,
   SUBMIT_RECEIPT_FOR_OCR,
-  SUGGEST_ACCOUNTING_CATEGORIZATION,
 } from '../../lib/documents';
 import { CLUB_PROJECTS } from '../../lib/projects-documents';
 import type {
   AccountingEntry,
-  AccountingSuggestion,
   ClubAccountingAccountsData,
   ClubAccountingCohortsData,
   ClubAccountingEntriesData,
   ClubAccountingSummaryData,
   ClubProjectsData,
   SubmitReceiptForOcrData,
-  SuggestAccountingCategorizationData,
 } from '../../lib/types';
 import { useToast } from '../../components/ToastProvider';
 import { ConfirmModal, Drawer, EmptyState } from '../../components/ui';
@@ -161,11 +158,8 @@ export function AccountingPage() {
     fetchPolicy: 'cache-and-network',
     errorPolicy: 'ignore',
   });
-  const [create, { loading: creating }] = useMutation(
-    CREATE_CLUB_ACCOUNTING_ENTRY,
-  );
-  const [suggest] = useMutation<SuggestAccountingCategorizationData>(
-    SUGGEST_ACCOUNTING_CATEGORIZATION,
+  const [createQuick, { loading: creating }] = useMutation(
+    CREATE_CLUB_ACCOUNTING_ENTRY_QUICK,
   );
   const [initPlan, { loading: initializingPlan }] = useMutation(
     INIT_CLUB_ACCOUNTING_PLAN,
@@ -197,16 +191,6 @@ export function AccountingPage() {
   const [disciplineCode, setDisciplineCode] = useState('');
   const [freeformTagsStr, setFreeformTagsStr] = useState('');
   const [projectId, setProjectId] = useState('');
-  // Suggestion IA pré-fetchée en arrière-plan pendant la frappe
-  const [suggestion, setSuggestion] = useState<AccountingSuggestion | null>(
-    null,
-  );
-  const suggestTimerRef = useRef<number | null>(null);
-
-  // Popup de confirmation du compte comptable : ouverte au submit du drawer
-  const [accountModalOpen, setAccountModalOpen] = useState(false);
-  const [accountModalCode, setAccountModalCode] = useState('');
-  const [accountModalFetching, setAccountModalFetching] = useState(false);
 
   const entries = entriesData?.clubAccountingEntries ?? [];
   const filtered = useMemo(() => {
@@ -243,50 +227,15 @@ export function AccountingPage() {
     return Math.round(n * 100);
   }
 
-  // Pré-fetch IA en arrière-plan pendant la saisie pour que la popup de
-  // confirmation au submit apparaisse instantanément (au lieu d'attendre
-  // 2-3s). Débouncé à 700ms après la dernière frappe, min 3 caractères.
-  useEffect(() => {
-    if (!drawerOpen) return;
-    const trimmed = label.trim();
-    if (trimmed.length < 3) {
-      setSuggestion(null);
-      return;
-    }
-    if (suggestTimerRef.current !== null) {
-      window.clearTimeout(suggestTimerRef.current);
-    }
-    suggestTimerRef.current = window.setTimeout(() => {
-      void (async () => {
-        try {
-          const amountCents = parseEuros(amountEuros);
-          const res = await suggest({
-            variables: {
-              input: {
-                label: trimmed,
-                kind,
-                ...(amountCents !== null ? { amountCents } : {}),
-              },
-            },
-          });
-          setSuggestion(res.data?.suggestAccountingCategorization ?? null);
-        } catch {
-          setSuggestion(null);
-        }
-      })();
-    }, 700);
-    return () => {
-      if (suggestTimerRef.current !== null) {
-        window.clearTimeout(suggestTimerRef.current);
-      }
-    };
-  }, [label, amountEuros, kind, drawerOpen, suggest]);
+  // Note : la suggestion IA tourne en arrière-plan côté backend après
+  // création de l'entry (status NEEDS_REVIEW). L'utilisateur n'attend
+  // pas dans le drawer.
 
   /**
-   * Submit du drawer : au lieu de créer directement, on ouvre une popup
-   * de confirmation où l'IA suggère un compte comptable que l'utilisateur
-   * peut valider ou modifier. Si l'IA n'a pas encore répondu (pré-fetch
-   * en cours), on attend la réponse avant d'ouvrir la popup.
+   * Submit du drawer : crée l'écriture IMMÉDIATEMENT en status
+   * NEEDS_REVIEW avec un compte fallback, puis l'IA la catégorise en
+   * arrière-plan (~2-5s). L'utilisateur n'attend pas — l'écriture
+   * apparaît dans la review queue avec la suggestion IA prête.
    */
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -300,76 +249,17 @@ export function AccountingPage() {
       showToast('Montant invalide', 'error');
       return;
     }
-
-    // Force un refetch des comptes + cohortes en parallèle de l'appel IA
-    // pour garantir que la popup ait une liste à jour même si le cache
-    // Apollo est stale (ex: seed lazy qui vient d'être déclenché).
-    setAccountModalFetching(true);
-    let effectiveSuggestion = suggestion;
-    try {
-      const [accountsRes, suggestionRes] = await Promise.all([
-        refetchAccounts(),
-        effectiveSuggestion
-          ? Promise.resolve(null)
-          : suggest({
-              variables: {
-                input: {
-                  label: l,
-                  kind,
-                  ...(amountCents !== null ? { amountCents } : {}),
-                },
-              },
-            }),
-      ]);
-      // Debug : si toujours 0 comptes après refetch, probablement un
-      // mismatch club/auth. On affiche un toast pour aider au diag.
-      const freshAccounts =
-        accountsRes?.data?.clubAccountingAccounts ?? [];
-      if (freshAccounts.length === 0) {
-        showToast(
-          'Plan comptable vide après refetch — cliquez sur "Initialiser" ou vérifiez la console réseau.',
-          'warning',
-        );
-      }
-      if (suggestionRes && 'data' in suggestionRes) {
-        effectiveSuggestion =
-          suggestionRes.data?.suggestAccountingCategorization ?? null;
-        setSuggestion(effectiveSuggestion);
-      }
-    } catch (err) {
-      console.error('[accounting submit] erreur', err);
-      effectiveSuggestion = null;
-    } finally {
-      setAccountModalFetching(false);
-    }
-
-    setAccountModalCode(effectiveSuggestion?.accountCode ?? '');
-    setAccountModalOpen(true);
-  }
-
-  /**
-   * Confirmation de la popup : crée réellement l'écriture avec le compte
-   * choisi (suggéré par l'IA ou modifié par l'utilisateur).
-   */
-  async function doCreate() {
-    const l = label.trim();
-    const amountCents = parseEuros(amountEuros);
-    if (l.length === 0 || amountCents === null || !accountModalCode) {
-      showToast('Données invalides', 'error');
-      return;
-    }
     const tags = freeformTagsStr
       .split(',')
       .map((t) => t.trim())
       .filter(Boolean);
     try {
-      await create({
+      await createQuick({
         variables: {
           input: {
             kind,
             label: l,
             amountCents,
-            accountCode: accountModalCode,
             ...(occurredOn
               ? { occurredAt: new Date(occurredOn).toISOString() }
               : {}),
@@ -380,20 +270,27 @@ export function AccountingPage() {
           },
         },
       });
-      showToast('Écriture enregistrée', 'success');
-      setAccountModalOpen(false);
+      showToast(
+        '✨ Écriture créée — catégorisation IA en cours en arrière-plan.',
+        'success',
+      );
       setDrawerOpen(false);
       setLabel('');
       setAmountEuros('');
       setOccurredOn('');
       setKind('EXPENSE');
-      setAccountModalCode('');
       setCohortCode('');
       setDisciplineCode('');
       setFreeformTagsStr('');
       setProjectId('');
-      setSuggestion(null);
+      setStatusFilter('NEEDS_REVIEW');
+      // Refetch plusieurs fois pour attraper la mise à jour IA en background
       await Promise.all([refetchEntries(), refetchSummary()]);
+      // Second refetch après 4s pour récupérer la suggestion IA appliquée
+      setTimeout(() => {
+        void refetchEntries();
+        void refetchSummary();
+      }, 4000);
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Erreur', 'error');
     }
@@ -901,8 +798,8 @@ export function AccountingPage() {
                 <strong>Plan comptable non initialisé</strong>
                 <br />
                 <small>
-                  Aucun compte disponible pour ce club. Clique pour seeder les
-                  34 comptes PCG + 5 cohortes par défaut.
+                  Aucun compte disponible pour ce club. Clique pour seeder
+                  les comptes PCG par défaut.
                 </small>
               </div>
               <button
@@ -930,8 +827,9 @@ export function AccountingPage() {
               >
                 auto_awesome
               </span>
-              Le compte comptable sera proposé par l'IA et confirmé à la
-              création.
+              L'écriture est créée immédiatement — l'IA catégorise le
+              compte en arrière-plan (2-5s). Tu retrouveras l'écriture dans
+              "À valider" pour corriger la suggestion si besoin.
             </p>
           )}
           <label className="cf-field">
@@ -1030,182 +928,6 @@ export function AccountingPage() {
         }}
       />
 
-      {/* Popup de confirmation du compte comptable avec suggestion IA */}
-      {accountModalOpen ? (
-        <>
-          <div
-            className="cf-modal-backdrop"
-            role="presentation"
-            onClick={() => !creating && setAccountModalOpen(false)}
-          />
-          <div
-            className="cf-modal cf-modal--confirm cf-modal--large"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="cf-account-modal-title"
-          >
-            <h2 id="cf-account-modal-title" className="cf-modal-title">
-              <span className="material-symbols-outlined" aria-hidden>
-                auto_awesome
-              </span>
-              Confirmer le compte comptable
-            </h2>
-
-            <p className="cf-muted" style={{ marginTop: 0, marginBottom: 16 }}>
-              <strong>{label}</strong> —{' '}
-              <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-                {fmtEuros(parseEuros(amountEuros) ?? 0)}
-              </span>
-            </p>
-
-            {accountModalFetching ? (
-              <div className="cf-ia-suggestion cf-ia-suggestion--loading">
-                <span className="material-symbols-outlined" aria-hidden>
-                  auto_awesome
-                </span>
-                Analyse IA en cours…
-              </div>
-            ) : suggestion?.accountCode && suggestion?.accountLabel ? (
-              <div className="cf-ia-suggestion">
-                <div className="cf-ia-suggestion__head">
-                  <span className="material-symbols-outlined" aria-hidden>
-                    auto_awesome
-                  </span>
-                  <strong>Suggestion IA</strong>
-                  <span
-                    className={`cf-ia-chip__score`}
-                    style={{ marginLeft: 'auto' }}
-                  >
-                    {formatConfidence(suggestion.confidenceAccount)}
-                  </span>
-                </div>
-                {suggestion.reasoning ? (
-                  <p className="cf-ia-suggestion__reasoning">
-                    {suggestion.reasoning}
-                  </p>
-                ) : null}
-                <div
-                  className={`cf-ia-suggested-account cf-ia-suggested-account--${confidenceLevel(suggestion.confidenceAccount)}`}
-                >
-                  <strong>{suggestion.accountCode}</strong>
-                  <span>{suggestion.accountLabel}</span>
-                </div>
-              </div>
-            ) : (
-              <div
-                className="cf-alert cf-alert--info"
-                style={{ marginBottom: 12 }}
-              >
-                <span className="material-symbols-outlined" aria-hidden>
-                  info
-                </span>
-                <div style={{ flex: 1 }}>
-                  <small>
-                    L'IA n'a pas pu proposer de compte — choisis manuellement
-                    ci-dessous.
-                  </small>
-                  {suggestion?.errorMessage ? (
-                    <>
-                      <br />
-                      <small
-                        style={{
-                          color: '#b91c1c',
-                          fontFamily: 'monospace',
-                          fontSize: '0.75rem',
-                        }}
-                      >
-                        ⚠ {suggestion.errorMessage}
-                      </small>
-                    </>
-                  ) : null}
-                </div>
-              </div>
-            )}
-
-            <label className="cf-field" style={{ marginTop: 16 }}>
-              <span>Compte comptable *</span>
-              <select
-                value={accountModalCode}
-                onChange={(e) => setAccountModalCode(e.target.value)}
-                required
-                disabled={availableAccounts.length === 0}
-              >
-                <option value="">
-                  {availableAccounts.length === 0
-                    ? '— Plan comptable vide —'
-                    : '— Choisir un compte —'}
-                </option>
-                {availableAccounts.map((a) => (
-                  <option key={a.id} value={a.code}>
-                    {a.code} — {a.label}
-                  </option>
-                ))}
-              </select>
-              {availableAccounts.length === 0 ? (
-                <div
-                  className="cf-alert cf-alert--warning"
-                  style={{ marginTop: 8 }}
-                >
-                  <span className="material-symbols-outlined" aria-hidden>
-                    warning
-                  </span>
-                  <div style={{ flex: 1 }}>
-                    <strong>Aucun compte disponible</strong>
-                    <br />
-                    <small>
-                      Le plan comptable n'est pas chargé. Cliquez pour le
-                      seeder (34 comptes PCG + 5 cohortes).
-                    </small>
-                  </div>
-                  <button
-                    type="button"
-                    className="cf-btn cf-btn--sm cf-btn--primary"
-                    onClick={async () => {
-                      await doInitPlan();
-                      await refetchAccounts();
-                    }}
-                    disabled={initializingPlan}
-                  >
-                    {initializingPlan ? 'Initialisation…' : 'Initialiser'}
-                  </button>
-                </div>
-              ) : null}
-              {suggestion?.accountCode &&
-              accountModalCode !== suggestion.accountCode ? (
-                <button
-                  type="button"
-                  className="cf-btn cf-btn--sm cf-btn--ghost"
-                  onClick={() =>
-                    setAccountModalCode(suggestion.accountCode ?? '')
-                  }
-                  style={{ marginTop: 6, alignSelf: 'flex-start' }}
-                >
-                  💡 Revenir à la suggestion IA ({suggestion.accountCode})
-                </button>
-              ) : null}
-            </label>
-
-            <div className="cf-modal-actions">
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => setAccountModalOpen(false)}
-                disabled={creating}
-              >
-                Retour
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => void doCreate()}
-                disabled={!accountModalCode || creating}
-              >
-                {creating ? 'Création…' : 'Confirmer et créer'}
-              </button>
-            </div>
-          </div>
-        </>
-      ) : null}
     </div>
   );
 }

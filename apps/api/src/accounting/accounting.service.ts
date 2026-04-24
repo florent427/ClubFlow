@@ -24,6 +24,7 @@ import {
 import { AccountingAuditService } from './accounting-audit.service';
 import { AccountingMappingService } from './accounting-mapping.service';
 import { AccountingPeriodService } from './accounting-period.service';
+import { AccountingSuggestionService } from './accounting-suggestion.service';
 
 /** Filtres supportés sur la query liste. */
 export interface ListEntriesFilter {
@@ -68,6 +69,7 @@ export class AccountingService {
     private readonly mapping: AccountingMappingService,
     private readonly period: AccountingPeriodService,
     private readonly audit: AccountingAuditService,
+    private readonly suggestion: AccountingSuggestionService,
   ) {}
 
   // ========================================================================
@@ -576,6 +578,269 @@ export class AccountingService {
     });
 
     return created;
+  }
+
+  /**
+   * Création "rapide" d'une écriture avec catégorisation IA en arrière-plan.
+   *
+   * Flow :
+   *  1. L'entry est créée immédiatement en status NEEDS_REVIEW avec un
+   *     compte de fallback (606800 pour EXPENSE, 758000 pour INCOME, etc.)
+   *     ce qui évite l'attente de 2-5s de latence IA pour l'utilisateur.
+   *  2. Le drawer se ferme, l'entry apparaît dans la review queue avec un
+   *     badge "À valider".
+   *  3. Un job async (setImmediate) appelle l'IA avec le libellé + montant,
+   *     puis met à jour l'entry avec la suggestion (compte proposé +
+   *     projet + cohorte + discipline) — toujours en status NEEDS_REVIEW.
+   *  4. L'utilisateur ouvre l'entry depuis la review queue pour valider
+   *     ou corriger la suggestion, puis la passer en POSTED.
+   */
+  async createQuickEntry(
+    clubId: string,
+    userId: string,
+    input: Omit<ManualEntryInput, 'accountCode'> & { kind: AccountingEntryKind },
+  ): Promise<{ id: string; pendingCategorization: boolean }> {
+    const occurredAt = input.occurredAt ?? new Date();
+    await this.period.assertDateIsOpen(clubId, occurredAt);
+
+    // Compte fallback selon le kind — sera remplacé par la suggestion IA
+    // quand elle arrive en background.
+    const fallbackCode =
+      input.kind === AccountingEntryKind.INCOME
+        ? await this.mapping.resolveAccountCode(clubId, 'INCOME_GENERIC')
+        : input.kind === AccountingEntryKind.IN_KIND
+          ? '871000' // Prestations en nature
+          : await this.mapping.resolveAccountCode(clubId, 'EXPENSE_GENERIC');
+
+    const mainAccount = await this.lookupAccount(clubId, fallbackCode);
+    const bankCode = await this.mapping.resolveAccountCode(
+      clubId,
+      'BANK_ACCOUNT',
+    );
+    const bankAccount = await this.lookupAccount(clubId, bankCode);
+
+    const mainSide = this.deriveSide(
+      mainAccount.kind,
+      input.kind,
+      mainAccount.code,
+    );
+    const counterSide =
+      mainSide === AccountingLineSide.DEBIT
+        ? AccountingLineSide.CREDIT
+        : AccountingLineSide.DEBIT;
+
+    const created = await this.prisma.$transaction(async (tx) => {
+      const entry = await tx.accountingEntry.create({
+        data: {
+          clubId,
+          kind: input.kind,
+          status: AccountingEntryStatus.NEEDS_REVIEW,
+          source: AccountingEntrySource.MANUAL,
+          label: input.label,
+          amountCents: input.amountCents,
+          vatTotalCents: input.vatAmountCents ?? null,
+          occurredAt,
+          createdByUserId: userId,
+        },
+      });
+
+      const mainLine = await tx.accountingEntryLine.create({
+        data: {
+          entryId: entry.id,
+          clubId,
+          accountCode: mainAccount.code,
+          accountLabel: mainAccount.label,
+          label: '[Compte provisoire — catégorisation IA en cours]',
+          side: mainSide,
+          debitCents:
+            mainSide === AccountingLineSide.DEBIT ? input.amountCents : 0,
+          creditCents:
+            mainSide === AccountingLineSide.CREDIT ? input.amountCents : 0,
+          sortOrder: 0,
+        },
+      });
+
+      await tx.accountingEntryLine.create({
+        data: {
+          entryId: entry.id,
+          clubId,
+          accountCode: bankAccount.code,
+          accountLabel: bankAccount.label,
+          side: counterSide,
+          debitCents:
+            counterSide === AccountingLineSide.DEBIT ? input.amountCents : 0,
+          creditCents:
+            counterSide === AccountingLineSide.CREDIT ? input.amountCents : 0,
+          sortOrder: 1,
+        },
+      });
+
+      // Allocation initiale avec les dimensions analytiques déjà fournies
+      // par l'utilisateur (projet / cohorte / discipline / tags optionnels).
+      await this.allocation.persistAllocationsForLine(tx, mainLine.id, clubId, [
+        {
+          amountCents: input.amountCents,
+          projectId: input.projectId ?? null,
+          cohortCode: input.cohortCode ?? null,
+          disciplineCode: input.disciplineCode ?? null,
+          freeformTags: input.freeformTags ?? [],
+        },
+      ]);
+
+      if (input.documentMediaAssetIds?.length) {
+        for (const assetId of input.documentMediaAssetIds) {
+          await tx.accountingDocument.create({
+            data: {
+              clubId,
+              entryId: entry.id,
+              mediaAssetId: assetId,
+              kind: 'RECEIPT',
+            },
+          });
+        }
+      }
+
+      return entry;
+    });
+
+    await this.audit.log({
+      clubId,
+      userId,
+      entryId: created.id,
+      action: AccountingAuditAction.CREATE,
+      metadata: { source: 'QUICK_ENTRY', pendingCategorization: true },
+    });
+
+    // Lance la catégorisation IA en arrière-plan — ne bloque PAS le
+    // retour de la mutation. L'entry est déjà sauvegardée, l'IA mettra
+    // à jour le compte quand elle aura répondu.
+    setImmediate(() => {
+      void this.runBackgroundCategorization(
+        clubId,
+        created.id,
+        input.label,
+        input.amountCents,
+        input.kind,
+      );
+    });
+
+    return { id: created.id, pendingCategorization: true };
+  }
+
+  /**
+   * Job async exécuté par setImmediate après createQuickEntry. Appelle
+   * l'IA et met à jour l'entry avec la suggestion de compte + projet +
+   * cohorte + discipline. L'entry reste en NEEDS_REVIEW pour validation
+   * humaine.
+   */
+  private async runBackgroundCategorization(
+    clubId: string,
+    entryId: string,
+    label: string,
+    amountCents: number,
+    kind: AccountingEntryKind,
+  ): Promise<void> {
+    try {
+      const suggestion = await this.suggestion.suggest(clubId, {
+        label,
+        amountCents,
+        kind:
+          kind === AccountingEntryKind.INCOME
+            ? 'INCOME'
+            : kind === AccountingEntryKind.IN_KIND
+              ? 'IN_KIND'
+              : 'EXPENSE',
+      });
+
+      if (!suggestion.accountCode) {
+        this.logger.log(
+          `Background categorization: IA sans suggestion pour entry ${entryId} (errorMessage=${suggestion.errorMessage ?? 'none'}). L'entry reste sur le compte fallback.`,
+        );
+        return;
+      }
+
+      const newAccount = await this.lookupAccount(
+        clubId,
+        suggestion.accountCode,
+      );
+      const newSide = this.deriveSide(newAccount.kind, kind, newAccount.code);
+
+      await this.prisma.$transaction(async (tx) => {
+        const entry = await tx.accountingEntry.findUnique({
+          where: { id: entryId },
+          include: { lines: { include: { allocations: true } } },
+        });
+        if (!entry) return;
+        // Si l'entry a déjà été validée manuellement entre-temps, ne pas la toucher
+        if (entry.status !== AccountingEntryStatus.NEEDS_REVIEW) {
+          this.logger.log(
+            `Background categorization: entry ${entryId} a changé de statut (${entry.status}), skip.`,
+          );
+          return;
+        }
+
+        // Met à jour la ligne principale (hors banque)
+        const mainLine = entry.lines.find(
+          (l) => l.accountCode !== '512000' && l.accountCode !== '530000',
+        );
+        if (mainLine) {
+          await tx.accountingEntryLine.update({
+            where: { id: mainLine.id },
+            data: {
+              accountCode: newAccount.code,
+              accountLabel: newAccount.label,
+              label: `[IA ${Math.round((suggestion.confidencePerField.accountCode ?? 0) * 100)}% — à valider] ${suggestion.reasoning ?? ''}`.slice(0, 200),
+              side: newSide,
+              debitCents:
+                newSide === AccountingLineSide.DEBIT ? entry.amountCents : 0,
+              creditCents:
+                newSide === AccountingLineSide.CREDIT ? entry.amountCents : 0,
+            },
+          });
+
+          // Met à jour l'allocation principale avec les dimensions IA
+          // uniquement si l'user n'a pas déjà mis ses propres valeurs.
+          if (mainLine.allocations.length > 0) {
+            const alloc = mainLine.allocations[0];
+            const patch: Record<string, unknown> = {};
+            if (!alloc.cohortCode && suggestion.cohortCode) {
+              patch.cohortCode = suggestion.cohortCode;
+            }
+            if (!alloc.disciplineCode && suggestion.disciplineCode) {
+              patch.disciplineCode = suggestion.disciplineCode;
+            }
+            if (!alloc.projectId && suggestion.projectId) {
+              patch.projectId = suggestion.projectId;
+            }
+            if (Object.keys(patch).length > 0) {
+              await tx.accountingAllocation.update({
+                where: { id: alloc.id },
+                data: patch,
+              });
+            }
+          }
+        }
+      });
+
+      await this.audit.log({
+        clubId,
+        userId: 'system',
+        entryId,
+        action: AccountingAuditAction.UPDATE,
+        metadata: {
+          source: 'BACKGROUND_CATEGORIZATION',
+          suggestion: JSON.parse(JSON.stringify(suggestion)),
+        },
+      });
+
+      this.logger.log(
+        `Background categorization appliquée à entry ${entryId} : compte ${newAccount.code} (confidence ${Math.round((suggestion.confidencePerField.accountCode ?? 0) * 100)}%).`,
+      );
+    } catch (err) {
+      this.logger.error(
+        `Background categorization échec pour entry ${entryId} : ${err instanceof Error ? err.message : err}`,
+      );
+    }
   }
 
   /**
