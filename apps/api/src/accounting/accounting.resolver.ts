@@ -243,14 +243,14 @@ export class AccountingResolver {
   async clubAccountingAccounts(
     @CurrentClub() club: Club,
   ): Promise<AccountingAccountGraph[]> {
-    let rows = await this.mappingService.listAccounts(club.id);
-    // Lazy-init : si aucun compte pour ce club (module activé récemment,
-    // migration pas passée, etc.), on seed automatiquement puis on
-    // relit la liste.
-    if (rows.length === 0) {
-      await this.seedService.seedIfEmpty(club.id);
-      rows = await this.mappingService.listAccounts(club.id);
-    }
+    // Top-up systématique : `seedIfEmpty` est idempotent (upsert par code),
+    // et ne crée que les comptes manquants. On l'appelle à chaque query
+    // pour garantir que les nouveaux comptes ajoutés dans des commits
+    // ultérieurs (ex : immobilisations classe 2 ajoutées après le premier
+    // seed) apparaissent pour les clubs existants, sans avoir à cliquer
+    // sur le bouton "Initialiser le plan".
+    await this.seedService.seedIfEmpty(club.id);
+    const rows = await this.mappingService.listAccounts(club.id);
     return rows.map((r) => ({
       id: r.id,
       code: r.code,

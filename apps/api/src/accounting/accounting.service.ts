@@ -24,6 +24,7 @@ import {
 import { AccountingAuditService } from './accounting-audit.service';
 import { AccountingMappingService } from './accounting-mapping.service';
 import { AccountingPeriodService } from './accounting-period.service';
+import { AccountingSeedService } from './accounting-seed.service';
 import { AccountingSuggestionService } from './accounting-suggestion.service';
 
 /** Filtres supportés sur la query liste. */
@@ -70,6 +71,7 @@ export class AccountingService {
     private readonly period: AccountingPeriodService,
     private readonly audit: AccountingAuditService,
     private readonly suggestion: AccountingSuggestionService,
+    private readonly seed: AccountingSeedService,
   ) {}
 
   // ========================================================================
@@ -606,6 +608,13 @@ export class AccountingService {
   ): Promise<{ id: string; pendingCategorization: boolean }> {
     const occurredAt = input.occurredAt ?? new Date();
     await this.period.assertDateIsOpen(clubId, occurredAt);
+
+    // Top-up du plan comptable avant toute création d'écriture : garantit
+    // que tous les comptes (y compris les immobilisations classe 2 et
+    // les comptes ajoutés dans des versions ultérieures) existent en DB
+    // pour ce club. Sans ça, l'IA catégorisant en background pourrait
+    // proposer un compte qui n'existe pas encore et échouer silencieusement.
+    await this.seed.seedIfEmpty(clubId);
 
     // Normalise les articles. Si vide, crée un article unique depuis
     // le libellé principal.
@@ -1301,6 +1310,13 @@ export class AccountingService {
         'Relance impossible : ligne déjà validée. Dé-valider d\u2019abord.',
       );
     }
+
+    // Top-up du plan comptable : idempotent, garantit que les comptes
+    // ajoutés dans des versions ultérieures (ex : immobilisations
+    // classe 2) existent bien en DB avant que l'IA ne les propose. Sans
+    // ça, `lookupAccount(215400)` throw NotFoundException et la relance
+    // échoue en silence.
+    await this.seed.seedIfEmpty(clubId);
 
     const articleLabel = (line.label ?? '')
       // Nettoie les anciens formats legacy [Compte provisoire...] ou [IA x% : ...]

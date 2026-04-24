@@ -11281,16 +11281,24 @@ a:focus-visible {
   border-left: 3px solid #dc2626;
 }
 .cf-ia-chip__score {
-  position: absolute;
-  top: 50%;
-  right: 0.5rem;
-  transform: translateY(-50%);
-  font-size: 0.7rem;
-  padding: 0.1rem 0.3rem;
+  /* Inline (et non absolute) pour rester dans la cellule qui le contient.
+     L'ancienne version utilisait position: absolute ce qui projetait le
+     badge hors de sa <td> dans les tables de sous-lignes. */
+  display: inline-block;
+  font-size: 0.75rem;
+  padding: 0.15rem 0.4rem;
   border-radius: 3px;
   background: rgba(15, 23, 42, 0.06);
   color: var(--cf-text-muted, #475569);
   font-weight: 500;
+  white-space: nowrap;
+}
+/* Dans le chip outer (panneau IA latéral) on remet le positionnement absolu. */
+.cf-ia-chip .cf-ia-chip__score {
+  position: absolute;
+  top: 50%;
+  right: 0.5rem;
+  transform: translateY(-50%);
 }
 .cf-ia-chip--high .cf-ia-chip__score {
   background: rgba(22, 163, 74, 0.12);
