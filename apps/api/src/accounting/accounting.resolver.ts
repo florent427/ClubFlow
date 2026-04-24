@@ -571,6 +571,42 @@ export class AccountingResolver {
     return true;
   }
 
+  /**
+   * Relance manuelle de la catégorisation IA pour UNE ligne.
+   * Nettoie les labels legacy, rappelle l'IA, met à jour la ligne.
+   */
+  @Mutation(() => AccountingSuggestionGraph, {
+    name: 'rerunAccountingAiForLine',
+  })
+  async rerunAccountingAiForLine(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('lineId', { type: () => ID }) lineId: string,
+  ): Promise<AccountingSuggestionGraph> {
+    const r = await this.accounting.rerunAiForLine(
+      club.id,
+      user.userId,
+      lineId,
+    );
+    // On retourne dans le format AccountingSuggestionGraph pour la cohérence
+    // (le client affiche `reasoning`, `confidenceAccount`, `accountCode`).
+    return {
+      accountCode: r.accountCode,
+      accountLabel: null,
+      cohortCode: null,
+      projectId: null,
+      projectTitle: null,
+      disciplineCode: null,
+      confidenceAccount: r.confidencePct !== null ? r.confidencePct / 100 : null,
+      confidenceCohort: null,
+      confidenceProject: null,
+      confidenceDiscipline: null,
+      reasoning: r.reasoning,
+      budgetBlocked: false,
+      errorMessage: r.errorMessage,
+    };
+  }
+
   @Mutation(() => Boolean, { name: 'deleteClubAccountingEntryPermanent' })
   async deleteClubAccountingEntryPermanent(
     @CurrentClub() club: Club,

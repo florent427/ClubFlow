@@ -10,6 +10,7 @@ import {
   CREATE_CLUB_ACCOUNTING_ENTRY_QUICK,
   DELETE_CLUB_ACCOUNTING_ENTRY_PERMANENT,
   INIT_CLUB_ACCOUNTING_PLAN,
+  RERUN_ACCOUNTING_AI_FOR_LINE,
   SUBMIT_RECEIPT_FOR_OCR,
   UNVALIDATE_ACCOUNTING_ENTRY_LINE,
   VALIDATE_ACCOUNTING_ENTRY_LINE,
@@ -169,7 +170,12 @@ export function AccountingPage() {
   );
   const [validateLine] = useMutation(VALIDATE_ACCOUNTING_ENTRY_LINE);
   const [unvalidateLine] = useMutation(UNVALIDATE_ACCOUNTING_ENTRY_LINE);
+  const [rerunAiLine] = useMutation(RERUN_ACCOUNTING_AI_FOR_LINE);
   const [deletePermanent] = useMutation(DELETE_CLUB_ACCOUNTING_ENTRY_PERMANENT);
+  // Lignes en cours de relance IA (pour désactiver le bouton + afficher un spinner)
+  const [rerunningLineIds, setRerunningLineIds] = useState<Set<string>>(
+    new Set(),
+  );
 
   // Entries expandées (sous-lignes visibles)
   const [expandedEntryIds, setExpandedEntryIds] = useState<Set<string>>(
@@ -213,6 +219,53 @@ export function AccountingPage() {
       await Promise.all([refetchEntries(), refetchSummary()]);
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
+
+  /**
+   * Relance manuelle de la catégorisation IA pour UNE ligne donnée.
+   * Utile si :
+   *  - L'IA a échoué lors de la création et la ligne est restée sur un
+   *    compte provisoire.
+   *  - L'entry est ancienne (avant l'ajout des champs IA) et n'a jamais
+   *    été catégorisée.
+   */
+  async function doRerunAi(lineId: string) {
+    setRerunningLineIds((prev) => {
+      const next = new Set(prev);
+      next.add(lineId);
+      return next;
+    });
+    try {
+      const res = await rerunAiLine({ variables: { lineId } });
+      const data = (res.data as
+        | {
+            rerunAccountingAiForLine?: {
+              accountCode: string | null;
+              confidenceAccount: number | null;
+              reasoning: string | null;
+              errorMessage: string | null;
+            };
+          }
+        | null
+        | undefined)?.rerunAccountingAiForLine;
+      if (data?.errorMessage) {
+        showToast(`IA : ${data.errorMessage}`, 'error');
+      } else if (data?.accountCode) {
+        const pct = Math.round((data.confidenceAccount ?? 0) * 100);
+        showToast(`IA a proposé ${data.accountCode} (${pct}%)`, 'success');
+      } else {
+        showToast('IA n\u2019a rien proposé', 'info');
+      }
+      await Promise.all([refetchEntries(), refetchSummary()]);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    } finally {
+      setRerunningLineIds((prev) => {
+        const next = new Set(prev);
+        next.delete(lineId);
+        return next;
+      });
     }
   }
 
@@ -305,12 +358,20 @@ export function AccountingPage() {
   const cohorts = cohortsData?.clubAccountingCohorts ?? [];
   const projects = projectsData?.clubProjects ?? [];
 
-  // Filtre les comptes selon le kind sélectionné
+  // Filtre les comptes selon le kind sélectionné.
+  // Pour une dépense (EXPENSE), on inclut aussi les immobilisations (ASSET,
+  // classe 2) car la règle PCG des 500 € HT peut reclasser une « dépense »
+  // perçue par l'utilisateur en immobilisation comptable (ex : tatamis
+  // 750 € → compte 215400). Sans ça, le compte proposé par l'IA
+  // disparaîtrait de la dropdown.
   const availableAccounts = useMemo(() => {
     if (kind === 'INCOME')
       return accounts.filter((a) => a.kind === 'INCOME' && a.isActive);
     if (kind === 'EXPENSE')
-      return accounts.filter((a) => a.kind === 'EXPENSE' && a.isActive);
+      return accounts.filter(
+        (a) =>
+          (a.kind === 'EXPENSE' || a.kind === 'ASSET') && a.isActive,
+      );
     if (kind === 'IN_KIND')
       return accounts.filter(
         (a) => a.kind === 'NEUTRAL_IN_KIND' && a.isActive,
@@ -996,10 +1057,25 @@ export function AccountingPage() {
                                       ? 'medium'
                                       : 'low'
                                   : 'medium';
-                                const availablesForSelect =
-                                  availableAccounts.length > 0
-                                    ? availableAccounts
-                                    : accounts;
+                                // Pour la sous-ligne, on filtre selon le kind de
+                                // l'ENTRY (pas du formulaire). Pour une
+                                // dépense on inclut EXPENSE + ASSET (règle
+                                // PCG 500 € HT : tatamis 750 € → immo 215400).
+                                const availablesForSelect = accounts.filter(
+                                  (a) => {
+                                    if (!a.isActive) return false;
+                                    if (e.kind === 'INCOME')
+                                      return a.kind === 'INCOME';
+                                    if (e.kind === 'EXPENSE')
+                                      return (
+                                        a.kind === 'EXPENSE' ||
+                                        a.kind === 'ASSET'
+                                      );
+                                    if (e.kind === 'IN_KIND')
+                                      return a.kind === 'NEUTRAL_IN_KIND';
+                                    return true;
+                                  },
+                                );
                                 return (
                                   <tr
                                     key={l.id}
@@ -1155,20 +1231,62 @@ export function AccountingPage() {
                                           Dé-valider
                                         </button>
                                       ) : (
-                                        <button
-                                          type="button"
-                                          className="cf-btn cf-btn--sm cf-btn--primary"
-                                          onClick={() =>
-                                            void doValidateLine(
-                                              l.id,
-                                              currentEdit !== l.accountCode
-                                                ? currentEdit
-                                                : undefined,
-                                            )
-                                          }
+                                        <div
+                                          style={{
+                                            display: 'flex',
+                                            gap: 4,
+                                            alignItems: 'center',
+                                            justifyContent: 'flex-end',
+                                          }}
                                         >
-                                          Valider
-                                        </button>
+                                          <button
+                                            type="button"
+                                            className="btn-ghost btn-ghost--sm"
+                                            title="Relancer la catégorisation IA"
+                                            disabled={rerunningLineIds.has(
+                                              l.id,
+                                            )}
+                                            onClick={() =>
+                                              void doRerunAi(l.id)
+                                            }
+                                            style={{
+                                              padding: '4px 6px',
+                                              minWidth: 0,
+                                            }}
+                                          >
+                                            <span
+                                              className="material-symbols-outlined"
+                                              aria-hidden
+                                              style={{
+                                                fontSize: '1rem',
+                                                verticalAlign: 'middle',
+                                                color: '#ff6b35',
+                                                animation:
+                                                  rerunningLineIds.has(l.id)
+                                                    ? 'cf-spin 1s linear infinite'
+                                                    : undefined,
+                                              }}
+                                            >
+                                              {rerunningLineIds.has(l.id)
+                                                ? 'autorenew'
+                                                : 'auto_awesome'}
+                                            </span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="cf-btn cf-btn--sm cf-btn--primary"
+                                            onClick={() =>
+                                              void doValidateLine(
+                                                l.id,
+                                                currentEdit !== l.accountCode
+                                                  ? currentEdit
+                                                  : undefined,
+                                              )
+                                            }
+                                          >
+                                            Valider
+                                          </button>
+                                        </div>
                                       )}
                                     </td>
                                   </tr>

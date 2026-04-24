@@ -2197,6 +2197,17 @@ export const UNVALIDATE_ACCOUNTING_ENTRY_LINE = gql`
   }
 `;
 
+export const RERUN_ACCOUNTING_AI_FOR_LINE = gql`
+  mutation RerunAccountingAiForLine($lineId: ID!) {
+    rerunAccountingAiForLine(lineId: $lineId) {
+      accountCode
+      confidenceAccount
+      reasoning
+      errorMessage
+    }
+  }
+`;
+
 export const DELETE_CLUB_ACCOUNTING_ENTRY_PERMANENT = gql`
   mutation DeleteClubAccountingEntryPermanent($id: ID!) {
     deleteClubAccountingEntryPermanent(id: $id)

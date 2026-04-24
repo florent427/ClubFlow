@@ -1266,6 +1266,129 @@ export class AccountingService {
   }
 
   /**
+   * Relance l'IA sur une ligne non validée. Utile quand :
+   *  - La première catégorisation a échoué (timeout, JSON invalide) et
+   *    la ligne est restée sur un compte fallback
+   *  - L'user vient de changer le libellé de l'article manuellement
+   *    et veut une nouvelle suggestion
+   *
+   * N'est possible que si la ligne n'est pas encore validée et l'entry
+   * est en NEEDS_REVIEW.
+   */
+  async rerunAiForLine(
+    clubId: string,
+    userId: string,
+    lineId: string,
+  ): Promise<{
+    lineId: string;
+    accountCode: string | null;
+    confidencePct: number | null;
+    reasoning: string | null;
+    errorMessage: string | null;
+  }> {
+    const line = await this.prisma.accountingEntryLine.findFirst({
+      where: { id: lineId, clubId },
+      include: { entry: true },
+    });
+    if (!line) throw new NotFoundException('Ligne introuvable');
+    if (line.entry.status !== AccountingEntryStatus.NEEDS_REVIEW) {
+      throw new BadRequestException(
+        'Relance impossible : écriture déjà comptabilisée.',
+      );
+    }
+    if (line.validatedAt) {
+      throw new BadRequestException(
+        'Relance impossible : ligne déjà validée. Dé-valider d\u2019abord.',
+      );
+    }
+
+    const articleLabel = (line.label ?? '')
+      // Nettoie les anciens formats legacy [Compte provisoire...] ou [IA x% : ...]
+      .replace(/\s*—\s*\[Compte provisoire[^\]]*\]\s*$/i, '')
+      .replace(/\s*—\s*\[IA \d+%[^\]]*\]\s*$/i, '')
+      .trim();
+
+    const amountCents = line.debitCents || line.creditCents;
+    const kindArg =
+      line.entry.kind === AccountingEntryKind.INCOME
+        ? 'INCOME'
+        : line.entry.kind === AccountingEntryKind.IN_KIND
+          ? 'IN_KIND'
+          : 'EXPENSE';
+
+    this.logger.log(
+      `[Entry ${line.entry.id}] 🔄 Relance IA manuelle pour ligne "${articleLabel}" (${amountCents / 100}€)`,
+    );
+
+    const suggestion = await this.suggestion.suggest(clubId, {
+      label: articleLabel,
+      amountCents,
+      kind: kindArg,
+    });
+
+    if (!suggestion.accountCode) {
+      return {
+        lineId,
+        accountCode: null,
+        confidencePct: null,
+        reasoning: null,
+        errorMessage:
+          suggestion.errorMessage ?? "IA n'a pas proposé de compte",
+      };
+    }
+
+    const newAccount = await this.lookupAccount(clubId, suggestion.accountCode);
+    const newSide = this.deriveSide(
+      newAccount.kind,
+      line.entry.kind,
+      newAccount.code,
+    );
+    const confPct = Math.round(
+      (suggestion.confidencePerField.accountCode ?? 0) * 100,
+    );
+
+    await this.prisma.accountingEntryLine.update({
+      where: { id: lineId },
+      data: {
+        accountCode: newAccount.code,
+        accountLabel: newAccount.label,
+        label: articleLabel,
+        side: newSide,
+        debitCents: newSide === AccountingLineSide.DEBIT ? amountCents : 0,
+        creditCents: newSide === AccountingLineSide.CREDIT ? amountCents : 0,
+        iaSuggestedAccountCode: newAccount.code,
+        iaReasoning: suggestion.reasoning?.slice(0, 500) ?? null,
+        iaConfidencePct: confPct,
+      },
+    });
+
+    await this.audit.log({
+      clubId,
+      userId,
+      entryId: line.entry.id,
+      action: AccountingAuditAction.UPDATE,
+      metadata: {
+        source: 'RERUN_AI',
+        lineId,
+        accountCode: newAccount.code,
+        confidencePct: confPct,
+      },
+    });
+
+    this.logger.log(
+      `[Entry ${line.entry.id}] ✅ Relance IA ligne "${articleLabel}" → ${newAccount.code} (${confPct}%)`,
+    );
+
+    return {
+      lineId,
+      accountCode: newAccount.code,
+      confidencePct: confPct,
+      reasoning: suggestion.reasoning,
+      errorMessage: null,
+    };
+  }
+
+  /**
    * Rejette une ligne : remet validatedAt=null. Utilisé si l'user a
    * validé par erreur et veut corriger avant que l'entry passe POSTED.
    * N'est possible QUE tant que l'entry est NEEDS_REVIEW.
