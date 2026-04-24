@@ -11,13 +11,13 @@ import {
 
 @InputType()
 export class CreateGrantApplicationInput {
-  @Field()
+  @Field(() => String)
   @IsString()
   @MinLength(1)
   @MaxLength(200)
   title!: string;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsString()
   @MaxLength(200)
@@ -29,7 +29,7 @@ export class CreateGrantApplicationInput {
   @Min(0)
   requestedAmountCents?: number;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsUUID()
   projectId?: string;
@@ -46,7 +46,7 @@ export class CreateGrantApplicationInput {
   @IsOptional()
   reportDueAt?: Date;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsString()
   @MaxLength(2000)

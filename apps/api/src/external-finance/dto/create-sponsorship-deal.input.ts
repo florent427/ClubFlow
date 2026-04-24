@@ -13,7 +13,7 @@ import {
 
 @InputType()
 export class CreateSponsorshipDealInput {
-  @Field()
+  @Field(() => String)
   @IsString()
   @MinLength(1)
   @MaxLength(200)
@@ -29,18 +29,18 @@ export class CreateSponsorshipDealInput {
   @Min(0)
   valueCents?: number;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsString()
   @MaxLength(500)
   inKindDescription?: string;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsUUID()
   projectId?: string;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsUUID()
   contactId?: string;
@@ -53,7 +53,7 @@ export class CreateSponsorshipDealInput {
   @IsOptional()
   endsAt?: Date;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsString()
   @MaxLength(2000)

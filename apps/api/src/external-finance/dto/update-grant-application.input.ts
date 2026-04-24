@@ -15,14 +15,14 @@ export class UpdateGrantApplicationInput {
   @IsUUID()
   id!: string;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(200)
   title?: string;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsString()
   @MaxLength(200)
@@ -40,7 +40,7 @@ export class UpdateGrantApplicationInput {
   @Min(0)
   grantedAmountCents?: number | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsUUID()
   projectId?: string | null;
@@ -57,7 +57,7 @@ export class UpdateGrantApplicationInput {
   @IsOptional()
   reportDueAt?: Date | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsString()
   @MaxLength(2000)
@@ -91,7 +91,7 @@ export class CreateGrantInstallmentInput {
   @IsOptional()
   expectedAt?: Date;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsString()
   @MaxLength(1000)

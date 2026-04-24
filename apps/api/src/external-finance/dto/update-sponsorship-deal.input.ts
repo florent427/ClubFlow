@@ -15,7 +15,7 @@ export class UpdateSponsorshipDealInput {
   @IsUUID()
   id!: string;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsString()
   @MinLength(1)
@@ -28,18 +28,18 @@ export class UpdateSponsorshipDealInput {
   @Min(0)
   valueCents?: number | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsString()
   @MaxLength(500)
   inKindDescription?: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsUUID()
   projectId?: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsUUID()
   contactId?: string | null;
@@ -52,7 +52,7 @@ export class UpdateSponsorshipDealInput {
   @IsOptional()
   endsAt?: Date | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsString()
   @MaxLength(2000)
