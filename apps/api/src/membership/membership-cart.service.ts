@@ -31,6 +31,10 @@ import type { MailTransport } from '../mail/mail-transport.interface';
 import { ClubSendingDomainService } from '../mail/club-sending-domain.service';
 import { renderMembershipCartValidatedEmail } from '../mail/templates/membership-cart-validated';
 import { MemberPseudoService } from '../messaging/member-pseudo.service';
+import {
+  PricingRulesEngineService,
+  type CartLineSnapshot,
+} from './pricing-rules-engine.service';
 
 /** Résumé ligne utilisé pour l'aperçu et l'email. */
 export type CartItemPreview = {
@@ -69,6 +73,7 @@ export class MembershipCartService {
     private readonly domains: ClubSendingDomainService,
     @Inject(MAIL_TRANSPORT) private readonly transport: MailTransport,
     private readonly memberPseudo: MemberPseudoService,
+    private readonly pricingRulesEngine: PricingRulesEngineService,
   ) {}
 
   // ------------------------------------------------------------------
@@ -1065,7 +1070,84 @@ export class MembershipCartService {
           status: InvoiceStatus.DRAFT,
           lines: { create: linesCreate },
         },
+        include: { lines: { include: { membershipProduct: true } } },
       });
+
+      // ----------------------------------------------------------------
+      // Application des règles de remise pattern-based (v2)
+      // ----------------------------------------------------------------
+      //
+      // En complément des remises legacy (computeMembershipAdjustments
+      // ci-dessus), on applique les `MembershipPricingRule` configurées
+      // par l'admin via Settings → Adhésion → Remises automatiques.
+      //
+      // Robustesse : si une règle a un configJson cassé, elle est ignorée
+      // et loggée (cf PricingRulesEngineService). La facturation continue
+      // avec les autres règles + les remises legacy déjà appliquées.
+      try {
+        const snapshot: CartLineSnapshot[] = inv.lines.map((l) => ({
+          itemId: l.id,
+          baseAmountCents: l.baseAmountCents,
+          membershipProductId: l.membershipProductId,
+          category:
+            l.kind === InvoiceLineKind.MEMBERSHIP_SUBSCRIPTION
+              ? 'SUBSCRIPTION'
+              : 'ONE_TIME',
+          memberId: l.memberId ?? '',
+          ageAtReference: null, // TODO : calculer si AGE_RANGE_DISCOUNT actif
+        }));
+        const result = await this.pricingRulesEngine.evaluate(
+          clubId,
+          snapshot,
+        );
+        // Persister chaque application en InvoiceLineAdjustment
+        let appliedDelta = 0;
+        for (const app of result.applications) {
+          for (const a of app.appliedTo) {
+            await tx.invoiceLineAdjustment.create({
+              data: {
+                lineId: a.itemId,
+                stepOrder: 100, // après PRORATA (10), FAMILY (20), PUBLIC_AID (30), EXCEPTIONAL (40)
+                type: 'EXCEPTIONAL',
+                amountCents: a.deltaAmountCents,
+                reason: a.reason,
+                metadataJson: JSON.stringify({
+                  source: 'PRICING_RULE',
+                  ruleId: app.ruleId,
+                  ruleLabel: app.ruleLabel,
+                  pattern: app.pattern,
+                }),
+              },
+            });
+            appliedDelta += a.deltaAmountCents;
+          }
+        }
+        // Mise à jour du total facture
+        if (appliedDelta !== 0) {
+          const newAmount = Math.max(0, invoiceBaseCents + appliedDelta);
+          await tx.invoice.update({
+            where: { id: inv.id },
+            data: { amountCents: newAmount },
+          });
+        }
+        // Logging si erreurs (règles ignorées)
+        if (result.errors.length > 0) {
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[membership-cart] ${result.errors.length} règle(s) de remise ignorée(s) : ${result.errors.map((e) => `${e.ruleLabel} (${e.error})`).join(' ; ')}`,
+          );
+        }
+      } catch (err) {
+        // Filet de sécurité : si l'engine plante complètement, on
+        // continue sans bloquer la facturation (les remises legacy
+        // sont déjà appliquées sur la facture).
+        // eslint-disable-next-line no-console
+        console.error(
+          '[membership-cart] PricingRulesEngine plantage non-fatal',
+          (err as Error).message,
+        );
+      }
+
       // Ligne de licence (stockage numéro sur Member)
       for (const item of cart.items) {
         if (item.hasExistingLicense && item.existingLicenseNumber) {

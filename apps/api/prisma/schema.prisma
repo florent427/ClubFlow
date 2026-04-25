@@ -50,6 +50,7 @@ model Club {
   clubSeasons                     ClubSeason[]
   membershipProducts              MembershipProduct[]
   membershipOneTimeFees           MembershipOneTimeFee[]
+  membershipPricingRules          MembershipPricingRule[]
   sendingDomains                  ClubSendingDomain[]
   emailSuppressions               EmailSuppression[]
   contacts                        Contact[]
@@ -1181,6 +1182,82 @@ enum PricingAdjustmentType {
   NONE
   PERCENT_BP
   FIXED_CENTS
+}
+
+/// Type de pattern de règle de remise. Chaque pattern a un schéma de
+/// `configJson` distinct, validé par Zod côté service.
+///
+/// - FAMILY_PROGRESSIVE : grille de remises progressives selon le rang du
+///   membre dans le foyer (2e, 3e, 4e+). Appliqué uniquement aux
+///   cotisations (pas aux frais de licence/dossier).
+/// - PRODUCT_BUNDLE : si plusieurs produits sont présents ensemble dans
+///   le cart, remise sur l'un d'eux (ex Karaté + Cross Training = -20€
+///   sur Cross Training).
+/// - AGE_RANGE_DISCOUNT : remise sur les membres dans une tranche d'âge
+///   (ex moins de 12 ans = -15%).
+/// - NEW_MEMBER_DISCOUNT : remise sur les nouveaux adhérents (jamais
+///   inscrits avant cette saison).
+/// - LOYALTY_DISCOUNT : remise fidélité (X années consécutives).
+enum MembershipPricingRulePattern {
+  FAMILY_PROGRESSIVE
+  PRODUCT_BUNDLE
+  AGE_RANGE_DISCOUNT
+  NEW_MEMBER_DISCOUNT
+  LOYALTY_DISCOUNT
+}
+
+/// Règle de remise configurable par l'admin. La structure de `configJson`
+/// dépend de `pattern` ; chaque pattern a son schéma Zod côté service
+/// avec validation stricte à la création/update + au runtime
+/// (fallback safe si configJson devient incompatible suite à un
+/// changement de schéma — la règle est désactivée et loggée plutôt que
+/// crasher la facturation).
+///
+/// Exemples :
+///
+/// FAMILY_PROGRESSIVE :
+/// ```
+/// {
+///   "tiers": [
+///     { "rank": 2, "type": "PERCENT_BP", "value": -1000 },
+///     { "rank": 3, "type": "PERCENT_BP", "value": -2000 },
+///     { "rank": 4, "type": "PERCENT_BP", "value": -3000 }
+///   ],
+///   "appliesTo": ["SUBSCRIPTION"],
+///   "sortBy": "AMOUNT_DESC"
+/// }
+/// ```
+///
+/// PRODUCT_BUNDLE :
+/// ```
+/// {
+///   "requiredProductIds": ["uuid-karate", "uuid-crosstraining"],
+///   "discountAppliesToProductId": "uuid-crosstraining",
+///   "discountType": "FIXED_CENTS",
+///   "discountValue": -2000
+/// }
+/// ```
+model MembershipPricingRule {
+  id          String                       @id @default(uuid())
+  clubId      String
+  pattern     MembershipPricingRulePattern
+  /// Libellé lisible (ex "Remise famille progressive"). Affiché dans
+  /// l'UI Settings et dans le détail facture.
+  label       String
+  isActive    Boolean                      @default(true)
+  /// Ordre d'évaluation. Les règles avec priority bas sont évaluées
+  /// d'abord. Permet de chaîner plusieurs remises de manière
+  /// déterministe.
+  priority    Int                          @default(0)
+  /// Configuration spécifique au pattern. Schéma validé par Zod.
+  configJson  Json
+  createdAt   DateTime                     @default(now())
+  updatedAt   DateTime                     @updatedAt
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@index([clubId, isActive, priority])
+  @@index([clubId, pattern])
 }
 
 model ClubPricingRule {

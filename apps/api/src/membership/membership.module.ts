@@ -7,6 +7,9 @@ import { MembershipResolver } from './membership.resolver';
 import { MembershipService } from './membership.service';
 import { MembershipCartService } from './membership-cart.service';
 import { MembershipCartAdminResolver } from './membership-cart.resolver';
+import { PricingRulesAdminResolver } from './pricing-rules-admin.resolver';
+import { PricingRulesAdminService } from './pricing-rules-admin.service';
+import { PricingRulesEngineService } from './pricing-rules-engine.service';
 
 @Module({
   imports: [PrismaModule, MailModule],
@@ -16,8 +19,15 @@ import { MembershipCartAdminResolver } from './membership-cart.resolver';
     MembershipCartService,
     MembershipCartAdminResolver,
     MemberPseudoService,
+    PricingRulesAdminService,
+    PricingRulesAdminResolver,
+    PricingRulesEngineService,
     ClubModuleEnabledGuard,
   ],
-  exports: [MembershipService, MembershipCartService],
+  exports: [
+    MembershipService,
+    MembershipCartService,
+    PricingRulesEngineService,
+  ],
 })
 export class MembershipModule {}
