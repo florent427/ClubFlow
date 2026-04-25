@@ -2314,6 +2314,55 @@ export const CLUB_BRANDING = gql`
   }
 `;
 
+// ============================================================================
+// Règles de remise pattern-based (Membership pricing rules)
+// ============================================================================
+
+const MEMBERSHIP_PRICING_RULE_FIELDS = `
+  id
+  pattern
+  label
+  isActive
+  priority
+  configJson
+  createdAt
+  updatedAt
+`;
+
+export const CLUB_MEMBERSHIP_PRICING_RULES = gql`
+  query ClubMembershipPricingRules {
+    clubMembershipPricingRules {
+      ${MEMBERSHIP_PRICING_RULE_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_CLUB_MEMBERSHIP_PRICING_RULE = gql`
+  mutation CreateClubMembershipPricingRule(
+    $input: CreateMembershipPricingRuleInput!
+  ) {
+    createClubMembershipPricingRule(input: $input) {
+      ${MEMBERSHIP_PRICING_RULE_FIELDS}
+    }
+  }
+`;
+
+export const UPDATE_CLUB_MEMBERSHIP_PRICING_RULE = gql`
+  mutation UpdateClubMembershipPricingRule(
+    $input: UpdateMembershipPricingRuleInput!
+  ) {
+    updateClubMembershipPricingRule(input: $input) {
+      ${MEMBERSHIP_PRICING_RULE_FIELDS}
+    }
+  }
+`;
+
+export const DELETE_CLUB_MEMBERSHIP_PRICING_RULE = gql`
+  mutation DeleteClubMembershipPricingRule($id: ID!) {
+    deleteClubMembershipPricingRule(id: $id)
+  }
+`;
+
 export const UPDATE_CLUB_BRANDING = gql`
   mutation UpdateClubBranding($input: UpdateClubBrandingInput!) {
     updateClubBranding(input: $input) {

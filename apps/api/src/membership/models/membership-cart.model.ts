@@ -1,9 +1,57 @@
 import { Field, GraphQLISODateTime, ID, Int, ObjectType, registerEnumType } from '@nestjs/graphql';
-import { MembershipCartStatus, SubscriptionBillingRhythm } from '@prisma/client';
+import { MemberCivility, MembershipCartStatus, SubscriptionBillingRhythm } from '@prisma/client';
 
 registerEnumType(MembershipCartStatus, {
   name: 'MembershipCartStatus',
 });
+
+/**
+ * Inscription "en attente" : le Member n'est pas encore créé. Affiché
+ * dans le cart au même titre que les `items`, avec un badge "à valider"
+ * pour différenciation. Convertie en CartItem + Member réel à la
+ * validation du cart.
+ */
+@ObjectType()
+export class MembershipCartPendingItemGraph {
+  @Field(() => ID)
+  id!: string;
+
+  @Field(() => ID)
+  cartId!: string;
+
+  @Field(() => String)
+  firstName!: string;
+
+  @Field(() => String)
+  lastName!: string;
+
+  @Field(() => MemberCivility)
+  civility!: MemberCivility;
+
+  @Field(() => GraphQLISODateTime)
+  birthDate!: Date;
+
+  @Field(() => String)
+  email!: string;
+
+  /** IDs des formules sélectionnées (multi-formules). */
+  @Field(() => [ID])
+  membershipProductIds!: string[];
+
+  /** Labels snapshot des formules pour affichage sans round-trip. */
+  @Field(() => [String])
+  membershipProductLabels!: string[];
+
+  /** Total estimé (somme des annualAmountCents des formules choisies). */
+  @Field(() => Int)
+  estimatedTotalCents!: number;
+
+  @Field(() => SubscriptionBillingRhythm)
+  billingRhythm!: SubscriptionBillingRhythm;
+
+  @Field(() => GraphQLISODateTime)
+  createdAt!: Date;
+}
 
 @ObjectType()
 export class MembershipCartItemGraph {
@@ -109,6 +157,10 @@ export class MembershipCartGraph {
 
   @Field(() => [MembershipCartItemGraph])
   items!: MembershipCartItemGraph[];
+
+  /** Inscriptions en attente (Member pas encore créé). */
+  @Field(() => [MembershipCartPendingItemGraph])
+  pendingItems!: MembershipCartPendingItemGraph[];
 
   @Field(() => Int)
   totalCents!: number;

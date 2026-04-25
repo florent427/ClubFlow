@@ -73,6 +73,10 @@ export function RegisterChildMemberCta() {
       setLocalError('Prénom, nom et date de naissance sont obligatoires.');
       return;
     }
+    if (!membershipProductId) {
+      setLocalError('Sélectionnez une formule d’adhésion.');
+      return;
+    }
     try {
       const { data } = await registerChild({
         variables: {
@@ -81,13 +85,13 @@ export function RegisterChildMemberCta() {
             lastName: lastName.trim(),
             civility,
             birthDate,
-            membershipProductId: membershipProductId || null,
-            billingRhythm: membershipProductId ? billingRhythm : null,
+            membershipProductIds: [membershipProductId],
+            billingRhythm,
           },
         },
       });
       const res = data?.viewerRegisterChildMember;
-      if (!res?.memberId) {
+      if (!res?.pendingItemId) {
         setLocalError('Impossible d\u2019inscrire l\u2019enfant.');
         return;
       }

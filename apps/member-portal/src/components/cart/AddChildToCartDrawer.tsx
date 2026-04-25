@@ -1,10 +1,12 @@
-import { useMutation } from '@apollo/client/react';
+import { useMutation, useQuery } from '@apollo/client/react';
 import { useState } from 'react';
 import {
   VIEWER_ACTIVE_CART,
   VIEWER_REGISTER_CHILD_FOR_CART,
 } from '../../lib/cart-documents';
+import { VIEWER_ELIGIBLE_MEMBERSHIP_FORMULAS } from '../../lib/viewer-documents';
 import { useToast } from '../ToastProvider';
+import { formatEuroCents } from '../../lib/format';
 
 type Civility = 'MR' | 'MME';
 
@@ -13,9 +15,10 @@ interface Props {
   onClose: () => void;
 }
 
-interface RegisterChildResponse {
+interface RegisterChildPendingResponse {
   viewerRegisterChildMember: {
-    memberId: string;
+    pendingItemId: string;
+    cartId: string;
     firstName: string;
     lastName: string;
   };
@@ -27,18 +30,43 @@ export function AddChildToCartDrawer({ open, onClose }: Props) {
   const [lastName, setLastName] = useState<string>('');
   const [civility, setCivility] = useState<Civility>('MR');
   const [birthDate, setBirthDate] = useState<string>('');
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [localError, setLocalError] = useState<string | null>(null);
 
-  const [registerChild, { loading }] = useMutation<RegisterChildResponse>(
-    VIEWER_REGISTER_CHILD_FOR_CART,
-    { refetchQueries: [{ query: VIEWER_ACTIVE_CART }] },
-  );
+  const [registerChild, { loading }] =
+    useMutation<RegisterChildPendingResponse>(VIEWER_REGISTER_CHILD_FOR_CART, {
+      refetchQueries: [{ query: VIEWER_ACTIVE_CART }],
+    });
+
+  // Charge les formules éligibles selon l'âge.
+  const { data: formulasData, loading: formulasLoading } = useQuery<{
+    viewerEligibleMembershipFormulas: Array<{
+      id: string;
+      label: string;
+      annualAmountCents: number;
+      monthlyAmountCents: number;
+    }>;
+  }>(VIEWER_ELIGIBLE_MEMBERSHIP_FORMULAS, {
+    variables: { birthDate },
+    skip: !birthDate,
+    fetchPolicy: 'cache-and-network',
+  });
+  const formulas = formulasData?.viewerEligibleMembershipFormulas ?? [];
+
+  function toggleProduct(productId: string) {
+    setSelectedProductIds((prev) =>
+      prev.includes(productId)
+        ? prev.filter((id) => id !== productId)
+        : [...prev, productId],
+    );
+  }
 
   function reset(): void {
     setFirstName('');
     setLastName('');
     setCivility('MR');
     setBirthDate('');
+    setSelectedProductIds([]);
     setLocalError(null);
   }
 
@@ -54,6 +82,10 @@ export function AddChildToCartDrawer({ open, onClose }: Props) {
       setLocalError('Prénom, nom et date de naissance sont obligatoires.');
       return;
     }
+    if (selectedProductIds.length === 0) {
+      setLocalError('Sélectionnez au moins une formule d’adhésion.');
+      return;
+    }
     try {
       const { data } = await registerChild({
         variables: {
@@ -62,18 +94,18 @@ export function AddChildToCartDrawer({ open, onClose }: Props) {
             lastName: lastName.trim(),
             civility,
             birthDate,
-            membershipProductId: null,
+            membershipProductIds: selectedProductIds,
             billingRhythm: null,
           },
         },
       });
       const res = data?.viewerRegisterChildMember;
-      if (!res?.memberId) {
-        setLocalError('Impossible d\u2019inscrire l\u2019enfant.');
+      if (!res?.pendingItemId) {
+        setLocalError('Impossible d’inscrire l’enfant.');
         return;
       }
       showToast(
-        `${res.firstName} ${res.lastName} ajouté au projet d\u2019adhésion.`,
+        `${res.firstName} ${res.lastName} ajouté au projet (${selectedProductIds.length} formule${selectedProductIds.length > 1 ? 's' : ''}). Sa fiche adhérent sera créée à la validation du projet.`,
         'success',
       );
       reset();
@@ -82,7 +114,7 @@ export function AddChildToCartDrawer({ open, onClose }: Props) {
       setLocalError(
         err instanceof Error
           ? err.message
-          : 'Impossible d\u2019inscrire l\u2019enfant.',
+          : 'Impossible d’inscrire l’enfant.',
       );
     }
   }
@@ -106,9 +138,9 @@ export function AddChildToCartDrawer({ open, onClose }: Props) {
           Ajouter un enfant au projet
         </h2>
         <p className="mp-hint mp-modal-lede">
-          La formule d&rsquo;adhésion et la licence fédérale sont attribuées
-          automatiquement selon l&rsquo;âge. Vous pourrez ajuster le rythme de
-          règlement après ajout.
+          Vous pouvez sélectionner plusieurs formules (ex Karaté +
+          Cross Training). La fiche adhérent sera créée à la validation
+          du projet — pas avant.
         </p>
 
         <label className="mp-field">
@@ -167,6 +199,65 @@ export function AddChildToCartDrawer({ open, onClose }: Props) {
             disabled={loading}
           />
         </label>
+
+        {birthDate ? (
+          <fieldset className="mp-fieldset">
+            <legend className="mp-legend">
+              Formules d&rsquo;adhésion
+              {selectedProductIds.length > 0
+                ? ` (${selectedProductIds.length} sélectionnée${selectedProductIds.length > 1 ? 's' : ''})`
+                : ''}
+            </legend>
+            {formulasLoading ? (
+              <p className="mp-hint">Chargement…</p>
+            ) : formulas.length === 0 ? (
+              <p className="mp-hint">
+                Aucune formule disponible pour cet âge — contacte le club.
+              </p>
+            ) : (
+              formulas.map((f) => {
+                const checked = selectedProductIds.includes(f.id);
+                return (
+                  <label
+                    key={f.id}
+                    className="mp-checkbox"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: 8,
+                      padding: '8px 12px',
+                      marginBottom: 6,
+                      border: checked
+                        ? '2px solid #2563eb'
+                        : '1px solid #e5e7eb',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                      background: checked ? 'rgba(37, 99, 235, 0.05)' : 'white',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleProduct(f.id)}
+                      disabled={loading}
+                      style={{ marginTop: 3 }}
+                    />
+                    <span style={{ flex: 1 }}>
+                      <strong>{f.label}</strong>
+                      <br />
+                      <small className="mp-hint">
+                        {formatEuroCents(f.annualAmountCents)} / an
+                        {f.monthlyAmountCents > 0
+                          ? ` ou ${formatEuroCents(f.monthlyAmountCents)} / mois`
+                          : ''}
+                      </small>
+                    </span>
+                  </label>
+                );
+              })
+            )}
+          </fieldset>
+        ) : null}
 
         {localError ? (
           <p className="mp-form-error" role="alert">

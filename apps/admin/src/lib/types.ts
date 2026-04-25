@@ -1280,3 +1280,58 @@ export type ConsolidationPreview = {
 export type AccountingEntryConsolidationPreviewData = {
   accountingEntryConsolidationPreview: ConsolidationPreview;
 };
+
+// ============================================================================
+// Règles de remise pattern-based
+// ============================================================================
+
+export type MembershipPricingRulePatternGql =
+  | 'FAMILY_PROGRESSIVE'
+  | 'PRODUCT_BUNDLE'
+  | 'AGE_RANGE_DISCOUNT'
+  | 'NEW_MEMBER_DISCOUNT'
+  | 'LOYALTY_DISCOUNT';
+
+/**
+ * Config typée par pattern. `configJson` arrive en string depuis GraphQL ;
+ * le client la parse selon le pattern pour récupérer un objet typé.
+ */
+export type FamilyProgressiveConfig = {
+  tiers: Array<{
+    rank: number;
+    type: 'PERCENT_BP' | 'FIXED_CENTS';
+    value: number;
+  }>;
+  appliesTo: Array<'SUBSCRIPTION'>;
+  sortBy: 'AMOUNT_DESC' | 'AMOUNT_ASC' | 'AGE_DESC' | 'AGE_ASC';
+};
+
+export type ProductBundleConfig = {
+  requiredProductIds: string[];
+  discountAppliesToProductId: string;
+  discountType: 'PERCENT_BP' | 'FIXED_CENTS';
+  discountValue: number;
+};
+
+export type AgeRangeDiscountConfig = {
+  minAge: number | null;
+  maxAge: number | null;
+  discountType: 'PERCENT_BP' | 'FIXED_CENTS';
+  discountValue: number;
+};
+
+export type MembershipPricingRule = {
+  id: string;
+  pattern: MembershipPricingRulePatternGql;
+  label: string;
+  isActive: boolean;
+  priority: number;
+  /** JSON sérialisé en string. À parser selon `pattern`. */
+  configJson: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ClubMembershipPricingRulesData = {
+  clubMembershipPricingRules: MembershipPricingRule[];
+};

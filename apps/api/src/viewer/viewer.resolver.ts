@@ -292,10 +292,10 @@ export class ViewerResolver {
     return this.viewer.viewerEligibleMembershipFormulas(club.id, birthDate);
   }
 
-  @Mutation(() => ViewerMemberCreatedResultGraph, {
+  @Mutation(() => ViewerPendingRegistrationResultGraph, {
     name: 'viewerRegisterChildMember',
     description:
-      'Crée une fiche adhérent mineure rattachée au foyer du viewer payeur. L’admin complète la formule d’adhésion et la facturation.',
+      "Inscrit un enfant comme PENDING dans le projet d'adhésion (la fiche `Member` est créée à la validation du cart, pas immédiatement). Multi-formules supporté.",
   })
   @RequireClubModule(ModuleCode.MEMBERS)
   @Throttle({ default: { limit: 10, ttl: 60000 } })
@@ -303,7 +303,7 @@ export class ViewerResolver {
     @CurrentUser() user: RequestUser,
     @CurrentClub() club: Club,
     @Args('input') input: ViewerRegisterChildMemberInput,
-  ): Promise<ViewerMemberCreatedResultGraph> {
+  ): Promise<ViewerPendingRegistrationResultGraph> {
     return this.viewer.viewerRegisterChildMember(
       club.id,
       user.userId,
@@ -316,7 +316,7 @@ export class ViewerResolver {
         lastName: input.lastName,
         civility: input.civility,
         birthDate: input.birthDate,
-        membershipProductId: input.membershipProductId ?? null,
+        membershipProductIds: input.membershipProductIds,
         billingRhythm: input.billingRhythm ?? null,
       },
     );

@@ -250,12 +250,13 @@ export function AdhesionPage() {
               </div>
             </div>
 
-            {cart.items.length === 0 ? (
+            {cart.items.length === 0 &&
+            (!cart.pendingItems || cart.pendingItems.length === 0) ? (
               <p className="mp-hint">
                 Aucun membre dans le projet. Ajoutez-vous ou vos enfants pour
-                dÃ©marrer.
+                démarrer.
               </p>
-            ) : (
+            ) : cart.items.length === 0 ? null : (
               <div className="mp-cart-item-list">
                 {cart.items.map((it) => (
                   <CartItemCard
@@ -266,6 +267,83 @@ export function AdhesionPage() {
                 ))}
               </div>
             )}
+
+            {cart.pendingItems && cart.pendingItems.length > 0 ? (
+              <div style={{ marginTop: 16 }}>
+                <h3
+                  style={{
+                    fontSize: '0.95rem',
+                    fontWeight: 600,
+                    color: '#854d0e',
+                    marginBottom: 8,
+                  }}
+                >
+                  ⏳ En attente de validation
+                </h3>
+                <p
+                  className="mp-hint"
+                  style={{ marginBottom: 8, fontSize: '0.8rem' }}
+                >
+                  Les fiches adhérent ci-dessous seront créées
+                  uniquement quand le club validera le projet d&apos;adhésion.
+                </p>
+                <div className="mp-cart-item-list">
+                  {cart.pendingItems.map((p) => (
+                    <div
+                      key={p.id}
+                      style={{
+                        padding: 12,
+                        marginBottom: 8,
+                        background: 'rgba(202, 138, 4, 0.06)',
+                        border: '1px solid rgba(202, 138, 4, 0.3)',
+                        borderRadius: 6,
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'flex-start',
+                        gap: 12,
+                      }}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <strong>
+                          {p.firstName} {p.lastName}
+                        </strong>
+                        <span
+                          className="mp-pill"
+                          style={{
+                            marginLeft: 8,
+                            padding: '2px 8px',
+                            background: 'rgba(202, 138, 4, 0.2)',
+                            color: '#854d0e',
+                            borderRadius: 12,
+                            fontSize: '0.7rem',
+                          }}
+                        >
+                          à valider
+                        </span>
+                        <br />
+                        <small className="mp-hint">
+                          {p.membershipProductLabels.length} formule
+                          {p.membershipProductLabels.length > 1 ? 's' : ''} :{' '}
+                          {p.membershipProductLabels.join(', ')}
+                        </small>
+                      </div>
+                      <div
+                        style={{
+                          textAlign: 'right',
+                          fontWeight: 600,
+                        }}
+                      >
+                        ~{(p.estimatedTotalCents / 100).toFixed(2)} €
+                        <br />
+                        <small className="mp-hint" style={{ fontWeight: 400 }}>
+                          estimé
+                        </small>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </section>
 
           <CartSummary cart={cart} />

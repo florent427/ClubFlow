@@ -32,6 +32,18 @@ export const MEMBERSHIP_CART_FIELDS = gql`
       subscriptionAdjustedCents
       oneTimeFeesCents
     }
+    pendingItems {
+      id
+      firstName
+      lastName
+      civility
+      birthDate
+      membershipProductIds
+      membershipProductLabels
+      estimatedTotalCents
+      billingRhythm
+      createdAt
+    }
   }
 `;
 
@@ -114,7 +126,8 @@ export const VIEWER_REGISTER_SELF_AS_MEMBER = gql`
 export const VIEWER_REGISTER_CHILD_FOR_CART = gql`
   mutation ViewerRegisterChildForCart($input: ViewerRegisterChildMemberInput!) {
     viewerRegisterChildMember(input: $input) {
-      memberId
+      pendingItemId
+      cartId
       firstName
       lastName
     }
@@ -139,6 +152,23 @@ export type CartItem = {
   oneTimeFeesCents: number;
 };
 
+/**
+ * Inscription en attente (Member pas encore créé). Affichée dans le
+ * cart au même titre que les `items`, avec un badge "à valider".
+ */
+export type CartPendingItem = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  civility: 'MR' | 'MME';
+  birthDate: string;
+  membershipProductIds: string[];
+  membershipProductLabels: string[];
+  estimatedTotalCents: number;
+  billingRhythm: 'ANNUAL' | 'MONTHLY';
+  createdAt: string;
+};
+
 export type Cart = {
   id: string;
   clubId: string;
@@ -154,6 +184,7 @@ export type Cart = {
   requiresManualAssignmentCount: number;
   canValidate: boolean;
   items: CartItem[];
+  pendingItems: CartPendingItem[];
 };
 
 export type ViewerActiveCartData = {

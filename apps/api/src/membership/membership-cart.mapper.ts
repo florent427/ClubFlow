@@ -1,6 +1,7 @@
 import type {
   MembershipCart,
   MembershipCartItem,
+  MembershipCartPendingItem,
   Member,
   MembershipProduct,
   Contact,
@@ -10,6 +11,7 @@ import type {
 import type {
   MembershipCartGraph,
   MembershipCartItemGraph,
+  MembershipCartPendingItemGraph,
 } from './models/membership-cart.model';
 import type { CartPreview } from './membership-cart.service';
 
@@ -20,6 +22,7 @@ type CartWithRelations = MembershipCart & {
       product: MembershipProduct | null;
     }
   >;
+  pendingItems?: MembershipCartPendingItem[];
   payerContact: Contact | null;
   payerMember: Member | null;
   clubSeason: ClubSeason;
@@ -41,6 +44,7 @@ function payerFullName(cart: CartWithRelations): string | null {
 export function toMembershipCartGraph(
   cart: CartWithRelations,
   preview: CartPreview,
+  productsById?: Map<string, { label: string; annualAmountCents: number }>,
 ): MembershipCartGraph {
   const previewByItem = new Map(preview.items.map((p) => [p.itemId, p]));
   const items: MembershipCartItemGraph[] = cart.items.map((item) => {
@@ -67,6 +71,37 @@ export function toMembershipCartGraph(
     };
   });
 
+  // Mappe les pending items, en résolvant les labels produit + total
+  // estimé à partir du `productsById` fourni (ou retombe sur des labels
+  // génériques si pas de map).
+  const pendingItems: MembershipCartPendingItemGraph[] = (
+    cart.pendingItems ?? []
+  )
+    .filter((p) => p.convertedToMemberId === null)
+    .map((p) => {
+      const labels: string[] = [];
+      let estimatedTotal = 0;
+      for (const productId of p.membershipProductIds) {
+        const product = productsById?.get(productId);
+        labels.push(product?.label ?? `Formule ${productId.slice(0, 6)}…`);
+        estimatedTotal += product?.annualAmountCents ?? 0;
+      }
+      return {
+        id: p.id,
+        cartId: p.cartId,
+        firstName: p.firstName,
+        lastName: p.lastName,
+        civility: p.civility,
+        birthDate: p.birthDate,
+        email: p.email,
+        membershipProductIds: p.membershipProductIds,
+        membershipProductLabels: labels,
+        estimatedTotalCents: estimatedTotal,
+        billingRhythm: p.billingRhythm,
+        createdAt: p.createdAt,
+      };
+    });
+
   return {
     id: cart.id,
     clubId: cart.clubId,
@@ -82,6 +117,7 @@ export function toMembershipCartGraph(
     cancelledReason: cart.cancelledReason,
     notes: cart.notes,
     items,
+    pendingItems,
     totalCents: preview.totalCents,
     requiresManualAssignmentCount: preview.requiresManualAssignmentCount,
     canValidate: preview.canValidate,

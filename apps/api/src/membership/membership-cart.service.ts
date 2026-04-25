@@ -610,6 +610,10 @@ export class MembershipCartService {
           include: { member: true, product: true },
           orderBy: { createdAt: 'asc' },
         },
+        // Inscriptions en attente (Member pas encore créé)
+        pendingItems: {
+          orderBy: { createdAt: 'asc' },
+        },
         payerContact: true,
         payerMember: true,
         family: true,

@@ -168,8 +168,18 @@ export type ViewerPromoteSelfToMemberData = {
   viewerPromoteSelfToMember: ViewerMemberCreatedResult;
 };
 
+/**
+ * Réponse de `viewerRegisterChildMember` v1.5+ : retourne un
+ * `pendingItemId` (pas un memberId — la fiche Member est créée à la
+ * validation du cart, pas immédiatement).
+ */
 export type ViewerRegisterChildMemberData = {
-  viewerRegisterChildMember: ViewerMemberCreatedResult;
+  viewerRegisterChildMember: {
+    pendingItemId: string;
+    cartId: string;
+    firstName: string;
+    lastName: string;
+  };
 };
 
 export type ViewerMembershipFormula = {

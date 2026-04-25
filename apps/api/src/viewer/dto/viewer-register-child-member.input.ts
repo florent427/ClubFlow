@@ -1,6 +1,9 @@
 import { Field, ID, InputType } from '@nestjs/graphql';
 import { MemberCivility, SubscriptionBillingRhythm } from '@prisma/client';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsDateString,
   IsEnum,
   IsOptional,
@@ -32,11 +35,16 @@ export class ViewerRegisterChildMemberInput {
   @IsDateString()
   birthDate!: string;
 
-  /** Formule d'adhésion choisie — génère une facture DRAFT que l'admin finalise. */
-  @Field(() => ID, { nullable: true })
-  @IsOptional()
-  @IsUUID('4')
-  membershipProductId?: string;
+  /**
+   * Formules d'adhésion choisies (1 à N). Multi-formules supporté
+   * (ex Karaté + Cross Training).
+   */
+  @Field(() => [ID])
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(10)
+  @IsUUID(undefined, { each: true })
+  membershipProductIds!: string[];
 
   @Field(() => SubscriptionBillingRhythm, { nullable: true })
   @IsOptional()

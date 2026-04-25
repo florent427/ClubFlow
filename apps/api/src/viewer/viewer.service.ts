@@ -1131,10 +1131,16 @@ export class ViewerService {
       lastName: string;
       civility: MemberCivility;
       birthDate: string;
-      membershipProductId?: string | null;
+      /** Multi-formules : 1 ou plusieurs formules d'adhésion. */
+      membershipProductIds: string[];
       billingRhythm?: SubscriptionBillingRhythm | null;
     },
-  ): Promise<{ memberId: string; firstName: string; lastName: string }> {
+  ): Promise<{
+    pendingItemId: string;
+    cartId: string;
+    firstName: string;
+    lastName: string;
+  }> {
     let familyId: string | null = null;
     let payerEmail: string | null = null;
     if (activeProfile.memberId) {
@@ -1198,10 +1204,16 @@ export class ViewerService {
         'Adresse e-mail du compte payeur introuvable.',
       );
     }
-    await assertMemberEmailAllowedInClub(this.prisma, clubId, payerEmail, {
-      memberId: null,
-      assumeMemberFamilyId: familyId!,
-    });
+    if (
+      !input.membershipProductIds ||
+      input.membershipProductIds.length === 0
+    ) {
+      throw new BadRequestException(
+        'Sélectionnez au moins une formule d’adhésion.',
+      );
+    }
+    // On évite le doublon nom+prénom+naissance UNIQUEMENT côté Member réel
+    // (pas dans les pending — sinon on bloque les ré-essais après abandon).
     const duplicate = await this.prisma.member.findFirst({
       where: {
         clubId,
@@ -1216,58 +1228,32 @@ export class ViewerService {
         'Un adhérent avec ce prénom, nom et date de naissance existe déjà dans le club.',
       );
     }
-    const pseudo = await this.memberPseudo.pickAvailablePseudo(
-      this.prisma,
+
+    // Pattern PENDING : aucun Member créé maintenant. On stocke un
+    // `MembershipCartPendingItem` qui sera matérialisé en Member réel
+    // à la validation du cart par le payeur (cf
+    // `MembershipCartService.finalizePendingItems`).
+    const result = await this.membershipCart.addPendingItemToActiveCart(
       clubId,
-      input.firstName,
-      input.lastName,
-      null,
+      familyId!,
+      {
+        firstName: input.firstName.trim(),
+        lastName: input.lastName.trim(),
+        civility: input.civility === 'MR' ? 'MR' : 'MME',
+        birthDate: new Date(input.birthDate),
+        email: payerEmail,
+        contactId: activeProfile.contactId ?? null,
+        membershipProductIds: input.membershipProductIds,
+        billingRhythm:
+          input.billingRhythm ?? SubscriptionBillingRhythm.ANNUAL,
+      },
     );
-    const created = await this.prisma.$transaction(async (tx) => {
-      const m = await tx.member.create({
-        data: {
-          clubId,
-          firstName: input.firstName,
-          lastName: input.lastName,
-          pseudo,
-          civility: input.civility,
-          email: payerEmail!,
-          birthDate: new Date(input.birthDate),
-          status: MemberStatus.ACTIVE,
-          roleAssignments: {
-            create: [{ role: MemberClubRole.STUDENT }],
-          },
-        },
-        select: { id: true, firstName: true, lastName: true },
-      });
-      await tx.familyMember.create({
-        data: {
-          familyId: familyId!,
-          memberId: m.id,
-          linkRole: FamilyMemberLinkRole.MEMBER,
-        },
-      });
-      return m;
-    });
-    await this.families.syncContactUserPayerMemberLinksByEmail(
-      clubId,
-      payerEmail,
-    );
-    // Ajout automatique au projet d'adhésion (cart) actif.
-    // Swallow les erreurs pour ne pas faire échouer l'inscription de l'enfant.
-    try {
-      await this.membershipCart.addMemberToActiveCart(clubId, created.id);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        '[viewer.registerChildMember] auto-add membership cart failed',
-        (err as Error).message,
-      );
-    }
+
     return {
-      memberId: created.id,
-      firstName: created.firstName,
-      lastName: created.lastName,
+      pendingItemId: result.pendingItemId,
+      cartId: result.cartId,
+      firstName: input.firstName.trim(),
+      lastName: input.lastName.trim(),
     };
   }
 

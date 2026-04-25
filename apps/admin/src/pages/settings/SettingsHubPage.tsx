@@ -107,6 +107,14 @@ export function SettingsHubPage() {
                 desc="Comptes bancaires, caisses, transit Stripe & routage automatique des paiements."
               />
             </li>
+            <li>
+              <SettingsHubCard
+                to="/settings/adhesion-pricing-rules"
+                modules={['MEMBERS', 'PAYMENT']}
+                title="Remises automatiques"
+                desc="Remise famille progressive, combinaison de produits, tranche d'âge — règles appliquées automatiquement aux factures d'adhésion."
+              />
+            </li>
           </ul>
         </section>
       </div>

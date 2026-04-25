@@ -242,7 +242,8 @@ export const VIEWER_PROMOTE_SELF_TO_MEMBER = gql`
 export const VIEWER_REGISTER_CHILD_MEMBER = gql`
   mutation ViewerRegisterChildMember($input: ViewerRegisterChildMemberInput!) {
     viewerRegisterChildMember(input: $input) {
-      memberId
+      pendingItemId
+      cartId
       firstName
       lastName
     }
