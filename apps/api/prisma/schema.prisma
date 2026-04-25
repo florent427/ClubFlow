@@ -347,12 +347,13 @@ model Contact {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  club                   Club                 @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  user                   User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  club                   Club                        @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user                   User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// Liens `FamilyMember` où ce contact est désigné payeur (`linkRole = PAYER`).
-  familyMemberPayerLinks FamilyMember[]       @relation("FamilyMemberPayerContact")
-  paymentsAsPaidBy       Payment[]            @relation("PaymentPaidByContact")
-  membershipCartsAsPayer MembershipCart[]     @relation("CartPayerContact")
+  familyMemberPayerLinks FamilyMember[]              @relation("FamilyMemberPayerContact")
+  paymentsAsPaidBy       Payment[]                   @relation("PaymentPaidByContact")
+  membershipCartsAsPayer MembershipCart[]            @relation("CartPayerContact")
+  pendingMembershipItems MembershipCartPendingItem[] @relation("PendingItemContact")
   projectContributions   ProjectContributor[]
   sponsorshipDeals       SponsorshipDeal[]
 
@@ -604,11 +605,13 @@ model Member {
   chatRoomsCreated          ChatRoom[]                   @relation("MemberChatRoomsCreated")
 
   /// Numéro de licence fédérale validé (saisi une fois via « J'ai déjà une licence »).
-  licenseNumber          String?
-  membershipCartItems    MembershipCartItem[]
-  membershipCartsAsPayer MembershipCart[]       @relation("CartPayerMember")
-  projectContributions   ProjectContributor[]
-  accountingAllocations  AccountingAllocation[]
+  licenseNumber             String?
+  membershipCartItems       MembershipCartItem[]
+  membershipCartsAsPayer    MembershipCart[]            @relation("CartPayerMember")
+  /// Snapshot d'une inscription pending convertie en ce Member réel.
+  convertedFromPendingItems MembershipCartPendingItem[] @relation("PendingItemConvertedMember")
+  projectContributions      ProjectContributor[]
+  accountingAllocations     AccountingAllocation[]
 
   @@unique([clubId, userId])
   @@unique([clubId, pseudo])
@@ -1947,13 +1950,14 @@ model MembershipCart {
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 
-  club         Club                 @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  family       Family               @relation(fields: [familyId], references: [id], onDelete: Cascade)
-  clubSeason   ClubSeason           @relation(fields: [clubSeasonId], references: [id], onDelete: Cascade)
-  payerContact Contact?             @relation("CartPayerContact", fields: [payerContactId], references: [id], onDelete: SetNull)
-  payerMember  Member?              @relation("CartPayerMember", fields: [payerMemberId], references: [id], onDelete: SetNull)
-  invoice      Invoice?             @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  club         Club                        @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  family       Family                      @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  clubSeason   ClubSeason                  @relation(fields: [clubSeasonId], references: [id], onDelete: Cascade)
+  payerContact Contact?                    @relation("CartPayerContact", fields: [payerContactId], references: [id], onDelete: SetNull)
+  payerMember  Member?                     @relation("CartPayerMember", fields: [payerMemberId], references: [id], onDelete: SetNull)
+  invoice      Invoice?                    @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
   items        MembershipCartItem[]
+  pendingItems MembershipCartPendingItem[]
 
   @@index([clubId, status])
   @@index([familyId, clubSeasonId, status])
@@ -1984,9 +1988,60 @@ model MembershipCartItem {
   member  Member             @relation(fields: [memberId], references: [id], onDelete: Restrict)
   product MembershipProduct? @relation(fields: [membershipProductId], references: [id], onDelete: SetNull)
 
-  @@unique([cartId, memberId])
+  /// Permet plusieurs formules pour un même membre (ex Karaté + Cross
+  /// Training). L'unicité est sur le triplet (cart, member, produit) —
+  /// on évite seulement les doublons exacts. Les anciens code-paths qui
+  /// supposaient "1 ligne par membre" doivent agréger via `findFirst`
+  /// ou `findMany` au lieu de `findUnique`.
+  @@unique([cartId, memberId, membershipProductId])
   @@index([cartId])
   @@index([memberId])
+}
+
+/// Inscription "en attente" dans un cart — une personne (Contact ou enfant
+/// à créer) qui veut adhérer mais dont la fiche `Member` n'est PAS encore
+/// créée. Évite les Members fantômes si le payeur abandonne le projet
+/// d'adhésion.
+///
+/// Stratégie : snapshot complet des données identitaires + array des
+/// formules choisies. À la validation du cart, chaque PendingItem est
+/// transformé en Member réel + autant de `MembershipCartItem` que de
+/// formules sélectionnées. `convertedToMemberId` trace la conversion
+/// pour l'audit (NULL = abandon).
+///
+/// Multi-formules : `membershipProductIds` est un array — Samantha peut
+/// s'inscrire à Karaté Adultes ET Cross Training en une seule action.
+model MembershipCartPendingItem {
+  id                   String                    @id @default(uuid())
+  cartId               String
+  /// Snapshot identité (au moment de la sélection)
+  firstName            String
+  lastName             String
+  civility             MemberCivility
+  birthDate            DateTime
+  /// Email snapshot (du Contact payeur, hérité). Sert au check unicité
+  /// au moment de la finalisation.
+  email                String
+  /// Si la personne est déjà un Contact du club (cas auto-inscription
+  /// adulte). Null pour un enfant ajouté par le payeur (pas de Contact
+  /// préalable).
+  contactId            String?
+  /// IDs de MembershipProduct sélectionnés. Toujours ≥ 1.
+  membershipProductIds String[]
+  billingRhythm        SubscriptionBillingRhythm @default(ANNUAL)
+  /// FK forte vers le Member créé à la validation. Null = pas encore
+  /// converti (cart pas encore validé OU abandon).
+  convertedToMemberId  String?
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+
+  cart            MembershipCart @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  contact         Contact?       @relation("PendingItemContact", fields: [contactId], references: [id], onDelete: SetNull)
+  convertedMember Member?        @relation("PendingItemConvertedMember", fields: [convertedToMemberId], references: [id], onDelete: SetNull)
+
+  @@unique([cartId, email, firstName, lastName])
+  @@index([cartId])
+  @@index([contactId])
 }
 
 // ============================================================================

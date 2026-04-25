@@ -1,5 +1,8 @@
 import { Field, ID, InputType } from '@nestjs/graphql';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsBoolean,
   IsEnum,
   IsOptional,
@@ -49,4 +52,15 @@ export class ViewerRegisterSelfAsMemberInput {
   @Field(() => String)
   @IsString()
   birthDate!: string;
+
+  /**
+   * Formules d'adhésion sélectionnées par l'utilisateur. Au moins 1.
+   * Multi-sélection autorisée (ex Karaté + Cross Training).
+   */
+  @Field(() => [ID])
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(10)
+  @IsUUID(undefined, { each: true })
+  membershipProductIds!: string[];
 }

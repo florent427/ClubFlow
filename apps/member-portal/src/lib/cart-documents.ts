@@ -103,7 +103,8 @@ export const VIEWER_VALIDATE_CART = gql`
 export const VIEWER_REGISTER_SELF_AS_MEMBER = gql`
   mutation ViewerRegisterSelfAsMember($input: ViewerRegisterSelfAsMemberInput!) {
     viewerRegisterSelfAsMember(input: $input) {
-      memberId
+      pendingItemId
+      cartId
       firstName
       lastName
     }

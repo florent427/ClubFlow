@@ -30,6 +30,7 @@ import { MAIL_TRANSPORT } from '../mail/mail.constants';
 import type { MailTransport } from '../mail/mail-transport.interface';
 import { ClubSendingDomainService } from '../mail/club-sending-domain.service';
 import { renderMembershipCartValidatedEmail } from '../mail/templates/membership-cart-validated';
+import { MemberPseudoService } from '../messaging/member-pseudo.service';
 
 /** Résumé ligne utilisé pour l'aperçu et l'email. */
 export type CartItemPreview = {
@@ -67,6 +68,7 @@ export class MembershipCartService {
     private readonly membership: MembershipService,
     private readonly domains: ClubSendingDomainService,
     @Inject(MAIL_TRANSPORT) private readonly transport: MailTransport,
+    private readonly memberPseudo: MemberPseudoService,
   ) {}
 
   // ------------------------------------------------------------------
@@ -303,8 +305,15 @@ export class MembershipCartService {
       }
     }
 
-    const existing = await this.prisma.membershipCartItem.findUnique({
-      where: { cartId_memberId: { cartId: cart.id, memberId } },
+    // Avec la contrainte unique composite `(cartId, memberId, productId)`,
+    // on cherche par triplet pour idempotence stricte. On accepte qu'un
+    // membre ait plusieurs lignes dans le même cart (multi-formules).
+    const existing = await this.prisma.membershipCartItem.findFirst({
+      where: {
+        cartId: cart.id,
+        memberId,
+        membershipProductId: productId,
+      },
     });
     if (existing) {
       return { cartId: cart.id, itemId: existing.id };
@@ -320,6 +329,127 @@ export class MembershipCartService {
       },
     });
     return { cartId: cart.id, itemId: item.id };
+  }
+
+  // ------------------------------------------------------------------
+  // Inscriptions "en attente" (Member pas encore créé)
+  // ------------------------------------------------------------------
+
+  /**
+   * Ajoute un Contact (adulte) ou un enfant en "pending" dans le cart actif
+   * du foyer. Aucune fiche `Member` n'est créée à ce stade : la création
+   * effective a lieu uniquement à la validation du cart, via
+   * `finalizePendingItems`.
+   *
+   * Multi-formules : `membershipProductIds` est un array — l'utilisateur
+   * choisit toutes les formules auxquelles il veut s'inscrire en un coup
+   * (ex Karaté + Cross Training).
+   */
+  async addPendingItemToActiveCart(
+    clubId: string,
+    familyId: string,
+    input: {
+      firstName: string;
+      lastName: string;
+      civility: 'MR' | 'MME';
+      birthDate: Date;
+      email: string;
+      contactId?: string | null;
+      membershipProductIds: string[];
+      billingRhythm?: SubscriptionBillingRhythm | null;
+    },
+  ): Promise<{ cartId: string; pendingItemId: string }> {
+    if (input.membershipProductIds.length === 0) {
+      throw new BadRequestException(
+        'Sélectionnez au moins une formule d’adhésion.',
+      );
+    }
+    const season = await this.prisma.clubSeason.findFirst({
+      where: { clubId, isActive: true },
+    });
+    if (!season) {
+      throw new BadRequestException(
+        'Aucune saison active pour ce club.',
+      );
+    }
+
+    // Validation : tous les MembershipProduct existent et appartiennent à
+    // ce club (anti-tampering depuis l'UI).
+    const products = await this.prisma.membershipProduct.findMany({
+      where: { id: { in: input.membershipProductIds }, clubId },
+      select: { id: true },
+    });
+    if (products.length !== input.membershipProductIds.length) {
+      throw new BadRequestException(
+        'Une ou plusieurs formules sélectionnées sont invalides.',
+      );
+    }
+
+    const cart = await this.getOrOpenCart(clubId, familyId, season.id, {
+      payerContactId: input.contactId ?? null,
+    });
+
+    // Idempotence : si un pending existe déjà sur ce cart pour cette
+    // identité (même email + nom complet), on met à jour les formules
+    // au lieu de créer un doublon.
+    const existing = await this.prisma.membershipCartPendingItem.findFirst({
+      where: {
+        cartId: cart.id,
+        email: input.email,
+        firstName: input.firstName,
+        lastName: input.lastName,
+      },
+    });
+    if (existing) {
+      const updated = await this.prisma.membershipCartPendingItem.update({
+        where: { id: existing.id },
+        data: {
+          civility: input.civility,
+          birthDate: input.birthDate,
+          membershipProductIds: input.membershipProductIds,
+          billingRhythm:
+            input.billingRhythm ?? SubscriptionBillingRhythm.ANNUAL,
+          contactId: input.contactId ?? existing.contactId,
+        },
+      });
+      return { cartId: cart.id, pendingItemId: updated.id };
+    }
+
+    const pending = await this.prisma.membershipCartPendingItem.create({
+      data: {
+        cartId: cart.id,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        civility: input.civility,
+        birthDate: input.birthDate,
+        email: input.email,
+        contactId: input.contactId ?? null,
+        membershipProductIds: input.membershipProductIds,
+        billingRhythm: input.billingRhythm ?? SubscriptionBillingRhythm.ANNUAL,
+      },
+    });
+    return { cartId: cart.id, pendingItemId: pending.id };
+  }
+
+  /**
+   * Supprime un pending item (l'utilisateur change d'avis avant validation).
+   */
+  async removePendingItem(clubId: string, pendingItemId: string): Promise<void> {
+    const item = await this.prisma.membershipCartPendingItem.findFirst({
+      where: { id: pendingItemId, cart: { clubId } },
+      include: { cart: true },
+    });
+    if (!item) {
+      throw new NotFoundException('Inscription en attente introuvable.');
+    }
+    if (item.cart.status !== MembershipCartStatus.OPEN) {
+      throw new BadRequestException(
+        'Le projet est déjà validé — impossible de modifier.',
+      );
+    }
+    await this.prisma.membershipCartPendingItem.delete({
+      where: { id: pendingItemId },
+    });
   }
 
   // ------------------------------------------------------------------
@@ -768,10 +898,21 @@ export class MembershipCartService {
     cartId: string,
     lockedPaymentMethod?: ClubPaymentMethod | null,
   ) {
-    const cart = await this.getCartById(clubId, cartId);
+    let cart = await this.getCartById(clubId, cartId);
     if (cart.status !== MembershipCartStatus.OPEN) {
       throw new BadRequestException('Le projet est déjà validé ou annulé.');
     }
+    // Étape 1 : finaliser les pending items (création des Members réels +
+    // CartItems associés). Refresh du cart pour inclure les nouveaux items.
+    const pendingCount =
+      await this.prisma.membershipCartPendingItem.count({
+        where: { cartId, convertedToMemberId: null },
+      });
+    if (pendingCount > 0) {
+      await this.finalizePendingItems(clubId, cartId);
+      cart = await this.getCartById(clubId, cartId);
+    }
+
     if (cart.items.length === 0) {
       throw new BadRequestException(
         'Impossible de valider un projet vide. Ajoutez au moins un membre.',
@@ -998,6 +1139,116 @@ export class MembershipCartService {
       reason: a.reason ?? null,
       createdByUserId: a.type === 'EXCEPTIONAL' ? userId : null,
     }));
+  }
+
+  // ------------------------------------------------------------------
+  // Conversion pending → Member réel
+  // ------------------------------------------------------------------
+
+  /**
+   * Pour chaque `MembershipCartPendingItem` non converti du cart :
+   *  1. Crée le `Member` réel (status ACTIVE)
+   *  2. Rattache au foyer du cart
+   *  3. Crée 1 `MembershipCartItem` par formule choisie (multi-formules)
+   *  4. Marque le pending comme `convertedToMemberId`
+   *
+   * Appelée au début de `validateCart` pour matérialiser les inscriptions
+   * "en attente" juste avant de créer la facture. Les pending items
+   * abandonnés (cart annulé) ne sont jamais convertis.
+   */
+  private async finalizePendingItems(
+    clubId: string,
+    cartId: string,
+  ): Promise<void> {
+    const pendings = await this.prisma.membershipCartPendingItem.findMany({
+      where: { cartId, convertedToMemberId: null },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (pendings.length === 0) return;
+
+    const cart = await this.prisma.membershipCart.findUniqueOrThrow({
+      where: { id: cartId },
+      select: { familyId: true, clubSeasonId: true },
+    });
+
+    for (const p of pendings) {
+      // 1. Créer le Member
+      const pseudo = await this.memberPseudo.pickAvailablePseudo(
+        this.prisma,
+        clubId,
+        p.firstName,
+        p.lastName,
+        null,
+      );
+      const member = await this.prisma.member.create({
+        data: {
+          clubId,
+          firstName: p.firstName,
+          lastName: p.lastName,
+          pseudo,
+          civility: p.civility,
+          email: p.email,
+          birthDate: p.birthDate,
+          status: 'ACTIVE',
+          // Ne pas hériter du userId : le Contact garde son User mais le
+          // Member créé n'a pas de User pour l'instant (il sera lié plus
+          // tard si l'admin promeut le Contact en passant par
+          // promoteContactToMember, ou via l'email matching).
+        },
+        select: { id: true },
+      });
+
+      // 2. Rattacher au foyer (linkRole=MEMBER)
+      await this.prisma.familyMember.create({
+        data: {
+          familyId: cart.familyId,
+          memberId: member.id,
+          linkRole: FamilyMemberLinkRole.MEMBER,
+        },
+      });
+
+      // 3. Créer 1 CartItem par formule sélectionnée (multi-formules
+      //    rendu possible par la contrainte unique composite
+      //    `(cartId, memberId, productId)` au lieu de `(cartId, memberId)`).
+      for (const productId of p.membershipProductIds) {
+        // Vérifier que le produit est toujours valide (pas archivé entre
+        // l'ajout pending et la validation)
+        const product = await this.prisma.membershipProduct.findFirst({
+          where: { id: productId, clubId, archivedAt: null },
+          select: { id: true },
+        });
+        if (!product) {
+          // Produit supprimé entre temps : on ignore cette formule mais
+          // on crée quand même les autres.
+          continue;
+        }
+        // Idempotence : si une ligne (member+product) existe déjà
+        // (admin manuel par exemple), on ne crée pas de doublon.
+        const existing = await this.prisma.membershipCartItem.findFirst({
+          where: {
+            cartId,
+            memberId: member.id,
+            membershipProductId: productId,
+          },
+        });
+        if (existing) continue;
+        await this.prisma.membershipCartItem.create({
+          data: {
+            cartId,
+            memberId: member.id,
+            membershipProductId: productId,
+            requiresManualAssignment: false,
+            billingRhythm: p.billingRhythm,
+          },
+        });
+      }
+
+      // 4. Marquer pending comme converti
+      await this.prisma.membershipCartPendingItem.update({
+        where: { id: p.id },
+        data: { convertedToMemberId: member.id },
+      });
+    }
   }
 
   // ------------------------------------------------------------------

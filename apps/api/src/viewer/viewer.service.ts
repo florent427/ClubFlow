@@ -1630,6 +1630,19 @@ export class ViewerService {
    * Auto-inscription adulte : crée un Member depuis le Contact viewer et
    * l'ajoute au projet d'adhésion actif.
    */
+  /**
+   * Auto-inscription d'un Contact (adulte payeur) au projet d'adhésion.
+   *
+   * **Comportement v1.5** : ne crée PAS de fiche `Member` immédiatement.
+   * Crée seulement un `MembershipCartPendingItem` qui sera matérialisé
+   * en Member à la validation du cart (`finalizePendingItems` dans
+   * `validateCart`). Si le payeur abandonne, aucun Member fantôme.
+   *
+   * Multi-formules : `membershipProductIds` accepte 1 à N formules
+   * (ex Karaté + Cross Training).
+   *
+   * Le résultat retourne `pendingItemId` au lieu d'un `memberId`.
+   */
   async viewerRegisterSelfAsMember(
     clubId: string,
     userId: string,
@@ -1637,8 +1650,14 @@ export class ViewerService {
     input: {
       civility: MemberCivility;
       birthDate: string;
+      membershipProductIds: string[];
     },
-  ): Promise<{ memberId: string; firstName: string; lastName: string }> {
+  ): Promise<{
+    pendingItemId: string;
+    cartId: string;
+    firstName: string;
+    lastName: string;
+  }> {
     if (activeProfile.memberId) {
       throw new BadRequestException(
         'Ce profil est déjà enregistré comme adhérent du club.',
@@ -1647,10 +1666,18 @@ export class ViewerService {
     if (!activeProfile.contactId) {
       throw new BadRequestException('Sélection de profil requise.');
     }
-    // Cette voie d’auto-inscription est un sous-flux du projet d’adhésion :
-    // seuls les payeurs (adultes) du foyer peuvent l’emprunter.
+    if (
+      !input.membershipProductIds ||
+      input.membershipProductIds.length === 0
+    ) {
+      throw new BadRequestException(
+        'Sélectionnez au moins une formule d’adhésion.',
+      );
+    }
+    // Cette voie d'auto-inscription est un sous-flux du projet d'adhésion :
+    // seuls les payeurs (adultes) du foyer peuvent l'emprunter.
     await this.assertViewerCanManageMembershipCart(clubId, activeProfile);
-    // Contrôle d’âge sur l’input — un majeur qui s’auto-enregistre ne peut
+    // Contrôle d'âge sur l'input — un majeur qui s'auto-enregistre ne peut
     // pas revendiquer un âge < 18 ans.
     const bd = new Date(input.birthDate);
     if (!Number.isNaN(bd.getTime()) && ageYearsUtc(bd, new Date()) < 18) {
@@ -1678,98 +1705,55 @@ export class ViewerService {
         'Prénom et nom obligatoires sur votre profil.',
       );
     }
-    // Pré-calcul du foyer cible : on cherche le foyer existant rattaché
-    // au contact actif. S'il existe (cas typique : le contact est déjà
-    // PAYER d'un foyer contenant les enfants), on le passe au check email
-    // pour que la règle "doublons OK dans le même foyer" s'applique.
-    //
-    // Sans ça : un parent inscrivant ses enfants en premier puis lui-même
-    // se prend une erreur "email déjà utilisée par un autre adhérent"
-    // alors que les enfants sont dans son foyer et partagent son email.
-    const presumedFamilyLink = await this.prisma.familyMember.findFirst({
+
+    // Trouver le foyer cible (créé en amont par l'inscription enfants ;
+    // sinon on le crée ici comme avant pour avoir un cart).
+    const familyLink = await this.prisma.familyMember.findFirst({
       where: {
         contactId: activeProfile.contactId!,
         family: { clubId },
       },
       select: { familyId: true },
     });
-    await assertMemberEmailAllowedInClub(this.prisma, clubId, email, {
-      memberId: null,
-      assumeMemberFamilyId: presumedFamilyLink?.familyId ?? null,
-    });
-    const pseudo = await this.memberPseudo.pickAvailablePseudo(
-      this.prisma,
-      clubId,
-      firstName,
-      lastName,
-      null,
-    );
-    const created = await this.prisma.$transaction(async (tx) => {
-      const m = await tx.member.create({
+    let familyId = familyLink?.familyId;
+    if (!familyId) {
+      const family = await this.prisma.family.create({
         data: {
           clubId,
-          firstName,
-          lastName,
-          pseudo,
-          civility: input.civility,
-          email,
-          birthDate: new Date(input.birthDate),
-          status: MemberStatus.ACTIVE,
-          roleAssignments: { create: [{ role: MemberClubRole.STUDENT }] },
-        },
-        select: { id: true, firstName: true, lastName: true },
-      });
-      // Recherche / création famille via le contact (cohérent avec le
-      // pré-calcul ci-dessus pour le check email).
-      const existing = await tx.familyMember.findFirst({
-        where: {
-          contactId: activeProfile.contactId!,
-          family: { clubId },
-        },
-        select: { familyId: true },
-      });
-      const familyId =
-        existing?.familyId ??
-        (
-          await tx.family.create({
-            data: {
-              clubId,
-              familyMembers: {
-                create: [
-                  {
-                    contactId: activeProfile.contactId!,
-                    linkRole: FamilyMemberLinkRole.PAYER,
-                  },
-                ],
+          familyMembers: {
+            create: [
+              {
+                contactId: activeProfile.contactId!,
+                linkRole: FamilyMemberLinkRole.PAYER,
               },
-            },
-            select: { id: true },
-          })
-        ).id;
-      await tx.familyMember.create({
-        data: {
-          familyId,
-          memberId: m.id,
-          linkRole: FamilyMemberLinkRole.MEMBER,
+            ],
+          },
         },
+        select: { id: true },
       });
-      return m;
-    });
-    await this.families.syncContactUserPayerMemberLinksByEmail(clubId, email);
-    // Ajout auto au cart actif
-    try {
-      await this.membershipCart.addMemberToActiveCart(clubId, created.id);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        '[viewer.registerSelfAsMember] auto-add membership cart failed',
-        (err as Error).message,
-      );
+      familyId = family.id;
     }
+
+    // Ajout du pending item dans le cart (création différée du Member)
+    const result = await this.membershipCart.addPendingItemToActiveCart(
+      clubId,
+      familyId,
+      {
+        firstName,
+        lastName,
+        civility: input.civility,
+        birthDate: new Date(input.birthDate),
+        email,
+        contactId: activeProfile.contactId,
+        membershipProductIds: input.membershipProductIds,
+      },
+    );
+
     return {
-      memberId: created.id,
-      firstName: created.firstName,
-      lastName: created.lastName,
+      pendingItemId: result.pendingItemId,
+      cartId: result.cartId,
+      firstName,
+      lastName,
     };
   }
 }

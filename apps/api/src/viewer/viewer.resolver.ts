@@ -33,6 +33,7 @@ import { ViewerFamilyBillingSummaryGraph } from './models/viewer-family-billing.
 import { ViewerFamilyJoinResultGraph } from './models/viewer-family-join-result.model';
 import { ViewerMemberGraph } from './models/viewer-member.model';
 import { ViewerMemberCreatedResultGraph } from './models/viewer-member-created-result.model';
+import { ViewerPendingRegistrationResultGraph } from './models/viewer-pending-registration-result.model';
 import { ViewerMembershipFormulaGraph } from './models/viewer-membership-formula.model';
 import { ViewerService } from './viewer.service';
 import { MembershipCartGraph } from '../membership/models/membership-cart.model';
@@ -559,10 +560,10 @@ export class ViewerResolver {
     return toMembershipCartGraph(cart, preview);
   }
 
-  @Mutation(() => ViewerMemberCreatedResultGraph, {
+  @Mutation(() => ViewerPendingRegistrationResultGraph, {
     name: 'viewerRegisterSelfAsMember',
     description:
-      'Promeut le contact viewer en fiche adhérent et l’ajoute au projet d’adhésion actif (flux self-register).',
+      "Ajoute le contact viewer comme inscription EN ATTENTE dans le projet d'adhésion actif. La fiche `Member` est créée uniquement à la validation du cart (évite les Members fantômes en cas d'abandon).",
   })
   @RequireClubModule(ModuleCode.MEMBERS)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
@@ -570,7 +571,7 @@ export class ViewerResolver {
     @CurrentUser() user: RequestUser,
     @CurrentClub() club: Club,
     @Args('input') input: ViewerRegisterSelfAsMemberInput,
-  ): Promise<ViewerMemberCreatedResultGraph> {
+  ): Promise<ViewerPendingRegistrationResultGraph> {
     return this.viewer.viewerRegisterSelfAsMember(
       club.id,
       user.userId,
@@ -581,6 +582,7 @@ export class ViewerResolver {
       {
         civility: input.civility,
         birthDate: input.birthDate,
+        membershipProductIds: input.membershipProductIds,
       },
     );
   }

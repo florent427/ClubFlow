@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@apollo/client/react';
+﻿import { useMutation, useQuery } from '@apollo/client/react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -8,7 +8,10 @@ import {
   type Cart,
   type ViewerActiveCartData,
 } from '../lib/cart-documents';
-import { VIEWER_ME } from '../lib/viewer-documents';
+import {
+  VIEWER_ELIGIBLE_MEMBERSHIP_FORMULAS,
+  VIEWER_ME,
+} from '../lib/viewer-documents';
 import type { ViewerMeData } from '../lib/viewer-types';
 import { CartItemCard } from '../components/cart/CartItemCard';
 import { CartSummary } from '../components/cart/CartSummary';
@@ -20,7 +23,8 @@ type Civility = 'MR' | 'MME';
 
 interface RegisterSelfResponse {
   viewerRegisterSelfAsMember: {
-    memberId: string;
+    pendingItemId: string;
+    cartId: string;
     firstName: string;
     lastName: string;
   };
@@ -53,7 +57,7 @@ export function AdhesionPage() {
   async function handleOpen(): Promise<void> {
     try {
       await openCart();
-      showToast('Projet d\u2019adhésion ouvert.', 'success');
+      showToast('Projet d\u2019adhÃ©sion ouvert.', 'success');
     } catch (err) {
       showToast(
         err instanceof Error
@@ -64,12 +68,12 @@ export function AdhesionPage() {
     }
   }
 
-  // Tant que `viewerMe` n’est pas encore chargé, on évite de flasher l’écran
-  // « accès refusé » : on montre un placeholder neutre.
+  // Tant que `viewerMe` nâ€™est pas encore chargÃ©, on Ã©vite de flasher lâ€™Ã©cran
+  // Â« accÃ¨s refusÃ© Â» : on montre un placeholder neutre.
   if (!meData) {
     return (
       <div className="mp-page">
-        <p className="mp-hint">Chargement…</p>
+        <p className="mp-hint">Chargementâ€¦</p>
       </div>
     );
   }
@@ -80,15 +84,15 @@ export function AdhesionPage() {
         <header className="mp-page-head">
           <div>
             <p className="mp-eyebrow">Saison active</p>
-            <h1 className="mp-page-title">Projet d&rsquo;adhésion</h1>
+            <h1 className="mp-page-title">Projet d&rsquo;adhÃ©sion</h1>
           </div>
         </header>
         <section className="mp-empty-state">
-          <h2 className="mp-subtitle">Accès réservé au payeur du foyer</h2>
+          <h2 className="mp-subtitle">AccÃ¨s rÃ©servÃ© au payeur du foyer</h2>
           <p className="mp-hint">
-            Seul un adulte désigné payeur du foyer peut ouvrir et gérer un
-            projet d&rsquo;adhésion. Si vous êtes un enfant ou un autre membre
-            de la famille, demandez au payeur du foyer de s&rsquo;en charger —
+            Seul un adulte dÃ©signÃ© payeur du foyer peut ouvrir et gÃ©rer un
+            projet d&rsquo;adhÃ©sion. Si vous Ãªtes un enfant ou un autre membre
+            de la famille, demandez au payeur du foyer de s&rsquo;en charger â€”
             il pourra ensuite vous ajouter au projet.
           </p>
           <button
@@ -108,10 +112,10 @@ export function AdhesionPage() {
       <header className="mp-page-head">
         <div>
           <p className="mp-eyebrow">Saison active</p>
-          <h1 className="mp-page-title">Projet d&rsquo;adhésion</h1>
+          <h1 className="mp-page-title">Projet d&rsquo;adhÃ©sion</h1>
           <p className="mp-lead">
-            Préparez tranquillement l&rsquo;inscription de votre foyer. Rien
-            n&rsquo;est facturé tant que vous n&rsquo;avez pas validé.
+            PrÃ©parez tranquillement l&rsquo;inscription de votre foyer. Rien
+            n&rsquo;est facturÃ© tant que vous n&rsquo;avez pas validÃ©.
           </p>
         </div>
       </header>
@@ -123,14 +127,14 @@ export function AdhesionPage() {
       ) : null}
 
       {loading && !cart ? (
-        <p className="mp-hint">Chargement du projet…</p>
+        <p className="mp-hint">Chargement du projetâ€¦</p>
       ) : !cart ? (
         <section className="mp-empty-state">
           <h2 className="mp-subtitle">Aucun projet en cours</h2>
           <p className="mp-hint">
-            Ouvrez un projet d&rsquo;adhésion pour la saison active. Vous
-            pourrez ajouter vos enfants et vous-même, ajuster les rythmes de
-            règlement et déclarer une licence fédérale existante.
+            Ouvrez un projet d&rsquo;adhÃ©sion pour la saison active. Vous
+            pourrez ajouter vos enfants et vous-mÃªme, ajuster les rythmes de
+            rÃ¨glement et dÃ©clarer une licence fÃ©dÃ©rale existante.
           </p>
           <button
             type="button"
@@ -138,7 +142,7 @@ export function AdhesionPage() {
             disabled={opening}
             onClick={() => void handleOpen()}
           >
-            {opening ? 'Création…' : 'Créer mon projet d\u2019adhésion'}
+            {opening ? 'CrÃ©ationâ€¦' : 'CrÃ©er mon projet d\u2019adhÃ©sion'}
           </button>
         </section>
       ) : cart.status === 'VALIDATED' ? (
@@ -148,17 +152,17 @@ export function AdhesionPage() {
               verified
             </span>
             <div>
-              <h2 className="mp-subtitle">Projet validé</h2>
+              <h2 className="mp-subtitle">Projet validÃ©</h2>
               <p className="mp-hint">
-                Validé le{' '}
+                ValidÃ© le{' '}
                 {cart.validatedAt
                   ? new Date(cart.validatedAt).toLocaleDateString('fr-FR', {
                       day: '2-digit',
                       month: 'long',
                       year: 'numeric',
                     })
-                  : '—'}{' '}
-                · Total TTC : {formatEuroCents(cart.totalCents)}
+                  : 'â€”'}{' '}
+                Â· Total TTC : {formatEuroCents(cart.totalCents)}
               </p>
             </div>
           </div>
@@ -180,18 +184,18 @@ export function AdhesionPage() {
               onClick={() => void handleOpen()}
             >
               {opening
-                ? 'Création…'
-                : 'Ajouter un élément en cours de saison'}
+                ? 'CrÃ©ationâ€¦'
+                : 'Ajouter un Ã©lÃ©ment en cours de saison'}
             </button>
           </div>
         </section>
       ) : cart.status === 'CANCELLED' ? (
         <section className="mp-cart-cancelled">
-          <h2 className="mp-subtitle">Projet annulé</h2>
+          <h2 className="mp-subtitle">Projet annulÃ©</h2>
           <p className="mp-hint">
             {cart.cancelledReason
               ? `Raison : ${cart.cancelledReason}`
-              : 'Le club a annulé ce projet.'}
+              : 'Le club a annulÃ© ce projet.'}
           </p>
           <button
             type="button"
@@ -199,7 +203,7 @@ export function AdhesionPage() {
             disabled={opening}
             onClick={() => void handleOpen()}
           >
-            {opening ? 'Création…' : 'Ouvrir un nouveau projet'}
+            {opening ? 'CrÃ©ationâ€¦' : 'Ouvrir un nouveau projet'}
           </button>
         </section>
       ) : (
@@ -249,7 +253,7 @@ export function AdhesionPage() {
             {cart.items.length === 0 ? (
               <p className="mp-hint">
                 Aucun membre dans le projet. Ajoutez-vous ou vos enfants pour
-                démarrer.
+                dÃ©marrer.
               </p>
             ) : (
               <div className="mp-cart-item-list">
@@ -294,6 +298,7 @@ function RegisterSelfAsMemberModal({ onClose }: { onClose: () => void }) {
   const { showToast } = useToast();
   const [civility, setCivility] = useState<Civility>('MR');
   const [birthDate, setBirthDate] = useState<string>('');
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [localError, setLocalError] = useState<string | null>(null);
 
   const [register, { loading }] = useMutation<RegisterSelfResponse>(
@@ -301,23 +306,57 @@ function RegisterSelfAsMemberModal({ onClose }: { onClose: () => void }) {
     { refetchQueries: [{ query: VIEWER_ACTIVE_CART }] },
   );
 
+  // Charge les formules Ã©ligibles dÃ¨s que la date de naissance est saisie.
+  // L'utilisateur peut en cocher 1 ou plusieurs.
+  const { data: formulasData, loading: formulasLoading } = useQuery<{
+    viewerEligibleMembershipFormulas: Array<{
+      id: string;
+      label: string;
+      annualAmountCents: number;
+      monthlyAmountCents: number;
+    }>;
+  }>(VIEWER_ELIGIBLE_MEMBERSHIP_FORMULAS, {
+    variables: { birthDate },
+    skip: !birthDate,
+    fetchPolicy: 'cache-and-network',
+  });
+  const formulas = formulasData?.viewerEligibleMembershipFormulas ?? [];
+
+  function toggleProduct(productId: string) {
+    setSelectedProductIds((prev) =>
+      prev.includes(productId)
+        ? prev.filter((id) => id !== productId)
+        : [...prev, productId],
+    );
+  }
+
   async function handleSubmit(): Promise<void> {
     setLocalError(null);
     if (!birthDate) {
       setLocalError('La date de naissance est obligatoire.');
       return;
     }
+    if (selectedProductIds.length === 0) {
+      setLocalError('SÃ©lectionnez au moins une formule.');
+      return;
+    }
     try {
       const { data } = await register({
-        variables: { input: { civility, birthDate } },
+        variables: {
+          input: {
+            civility,
+            birthDate,
+            membershipProductIds: selectedProductIds,
+          },
+        },
       });
       const res = data?.viewerRegisterSelfAsMember;
-      if (!res?.memberId) {
-        setLocalError('Impossible de créer votre fiche adhérent.');
+      if (!res?.pendingItemId) {
+        setLocalError('Impossible de crÃ©er votre fiche adhÃ©rent.');
         return;
       }
       showToast(
-        'Vous êtes ajouté au projet d\u2019adhésion.',
+        'Vous Ãªtes ajoutÃ© au projet d\u2019adhÃ©sion.',
         'success',
       );
       onClose();
@@ -325,7 +364,7 @@ function RegisterSelfAsMemberModal({ onClose }: { onClose: () => void }) {
       setLocalError(
         err instanceof Error
           ? err.message
-          : 'Impossible de créer votre fiche adhérent.',
+          : 'Impossible de crÃ©er votre fiche adhÃ©rent.',
       );
     }
   }
@@ -347,12 +386,12 @@ function RegisterSelfAsMemberModal({ onClose }: { onClose: () => void }) {
           M&rsquo;inscrire comme membre
         </h2>
         <p className="mp-hint mp-modal-lede">
-          Nous utilisons votre date de naissance pour sélectionner la formule
-          adaptée. La licence fédérale est auto-ajoutée.
+          Nous utilisons votre date de naissance pour sÃ©lectionner la formule
+          adaptÃ©e. La licence fÃ©dÃ©rale est auto-ajoutÃ©e.
         </p>
 
         <fieldset className="mp-fieldset">
-          <legend className="mp-legend">Civilité</legend>
+          <legend className="mp-legend">CivilitÃ©</legend>
           <label className="mp-radio mp-radio--inline">
             <input
               type="radio"
@@ -387,6 +426,76 @@ function RegisterSelfAsMemberModal({ onClose }: { onClose: () => void }) {
           />
         </label>
 
+        {birthDate ? (
+          <fieldset className="mp-fieldset">
+            <legend className="mp-legend">
+              Formules d'adhésion
+              {selectedProductIds.length > 0
+                ? ` (${selectedProductIds.length} sélectionnée${
+                    selectedProductIds.length > 1 ? 's' : ''
+                  })`
+                : ''}
+            </legend>
+            <p className="mp-hint" style={{ marginBottom: 8 }}>
+              Vous pouvez en sélectionner plusieurs (ex Karaté + Cross
+              Training). Le montant sera cumulé sur la facture.
+            </p>
+            {formulasLoading ? (
+              <p className="mp-hint">Chargement…</p>
+            ) : formulas.length === 0 ? (
+              <p className="mp-hint">
+                Aucune formule disponible pour cette date de naissance —
+                contacte le club.
+              </p>
+            ) : (
+              <div className="mp-checkboxes">
+                {formulas.map((f) => {
+                  const checked = selectedProductIds.includes(f.id);
+                  return (
+                    <label
+                      key={f.id}
+                      className="mp-checkbox"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: 8,
+                        padding: '8px 12px',
+                        marginBottom: 6,
+                        border: checked
+                          ? '2px solid #2563eb'
+                          : '1px solid #e5e7eb',
+                        borderRadius: 6,
+                        cursor: 'pointer',
+                        background: checked
+                          ? 'rgba(37, 99, 235, 0.05)'
+                          : 'white',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleProduct(f.id)}
+                        disabled={loading}
+                        style={{ marginTop: 3 }}
+                      />
+                      <span style={{ flex: 1 }}>
+                        <strong>{f.label}</strong>
+                        <br />
+                        <small className="mp-hint">
+                          {formatEuroCents(f.annualAmountCents)} / an
+                          {f.monthlyAmountCents > 0
+                            ? ` ou ${formatEuroCents(f.monthlyAmountCents)} / mois`
+                            : ''}
+                        </small>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </fieldset>
+        ) : null}
+
         {localError ? (
           <p className="mp-form-error" role="alert">
             {localError}
@@ -408,10 +517,11 @@ function RegisterSelfAsMemberModal({ onClose }: { onClose: () => void }) {
             disabled={loading}
             onClick={() => void handleSubmit()}
           >
-            {loading ? 'Ajout…' : 'M\u2019ajouter au projet'}
+            {loading ? 'Ajoutâ€¦' : 'M\u2019ajouter au projet'}
           </button>
         </div>
       </div>
     </>
   );
 }
+
