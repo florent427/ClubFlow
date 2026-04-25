@@ -685,6 +685,47 @@ export class MembershipCartService {
     return { entries: Array.from(byMember.values()) };
   }
 
+  /**
+   * Charge cart + preview + map des produits référencés dans les
+   * pending items en une seule call. Utilisé par les resolvers pour
+   * éviter de répéter les 3 calls + ne pas oublier la map.
+   */
+  async getCartFullForGraph(clubId: string, cartId: string) {
+    const cart = await this.getCartById(clubId, cartId);
+    const [preview, productsById] = await Promise.all([
+      this.computeCartPreview(clubId, cartId),
+      this.loadProductsForCartPendingItems(clubId, cart),
+    ]);
+    return { cart, preview, productsById };
+  }
+
+  /**
+   * Charge les `MembershipProduct` référencés par les pending items d'un
+   * cart pour fournir leurs `label` + `annualAmountCents` au mapper
+   * Graph. Sans ça, l'UI portail affiche "Formule abc123…" au lieu du
+   * vrai libellé.
+   */
+  async loadProductsForCartPendingItems(
+    clubId: string,
+    cart: { pendingItems?: Array<{ membershipProductIds: string[] }> | null },
+  ): Promise<Map<string, { label: string; annualAmountCents: number }>> {
+    const ids = new Set<string>();
+    for (const p of cart.pendingItems ?? []) {
+      for (const id of p.membershipProductIds) ids.add(id);
+    }
+    if (ids.size === 0) return new Map();
+    const products = await this.prisma.membershipProduct.findMany({
+      where: { clubId, id: { in: Array.from(ids) } },
+      select: { id: true, label: true, annualAmountCents: true },
+    });
+    return new Map(
+      products.map((p) => [
+        p.id,
+        { label: p.label, annualAmountCents: p.annualAmountCents },
+      ]),
+    );
+  }
+
   async getCartById(clubId: string, cartId: string) {
     const cart = await this.prisma.membershipCart.findFirst({
       where: { id: cartId, clubId },
@@ -1050,6 +1091,15 @@ export class MembershipCartService {
       (i) => i.requiresManualAssignment,
     ).length;
 
+    // Le cart peut être validé s'il contient au moins UN item réel OU
+    // au moins UN pending item (qui sera matérialisé en Member réel à
+    // la validation via finalizePendingItems). Sans ça, un foyer qui a
+    // tout en pending verrait son bouton "Valider et payer" désactivé
+    // et ne pourrait jamais aller au paiement.
+    const pendingCount = (cart.pendingItems ?? []).filter(
+      (p) => p.convertedToMemberId === null,
+    ).length;
+
     return {
       cartId: cart.id,
       familyId: cart.familyId,
@@ -1061,7 +1111,7 @@ export class MembershipCartService {
       canValidate:
         cart.status === MembershipCartStatus.OPEN &&
         requiresManualAssignmentCount === 0 &&
-        cart.items.length > 0,
+        (cart.items.length > 0 || pendingCount > 0),
     };
   }
 

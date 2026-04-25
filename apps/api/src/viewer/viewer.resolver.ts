@@ -411,12 +411,9 @@ export class ViewerResolver {
     });
     const result: MembershipCartGraph[] = [];
     for (const c of carts) {
-      const preview = await this.membershipCart.computeCartPreview(
-        club.id,
-        c.id,
-      );
-      const full = await this.membershipCart.getCartById(club.id, c.id);
-      result.push(toMembershipCartGraph(full, preview));
+      const { cart: full, preview, productsById } =
+        await this.membershipCart.getCartFullForGraph(club.id, c.id);
+      result.push(toMembershipCartGraph(full, preview, productsById));
     }
     return result;
   }
@@ -435,12 +432,9 @@ export class ViewerResolver {
       contactId: user.activeProfileContactId ?? null,
     });
     if (!cart) return null;
-    const full = await this.membershipCart.getCartById(club.id, cart.id);
-    const preview = await this.membershipCart.computeCartPreview(
-      club.id,
-      cart.id,
-    );
-    return toMembershipCartGraph(full, preview);
+    const { cart: full, preview, productsById } =
+      await this.membershipCart.getCartFullForGraph(club.id, cart.id);
+    return toMembershipCartGraph(full, preview, productsById);
   }
 
   @Mutation(() => MembershipCartGraph, {
@@ -457,12 +451,9 @@ export class ViewerResolver {
       memberId: user.activeProfileMemberId ?? null,
       contactId: user.activeProfileContactId ?? null,
     });
-    const full = await this.membershipCart.getCartById(club.id, cart.id);
-    const preview = await this.membershipCart.computeCartPreview(
-      club.id,
-      cart.id,
-    );
-    return toMembershipCartGraph(full, preview);
+    const { cart: full, preview, productsById } =
+      await this.membershipCart.getCartFullForGraph(club.id, cart.id);
+    return toMembershipCartGraph(full, preview, productsById);
   }
 
   @Mutation(() => MembershipCartGraph, { name: 'viewerUpdateCartItem' })
@@ -481,12 +472,9 @@ export class ViewerResolver {
       input.itemId,
       { billingRhythm: input.billingRhythm ?? null },
     );
-    const full = await this.membershipCart.getCartById(club.id, item.cartId);
-    const preview = await this.membershipCart.computeCartPreview(
-      club.id,
-      item.cartId,
-    );
-    return toMembershipCartGraph(full, preview);
+    const { cart: full, preview, productsById } =
+      await this.membershipCart.getCartFullForGraph(club.id, item.cartId);
+    return toMembershipCartGraph(full, preview, productsById);
   }
 
   @Mutation(() => MembershipCartGraph, { name: 'viewerToggleCartItemLicense' })
@@ -506,12 +494,9 @@ export class ViewerResolver {
       input.hasExistingLicense,
       input.existingLicenseNumber ?? null,
     );
-    const full = await this.membershipCart.getCartById(club.id, item.cartId);
-    const preview = await this.membershipCart.computeCartPreview(
-      club.id,
-      item.cartId,
-    );
-    return toMembershipCartGraph(full, preview);
+    const { cart: full, preview, productsById } =
+      await this.membershipCart.getCartFullForGraph(club.id, item.cartId);
+    return toMembershipCartGraph(full, preview, productsById);
   }
 
   @Mutation(() => MembershipCartGraph, { name: 'viewerRemoveCartItem' })
@@ -529,12 +514,9 @@ export class ViewerResolver {
       },
       itemId,
     );
-    const full = await this.membershipCart.getCartById(club.id, cartId);
-    const preview = await this.membershipCart.computeCartPreview(
-      club.id,
-      cartId,
-    );
-    return toMembershipCartGraph(full, preview);
+    const { cart: full, preview, productsById } =
+      await this.membershipCart.getCartFullForGraph(club.id, cartId);
+    return toMembershipCartGraph(full, preview, productsById);
   }
 
   @Mutation(() => MembershipCartGraph, { name: 'viewerValidateMembershipCart' })
@@ -553,11 +535,9 @@ export class ViewerResolver {
       },
       cartId,
     );
-    const preview = await this.membershipCart.computeCartPreview(
-      club.id,
-      cart.id,
-    );
-    return toMembershipCartGraph(cart, preview);
+    const { preview, productsById } =
+      await this.membershipCart.getCartFullForGraph(club.id, cart.id);
+    return toMembershipCartGraph(cart, preview, productsById);
   }
 
   @Mutation(() => ViewerPendingRegistrationResultGraph, {

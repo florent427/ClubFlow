@@ -57,23 +57,23 @@ export function AdhesionPage() {
   async function handleOpen(): Promise<void> {
     try {
       await openCart();
-      showToast('Projet d\u2019adhÃ©sion ouvert.', 'success');
+      showToast('Panier d\u2019adhésion ouvert.', 'success');
     } catch (err) {
       showToast(
         err instanceof Error
           ? err.message
-          : 'Impossible d\u2019ouvrir un projet.',
+          : 'Impossible d\u2019ouvrir un panier.',
         'error',
       );
     }
   }
 
-  // Tant que `viewerMe` nâ€™est pas encore chargÃ©, on Ã©vite de flasher lâ€™Ã©cran
-  // Â« accÃ¨s refusÃ© Â» : on montre un placeholder neutre.
+  // Tant que `viewerMe` n'est pas encore chargé, on évite de flasher l'écran
+  // « accès refusé » : on montre un placeholder neutre.
   if (!meData) {
     return (
       <div className="mp-page">
-        <p className="mp-hint">Chargementâ€¦</p>
+        <p className="mp-hint">Chargement…</p>
       </div>
     );
   }
@@ -84,16 +84,16 @@ export function AdhesionPage() {
         <header className="mp-page-head">
           <div>
             <p className="mp-eyebrow">Saison active</p>
-            <h1 className="mp-page-title">Projet d&rsquo;adhÃ©sion</h1>
+            <h1 className="mp-page-title">Projet d&rsquo;adhésion</h1>
           </div>
         </header>
         <section className="mp-empty-state">
-          <h2 className="mp-subtitle">AccÃ¨s rÃ©servÃ© au payeur du foyer</h2>
+          <h2 className="mp-subtitle">Accès réservé au payeur du foyer</h2>
           <p className="mp-hint">
-            Seul un adulte dÃ©signÃ© payeur du foyer peut ouvrir et gÃ©rer un
-            projet d&rsquo;adhÃ©sion. Si vous Ãªtes un enfant ou un autre membre
-            de la famille, demandez au payeur du foyer de s&rsquo;en charger â€”
-            il pourra ensuite vous ajouter au projet.
+            Seul un adulte désigné payeur du foyer peut ouvrir et gérer un
+            panier d&rsquo;adhésion. Si vous êtes un enfant ou un autre membre
+            de la famille, demandez au payeur du foyer de s&rsquo;en charger —
+            il pourra ensuite vous ajouter au panier.
           </p>
           <button
             type="button"
@@ -112,10 +112,11 @@ export function AdhesionPage() {
       <header className="mp-page-head">
         <div>
           <p className="mp-eyebrow">Saison active</p>
-          <h1 className="mp-page-title">Projet d&rsquo;adhÃ©sion</h1>
+          <h1 className="mp-page-title">Panier d&rsquo;adhésion</h1>
           <p className="mp-lead">
-            PrÃ©parez tranquillement l&rsquo;inscription de votre foyer. Rien
-            n&rsquo;est facturÃ© tant que vous n&rsquo;avez pas validÃ©.
+            Composez l&rsquo;inscription de votre foyer comme un panier en
+            ligne. Validez quand vous êtes prêt — la facture est émise et le
+            paiement déclenché immédiatement.
           </p>
         </div>
       </header>
@@ -127,14 +128,14 @@ export function AdhesionPage() {
       ) : null}
 
       {loading && !cart ? (
-        <p className="mp-hint">Chargement du projetâ€¦</p>
+        <p className="mp-hint">Chargement du panier…</p>
       ) : !cart ? (
         <section className="mp-empty-state">
-          <h2 className="mp-subtitle">Aucun projet en cours</h2>
+          <h2 className="mp-subtitle">Aucun panier en cours</h2>
           <p className="mp-hint">
-            Ouvrez un projet d&rsquo;adhÃ©sion pour la saison active. Vous
-            pourrez ajouter vos enfants et vous-mÃªme, ajuster les rythmes de
-            rÃ¨glement et dÃ©clarer une licence fÃ©dÃ©rale existante.
+            Ouvrez un panier d&rsquo;adhésion pour la saison active. Vous
+            pourrez ajouter vos enfants et vous-même, ajuster les rythmes de
+            règlement et déclarer une licence fédérale existante.
           </p>
           <button
             type="button"
@@ -142,7 +143,7 @@ export function AdhesionPage() {
             disabled={opening}
             onClick={() => void handleOpen()}
           >
-            {opening ? 'CrÃ©ationâ€¦' : 'CrÃ©er mon projet d\u2019adhÃ©sion'}
+            {opening ? 'Création…' : 'Créer mon panier d\u2019adhésion'}
           </button>
         </section>
       ) : cart.status === 'VALIDATED' ? (
@@ -152,17 +153,17 @@ export function AdhesionPage() {
               verified
             </span>
             <div>
-              <h2 className="mp-subtitle">Projet validÃ©</h2>
+              <h2 className="mp-subtitle">Adhésion validée</h2>
               <p className="mp-hint">
-                ValidÃ© le{' '}
+                Validé le{' '}
                 {cart.validatedAt
                   ? new Date(cart.validatedAt).toLocaleDateString('fr-FR', {
                       day: '2-digit',
                       month: 'long',
                       year: 'numeric',
                     })
-                  : 'â€”'}{' '}
-                Â· Total TTC : {formatEuroCents(cart.totalCents)}
+                  : '—'}{' '}
+                · Total TTC : {formatEuroCents(cart.totalCents)}
               </p>
             </div>
           </div>
@@ -184,18 +185,18 @@ export function AdhesionPage() {
               onClick={() => void handleOpen()}
             >
               {opening
-                ? 'CrÃ©ationâ€¦'
-                : 'Ajouter un Ã©lÃ©ment en cours de saison'}
+                ? 'Création…'
+                : 'Ajouter un élément en cours de saison'}
             </button>
           </div>
         </section>
       ) : cart.status === 'CANCELLED' ? (
         <section className="mp-cart-cancelled">
-          <h2 className="mp-subtitle">Projet annulÃ©</h2>
+          <h2 className="mp-subtitle">Panier annulé</h2>
           <p className="mp-hint">
             {cart.cancelledReason
               ? `Raison : ${cart.cancelledReason}`
-              : 'Le club a annulÃ© ce projet.'}
+              : 'Le club a annulé ce panier.'}
           </p>
           <button
             type="button"
@@ -203,7 +204,7 @@ export function AdhesionPage() {
             disabled={opening}
             onClick={() => void handleOpen()}
           >
-            {opening ? 'CrÃ©ationâ€¦' : 'Ouvrir un nouveau projet'}
+            {opening ? 'Création…' : 'Ouvrir un nouveau panier'}
           </button>
         </section>
       ) : (
@@ -253,7 +254,7 @@ export function AdhesionPage() {
             {cart.items.length === 0 &&
             (!cart.pendingItems || cart.pendingItems.length === 0) ? (
               <p className="mp-hint">
-                Aucun membre dans le projet. Ajoutez-vous ou vos enfants pour
+                Aucun membre dans le panier. Ajoutez-vous ou vos enfants pour
                 démarrer.
               </p>
             ) : cart.items.length === 0 ? null : (
@@ -278,14 +279,15 @@ export function AdhesionPage() {
                     marginBottom: 8,
                   }}
                 >
-                  ⏳ En attente de validation
+                  Inscriptions dans votre panier
                 </h3>
                 <p
                   className="mp-hint"
                   style={{ marginBottom: 8, fontSize: '0.8rem' }}
                 >
                   Les fiches adhérent ci-dessous seront créées
-                  uniquement quand le club validera le projet d&apos;adhésion.
+                  automatiquement dès que vous validerez votre panier et
+                  procéderez au règlement.
                 </p>
                 <div className="mp-cart-item-list">
                   {cart.pendingItems.map((p) => (
@@ -318,7 +320,7 @@ export function AdhesionPage() {
                             fontSize: '0.7rem',
                           }}
                         >
-                          à valider
+                          en attente
                         </span>
                         <br />
                         <small className="mp-hint">
@@ -384,7 +386,7 @@ function RegisterSelfAsMemberModal({ onClose }: { onClose: () => void }) {
     { refetchQueries: [{ query: VIEWER_ACTIVE_CART }] },
   );
 
-  // Charge les formules Ã©ligibles dÃ¨s que la date de naissance est saisie.
+  // Charge les formules éligibles dès que la date de naissance est saisie.
   // L'utilisateur peut en cocher 1 ou plusieurs.
   const { data: formulasData, loading: formulasLoading } = useQuery<{
     viewerEligibleMembershipFormulas: Array<{
@@ -415,7 +417,7 @@ function RegisterSelfAsMemberModal({ onClose }: { onClose: () => void }) {
       return;
     }
     if (selectedProductIds.length === 0) {
-      setLocalError('SÃ©lectionnez au moins une formule.');
+      setLocalError('Sélectionnez au moins une formule.');
       return;
     }
     try {
@@ -430,11 +432,11 @@ function RegisterSelfAsMemberModal({ onClose }: { onClose: () => void }) {
       });
       const res = data?.viewerRegisterSelfAsMember;
       if (!res?.pendingItemId) {
-        setLocalError('Impossible de crÃ©er votre fiche adhÃ©rent.');
+        setLocalError('Impossible de créer votre fiche adhérent.');
         return;
       }
       showToast(
-        'Vous Ãªtes ajoutÃ© au projet d\u2019adhÃ©sion.',
+        'Vous êtes ajouté au panier d\u2019adhésion.',
         'success',
       );
       onClose();
@@ -442,7 +444,7 @@ function RegisterSelfAsMemberModal({ onClose }: { onClose: () => void }) {
       setLocalError(
         err instanceof Error
           ? err.message
-          : 'Impossible de crÃ©er votre fiche adhÃ©rent.',
+          : 'Impossible de créer votre fiche adhérent.',
       );
     }
   }
@@ -464,12 +466,12 @@ function RegisterSelfAsMemberModal({ onClose }: { onClose: () => void }) {
           M&rsquo;inscrire comme membre
         </h2>
         <p className="mp-hint mp-modal-lede">
-          Nous utilisons votre date de naissance pour sÃ©lectionner la formule
-          adaptÃ©e. La licence fÃ©dÃ©rale est auto-ajoutÃ©e.
+          Nous utilisons votre date de naissance pour sélectionner la formule
+          adaptée. La licence fédérale est auto-ajoutée.
         </p>
 
         <fieldset className="mp-fieldset">
-          <legend className="mp-legend">CivilitÃ©</legend>
+          <legend className="mp-legend">Civilité</legend>
           <label className="mp-radio mp-radio--inline">
             <input
               type="radio"
@@ -595,7 +597,7 @@ function RegisterSelfAsMemberModal({ onClose }: { onClose: () => void }) {
             disabled={loading}
             onClick={() => void handleSubmit()}
           >
-            {loading ? 'Ajoutâ€¦' : 'M\u2019ajouter au projet'}
+            {loading ? 'Ajout…' : 'M\u2019ajouter au panier'}
           </button>
         </div>
       </div>
