@@ -35,22 +35,45 @@ export interface FamilyProgressiveConfig {
 }
 
 /**
- * Config d'une règle PRODUCT_BUNDLE — si TOUS les `requiredProductIds`
- * sont présents dans le cart (au niveau foyer), applique la remise sur
- * `discountAppliesToProductId`.
+ * Config d'une règle PRODUCT_BUNDLE — combinaison de 2 produits où le
+ * `primary` est la condition de déclenchement et le `secondary` reçoit
+ * la remise. La remise dépend du `billingRhythm` du secondaire :
+ * un montant pour ANNUAL, un autre pour MONTHLY.
  *
- * Ex Karaté + Cross Training = -20 € sur Cross Training :
- * ```
- * { requiredProductIds: [karateId, crossId], discountAppliesToProductId: crossId,
- *   discountType: "FIXED_CENTS", discountValue: -2000 }
+ * Ex Karaté (primary) + Cross Training (secondary) :
+ * - Si Cross en annuel : -20 € sur le tarif annuel
+ * - Si Cross en mensuel : -2 € / mois (= -24 €/an)
+ *
+ * Le primary peut être facturé dans un projet ANTÉRIEUR de la même
+ * saison (cf `EvaluationContext.priorMemberships`) — la remise sur
+ * secondary s'applique tant que primary est dans le foyer pour cette
+ * saison.
+ *
+ * Le primary lui-même ne reçoit jamais de remise via ce pattern.
+ *
+ * ```json
+ * {
+ *   "primaryProductId": "karateId",
+ *   "secondaryProductId": "crossId",
+ *   "discountForAnnual": { "type": "FIXED_CENTS", "value": -2000 },
+ *   "discountForMonthly": { "type": "FIXED_CENTS", "value": -200 }
+ * }
  * ```
  */
 export interface ProductBundleConfig {
-  requiredProductIds: string[];
-  discountAppliesToProductId: string;
-  discountType: 'PERCENT_BP' | 'FIXED_CENTS';
-  /** Valeur signée. Négatif = remise. */
-  discountValue: number;
+  primaryProductId: string;
+  secondaryProductId: string;
+  /** Remise appliquée si le secondary est en `billingRhythm = ANNUAL`. */
+  discountForAnnual: {
+    type: 'PERCENT_BP' | 'FIXED_CENTS';
+    /** Valeur signée. Négatif = remise. */
+    value: number;
+  };
+  /** Remise appliquée si le secondary est en `billingRhythm = MONTHLY`. */
+  discountForMonthly: {
+    type: 'PERCENT_BP' | 'FIXED_CENTS';
+    value: number;
+  };
 }
 
 export interface AgeRangeDiscountConfig {
@@ -153,47 +176,53 @@ export function validateRuleConfig(
     }
 
     case MembershipPricingRulePattern.PRODUCT_BUNDLE: {
-      if (
-        !Array.isArray(v.requiredProductIds) ||
-        v.requiredProductIds.length < 2
-      ) {
+      if (typeof v.primaryProductId !== 'string' || !v.primaryProductId) {
         throw new BadRequestException(
-          'requiredProductIds doit contenir au moins 2 produits (sinon le pattern n’a pas de sens)',
+          'primaryProductId requis (produit déclencheur)',
         );
       }
-      const requiredIds = (v.requiredProductIds as unknown[]).map((id, idx) => {
-        if (typeof id !== 'string')
+      if (typeof v.secondaryProductId !== 'string' || !v.secondaryProductId) {
+        throw new BadRequestException(
+          'secondaryProductId requis (produit qui reçoit la remise)',
+        );
+      }
+      if (v.primaryProductId === v.secondaryProductId) {
+        throw new BadRequestException(
+          'primaryProductId et secondaryProductId doivent être différents',
+        );
+      }
+      // Validation des remises annuel + mensuel
+      const validateDiscount = (
+        d: unknown,
+        label: string,
+      ): { type: 'PERCENT_BP' | 'FIXED_CENTS'; value: number } => {
+        if (typeof d !== 'object' || d === null)
+          throw new BadRequestException(`${label} doit être un objet`);
+        const dd = d as Record<string, unknown>;
+        if (dd.type !== 'PERCENT_BP' && dd.type !== 'FIXED_CENTS')
           throw new BadRequestException(
-            `requiredProductIds[${idx}] doit être une chaîne UUID`,
+            `${label}.type doit être PERCENT_BP ou FIXED_CENTS`,
           );
-        return id;
-      });
-      if (typeof v.discountAppliesToProductId !== 'string') {
-        throw new BadRequestException(
-          'discountAppliesToProductId requis (UUID du produit cible)',
-        );
-      }
-      if (!requiredIds.includes(v.discountAppliesToProductId)) {
-        throw new BadRequestException(
-          'discountAppliesToProductId doit faire partie de requiredProductIds',
-        );
-      }
-      if (
-        v.discountType !== 'PERCENT_BP' &&
-        v.discountType !== 'FIXED_CENTS'
-      )
-        throw new BadRequestException(
-          'discountType doit être PERCENT_BP ou FIXED_CENTS',
-        );
-      if (typeof v.discountValue !== 'number' || v.discountValue >= 0)
-        throw new BadRequestException(
-          'discountValue doit être un nombre négatif (remise)',
-        );
+        if (typeof dd.value !== 'number' || dd.value >= 0)
+          throw new BadRequestException(
+            `${label}.value doit être un nombre négatif (remise)`,
+          );
+        return {
+          type: dd.type as 'PERCENT_BP' | 'FIXED_CENTS',
+          value: dd.value,
+        };
+      };
       return {
-        requiredProductIds: requiredIds,
-        discountAppliesToProductId: v.discountAppliesToProductId,
-        discountType: v.discountType as 'PERCENT_BP' | 'FIXED_CENTS',
-        discountValue: v.discountValue,
+        primaryProductId: v.primaryProductId,
+        secondaryProductId: v.secondaryProductId,
+        discountForAnnual: validateDiscount(
+          v.discountForAnnual,
+          'discountForAnnual',
+        ),
+        discountForMonthly: validateDiscount(
+          v.discountForMonthly,
+          'discountForMonthly',
+        ),
       };
     }
 
@@ -290,6 +319,48 @@ export interface CartLineSnapshot {
   memberId: string;
   /** Âge à la date de référence (souvent début de saison). */
   ageAtReference: number | null;
+  /** Rythme de facturation (utile pour PRODUCT_BUNDLE annuel/mensuel). */
+  billingRhythm: 'ANNUAL' | 'MONTHLY';
+}
+
+/**
+ * Contexte historique d'une famille pour la saison courante : tous les
+ * Members ayant déjà été facturés pour des cotisations dans la saison
+ * (peu importe le projet d'adhésion / cart). Utilisé par
+ * FAMILY_PROGRESSIVE pour calculer le **rang global** d'un nouvel
+ * adhérent (et non le rang dans le cart courant uniquement).
+ *
+ * Cas d'usage :
+ *  - Septembre : Joseph + Léa facturés
+ *  - Janvier : Tom ajouté → rang global = 3 → -20 % (et pas -10 % !)
+ *  - Avril : Sarah ajoutée → rang global = 4 → -30 %
+ *
+ * Les factures déjà émises ne sont JAMAIS modifiées rétroactivement
+ * (intégrité comptable). Si un nouveau membre arrive avec un montant
+ * supérieur aux déjà facturés, son rang est calculé sur la position
+ * dans le tri global mais sans modifier les factures précédentes — ce
+ * qui peut donner un résultat sous-optimal pour la famille mais
+ * préserve la traçabilité.
+ */
+export interface PriorMembershipsSnapshot {
+  /** Members + leur cotisation déjà facturée pour cette saison. */
+  entries: Array<{
+    memberId: string;
+    /** Montant base annuel facturé (pour comparer avec le tri). */
+    baseAmountCents: number;
+    membershipProductId: string | null;
+    /** Date de facturation (pour ordre déterministe en cas d'ex aequo). */
+    invoicedAt: Date;
+  }>;
+}
+
+/**
+ * Contexte complet d'évaluation : snapshot du cart en cours +
+ * historique de la famille pour la saison.
+ */
+export interface EvaluationContext {
+  cart: CartLineSnapshot[];
+  prior: PriorMembershipsSnapshot;
 }
 
 export interface RuleApplication {
@@ -335,8 +406,14 @@ export class PricingRulesEngineService {
 
   async evaluate(
     clubId: string,
-    snapshot: CartLineSnapshot[],
+    contextOrSnapshot: EvaluationContext | CartLineSnapshot[],
   ): Promise<EvaluationResult> {
+    // Backward-compat : si appelé avec juste un array, on construit un
+    // contexte sans historique (cas tests + premier appel).
+    const context: EvaluationContext = Array.isArray(contextOrSnapshot)
+      ? { cart: contextOrSnapshot, prior: { entries: [] } }
+      : contextOrSnapshot;
+
     const rules = await this.prisma.membershipPricingRule.findMany({
       where: { clubId, isActive: true },
       orderBy: [{ priority: 'asc' }, { label: 'asc' }],
@@ -361,7 +438,7 @@ export class PricingRulesEngineService {
       }
 
       try {
-        const application = this.applyRule(rule, config, snapshot);
+        const application = this.applyRule(rule, config, context);
         if (application.appliedTo.length > 0) {
           applications.push(application);
         }
@@ -379,14 +456,14 @@ export class PricingRulesEngineService {
   }
 
   /**
-   * Applique une règle au snapshot. Switch par pattern. Chaque branche
-   * retourne une `RuleApplication` (peut être vide si la règle ne
-   * s'applique à aucune ligne).
+   * Applique une règle au contexte (cart en cours + historique famille).
+   * Switch par pattern. Chaque branche retourne une `RuleApplication`
+   * (peut être vide si la règle ne s'applique à aucune ligne).
    */
   private applyRule(
     rule: { id: string; label: string; pattern: MembershipPricingRulePattern },
     config: PricingRuleConfig,
-    snapshot: CartLineSnapshot[],
+    context: EvaluationContext,
   ): RuleApplication {
     const baseApp: RuleApplication = {
       ruleId: rule.id,
@@ -394,53 +471,121 @@ export class PricingRulesEngineService {
       pattern: rule.pattern,
       appliedTo: [],
     };
+    const snapshot = context.cart;
 
     switch (rule.pattern) {
       case MembershipPricingRulePattern.FAMILY_PROGRESSIVE: {
         const c = config as FamilyProgressiveConfig;
-        // Filtre selon appliesTo + tri (par défaut AMOUNT_DESC = la plus
-        // chère en 1er, donc les remises s'appliquent aux MOINS chères).
-        const eligible = snapshot
-          .filter((s) =>
+        // ---------------------------------------------------------------
+        // Rang GLOBAL = position dans (historique + cart) trié.
+        //
+        // Étape 1 : on construit la liste TOTALE des cotisations du foyer
+        // pour cette saison (anciennes facturées + nouvelles dans le cart).
+        // Étape 2 : on trie selon `sortBy` (par défaut AMOUNT_DESC).
+        // Étape 3 : on applique les remises UNIQUEMENT aux nouvelles
+        // lignes du cart (les anciennes sont figées comptablement).
+        // ---------------------------------------------------------------
+
+        const cartEligible = snapshot.filter(
+          (s) =>
             s.category === 'SUBSCRIPTION' &&
             c.appliesTo.includes('SUBSCRIPTION'),
-          )
-          .sort((a, b) => {
-            switch (c.sortBy) {
-              case 'AMOUNT_ASC':
-                return a.baseAmountCents - b.baseAmountCents;
-              case 'AMOUNT_DESC':
-                return b.baseAmountCents - a.baseAmountCents;
-              case 'AGE_ASC':
-                return (a.ageAtReference ?? 0) - (b.ageAtReference ?? 0);
-              case 'AGE_DESC':
-                return (b.ageAtReference ?? 0) - (a.ageAtReference ?? 0);
-              default:
-                return 0;
-            }
+        );
+        // On considère un seul tarif par membre (le plus élevé) pour le
+        // classement, sans quoi un membre avec 2 formules compterait double.
+        const cartByMember = new Map<string, (typeof cartEligible)[number]>();
+        for (const l of cartEligible) {
+          const ex = cartByMember.get(l.memberId);
+          if (!ex || l.baseAmountCents > ex.baseAmountCents) {
+            cartByMember.set(l.memberId, l);
+          }
+        }
+
+        // Liste des candidats à classer = historique + cart (sans doublon
+        // sur memberId — si un membre est dans l'historique ET le cart,
+        // on garde l'historique car la facture est figée).
+        type Candidate = {
+          memberId: string;
+          baseAmountCents: number;
+          source: 'PRIOR' | 'CART';
+          /** Item du cart si source=CART (pour appliquer la remise dessus). */
+          cartItem: (typeof cartEligible)[number] | null;
+          /** Date pour ordre déterministe en cas d'ex aequo. */
+          orderDate: Date;
+        };
+        const priorByMember = new Map<string, Candidate>();
+        for (const e of context.prior.entries) {
+          priorByMember.set(e.memberId, {
+            memberId: e.memberId,
+            baseAmountCents: e.baseAmountCents,
+            source: 'PRIOR',
+            cartItem: null,
+            orderDate: e.invoicedAt,
           });
-        // tiers triés par rank croissant pour pouvoir piocher facilement
+        }
+        const candidates: Candidate[] = [...priorByMember.values()];
+        for (const [memberId, item] of cartByMember) {
+          if (priorByMember.has(memberId)) continue; // déjà dans historique
+          candidates.push({
+            memberId,
+            baseAmountCents: item.baseAmountCents,
+            source: 'CART',
+            cartItem: item,
+            orderDate: new Date(),
+          });
+        }
+
+        // Tri : critère principal par sortBy + tie-breaker stable par
+        // orderDate (les anciens passent avant en cas d'ex aequo).
+        const sortBy = c.sortBy;
+        candidates.sort((a, b) => {
+          let primary = 0;
+          switch (sortBy) {
+            case 'AMOUNT_ASC':
+              primary = a.baseAmountCents - b.baseAmountCents;
+              break;
+            case 'AMOUNT_DESC':
+              primary = b.baseAmountCents - a.baseAmountCents;
+              break;
+            // AGE_ASC/DESC : pas pertinent pour FAMILY (on n'a pas l'âge
+            // dans l'historique). Fallback sur AMOUNT_DESC.
+            default:
+              primary = b.baseAmountCents - a.baseAmountCents;
+          }
+          if (primary !== 0) return primary;
+          // Tie-breaker : orderDate croissante (anciens d'abord)
+          return a.orderDate.getTime() - b.orderDate.getTime();
+        });
+
+        // Application des paliers
         const tiers = [...c.tiers].sort((a, b) => a.rank - b.rank);
-        // Plus haut rank = "ET PLUS" (ex 4 = 4 et au-delà)
         const maxRank = tiers[tiers.length - 1]?.rank ?? 0;
-        for (let i = 0; i < eligible.length; i++) {
-          const rank = i + 1; // rang 1 = 1er, pas remisé
-          if (rank < 2) continue;
+        for (let i = 0; i < candidates.length; i++) {
+          const rank = i + 1;
+          if (rank < 2) continue; // 1er = plein tarif
+          const candidate = candidates[i];
+          // Skip si déjà facturé (pas de rétroactif sur l'historique)
+          if (candidate.source === 'PRIOR') continue;
+          if (!candidate.cartItem) continue;
           const tier =
             tiers.find((t) => t.rank === rank) ??
             (rank > maxRank ? tiers.find((t) => t.rank === maxRank) : null);
           if (!tier) continue;
-          const line = eligible[i];
           const delta = this.computeDelta(
-            line.baseAmountCents,
+            candidate.cartItem.baseAmountCents,
             tier.type,
             tier.value,
           );
           if (delta === 0) continue;
+          // Reason explicite pour transparence UI
+          const explanation =
+            context.prior.entries.length > 0
+              ? `${rank}ᵉ adhérent du foyer pour cette saison (${context.prior.entries.length} déjà inscrit${context.prior.entries.length > 1 ? 's' : ''})`
+              : `${rank}ᵉ adhérent du foyer`;
           baseApp.appliedTo.push({
-            itemId: line.itemId,
+            itemId: candidate.cartItem.itemId,
             deltaAmountCents: delta,
-            reason: `${rule.label} — ${rank}ᵉ adhérent du foyer (${this.formatTierValue(tier.type, tier.value)})`,
+            reason: `${rule.label} — ${explanation} (${this.formatTierValue(tier.type, tier.value)})`,
           });
         }
         return baseApp;
@@ -448,28 +593,43 @@ export class PricingRulesEngineService {
 
       case MembershipPricingRulePattern.PRODUCT_BUNDLE: {
         const c = config as ProductBundleConfig;
-        const productIds = new Set(
-          snapshot.map((s) => s.membershipProductId).filter((p): p is string => Boolean(p)),
-        );
-        const allRequired = c.requiredProductIds.every((id) =>
-          productIds.has(id),
-        );
-        if (!allRequired) return baseApp;
-        const target = snapshot.find(
-          (s) => s.membershipProductId === c.discountAppliesToProductId,
-        );
-        if (!target) return baseApp;
-        const delta = this.computeDelta(
-          target.baseAmountCents,
-          c.discountType,
-          c.discountValue,
-        );
-        if (delta === 0) return baseApp;
-        baseApp.appliedTo.push({
-          itemId: target.itemId,
-          deltaAmountCents: delta,
-          reason: `${rule.label} (${this.formatTierValue(c.discountType, c.discountValue)})`,
-        });
+        // Le primary peut être dans le cart OU dans l'historique
+        // (foyer a déjà payé Karaté en septembre, ajoute Cross en janvier).
+        const productIdsInContext = new Set([
+          ...snapshot
+            .map((s) => s.membershipProductId)
+            .filter((p): p is string => Boolean(p)),
+          ...context.prior.entries
+            .map((e) => e.membershipProductId)
+            .filter((p): p is string => Boolean(p)),
+        ]);
+        if (!productIdsInContext.has(c.primaryProductId)) return baseApp;
+
+        // On applique la remise sur TOUTES les lignes du cart qui sont
+        // le secondary (un foyer pourrait inscrire 2 enfants au cours
+        // secondaire). Choix de la remise selon le billingRhythm de
+        // chaque ligne.
+        for (const line of snapshot) {
+          if (line.membershipProductId !== c.secondaryProductId) continue;
+          if (line.category !== 'SUBSCRIPTION') continue;
+          const discount =
+            line.billingRhythm === 'MONTHLY'
+              ? c.discountForMonthly
+              : c.discountForAnnual;
+          const delta = this.computeDelta(
+            line.baseAmountCents,
+            discount.type,
+            discount.value,
+          );
+          if (delta === 0) continue;
+          const rhythmLabel =
+            line.billingRhythm === 'MONTHLY' ? 'mensuel' : 'annuel';
+          baseApp.appliedTo.push({
+            itemId: line.itemId,
+            deltaAmountCents: delta,
+            reason: `${rule.label} (${rhythmLabel}, ${this.formatTierValue(discount.type, discount.value)})`,
+          });
+        }
         return baseApp;
       }
 

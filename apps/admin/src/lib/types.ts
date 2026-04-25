@@ -1306,11 +1306,21 @@ export type FamilyProgressiveConfig = {
   sortBy: 'AMOUNT_DESC' | 'AMOUNT_ASC' | 'AGE_DESC' | 'AGE_ASC';
 };
 
+/**
+ * Config d'une règle PRODUCT_BUNDLE — primary déclencheur, secondary
+ * remisé. Remises séparées par rythme (annuel vs mensuel).
+ */
 export type ProductBundleConfig = {
-  requiredProductIds: string[];
-  discountAppliesToProductId: string;
-  discountType: 'PERCENT_BP' | 'FIXED_CENTS';
-  discountValue: number;
+  primaryProductId: string;
+  secondaryProductId: string;
+  discountForAnnual: {
+    type: 'PERCENT_BP' | 'FIXED_CENTS';
+    value: number;
+  };
+  discountForMonthly: {
+    type: 'PERCENT_BP' | 'FIXED_CENTS';
+    value: number;
+  };
 };
 
 export type AgeRangeDiscountConfig = {

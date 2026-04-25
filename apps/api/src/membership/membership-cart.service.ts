@@ -602,6 +602,77 @@ export class MembershipCartService {
   // Listing admin / viewer
   // ------------------------------------------------------------------
 
+  /**
+   * Charge l'historique des cotisations facturées pour une famille
+   * dans la saison donnée. Utilisé pour calculer le **rang global** des
+   * adhérents dans la grille FAMILY_PROGRESSIVE quand des projets
+   * d'adhésion s'étalent dans le temps (septembre puis janvier puis
+   * avril, etc.).
+   *
+   * Retourne le **plus haut montant facturé par membre** (si un membre
+   * a 2 formules, on garde la plus chère pour le classement).
+   *
+   * `excludeInvoiceId` permet d'exclure la facture en cours de
+   * création (sinon on compterait double).
+   */
+  async loadPriorMembershipsForFamily(
+    clubId: string,
+    familyId: string,
+    seasonId: string,
+    excludeInvoiceId: string | null,
+  ): Promise<{
+    entries: Array<{
+      memberId: string;
+      baseAmountCents: number;
+      membershipProductId: string | null;
+      invoicedAt: Date;
+    }>;
+  }> {
+    // Toutes les InvoiceLine SUBSCRIPTION du foyer pour cette saison,
+    // hors facture en cours et hors factures void.
+    const lines = await this.prisma.invoiceLine.findMany({
+      where: {
+        kind: InvoiceLineKind.MEMBERSHIP_SUBSCRIPTION,
+        invoice: {
+          clubId,
+          familyId,
+          clubSeasonId: seasonId,
+          status: { in: [InvoiceStatus.OPEN, InvoiceStatus.PAID] },
+          ...(excludeInvoiceId ? { id: { not: excludeInvoiceId } } : {}),
+        },
+      },
+      select: {
+        memberId: true,
+        membershipProductId: true,
+        baseAmountCents: true,
+        invoice: { select: { createdAt: true } },
+      },
+    });
+    // Garde la plus haute baseAmount par memberId (un membre peut avoir
+    // 2 lignes pour 2 formules — multi-formules — on prend la plus chère).
+    const byMember = new Map<
+      string,
+      {
+        memberId: string;
+        baseAmountCents: number;
+        membershipProductId: string | null;
+        invoicedAt: Date;
+      }
+    >();
+    for (const l of lines) {
+      const ex = byMember.get(l.memberId);
+      if (!ex || l.baseAmountCents > ex.baseAmountCents) {
+        byMember.set(l.memberId, {
+          memberId: l.memberId,
+          baseAmountCents: l.baseAmountCents,
+          membershipProductId: l.membershipProductId,
+          invoicedAt: l.invoice.createdAt,
+        });
+      }
+    }
+    return { entries: Array.from(byMember.values()) };
+  }
+
   async getCartById(clubId: string, cartId: string) {
     const cart = await this.prisma.membershipCart.findFirst({
       where: { id: cartId, clubId },
@@ -1099,11 +1170,24 @@ export class MembershipCartService {
               : 'ONE_TIME',
           memberId: l.memberId ?? '',
           ageAtReference: null, // TODO : calculer si AGE_RANGE_DISCOUNT actif
+          billingRhythm:
+            l.subscriptionBillingRhythm ??
+            SubscriptionBillingRhythm.ANNUAL,
         }));
-        const result = await this.pricingRulesEngine.evaluate(
+        // Récupère l'historique de la famille pour cette saison.
+        // Permet à FAMILY_PROGRESSIVE de calculer le rang GLOBAL et à
+        // PRODUCT_BUNDLE de détecter le primary déjà acheté dans un
+        // projet antérieur.
+        const prior = await this.loadPriorMembershipsForFamily(
           clubId,
-          snapshot,
+          cart.familyId,
+          cart.clubSeasonId,
+          inv.id,
         );
+        const result = await this.pricingRulesEngine.evaluate(clubId, {
+          cart: snapshot,
+          prior,
+        });
         // Persister chaque application en InvoiceLineAdjustment
         let appliedDelta = 0;
         for (const app of result.applications) {

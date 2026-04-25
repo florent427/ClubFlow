@@ -318,10 +318,10 @@ function defaultConfigFor(
       } satisfies FamilyProgressiveConfig;
     case 'PRODUCT_BUNDLE':
       return {
-        requiredProductIds: [],
-        discountAppliesToProductId: '',
-        discountType: 'FIXED_CENTS',
-        discountValue: -2000,
+        primaryProductId: '',
+        secondaryProductId: '',
+        discountForAnnual: { type: 'FIXED_CENTS', value: -2000 },
+        discountForMonthly: { type: 'FIXED_CENTS', value: -200 },
       } satisfies ProductBundleConfig;
     case 'AGE_RANGE_DISCOUNT':
       return {
@@ -520,6 +520,34 @@ function FamilyProgressiveForm({
         Le 1er adhérent du foyer paie plein tarif. Les suivants bénéficient
         des taux ci-dessous (sur les cotisations les moins chères).
       </p>
+      <div
+        style={{
+          padding: 10,
+          marginBottom: 12,
+          background: 'rgba(59, 130, 246, 0.06)',
+          border: '1px solid rgba(59, 130, 246, 0.2)',
+          borderRadius: 6,
+          fontSize: '0.82rem',
+        }}
+      >
+        <strong>📚 Comment ça marche pour les inscriptions étalées dans le temps ?</strong>
+        <p style={{ margin: '6px 0 0' }}>
+          Le rang d&apos;un adhérent est calculé sur l&apos;<strong>ensemble des cotisations
+          déjà facturées au foyer pour la saison courante</strong>, pas seulement
+          sur le projet d&apos;adhésion en cours.
+        </p>
+        <p style={{ margin: '6px 0 0' }}>
+          <em>Exemple :</em> Joseph et Léa s&apos;inscrivent en septembre.
+          Tom est ajouté en janvier dans un nouveau projet → Tom est
+          comptabilisé comme <strong>3<sup>ème</sup> adhérent du foyer</strong>{' '}
+          (et non pas comme &quot;1<sup>er</sup>&quot; de son projet) →
+          il bénéficie de la remise du tier 3.
+        </p>
+        <p style={{ margin: '6px 0 0', fontStyle: 'italic' }}>
+          Les factures déjà émises ne sont jamais modifiées rétroactivement
+          — pour rééquilibrer, créez un avoir manuel sur l&apos;ancienne facture.
+        </p>
+      </div>
       <label className="cf-field">
         <span>2ᵉ adhérent : remise (%)</span>
         <input
@@ -635,118 +663,182 @@ function ProductBundleForm({
   onChange: (next: ProductBundleConfig) => void;
   products: Array<{ id: string; label: string; annualAmountCents: number }>;
 }) {
-  function toggleProduct(productId: string) {
-    const next = config.requiredProductIds.includes(productId)
-      ? config.requiredProductIds.filter((id) => id !== productId)
-      : [...config.requiredProductIds, productId];
-    onChange({
-      ...config,
-      requiredProductIds: next,
-      // Reset cible si elle n'est plus dans la liste
-      discountAppliesToProductId: next.includes(config.discountAppliesToProductId)
-        ? config.discountAppliesToProductId
-        : next[0] ?? '',
-    });
+  // Helper pour afficher la valeur d'une remise dans l'input (positive
+  // pour l'utilisateur, le signe est appliqué au save).
+  function pctOrEuro(d: { type: 'PERCENT_BP' | 'FIXED_CENTS'; value: number }) {
+    return Math.abs(d.value / 100);
   }
+
+  const primaryProduct = products.find((p) => p.id === config.primaryProductId);
+  const secondaryProduct = products.find(
+    (p) => p.id === config.secondaryProductId,
+  );
 
   return (
     <fieldset className="cf-fieldset">
       <legend>Combinaison de produits</legend>
       <p className="cf-muted" style={{ marginBottom: 12, fontSize: '0.85rem' }}>
-        Si <strong>tous</strong> les produits cochés sont présents ensemble
-        dans le projet d’adhésion, applique la remise sur le produit
-        cible.
+        Si l&rsquo;adhérent souscrit au <strong>produit primaire</strong>{' '}
+        (déclencheur), il bénéficie d&rsquo;une remise sur le{' '}
+        <strong>produit secondaire</strong>. Le primaire peut avoir été
+        acheté dans un projet précédent de la même saison — la remise
+        s&rsquo;applique quand même au secondaire.
       </p>
-      <fieldset className="cf-fieldset" style={{ marginBottom: 12 }}>
-        <legend>Produits requis (au moins 2)</legend>
-        {products.length === 0 ? (
-          <p className="cf-muted">
-            Aucune formule disponible. Crée d’abord des formules
-            d’adhésion.
-          </p>
-        ) : (
-          products.map((p) => (
-            <label
-              key={p.id}
-              className="cf-field cf-field--inline"
-              style={{ display: 'block', padding: 4 }}
-            >
-              <input
-                type="checkbox"
-                checked={config.requiredProductIds.includes(p.id)}
-                onChange={() => toggleProduct(p.id)}
-              />
-              <span style={{ marginLeft: 6 }}>
-                {p.label} ({formatEuros(p.annualAmountCents)} / an)
-              </span>
-            </label>
-          ))
-        )}
-      </fieldset>
+
+      {/* Produit primaire */}
       <label className="cf-field">
-        <span>Remise appliquée sur</span>
+        <span>
+          🎯 Produit <strong>primaire</strong> (doit être présent)
+        </span>
         <select
-          value={config.discountAppliesToProductId}
+          value={config.primaryProductId}
           onChange={(e) =>
-            onChange({
-              ...config,
-              discountAppliesToProductId: e.target.value,
-            })
+            onChange({ ...config, primaryProductId: e.target.value })
           }
         >
           <option value="" disabled>
-            — Choisir le produit cible —
+            — Choisir le produit primaire —
           </option>
-          {config.requiredProductIds.map((id) => {
-            const p = products.find((pp) => pp.id === id);
-            return (
-              <option key={id} value={id}>
-                {p?.label ?? id}
-              </option>
-            );
-          })}
+          {products.map((p) => (
+            <option
+              key={p.id}
+              value={p.id}
+              disabled={p.id === config.secondaryProductId}
+            >
+              {p.label} ({formatEuros(p.annualAmountCents)} / an)
+            </option>
+          ))}
         </select>
       </label>
-      <div className="cf-form-row" style={{ display: 'flex', gap: 12 }}>
-        <label className="cf-field">
-          <span>Type</span>
-          <select
-            value={config.discountType}
-            onChange={(e) =>
-              onChange({
-                ...config,
-                discountType: e.target.value as 'PERCENT_BP' | 'FIXED_CENTS',
-              })
-            }
-          >
-            <option value="FIXED_CENTS">Montant fixe (€)</option>
-            <option value="PERCENT_BP">Pourcentage (%)</option>
-          </select>
-        </label>
-        <label className="cf-field">
-          <span>
-            {config.discountType === 'PERCENT_BP'
-              ? 'Pourcentage (positif)'
-              : 'Montant en € (positif)'}
-          </span>
-          <input
-            type="number"
-            value={Math.abs(config.discountValue / 100)}
-            onChange={(e) => {
-              const v = Number(e.target.value) || 0;
-              onChange({
-                ...config,
-                discountValue:
-                  -Math.abs(v) * (config.discountType === 'PERCENT_BP' ? 100 : 100),
-              });
-            }}
-            min={0}
-          />
-        </label>
-      </div>
 
-      {config.requiredProductIds.length >= 2 &&
-      config.discountAppliesToProductId ? (
+      {/* Produit secondaire */}
+      <label className="cf-field">
+        <span>
+          💰 Produit <strong>secondaire</strong> (reçoit la remise)
+        </span>
+        <select
+          value={config.secondaryProductId}
+          onChange={(e) =>
+            onChange({ ...config, secondaryProductId: e.target.value })
+          }
+        >
+          <option value="" disabled>
+            — Choisir le produit secondaire —
+          </option>
+          {products.map((p) => (
+            <option
+              key={p.id}
+              value={p.id}
+              disabled={p.id === config.primaryProductId}
+            >
+              {p.label} ({formatEuros(p.annualAmountCents)} / an)
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {/* Remises annuel + mensuel séparées */}
+      <fieldset
+        className="cf-fieldset"
+        style={{ marginTop: 12, padding: 10 }}
+      >
+        <legend style={{ fontSize: '0.85rem', fontWeight: 600 }}>
+          📅 Remise sur le secondaire (annuel)
+        </legend>
+        <div className="cf-form-row" style={{ display: 'flex', gap: 12 }}>
+          <label className="cf-field">
+            <span>Type</span>
+            <select
+              value={config.discountForAnnual.type}
+              onChange={(e) =>
+                onChange({
+                  ...config,
+                  discountForAnnual: {
+                    ...config.discountForAnnual,
+                    type: e.target.value as 'PERCENT_BP' | 'FIXED_CENTS',
+                  },
+                })
+              }
+            >
+              <option value="FIXED_CENTS">Montant fixe (€)</option>
+              <option value="PERCENT_BP">Pourcentage (%)</option>
+            </select>
+          </label>
+          <label className="cf-field">
+            <span>
+              {config.discountForAnnual.type === 'PERCENT_BP'
+                ? 'Pourcentage (positif)'
+                : 'Montant en € (positif)'}
+            </span>
+            <input
+              type="number"
+              value={pctOrEuro(config.discountForAnnual)}
+              onChange={(e) => {
+                const v = Number(e.target.value) || 0;
+                onChange({
+                  ...config,
+                  discountForAnnual: {
+                    ...config.discountForAnnual,
+                    value: -Math.abs(v) * 100,
+                  },
+                });
+              }}
+              min={0}
+            />
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset className="cf-fieldset" style={{ padding: 10 }}>
+        <legend style={{ fontSize: '0.85rem', fontWeight: 600 }}>
+          🗓️ Remise sur le secondaire (mensuel)
+        </legend>
+        <div className="cf-form-row" style={{ display: 'flex', gap: 12 }}>
+          <label className="cf-field">
+            <span>Type</span>
+            <select
+              value={config.discountForMonthly.type}
+              onChange={(e) =>
+                onChange({
+                  ...config,
+                  discountForMonthly: {
+                    ...config.discountForMonthly,
+                    type: e.target.value as 'PERCENT_BP' | 'FIXED_CENTS',
+                  },
+                })
+              }
+            >
+              <option value="FIXED_CENTS">Montant fixe (€/mois)</option>
+              <option value="PERCENT_BP">Pourcentage (%)</option>
+            </select>
+          </label>
+          <label className="cf-field">
+            <span>
+              {config.discountForMonthly.type === 'PERCENT_BP'
+                ? 'Pourcentage (positif)'
+                : 'Montant en € / mois (positif)'}
+            </span>
+            <input
+              type="number"
+              value={pctOrEuro(config.discountForMonthly)}
+              onChange={(e) => {
+                const v = Number(e.target.value) || 0;
+                onChange({
+                  ...config,
+                  discountForMonthly: {
+                    ...config.discountForMonthly,
+                    value: -Math.abs(v) * 100,
+                  },
+                });
+              }}
+              min={0}
+            />
+          </label>
+        </div>
+      </fieldset>
+
+      {/* Preview */}
+      {primaryProduct && secondaryProduct ? (
         <div
           className="cf-alert cf-alert--info"
           style={{
@@ -757,25 +849,37 @@ function ProductBundleForm({
           }}
         >
           <strong>💡 Aperçu :</strong>
-          <p style={{ margin: '8px 0 0', fontSize: '0.85rem' }}>
-            Si un membre s’inscrit à{' '}
-            {config.requiredProductIds
-              .map((id) => products.find((p) => p.id === id)?.label ?? id)
-              .join(' + ')}
-            , il bénéficie de{' '}
-            <strong style={{ color: '#dc2626' }}>
-              {config.discountType === 'PERCENT_BP'
-                ? `-${Math.abs(config.discountValue / 100)}%`
-                : `${formatEuros(config.discountValue)}`}
-            </strong>{' '}
-            sur{' '}
-            <strong>
-              {products.find(
-                (p) => p.id === config.discountAppliesToProductId,
-              )?.label ?? '—'}
-            </strong>
-            .
+          <p style={{ margin: '8px 0', fontSize: '0.85rem' }}>
+            Si un adhérent souscrit à <strong>{primaryProduct.label}</strong>{' '}
+            (peu importe l&apos;ordre / projet d&apos;achat dans la saison),
+            la remise suivante s&apos;applique à <strong>{secondaryProduct.label}</strong> :
           </p>
+          <ul
+            style={{
+              margin: '8px 0 0',
+              paddingLeft: 20,
+              fontSize: '0.85rem',
+            }}
+          >
+            <li>
+              Si <strong>annuel</strong> : remise de{' '}
+              <strong style={{ color: '#dc2626' }}>
+                {config.discountForAnnual.type === 'PERCENT_BP'
+                  ? `-${pctOrEuro(config.discountForAnnual)}%`
+                  : `${formatEuros(config.discountForAnnual.value)}`}
+              </strong>{' '}
+              sur le tarif annuel
+            </li>
+            <li>
+              Si <strong>mensuel</strong> : remise de{' '}
+              <strong style={{ color: '#dc2626' }}>
+                {config.discountForMonthly.type === 'PERCENT_BP'
+                  ? `-${pctOrEuro(config.discountForMonthly)}%`
+                  : `${formatEuros(config.discountForMonthly.value)}/mois`}
+              </strong>{' '}
+              sur le tarif mensuel
+            </li>
+          </ul>
         </div>
       ) : null}
     </fieldset>
