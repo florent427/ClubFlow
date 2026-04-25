@@ -7,11 +7,14 @@ import { AccountingResolver } from './accounting.resolver';
 import { AccountingService } from './accounting.service';
 import { AccountingAllocationService } from './accounting-allocation.service';
 import { AccountingAuditService } from './accounting-audit.service';
+import { AccountingConsolidationService } from './accounting-consolidation.service';
 import { AccountingExportService } from './accounting-export.service';
 import { AccountingMappingService } from './accounting-mapping.service';
 import { AccountingPeriodService } from './accounting-period.service';
 import { AccountingSeedService } from './accounting-seed.service';
 import { AccountingSuggestionService } from './accounting-suggestion.service';
+import { ClubFinancialAccountsService } from './club-financial-accounts.service';
+import { ClubPaymentRoutesService } from './club-payment-routes.service';
 import { ReceiptOcrService } from './receipt-ocr.service';
 
 @Module({
@@ -26,6 +29,9 @@ import { ReceiptOcrService } from './receipt-ocr.service';
     AccountingExportService,
     AccountingSeedService,
     AccountingSuggestionService,
+    ClubFinancialAccountsService,
+    ClubPaymentRoutesService,
+    AccountingConsolidationService,
     ReceiptOcrService,
     AccountingResolver,
     ClubModuleEnabledGuard,
@@ -39,6 +45,9 @@ import { ReceiptOcrService } from './receipt-ocr.service';
     AccountingExportService,
     AccountingSeedService,
     AccountingSuggestionService,
+    ClubFinancialAccountsService,
+    ClubPaymentRoutesService,
+    AccountingConsolidationService,
     ReceiptOcrService,
   ],
 })

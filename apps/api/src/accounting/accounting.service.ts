@@ -26,6 +26,7 @@ import { AccountingMappingService } from './accounting-mapping.service';
 import { AccountingPeriodService } from './accounting-period.service';
 import { AccountingSeedService } from './accounting-seed.service';
 import { AccountingSuggestionService } from './accounting-suggestion.service';
+import { ClubFinancialAccountsService } from './club-financial-accounts.service';
 
 /** Filtres supportés sur la query liste. */
 export interface ListEntriesFilter {
@@ -36,6 +37,8 @@ export interface ListEntriesFilter {
   status?: AccountingEntryStatus | null;
   source?: AccountingEntrySource | null;
   accountCode?: string | null;
+  /** Filtre par compte financier (banque/caisse/transit) — multi-banques. */
+  financialAccountId?: string | null;
   limit?: number;
 }
 
@@ -53,6 +56,12 @@ export interface ManualEntryInput {
   disciplineCode?: string | null;
   freeformTags?: string[];
   documentMediaAssetIds?: string[];
+  /**
+   * Compte financier de contrepartie (banque/caisse/transit). Si null,
+   * utilise le compte BANK par défaut du club. Permet de choisir
+   * "encaissé sur Caisse buvette" plutôt que "Banque principale".
+   */
+  financialAccountId?: string | null;
 }
 
 /**
@@ -72,6 +81,7 @@ export class AccountingService {
     private readonly audit: AccountingAuditService,
     private readonly suggestion: AccountingSuggestionService,
     private readonly seed: AccountingSeedService,
+    private readonly financialAccounts: ClubFinancialAccountsService,
   ) {}
 
   // ========================================================================
@@ -139,6 +149,50 @@ export class AccountingService {
     return { code: row.code, label: row.label, kind: row.kind };
   }
 
+  /**
+   * Helper de résolution de la contrepartie pour les saisies manuelles
+   * (createManualEntry, createQuickEntry).
+   *  - Si `financialAccountId` fourni → vérifie qu'il existe et est actif
+   *    pour ce club, le retourne.
+   *  - Sinon → fallback sur le BANK par défaut du club via le service
+   *    multi-comptes.
+   */
+  private async resolveFinancialAccountForManual(
+    clubId: string,
+    financialAccountId: string | null,
+  ) {
+    if (financialAccountId) {
+      const fin = await this.prisma.clubFinancialAccount.findFirst({
+        where: { clubId, id: financialAccountId, isActive: true },
+        include: { accountingAccount: true },
+      });
+      if (!fin) {
+        throw new BadRequestException(
+          `Compte financier ${financialAccountId} introuvable ou inactif.`,
+        );
+      }
+      return fin;
+    }
+    // Fallback : utilise le routage default du service. On simule
+    // STRIPE_CARD pour passer par STRIPE_TRANSIT en priorité, puis BANK.
+    // Pour la saisie manuelle, on préfère BANK direct.
+    const def = await this.financialAccounts.getDefault(clubId, 'BANK');
+    if (def) return def;
+    // Si pas de BANK default, on prend la première active.
+    const any = await this.prisma.clubFinancialAccount.findFirst({
+      where: { clubId, isActive: true },
+      orderBy: [{ isDefault: 'desc' }, { sortOrder: 'asc' }],
+      include: { accountingAccount: true },
+    });
+    if (!any) {
+      throw new BadRequestException(
+        'Aucun compte financier configuré. ' +
+          'Va dans Paramètres → Comptabilité → Comptes bancaires & caisses.',
+      );
+    }
+    return any;
+  }
+
   // ========================================================================
   // Hooks automatiques (appelés depuis PaymentsService, etc.)
   // ========================================================================
@@ -179,12 +233,19 @@ export class AccountingService {
     const occurredAt = payment.createdAt;
     const amountCents = payment.amountCents;
 
-    // Résout les comptes : 512 (banque) débit + 706xxx (cotisations) crédit
-    const bankCode = await this.mapping.resolveAccountCode(
+    // Résout les comptes : la contrepartie débit (banque/caisse/transit)
+    // est désormais routée selon `payment.method` via le service multi-
+    // comptes financiers (CASH → caisse, STRIPE_CARD → transit Stripe,
+    // virement/chèque → banque). Fallback automatique sur la banque par
+    // défaut si pas de route configurée.
+    const fin = await this.financialAccounts.resolveForPayment(
       clubId,
-      'BANK_ACCOUNT',
+      payment.method,
     );
-    const bankAccount = await this.lookupAccount(clubId, bankCode);
+    const bankAccount = await this.lookupAccount(
+      clubId,
+      fin.accountingAccount.code,
+    );
     const revenueCode = await this.mapping.resolveAccountCode(
       clubId,
       'MEMBERSHIP_PRODUCT',
@@ -229,10 +290,22 @@ export class AccountingService {
           amountCents,
           paymentId,
           occurredAt,
+          // Trace le compte financier réel pour le rapprochement bancaire
+          // et l'affichage UI ("encaissé sur Caisse buvette").
+          financialAccountId: fin.id,
         },
       });
 
-      // Ligne 1 : débit banque (contrepartie trésorerie)
+      // Idempotence : on persiste aussi le financialAccountId sur le Payment
+      // si pas encore rempli (cas paiements créés avant la migration).
+      if (!payment.financialAccountId) {
+        await tx.payment.update({
+          where: { id: paymentId },
+          data: { financialAccountId: fin.id },
+        });
+      }
+
+      // Ligne 1 : débit contrepartie trésorerie (banque/caisse/transit)
       await tx.accountingEntryLine.create({
         data: {
           entryId: entry.id,
@@ -416,11 +489,18 @@ export class AccountingService {
 
     const feeCode = await this.mapping.resolveAccountCode(clubId, 'STRIPE_FEE');
     const feeAccount = await this.lookupAccount(clubId, feeCode);
-    const bankCode = await this.mapping.resolveAccountCode(
+    // Important : les frais Stripe sortent du compte STRIPE_TRANSIT
+    // (compte sur lequel l'argent encaissé est tombé), pas de la banque
+    // physique finale. Le routage va donc préférer le compte Stripe si
+    // configuré, sinon fallback BANK.
+    const fin = await this.financialAccounts.resolveForPayment(
       clubId,
-      'BANK_ACCOUNT',
+      payment.method,
     );
-    const bankAccount = await this.lookupAccount(clubId, bankCode);
+    const bankAccount = await this.lookupAccount(
+      clubId,
+      fin.accountingAccount.code,
+    );
 
     await this.prisma.$transaction(async (tx) => {
       const entry = await tx.accountingEntry.create({
@@ -433,6 +513,7 @@ export class AccountingService {
           amountCents: feeAmountCents,
           paymentId,
           occurredAt: payment.createdAt,
+          financialAccountId: fin.id,
         },
       });
       // Débit 627 (frais bancaires)
@@ -481,11 +562,16 @@ export class AccountingService {
     await this.period.assertDateIsOpen(clubId, occurredAt);
 
     const account = await this.lookupAccount(clubId, input.accountCode);
-    const bankCode = await this.mapping.resolveAccountCode(
+    // Résolution de la contrepartie : explicite (input.financialAccountId)
+    // ou défaut BANK du club via fallback.
+    const fin = await this.resolveFinancialAccountForManual(
       clubId,
-      'BANK_ACCOUNT',
+      input.financialAccountId ?? null,
     );
-    const bankAccount = await this.lookupAccount(clubId, bankCode);
+    const bankAccount = await this.lookupAccount(
+      clubId,
+      fin.accountingAccount.code,
+    );
 
     const side = this.deriveSide(account.kind, input.kind, account.code);
 
@@ -501,6 +587,7 @@ export class AccountingService {
           vatTotalCents: input.vatAmountCents ?? null,
           occurredAt,
           createdByUserId: userId,
+          financialAccountId: fin.id,
         },
       });
 
@@ -649,8 +736,17 @@ export class AccountingService {
           ? '871000'
           : await this.mapping.resolveAccountCode(clubId, 'EXPENSE_GENERIC');
 
-    const bankCode = await this.mapping.resolveAccountCode(clubId, 'BANK_ACCOUNT');
-    const bankAccount = await this.lookupAccount(clubId, bankCode);
+    // Résolution de la contrepartie : explicite via input.financialAccountId
+    // (l'utilisateur a choisi "encaissé sur Caisse buvette") OU défaut BANK
+    // du club (rétrocompat).
+    const fin = await this.resolveFinancialAccountForManual(
+      clubId,
+      input.financialAccountId ?? null,
+    );
+    const bankAccount = await this.lookupAccount(
+      clubId,
+      fin.accountingAccount.code,
+    );
 
     // Pour chaque article : résout le compte (soit fourni par user, soit
     // fallback en attente d'IA), calcule le côté débit/crédit, et
@@ -710,6 +806,7 @@ export class AccountingService {
           vatTotalCents: input.vatAmountCents ?? null,
           occurredAt,
           createdByUserId: userId,
+          financialAccountId: fin.id,
         },
       });
 
@@ -1677,6 +1774,8 @@ export class AccountingService {
     if (filter.status) where.status = filter.status;
     if (filter.source) where.source = filter.source;
     if (filter.projectId) where.projectId = filter.projectId;
+    if (filter.financialAccountId)
+      where.financialAccountId = filter.financialAccountId;
     if (filter.cohortCode || filter.accountCode) {
       where.lines = {
         some: {
@@ -1700,6 +1799,7 @@ export class AccountingService {
           },
         },
         documents: { include: { mediaAsset: true } },
+        financialAccount: { include: { accountingAccount: true } },
       },
     });
   }
@@ -1721,6 +1821,7 @@ export class AccountingService {
         },
         documents: { include: { mediaAsset: true } },
         extraction: true,
+        financialAccount: { include: { accountingAccount: true } },
       },
     });
     if (!entry) throw new NotFoundException('Écriture introuvable');

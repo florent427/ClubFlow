@@ -86,6 +86,11 @@ export class AccountingEntryLineGraph {
   @Field(() => Int, { nullable: true })
   iaConfidencePct!: number | null;
 
+  /** Si la ligne résulte d'une consolidation, contient les labels des
+   *  articles d'origine fusionnés. Vide = ligne non consolidée. */
+  @Field(() => [String])
+  mergedFromArticleLabels!: string[];
+
   @Field(() => [AccountingAllocationGraph])
   allocations!: AccountingAllocationGraph[];
 }
@@ -142,6 +147,22 @@ export class AccountingEntryGraph {
 
   @Field(() => ID, { nullable: true })
   contraEntryId!: string | null;
+
+  /** Compte financier de contrepartie (banque/caisse/transit Stripe). */
+  @Field(() => ID, { nullable: true })
+  financialAccountId!: string | null;
+
+  /** Libellé snapshot du compte financier (ex "Caisse buvette"). */
+  @Field(() => String, { nullable: true })
+  financialAccountLabel!: string | null;
+
+  /** Code PCG du compte financier (ex "530200"). */
+  @Field(() => String, { nullable: true })
+  financialAccountCode!: string | null;
+
+  /** Date de consolidation des lignes. Null = écriture détaillée standard. */
+  @Field(() => Date, { nullable: true })
+  consolidatedAt!: Date | null;
 
   @Field()
   occurredAt!: Date;

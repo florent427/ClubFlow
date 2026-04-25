@@ -1138,6 +1138,8 @@ export type AccountingEntryLineRow = {
   iaSuggestedAccountCode: string | null;
   iaReasoning: string | null;
   iaConfidencePct: number | null;
+  /** Si la ligne résulte d'une consolidation, labels des articles d'origine. */
+  mergedFromArticleLabels: string[];
   allocations: AccountingAllocationRow[];
 };
 export type AccountingDocumentRow = {
@@ -1159,6 +1161,12 @@ export type AccountingEntry = {
   paymentId: string | null;
   projectId: string | null;
   contraEntryId: string | null;
+  /** Compte financier de contrepartie (banque/caisse/transit). */
+  financialAccountId: string | null;
+  financialAccountLabel: string | null;
+  financialAccountCode: string | null;
+  /** Date de consolidation des lignes. Null = écriture détaillée standard. */
+  consolidatedAt: string | null;
   occurredAt: string;
   createdAt: string;
   lines: AccountingEntryLineRow[];
@@ -1206,4 +1214,69 @@ export type AccountingCohortRow = {
 };
 export type ClubAccountingCohortsData = {
   clubAccountingCohorts: AccountingCohortRow[];
+};
+
+// ============================================================================
+// Multi-comptes financiers (banques, caisses, transit Stripe)
+// ============================================================================
+
+export type ClubFinancialAccountKindGql =
+  | 'BANK'
+  | 'CASH'
+  | 'STRIPE_TRANSIT'
+  | 'OTHER_TRANSIT';
+
+export type ClubPaymentMethodGql =
+  | 'STRIPE_CARD'
+  | 'MANUAL_CASH'
+  | 'MANUAL_CHECK'
+  | 'MANUAL_TRANSFER';
+
+export type ClubFinancialAccount = {
+  id: string;
+  kind: ClubFinancialAccountKindGql;
+  label: string;
+  accountingAccountId: string;
+  accountingAccountCode: string;
+  accountingAccountLabel: string;
+  iban: string | null;
+  bic: string | null;
+  stripeAccountId: string | null;
+  isDefault: boolean;
+  isActive: boolean;
+  sortOrder: number;
+  notes: string | null;
+};
+
+export type ClubFinancialAccountsData = {
+  clubFinancialAccounts: ClubFinancialAccount[];
+};
+
+export type ClubPaymentRoute = {
+  id: string;
+  method: ClubPaymentMethodGql;
+  financialAccountId: string;
+  financialAccountLabel: string;
+  financialAccountCode: string;
+};
+
+export type ClubPaymentRoutesData = {
+  clubPaymentRoutes: ClubPaymentRoute[];
+};
+
+export type ConsolidationGroup = {
+  accountCode: string;
+  accountLabel: string;
+  lineCount: number;
+  totalCents: number;
+};
+
+export type ConsolidationPreview = {
+  eligible: boolean;
+  reason: string | null;
+  groups: ConsolidationGroup[];
+};
+
+export type AccountingEntryConsolidationPreviewData = {
+  accountingEntryConsolidationPreview: ConsolidationPreview;
 };

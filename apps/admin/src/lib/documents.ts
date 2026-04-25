@@ -1803,6 +1803,10 @@ const ACCOUNTING_ENTRY_FIELDS = `
   paymentId
   projectId
   contraEntryId
+  financialAccountId
+  financialAccountLabel
+  financialAccountCode
+  consolidatedAt
   occurredAt
   createdAt
   lines {
@@ -1819,6 +1823,7 @@ const ACCOUNTING_ENTRY_FIELDS = `
     iaSuggestedAccountCode
     iaReasoning
     iaConfidencePct
+    mergedFromArticleLabels
     allocations {
       id
       amountCents
@@ -2322,5 +2327,120 @@ export const UPDATE_CLUB_BRANDING = gql`
       contactPhone
       contactEmail
     }
+  }
+`;
+
+// ============================================================================
+// Comptes financiers (banques, caisses, transit Stripe)
+// ============================================================================
+
+const FINANCIAL_ACCOUNT_FIELDS = `
+  id
+  kind
+  label
+  accountingAccountId
+  accountingAccountCode
+  accountingAccountLabel
+  iban
+  bic
+  stripeAccountId
+  isDefault
+  isActive
+  sortOrder
+  notes
+`;
+
+export const CLUB_FINANCIAL_ACCOUNTS = gql`
+  query ClubFinancialAccounts {
+    clubFinancialAccounts {
+      ${FINANCIAL_ACCOUNT_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_CLUB_FINANCIAL_ACCOUNT = gql`
+  mutation CreateClubFinancialAccount($input: CreateClubFinancialAccountInput!) {
+    createClubFinancialAccount(input: $input) {
+      ${FINANCIAL_ACCOUNT_FIELDS}
+    }
+  }
+`;
+
+export const UPDATE_CLUB_FINANCIAL_ACCOUNT = gql`
+  mutation UpdateClubFinancialAccount($input: UpdateClubFinancialAccountInput!) {
+    updateClubFinancialAccount(input: $input) {
+      ${FINANCIAL_ACCOUNT_FIELDS}
+    }
+  }
+`;
+
+export const ARCHIVE_CLUB_FINANCIAL_ACCOUNT = gql`
+  mutation ArchiveClubFinancialAccount($id: ID!) {
+    archiveClubFinancialAccount(id: $id)
+  }
+`;
+
+// ============================================================================
+// Routes de paiement (mapping ClubPaymentMethod → ClubFinancialAccount)
+// ============================================================================
+
+export const CLUB_PAYMENT_ROUTES = gql`
+  query ClubPaymentRoutes {
+    clubPaymentRoutes {
+      id
+      method
+      financialAccountId
+      financialAccountLabel
+      financialAccountCode
+    }
+  }
+`;
+
+export const UPSERT_CLUB_PAYMENT_ROUTE = gql`
+  mutation UpsertClubPaymentRoute($input: UpsertClubPaymentRouteInput!) {
+    upsertClubPaymentRoute(input: $input) {
+      id
+      method
+      financialAccountId
+      financialAccountLabel
+      financialAccountCode
+    }
+  }
+`;
+
+export const DELETE_CLUB_PAYMENT_ROUTE = gql`
+  mutation DeleteClubPaymentRoute($id: ID!) {
+    deleteClubPaymentRoute(id: $id)
+  }
+`;
+
+// ============================================================================
+// Consolidation opt-in des lignes d'écriture
+// ============================================================================
+
+export const ACCOUNTING_ENTRY_CONSOLIDATION_PREVIEW = gql`
+  query AccountingEntryConsolidationPreview($entryId: ID!) {
+    accountingEntryConsolidationPreview(entryId: $entryId) {
+      eligible
+      reason
+      groups {
+        accountCode
+        accountLabel
+        lineCount
+        totalCents
+      }
+    }
+  }
+`;
+
+export const CONSOLIDATE_ACCOUNTING_ENTRY = gql`
+  mutation ConsolidateAccountingEntry($entryId: ID!) {
+    consolidateAccountingEntry(entryId: $entryId)
+  }
+`;
+
+export const UNCONSOLIDATE_ACCOUNTING_ENTRY = gql`
+  mutation UnconsolidateAccountingEntry($entryId: ID!) {
+    unconsolidateAccountingEntry(entryId: $entryId)
   }
 `;

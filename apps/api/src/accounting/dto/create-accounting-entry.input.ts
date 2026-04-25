@@ -71,4 +71,10 @@ export class CreateAccountingEntryInput {
   @IsInt()
   @Min(0)
   vatAmountCents?: number;
+
+  /** Compte financier de contrepartie (banque/caisse/transit). */
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsUUID()
+  financialAccountId?: string;
 }

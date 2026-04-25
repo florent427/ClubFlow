@@ -147,4 +147,14 @@ export class CreateQuickAccountingEntryInput {
   @IsInt()
   @Min(0)
   vatAmountCents?: number;
+
+  /**
+   * Compte financier de contrepartie (banque/caisse/transit). Permet à
+   * l'utilisateur de choisir "encaissé sur Caisse buvette" plutôt que
+   * "Banque principale". Null = fallback BANK default du club.
+   */
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsUUID()
+  financialAccountId?: string;
 }

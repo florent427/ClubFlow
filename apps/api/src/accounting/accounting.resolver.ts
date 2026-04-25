@@ -18,13 +18,21 @@ import { ModuleCode } from '../domain/module-registry/module-codes';
 import type { RequestUser } from '../common/types/request-user';
 import { AccountingAllocationService } from './accounting-allocation.service';
 import { AccountingAuditService } from './accounting-audit.service';
+import { AccountingConsolidationService } from './accounting-consolidation.service';
 import { AccountingMappingService } from './accounting-mapping.service';
 import { AccountingPeriodService } from './accounting-period.service';
 import { AccountingSeedService } from './accounting-seed.service';
 import { AccountingService } from './accounting.service';
 import { AccountingSuggestionService } from './accounting-suggestion.service';
+import { ClubFinancialAccountsService } from './club-financial-accounts.service';
+import { ClubPaymentRoutesService } from './club-payment-routes.service';
 import { ReceiptOcrService } from './receipt-ocr.service';
 import { CancelAccountingEntryInput } from './dto/cancel-accounting-entry.input';
+import {
+  CreateClubFinancialAccountInput,
+  UpdateClubFinancialAccountInput,
+} from './dto/club-financial-account.input';
+import { UpsertClubPaymentRouteInput } from './dto/club-payment-route.input';
 import { ConfirmExtractionInput } from './dto/confirm-extraction.input';
 import { CreateAccountingEntryInput } from './dto/create-accounting-entry.input';
 import { CreateQuickAccountingEntryInput } from './dto/create-quick-entry.input';
@@ -41,6 +49,9 @@ import {
 } from './models/accounting-entry.model';
 import { AccountingSuggestionGraph } from './models/accounting-suggestion.model';
 import { AccountingSummaryGraph } from './models/accounting-summary.model';
+import { ClubFinancialAccountGraph } from './models/club-financial-account.model';
+import { ClubPaymentRouteGraph } from './models/club-payment-route.model';
+import { ConsolidationPreviewGraph } from './models/consolidation-preview.model';
 import { QuickEntryResultGraph } from './models/quick-entry-result.model';
 import { ReceiptOcrResultGraph } from './models/receipt-ocr-result.model';
 import { SuggestAccountingCategorizationInput } from './dto/suggest-accounting-categorization.input';
@@ -57,6 +68,13 @@ interface EntryRow {
   paymentId: string | null;
   projectId: string | null;
   contraEntryId: string | null;
+  financialAccountId: string | null;
+  financialAccount: {
+    id: string;
+    label: string;
+    accountingAccount: { code: string };
+  } | null;
+  consolidatedAt: Date | null;
   occurredAt: Date;
   createdAt: Date;
   lines: Array<{
@@ -73,6 +91,7 @@ interface EntryRow {
     iaSuggestedAccountCode: string | null;
     iaReasoning: string | null;
     iaConfidencePct: number | null;
+    mergedFromArticleLabels: string[];
     allocations: Array<{
       id: string;
       amountCents: number;
@@ -107,6 +126,11 @@ function toGraph(entry: EntryRow): AccountingEntryGraph {
     paymentId: entry.paymentId,
     projectId: entry.projectId,
     contraEntryId: entry.contraEntryId,
+    financialAccountId: entry.financialAccountId,
+    financialAccountLabel: entry.financialAccount?.label ?? null,
+    financialAccountCode:
+      entry.financialAccount?.accountingAccount.code ?? null,
+    consolidatedAt: entry.consolidatedAt,
     occurredAt: entry.occurredAt,
     createdAt: entry.createdAt,
     lines: entry.lines.map(
@@ -124,6 +148,7 @@ function toGraph(entry: EntryRow): AccountingEntryGraph {
         iaSuggestedAccountCode: l.iaSuggestedAccountCode,
         iaReasoning: l.iaReasoning,
         iaConfidencePct: l.iaConfidencePct,
+        mergedFromArticleLabels: l.mergedFromArticleLabels,
         allocations: l.allocations.map(
           (a): AccountingAllocationGraph => ({
             id: a.id,
@@ -173,6 +198,9 @@ export class AccountingResolver {
     private readonly receiptOcr: ReceiptOcrService,
     private readonly seedService: AccountingSeedService,
     private readonly suggestionService: AccountingSuggestionService,
+    private readonly financialAccounts: ClubFinancialAccountsService,
+    private readonly paymentRoutes: ClubPaymentRoutesService,
+    private readonly consolidation: AccountingConsolidationService,
   ) {}
 
   // =========================================================================
@@ -194,6 +222,8 @@ export class AccountingResolver {
     source: AccountingEntrySource | null,
     @Args('accountCode', { type: () => String, nullable: true })
     accountCode: string | null,
+    @Args('financialAccountId', { type: () => ID, nullable: true })
+    financialAccountId: string | null,
   ): Promise<AccountingEntryGraph[]> {
     const rows = await this.accounting.listEntries(club.id, {
       from,
@@ -203,6 +233,7 @@ export class AccountingResolver {
       status,
       source,
       accountCode,
+      financialAccountId,
     });
     return (rows as unknown as EntryRow[]).map(toGraph);
   }
@@ -319,6 +350,7 @@ export class AccountingResolver {
       freeformTags: input.freeformTags ?? [],
       documentMediaAssetIds: input.documentMediaAssetIds ?? [],
       vatAmountCents: input.vatAmountCents ?? null,
+      financialAccountId: input.financialAccountId ?? null,
     });
     // Récupère l'entry pleine pour le retour
     const latest = await this.accounting.listEntries(club.id, {
@@ -448,6 +480,7 @@ export class AccountingResolver {
       freeformTags: input.freeformTags ?? [],
       documentMediaAssetIds: input.documentMediaAssetIds ?? [],
       vatAmountCents: input.vatAmountCents ?? null,
+      financialAccountId: input.financialAccountId ?? null,
       articles: input.articles?.map((a) => ({
         label: a.label,
         amountCents: a.amountCents,
@@ -665,6 +698,204 @@ export class AccountingResolver {
       id,
       'delete-via-api',
     );
+    return true;
+  }
+
+  // =========================================================================
+  // Comptes financiers (banques, caisses, transit Stripe)
+  // =========================================================================
+
+  @Query(() => [ClubFinancialAccountGraph], {
+    name: 'clubFinancialAccounts',
+  })
+  async clubFinancialAccounts(
+    @CurrentClub() club: Club,
+  ): Promise<ClubFinancialAccountGraph[]> {
+    // Top-up idempotent : garantit qu'un club existant ait toujours
+    // au moins ses 2 comptes par défaut (Banque + Caisse) seedés.
+    await this.seedService.seedIfEmpty(club.id);
+    const rows = await this.financialAccounts.listAll(club.id);
+    return rows.map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      label: r.label,
+      accountingAccountId: r.accountingAccountId,
+      accountingAccountCode: r.accountingAccount.code,
+      accountingAccountLabel: r.accountingAccount.label,
+      iban: r.iban,
+      bic: r.bic,
+      stripeAccountId: r.stripeAccountId,
+      isDefault: r.isDefault,
+      isActive: r.isActive,
+      sortOrder: r.sortOrder,
+      notes: r.notes,
+    }));
+  }
+
+  @Mutation(() => ClubFinancialAccountGraph, {
+    name: 'createClubFinancialAccount',
+  })
+  async createClubFinancialAccount(
+    @CurrentClub() club: Club,
+    @Args('input') input: CreateClubFinancialAccountInput,
+  ): Promise<ClubFinancialAccountGraph> {
+    const r = await this.financialAccounts.create(club.id, {
+      kind: input.kind,
+      label: input.label,
+      accountingAccountId: input.accountingAccountId,
+      iban: input.iban ?? null,
+      bic: input.bic ?? null,
+      stripeAccountId: input.stripeAccountId ?? null,
+      isDefault: input.isDefault ?? false,
+      sortOrder: input.sortOrder ?? 0,
+      notes: input.notes ?? null,
+    });
+    return {
+      id: r.id,
+      kind: r.kind,
+      label: r.label,
+      accountingAccountId: r.accountingAccountId,
+      accountingAccountCode: r.accountingAccount.code,
+      accountingAccountLabel: r.accountingAccount.label,
+      iban: r.iban,
+      bic: r.bic,
+      stripeAccountId: r.stripeAccountId,
+      isDefault: r.isDefault,
+      isActive: r.isActive,
+      sortOrder: r.sortOrder,
+      notes: r.notes,
+    };
+  }
+
+  @Mutation(() => ClubFinancialAccountGraph, {
+    name: 'updateClubFinancialAccount',
+  })
+  async updateClubFinancialAccount(
+    @CurrentClub() club: Club,
+    @Args('input') input: UpdateClubFinancialAccountInput,
+  ): Promise<ClubFinancialAccountGraph> {
+    const r = await this.financialAccounts.update(club.id, input.id, {
+      label: input.label,
+      iban: input.iban,
+      bic: input.bic,
+      stripeAccountId: input.stripeAccountId,
+      isDefault: input.isDefault,
+      isActive: input.isActive,
+      notes: input.notes,
+      sortOrder: input.sortOrder,
+    });
+    return {
+      id: r.id,
+      kind: r.kind,
+      label: r.label,
+      accountingAccountId: r.accountingAccountId,
+      accountingAccountCode: r.accountingAccount.code,
+      accountingAccountLabel: r.accountingAccount.label,
+      iban: r.iban,
+      bic: r.bic,
+      stripeAccountId: r.stripeAccountId,
+      isDefault: r.isDefault,
+      isActive: r.isActive,
+      sortOrder: r.sortOrder,
+      notes: r.notes,
+    };
+  }
+
+  @Mutation(() => Boolean, { name: 'archiveClubFinancialAccount' })
+  async archiveClubFinancialAccount(
+    @CurrentClub() club: Club,
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<boolean> {
+    return this.financialAccounts.archive(club.id, id);
+  }
+
+  // =========================================================================
+  // Routes paiement
+  // =========================================================================
+
+  @Query(() => [ClubPaymentRouteGraph], { name: 'clubPaymentRoutes' })
+  async clubPaymentRoutes(
+    @CurrentClub() club: Club,
+  ): Promise<ClubPaymentRouteGraph[]> {
+    await this.seedService.seedIfEmpty(club.id);
+    const rows = await this.paymentRoutes.listAll(club.id);
+    return rows.map((r) => ({
+      id: r.id,
+      method: r.method,
+      financialAccountId: r.financialAccountId,
+      financialAccountLabel: r.financialAccount.label,
+      financialAccountCode: r.financialAccount.accountingAccount.code,
+    }));
+  }
+
+  @Mutation(() => ClubPaymentRouteGraph, { name: 'upsertClubPaymentRoute' })
+  async upsertClubPaymentRoute(
+    @CurrentClub() club: Club,
+    @Args('input') input: UpsertClubPaymentRouteInput,
+  ): Promise<ClubPaymentRouteGraph> {
+    const r = await this.paymentRoutes.upsert(
+      club.id,
+      input.method,
+      input.financialAccountId,
+    );
+    return {
+      id: r.id,
+      method: r.method,
+      financialAccountId: r.financialAccountId,
+      financialAccountLabel: r.financialAccount.label,
+      financialAccountCode: r.financialAccount.accountingAccount.code,
+    };
+  }
+
+  @Mutation(() => Boolean, { name: 'deleteClubPaymentRoute' })
+  async deleteClubPaymentRoute(
+    @CurrentClub() club: Club,
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<boolean> {
+    return this.paymentRoutes.delete(club.id, id);
+  }
+
+  // =========================================================================
+  // Consolidation opt-in
+  // =========================================================================
+
+  @Query(() => ConsolidationPreviewGraph, {
+    name: 'accountingEntryConsolidationPreview',
+  })
+  async accountingEntryConsolidationPreview(
+    @CurrentClub() club: Club,
+    @Args('entryId', { type: () => ID }) entryId: string,
+  ): Promise<ConsolidationPreviewGraph> {
+    const r = await this.consolidation.preview(club.id, entryId);
+    return {
+      eligible: r.eligible,
+      reason: r.reason,
+      groups: r.groups.map((g) => ({
+        accountCode: g.accountCode,
+        accountLabel: g.accountLabel,
+        lineCount: g.lineCount,
+        totalCents: g.totalCents,
+      })),
+    };
+  }
+
+  @Mutation(() => Boolean, { name: 'consolidateAccountingEntry' })
+  async consolidateAccountingEntry(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('entryId', { type: () => ID }) entryId: string,
+  ): Promise<boolean> {
+    await this.consolidation.consolidate(club.id, user.userId, entryId);
+    return true;
+  }
+
+  @Mutation(() => Boolean, { name: 'unconsolidateAccountingEntry' })
+  async unconsolidateAccountingEntry(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('entryId', { type: () => ID }) entryId: string,
+  ): Promise<boolean> {
+    await this.consolidation.unconsolidate(club.id, user.userId, entryId);
     return true;
   }
 }

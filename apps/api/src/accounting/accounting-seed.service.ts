@@ -230,12 +230,130 @@ export class AccountingSeedService {
       }
     }
 
-    if (accountsCreated + cohortsCreated + mappingsCreated > 0) {
+    // 4. Comptes financiers par défaut (multi-comptes v1.5)
+    //    - Banque principale liée à 512000
+    //    - Caisse principale liée à 530000
+    //    Idempotent : skip si un ClubFinancialAccount existe déjà sur le code.
+    const finAccountsCreated = await this.seedDefaultFinancialAccounts(
+      clubId,
+      byCode,
+    );
+
+    // 5. Routes de paiement par défaut (mapping method → financialAccount)
+    const routesCreated = await this.seedDefaultPaymentRoutes(clubId);
+
+    if (
+      accountsCreated +
+        cohortsCreated +
+        mappingsCreated +
+        finAccountsCreated +
+        routesCreated >
+      0
+    ) {
       this.logger.log(
-        `Seed compta club ${clubId}: +${accountsCreated} comptes, +${cohortsCreated} cohortes, +${mappingsCreated} mappings`,
+        `Seed compta club ${clubId}: +${accountsCreated} comptes, +${cohortsCreated} cohortes, +${mappingsCreated} mappings, +${finAccountsCreated} comptes financiers, +${routesCreated} routes paiement`,
       );
     }
 
     return { accountsCreated, cohortsCreated, mappingsCreated };
+  }
+
+  /**
+   * Top-up des `ClubFinancialAccount` defaults pour un club. Idempotent :
+   * crée "Banque principale" liée à 512000 et "Caisse principale" liée à
+   * 530000 si elles n'existent pas encore.
+   */
+  private async seedDefaultFinancialAccounts(
+    clubId: string,
+    accountsByCode: Map<string, { id: string; code: string; label: string }>,
+  ): Promise<number> {
+    let created = 0;
+    const defaults: Array<{
+      kind: 'BANK' | 'CASH';
+      label: string;
+      accountCode: string;
+      sortOrder: number;
+    }> = [
+      { kind: 'BANK', label: 'Banque principale', accountCode: '512000', sortOrder: 0 },
+      { kind: 'CASH', label: 'Caisse principale', accountCode: '530000', sortOrder: 10 },
+    ];
+    for (const d of defaults) {
+      const acc = accountsByCode.get(d.accountCode);
+      if (!acc) continue;
+      const existing = await this.prisma.clubFinancialAccount.findFirst({
+        where: { clubId, accountingAccountId: acc.id },
+        select: { id: true },
+      });
+      if (existing) continue;
+      try {
+        await this.prisma.clubFinancialAccount.create({
+          data: {
+            clubId,
+            kind: d.kind,
+            label: d.label,
+            accountingAccountId: acc.id,
+            isDefault: true,
+            sortOrder: d.sortOrder,
+          },
+        });
+        created++;
+      } catch (err) {
+        if (!(err instanceof Prisma.PrismaClientKnownRequestError)) throw err;
+      }
+    }
+    return created;
+  }
+
+  /**
+   * Top-up des routes paiement par défaut. Idempotent : skip si la route
+   * (clubId, method) existe déjà.
+   *  - MANUAL_CASH → CASH default
+   *  - STRIPE_CARD / MANUAL_CHECK / MANUAL_TRANSFER → BANK default
+   */
+  private async seedDefaultPaymentRoutes(clubId: string): Promise<number> {
+    let created = 0;
+    const bankDefault = await this.prisma.clubFinancialAccount.findFirst({
+      where: { clubId, kind: 'BANK', isDefault: true },
+      select: { id: true },
+    });
+    const cashDefault = await this.prisma.clubFinancialAccount.findFirst({
+      where: { clubId, kind: 'CASH', isDefault: true },
+      select: { id: true },
+    });
+    const routes: Array<{
+      method:
+        | 'STRIPE_CARD'
+        | 'MANUAL_CASH'
+        | 'MANUAL_CHECK'
+        | 'MANUAL_TRANSFER';
+      finId: string | null;
+    }> = [
+      { method: 'MANUAL_CASH', finId: cashDefault?.id ?? null },
+      { method: 'STRIPE_CARD', finId: bankDefault?.id ?? null },
+      { method: 'MANUAL_CHECK', finId: bankDefault?.id ?? null },
+      { method: 'MANUAL_TRANSFER', finId: bankDefault?.id ?? null },
+    ];
+    for (const r of routes) {
+      if (!r.finId) continue;
+      const existing = await this.prisma.clubPaymentRoute.findUnique({
+        where: { clubId_method: { clubId, method: r.method } },
+        select: { id: true },
+      });
+      if (existing) continue;
+      try {
+        await this.prisma.clubPaymentRoute.create({
+          data: {
+            clubId,
+            method: r.method,
+            financialAccountId: r.finId,
+            isDefault: true,
+          },
+        });
+        created++;
+      } catch (err) {
+        if (!(err instanceof Prisma.PrismaClientKnownRequestError)) throw err;
+      }
+    }
+    return created;
   }
 }

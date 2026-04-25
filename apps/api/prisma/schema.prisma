@@ -83,7 +83,7 @@ model Club {
   /// Typographies personnalisées du site vitrine (JSON).
   /// Schéma : { serif, sans, jp }  — chaque clé est le nom d'une police Google Fonts.
   /// Si null → fonts SKSR par défaut (Cormorant/Inter/Shippori Mincho).
-  vitrineFontsJson   Json?
+  vitrineFontsJson Json?
 
   vitrinePages         VitrinePage[]
   vitrineArticles      VitrineArticle[]
@@ -116,19 +116,19 @@ model Club {
   /// Budget IA mensuel maximum en centimes d'euros. Null = illimité (l'usage
   /// est tracé mais non bloqué). Soft cap déclenché à 80 %, hard cap à 100 %
   /// (OCR tombe en saisie manuelle).
-  aiMonthlyBudgetCents Int?
+  aiMonthlyBudgetCents         Int?
   /// Override temporaire du cap — permet au trésorier de débloquer l'IA en
   /// fin de mois pour une saisie critique. Null = pas d'override actif.
   aiMonthlyBudgetOverrideCents Int?
 
-  aiUsageLogs AiUsageLog[]
+  aiUsageLogs     AiUsageLog[]
   aiMonthlyUsages AiMonthlyUsage[]
 
   /// Feature flag : agent conversationnel activé pour ce club.
   /// Même si true, peut être désactivé globalement via env AGENT_GLOBAL_KILLED=true.
   agentEnabled Boolean @default(true)
 
-  agentConversations AgentConversation[]
+  agentConversations  AgentConversation[]
   agentPendingActions AgentPendingAction[]
 
   /// Mode TVA du club pour la comptabilité. NONE = assoc non assujettie (cas
@@ -141,6 +141,8 @@ model Club {
   accountingPeriodLocks      AccountingPeriodLock[]
   accountingFiscalYearCloses AccountingFiscalYearClose[]
   accountingAuditLogs        AccountingAuditLog[]
+  financialAccounts          ClubFinancialAccount[]
+  paymentRoutes              ClubPaymentRoute[]
 }
 
 enum AiUsageFeature {
@@ -206,20 +208,20 @@ model AgentConversation {
 
 /// Message individuel dans une conversation (user, assistant, tool result).
 model AgentMessage {
-  id             String           @id @default(uuid())
-  conversationId String
-  role           AgentMessageRole
+  id              String           @id @default(uuid())
+  conversationId  String
+  role            AgentMessageRole
   /// Texte pour role=USER|ASSISTANT|SYSTEM. Pour role=TOOL, JSON résultat.
-  content        String
+  content         String
   /// Résumé token usage quand role=ASSISTANT.
-  inputTokens    Int?
-  outputTokens   Int?
-  model          String?
+  inputTokens     Int?
+  outputTokens    Int?
+  model           String?
   /// Pièces jointes du message (images, PDF, docs). JSON array :
   /// [{ mediaAssetId, kind: 'IMAGE'|'DOCUMENT', mimeType, fileName, publicUrl, extractedText? }]
   /// Seuls les USER messages en utilisent.
   attachmentsJson Json?
-  createdAt      DateTime         @default(now())
+  createdAt       DateTime         @default(now())
 
   conversation AgentConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   toolCalls    AgentToolCall[]
@@ -251,21 +253,21 @@ model AgentToolCall {
 /// Action en attente de confirmation humaine (destructive/guarded).
 /// Signée anti-replay, expire en 5 min.
 model AgentPendingAction {
-  id              String   @id @default(uuid())
-  clubId          String
-  userId          String
-  conversationId  String
-  toolName        String
-  argsJson        Json
-  riskLevel       AgentRiskLevel
+  id             String              @id @default(uuid())
+  clubId         String
+  userId         String
+  conversationId String
+  toolName       String
+  argsJson       Json
+  riskLevel      AgentRiskLevel
   /// Preview en français de l'action (affichée à l'utilisateur).
-  previewText     String
+  previewText    String
   /// Signature HMAC pour anti-replay.
-  signature       String
-  status          AgentToolCallStatus @default(PENDING_CONFIRMATION)
-  createdAt       DateTime @default(now())
-  expiresAt       DateTime
-  resolvedAt      DateTime?
+  signature      String
+  status         AgentToolCallStatus @default(PENDING_CONFIRMATION)
+  createdAt      DateTime            @default(now())
+  expiresAt      DateTime
+  resolvedAt     DateTime?
 
   club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
 
@@ -345,12 +347,12 @@ model Contact {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  club                   Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  user                   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  club                   Club                 @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user                   User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// Liens `FamilyMember` où ce contact est désigné payeur (`linkRole = PAYER`).
-  familyMemberPayerLinks FamilyMember[]   @relation("FamilyMemberPayerContact")
-  paymentsAsPaidBy       Payment[]        @relation("PaymentPaidByContact")
-  membershipCartsAsPayer MembershipCart[] @relation("CartPayerContact")
+  familyMemberPayerLinks FamilyMember[]       @relation("FamilyMemberPayerContact")
+  paymentsAsPaidBy       Payment[]            @relation("PaymentPaidByContact")
+  membershipCartsAsPayer MembershipCart[]     @relation("CartPayerContact")
   projectContributions   ProjectContributor[]
   sponsorshipDeals       SponsorshipDeal[]
 
@@ -604,7 +606,7 @@ model Member {
   /// Numéro de licence fédérale validé (saisi une fois via « J'ai déjà une licence »).
   licenseNumber          String?
   membershipCartItems    MembershipCartItem[]
-  membershipCartsAsPayer MembershipCart[]     @relation("CartPayerMember")
+  membershipCartsAsPayer MembershipCart[]       @relation("CartPayerMember")
   projectContributions   ProjectContributor[]
   accountingAllocations  AccountingAllocation[]
 
@@ -1090,6 +1092,88 @@ enum ClubPaymentMethod {
   MANUAL_TRANSFER
 }
 
+/// Type d'un compte financier club. Permet de regrouper banques, caisses,
+/// comptes de transit (Stripe, HelloAsso, Lydia) sous un même modèle, tout
+/// en gardant la sémantique métier explicite pour l'UI et le routage.
+///
+/// Mapping conventionnel vers le PCG :
+/// - BANK             → 512xxx (Crédit Agricole, BRED, etc.)
+/// - CASH             → 53xxxx (caisse dojo, caisse buvette)
+/// - STRIPE_TRANSIT   → 512xxx (compte Stripe distinct de la banque réelle)
+/// - OTHER_TRANSIT    → 511xxx ou 512xxx (HelloAsso, Lydia, PayPal, …)
+enum ClubFinancialAccountKind {
+  BANK
+  CASH
+  STRIPE_TRANSIT
+  OTHER_TRANSIT
+}
+
+/// Compte financier réel d'un club (banque, caisse, transit Stripe…).
+/// Lié à un AccountingAccount du plan comptable (FK forte). Permet :
+/// - Suivi des soldes par compte
+/// - Routage automatique des paiements selon `ClubPaymentMethod`
+/// - Sélection "Encaissé sur" lors d'une saisie d'écriture
+///
+/// Toujours créé via `ClubFinancialAccountsService` qui valide la
+/// cohérence kind ↔ code PCG (BANK doit pointer sur 51x, CASH sur 53x).
+model ClubFinancialAccount {
+  id                  String                   @id @default(uuid())
+  clubId              String
+  kind                ClubFinancialAccountKind
+  /// Libellé lisible utilisateur (ex : "Crédit Agricole pro").
+  label               String
+  /// FK forte vers AccountingAccount = source de vérité pour code/label
+  /// PCG. On évite le snapshot pour ne pas dériver si l'admin renomme.
+  accountingAccountId String
+  /// Optionnels : utiles pour rapprochement bancaire v2 et identification.
+  iban                String?
+  bic                 String?
+  /// `acct_xxx` Stripe pour kind=STRIPE_TRANSIT. Informatif en v1
+  /// (pas de discriminator multi-Stripe).
+  stripeAccountId     String?
+  /// 1 default max par (clubId, kind) — appliqué côté service.
+  isDefault           Boolean                  @default(false)
+  isActive            Boolean                  @default(true)
+  sortOrder           Int                      @default(0)
+  /// Notes libres (ex : "Caisse événementielle Coupe SKSR 2026").
+  notes               String?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+
+  club              Club              @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  accountingAccount AccountingAccount @relation(fields: [accountingAccountId], references: [id], onDelete: Restrict)
+
+  paymentRoutes ClubPaymentRoute[]
+  entries       AccountingEntry[]
+  payments      Payment[]
+
+  /// Empêche 2 comptes financiers liés au même compte PCG (un compte PCG
+  /// ne peut représenter qu'un compte réel).
+  @@unique([clubId, accountingAccountId])
+  @@index([clubId, kind, isActive])
+}
+
+/// Routage `ClubPaymentMethod → ClubFinancialAccount`. Permet à l'admin
+/// de configurer "tous les paiements Stripe atterrissent sur le compte
+/// transit Stripe", "tous les espèces vont à la caisse principale", etc.
+///
+/// 1 route par (clubId, method) en v1 (pas de discriminator multi-Stripe).
+model ClubPaymentRoute {
+  id                 String            @id @default(uuid())
+  clubId             String
+  method             ClubPaymentMethod
+  financialAccountId String
+  isDefault          Boolean           @default(true)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  club             Club                 @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  financialAccount ClubFinancialAccount @relation(fields: [financialAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, method])
+  @@index([clubId, method])
+}
+
 enum PricingAdjustmentType {
   NONE
   PERCENT_BP
@@ -1155,23 +1239,28 @@ model Invoice {
 }
 
 model Payment {
-  id              String            @id @default(uuid())
-  clubId          String
-  invoiceId       String
-  amountCents     Int
-  method          ClubPaymentMethod
-  externalRef     String?
+  id                 String            @id @default(uuid())
+  clubId             String
+  invoiceId          String
+  amountCents        Int
+  method             ClubPaymentMethod
+  externalRef        String?
   /// Payeur réel (portail / traçabilité). Null = encaissement club catalogué sans fiche membre payeur.
-  paidByMemberId  String?
+  paidByMemberId     String?
   /// Payeur contact (sans fiche `Member`). Au plus un de `paidByMemberId` / `paidByContactId` (appli).
-  paidByContactId String?
-  createdAt       DateTime          @default(now())
+  paidByContactId    String?
+  /// Compte financier où l'argent est tombé (snapshot au moment du paiement).
+  /// Null = legacy ou paiement créé avant configuration multi-comptes.
+  /// Résolu via `ClubFinancialAccountsService.resolveForPayment(clubId, method)`.
+  financialAccountId String?
+  createdAt          DateTime          @default(now())
 
-  club              Club              @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  invoice           Invoice           @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
-  paidByMember      Member?           @relation("PaymentPaidByMember", fields: [paidByMemberId], references: [id], onDelete: SetNull)
-  paidByContact     Contact?          @relation("PaymentPaidByContact", fields: [paidByContactId], references: [id], onDelete: SetNull)
-  accountingEntries AccountingEntry[]
+  club                    Club                     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  invoice                 Invoice                  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  paidByMember            Member?                  @relation("PaymentPaidByMember", fields: [paidByMemberId], references: [id], onDelete: SetNull)
+  paidByContact           Contact?                 @relation("PaymentPaidByContact", fields: [paidByContactId], references: [id], onDelete: SetNull)
+  financialAccount        ClubFinancialAccount?    @relation(fields: [financialAccountId], references: [id], onDelete: SetNull)
+  accountingEntries       AccountingEntry[]
   grantInstallments       GrantInstallment[]
   sponsorshipInstallments SponsorshipInstallment[]
 
@@ -1179,6 +1268,7 @@ model Payment {
   @@index([invoiceId])
   @@index([paidByMemberId])
   @@index([paidByContactId])
+  @@index([clubId, financialAccountId])
 }
 
 model StripeWebhookEvent {
@@ -1335,59 +1425,71 @@ enum AccountingLineSide {
 }
 
 model AccountingEntry {
-  id          String              @id @default(uuid())
-  clubId      String
-  kind        AccountingEntryKind
+  id                       String                @id @default(uuid())
+  clubId                   String
+  kind                     AccountingEntryKind
   /// Statut dans le workflow partie double. Backfill = POSTED.
-  status      AccountingEntryStatus @default(POSTED)
+  status                   AccountingEntryStatus @default(POSTED)
   /// Origine de l'écriture. Backfill : AUTO_MEMBER_PAYMENT si paymentId
   /// non null, sinon MANUAL.
-  source      AccountingEntrySource @default(MANUAL)
-  label       String
+  source                   AccountingEntrySource @default(MANUAL)
+  label                    String
   /// Montant TTC dénormalisé = somme des débits OU crédits (selon side).
   /// Conservé pour le listing rapide sans jointure lines.
-  amountCents Int
+  amountCents              Int
   /// Somme TVA sur l'écriture (si `Club.vatMode != NONE`, sinon null).
-  vatTotalCents Int?
-  paymentId   String?
+  vatTotalCents            Int?
+  paymentId                String?
   /// Rattachement analytique optionnel à un ClubProject. Null = écriture
   /// générale club. Permet de projeter un P&L par projet une fois le
   /// module compta activé.
-  projectId   String?
+  projectId                String?
   /// Si `source = AUTO_SUBSIDY`, lien vers la subvention concernée.
-  subsidyId          String?
+  subsidyId                String?
   /// Si `source = AUTO_SPONSORSHIP`, lien vers le deal concerné.
-  sponsorshipDealId  String?
+  sponsorshipDealId        String?
   /// Si `source = OCR_AI`, trace l'extraction IA qui a généré cette entry.
-  extractionId       String?
+  extractionId             String?
   /// Contre-passation : si cette entry est une contre-passation, pointe vers
   /// l'entry originale. Si cette entry a été contre-passée, la relation inverse
   /// `contraEntryOf` liste les contre-passations qui la visent.
-  contraEntryId      String?
+  contraEntryId            String?
   /// Timestamp de verrouillage (mois clôturé). Écriture immutable sauf
   /// création d'une contre-passation datée d'un mois ouvert.
-  lockedAt           DateTime?
+  lockedAt                 DateTime?
   /// Soft cancel : si cancelledAt non null, l'écriture est annulée (via
   /// contre-passation typiquement). Jamais purgée (rétention 10 ans).
-  cancelledAt        DateTime?
-  cancelledByUserId  String?
-  createdByUserId    String?
-  occurredAt         DateTime            @default(now())
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @default(now()) @updatedAt
+  cancelledAt              DateTime?
+  cancelledByUserId        String?
+  createdByUserId          String?
+  /// Compte financier de contrepartie (banque/caisse/transit). Null pour
+  /// les entries legacy créées avant la migration multi-comptes — le code
+  /// tolère null en fallback sur la banque par défaut du club.
+  financialAccountId       String?
+  /// Marqueur "écriture consolidée" : indique que des lignes ont été
+  /// fusionnées par compte (cas note de resto où 6 articles → 1 ligne
+  /// 625700 Réceptions). Null = écriture détaillée standard.
+  consolidatedAt           DateTime?
+  /// Snapshot JSON des lignes/allocations pré-consolidation. Permet
+  /// `unconsolidate` pour restaurer la granularité d'origine.
+  preConsolidationSnapshot Json?
+  occurredAt               DateTime              @default(now())
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @default(now()) @updatedAt
 
-  club          Club                  @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  payment       Payment?              @relation(fields: [paymentId], references: [id], onDelete: SetNull)
-  project       ClubProject?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  subsidy       GrantApplication?     @relation(fields: [subsidyId], references: [id], onDelete: SetNull)
-  sponsorship   SponsorshipDeal?      @relation(fields: [sponsorshipDealId], references: [id], onDelete: SetNull)
-  extraction    AccountingExtraction? @relation(fields: [extractionId], references: [id], onDelete: SetNull)
-  contraEntry   AccountingEntry?      @relation("AccountingEntryContra", fields: [contraEntryId], references: [id], onDelete: SetNull)
-  contraEntryOf AccountingEntry[]     @relation("AccountingEntryContra")
+  club             Club                  @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  payment          Payment?              @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  project          ClubProject?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  subsidy          GrantApplication?     @relation(fields: [subsidyId], references: [id], onDelete: SetNull)
+  sponsorship      SponsorshipDeal?      @relation(fields: [sponsorshipDealId], references: [id], onDelete: SetNull)
+  extraction       AccountingExtraction? @relation(fields: [extractionId], references: [id], onDelete: SetNull)
+  contraEntry      AccountingEntry?      @relation("AccountingEntryContra", fields: [contraEntryId], references: [id], onDelete: SetNull)
+  contraEntryOf    AccountingEntry[]     @relation("AccountingEntryContra")
+  financialAccount ClubFinancialAccount? @relation(fields: [financialAccountId], references: [id], onDelete: SetNull)
 
-  lines            AccountingEntryLine[]
-  documents        AccountingDocument[]
-  auditLogs        AccountingAuditLog[]
+  lines                   AccountingEntryLine[]
+  documents               AccountingDocument[]
+  auditLogs               AccountingAuditLog[]
   grantInstallments       GrantInstallment[]
   sponsorshipInstallments SponsorshipInstallment[]
 
@@ -1395,6 +1497,7 @@ model AccountingEntry {
   @@index([clubId, projectId])
   @@index([clubId, status])
   @@index([clubId, source])
+  @@index([clubId, financialAccountId])
 }
 
 /// Cycle de vie complet d'une demande de subvention :
@@ -1423,34 +1526,34 @@ enum GrantDocumentKind {
 }
 
 model GrantApplication {
-  id                    String                 @id @default(uuid())
-  clubId                String
-  title                 String
+  id                   String                 @id @default(uuid())
+  clubId               String
+  title                String
   /// Organisme financeur (libre). Ex : "Mairie de Saint-Denis", "FDVA",
   /// "CNDS", "Conseil Départemental 93".
-  fundingBody           String?
-  status                GrantApplicationStatus @default(DRAFT)
+  fundingBody          String?
+  status               GrantApplicationStatus @default(DRAFT)
   /// Montant demandé initial (avant décision).
-  requestedAmountCents  Int?
+  requestedAmountCents Int?
   /// Montant effectivement accordé après décision.
-  grantedAmountCents    Int?
+  grantedAmountCents   Int?
   /// Conservé pour backward compat (ancien champ `amountCents`). Alias
   /// fonctionnel de `grantedAmountCents` pour les dossiers legacy.
-  amountCents           Int?
-  projectId             String?
-  startsAt              DateTime?
-  endsAt                DateTime?
+  amountCents          Int?
+  projectId            String?
+  startsAt             DateTime?
+  endsAt               DateTime?
   /// Date limite de dépôt du rapport / justification d'emploi des fonds.
-  reportDueAt           DateTime?
+  reportDueAt          DateTime?
   /// Date effective de soumission du rapport.
-  reportSubmittedAt     DateTime?
-  notes                 String?
-  createdByUserId       String?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
+  reportSubmittedAt    DateTime?
+  notes                String?
+  createdByUserId      String?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
 
-  club         Club              @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  project      ClubProject?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  club         Club               @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  project      ClubProject?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
   installments GrantInstallment[]
   documents    GrantDocument[]
   entries      AccountingEntry[]
@@ -1461,21 +1564,21 @@ model GrantApplication {
 }
 
 model GrantInstallment {
-  id                   String   @id @default(uuid())
-  grantId              String
-  clubId               String
-  expectedAmountCents  Int
-  receivedAmountCents  Int?
-  expectedAt           DateTime?
-  receivedAt           DateTime?
-  paymentId            String?
-  accountingEntryId    String?
-  notes                String?
-  createdAt            DateTime @default(now())
+  id                  String    @id @default(uuid())
+  grantId             String
+  clubId              String
+  expectedAmountCents Int
+  receivedAmountCents Int?
+  expectedAt          DateTime?
+  receivedAt          DateTime?
+  paymentId           String?
+  accountingEntryId   String?
+  notes               String?
+  createdAt           DateTime  @default(now())
 
-  grant   GrantApplication  @relation(fields: [grantId], references: [id], onDelete: Cascade)
-  payment Payment?          @relation(fields: [paymentId], references: [id], onDelete: SetNull)
-  entry   AccountingEntry?  @relation(fields: [accountingEntryId], references: [id], onDelete: SetNull)
+  grant   GrantApplication @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  payment Payment?         @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  entry   AccountingEntry? @relation(fields: [accountingEntryId], references: [id], onDelete: SetNull)
 
   @@index([grantId])
   @@index([clubId])
@@ -1521,32 +1624,32 @@ enum SponsorshipDocumentKind {
 }
 
 model SponsorshipDeal {
-  id                 String                @id @default(uuid())
-  clubId             String
-  sponsorName        String
-  kind               SponsorshipKind       @default(CASH)
+  id                String                @id @default(uuid())
+  clubId            String
+  sponsorName       String
+  kind              SponsorshipKind       @default(CASH)
   /// Valeur totale attendue (cash) OU valorisation estimée (nature).
-  valueCents         Int?
+  valueCents        Int?
   /// Conservé pour backward compat (ancien champ `amountCents`). Alias de
   /// `valueCents` pour les deals legacy.
-  amountCents        Int?
+  amountCents       Int?
   /// Description lisible des apports nature (ex : "20 T-shirts + 5 cartons
   /// de gourdes isothermes"). Requis si kind = IN_KIND.
-  inKindDescription  String?
-  status             SponsorshipDealStatus @default(DRAFT)
-  projectId          String?
+  inKindDescription String?
+  status            SponsorshipDealStatus @default(DRAFT)
+  projectId         String?
   /// Sponsor persisté comme Contact du club (optionnel).
-  contactId          String?
-  startsAt           DateTime?
-  endsAt             DateTime?
-  notes              String?
-  createdByUserId    String?
-  createdAt          DateTime              @default(now())
-  updatedAt          DateTime              @updatedAt
+  contactId         String?
+  startsAt          DateTime?
+  endsAt            DateTime?
+  notes             String?
+  createdByUserId   String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
 
-  club         Club                       @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  project      ClubProject?               @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  contact      Contact?                   @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  club         Club                     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  project      ClubProject?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  contact      Contact?                 @relation(fields: [contactId], references: [id], onDelete: SetNull)
   installments SponsorshipInstallment[]
   documents    SponsorshipDocument[]
   entries      AccountingEntry[]
@@ -1556,20 +1659,20 @@ model SponsorshipDeal {
 }
 
 model SponsorshipInstallment {
-  id                   String   @id @default(uuid())
-  dealId               String
-  clubId               String
-  expectedAmountCents  Int
-  receivedAmountCents  Int?
-  expectedAt           DateTime?
-  receivedAt           DateTime?
-  paymentId            String?
-  accountingEntryId    String?
-  createdAt            DateTime @default(now())
+  id                  String    @id @default(uuid())
+  dealId              String
+  clubId              String
+  expectedAmountCents Int
+  receivedAmountCents Int?
+  expectedAt          DateTime?
+  receivedAt          DateTime?
+  paymentId           String?
+  accountingEntryId   String?
+  createdAt           DateTime  @default(now())
 
-  deal    SponsorshipDeal   @relation(fields: [dealId], references: [id], onDelete: Cascade)
-  payment Payment?          @relation(fields: [paymentId], references: [id], onDelete: SetNull)
-  entry   AccountingEntry?  @relation(fields: [accountingEntryId], references: [id], onDelete: SetNull)
+  deal    SponsorshipDeal  @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  payment Payment?         @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  entry   AccountingEntry? @relation(fields: [accountingEntryId], references: [id], onDelete: SetNull)
 
   @@index([dealId])
   @@index([clubId])
@@ -2047,14 +2150,14 @@ model VitrineComment {
 /// `bodyJson` = `{ format: 'html', html: '...' }` (WYSIWYG Tiptap) OU
 /// `['para1', 'para2']` (ancien format paragraphes, rétrocompatible lecture).
 model VitrineArticle {
-  id           String               @id @default(uuid())
+  id           String                @id @default(uuid())
   clubId       String
   slug         String
   title        String
   excerpt      String?
   bodyJson     Json
   coverImageId String?
-  status       VitrineArticleStatus @default(DRAFT)
+  status       VitrineArticleStatus  @default(DRAFT)
   /// Canal : actualité courte (NEWS) ou article de fond (BLOG). Filtre
   /// les deux listes publiques /actualites et /blog, et groupe les deux
   /// onglets dans l'admin — création, SEO, catégories, commentaires,
@@ -2063,30 +2166,30 @@ model VitrineArticle {
   publishedAt  DateTime?
   authorUserId String?
   /// Épinglé en tête de la liste de son canal (/actualites ou /blog).
-  pinned       Boolean              @default(false)
+  pinned       Boolean               @default(false)
   /// Ordre manuel (drag-and-drop admin). Plus petit = plus haut. Les
   /// articles épinglés sont triés entre eux par sortOrder avant les non
   /// épinglés (eux-mêmes triés par publishedAt desc).
-  sortOrder    Int                  @default(0)
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
+  sortOrder    Int                   @default(0)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
 
   // --- SEO ---
-  seoTitle         String? // <title> balise, ≤ 60 chars recommandé
-  seoDescription   String? // <meta name="description">, 150-160 chars
-  seoKeywords      String[] @default([]) // LSI / mots-clés cibles
-  seoH1            String? // H1 de l'article (si différent du titre)
-  seoFaqJson       Json?   // [{question, answer}] pour schema.org FAQPage
-  seoCanonicalUrl  String? // URL canonical si dupliquée ailleurs
-  seoNoindex       Boolean @default(false)
-  seoOgImageId     String? // Image Open Graph (partage sociaux). Si null → coverImageId.
-  coverImageAlt    String? // alt de l'image de couverture
+  seoTitle        String? // <title> balise, ≤ 60 chars recommandé
+  seoDescription  String? // <meta name="description">, 150-160 chars
+  seoKeywords     String[] @default([]) // LSI / mots-clés cibles
+  seoH1           String? // H1 de l'article (si différent du titre)
+  seoFaqJson      Json? // [{question, answer}] pour schema.org FAQPage
+  seoCanonicalUrl String? // URL canonical si dupliquée ailleurs
+  seoNoindex      Boolean  @default(false)
+  seoOgImageId    String? // Image Open Graph (partage sociaux). Si null → coverImageId.
+  coverImageAlt   String? // alt de l'image de couverture
 
   // --- Génération IA en arrière-plan ---
-  generationStatus   VitrineArticleGenerationStatus @default(NONE)
-  generationProgress String?  // libellé courant (ex. "Génération du texte…", "Images 2/4")
-  generationError    String?  // message d'erreur si FAILED
-  generationWarnings String[] @default([]) // avertissements non-bloquants (ex. image gen failed)
+  generationStatus    VitrineArticleGenerationStatus @default(NONE)
+  generationProgress  String? // libellé courant (ex. "Génération du texte…", "Images 2/4")
+  generationError     String? // message d'erreur si FAILED
+  generationWarnings  String[]                       @default([]) // avertissements non-bloquants (ex. image gen failed)
   generationStartedAt DateTime?
   generationEndedAt   DateTime?
 
@@ -2161,14 +2264,14 @@ model MediaAsset {
   uploadedByUserId String?
   createdAt        DateTime       @default(now())
 
-  club           Club                  @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  galleryPhotos  VitrineGalleryPhoto[] @relation("VitrineGalleryPhotoAsset")
-  articleCovers  VitrineArticle[]      @relation("VitrineArticleCover")
-  articleOgImages VitrineArticle[]     @relation("VitrineArticleOgImage")
-  ogPages        VitrinePage[]         @relation("VitrinePageOgImage")
-  projectPosters ClubProject[]         @relation("ProjectPoster")
-  projectCovers  ClubProject[]         @relation("ProjectCover")
-  projectLiveItems ProjectLiveItem[]   @relation("ProjectLiveItemMedia")
+  club                  Club                   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  galleryPhotos         VitrineGalleryPhoto[]  @relation("VitrineGalleryPhotoAsset")
+  articleCovers         VitrineArticle[]       @relation("VitrineArticleCover")
+  articleOgImages       VitrineArticle[]       @relation("VitrineArticleOgImage")
+  ogPages               VitrinePage[]          @relation("VitrinePageOgImage")
+  projectPosters        ClubProject[]          @relation("ProjectPoster")
+  projectCovers         ClubProject[]          @relation("ProjectCover")
+  projectLiveItems      ProjectLiveItem[]      @relation("ProjectLiveItemMedia")
   accountingExtractions AccountingExtraction[]
   accountingDocuments   AccountingDocument[]
   grantDocuments        GrantDocument[]
@@ -2177,6 +2280,7 @@ model MediaAsset {
   @@index([clubId, ownerKind, ownerId])
   @@index([clubId, sha256])
 }
+
 // ============================================================================
 // Module PROJETS  (v1 — cf. plan glowing-bubbling-llama.md)
 // ----------------------------------------------------------------------------
@@ -2267,17 +2371,17 @@ enum DistributionMailStatus {
 /// et une 5e section ACCOUNTING en lecture seule si le module compta est
 /// actif. Rename + reorder des sections possibles dès v1.
 model ClubProject {
-  id            String        @id @default(uuid())
-  clubId        String
-  slug          String
-  title         String
-  summary       String?
-  description   String?
-  status        ProjectStatus @default(PLANNED)
-  startsAt      DateTime?
-  endsAt        DateTime?
-  posterAssetId String?
-  coverImageId  String?
+  id                 String        @id @default(uuid())
+  clubId             String
+  slug               String
+  title              String
+  summary            String?
+  description        String?
+  status             ProjectStatus @default(PLANNED)
+  startsAt           DateTime?
+  endsAt             DateTime?
+  posterAssetId      String?
+  coverImageId       String?
   budgetPlannedCents Int?
 
   /// Quotas par contributeur par phase LIVE — configurables par projet.
@@ -2292,22 +2396,22 @@ model ClubProject {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  club          Club                  @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  posterAsset   MediaAsset?           @relation("ProjectPoster", fields: [posterAssetId], references: [id], onDelete: SetNull)
-  coverImage    MediaAsset?           @relation("ProjectCover", fields: [coverImageId], references: [id], onDelete: SetNull)
-  sections      ProjectSection[]
-  livePhases    ProjectLivePhase[]
-  contributors  ProjectContributor[]
-  liveItems     ProjectLiveItem[]
-  reports       ProjectReport[]
-  distributions ProjectDistribution[]
-  events        ClubEvent[]
-  accountingEntries      AccountingEntry[]
-  accountingAllocations  AccountingAllocation[]
-  grantApplications      GrantApplication[]
-  sponsorshipDeals       SponsorshipDeal[]
-  messageCampaigns   MessageCampaign[]
-  agentConversations AgentConversation[]
+  club                  Club                   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  posterAsset           MediaAsset?            @relation("ProjectPoster", fields: [posterAssetId], references: [id], onDelete: SetNull)
+  coverImage            MediaAsset?            @relation("ProjectCover", fields: [coverImageId], references: [id], onDelete: SetNull)
+  sections              ProjectSection[]
+  livePhases            ProjectLivePhase[]
+  contributors          ProjectContributor[]
+  liveItems             ProjectLiveItem[]
+  reports               ProjectReport[]
+  distributions         ProjectDistribution[]
+  events                ClubEvent[]
+  accountingEntries     AccountingEntry[]
+  accountingAllocations AccountingAllocation[]
+  grantApplications     GrantApplication[]
+  sponsorshipDeals      SponsorshipDeal[]
+  messageCampaigns      MessageCampaign[]
+  agentConversations    AgentConversation[]
 
   @@unique([clubId, slug])
   @@index([clubId, status])
@@ -2324,8 +2428,8 @@ model ProjectSection {
   sortOrder Int                @default(0)
   /// Wiki Tiptap JSON — contenu longue forme édité depuis l'admin.
   bodyJson  Json?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
 
   project ClubProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -2344,8 +2448,8 @@ model ProjectLivePhase {
   state     ProjectLivePhaseState @default(UPCOMING)
   openedAt  DateTime?
   closedAt  DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
 
   project   ClubProject       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   liveItems ProjectLiveItem[]
@@ -2367,9 +2471,9 @@ model ProjectContributor {
   revokedAt     DateTime?
   revokedReason String?
 
-  project   ClubProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  member    Member?            @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  contact   Contact?           @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  project   ClubProject       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  member    Member?           @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  contact   Contact?          @relation(fields: [contactId], references: [id], onDelete: Cascade)
   liveItems ProjectLiveItem[]
 
   @@index([projectId, revokedAt])
@@ -2383,33 +2487,33 @@ model ProjectContributor {
 ///   publishedTo : NONE par défaut, VITRINE_NEWS / VITRINE_BLOG /
 ///     MEMBER_ANNOUNCEMENT selon ce que l'admin publie.
 model ProjectLiveItem {
-  id             String                       @id @default(uuid())
-  projectId      String
-  phaseId        String?
-  contributorId  String
-  kind           ProjectLiveItemKind
+  id                  String              @id @default(uuid())
+  projectId           String
+  phaseId             String?
+  contributorId       String
+  kind                ProjectLiveItemKind
   /// Nullable pour permettre les items de kind=TEXT (le textContent est
   /// alors renseigné à la place). Requis pour PHOTO et VIDEO — validation
   /// applicative dans `project-live-item.service.ts::submit()`.
-  mediaAssetId   String?
+  mediaAssetId        String?
   /// Contenu texte brut (max 4000 chars), pour kind=TEXT uniquement.
   /// Stocké tel quel, la modération IA texte peut le parcourir ensuite.
-  textContent    String?
-  submittedAt    DateTime                     @default(now())
+  textContent         String?
+  submittedAt         DateTime            @default(now())
   /// False si l'upload a eu lieu après ProjectLivePhase.state=CLOSED.
   /// L'UI affiche alors un badge « ajout tardif ».
-  submittedDuringLive Boolean                 @default(true)
+  submittedDuringLive Boolean             @default(true)
 
-  aiDecision     ProjectLiveItemAiDecision    @default(PENDING)
-  aiReason       String?
-  aiScore        Float?
-  aiCheckedAt    DateTime?
+  aiDecision  ProjectLiveItemAiDecision @default(PENDING)
+  aiReason    String?
+  aiScore     Float?
+  aiCheckedAt DateTime?
 
   humanDecision  ProjectLiveItemHumanDecision @default(PENDING)
   humanDecidedBy String?
   humanDecidedAt DateTime?
 
-  publishedTo    ProjectLiveItemPublication   @default(NONE)
+  publishedTo    ProjectLiveItemPublication @default(NONE)
   publishedRefId String?
 
   project     ClubProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -2426,28 +2530,28 @@ model ProjectLiveItem {
 /// draft édité en Tiptap par l'admin puis publié comme VitrineArticle.
 /// Stocke les contributeurs crédités pour l'attribution en bas d'article.
 model ProjectReport {
-  id             String                     @id @default(uuid())
-  projectId      String
-  template       ProjectReportTemplate
-  status         ProjectReportStatus        @default(DRAFT)
-  title          String
+  id                             String                     @id @default(uuid())
+  projectId                      String
+  template                       ProjectReportTemplate
+  status                         ProjectReportStatus        @default(DRAFT)
+  title                          String
   /// Prompt libre saisi par l'admin. Renseigné uniquement pour
   /// template=CUSTOM, null pour les 3 presets prédéfinis. Max 2000 chars.
-  customPrompt   String?
-  bodyJson       Json
+  customPrompt                   String?
+  bodyJson                       Json
   /// IDs des ProjectLiveItem effectivement utilisés par le générateur IA.
-  sourceLiveItemIds            String[]     @default([])
+  sourceLiveItemIds              String[]                   @default([])
   /// IDs Member cités / crédités (union Member + Contact via deux colonnes
   /// parallèles — pattern FamilyMember).
-  sourceContributorMemberIds   String[]     @default([])
-  sourceContributorContactIds  String[]     @default([])
-  publishedTo    ProjectLiveItemPublication @default(NONE)
-  publishedRefId String?
+  sourceContributorMemberIds     String[]                   @default([])
+  sourceContributorContactIds    String[]                   @default([])
+  publishedTo                    ProjectLiveItemPublication @default(NONE)
+  publishedRefId                 String?
   generatedByAgentConversationId String?
-  createdByUserId String
-  createdAt       DateTime @default(now())
-  publishedAt     DateTime?
-  updatedAt       DateTime @updatedAt
+  createdByUserId                String
+  createdAt                      DateTime                   @default(now())
+  publishedAt                    DateTime?
+  updatedAt                      DateTime                   @updatedAt
 
   project ClubProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -2457,7 +2561,7 @@ model ProjectReport {
 /// Liste de diffusion club-level (réutilisable entre projets). Ex. « Mairie »,
 /// « Partenaires », « Presse locale ». V2 — anticipé en v1 pour le schéma.
 model DistributionList {
-  id          String @id @default(uuid())
+  id          String   @id @default(uuid())
   clubId      String
   name        String
   description String?
@@ -2510,8 +2614,8 @@ model ProjectDistribution {
   createdAt             DateTime  @default(now())
   sentAt                DateTime?
 
-  project ClubProject       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  list    DistributionList  @relation(fields: [listId], references: [id], onDelete: Cascade)
+  project ClubProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  list    DistributionList   @relation(fields: [listId], references: [id], onDelete: Cascade)
   sends   DistributionSend[]
 
   @@index([projectId])
@@ -2596,25 +2700,26 @@ enum AccountingAuditAction {
 /// Plan comptable curated par club (~30 comptes PCG associatif seedés à
 /// l'activation du module, extensibles par le trésorier).
 model AccountingAccount {
-  id         String                @id @default(uuid())
-  clubId     String
+  id        String                @id @default(uuid())
+  clubId    String
   /// Code PCG (ex "606400" pour "Achats non stockés fournitures"). Unique
   /// par club.
-  code       String
+  code      String
   /// Libellé lisible (snapshot copié sur chaque ligne d'écriture à la
   /// création pour persistance même si le compte est renommé).
-  label      String
-  kind       AccountingAccountKind
+  label     String
+  kind      AccountingAccountKind
   /// True si le compte fait partie du sous-ensemble seedé par défaut.
   /// Permet de distinguer les comptes standards des ajouts custom.
-  isDefault  Boolean               @default(false)
-  isActive   Boolean               @default(true)
-  sortOrder  Int                   @default(0)
-  createdAt  DateTime              @default(now())
-  updatedAt  DateTime              @updatedAt
+  isDefault Boolean               @default(false)
+  isActive  Boolean               @default(true)
+  sortOrder Int                   @default(0)
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
 
-  club     Club                        @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  mappings AccountingAccountMapping[]
+  club              Club                       @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  mappings          AccountingAccountMapping[]
+  financialAccounts ClubFinancialAccount[]
 
   @@unique([clubId, code])
   @@index([clubId, kind])
@@ -2626,21 +2731,21 @@ model AccountingAccount {
 /// l'analytique auto pour savoir sur quel compte PCG imputer une
 /// encaissement automatique.
 model AccountingAccountMapping {
-  id           String   @id @default(uuid())
-  clubId       String
+  id          String   @id @default(uuid())
+  clubId      String
   /// Type de source. Convention string libre :
   /// MEMBERSHIP_PRODUCT | MEMBERSHIP_ONE_TIME_FEE | SHOP_PRODUCT |
   /// SUBSIDY | SPONSORSHIP_CASH | SPONSORSHIP_IN_KIND | STRIPE_FEE |
   /// BANK_ACCOUNT.
-  sourceType   String
+  sourceType  String
   /// ID de la source spécifique. Null = mapping par défaut pour ce
   /// `sourceType` (fallback).
-  sourceId     String?
-  accountId    String
+  sourceId    String?
+  accountId   String
   /// Dénormalisé pour lookup rapide sans jointure.
-  accountCode  String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  accountCode String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   account AccountingAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
@@ -2709,13 +2814,17 @@ model AccountingEntryLine {
   // --- Traçabilité suggestion IA (pour affichage dans la review UI) ---
   /// Compte PCG proposé par l'IA. Gardé même si l'user change le compte
   /// final (pour audit et comparaison).
-  iaSuggestedAccountCode String?
+  iaSuggestedAccountCode  String?
   /// Phrase d'explication IA du choix (max 300 chars).
-  iaReasoning            String?
+  iaReasoning             String?
   /// Score de confiance IA sur le compte (0-100).
-  iaConfidencePct        Int?
+  iaConfidencePct         Int?
+  /// Si la ligne résulte d'une consolidation, contient les labels des
+  /// articles d'origine fusionnés. Vide = ligne non consolidée. Permet
+  /// d'afficher en tooltip "Cette ligne regroupe : Entrée, Plat, Dessert".
+  mergedFromArticleLabels String[] @default([])
 
-  entry       AccountingEntry         @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  entry       AccountingEntry        @relation(fields: [entryId], references: [id], onDelete: Cascade)
   allocations AccountingAllocation[]
 
   @@index([entryId])
@@ -2727,7 +2836,7 @@ model AccountingEntryLine {
 /// projet, cohorte, gender, discipline, membre, groupes dynamiques
 /// (snapshot + table normalisée), tags libres.
 model AccountingAllocation {
-  id                         String    @id @default(uuid())
+  id                         String   @id @default(uuid())
   lineId                     String
   /// Dénormalisé multi-tenant safety.
   clubId                     String
@@ -2742,24 +2851,24 @@ model AccountingAllocation {
   /// Flag RGPD : si true, memberId a été anonymisé (droit à l'oubli) et
   /// les dynamicGroupLabelsSnapshot/disciplineCode restent pour garder
   /// les totaux justes sans l'identité.
-  memberIdAnonymized         Boolean   @default(false)
+  memberIdAnonymized         Boolean  @default(false)
   // NOTE : field `gender Gender?` (pas AccountingAllocationGender — on
   // réutilise l'enum Member pour cohérence). Déclaré juste avant memberId.
   /// Snapshot IDs des groupes dynamiques au moment du paiement. Array
   /// pour affichage rapide. Les requêtes analytiques passent par la
   /// table normalisée AccountingAllocationGroupTag.
-  dynamicGroupIdsSnapshot    String[]  @default([])
+  dynamicGroupIdsSnapshot    String[] @default([])
   /// Snapshot des labels groupes (persiste même si le groupe est
   /// renommé ou supprimé).
-  dynamicGroupLabelsSnapshot String[]  @default([])
+  dynamicGroupLabelsSnapshot String[] @default([])
   /// Tags libres ajoutés manuellement par le saisisseur.
-  freeformTags               String[]  @default([])
-  createdAt                  DateTime  @default(now())
+  freeformTags               String[] @default([])
+  createdAt                  DateTime @default(now())
 
-  line      AccountingEntryLine              @relation(fields: [lineId], references: [id], onDelete: Cascade)
-  project   ClubProject?                     @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  member    Member?                          @relation(fields: [memberId], references: [id], onDelete: SetNull)
-  cohort    AccountingCohort?                @relation(fields: [clubId, cohortCode], references: [clubId, code])
+  line      AccountingEntryLine            @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  project   ClubProject?                   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  member    Member?                        @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  cohort    AccountingCohort?              @relation(fields: [clubId, cohortCode], references: [clubId, code])
   groupTags AccountingAllocationGroupTag[]
 
   @@index([clubId, projectId])
@@ -2825,7 +2934,7 @@ model AccountingFiscalYearClose {
 /// audit et reprise (l'user peut corriger plusieurs fois avant validation
 /// finale, la base reste stable).
 model AccountingExtraction {
-  id                   String   @id @default(uuid())
+  id                   String    @id @default(uuid())
   clubId               String
   mediaAssetId         String
   /// Output brut JSON du modèle vision (pour rejouer si besoin).
@@ -2839,15 +2948,15 @@ model AccountingExtraction {
   /// Proposition de compte PCG par l'IA (à valider par l'humain).
   extractedAccountCode String?
   model                String
-  inputTokens          Int      @default(0)
-  outputTokens         Int      @default(0)
-  costCents            Int      @default(0)
+  inputTokens          Int       @default(0)
+  outputTokens         Int       @default(0)
+  costCents            Int       @default(0)
   /// Nombre de pages traitées (PDF multi-pages).
-  pageCount            Int      @default(1)
+  pageCount            Int       @default(1)
   /// Si non null, l'extraction a échoué (OpenRouter timeout, JSON invalide,
   /// budget IA épuisé). L'user saisit manuellement.
   error                String?
-  createdAt            DateTime @default(now())
+  createdAt            DateTime  @default(now())
 
   mediaAsset MediaAsset        @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
   entries    AccountingEntry[]
@@ -2917,4 +3026,3 @@ model AiMonthlyUsage {
   @@unique([clubId, yearMonth])
   @@index([clubId])
 }
-

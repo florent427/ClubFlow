@@ -99,6 +99,14 @@ export function SettingsHubPage() {
                 desc="Clé OpenRouter + modèles texte/image pour la génération d'articles SEO et d'illustrations."
               />
             </li>
+            <li>
+              <SettingsHubCard
+                to="/settings/accounting"
+                modules={['ACCOUNTING']}
+                title="Comptabilité"
+                desc="Comptes bancaires, caisses, transit Stripe & routage automatique des paiements."
+              />
+            </li>
           </ul>
         </section>
       </div>

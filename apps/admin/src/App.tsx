@@ -36,6 +36,7 @@ import { PricingRulesPage } from './pages/settings/PricingRulesPage';
 import { MailDomainSettingsPage } from './pages/settings/MailDomainSettingsPage';
 import { ClubBrandingSettingsPage } from './pages/settings/ClubBrandingSettingsPage';
 import { AiSettingsPage } from './pages/settings/AiSettingsPage';
+import AccountingSettingsPage from './pages/settings/AccountingSettingsPage';
 import { AgentChatPage } from './pages/agent/AgentChatPage';
 import { AgentAuditPage } from './pages/agent/AgentAuditPage';
 import { VitrineHomePage } from './pages/vitrine/VitrineHomePage';
@@ -140,6 +141,7 @@ export default function App() {
               <Route path="mail-domain" element={<MailDomainSettingsPage />} />
               <Route path="branding" element={<ClubBrandingSettingsPage />} />
               <Route path="ai" element={<AiSettingsPage />} />
+              <Route path="accounting" element={<AccountingSettingsPage />} />
             </Route>
             <Route path="agent" element={<AgentChatPage />} />
             <Route path="agent/audit" element={<AgentAuditPage />} />

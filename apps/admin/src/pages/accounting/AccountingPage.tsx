@@ -2,16 +2,20 @@ import { useMutation, useQuery } from '@apollo/client/react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
+  ACCOUNTING_ENTRY_CONSOLIDATION_PREVIEW,
   CANCEL_CLUB_ACCOUNTING_ENTRY,
   CLUB_ACCOUNTING_ACCOUNTS,
   CLUB_ACCOUNTING_COHORTS,
   CLUB_ACCOUNTING_ENTRIES,
   CLUB_ACCOUNTING_SUMMARY,
+  CLUB_FINANCIAL_ACCOUNTS,
+  CONSOLIDATE_ACCOUNTING_ENTRY,
   CREATE_CLUB_ACCOUNTING_ENTRY_QUICK,
   DELETE_CLUB_ACCOUNTING_ENTRY_PERMANENT,
   INIT_CLUB_ACCOUNTING_PLAN,
   RERUN_ACCOUNTING_AI_FOR_LINE,
   SUBMIT_RECEIPT_FOR_OCR,
+  UNCONSOLIDATE_ACCOUNTING_ENTRY,
   UNVALIDATE_ACCOUNTING_ENTRY_LINE,
   UPDATE_ACCOUNTING_LINE_ALLOCATION,
   VALIDATE_ACCOUNTING_ENTRY_LINE,
@@ -19,10 +23,12 @@ import {
 import { CLUB_PROJECTS } from '../../lib/projects-documents';
 import type {
   AccountingEntry,
+  AccountingEntryConsolidationPreviewData,
   ClubAccountingAccountsData,
   ClubAccountingCohortsData,
   ClubAccountingEntriesData,
   ClubAccountingSummaryData,
+  ClubFinancialAccountsData,
   ClubProjectsData,
   SubmitReceiptForOcrData,
 } from '../../lib/types';
@@ -163,6 +169,11 @@ export function AccountingPage() {
     fetchPolicy: 'cache-and-network',
     errorPolicy: 'ignore',
   });
+  // Comptes financiers (banques, caisses, transit Stripe) du club.
+  const { data: finAccountsData } = useQuery<ClubFinancialAccountsData>(
+    CLUB_FINANCIAL_ACCOUNTS,
+    { fetchPolicy: 'cache-and-network' },
+  );
   const [createQuick, { loading: creating }] = useMutation(
     CREATE_CLUB_ACCOUNTING_ENTRY_QUICK,
   );
@@ -174,6 +185,8 @@ export function AccountingPage() {
   const [rerunAiLine] = useMutation(RERUN_ACCOUNTING_AI_FOR_LINE);
   const [updateAllocation] = useMutation(UPDATE_ACCOUNTING_LINE_ALLOCATION);
   const [deletePermanent] = useMutation(DELETE_CLUB_ACCOUNTING_ENTRY_PERMANENT);
+  const [consolidateMut] = useMutation(CONSOLIDATE_ACCOUNTING_ENTRY);
+  const [unconsolidateMut] = useMutation(UNCONSOLIDATE_ACCOUNTING_ENTRY);
   // Id de la ligne sous-déployée dont le popover "Modifier analytique" est ouvert
   const [allocPopoverLineId, setAllocPopoverLineId] = useState<string | null>(
     null,
@@ -222,6 +235,35 @@ export function AccountingPage() {
     try {
       await unvalidateLine({ variables: { lineId } });
       showToast('Ligne dé-validée', 'success');
+      await Promise.all([refetchEntries(), refetchSummary()]);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
+
+  /**
+   * Consolidation d'une écriture multi-articles : regroupe les lignes
+   * ayant le même compte ET les mêmes dimensions analytiques en une
+   * seule ligne. Opt-in (l'utilisateur déclenche).
+   */
+  async function doConsolidate(entryId: string) {
+    try {
+      await consolidateMut({ variables: { entryId } });
+      showToast('Lignes regroupées', 'success');
+      await Promise.all([refetchEntries(), refetchSummary()]);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
+
+  /**
+   * Annule la consolidation : restaure les lignes d'origine depuis le
+   * snapshot. Utile si l'utilisateur change d'avis avant de valider.
+   */
+  async function doUnconsolidate(entryId: string) {
+    try {
+      await unconsolidateMut({ variables: { entryId } });
+      showToast('Regroupement annulé', 'success');
       await Promise.all([refetchEntries(), refetchSummary()]);
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Erreur', 'error');
@@ -341,6 +383,8 @@ export function AccountingPage() {
   // Filtre par projet analytique — 'ALL' (aucun filtre), '__NONE__' (entries
   // sans projet alloué), ou un id de projet.
   const [projectFilter, setProjectFilter] = useState<string>('ALL');
+  // Filtre par compte financier (banque/caisse/transit) — 'ALL' ou id.
+  const [finAccountFilter, setFinAccountFilter] = useState<string>('ALL');
 
   const [kind, setKind] = useState<'INCOME' | 'EXPENSE' | 'IN_KIND'>(
     'EXPENSE',
@@ -352,6 +396,9 @@ export function AccountingPage() {
   const [disciplineCode, setDisciplineCode] = useState('');
   const [freeformTagsStr, setFreeformTagsStr] = useState('');
   const [projectId, setProjectId] = useState('');
+  // Compte financier de contrepartie sélectionné dans le drawer création.
+  // Vide = utilise le default BANK du club côté backend.
+  const [financialAccountId, setFinancialAccountId] = useState('');
   // Mode facture multi-articles : quand l'utilisateur ajoute ≥ 1 article,
   // la saisie passe en mode détaillé (1 ligne comptable par article).
   // L'IA catégorisera CHAQUE article indépendamment (ex: ordi 1200€ →
@@ -427,8 +474,11 @@ export function AccountingPage() {
         );
       }
     }
+    if (finAccountFilter !== 'ALL') {
+      rows = rows.filter((e) => e.financialAccountId === finAccountFilter);
+    }
     return rows;
-  }, [entries, kindFilter, statusFilter, projectFilter]);
+  }, [entries, kindFilter, statusFilter, projectFilter, finAccountFilter]);
   const summary = summaryData?.clubAccountingSummary;
   const accounts = accountsData?.clubAccountingAccounts ?? [];
   const cohorts = cohortsData?.clubAccountingCohorts ?? [];
@@ -556,6 +606,9 @@ export function AccountingPage() {
             ...(projectId ? { projectId } : {}),
             ...(cohortCode ? { cohortCode } : {}),
             ...(disciplineCode ? { disciplineCode } : {}),
+            ...(financialAccountId
+              ? { financialAccountId }
+              : {}),
             ...(tags.length > 0 ? { freeformTags: tags } : {}),
           },
         },
@@ -576,6 +629,7 @@ export function AccountingPage() {
       setDisciplineCode('');
       setFreeformTagsStr('');
       setProjectId('');
+      setFinancialAccountId('');
       setArticles([]);
       setAnalyticsPopoverFor(null);
       setStatusFilter('NEEDS_REVIEW');
@@ -861,6 +915,22 @@ export function AccountingPage() {
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.title}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        {(finAccountsData?.clubFinancialAccounts ?? []).length > 0 ? (
+          <label className="cf-field cf-field--inline">
+            <span>Compte</span>
+            <select
+              value={finAccountFilter}
+              onChange={(e) => setFinAccountFilter(e.target.value)}
+            >
+              <option value="ALL">Tous comptes</option>
+              {(finAccountsData?.clubFinancialAccounts ?? []).map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.label}
                 </option>
               ))}
             </select>
@@ -1221,6 +1291,13 @@ export function AccountingPage() {
                     <tr className="cf-expanded-row">
                       <td colSpan={7} style={{ padding: 0 }}>
                         <div className="cf-entry-lines">
+                          <ConsolidationBanner
+                            entry={e}
+                            onConsolidate={() => void doConsolidate(e.id)}
+                            onUnconsolidate={() =>
+                              void doUnconsolidate(e.id)
+                            }
+                          />
                           <table className="cf-entry-lines__table">
                             <thead>
                               <tr>
@@ -1722,6 +1799,27 @@ export function AccountingPage() {
               <option value="IN_KIND">Contribution en nature</option>
             </select>
           </label>
+          {kind !== 'IN_KIND' && (finAccountsData?.clubFinancialAccounts ?? []).length > 0 ? (
+            <label className="cf-field">
+              <span>{kind === 'INCOME' ? 'Encaissé sur' : 'Payé depuis'}</span>
+              <select
+                value={financialAccountId}
+                onChange={(e) => setFinancialAccountId(e.target.value)}
+              >
+                <option value="">— Banque par défaut —</option>
+                {(finAccountsData?.clubFinancialAccounts ?? [])
+                  .filter((a) => a.isActive)
+                  .map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.label} ({a.accountingAccountCode})
+                    </option>
+                  ))}
+              </select>
+              <small className="cf-muted">
+                Configure tes comptes dans Paramètres → Comptabilité.
+              </small>
+            </label>
+          ) : null}
           <label className="cf-field">
             <span>Libellé *</span>
             <input
@@ -2177,6 +2275,125 @@ export function AccountingPage() {
         }}
       />
 
+    </div>
+  );
+}
+
+/**
+ * Bandeau de consolidation affiché au-dessus des sous-lignes d'une
+ * écriture déployée. Affiche :
+ *  - Si déjà consolidée → bandeau vert + bouton "Défaire le regroupement"
+ *  - Si éligible → bandeau bleu + bouton "Regrouper" (avec preview groupes)
+ *  - Sinon (déjà unique compte, validée, etc.) → rien
+ *
+ * Charge la preview en lazy (au déploiement de l'entry uniquement).
+ */
+function ConsolidationBanner({
+  entry,
+  onConsolidate,
+  onUnconsolidate,
+}: {
+  entry: AccountingEntry;
+  onConsolidate: () => void;
+  onUnconsolidate: () => void;
+}) {
+  const isConsolidated = Boolean(entry.consolidatedAt);
+  const { data } = useQuery<AccountingEntryConsolidationPreviewData>(
+    ACCOUNTING_ENTRY_CONSOLIDATION_PREVIEW,
+    {
+      variables: { entryId: entry.id },
+      fetchPolicy: 'cache-and-network',
+      skip: isConsolidated, // pas besoin de preview si déjà consolidée
+    },
+  );
+  const preview = data?.accountingEntryConsolidationPreview;
+
+  if (isConsolidated) {
+    const consolidatedLines = entry.lines.filter(
+      (l) => l.mergedFromArticleLabels.length > 0,
+    );
+    const totalMerged = consolidatedLines.reduce(
+      (s, l) => s + l.mergedFromArticleLabels.length,
+      0,
+    );
+    return (
+      <div
+        className="cf-alert cf-alert--ok"
+        style={{
+          margin: 8,
+          padding: '8px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}
+      >
+        <span className="material-symbols-outlined" aria-hidden>
+          check_circle
+        </span>
+        <div style={{ flex: 1 }}>
+          <strong>Écriture consolidée</strong>{' '}
+          <small>— {totalMerged} articles regroupés</small>
+        </div>
+        <button
+          type="button"
+          className="btn-ghost btn-ghost--sm"
+          onClick={onUnconsolidate}
+          disabled={
+            entry.status === 'POSTED' ||
+            entry.status === 'LOCKED' ||
+            entry.status === 'CANCELLED'
+          }
+        >
+          Défaire le regroupement
+        </button>
+      </div>
+    );
+  }
+
+  if (!preview?.eligible || preview.groups.length === 0) return null;
+
+  const consolidableGroups = preview.groups.filter((g) => g.lineCount > 1);
+  if (consolidableGroups.length === 0) return null;
+
+  const summary = consolidableGroups
+    .map(
+      (g) =>
+        `${g.lineCount} lignes sur ${g.accountCode} ${g.accountLabel}`,
+    )
+    .join(' · ');
+
+  return (
+    <div
+      className="cf-alert cf-alert--info"
+      style={{
+        margin: 8,
+        padding: '8px 12px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        background: 'rgba(59, 130, 246, 0.08)',
+        borderRadius: 6,
+      }}
+    >
+      <span
+        className="material-symbols-outlined"
+        aria-hidden
+        style={{ color: '#1d4ed8' }}
+      >
+        lightbulb
+      </span>
+      <div style={{ flex: 1 }}>
+        <strong>Lignes regroupables</strong>
+        <br />
+        <small className="cf-muted">{summary}</small>
+      </div>
+      <button
+        type="button"
+        className="cf-btn cf-btn--sm cf-btn--primary"
+        onClick={onConsolidate}
+      >
+        Regrouper
+      </button>
     </div>
   );
 }
