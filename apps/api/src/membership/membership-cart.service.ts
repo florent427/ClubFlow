@@ -66,12 +66,39 @@ export type CartItemPreview = {
   }>;
 };
 
+/**
+ * Pendant un calcul de preview, chaque pending item contribue
+ * définitivement au total (mêmes règles que validateCart). On expose
+ * un breakdown par pending pour que le mapper puisse mettre le bon
+ * total sur la carte UI sans re-deviner.
+ */
+export type CartPendingPreview = {
+  pendingItemId: string;
+  /** Total final pour ce pending (somme N produits + frais auto - remises). */
+  definitiveTotalCents: number;
+  /** Détail par produit (utile pour debug + futur affichage UI). */
+  perProduct: Array<{
+    productId: string;
+    subscriptionBaseCents: number;
+    subscriptionAdjustedCents: number;
+    pricingRulesDeltaCents: number;
+  }>;
+  oneTimeFeesCents: number;
+  /** Aperçu des remises pricing-rule appliquées sur ce pending. */
+  pricingRulePreviews: Array<{
+    ruleLabel: string;
+    deltaAmountCents: number;
+    reason: string;
+  }>;
+};
+
 export type CartPreview = {
   cartId: string;
   familyId: string;
   clubSeasonId: string;
   status: MembershipCartStatus;
   items: CartItemPreview[];
+  pendingItems: CartPendingPreview[];
   totalCents: number;
   requiresManualAssignmentCount: number;
   canValidate: boolean;
@@ -708,7 +735,22 @@ export class MembershipCartService {
   async loadProductsForCartPendingItems(
     clubId: string,
     cart: { pendingItems?: Array<{ membershipProductIds: string[] }> | null },
-  ): Promise<Map<string, { label: string; annualAmountCents: number }>> {
+  ): Promise<
+    Map<
+      string,
+      {
+        id: string;
+        label: string;
+        annualAmountCents: number;
+        monthlyAmountCents: number;
+        allowProrata: boolean;
+        allowFamily: boolean;
+        allowPublicAid: boolean;
+        allowExceptional: boolean;
+        exceptionalCapPercentBp: number | null;
+      }
+    >
+  > {
     const ids = new Set<string>();
     for (const p of cart.pendingItems ?? []) {
       for (const id of p.membershipProductIds) ids.add(id);
@@ -716,14 +758,19 @@ export class MembershipCartService {
     if (ids.size === 0) return new Map();
     const products = await this.prisma.membershipProduct.findMany({
       where: { clubId, id: { in: Array.from(ids) } },
-      select: { id: true, label: true, annualAmountCents: true },
+      select: {
+        id: true,
+        label: true,
+        annualAmountCents: true,
+        monthlyAmountCents: true,
+        allowProrata: true,
+        allowFamily: true,
+        allowPublicAid: true,
+        allowExceptional: true,
+        exceptionalCapPercentBp: true,
+      },
     });
-    return new Map(
-      products.map((p) => [
-        p.id,
-        { label: p.label, annualAmountCents: p.annualAmountCents },
-      ]),
-    );
+    return new Map(products.map((p) => [p.id, p]));
   }
 
   async getCartById(clubId: string, cartId: string) {
@@ -986,6 +1033,107 @@ export class MembershipCartService {
     }
 
     // ----------------------------------------------------------------
+    // Étape 2 : pending items (Members pas encore créés)
+    // ----------------------------------------------------------------
+    // Mêmes règles que cart.items (prorata + family + frais auto). Le
+    // familyCursor continue à monter pour que le 3ᵉ pending soit bien
+    // traité comme 3ᵉ adhérent du foyer.
+    const pendingItemsPreview: CartPendingPreview[] = [];
+    const pendingProducts = await this.loadProductsForCartPendingItems(
+      clubId,
+      cart,
+    );
+    const activePending = (cart.pendingItems ?? []).filter(
+      (p) => p.convertedToMemberId === null,
+    );
+    // Snapshot des virtual-itemIds par pending pour pouvoir distribuer
+    // les remises pricing-rule au bon pending item plus bas.
+    const virtualItemIdsByPending = new Map<string, string[]>();
+    // Map virtualItemId → { pendingId, productId, factorBp } pour
+    // recalculer correctement les ajustements après l'engine.
+    const virtualItemMeta = new Map<
+      string,
+      { pendingId: string; productId: string; factorBp: number }
+    >();
+    for (const p of activePending) {
+      const virtualIds: string[] = [];
+      const perProduct: CartPendingPreview['perProduct'] = [];
+      let pendingSubscriptionTotal = 0;
+      for (const productId of p.membershipProductIds) {
+        const product = pendingProducts.get(productId);
+        if (!product) {
+          // Produit archivé / supprimé : on ignore silencieusement
+          continue;
+        }
+        const subscriptionBase =
+          p.billingRhythm === SubscriptionBillingRhythm.ANNUAL
+            ? product.annualAmountCents
+            : product.monthlyAmountCents;
+        const allowProrataEffective =
+          product.allowProrata &&
+          p.billingRhythm === SubscriptionBillingRhythm.ANNUAL;
+        const factorBp = allowProrataEffective
+          ? computeProrataFactorBp(
+              new Date(),
+              cart.clubSeason.startsOn,
+              cart.clubSeason.endsOn,
+              club.membershipFullPriceFirstMonths,
+            )
+          : 10_000;
+        const { subtotalAfterBusinessCents } = computeMembershipAdjustments({
+          baseAmountCents: subscriptionBase,
+          allowProrata: allowProrataEffective,
+          allowFamily: product.allowFamily,
+          allowPublicAid: product.allowPublicAid,
+          allowExceptional: product.allowExceptional,
+          exceptionalCapPercentBp: product.exceptionalCapPercentBp,
+          prorataFactorBp: factorBp,
+          familyRule,
+          priorFamilyMembershipCount: familyCursor,
+          publicAid: null,
+          exceptional: null,
+        });
+        const virtualItemId = `pending:${p.id}:${productId}`;
+        virtualIds.push(virtualItemId);
+        virtualItemMeta.set(virtualItemId, {
+          pendingId: p.id,
+          productId,
+          factorBp,
+        });
+        perProduct.push({
+          productId,
+          subscriptionBaseCents: subscriptionBase,
+          subscriptionAdjustedCents: subtotalAfterBusinessCents,
+          pricingRulesDeltaCents: 0, // rempli par l'engine plus bas
+        });
+        pendingSubscriptionTotal += subtotalAfterBusinessCents;
+      }
+      // Le pending compte UNE FOIS dans le rang famille (peu importe le
+      // nombre de formules), à l'image d'un Member réel qui a 1 cotisation
+      // par cart item.
+      familyCursor += 1;
+
+      // Frais auto : licence (sauf si déclarée existante — pas dispo en
+      // pending v1 car la license se déclare après validation), cotisation
+      // foyer, etc. On applique tous les frais autoApply.
+      const effectiveFees = autoFees.filter(() => true);
+      let feesTotal = 0;
+      for (const f of effectiveFees) {
+        feesTotal += f.amountCents;
+      }
+
+      virtualItemIdsByPending.set(p.id, virtualIds);
+      pendingItemsPreview.push({
+        pendingItemId: p.id,
+        definitiveTotalCents: pendingSubscriptionTotal + feesTotal,
+        perProduct,
+        oneTimeFeesCents: feesTotal,
+        pricingRulePreviews: [],
+      });
+      total += pendingSubscriptionTotal + feesTotal;
+    }
+
+    // ----------------------------------------------------------------
     // Aperçu des remises pricing-rule qui s'appliqueront à validation
     // ----------------------------------------------------------------
     // On évalue les règles SUR LE SNAPSHOT du cart (pas sur des
@@ -1028,6 +1176,45 @@ export class MembershipCartService {
             prorataFactorBp: factorBp,
           };
         });
+      // Ajoute les pending items (virtual itemIds) au snapshot pour que
+      // les pricing-rules s'appliquent identiquement (PRODUCT_BUNDLE,
+      // FAMILY_PROGRESSIVE, etc.). À la validation, les Members réels
+      // seront créés et l'engine retournera EXACTEMENT les mêmes deltas.
+      for (const p of activePending) {
+        for (const productId of p.membershipProductIds) {
+          const product = pendingProducts.get(productId);
+          if (!product) continue;
+          const base =
+            p.billingRhythm === SubscriptionBillingRhythm.ANNUAL
+              ? product.annualAmountCents
+              : product.monthlyAmountCents;
+          const allowProrataEffective =
+            product.allowProrata &&
+            p.billingRhythm === SubscriptionBillingRhythm.ANNUAL;
+          const factorBp = allowProrataEffective
+            ? computeProrataFactorBp(
+                new Date(),
+                cart.clubSeason.startsOn,
+                cart.clubSeason.endsOn,
+                club.membershipFullPriceFirstMonths,
+              )
+            : 10_000;
+          snapshot.push({
+            itemId: `pending:${p.id}:${productId}`,
+            baseAmountCents: Math.round((base * factorBp) / 10_000),
+            membershipProductId: product.id,
+            category: 'SUBSCRIPTION' as const,
+            // L'engine n'utilise `memberId` qu'en tant que clé de Map pour
+            // dédupliquer (plusieurs formules d'un même membre = 1 rang).
+            // On utilise un ID synthétique pour que chaque pending compte
+            // comme un membre distinct dans le rang famille.
+            memberId: `pending-member:${p.id}`,
+            ageAtReference: null,
+            billingRhythm: p.billingRhythm,
+            prorataFactorBp: factorBp,
+          });
+        }
+      }
       const prior = await this.loadPriorMembershipsForFamily(
         clubId,
         cart.familyId,
@@ -1058,7 +1245,7 @@ export class MembershipCartService {
           previewsByItem.set(a.itemId, list);
         }
       }
-      // Mise à jour des previews + recalcul du total cart
+      // Mise à jour des previews + recalcul du total cart pour cart.items
       for (const p of itemsPreview) {
         const previews = previewsByItem.get(p.itemId) ?? [];
         p.pricingRulePreviews = previews;
@@ -1068,6 +1255,34 @@ export class MembershipCartService {
         );
         p.lineTotalCents += additionalDelta;
         total += additionalDelta;
+      }
+      // Idem pour les pending items : on agrège les deltas de tous les
+      // virtual items d'un même pending dans `pricingRulePreviews` +
+      // `definitiveTotalCents`.
+      for (const pp of pendingItemsPreview) {
+        const virtualIds = virtualItemIdsByPending.get(pp.pendingItemId) ?? [];
+        const aggregated: typeof pp.pricingRulePreviews = [];
+        let pendingDelta = 0;
+        for (const vid of virtualIds) {
+          const previews = previewsByItem.get(vid) ?? [];
+          for (const x of previews) {
+            aggregated.push(x);
+            pendingDelta += x.deltaAmountCents;
+            // Inscrit aussi le delta sur la perProduct correspondante
+            const meta = virtualItemMeta.get(vid);
+            if (meta) {
+              const pp2 = pp.perProduct.find(
+                (e) => e.productId === meta.productId,
+              );
+              if (pp2) {
+                pp2.pricingRulesDeltaCents += x.deltaAmountCents;
+              }
+            }
+          }
+        }
+        pp.pricingRulePreviews = aggregated;
+        pp.definitiveTotalCents += pendingDelta;
+        total += pendingDelta;
       }
     } catch (err) {
       // Filet de sécurité : si l'engine plante, le preview reste valide
@@ -1106,6 +1321,7 @@ export class MembershipCartService {
       clubSeasonId: cart.clubSeasonId,
       status: cart.status,
       items: itemsPreview,
+      pendingItems: pendingItemsPreview,
       totalCents: total,
       requiresManualAssignmentCount,
       canValidate:

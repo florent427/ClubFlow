@@ -47,6 +47,9 @@ export function toMembershipCartGraph(
   productsById?: Map<string, { label: string; annualAmountCents: number }>,
 ): MembershipCartGraph {
   const previewByItem = new Map(preview.items.map((p) => [p.itemId, p]));
+  const previewByPending = new Map(
+    (preview.pendingItems ?? []).map((p) => [p.pendingItemId, p]),
+  );
   const items: MembershipCartItemGraph[] = cart.items.map((item) => {
     const p = previewByItem.get(item.id);
     return {
@@ -72,21 +75,28 @@ export function toMembershipCartGraph(
     };
   });
 
-  // Mappe les pending items, en résolvant les labels produit + total
-  // estimé à partir du `productsById` fourni (ou retombe sur des labels
-  // génériques si pas de map).
+  // Mappe les pending items. Le `definitiveTotalCents` vient du preview
+  // (calcul identique à validateCart : prorata + family + pricing rules
+  // appliqués). `productsById` ne sert plus qu'à résoudre les labels
+  // affichés à côté du prix.
   const pendingItems: MembershipCartPendingItemGraph[] = (
     cart.pendingItems ?? []
   )
     .filter((p) => p.convertedToMemberId === null)
     .map((p) => {
       const labels: string[] = [];
-      let estimatedTotal = 0;
       for (const productId of p.membershipProductIds) {
         const product = productsById?.get(productId);
         labels.push(product?.label ?? `Formule ${productId.slice(0, 6)}…`);
-        estimatedTotal += product?.annualAmountCents ?? 0;
       }
+      // Si le preview n'a pas pu calculer ce pending (cas dégradé : engine
+      // en panne ou produit archivé), on retombe sur la somme brute des
+      // tarifs annuels comme estimation de secours.
+      const pp = previewByPending.get(p.id);
+      const fallbackEstimate = p.membershipProductIds.reduce(
+        (sum, id) => sum + (productsById?.get(id)?.annualAmountCents ?? 0),
+        0,
+      );
       return {
         id: p.id,
         cartId: p.cartId,
@@ -97,7 +107,7 @@ export function toMembershipCartGraph(
         email: p.email,
         membershipProductIds: p.membershipProductIds,
         membershipProductLabels: labels,
-        estimatedTotalCents: estimatedTotal,
+        estimatedTotalCents: pp?.definitiveTotalCents ?? fallbackEstimate,
         billingRhythm: p.billingRhythm,
         createdAt: p.createdAt,
       };

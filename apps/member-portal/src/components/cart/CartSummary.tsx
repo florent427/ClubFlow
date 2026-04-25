@@ -122,14 +122,8 @@ export function CartSummary({ cart }: Props) {
         ) : null}
         {pendingCount > 0 ? (
           <div>
-            <dt>
-              Inscriptions du panier ({pendingCount})
-              <br />
-              <small className="mp-hint" style={{ fontWeight: 400 }}>
-                estimé — recalculé à la validation
-              </small>
-            </dt>
-            <dd>~{formatEuroCents(pendingEstimateTotal)}</dd>
+            <dt>Inscriptions du panier ({pendingCount})</dt>
+            <dd>{formatEuroCents(pendingEstimateTotal)}</dd>
           </div>
         ) : null}
         {feesTotal > 0 ? (
@@ -146,22 +140,21 @@ export function CartSummary({ cart }: Props) {
         ) : null}
         <div className="mp-cart-summary__total">
           <dt>Total TTC</dt>
-          <dd>
-            {formatEuroCents(cart.totalCents + pendingEstimateTotal)}
-          </dd>
+          <dd>{formatEuroCents(cart.totalCents)}</dd>
         </div>
       </dl>
-
-      {blockedByManual ? (
-        <p className="mp-hint mp-hint--warn">
-          {cart.requiresManualAssignmentCount} ligne(s) nécessite(nt) une
-          assignation manuelle par le club avant validation.
-        </p>
-      ) : null}
 
       {blockedByEmpty ? (
         <p className="mp-hint">
           Ajoutez au moins un membre pour activer la validation.
+        </p>
+      ) : null}
+
+      {blockedByManual ? (
+        <p className="mp-hint mp-hint--warn">
+          {cart.requiresManualAssignmentCount} ligne(s) du panier sans
+          formule sélectionnée. Modifiez ou supprimez-les pour finaliser
+          votre commande.
         </p>
       ) : null}
 

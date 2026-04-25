@@ -275,7 +275,7 @@ export function AdhesionPage() {
                   style={{
                     fontSize: '0.95rem',
                     fontWeight: 600,
-                    color: '#854d0e',
+                    color: '#1e3a8a',
                     marginBottom: 8,
                   }}
                 >
@@ -286,8 +286,9 @@ export function AdhesionPage() {
                   style={{ marginBottom: 8, fontSize: '0.8rem' }}
                 >
                   Les fiches adhérent ci-dessous seront créées
-                  automatiquement dès que vous validerez votre panier et
-                  procéderez au règlement.
+                  automatiquement à la validation du panier. Les remises
+                  automatiques (rang famille, bundles…) sont déjà incluses
+                  dans les montants affichés.
                 </p>
                 <div className="mp-cart-item-list">
                   {cart.pendingItems.map((p) => (
@@ -296,8 +297,8 @@ export function AdhesionPage() {
                       style={{
                         padding: 12,
                         marginBottom: 8,
-                        background: 'rgba(202, 138, 4, 0.06)',
-                        border: '1px solid rgba(202, 138, 4, 0.3)',
+                        background: 'rgba(37, 99, 235, 0.04)',
+                        border: '1px solid rgba(37, 99, 235, 0.2)',
                         borderRadius: 6,
                         display: 'flex',
                         justifyContent: 'space-between',
@@ -309,19 +310,6 @@ export function AdhesionPage() {
                         <strong>
                           {p.firstName} {p.lastName}
                         </strong>
-                        <span
-                          className="mp-pill"
-                          style={{
-                            marginLeft: 8,
-                            padding: '2px 8px',
-                            background: 'rgba(202, 138, 4, 0.2)',
-                            color: '#854d0e',
-                            borderRadius: 12,
-                            fontSize: '0.7rem',
-                          }}
-                        >
-                          en attente
-                        </span>
                         <br />
                         <small className="mp-hint">
                           {p.membershipProductLabels.length} formule
@@ -335,11 +323,7 @@ export function AdhesionPage() {
                           fontWeight: 600,
                         }}
                       >
-                        ~{(p.estimatedTotalCents / 100).toFixed(2)} €
-                        <br />
-                        <small className="mp-hint" style={{ fontWeight: 400 }}>
-                          estimé
-                        </small>
+                        {(p.estimatedTotalCents / 100).toFixed(2)} €
                       </div>
                     </div>
                   ))}
