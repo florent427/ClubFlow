@@ -182,7 +182,15 @@ export function InvoiceDetailDrawer({
   function handleOpenPayForm() {
     if (!inv) return;
     setPayAmount((inv.balanceCents / 100).toFixed(2));
-    setPayMethod(inv.lockedPaymentMethod ?? 'MANUAL_CASH');
+    // Pour un enregistrement MANUEL on pré-sélectionne un mode manuel.
+    // STRIPE_CARD n'est jamais valide ici (les paiements Stripe sont
+    // créés automatiquement par le webhook, pas via ce formulaire). Si
+    // la facture est verrouillée sur Stripe, on suggère MANUAL_CASH par
+    // défaut tout en laissant l'admin choisir le bon mode.
+    const locked = inv.lockedPaymentMethod;
+    setPayMethod(
+      locked && locked !== 'STRIPE_CARD' ? locked : 'MANUAL_CASH',
+    );
     setPayRef('');
     setPayError(null);
     setPayOpen(true);
@@ -637,13 +645,32 @@ export function InvoiceDetailDrawer({
                       onChange={(e) =>
                         setPayMethod(e.target.value as ClubPaymentMethodStr)
                       }
-                      disabled={inv.lockedPaymentMethod != null}
                     >
+                      {/*
+                        Ce drawer enregistre des paiements MANUELS — l'admin
+                        a reçu l'argent en espèces, en chèque, ou par virement
+                        et le saisit a posteriori. Les paiements par carte
+                        bancaire (Stripe) sont générés automatiquement par le
+                        webhook Stripe à la confirmation du PaymentIntent,
+                        donc ils ne sont pas saisissables ici.
+
+                        Le verrouillage `inv.lockedPaymentMethod` (lié au
+                        moyen choisi à la création de la facture) NE doit
+                        PAS désactiver ce select : un encaissement manuel
+                        peut toujours arriver dans n'importe quel mode
+                        manuel, peu importe ce qui était prévu.
+                      */}
                       <option value="MANUAL_CASH">Espèces</option>
                       <option value="MANUAL_CHECK">Chèque</option>
                       <option value="MANUAL_TRANSFER">Virement</option>
-                      <option value="STRIPE_CARD">Carte bancaire</option>
                     </select>
+                    {inv.lockedPaymentMethod === 'STRIPE_CARD' ? (
+                      <small className="cf-field__hint">
+                        Cette facture était prévue par carte (Stripe). Si tu
+                        enregistres ici, c'est qu'elle a été payée
+                        autrement.
+                      </small>
+                    ) : null}
                   </label>
                 </div>
                 <label className="cf-field">
