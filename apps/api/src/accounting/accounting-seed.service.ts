@@ -98,8 +98,17 @@ export class AccountingSeedService {
 
     // === Actif / tiers / trésorerie ===
     { code: '411000', label: 'Clients / Cotisants', kind: 'ASSET', sortOrder: 80 },
-    { code: '512000', label: 'Banque', kind: 'ASSET', sortOrder: 81 },
-    { code: '530000', label: 'Caisse', kind: 'ASSET', sortOrder: 82 },
+    // Banques (jusqu'à 5 banques distinctes — extensible via UI plan comptable)
+    { code: '512000', label: 'Banque (générique)', kind: 'ASSET', sortOrder: 81 },
+    { code: '512100', label: 'Banque secondaire #1 (renommez)', kind: 'ASSET', sortOrder: 81 },
+    { code: '512200', label: 'Banque secondaire #2 (renommez)', kind: 'ASSET', sortOrder: 81 },
+    { code: '512300', label: 'Stripe transit (intermédiaire)', kind: 'ASSET', sortOrder: 81 },
+    { code: '512400', label: 'HelloAsso / Lydia / autre transit', kind: 'ASSET', sortOrder: 81 },
+    // Caisses (jusqu'à 4 caisses — caisse principale + sub-caisses)
+    { code: '530000', label: 'Caisse principale (générique)', kind: 'ASSET', sortOrder: 82 },
+    { code: '530100', label: 'Caisse secondaire #1 (renommez)', kind: 'ASSET', sortOrder: 82 },
+    { code: '530200', label: 'Caisse événementielle (renommez)', kind: 'ASSET', sortOrder: 82 },
+    { code: '530300', label: 'Caisse buvette (renommez)', kind: 'ASSET', sortOrder: 82 },
 
     // === Contributions en nature — classe 8 (neutre) ===
     { code: '860000', label: 'Secours en nature, prestations', kind: 'NEUTRAL_IN_KIND', sortOrder: 90 },

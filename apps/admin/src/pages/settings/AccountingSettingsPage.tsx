@@ -93,15 +93,24 @@ export default function AccountingSettingsPage() {
   const [isDefault, setIsDefault] = useState(false);
   const [notes, setNotes] = useState('');
 
-  // Comptes PCG filtrés selon le kind sélectionné dans le formulaire :
-  // BANK / STRIPE_TRANSIT / OTHER_TRANSIT → 51x ; CASH → 53x.
+  // Comptes PCG filtrés :
+  //  - selon le kind sélectionné (BANK/STRIPE/OTHER → 51x ; CASH → 53x)
+  //  - en EXCLUANT les codes déjà liés à un autre ClubFinancialAccount actif
+  //    (contrainte unique `(clubId, accountingAccountId)` côté DB sinon
+  //    l'utilisateur se prend une erreur après submit)
   const compatiblePcg = useMemo(() => {
+    const usedAccountIds = new Set(
+      accounts
+        .filter((a) => a.isActive && (!editing || a.id !== editing.id))
+        .map((a) => a.accountingAccountId),
+    );
     return pcgAccounts.filter((p) => {
       if (!p.isActive) return false;
+      if (usedAccountIds.has(p.id)) return false;
       if (kind === 'CASH') return p.code.startsWith('53');
       return p.code.startsWith('51');
     });
-  }, [pcgAccounts, kind]);
+  }, [pcgAccounts, kind, accounts, editing]);
 
   function resetForm() {
     setKind('BANK');
@@ -497,9 +506,10 @@ export default function AccountingSettingsPage() {
               </select>
               {compatiblePcg.length === 0 ? (
                 <small className="cf-muted">
-                  Aucun compte PCG compatible (
-                  {kind === 'CASH' ? '53xxxx' : '51xxxx'}). Va dans le plan
-                  comptable pour en ajouter.
+                  Tous les comptes PCG {kind === 'CASH' ? '53xxxx' : '51xxxx'}{' '}
+                  sont déjà liés à un compte financier. Pour en ajouter,
+                  archive un compte existant ou crée un nouveau code dans le
+                  plan comptable.
                 </small>
               ) : null}
             </label>
