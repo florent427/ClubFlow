@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation } from '@apollo/client/react';
 import { VERIFY_EMAIL } from '../lib/documents';
@@ -31,6 +31,12 @@ export function VerifyEmailPage() {
 
   const [runVerify, { loading }] = useMutation<VerifyEmailData>(VERIFY_EMAIL);
 
+  // Garde anti double-exécution. React Strict Mode invoque useEffect 2x
+  // en dev (mount-unmount-mount), ce qui consommait le token à la 1ère
+  // exécution puis affichait "Lien invalide ou expiré" à la 2ème.
+  // Ce ref persiste à travers les re-mount et empêche le 2ème appel.
+  const verifyAttempted = useRef(false);
+
   useEffect(() => {
     if (!token.trim()) {
       setError('Lien incomplet (token manquant).');
@@ -40,6 +46,13 @@ export function VerifyEmailPage() {
       void navigate(consumeReturnTo() ?? '/', { replace: true });
       return;
     }
+    if (verifyAttempted.current) {
+      // Déjà tenté lors du mount précédent (StrictMode) — on laisse
+      // l'éventuelle erreur ou navigate du 1er appel finaliser sans
+      // refaire l'appel.
+      return;
+    }
+    verifyAttempted.current = true;
     let cancelled = false;
     void (async () => {
       try {
