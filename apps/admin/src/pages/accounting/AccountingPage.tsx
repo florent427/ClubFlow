@@ -17,6 +17,7 @@ import {
   SUBMIT_RECEIPT_FOR_OCR,
   UNCONSOLIDATE_ACCOUNTING_ENTRY,
   UNVALIDATE_ACCOUNTING_ENTRY_LINE,
+  UPDATE_ACCOUNTING_ENTRY_FINANCIAL_ACCOUNT,
   UPDATE_ACCOUNTING_LINE_ALLOCATION,
   VALIDATE_ACCOUNTING_ENTRY_LINE,
 } from '../../lib/documents';
@@ -187,6 +188,9 @@ export function AccountingPage() {
   const [deletePermanent] = useMutation(DELETE_CLUB_ACCOUNTING_ENTRY_PERMANENT);
   const [consolidateMut] = useMutation(CONSOLIDATE_ACCOUNTING_ENTRY);
   const [unconsolidateMut] = useMutation(UNCONSOLIDATE_ACCOUNTING_ENTRY);
+  const [updateEntryFinAccount] = useMutation(
+    UPDATE_ACCOUNTING_ENTRY_FINANCIAL_ACCOUNT,
+  );
   // Id de la ligne sous-déployée dont le popover "Modifier analytique" est ouvert
   const [allocPopoverLineId, setAllocPopoverLineId] = useState<string | null>(
     null,
@@ -235,6 +239,26 @@ export function AccountingPage() {
     try {
       await unvalidateLine({ variables: { lineId } });
       showToast('Ligne dé-validée', 'success');
+      await Promise.all([refetchEntries(), refetchSummary()]);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
+
+  /**
+   * Change le compte financier de contrepartie d'une écriture en cours
+   * de revue (NEEDS_REVIEW). Met à jour l'entry ET la ligne contrepartie
+   * banque/caisse. Refusé côté backend si POSTED/LOCKED.
+   */
+  async function doChangeFinancialAccount(
+    entryId: string,
+    financialAccountId: string,
+  ) {
+    try {
+      await updateEntryFinAccount({
+        variables: { entryId, financialAccountId },
+      });
+      showToast('Compte de contrepartie mis à jour', 'success');
       await Promise.all([refetchEntries(), refetchSummary()]);
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Erreur', 'error');
@@ -1184,6 +1208,36 @@ export function AccountingPage() {
                           ) : null}
                         </small>
                       ) : null}
+                      {e.financialAccountLabel ? (
+                        <small
+                          className="cf-muted"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 3,
+                            marginLeft:
+                              firstAlloc &&
+                              (firstAlloc.cohortCode ||
+                                firstAlloc.disciplineCode ||
+                                firstAlloc.projectTitle ||
+                                projectsAreMixed)
+                                ? 8
+                                : 0,
+                          }}
+                          title={`Compte de contrepartie : ${e.financialAccountCode ?? ''}`}
+                        >
+                          <span
+                            className="material-symbols-outlined"
+                            aria-hidden
+                            style={{ fontSize: '0.85rem' }}
+                          >
+                            {e.kind === 'INCOME'
+                              ? 'savings'
+                              : 'account_balance_wallet'}
+                          </span>
+                          {e.financialAccountLabel}
+                        </small>
+                      ) : null}
                     </td>
                     <td>
                       {isMultiArticle ? (
@@ -1421,7 +1475,57 @@ export function AccountingPage() {
                                       ) : null}
                                     </td>
                                     <td>
-                                      {validated || isBank ? (
+                                      {isBank ? (
+                                        // Sous-ligne contrepartie : afficher
+                                        // le compte financier (ex SOGEXIA)
+                                        // plutôt que juste le code PCG.
+                                        // Si NEEDS_REVIEW : sélecteur pour
+                                        // changer la banque/caisse.
+                                        e.status === 'NEEDS_REVIEW' &&
+                                        (finAccountsData?.clubFinancialAccounts ?? []).length > 0 ? (
+                                          <select
+                                            value={e.financialAccountId ?? ''}
+                                            onChange={(ev) =>
+                                              ev.target.value &&
+                                              void doChangeFinancialAccount(
+                                                e.id,
+                                                ev.target.value,
+                                              )
+                                            }
+                                            style={{
+                                              fontSize: '0.82rem',
+                                              padding: '3px 5px',
+                                              maxWidth: 280,
+                                            }}
+                                            title="Changer le compte de contrepartie"
+                                          >
+                                            <option value="" disabled>
+                                              {l.accountCode} {l.accountLabel}
+                                            </option>
+                                            {(
+                                              finAccountsData?.clubFinancialAccounts ??
+                                              []
+                                            )
+                                              .filter((a) => a.isActive)
+                                              .map((a) => (
+                                                <option key={a.id} value={a.id}>
+                                                  {a.label} ({a.accountingAccountCode})
+                                                </option>
+                                              ))}
+                                          </select>
+                                        ) : (
+                                          <div>
+                                            <strong>
+                                              {e.financialAccountLabel ??
+                                                l.accountLabel}
+                                            </strong>
+                                            <br />
+                                            <small className="cf-muted">
+                                              {l.accountCode}
+                                            </small>
+                                          </div>
+                                        )
+                                      ) : validated ? (
                                         <div>
                                           <strong>{l.accountCode}</strong>
                                           <br />

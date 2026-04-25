@@ -1521,6 +1521,85 @@ export class AccountingService {
   }
 
   /**
+   * Change le compte financier de contrepartie d'une écriture (NEEDS_REVIEW
+   * uniquement). Met à jour `entry.financialAccountId` ET la ligne
+   * contrepartie banque/caisse correspondante (`accountCode`/`accountLabel`).
+   *
+   * Usage : l'utilisateur réalise après création qu'il a saisi "Banque
+   * principale" mais l'argent est en réalité tombé sur "SOGEXIA". Il peut
+   * corriger sans contre-passer tant que l'écriture n'est pas validée.
+   *
+   * Refusé si POSTED/LOCKED/CANCELLED — il faut passer par une
+   * contre-passation.
+   */
+  async updateEntryFinancialAccount(
+    clubId: string,
+    userId: string,
+    entryId: string,
+    financialAccountId: string,
+  ): Promise<void> {
+    const entry = await this.prisma.accountingEntry.findFirst({
+      where: { clubId, id: entryId },
+      include: { lines: true },
+    });
+    if (!entry) throw new NotFoundException('Écriture introuvable');
+    if (entry.status !== AccountingEntryStatus.NEEDS_REVIEW) {
+      throw new ForbiddenException(
+        `Changement de compte interdit pour une écriture ${entry.status}. ` +
+          `Utilise une contre-passation.`,
+      );
+    }
+    const fin = await this.prisma.clubFinancialAccount.findFirst({
+      where: { clubId, id: financialAccountId, isActive: true },
+      include: { accountingAccount: true },
+    });
+    if (!fin) {
+      throw new BadRequestException(
+        `Compte financier ${financialAccountId} introuvable ou inactif.`,
+      );
+    }
+
+    // Identifie la ligne contrepartie (51x ou 53x). Hypothèse : 1 seule
+    // ligne contrepartie par entry (pattern actuel), à ajuster si on
+    // supporte les écritures multi-contreparties dans le futur.
+    const counterpartLine = entry.lines.find(
+      (l) => l.accountCode.startsWith('51') || l.accountCode.startsWith('53'),
+    );
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.accountingEntry.update({
+        where: { id: entryId },
+        data: { financialAccountId: fin.id },
+      });
+      if (counterpartLine) {
+        await tx.accountingEntryLine.update({
+          where: { id: counterpartLine.id },
+          data: {
+            accountCode: fin.accountingAccount.code,
+            accountLabel: fin.accountingAccount.label,
+          },
+        });
+      }
+    });
+
+    await this.audit.log({
+      clubId,
+      userId,
+      entryId,
+      action: AccountingAuditAction.UPDATE,
+      metadata: {
+        source: 'CHANGE_FINANCIAL_ACCOUNT',
+        previousFinancialAccountId: entry.financialAccountId,
+        newFinancialAccountId: fin.id,
+        newAccountCode: fin.accountingAccount.code,
+      },
+    });
+    this.logger.log(
+      `[Entry ${entryId}] Compte financier changé → ${fin.label} (${fin.accountingAccount.code}) par user ${userId}`,
+    );
+  }
+
+  /**
    * Met à jour la ventilation analytique d'une ligne existante (projet,
    * cohorte, discipline). Utile pour corriger l'analytique d'un article
    * après création — cas typique : facture mixte où tu t'aperçois

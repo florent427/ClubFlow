@@ -898,4 +898,26 @@ export class AccountingResolver {
     await this.consolidation.unconsolidate(club.id, user.userId, entryId);
     return true;
   }
+
+  /**
+   * Change le compte financier (banque/caisse/transit) de contrepartie
+   * d'une écriture en cours de revue. Met à jour l'entry ET la ligne
+   * contrepartie. Refusé si l'entry est déjà comptabilisée (POSTED/LOCKED).
+   */
+  @Mutation(() => Boolean, { name: 'updateAccountingEntryFinancialAccount' })
+  async updateAccountingEntryFinancialAccount(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('entryId', { type: () => ID }) entryId: string,
+    @Args('financialAccountId', { type: () => ID })
+    financialAccountId: string,
+  ): Promise<boolean> {
+    await this.accounting.updateEntryFinancialAccount(
+      club.id,
+      user.userId,
+      entryId,
+      financialAccountId,
+    );
+    return true;
+  }
 }

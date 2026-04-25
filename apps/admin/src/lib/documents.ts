@@ -2444,3 +2444,15 @@ export const UNCONSOLIDATE_ACCOUNTING_ENTRY = gql`
     unconsolidateAccountingEntry(entryId: $entryId)
   }
 `;
+
+export const UPDATE_ACCOUNTING_ENTRY_FINANCIAL_ACCOUNT = gql`
+  mutation UpdateAccountingEntryFinancialAccount(
+    $entryId: ID!
+    $financialAccountId: ID!
+  ) {
+    updateAccountingEntryFinancialAccount(
+      entryId: $entryId
+      financialAccountId: $financialAccountId
+    )
+  }
+`;
