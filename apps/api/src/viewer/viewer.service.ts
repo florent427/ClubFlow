@@ -1678,8 +1678,24 @@ export class ViewerService {
         'Prénom et nom obligatoires sur votre profil.',
       );
     }
+    // Pré-calcul du foyer cible : on cherche le foyer existant rattaché
+    // au contact actif. S'il existe (cas typique : le contact est déjà
+    // PAYER d'un foyer contenant les enfants), on le passe au check email
+    // pour que la règle "doublons OK dans le même foyer" s'applique.
+    //
+    // Sans ça : un parent inscrivant ses enfants en premier puis lui-même
+    // se prend une erreur "email déjà utilisée par un autre adhérent"
+    // alors que les enfants sont dans son foyer et partagent son email.
+    const presumedFamilyLink = await this.prisma.familyMember.findFirst({
+      where: {
+        contactId: activeProfile.contactId!,
+        family: { clubId },
+      },
+      select: { familyId: true },
+    });
     await assertMemberEmailAllowedInClub(this.prisma, clubId, email, {
       memberId: null,
+      assumeMemberFamilyId: presumedFamilyLink?.familyId ?? null,
     });
     const pseudo = await this.memberPseudo.pickAvailablePseudo(
       this.prisma,
@@ -1703,7 +1719,8 @@ export class ViewerService {
         },
         select: { id: true, firstName: true, lastName: true },
       });
-      // Recherche / création famille via le contact
+      // Recherche / création famille via le contact (cohérent avec le
+      // pré-calcul ci-dessus pour le check email).
       const existing = await tx.familyMember.findFirst({
         where: {
           contactId: activeProfile.contactId!,
