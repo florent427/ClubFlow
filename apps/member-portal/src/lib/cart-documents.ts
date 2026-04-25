@@ -31,6 +31,11 @@ export const MEMBERSHIP_CART_FIELDS = gql`
       subscriptionBaseCents
       subscriptionAdjustedCents
       oneTimeFeesCents
+      pricingRulePreviews {
+        ruleLabel
+        deltaAmountCents
+        reason
+      }
     }
     pendingItems {
       id
@@ -150,6 +155,12 @@ export type CartItem = {
   subscriptionBaseCents: number;
   subscriptionAdjustedCents: number;
   oneTimeFeesCents: number;
+  /** Aperçu des remises pricing-rule (cf admin Settings) */
+  pricingRulePreviews: Array<{
+    ruleLabel: string;
+    deltaAmountCents: number;
+    reason: string;
+  }>;
 };
 
 /**

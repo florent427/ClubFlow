@@ -6,6 +6,24 @@ registerEnumType(MembershipCartStatus, {
 });
 
 /**
+ * Aperçu d'une remise pricing-rule qui sera appliquée à la validation.
+ * Non engageant : reflète l'état actuel des règles. Les valeurs
+ * définitives sont calculées et persistées en `InvoiceLineAdjustment`
+ * à la validation du cart.
+ */
+@ObjectType()
+export class PricingRulePreviewGraph {
+  @Field(() => String)
+  ruleLabel!: string;
+
+  @Field(() => Int)
+  deltaAmountCents!: number;
+
+  @Field(() => String)
+  reason!: string;
+}
+
+/**
  * Inscription "en attente" : le Member n'est pas encore créé. Affiché
  * dans le cart au même titre que les `items`, avec un badge "à valider"
  * pour différenciation. Convertie en CartItem + Member réel à la
@@ -106,6 +124,14 @@ export class MembershipCartItemGraph {
   /** Somme des frais auto (licence, cotisation, etc.). */
   @Field(() => Int)
   oneTimeFeesCents!: number;
+
+  /**
+   * Aperçu des remises pricing-rule qui s'appliqueront à la validation
+   * du projet. Permet à l'utilisateur de comprendre le détail du prix
+   * (ex "🎁 Famille progressive : -10€ — 3ᵉ adhérent du foyer").
+   */
+  @Field(() => [PricingRulePreviewGraph])
+  pricingRulePreviews!: PricingRulePreviewGraph[];
 
   @Field(() => GraphQLISODateTime)
   createdAt!: Date;

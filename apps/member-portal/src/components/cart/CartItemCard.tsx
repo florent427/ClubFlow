@@ -229,6 +229,28 @@ export function CartItemCard({ item, disabled }: Props) {
                 <dd>-{formatEuroCents(item.exceptionalDiscountCents)}</dd>
               </div>
             ) : null}
+            {item.pricingRulePreviews?.map((p, idx) => (
+              <div
+                key={`${p.ruleLabel}-${idx}`}
+                style={{ color: '#15803d' }}
+                title={p.reason}
+              >
+                <dt>
+                  🎁 {p.ruleLabel}
+                  <br />
+                  <small
+                    style={{
+                      fontWeight: 400,
+                      color: '#15803d',
+                      opacity: 0.85,
+                    }}
+                  >
+                    {p.reason}
+                  </small>
+                </dt>
+                <dd>{formatEuroCents(p.deltaAmountCents)}</dd>
+              </div>
+            ))}
             <div className="mp-cart-item__total">
               <dt>Total ligne</dt>
               <dd>{formatEuroCents(item.lineTotalCents)}</dd>

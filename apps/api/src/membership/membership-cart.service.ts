@@ -52,6 +52,18 @@ export type CartItemPreview = {
   hasExistingLicense: boolean;
   existingLicenseNumber: string | null;
   requiresManualAssignment: boolean;
+  /**
+   * Aperçu des remises pricing-rule qui s'appliqueront à la validation
+   * (règles configurées par l'admin dans Settings → Adhésion). Les
+   * règles legacy (computeMembershipAdjustments) sont déjà reflétées
+   * dans `subscriptionAdjustedCents`. Cette liste expose UNIQUEMENT
+   * les remises supplémentaires qui SERONT appliquées.
+   */
+  pricingRulePreviews: Array<{
+    ruleLabel: string;
+    deltaAmountCents: number;
+    reason: string;
+  }>;
 };
 
 export type CartPreview = {
@@ -853,6 +865,7 @@ export class MembershipCartService {
           hasExistingLicense: item.hasExistingLicense,
           existingLicenseNumber: item.existingLicenseNumber,
           requiresManualAssignment: true,
+          pricingRulePreviews: [],
         });
         continue;
       }
@@ -926,7 +939,96 @@ export class MembershipCartService {
         hasExistingLicense: item.hasExistingLicense,
         existingLicenseNumber: item.existingLicenseNumber,
         requiresManualAssignment: false,
+        pricingRulePreviews: [], // rempli plus bas par le bloc engine
       });
+    }
+
+    // ----------------------------------------------------------------
+    // Aperçu des remises pricing-rule qui s'appliqueront à validation
+    // ----------------------------------------------------------------
+    // On évalue les règles SUR LE SNAPSHOT du cart (pas sur des
+    // InvoiceLine, qui n'existent pas encore). Le résultat est attaché
+    // à chaque CartItemPreview pour que l'UI portail affiche
+    // "🎁 Famille progressive : -10% (3ᵉ adhérent du foyer)".
+    // Cette preview est **non engageante** : elle reflète l'état actuel
+    // des règles ; les vraies remises sont calculées à la validation
+    // (et persistées dans InvoiceLineAdjustment).
+    try {
+      const snapshot: CartLineSnapshot[] = cart.items
+        .filter((i) => !i.requiresManualAssignment && i.product)
+        .map((i) => {
+          const product = i.product!;
+          const base =
+            i.billingRhythm === SubscriptionBillingRhythm.ANNUAL
+              ? product.annualAmountCents
+              : product.monthlyAmountCents;
+          return {
+            itemId: i.id,
+            baseAmountCents: base,
+            membershipProductId: product.id,
+            category: 'SUBSCRIPTION' as const,
+            memberId: i.memberId,
+            ageAtReference: null,
+            billingRhythm: i.billingRhythm,
+          };
+        });
+      const prior = await this.loadPriorMembershipsForFamily(
+        clubId,
+        cart.familyId,
+        cart.clubSeasonId,
+        cart.invoiceId, // exclut l'invoice du cart si déjà créée
+      );
+      const result = await this.pricingRulesEngine.evaluate(clubId, {
+        cart: snapshot,
+        prior,
+      });
+      // Distribue les applications par itemId pour les rattacher au preview
+      const previewsByItem = new Map<
+        string,
+        Array<{
+          ruleLabel: string;
+          deltaAmountCents: number;
+          reason: string;
+        }>
+      >();
+      for (const app of result.applications) {
+        for (const a of app.appliedTo) {
+          const list = previewsByItem.get(a.itemId) ?? [];
+          list.push({
+            ruleLabel: app.ruleLabel,
+            deltaAmountCents: a.deltaAmountCents,
+            reason: a.reason,
+          });
+          previewsByItem.set(a.itemId, list);
+        }
+      }
+      // Mise à jour des previews + recalcul du total cart
+      for (const p of itemsPreview) {
+        const previews = previewsByItem.get(p.itemId) ?? [];
+        p.pricingRulePreviews = previews;
+        const additionalDelta = previews.reduce(
+          (s, x) => s + x.deltaAmountCents,
+          0,
+        );
+        p.lineTotalCents += additionalDelta;
+        total += additionalDelta;
+      }
+    } catch (err) {
+      // Filet de sécurité : si l'engine plante, le preview reste valide
+      // mais sans la prévisualisation des règles. Le preview affichera
+      // donc juste les remises legacy (suffisamment informatif).
+      // eslint-disable-next-line no-console
+      console.error(
+        '[membership-cart.preview] PricingRulesEngine plantage non-fatal',
+        (err as Error).message,
+      );
+      for (const p of itemsPreview) {
+        if (!p.pricingRulePreviews) p.pricingRulePreviews = [];
+      }
+    }
+    // Garantit le champ même si on n'a pas réussi à le calculer
+    for (const p of itemsPreview) {
+      if (!p.pricingRulePreviews) p.pricingRulePreviews = [];
     }
 
     const requiresManualAssignmentCount = itemsPreview.filter(

@@ -66,6 +66,7 @@ export function toMembershipCartGraph(
       subscriptionBaseCents: p?.subscriptionBaseCents ?? 0,
       subscriptionAdjustedCents: p?.subscriptionAdjustedCents ?? 0,
       oneTimeFeesCents: p?.oneTimeFeesCents ?? 0,
+      pricingRulePreviews: p?.pricingRulePreviews ?? [],
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     };
