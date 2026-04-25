@@ -35,33 +35,37 @@ export interface FamilyProgressiveConfig {
 }
 
 /**
- * Config d'une règle PRODUCT_BUNDLE — combinaison de 2 produits où le
- * `primary` est la condition de déclenchement et le `secondary` reçoit
- * la remise. La remise dépend du `billingRhythm` du secondaire :
- * un montant pour ANNUAL, un autre pour MONTHLY.
+ * Config d'une règle PRODUCT_BUNDLE — combinaison de produits où l'un
+ * des `primary` (sémantique OR : au moins un présent) est la condition
+ * de déclenchement et le `secondary` reçoit la remise. La remise dépend
+ * du `billingRhythm` du secondaire : un montant pour ANNUAL, un autre
+ * pour MONTHLY.
  *
- * Ex Karaté (primary) + Cross Training (secondary) :
+ * Ex « Tout art martial + Cross Training » :
+ * - primaryProductIds = [Karaté, Judo, Tai-chi]  (OR — un seul suffit)
+ * - secondaryProductId = Cross Training
  * - Si Cross en annuel : -20 € sur le tarif annuel
- * - Si Cross en mensuel : -2 € / mois (= -24 €/an)
+ * - Si Cross en mensuel : -2 € / mois
  *
- * Le primary peut être facturé dans un projet ANTÉRIEUR de la même
- * saison (cf `EvaluationContext.priorMemberships`) — la remise sur
- * secondary s'applique tant que primary est dans le foyer pour cette
+ * Les primary peuvent être facturés dans un projet ANTÉRIEUR de la
+ * même saison (cf `EvaluationContext.prior`) — la remise sur secondary
+ * s'applique tant qu'au moins un primary est dans le foyer pour cette
  * saison.
  *
  * Le primary lui-même ne reçoit jamais de remise via ce pattern.
  *
  * ```json
  * {
- *   "primaryProductId": "karateId",
+ *   "primaryProductIds": ["karateId", "judoId", "taiChiId"],
  *   "secondaryProductId": "crossId",
- *   "discountForAnnual": { "type": "FIXED_CENTS", "value": -2000 },
+ *   "discountForAnnual":  { "type": "FIXED_CENTS", "value": -2000 },
  *   "discountForMonthly": { "type": "FIXED_CENTS", "value": -200 }
  * }
  * ```
  */
 export interface ProductBundleConfig {
-  primaryProductId: string;
+  /** Liste OR : au moins un de ces produits doit être présent. */
+  primaryProductIds: string[];
   secondaryProductId: string;
   /** Remise appliquée si le secondary est en `billingRhythm = ANNUAL`. */
   discountForAnnual: {
@@ -176,19 +180,35 @@ export function validateRuleConfig(
     }
 
     case MembershipPricingRulePattern.PRODUCT_BUNDLE: {
-      if (typeof v.primaryProductId !== 'string' || !v.primaryProductId) {
+      // Multi-primary (OR sémantique) : on accepte aussi `primaryProductId`
+      // singulier pour rétrocompat avec les configs créées avant la
+      // refacto multi.
+      const primaryIdsRaw =
+        Array.isArray(v.primaryProductIds)
+          ? v.primaryProductIds
+          : typeof v.primaryProductId === 'string' && v.primaryProductId
+            ? [v.primaryProductId]
+            : null;
+      if (!primaryIdsRaw || primaryIdsRaw.length === 0) {
         throw new BadRequestException(
-          'primaryProductId requis (produit déclencheur)',
+          'primaryProductIds requis (au moins 1 produit déclencheur — sémantique OR)',
         );
       }
+      const primaryIds = primaryIdsRaw.map((id, idx) => {
+        if (typeof id !== 'string' || !id)
+          throw new BadRequestException(
+            `primaryProductIds[${idx}] doit être une chaîne UUID`,
+          );
+        return id;
+      });
       if (typeof v.secondaryProductId !== 'string' || !v.secondaryProductId) {
         throw new BadRequestException(
           'secondaryProductId requis (produit qui reçoit la remise)',
         );
       }
-      if (v.primaryProductId === v.secondaryProductId) {
+      if (primaryIds.includes(v.secondaryProductId)) {
         throw new BadRequestException(
-          'primaryProductId et secondaryProductId doivent être différents',
+          'secondaryProductId ne peut pas faire partie de primaryProductIds',
         );
       }
       // Validation des remises annuel + mensuel
@@ -213,7 +233,7 @@ export function validateRuleConfig(
         };
       };
       return {
-        primaryProductId: v.primaryProductId,
+        primaryProductIds: primaryIds,
         secondaryProductId: v.secondaryProductId,
         discountForAnnual: validateDiscount(
           v.discountForAnnual,
@@ -309,7 +329,10 @@ export function validateRuleConfig(
 export interface CartLineSnapshot {
   /** ID stable pour identifier la ligne dans le résultat. */
   itemId: string;
-  /** Montant de base (cotisation ou frais). */
+  /**
+   * Montant de base (cotisation ou frais) **APRÈS** prorata éventuel.
+   * Ex : tarif annuel 300 € avec prorata 60 % → baseAmountCents = 18000.
+   */
   baseAmountCents: number;
   /** ID du produit lié (pour PRODUCT_BUNDLE). Null pour frais uniques. */
   membershipProductId: string | null;
@@ -321,6 +344,18 @@ export interface CartLineSnapshot {
   ageAtReference: number | null;
   /** Rythme de facturation (utile pour PRODUCT_BUNDLE annuel/mensuel). */
   billingRhythm: 'ANNUAL' | 'MONTHLY';
+  /**
+   * Facteur de prorata appliqué à cette ligne (10000 = 100 %, 6000 =
+   * 60 %). Utilisé par l'engine pour proratiser les remises FIXED_CENTS
+   * (les % se proratisent naturellement car appliqués sur la base
+   * déjà proratisée).
+   *
+   * Exemple : remise -20 € fixe sur une cotisation proratisée à 60 %
+   * → on applique -12 € (60 % × 20 €) pour rester proportionnel.
+   *
+   * Default 10000 (pas de prorata).
+   */
+  prorataFactorBp: number;
 }
 
 /**
@@ -575,6 +610,7 @@ export class PricingRulesEngineService {
             candidate.cartItem.baseAmountCents,
             tier.type,
             tier.value,
+            candidate.cartItem.prorataFactorBp,
           );
           if (delta === 0) continue;
           // Reason explicite pour transparence UI
@@ -593,8 +629,8 @@ export class PricingRulesEngineService {
 
       case MembershipPricingRulePattern.PRODUCT_BUNDLE: {
         const c = config as ProductBundleConfig;
-        // Le primary peut être dans le cart OU dans l'historique
-        // (foyer a déjà payé Karaté en septembre, ajoute Cross en janvier).
+        // Sémantique OR : il suffit qu'AU MOINS UN des primaryProductIds
+        // soit présent (dans le cart OU dans l'historique de la saison).
         const productIdsInContext = new Set([
           ...snapshot
             .map((s) => s.membershipProductId)
@@ -603,7 +639,10 @@ export class PricingRulesEngineService {
             .map((e) => e.membershipProductId)
             .filter((p): p is string => Boolean(p)),
         ]);
-        if (!productIdsInContext.has(c.primaryProductId)) return baseApp;
+        const matchedPrimary = c.primaryProductIds.find((id) =>
+          productIdsInContext.has(id),
+        );
+        if (!matchedPrimary) return baseApp;
 
         // On applique la remise sur TOUTES les lignes du cart qui sont
         // le secondary (un foyer pourrait inscrire 2 enfants au cours
@@ -620,6 +659,7 @@ export class PricingRulesEngineService {
             line.baseAmountCents,
             discount.type,
             discount.value,
+            line.prorataFactorBp,
           );
           if (delta === 0) continue;
           const rhythmLabel =
@@ -644,6 +684,7 @@ export class PricingRulesEngineService {
             line.baseAmountCents,
             c.discountType,
             c.discountValue,
+            line.prorataFactorBp,
           );
           if (delta === 0) continue;
           baseApp.appliedTo.push({
@@ -674,17 +715,29 @@ export class PricingRulesEngineService {
    * Calcule le delta (négatif) appliqué sur une ligne, selon type et
    * valeur. Borne inférieure = -baseAmount (on ne peut pas remiser plus
    * que le prix de la ligne, sinon on aurait du crédit).
+   *
+   * **Prorata sur FIXED_CENTS** : si la ligne du cart est proratisée
+   * (ex 60% de la saison restante), une remise FIXED_CENTS de -20 €
+   * devient -12 € (60% de 20 €). Évite qu'un nouvel adhérent
+   * proratisé bénéficie d'une remise disproportionnée par rapport au
+   * montant qu'il paie réellement.
+   *
+   * Pour PERCENT_BP, pas d'ajustement nécessaire : le calcul `base ×
+   * pct` se proratise naturellement (la base est déjà proratisée).
    */
   private computeDelta(
     baseAmountCents: number,
     type: 'PERCENT_BP' | 'FIXED_CENTS',
     value: number,
+    prorataFactorBp: number = 10_000,
   ): number {
     let delta: number;
     if (type === 'PERCENT_BP') {
       delta = Math.round((baseAmountCents * value) / 10_000);
     } else {
-      delta = value;
+      // FIXED_CENTS : on proratise la valeur fixe pour rester
+      // proportionnel au temps de saison réellement payé.
+      delta = Math.round((value * prorataFactorBp) / 10_000);
     }
     // Borne basse : ne peut pas dépasser le montant de la ligne
     if (delta < -baseAmountCents) {

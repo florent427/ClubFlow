@@ -884,6 +884,7 @@ export class MembershipCartService {
             new Date(),
             cart.clubSeason.startsOn,
             cart.clubSeason.endsOn,
+            club.membershipFullPriceFirstMonths,
           )
         : 10_000;
 
@@ -962,14 +963,28 @@ export class MembershipCartService {
             i.billingRhythm === SubscriptionBillingRhythm.ANNUAL
               ? product.annualAmountCents
               : product.monthlyAmountCents;
+          // Recalcule le prorata pour la preview avec le seuil
+          // membershipFullPriceFirstMonths du club.
+          const allowProrataEffective =
+            product.allowProrata &&
+            i.billingRhythm === SubscriptionBillingRhythm.ANNUAL;
+          const factorBp = allowProrataEffective
+            ? computeProrataFactorBp(
+                new Date(),
+                cart.clubSeason.startsOn,
+                cart.clubSeason.endsOn,
+                club.membershipFullPriceFirstMonths,
+              )
+            : 10_000;
           return {
             itemId: i.id,
-            baseAmountCents: base,
+            baseAmountCents: Math.round((base * factorBp) / 10_000),
             membershipProductId: product.id,
             category: 'SUBSCRIPTION' as const,
             memberId: i.memberId,
             ageAtReference: null,
             billingRhythm: i.billingRhythm,
+            prorataFactorBp: factorBp,
           };
         });
       const prior = await this.loadPriorMembershipsForFamily(
@@ -1148,6 +1163,13 @@ export class MembershipCartService {
     const linesCreate: Prisma.InvoiceLineUncheckedCreateWithoutInvoiceInput[] =
       [];
     let sortOrder = 0;
+    /**
+     * Collecte le facteur prorata par (memberId, productId) pour pouvoir
+     * le retrouver lors de la construction du snapshot pricing-rule.
+     * Permet de proratiser correctement les remises FIXED_CENTS.
+     */
+    const prorataByItemKey = new Map<string, number>();
+    const subtotalByItemKey = new Map<string, number>();
 
     for (const item of cart.items) {
       const product = item.product!;
@@ -1159,7 +1181,12 @@ export class MembershipCartService {
         product.allowProrata &&
         item.billingRhythm === SubscriptionBillingRhythm.ANNUAL;
       const factorBp = allowProrataEffective
-        ? computeProrataFactorBp(new Date(), season.startsOn, season.endsOn)
+        ? computeProrataFactorBp(
+            new Date(),
+            season.startsOn,
+            season.endsOn,
+            club.membershipFullPriceFirstMonths,
+          )
         : 10_000;
 
       const exceptional =
@@ -1187,6 +1214,13 @@ export class MembershipCartService {
         });
       familyCursor += 1;
       invoiceBaseCents += subtotalAfterBusinessCents;
+      // Mémorise le facteur prorata + le subtotal POST-prorata pour
+      // que le snapshot pricing-rule reflète le montant effectivement
+      // facturé (et que les remises % / FIXED soient proratisées
+      // correctement).
+      const itemKey = `${item.memberId}|${product.id}`;
+      prorataByItemKey.set(itemKey, factorBp);
+      subtotalByItemKey.set(itemKey, subtotalAfterBusinessCents);
       linesCreate.push({
         kind: InvoiceLineKind.MEMBERSHIP_SUBSCRIPTION,
         memberId: item.memberId,
@@ -1262,20 +1296,32 @@ export class MembershipCartService {
       // et loggée (cf PricingRulesEngineService). La facturation continue
       // avec les autres règles + les remises legacy déjà appliquées.
       try {
-        const snapshot: CartLineSnapshot[] = inv.lines.map((l) => ({
-          itemId: l.id,
-          baseAmountCents: l.baseAmountCents,
-          membershipProductId: l.membershipProductId,
-          category:
-            l.kind === InvoiceLineKind.MEMBERSHIP_SUBSCRIPTION
-              ? 'SUBSCRIPTION'
-              : 'ONE_TIME',
-          memberId: l.memberId ?? '',
-          ageAtReference: null, // TODO : calculer si AGE_RANGE_DISCOUNT actif
-          billingRhythm:
-            l.subscriptionBillingRhythm ??
-            SubscriptionBillingRhythm.ANNUAL,
-        }));
+        const snapshot: CartLineSnapshot[] = inv.lines.map((l) => {
+          const itemKey = `${l.memberId}|${l.membershipProductId ?? ''}`;
+          const prorataFactorBp =
+            prorataByItemKey.get(itemKey) ?? 10_000;
+          const subtotalPostProrata =
+            subtotalByItemKey.get(itemKey) ?? l.baseAmountCents;
+          return {
+            itemId: l.id,
+            // POST-prorata : montant effectivement facturé pour cette
+            // ligne (avant les pricing rules). Permet aux % de se
+            // calculer naturellement sur le bon montant.
+            baseAmountCents: subtotalPostProrata,
+            membershipProductId: l.membershipProductId,
+            category:
+              l.kind === InvoiceLineKind.MEMBERSHIP_SUBSCRIPTION
+                ? ('SUBSCRIPTION' as const)
+                : ('ONE_TIME' as const),
+            memberId: l.memberId ?? '',
+            ageAtReference: null, // TODO : si AGE_RANGE_DISCOUNT actif
+            billingRhythm:
+              l.subscriptionBillingRhythm ??
+              SubscriptionBillingRhythm.ANNUAL,
+            // Pour proratiser les remises FIXED_CENTS dans l'engine.
+            prorataFactorBp,
+          };
+        });
         // Récupère l'historique de la famille pour cette saison.
         // Permet à FAMILY_PROGRESSIVE de calculer le rang GLOBAL et à
         // PRODUCT_BUNDLE de détecter le primary déjà acheté dans un

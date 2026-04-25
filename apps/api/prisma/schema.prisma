@@ -61,6 +61,14 @@ model Club {
   membershipFamilyAdjustmentType  PricingAdjustmentType           @default(NONE)
   membershipFamilyAdjustmentValue Int                             @default(0)
 
+  /// Nombre de mois de **plein tarif** au début de la saison avant que
+  /// le prorata ne commence à s'appliquer. Les inscriptions arrivant
+  /// pendant cette fenêtre paient le tarif annuel complet (pas de
+  /// remise prorata). À partir du mois N+1, le prorata classique
+  /// s'applique. Default = 3 (les 3 premiers mois plein tarif).
+  /// 0 = prorata dès le 1er mois (ancien comportement).
+  membershipFullPriceFirstMonths  Int                             @default(3)
+
   /// Domaine personnalisé pour le site vitrine public (ex. www.mondojo.fr).
   /// CNAME à poser vers le serveur Next.js ; HTTPS géré par le reverse-proxy.
   customDomain     String? @unique

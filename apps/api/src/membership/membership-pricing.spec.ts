@@ -40,6 +40,37 @@ describe('membership-pricing', () => {
       const late = new Date(Date.UTC(2027, 0, 1));
       expect(computeProrataFactorBp(late, start, end)).toBe(0);
     });
+
+    describe('avec fullPriceFirstMonths (seuil)', () => {
+      it('plein tarif les N premiers mois (N=3)', () => {
+        // Saison sept→août : septembre = mois 1, octobre = 2, novembre = 3
+        const sept = new Date(Date.UTC(2025, 8, 15));
+        const oct = new Date(Date.UTC(2025, 9, 15));
+        const nov = new Date(Date.UTC(2025, 10, 15));
+        expect(computeProrataFactorBp(sept, start, end, 3)).toBe(10000);
+        expect(computeProrataFactorBp(oct, start, end, 3)).toBe(10000);
+        expect(computeProrataFactorBp(nov, start, end, 3)).toBe(10000);
+      });
+
+      it('prorata classique à partir du mois N+1', () => {
+        // Décembre = mois 4, hors fenêtre → calcul classique
+        const dec = new Date(Date.UTC(2025, 11, 15));
+        const bpWithThreshold = computeProrataFactorBp(dec, start, end, 3);
+        const bpWithoutThreshold = computeProrataFactorBp(dec, start, end, 0);
+        expect(bpWithThreshold).toBe(bpWithoutThreshold);
+        expect(bpWithThreshold).toBeLessThan(10000);
+      });
+
+      it('seuil 0 = comportement legacy (pas de plein tarif initial)', () => {
+        const oct = new Date(Date.UTC(2025, 9, 15));
+        // Sans seuil : prorata classique
+        const bpNoThreshold = computeProrataFactorBp(oct, start, end, 0);
+        // Avec seuil 3 : plein tarif
+        const bpWithThreshold = computeProrataFactorBp(oct, start, end, 3);
+        expect(bpNoThreshold).toBeLessThan(10000);
+        expect(bpWithThreshold).toBe(10000);
+      });
+    });
   });
 
   describe('computeMembershipAdjustments', () => {

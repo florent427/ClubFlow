@@ -1,10 +1,11 @@
 import { BadRequestException, UseGuards } from '@nestjs/common';
-import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Args, Field, ID, Int, Mutation, ObjectType, Query, Resolver } from '@nestjs/graphql';
 import type { Club } from '@prisma/client';
 import { CurrentClub } from '../common/decorators/current-club.decorator';
 import { ClubAdminRoleGuard } from '../common/guards/club-admin-role.guard';
 import { ClubContextGuard } from '../common/guards/club-context.guard';
 import { GqlJwtAuthGuard } from '../common/guards/gql-jwt-auth.guard';
+import { PrismaService } from '../prisma/prisma.service';
 import {
   CreateMembershipPricingRuleInput,
   UpdateMembershipPricingRuleInput,
@@ -13,13 +14,68 @@ import { MembershipPricingRuleGraph } from './models/membership-pricing-rule.mod
 import { PricingRulesAdminService } from './pricing-rules-admin.service';
 
 /**
+ * Réglages globaux du club liés à la tarification adhésion.
+ * Exposés via cette résolver pour rester cohérent avec les règles
+ * pricing-rule (même page admin).
+ */
+@ObjectType()
+class ClubMembershipSettingsGraph {
+  @Field(() => Int, {
+    description:
+      "Nombre de mois de plein tarif au début de la saison avant que le prorata ne commence à s'appliquer (default 3, 0 = prorata dès le 1er mois).",
+  })
+  fullPriceFirstMonths!: number;
+}
+
+/**
  * Resolver admin pour gérer les règles de remise (pattern-based).
  * Restreint aux admins du club (ClubAdminRoleGuard inclut TREASURER).
  */
 @Resolver()
 @UseGuards(GqlJwtAuthGuard, ClubContextGuard, ClubAdminRoleGuard)
 export class PricingRulesAdminResolver {
-  constructor(private readonly service: PricingRulesAdminService) {}
+  constructor(
+    private readonly service: PricingRulesAdminService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  // ==========================================================================
+  // Settings globaux du club (en lien avec les pricing rules)
+  // ==========================================================================
+
+  @Query(() => ClubMembershipSettingsGraph, {
+    name: 'clubMembershipSettings',
+  })
+  async clubMembershipSettings(
+    @CurrentClub() club: Club,
+  ): Promise<ClubMembershipSettingsGraph> {
+    const c = await this.prisma.club.findUniqueOrThrow({
+      where: { id: club.id },
+      select: { membershipFullPriceFirstMonths: true },
+    });
+    return { fullPriceFirstMonths: c.membershipFullPriceFirstMonths };
+  }
+
+  @Mutation(() => ClubMembershipSettingsGraph, {
+    name: 'updateClubMembershipSettings',
+  })
+  async updateClubMembershipSettings(
+    @CurrentClub() club: Club,
+    @Args('fullPriceFirstMonths', { type: () => Int })
+    fullPriceFirstMonths: number,
+  ): Promise<ClubMembershipSettingsGraph> {
+    if (fullPriceFirstMonths < 0 || fullPriceFirstMonths > 12) {
+      throw new BadRequestException(
+        'fullPriceFirstMonths doit être entre 0 et 12 mois',
+      );
+    }
+    const updated = await this.prisma.club.update({
+      where: { id: club.id },
+      data: { membershipFullPriceFirstMonths: fullPriceFirstMonths },
+      select: { membershipFullPriceFirstMonths: true },
+    });
+    return { fullPriceFirstMonths: updated.membershipFullPriceFirstMonths };
+  }
 
   @Query(() => [MembershipPricingRuleGraph], {
     name: 'clubMembershipPricingRules',

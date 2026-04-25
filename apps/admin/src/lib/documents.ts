@@ -2363,6 +2363,24 @@ export const DELETE_CLUB_MEMBERSHIP_PRICING_RULE = gql`
   }
 `;
 
+export const CLUB_MEMBERSHIP_SETTINGS = gql`
+  query ClubMembershipSettings {
+    clubMembershipSettings {
+      fullPriceFirstMonths
+    }
+  }
+`;
+
+export const UPDATE_CLUB_MEMBERSHIP_SETTINGS = gql`
+  mutation UpdateClubMembershipSettings($fullPriceFirstMonths: Int!) {
+    updateClubMembershipSettings(
+      fullPriceFirstMonths: $fullPriceFirstMonths
+    ) {
+      fullPriceFirstMonths
+    }
+  }
+`;
+
 export const UPDATE_CLUB_BRANDING = gql`
   mutation UpdateClubBranding($input: UpdateClubBrandingInput!) {
     updateClubBranding(input: $input) {

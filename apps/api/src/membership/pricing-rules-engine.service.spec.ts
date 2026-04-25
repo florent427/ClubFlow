@@ -39,6 +39,7 @@ function line(
     memberId: partial.memberId ?? `m-${partial.itemId}`,
     ageAtReference: partial.ageAtReference ?? null,
     billingRhythm: partial.billingRhythm ?? 'ANNUAL',
+    prorataFactorBp: partial.prorataFactorBp ?? 10000,
   };
 }
 
@@ -479,6 +480,206 @@ describe('PricingRulesEngineService', () => {
   });
 
   // ==========================================================================
+  // PRODUCT_BUNDLE — multi-primary (OR sémantique)
+  // ==========================================================================
+
+  describe('PRODUCT_BUNDLE — multi-primary OR', () => {
+    it('déclenche si AU MOINS UN primary est présent (OR)', async () => {
+      rules.push({
+        id: 'r1',
+        clubId,
+        pattern: 'PRODUCT_BUNDLE',
+        label: 'Tout art martial + Cross',
+        isActive: true,
+        priority: 0,
+        configJson: {
+          primaryProductIds: ['karate', 'judo', 'taichi'],
+          secondaryProductId: 'cross',
+          discountForAnnual: { type: 'FIXED_CENTS', value: -2000 },
+          discountForMonthly: { type: 'FIXED_CENTS', value: -200 },
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      // Adhérent prend Judo + Cross : suffit pour déclencher (OR)
+      const result = await svc.evaluate(
+        clubId,
+        ctx([
+          line({
+            itemId: 'judo1',
+            baseAmountCents: 30000,
+            membershipProductId: 'judo',
+            memberId: 'm1',
+          }),
+          line({
+            itemId: 'cross1',
+            baseAmountCents: 25000,
+            membershipProductId: 'cross',
+            memberId: 'm1',
+          }),
+        ]),
+      );
+      expect(result.applications).toHaveLength(1);
+      expect(result.applications[0].appliedTo[0].itemId).toBe('cross1');
+      expect(result.applications[0].appliedTo[0].deltaAmountCents).toBe(-2000);
+    });
+
+    it("ne déclenche pas si AUCUN primary présent", async () => {
+      rules.push({
+        id: 'r1',
+        clubId,
+        pattern: 'PRODUCT_BUNDLE',
+        label: 'Bundle',
+        isActive: true,
+        priority: 0,
+        configJson: {
+          primaryProductIds: ['karate', 'judo'],
+          secondaryProductId: 'cross',
+          discountForAnnual: { type: 'FIXED_CENTS', value: -2000 },
+          discountForMonthly: { type: 'FIXED_CENTS', value: -200 },
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      const result = await svc.evaluate(
+        clubId,
+        ctx([
+          line({
+            itemId: 'cross1',
+            baseAmountCents: 25000,
+            membershipProductId: 'cross',
+            memberId: 'm1',
+          }),
+        ]),
+      );
+      expect(result.applications).toHaveLength(0);
+    });
+
+    it("rétrocompat : ancien schéma `primaryProductId` singulier accepté", async () => {
+      rules.push({
+        id: 'r1',
+        clubId,
+        pattern: 'PRODUCT_BUNDLE',
+        label: 'Legacy bundle',
+        isActive: true,
+        priority: 0,
+        configJson: {
+          primaryProductId: 'karate', // ancien format
+          secondaryProductId: 'cross',
+          discountForAnnual: { type: 'FIXED_CENTS', value: -2000 },
+          discountForMonthly: { type: 'FIXED_CENTS', value: -200 },
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      const result = await svc.evaluate(
+        clubId,
+        ctx([
+          line({
+            itemId: 'k1',
+            baseAmountCents: 30000,
+            membershipProductId: 'karate',
+            memberId: 'm1',
+          }),
+          line({
+            itemId: 'c1',
+            baseAmountCents: 25000,
+            membershipProductId: 'cross',
+            memberId: 'm1',
+          }),
+        ]),
+      );
+      expect(result.applications).toHaveLength(1);
+    });
+  });
+
+  // ==========================================================================
+  // Prorata sur remises FIXED_CENTS
+  // ==========================================================================
+
+  describe('Prorata sur remises FIXED_CENTS', () => {
+    it('applique le prorata aux remises FIXED_CENTS', async () => {
+      rules.push({
+        id: 'r1',
+        clubId,
+        pattern: 'PRODUCT_BUNDLE',
+        label: 'Bundle',
+        isActive: true,
+        priority: 0,
+        configJson: {
+          primaryProductIds: ['karate'],
+          secondaryProductId: 'cross',
+          discountForAnnual: { type: 'FIXED_CENTS', value: -2000 },
+          discountForMonthly: { type: 'FIXED_CENTS', value: -200 },
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      // Cross facturé à 60% (prorata) : tarif 250€ → 150€
+      const result = await svc.evaluate(
+        clubId,
+        ctx([
+          line({
+            itemId: 'k1',
+            baseAmountCents: 30000,
+            membershipProductId: 'karate',
+            memberId: 'm1',
+          }),
+          line({
+            itemId: 'c1',
+            baseAmountCents: 15000, // déjà post-prorata (250 × 0.6)
+            membershipProductId: 'cross',
+            memberId: 'm1',
+            prorataFactorBp: 6000, // 60%
+          }),
+        ]),
+      );
+      // Remise -20€ × 60% = -12€
+      expect(result.applications[0].appliedTo[0].deltaAmountCents).toBe(-1200);
+    });
+
+    it("PERCENT_BP n'est PAS modifié par le prorata (calcul naturel)", async () => {
+      rules.push({
+        id: 'r1',
+        clubId,
+        pattern: 'FAMILY_PROGRESSIVE',
+        label: 'Famille',
+        isActive: true,
+        priority: 0,
+        configJson: {
+          tiers: [{ rank: 2, type: 'PERCENT_BP', value: -1000 }],
+          appliesTo: ['SUBSCRIPTION'],
+          sortBy: 'AMOUNT_DESC',
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      const result = await svc.evaluate(
+        clubId,
+        ctx([
+          line({
+            itemId: 'a',
+            baseAmountCents: 30000, // 100% (déjà payé plein)
+            memberId: 'm1',
+            prorataFactorBp: 10000,
+          }),
+          line({
+            itemId: 'b',
+            baseAmountCents: 12000, // 60% de 20000
+            memberId: 'm2',
+            prorataFactorBp: 6000,
+          }),
+        ]),
+      );
+      // -10% de 12000 = -1200 (pas double prorata)
+      expect(
+        result.applications[0].appliedTo.find((a) => a.itemId === 'b')
+          ?.deltaAmountCents,
+      ).toBe(-1200);
+    });
+  });
+
+  // ==========================================================================
   // Robustesse
   // ==========================================================================
 
@@ -579,7 +780,7 @@ describe('PricingRulesEngineService', () => {
       ).toThrow(/≥ 2/);
     });
 
-    it('PRODUCT_BUNDLE refuse primary == secondary', () => {
+    it('PRODUCT_BUNDLE refuse primary == secondary (singulier)', () => {
       expect(() =>
         validateRuleConfig('PRODUCT_BUNDLE', {
           primaryProductId: 'a',
@@ -587,7 +788,29 @@ describe('PricingRulesEngineService', () => {
           discountForAnnual: { type: 'FIXED_CENTS', value: -1000 },
           discountForMonthly: { type: 'FIXED_CENTS', value: -100 },
         }),
-      ).toThrow(/différents/);
+      ).toThrow(/secondaryProductId.*primaryProductIds/);
+    });
+
+    it("PRODUCT_BUNDLE refuse secondary inclus dans primaryProductIds[]", () => {
+      expect(() =>
+        validateRuleConfig('PRODUCT_BUNDLE', {
+          primaryProductIds: ['a', 'b'],
+          secondaryProductId: 'a',
+          discountForAnnual: { type: 'FIXED_CENTS', value: -1000 },
+          discountForMonthly: { type: 'FIXED_CENTS', value: -100 },
+        }),
+      ).toThrow(/secondaryProductId.*primaryProductIds/);
+    });
+
+    it('PRODUCT_BUNDLE accepte multi-primary[]', () => {
+      expect(() =>
+        validateRuleConfig('PRODUCT_BUNDLE', {
+          primaryProductIds: ['karate', 'judo', 'taichi'],
+          secondaryProductId: 'cross',
+          discountForAnnual: { type: 'FIXED_CENTS', value: -2000 },
+          discountForMonthly: { type: 'FIXED_CENTS', value: -200 },
+        }),
+      ).not.toThrow();
     });
 
     it('PRODUCT_BUNDLE refuse une remise positive', () => {

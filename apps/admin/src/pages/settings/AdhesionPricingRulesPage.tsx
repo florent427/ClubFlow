@@ -3,10 +3,12 @@ import React, { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
   CLUB_MEMBERSHIP_PRICING_RULES,
+  CLUB_MEMBERSHIP_SETTINGS,
   CREATE_CLUB_MEMBERSHIP_PRICING_RULE,
   DELETE_CLUB_MEMBERSHIP_PRICING_RULE,
   MEMBERSHIP_PRODUCTS,
   UPDATE_CLUB_MEMBERSHIP_PRICING_RULE,
+  UPDATE_CLUB_MEMBERSHIP_SETTINGS,
 } from '../../lib/documents';
 import type {
   ClubMembershipPricingRulesData,
@@ -68,18 +70,43 @@ export default function AdhesionPricingRulesPage() {
     MEMBERSHIP_PRODUCTS,
     { fetchPolicy: 'cache-and-network' },
   );
+  const { data: settingsData, refetch: refetchSettings } = useQuery<{
+    clubMembershipSettings: { fullPriceFirstMonths: number };
+  }>(CLUB_MEMBERSHIP_SETTINGS, { fetchPolicy: 'cache-and-network' });
 
   const rules = rulesData?.clubMembershipPricingRules ?? [];
   const products = productsData?.membershipProducts ?? [];
+  const fullPriceFirstMonths =
+    settingsData?.clubMembershipSettings?.fullPriceFirstMonths ?? 3;
 
   const [createMut] = useMutation(CREATE_CLUB_MEMBERSHIP_PRICING_RULE);
   const [updateMut] = useMutation(UPDATE_CLUB_MEMBERSHIP_PRICING_RULE);
   const [deleteMut] = useMutation(DELETE_CLUB_MEMBERSHIP_PRICING_RULE);
+  const [updateSettings] = useMutation(UPDATE_CLUB_MEMBERSHIP_SETTINGS);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<MembershipPricingRule | null>(null);
   const [confirmDelete, setConfirmDelete] =
     useState<MembershipPricingRule | null>(null);
+
+  // État local pour le seuil "X premiers mois plein tarif"
+  const [seuilDraft, setSeuilDraft] = useState<number | null>(null);
+  const seuilValue = seuilDraft ?? fullPriceFirstMonths;
+  const seuilDirty = seuilDraft !== null && seuilDraft !== fullPriceFirstMonths;
+
+  async function saveSeuil() {
+    if (seuilDraft === null) return;
+    try {
+      await updateSettings({
+        variables: { fullPriceFirstMonths: seuilDraft },
+      });
+      showToast('Seuil enregistré', 'success');
+      await refetchSettings();
+      setSeuilDraft(null);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
 
   function openCreate(pattern: MembershipPricingRulePatternGql) {
     setEditing({
@@ -124,6 +151,73 @@ export default function AdhesionPricingRulesPage() {
           croissant.
         </p>
       </header>
+
+      {/* Réglage global du club : seuil de plein tarif */}
+      <section className="members-panel" style={{ marginBottom: 16 }}>
+        <h2 className="members-panel__h">Réglage global — prorata</h2>
+        <p className="cf-muted" style={{ fontSize: '0.85rem' }}>
+          Combien de mois après le début de la saison facture-t-on le{' '}
+          <strong>tarif annuel complet</strong> avant que le prorata ne
+          commence à s&apos;appliquer ?
+        </p>
+        <div
+          style={{
+            display: 'flex',
+            gap: 12,
+            alignItems: 'center',
+            marginTop: 8,
+          }}
+        >
+          <label className="cf-field cf-field--inline" style={{ margin: 0 }}>
+            <span>Mois plein tarif au début de la saison</span>
+            <input
+              type="number"
+              value={seuilValue}
+              onChange={(e) => setSeuilDraft(Number(e.target.value) || 0)}
+              min={0}
+              max={12}
+              style={{ width: 80 }}
+            />
+          </label>
+          {seuilDirty ? (
+            <button
+              type="button"
+              className="btn-primary btn-primary--sm"
+              onClick={() => void saveSeuil()}
+            >
+              Enregistrer
+            </button>
+          ) : null}
+          {seuilDirty ? (
+            <button
+              type="button"
+              className="btn-ghost btn-ghost--sm"
+              onClick={() => setSeuilDraft(null)}
+            >
+              Annuler
+            </button>
+          ) : null}
+        </div>
+        <p
+          className="cf-muted"
+          style={{ marginTop: 8, fontSize: '0.8rem' }}
+        >
+          {seuilValue === 0 ? (
+            <>
+              ⚠️ <strong>Pas de plein tarif initial</strong> — le prorata
+              s&apos;applique dès le 1<sup>er</sup> mois de la saison
+              (ancien comportement).
+            </>
+          ) : (
+            <>
+              💡 Les <strong>{seuilValue} premiers mois</strong> de la
+              saison sont facturés au <strong>tarif annuel complet</strong>{' '}
+              (pas de remise prorata). À partir du mois {seuilValue + 1},
+              le prorata classique s&apos;applique.
+            </>
+          )}
+        </p>
+      </section>
 
       <section className="members-panel" style={{ marginBottom: 16 }}>
         <h2 className="members-panel__h">Règles actives</h2>
@@ -318,7 +412,7 @@ function defaultConfigFor(
       } satisfies FamilyProgressiveConfig;
     case 'PRODUCT_BUNDLE':
       return {
-        primaryProductId: '',
+        primaryProductIds: [],
         secondaryProductId: '',
         discountForAnnual: { type: 'FIXED_CENTS', value: -2000 },
         discountForMonthly: { type: 'FIXED_CENTS', value: -200 },
@@ -669,47 +763,90 @@ function ProductBundleForm({
     return Math.abs(d.value / 100);
   }
 
-  const primaryProduct = products.find((p) => p.id === config.primaryProductId);
+  const primaryProducts = products.filter((p) =>
+    config.primaryProductIds.includes(p.id),
+  );
   const secondaryProduct = products.find(
     (p) => p.id === config.secondaryProductId,
   );
+
+  function togglePrimary(productId: string) {
+    const has = config.primaryProductIds.includes(productId);
+    const next = has
+      ? config.primaryProductIds.filter((id) => id !== productId)
+      : [...config.primaryProductIds, productId];
+    onChange({ ...config, primaryProductIds: next });
+  }
 
   return (
     <fieldset className="cf-fieldset">
       <legend>Combinaison de produits</legend>
       <p className="cf-muted" style={{ marginBottom: 12, fontSize: '0.85rem' }}>
-        Si l&rsquo;adhérent souscrit au <strong>produit primaire</strong>{' '}
-        (déclencheur), il bénéficie d&rsquo;une remise sur le{' '}
-        <strong>produit secondaire</strong>. Le primaire peut avoir été
-        acheté dans un projet précédent de la même saison — la remise
-        s&rsquo;applique quand même au secondaire.
+        Si l&apos;adhérent souscrit à <strong>au moins un</strong> des
+        <strong> produits primaires</strong> (déclencheurs, sémantique OR),
+        il bénéficie d&apos;une remise sur le <strong>produit secondaire</strong>.
+        Les primaires peuvent avoir été achetés dans un projet précédent
+        de la même saison.
       </p>
 
-      {/* Produit primaire */}
-      <label className="cf-field">
-        <span>
-          🎯 Produit <strong>primaire</strong> (doit être présent)
-        </span>
-        <select
-          value={config.primaryProductId}
-          onChange={(e) =>
-            onChange({ ...config, primaryProductId: e.target.value })
-          }
-        >
-          <option value="" disabled>
-            — Choisir le produit primaire —
-          </option>
-          {products.map((p) => (
-            <option
-              key={p.id}
-              value={p.id}
-              disabled={p.id === config.secondaryProductId}
-            >
-              {p.label} ({formatEuros(p.annualAmountCents)} / an)
-            </option>
-          ))}
-        </select>
-      </label>
+      {/* Produits primaires (multi-select) */}
+      <fieldset
+        className="cf-fieldset"
+        style={{ marginBottom: 8, padding: 10 }}
+      >
+        <legend style={{ fontSize: '0.85rem', fontWeight: 600 }}>
+          🎯 Produits <strong>primaires</strong> (au moins un déclenche)
+          {config.primaryProductIds.length > 0
+            ? ` — ${config.primaryProductIds.length} sélectionné${
+                config.primaryProductIds.length > 1 ? 's' : ''
+              }`
+            : ''}
+        </legend>
+        {products.length === 0 ? (
+          <p className="cf-muted">
+            Aucune formule disponible. Crée d&apos;abord des formules
+            d&apos;adhésion.
+          </p>
+        ) : (
+          <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+            {products
+              .filter((p) => p.id !== config.secondaryProductId)
+              .map((p) => {
+                const checked = config.primaryProductIds.includes(p.id);
+                return (
+                  <label
+                    key={p.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '6px 8px',
+                      marginBottom: 4,
+                      border: checked
+                        ? '2px solid #2563eb'
+                        : '1px solid #e5e7eb',
+                      borderRadius: 4,
+                      cursor: 'pointer',
+                      background: checked
+                        ? 'rgba(37, 99, 235, 0.05)'
+                        : 'white',
+                      fontSize: '0.85rem',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => togglePrimary(p.id)}
+                    />
+                    <span style={{ flex: 1 }}>
+                      {p.label} ({formatEuros(p.annualAmountCents)} / an)
+                    </span>
+                  </label>
+                );
+              })}
+          </div>
+        )}
+      </fieldset>
 
       {/* Produit secondaire */}
       <label className="cf-field">
@@ -729,7 +866,7 @@ function ProductBundleForm({
             <option
               key={p.id}
               value={p.id}
-              disabled={p.id === config.primaryProductId}
+              disabled={config.primaryProductIds.includes(p.id)}
             >
               {p.label} ({formatEuros(p.annualAmountCents)} / an)
             </option>
@@ -838,7 +975,7 @@ function ProductBundleForm({
       </fieldset>
 
       {/* Preview */}
-      {primaryProduct && secondaryProduct ? (
+      {primaryProducts.length > 0 && secondaryProduct ? (
         <div
           className="cf-alert cf-alert--info"
           style={{
@@ -850,9 +987,11 @@ function ProductBundleForm({
         >
           <strong>💡 Aperçu :</strong>
           <p style={{ margin: '8px 0', fontSize: '0.85rem' }}>
-            Si un adhérent souscrit à <strong>{primaryProduct.label}</strong>{' '}
+            Si un adhérent souscrit à{' '}
+            <strong>{primaryProducts.map((p) => p.label).join(' OU ')}</strong>{' '}
             (peu importe l&apos;ordre / projet d&apos;achat dans la saison),
-            la remise suivante s&apos;applique à <strong>{secondaryProduct.label}</strong> :
+            la remise suivante s&apos;applique à{' '}
+            <strong>{secondaryProduct.label}</strong> :
           </p>
           <ul
             style={{

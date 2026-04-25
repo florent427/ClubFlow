@@ -25,14 +25,27 @@ export function inclusiveCalendarDays(a: Date, b: Date): number {
 
 /**
  * Part de saison restant à payer en points de base (10_000 = 100 %).
- * Granularité au mois plein : la date d’effet est ramenée au 1er du mois,
- * la fin de saison au dernier jour de son mois. Date d’effet bornée à
+ *
+ * Granularité au mois plein : la date d'effet est ramenée au 1er du mois,
+ * la fin de saison au dernier jour de son mois. Date d'effet bornée à
  * [startsOn, endsOn].
+ *
+ * **Seuil "X premiers mois plein tarif"** (`fullPriceFirstMonths`,
+ * default 0 pour rétrocompat) : si la date d'effet tombe dans les N
+ * premiers mois de la saison, on retourne 10_000 (100 %, pas de
+ * prorata). À partir du mois N+1, le prorata classique s'applique.
+ *
+ * Exemple : saison sept→août (12 mois), `fullPriceFirstMonths = 3` :
+ *  - Inscription en septembre/octobre/novembre → 100 % (plein tarif)
+ *  - Inscription en décembre → calcul classique (9/12 = 75 %)
+ *  - Inscription en janvier → 8/12 = 67 %
+ *  - …
  */
 export function computeProrataFactorBp(
   effectiveDate: Date,
   seasonStart: Date,
   seasonEnd: Date,
+  fullPriceFirstMonths: number = 0,
 ): number {
   const start = stripTime(seasonStart);
   const end = stripTime(seasonEnd);
@@ -42,6 +55,19 @@ export function computeProrataFactorBp(
   }
   if (eff > end) {
     return 0;
+  }
+  // Seuil : nombre de mois écoulés depuis le début de la saison.
+  // Si on est dans les N premiers mois → 100 %.
+  if (fullPriceFirstMonths > 0) {
+    const monthsSinceStart = inclusiveCalendarMonths(
+      new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1)),
+      new Date(Date.UTC(eff.getUTCFullYear(), eff.getUTCMonth(), 1)),
+    );
+    // monthsSinceStart = 1 si même mois, 2 le mois suivant, etc.
+    // Le seuil est inclusif : N=3 → mois 1, 2, 3 plein tarif.
+    if (monthsSinceStart <= fullPriceFirstMonths) {
+      return 10_000;
+    }
   }
   const totalMonths = inclusiveCalendarMonths(start, end);
   if (totalMonths < 1) {

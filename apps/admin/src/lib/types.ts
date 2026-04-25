@@ -1307,11 +1307,13 @@ export type FamilyProgressiveConfig = {
 };
 
 /**
- * Config d'une règle PRODUCT_BUNDLE — primary déclencheur, secondary
- * remisé. Remises séparées par rythme (annuel vs mensuel).
+ * Config d'une règle PRODUCT_BUNDLE — un OU plusieurs primary
+ * (sémantique OR : au moins un présent dans le foyer pour la saison),
+ * un secondary qui reçoit la remise. Remises séparées par rythme.
  */
 export type ProductBundleConfig = {
-  primaryProductId: string;
+  /** Liste OR : au moins un de ces produits doit être présent. */
+  primaryProductIds: string[];
   secondaryProductId: string;
   discountForAnnual: {
     type: 'PERCENT_BP' | 'FIXED_CENTS';
