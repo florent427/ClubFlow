@@ -33,6 +33,7 @@ describe('ClubContactsService', () => {
       create: jest.Mock;
       count: jest.Mock;
     };
+    familyMember: { findMany: jest.Mock };
     clubMembership: { count: jest.Mock };
     $transaction: jest.Mock;
   };
@@ -77,6 +78,7 @@ describe('ClubContactsService', () => {
         create: jest.fn(),
         count: jest.fn().mockResolvedValue(1),
       },
+      familyMember: { findMany: jest.fn().mockResolvedValue([]) },
       clubMembership: { count: jest.fn().mockResolvedValue(0) },
       $transaction: jest.fn((ops: unknown[]) => Promise.all(ops)),
     };
@@ -191,10 +193,48 @@ describe('ClubContactsService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
+    it('promotion OK même si email partagée dans le foyer cible (parent payeur)', async () => {
+      // Scénario : Samantha (User) est PAYER (en tant que Contact) du foyer
+      // Morel qui contient déjà 2 enfants Members partageant l'email
+      // samy.morel974@gmail.com. La promotion doit réussir car le check
+      // email "même foyer" doit s'appliquer.
+      prisma.contact.findFirst.mockResolvedValue(baseContact);
+      prisma.member.findFirst.mockResolvedValue(null);
+      prisma.member.create.mockResolvedValue({ id: 'mem-samantha' });
+      prisma.contact.findMany.mockResolvedValue([{ id: contactId }]);
+      prisma.familyMember.findMany.mockResolvedValue([
+        { familyId: 'fam-morel' },
+      ]);
+      // Members existants dans le club partageant l'email — assertMemberEmailAllowedInClub
+      prisma.member.findMany
+        .mockResolvedValueOnce([
+          { id: 'mem-ayden', email: 'a@b.c' },
+          { id: 'mem-alex', email: 'a@b.c' },
+        ])
+        .mockResolvedValueOnce([
+          { memberId: 'mem-ayden', familyId: 'fam-morel' },
+          { memberId: 'mem-alex', familyId: 'fam-morel' },
+        ]);
+      // assertMemberEmailAllowedInClub appelle aussi familyMember.findMany
+      prisma.familyMember.findMany
+        .mockResolvedValueOnce([{ familyId: 'fam-morel' }]) // findPayerFamilyIdForUser
+        .mockResolvedValueOnce([
+          { memberId: 'mem-ayden', familyId: 'fam-morel' },
+          { memberId: 'mem-alex', familyId: 'fam-morel' },
+        ]); // assertMemberEmailAllowedInClub
+
+      const res = await service.promoteContactToMember(clubId, contactId);
+
+      expect(res.memberId).toBe('mem-samantha');
+      expect(prisma.member.create).toHaveBeenCalled();
+    });
+
     it('crée un membre minimal et retourne memberId', async () => {
       prisma.contact.findFirst.mockResolvedValue(baseContact);
       prisma.member.findFirst.mockResolvedValue(null);
       prisma.member.create.mockResolvedValue({ id: 'mem-new' });
+      // Pas de contact pour ce User (pré-calcul foyer cible) : retourne array vide
+      prisma.contact.findMany.mockResolvedValue([]);
 
       const res = await service.promoteContactToMember(clubId, contactId);
 
