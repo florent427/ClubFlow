@@ -408,7 +408,10 @@ function defaultConfigFor(
           { rank: 4, type: 'PERCENT_BP', value: -3000 },
         ],
         appliesTo: ['SUBSCRIPTION'],
-        sortBy: 'AMOUNT_DESC',
+        // ENROLLMENT_ORDER : le 1ᵉʳ inscrit du foyer = plein tarif,
+        // 2ᵉ = remise rang 2, 3ᵉ = remise rang 3… Ordre chronologique
+        // strict, intuitif pour la plupart des associations.
+        sortBy: 'ENROLLMENT_ORDER',
       } satisfies FamilyProgressiveConfig;
     case 'PRODUCT_BUNDLE':
       return {
@@ -642,6 +645,37 @@ function FamilyProgressiveForm({
           — pour rééquilibrer, créez un avoir manuel sur l&apos;ancienne facture.
         </p>
       </div>
+
+      <label className="cf-field" style={{ marginBottom: 12 }}>
+        <span>Méthode d&apos;attribution des rangs</span>
+        <select
+          value={config.sortBy}
+          onChange={(e) =>
+            onChange({
+              ...config,
+              sortBy: e.target.value as FamilyProgressiveConfig['sortBy'],
+            })
+          }
+        >
+          <option value="ENROLLMENT_ORDER">
+            Ordre d&apos;inscription chronologique (recommandé)
+          </option>
+          <option value="AMOUNT_DESC">
+            Montant décroissant (la plus chère = rang 1, plein tarif)
+          </option>
+          <option value="AMOUNT_ASC">
+            Montant croissant (la moins chère = rang 1)
+          </option>
+        </select>
+        <small className="cf-muted" style={{ fontSize: '0.78rem' }}>
+          {config.sortBy === 'ENROLLMENT_ORDER'
+            ? '→ Le 1ᵉʳ inscrit du foyer paie plein tarif. Le 2ᵉ touche la remise rang 2, le 3ᵉ rang 3, etc. Intuitif pour la plupart des associations.'
+            : config.sortBy === 'AMOUNT_DESC'
+              ? '→ La cotisation la plus chère du foyer paie plein tarif. Les cotisations moins chères touchent les remises (rang 2, 3, …). Mathématiquement défavorable pour les nouveaux adhérents qui prendraient une cotisation plus chère que les aînés.'
+              : '→ La cotisation la moins chère paie plein tarif. Les cotisations plus chères touchent les remises.'}
+        </small>
+      </label>
+
       <label className="cf-field">
         <span>2ᵉ adhérent : remise (%)</span>
         <input

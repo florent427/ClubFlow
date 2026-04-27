@@ -1303,7 +1303,20 @@ export type FamilyProgressiveConfig = {
     value: number;
   }>;
   appliesTo: Array<'SUBSCRIPTION'>;
-  sortBy: 'AMOUNT_DESC' | 'AMOUNT_ASC' | 'AGE_DESC' | 'AGE_ASC';
+  /**
+   * Ordre d'attribution des rangs :
+   * - `AMOUNT_DESC` : la plus chère cotisation = rang 1 (plein tarif)
+   * - `AMOUNT_ASC` : la moins chère = rang 1
+   * - `ENROLLMENT_ORDER` : le 1ᵉʳ inscrit chronologiquement = rang 1,
+   *   le 2ᵉ = rang 2, etc. (option intuitive pour les associations)
+   * - `AGE_ASC` / `AGE_DESC` : par âge.
+   */
+  sortBy:
+    | 'AMOUNT_DESC'
+    | 'AMOUNT_ASC'
+    | 'ENROLLMENT_ORDER'
+    | 'AGE_DESC'
+    | 'AGE_ASC';
 };
 
 /**

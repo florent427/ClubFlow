@@ -16,10 +16,22 @@ import { PrismaService } from '../prisma/prisma.service';
  * `appliesTo: ["SUBSCRIPTION"]` = uniquement aux cotisations (pas aux
  * frais uniques type licence/dossier).
  *
- * `sortBy: "AMOUNT_DESC"` = on trie les cotisations par montant
- * décroissant et on applique les remises sur les rangs suivants — la
- * plus chère reste pleine, les moins chères sont remisées (mathématique
- * favorable au foyer).
+ * `sortBy` détermine comment on attribue les rangs :
+ *  - `AMOUNT_DESC` (par défaut) — la cotisation la plus chère reste
+ *    pleine, les moins chères sont remisées (mathématique favorable
+ *    au foyer mais contre-intuitif pour le 3ᵉ adhérent qui prend
+ *    une cotisation plus chère que ses aînés).
+ *  - `AMOUNT_ASC` — la cotisation la moins chère reste pleine, les
+ *    plus chères sont remisées.
+ *  - `ENROLLMENT_ORDER` — rang chronologique : 1ᵉʳ inscrit = plein
+ *    tarif, 2ᵉ inscrit = remise rang 2, 3ᵉ = remise rang 3, etc.
+ *    L'ordre tient compte de l'historique : si enfant1 et enfant2
+ *    sont déjà facturés, un adulte1 ajouté plus tard sera rang 3.
+ *  - `AGE_ASC` / `AGE_DESC` — par âge croissant / décroissant.
+ *
+ * Pour un club associatif type karaté/judo, `ENROLLMENT_ORDER` est
+ * souvent l'option la plus intuitive (rejoint le slogan « plus le
+ * foyer s'inscrit, plus la remise est forte »).
  */
 export interface FamilyProgressiveConfig {
   tiers: Array<{
@@ -31,7 +43,12 @@ export interface FamilyProgressiveConfig {
   }>;
   /** Toujours `["SUBSCRIPTION"]` en v1 ; on garde pour extensibilité. */
   appliesTo: Array<'SUBSCRIPTION'>;
-  sortBy: 'AMOUNT_DESC' | 'AMOUNT_ASC' | 'AGE_DESC' | 'AGE_ASC';
+  sortBy:
+    | 'AMOUNT_DESC'
+    | 'AMOUNT_ASC'
+    | 'ENROLLMENT_ORDER'
+    | 'AGE_DESC'
+    | 'AGE_ASC';
 }
 
 /**
@@ -166,10 +183,11 @@ export function validateRuleConfig(
       const sortBy =
         v.sortBy === 'AMOUNT_ASC' ||
         v.sortBy === 'AMOUNT_DESC' ||
+        v.sortBy === 'ENROLLMENT_ORDER' ||
         v.sortBy === 'AGE_ASC' ||
         v.sortBy === 'AGE_DESC'
           ? v.sortBy
-          : 'AMOUNT_DESC';
+          : 'ENROLLMENT_ORDER';
       return {
         tiers: validatedTiers,
         appliesTo: appliesTo.filter(
@@ -581,6 +599,15 @@ export class PricingRulesEngineService {
               break;
             case 'AMOUNT_DESC':
               primary = b.baseAmountCents - a.baseAmountCents;
+              break;
+            case 'ENROLLMENT_ORDER':
+              // Ordre chronologique strict : ancien (PRIOR avec
+              // invoicedAt le plus tôt) → récent (CART avec orderDate
+              // = NOW). Les rangs 1, 2, 3… reflètent l'ordre
+              // d'inscription et non le montant. Le 3ᵉ adhérent du
+              // foyer touche donc bien la remise rang 3 même si sa
+              // cotisation est la plus chère du foyer.
+              primary = a.orderDate.getTime() - b.orderDate.getTime();
               break;
             // AGE_ASC/DESC : pas pertinent pour FAMILY (on n'a pas l'âge
             // dans l'historique). Fallback sur AMOUNT_DESC.
