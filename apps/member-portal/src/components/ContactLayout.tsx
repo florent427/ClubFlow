@@ -20,6 +20,10 @@ import {
 import { VIEWER_ME } from '../lib/viewer-documents';
 import type { ViewerMeData } from '../lib/viewer-types';
 import { PendingFamilyInvitesBanner } from './PendingFamilyInvitesBanner';
+import {
+  VIEWER_ACTIVE_CART,
+  type ViewerActiveCartData,
+} from '../lib/cart-documents';
 
 function linkClass({ isActive }: { isActive: boolean }): string {
   return `mp-sidebar-link${isActive ? ' mp-sidebar-link-active' : ''}`;
@@ -47,6 +51,23 @@ export function ContactLayout() {
   });
   const canManageMembershipCart =
     meData?.viewerMe?.canManageMembershipCart === true;
+
+  // Compteur global "panier d'adhésion" affiché dans le topbar quand le
+  // viewer (contact) peut gérer un panier (payeur du foyer). Synchro
+  // immédiate via cache-and-network après ajout/suppression.
+  const { data: activeCartData } = useQuery<ViewerActiveCartData>(
+    VIEWER_ACTIVE_CART,
+    {
+      skip: !clubId || !canManageMembershipCart,
+      fetchPolicy: 'cache-and-network',
+      nextFetchPolicy: 'cache-first',
+    },
+  );
+  const activeCart = activeCartData?.viewerActiveMembershipCart ?? null;
+  const cartItemCount =
+    activeCart && activeCart.status === 'OPEN'
+      ? activeCart.items.length + (activeCart.pendingItems?.length ?? 0)
+      : 0;
 
   const [selectProfile, { loading: switchingMember }] =
     useMutation<SelectProfileData>(SELECT_VIEWER_PROFILE);
@@ -112,8 +133,29 @@ export function ContactLayout() {
           </NavLink>
           {canManageMembershipCart ? (
             <NavLink to="/adhesion" className={linkClass}>
-              <span className="mp-ico material-symbols-outlined">loyalty</span>
-              Projet d&rsquo;adhésion
+              <span className="mp-ico material-symbols-outlined">
+                shopping_cart
+              </span>
+              Panier d&rsquo;adhésion
+              {cartItemCount > 0 ? (
+                <span
+                  aria-hidden="true"
+                  style={{
+                    marginLeft: 'auto',
+                    minWidth: 20,
+                    padding: '0 6px',
+                    borderRadius: 10,
+                    background: '#dc2626',
+                    color: 'white',
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    lineHeight: '18px',
+                    textAlign: 'center',
+                  }}
+                >
+                  {cartItemCount}
+                </span>
+              ) : null}
             </NavLink>
           ) : null}
           <NavLink to="/actus" className={linkClass}>
@@ -173,6 +215,46 @@ export function ContactLayout() {
                   …
                 </button>
               </div>
+            ) : null}
+            {canManageMembershipCart ? (
+              <NavLink
+                to="/adhesion"
+                className="mp-icon-btn mp-cart-icon"
+                aria-label={
+                  cartItemCount > 0
+                    ? `Panier d’adhésion (${cartItemCount} article${cartItemCount > 1 ? 's' : ''})`
+                    : 'Panier d’adhésion (vide)'
+                }
+                title="Panier d’adhésion"
+                style={{ position: 'relative' }}
+              >
+                <span className="material-symbols-outlined">
+                  shopping_cart
+                </span>
+                {cartItemCount > 0 ? (
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      position: 'absolute',
+                      top: -2,
+                      right: -2,
+                      minWidth: 18,
+                      height: 18,
+                      padding: '0 4px',
+                      borderRadius: 9,
+                      background: '#dc2626',
+                      color: 'white',
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      lineHeight: '18px',
+                      textAlign: 'center',
+                      boxShadow: '0 0 0 2px white',
+                    }}
+                  >
+                    {cartItemCount}
+                  </span>
+                ) : null}
+              </NavLink>
             ) : null}
             <button
               type="button"

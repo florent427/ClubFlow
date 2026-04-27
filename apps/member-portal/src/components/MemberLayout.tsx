@@ -173,8 +173,29 @@ export function MemberLayout() {
           </NavLink>
           {canManageMembershipCart ? (
             <NavLink to="/adhesion" className={navClass}>
-              <span className="mp-ico material-symbols-outlined">loyalty</span>
-              Projet d&rsquo;adhésion
+              <span className="mp-ico material-symbols-outlined">
+                shopping_cart
+              </span>
+              Panier d&rsquo;adhésion
+              {cartItemCount > 0 ? (
+                <span
+                  aria-hidden="true"
+                  style={{
+                    marginLeft: 'auto',
+                    minWidth: 20,
+                    padding: '0 6px',
+                    borderRadius: 10,
+                    background: '#dc2626',
+                    color: 'white',
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    lineHeight: '18px',
+                    textAlign: 'center',
+                  }}
+                >
+                  {cartItemCount}
+                </span>
+              ) : null}
             </NavLink>
           ) : null}
           <NavLink to="/factures" className={navClass}>
