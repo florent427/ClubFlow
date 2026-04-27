@@ -476,6 +476,85 @@ export class MembershipCartService {
   }
 
   /**
+   * Modifie une inscription en attente : formules sélectionnées et/ou
+   * rythme de règlement. L'identité (firstName, lastName, civility,
+   * birthDate) reste figée — pour la corriger, on retire et on remet.
+   *
+   * Garde-fous :
+   *  - Le panier doit être en `OPEN` (refus si VALIDATED/CANCELLED).
+   *  - Le pending ne doit pas être déjà converti en Member réel
+   *    (`convertedToMemberId === null`).
+   *  - Les formules ciblées doivent appartenir au club et être
+   *    encore actives (non archivées).
+   */
+  async updatePendingItem(
+    clubId: string,
+    pendingItemId: string,
+    patch: {
+      membershipProductIds: string[];
+      billingRhythm: SubscriptionBillingRhythm;
+    },
+  ): Promise<{ cartId: string }> {
+    const item = await this.prisma.membershipCartPendingItem.findFirst({
+      where: { id: pendingItemId, cart: { clubId } },
+      include: { cart: { select: { id: true, status: true } } },
+    });
+    if (!item) {
+      throw new NotFoundException('Inscription en attente introuvable.');
+    }
+    if (item.convertedToMemberId !== null) {
+      throw new BadRequestException(
+        'Cette inscription a déjà été convertie en adhérent — utilisez la fiche membre dédiée.',
+      );
+    }
+    if (item.cart.status !== MembershipCartStatus.OPEN) {
+      throw new BadRequestException(
+        'Le panier est déjà validé — impossible de le modifier.',
+      );
+    }
+    if (
+      !Array.isArray(patch.membershipProductIds) ||
+      patch.membershipProductIds.length === 0
+    ) {
+      throw new BadRequestException(
+        'Au moins une formule d’adhésion est requise.',
+      );
+    }
+    // Vérifie que toutes les formules existent dans le club et qu'elles
+    // ne sont pas archivées (évite qu'un payeur sauvegarde un panier
+    // pointant vers une formule supprimée par l'admin).
+    const products = await this.prisma.membershipProduct.findMany({
+      where: {
+        clubId,
+        id: { in: patch.membershipProductIds },
+        archivedAt: null,
+      },
+      select: { id: true, monthlyAmountCents: true },
+    });
+    if (products.length !== patch.membershipProductIds.length) {
+      throw new BadRequestException(
+        'Une ou plusieurs formules sélectionnées sont indisponibles.',
+      );
+    }
+    if (
+      patch.billingRhythm === SubscriptionBillingRhythm.MONTHLY &&
+      products.some((p) => p.monthlyAmountCents <= 0)
+    ) {
+      throw new BadRequestException(
+        'Le rythme mensuel n’est pas disponible pour une des formules choisies.',
+      );
+    }
+    await this.prisma.membershipCartPendingItem.update({
+      where: { id: pendingItemId },
+      data: {
+        membershipProductIds: patch.membershipProductIds,
+        billingRhythm: patch.billingRhythm,
+      },
+    });
+    return { cartId: item.cart.id };
+  }
+
+  /**
    * Supprime un pending item (l'utilisateur change d'avis avant validation).
    */
   async removePendingItem(clubId: string, pendingItemId: string): Promise<void> {

@@ -122,6 +122,17 @@ export const VIEWER_REMOVE_CART_PENDING_ITEM = gql`
   ${MEMBERSHIP_CART_FIELDS}
 `;
 
+export const VIEWER_UPDATE_CART_PENDING_ITEM = gql`
+  mutation ViewerUpdateCartPendingItem(
+    $input: ViewerUpdateCartPendingItemInput!
+  ) {
+    viewerUpdateCartPendingItem(input: $input) {
+      ...MembershipCartFields
+    }
+  }
+  ${MEMBERSHIP_CART_FIELDS}
+`;
+
 export const VIEWER_VALIDATE_CART = gql`
   mutation ViewerValidateMembershipCart($cartId: String!) {
     viewerValidateMembershipCart(cartId: $cartId) {

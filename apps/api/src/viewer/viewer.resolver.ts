@@ -24,6 +24,7 @@ import {
   ViewerRegisterSelfAsMemberInput,
   ViewerToggleCartItemLicenseInput,
   ViewerUpdateCartItemInput,
+  ViewerUpdateCartPendingItemInput,
 } from './dto/viewer-membership-cart.input';
 import { ViewerUpdateMyProfileInput } from './dto/viewer-update-my-profile.input';
 import { ViewerUpdateMyPseudoInput } from './dto/viewer-update-my-pseudo.input';
@@ -546,6 +547,34 @@ export class ViewerResolver {
         contactId: user.activeProfileContactId ?? null,
       },
       itemId,
+    );
+    const { cart: full, preview, productsById } =
+      await this.membershipCart.getCartFullForGraph(club.id, cartId);
+    return toMembershipCartGraph(full, preview, productsById);
+  }
+
+  @Mutation(() => MembershipCartGraph, {
+    name: 'viewerUpdateCartPendingItem',
+    description:
+      "Modifie une inscription en attente du panier : formules choisies + rythme de règlement. L'identité reste figée.",
+  })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  async viewerUpdateCartPendingItem(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('input') input: ViewerUpdateCartPendingItemInput,
+  ): Promise<MembershipCartGraph> {
+    const { cartId } = await this.viewer.viewerUpdateMembershipCartPendingItem(
+      club.id,
+      {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      {
+        pendingItemId: input.pendingItemId,
+        membershipProductIds: input.membershipProductIds,
+        billingRhythm: input.billingRhythm,
+      },
     );
     const { cart: full, preview, productsById } =
       await this.membershipCart.getCartFullForGraph(club.id, cartId);

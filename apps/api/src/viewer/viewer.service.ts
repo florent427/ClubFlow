@@ -1682,6 +1682,41 @@ export class ViewerService {
   }
 
   /**
+   * Met à jour une inscription en attente du panier : formules choisies
+   * + rythme de règlement. L'identité (prénom/nom/date de naissance)
+   * reste figée — pour la corriger, on retire et on remet.
+   */
+  async viewerUpdateMembershipCartPendingItem(
+    clubId: string,
+    activeProfile: { memberId: string | null; contactId: string | null },
+    input: {
+      pendingItemId: string;
+      membershipProductIds: string[];
+      billingRhythm: SubscriptionBillingRhythm;
+    },
+  ): Promise<{ cartId: string }> {
+    await this.assertViewerCanManageMembershipCart(clubId, activeProfile);
+    const familyId = await this.resolveViewerFamilyId(clubId, activeProfile);
+    if (!familyId) {
+      throw new BadRequestException('Aucun foyer associé au profil.');
+    }
+    // Ownership : le pending appartient bien au foyer du viewer.
+    const row = await this.prisma.membershipCartPendingItem.findFirst({
+      where: { id: input.pendingItemId, cart: { clubId, familyId } },
+      select: { id: true },
+    });
+    if (!row) {
+      throw new NotFoundException(
+        'Inscription en attente introuvable pour votre foyer.',
+      );
+    }
+    return this.membershipCart.updatePendingItem(clubId, input.pendingItemId, {
+      membershipProductIds: input.membershipProductIds,
+      billingRhythm: input.billingRhythm,
+    });
+  }
+
+  /**
    * Supprime une inscription en attente du panier (Member non encore créé).
    * L'utilisateur peut retirer un membre tant que le panier est OPEN — c'est
    * lui-même qui décide, aucune validation club requise.

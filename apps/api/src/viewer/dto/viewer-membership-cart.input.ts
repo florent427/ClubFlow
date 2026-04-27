@@ -43,6 +43,35 @@ export class ViewerToggleCartItemLicenseInput {
   existingLicenseNumber?: string | null;
 }
 
+/**
+ * Mise à jour d'une inscription en attente du panier (Member pas
+ * encore créé). On autorise la modification des formules choisies et
+ * du rythme de règlement. L'identité (prénom, nom, date de naissance,
+ * civilité) reste figée — pour la corriger, l'utilisateur retire le
+ * pending et l'ajoute à nouveau.
+ */
+@InputType()
+export class ViewerUpdateCartPendingItemInput {
+  @Field(() => ID)
+  @IsUUID()
+  pendingItemId!: string;
+
+  /**
+   * Formules d'adhésion sélectionnées. Au moins 1, max 10. Multi-formules
+   * supportées (ex Karaté + Cross Training).
+   */
+  @Field(() => [ID])
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(10)
+  @IsUUID(undefined, { each: true })
+  membershipProductIds!: string[];
+
+  @Field(() => SubscriptionBillingRhythm)
+  @IsEnum(SubscriptionBillingRhythm)
+  billingRhythm!: SubscriptionBillingRhythm;
+}
+
 @InputType()
 export class ViewerRegisterSelfAsMemberInput {
   @Field(() => MemberCivility)

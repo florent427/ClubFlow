@@ -8,6 +8,7 @@ import {
   VIEWER_REGISTER_SELF_AS_MEMBER,
   VIEWER_REMOVE_CART_PENDING_ITEM,
   type Cart,
+  type CartPendingItem,
   type ViewerActiveCartData,
 } from '../lib/cart-documents';
 import {
@@ -18,6 +19,7 @@ import type { ViewerMeData } from '../lib/viewer-types';
 import { CartItemCard } from '../components/cart/CartItemCard';
 import { CartSummary } from '../components/cart/CartSummary';
 import { AddChildToCartDrawer } from '../components/cart/AddChildToCartDrawer';
+import { EditPendingCartItemModal } from '../components/cart/EditPendingCartItemModal';
 import { useToast } from '../components/ToastProvider';
 import { formatEuroCents } from '../lib/format';
 
@@ -37,6 +39,9 @@ export function AdhesionPage() {
   const navigate = useNavigate();
   const [selfOpen, setSelfOpen] = useState<boolean>(false);
   const [childOpen, setChildOpen] = useState<boolean>(false);
+  // Pending item ouvert en édition (null = aucun en cours d'édition).
+  const [editingPending, setEditingPending] =
+    useState<CartPendingItem | null>(null);
 
   const { data: meData } = useQuery<ViewerMeData>(VIEWER_ME, {
     fetchPolicy: 'cache-first',
@@ -391,31 +396,66 @@ export function AdhesionPage() {
                           <span style={{ fontWeight: 600 }}>
                             {(p.estimatedTotalCents / 100).toFixed(2)} €
                           </span>
-                          <button
-                            type="button"
-                            className="mp-btn mp-btn-outline mp-btn-compact"
-                            disabled={removing}
-                            onClick={() =>
-                              void handleRemovePending(p.id, fullName)
-                            }
-                            aria-label={`Retirer ${fullName} du panier`}
-                            title="Retirer du panier"
+                          <small
+                            className="mp-hint"
                             style={{
-                              fontSize: '0.75rem',
-                              padding: '4px 8px',
-                              color: '#b91c1c',
-                              borderColor: 'rgba(185, 28, 28, 0.3)',
+                              fontSize: '0.7rem',
+                              fontWeight: 400,
+                              opacity: 0.85,
                             }}
                           >
-                            <span
-                              className="material-symbols-outlined"
-                              aria-hidden="true"
-                              style={{ fontSize: '1rem' }}
+                            {p.billingRhythm === 'ANNUAL'
+                              ? 'annuel'
+                              : 'mensuel'}
+                          </small>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button
+                              type="button"
+                              className="mp-btn mp-btn-outline mp-btn-compact"
+                              disabled={removing}
+                              onClick={() => setEditingPending(p)}
+                              aria-label={`Modifier l’inscription de ${fullName}`}
+                              title="Modifier formules / rythme"
+                              style={{
+                                fontSize: '0.75rem',
+                                padding: '4px 8px',
+                              }}
                             >
-                              delete
-                            </span>{' '}
-                            Retirer
-                          </button>
+                              <span
+                                className="material-symbols-outlined"
+                                aria-hidden="true"
+                                style={{ fontSize: '1rem' }}
+                              >
+                                edit
+                              </span>{' '}
+                              Modifier
+                            </button>
+                            <button
+                              type="button"
+                              className="mp-btn mp-btn-outline mp-btn-compact"
+                              disabled={removing}
+                              onClick={() =>
+                                void handleRemovePending(p.id, fullName)
+                              }
+                              aria-label={`Retirer ${fullName} du panier`}
+                              title="Retirer du panier"
+                              style={{
+                                fontSize: '0.75rem',
+                                padding: '4px 8px',
+                                color: '#b91c1c',
+                                borderColor: 'rgba(185, 28, 28, 0.3)',
+                              }}
+                            >
+                              <span
+                                className="material-symbols-outlined"
+                                aria-hidden="true"
+                                style={{ fontSize: '1rem' }}
+                              >
+                                delete
+                              </span>{' '}
+                              Retirer
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -436,6 +476,16 @@ export function AdhesionPage() {
           void refetch();
         }}
       />
+
+      {editingPending ? (
+        <EditPendingCartItemModal
+          pending={editingPending}
+          onClose={() => {
+            setEditingPending(null);
+            void refetch();
+          }}
+        />
+      ) : null}
 
       {selfOpen ? (
         <RegisterSelfAsMemberModal
