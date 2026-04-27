@@ -99,7 +99,12 @@ describe('membership-pricing', () => {
       expect(subtotalAfterBusinessCents).toBe(50_00);
     });
 
-    it('applies family when nth threshold reached', () => {
+    it('legacy FAMILY step is no-op (handled by PricingRulesEngine)', () => {
+      // La remise famille legacy a été retirée de
+      // `computeMembershipAdjustments` pour éviter le double-counting
+      // avec la règle FAMILY_PROGRESSIVE du moteur pricing-rules. Ces
+      // paramètres restent acceptés en input pour la rétrocompat des
+      // call-sites mais sont ignorés.
       const { adjustments, subtotalAfterBusinessCents } =
         computeMembershipAdjustments({
           ...base,
@@ -112,8 +117,8 @@ describe('membership-pricing', () => {
           priorFamilyMembershipCount: 1,
           prorataFactorBp: 10_000,
         });
-      expect(adjustments.some((a) => a.type === 'FAMILY')).toBe(true);
-      expect(subtotalAfterBusinessCents).toBe(90_00);
+      expect(adjustments.some((a) => a.type === 'FAMILY')).toBe(false);
+      expect(subtotalAfterBusinessCents).toBe(100_00);
     });
 
     it('caps exceptional discount', () => {
@@ -146,7 +151,9 @@ describe('membership-pricing', () => {
       expect(adjustments.some((a) => a.type === 'PRORATA_SEASON')).toBe(
         false,
       );
-      expect(adjustments.some((a) => a.type === 'FAMILY')).toBe(true);
+      // Plus de FAMILY legacy non plus — pricing-rules engine prend
+      // désormais en charge la remise par rang.
+      expect(adjustments.some((a) => a.type === 'FAMILY')).toBe(false);
     });
   });
 

@@ -97,44 +97,17 @@ function stripTime(d: Date): Date {
   return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
 }
 
-function applyClubAdjustmentToSubtotal(
-  subtotalCents: number,
-  adjustmentType: PricingAdjustmentType,
-  adjustmentValue: number,
-): number {
-  if (subtotalCents < 0) {
-    return 0;
-  }
-  switch (adjustmentType) {
-    case 'NONE':
-      return subtotalCents;
-    case 'PERCENT_BP': {
-      const factor = 1 + adjustmentValue / 10_000;
-      return Math.max(0, Math.round(subtotalCents * factor));
-    }
-    case 'FIXED_CENTS':
-      return Math.max(0, subtotalCents + adjustmentValue);
-    default:
-      return subtotalCents;
-  }
-}
+// (Helper `applyClubAdjustmentToSubtotal` supprimé en même temps que
+// l'étape FAMILY legacy. La logique de remise par rang est maintenant
+// portée par PricingRulesEngineService.)
 
 export type MembershipPricingInput = {
   baseAmountCents: number;
   allowProrata: boolean;
-  allowFamily: boolean;
   allowPublicAid: boolean;
   allowExceptional: boolean;
   exceptionalCapPercentBp: number | null;
   prorataFactorBp: number;
-  /** Règle club pour remise famille ; null = pas de remise */
-  familyRule: {
-    fromNth: number;
-    adjustmentType: PricingAdjustmentType;
-    adjustmentValue: number;
-  } | null;
-  /** Nombre de lignes d’adhésion déjà facturées (OPEN/PAID) pour ce foyer sur la saison, hors facture courante. */
-  priorFamilyMembershipCount: number;
   publicAid?: {
     amountCents: number;
     metadata: Record<string, unknown>;
@@ -143,11 +116,33 @@ export type MembershipPricingInput = {
     amountCents: number;
     reason: string;
   } | null;
+  /**
+   * @deprecated Conservé pour rétrocompat des call-sites — la remise
+   * famille est désormais gérée exclusivement par
+   * `PricingRulesEngineService` (pattern `FAMILY_PROGRESSIVE`). Les
+   * champs `allowFamily`, `familyRule`, `priorFamilyMembershipCount`
+   * sont ignorés ici pour éviter le double-count.
+   */
+  allowFamily?: boolean;
+  familyRule?: {
+    fromNth: number;
+    adjustmentType: PricingAdjustmentType;
+    adjustmentValue: number;
+  } | null;
+  priorFamilyMembershipCount?: number;
 };
 
 /**
- * Construit les ajustements dans l’ordre : prorata → famille → aide publique → exceptionnelle.
- * Les montants d’ajustement sont des deltas (négatifs = réduction du brut) sauf prorata (peut être négatif vs base).
+ * Construit les ajustements legacy dans l'ordre : prorata → aide
+ * publique → exceptionnelle. La remise famille est désormais gérée
+ * exclusivement par `PricingRulesEngineService` (pattern
+ * `FAMILY_PROGRESSIVE`) afin d'éviter le double-counting que provoquait
+ * la coexistence des deux systèmes (`Club.membershipFamilyAdjustment*`
+ * + règle pricing-rule). Les facturés voyaient deux remises famille
+ * cumulées sans le savoir.
+ *
+ * Les montants d'ajustement sont des deltas (négatifs = réduction du
+ * brut) sauf prorata (qui peut être négatif vs base).
  */
 export function computeMembershipAdjustments(
   input: MembershipPricingInput,
@@ -169,25 +164,12 @@ export function computeMembershipAdjustments(
     running = after;
   }
 
-  if (
-    input.allowFamily &&
-    input.familyRule &&
-    input.priorFamilyMembershipCount >= input.familyRule.fromNth - 1
-  ) {
-    const before = running;
-    const afterFam = applyClubAdjustmentToSubtotal(
-      running,
-      input.familyRule.adjustmentType,
-      input.familyRule.adjustmentValue,
-    );
-    const delta = afterFam - before;
-    adjustments.push({
-      stepOrder: step++,
-      type: 'FAMILY',
-      amountCents: delta,
-    });
-    running = afterFam;
-  }
+  // ⚠️ Étape FAMILY supprimée : la logique de remise par rang famille
+  // est désormais 100 % gérée par PricingRulesEngine (pattern
+  // FAMILY_PROGRESSIVE configuré via Settings → Adhésion → Remises
+  // automatiques). Les champs Club.membershipFamily* sont conservés
+  // dans le schéma Prisma pour rétrocompat lecture seule mais n'ont
+  // plus d'effet sur le calcul.
 
   if (input.allowPublicAid && input.publicAid && input.publicAid.amountCents !== 0) {
     const amt = input.publicAid.amountCents;
