@@ -251,8 +251,18 @@ export const VIEWER_REGISTER_CHILD_MEMBER = gql`
 `;
 
 export const VIEWER_ELIGIBLE_MEMBERSHIP_FORMULAS = gql`
-  query ViewerEligibleMembershipFormulas($birthDate: String!) {
-    viewerEligibleMembershipFormulas(birthDate: $birthDate) {
+  query ViewerEligibleMembershipFormulas(
+    $birthDate: String!
+    $identityFirstName: String
+    $identityLastName: String
+    $excludePendingItemId: String
+  ) {
+    viewerEligibleMembershipFormulas(
+      birthDate: $birthDate
+      identityFirstName: $identityFirstName
+      identityLastName: $identityLastName
+      excludePendingItemId: $excludePendingItemId
+    ) {
       id
       label
       annualAmountCents
@@ -260,6 +270,7 @@ export const VIEWER_ELIGIBLE_MEMBERSHIP_FORMULAS = gql`
       minAge
       maxAge
       allowProrata
+      alreadyTakenInSeason
     }
   }
 `;

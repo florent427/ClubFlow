@@ -64,23 +64,33 @@ export function RegisterChildMemberCta() {
     );
 
   useEffect(() => {
-    if (open && birthDate) {
-      void fetchFormulas({ variables: { birthDate } });
+    // On ne fetch que si on a l'identité complète : sinon le backend ne
+    // peut pas annoter `alreadyTakenInSeason` correctement.
+    if (open && birthDate && firstName.trim() && lastName.trim()) {
+      void fetchFormulas({
+        variables: {
+          birthDate,
+          identityFirstName: firstName.trim(),
+          identityLastName: lastName.trim(),
+        },
+      });
     }
-  }, [open, birthDate, fetchFormulas]);
+  }, [open, birthDate, firstName, lastName, fetchFormulas]);
 
   const formulas = formulasData?.viewerEligibleMembershipFormulas ?? [];
+  const availableFormulas = formulas.filter((f) => !f.alreadyTakenInSeason);
+  const allTaken = formulas.length > 0 && availableFormulas.length === 0;
   const selectedFormula = formulas.find((f) => f.id === membershipProductId);
 
   // Pré-sélection automatique : dès que les formules sont chargées et
-  // qu'aucune n'est sélectionnée, on sélectionne la première (la
-  // cotisation par défaut, ex. Karaté). L'utilisateur reste libre de
-  // choisir une autre formule dans le menu.
+  // qu'aucune n'est sélectionnée, on sélectionne la première DISPONIBLE
+  // (non déjà prise). L'utilisateur reste libre de choisir une autre
+  // formule dans le menu déroulant.
   useEffect(() => {
-    if (formulas.length > 0 && !membershipProductId) {
-      setMembershipProductId(formulas[0].id);
+    if (availableFormulas.length > 0 && !membershipProductId) {
+      setMembershipProductId(availableFormulas[0].id);
     }
-  }, [formulas, membershipProductId]);
+  }, [availableFormulas, membershipProductId]);
 
   function resetAndClose() {
     setOpen(false);
@@ -233,10 +243,10 @@ export function RegisterChildMemberCta() {
 
           <label className="mp-field">
             <span>Formule d’adhésion</span>
-            {!birthDate ? (
+            {!birthDate || !firstName.trim() || !lastName.trim() ? (
               <p className="mp-hint" style={{ fontSize: '0.85rem' }}>
-                Renseignez la date de naissance pour voir les formules
-                disponibles.
+                Renseignez prénom, nom et date de naissance pour voir
+                les formules disponibles.
               </p>
             ) : formulasLoading ? (
               <p className="mp-hint" style={{ fontSize: '0.85rem' }}>
@@ -250,6 +260,15 @@ export function RegisterChildMemberCta() {
                 Aucune formule disponible pour cette date de naissance.
                 Contactez le club.
               </p>
+            ) : allTaken ? (
+              <p
+                className="mp-hint mp-hint--warn"
+                style={{ fontSize: '0.85rem' }}
+              >
+                Toutes les formules compatibles ont déjà été prises pour
+                cette saison par {firstName} {lastName}. Plus aucune
+                adhésion supplémentaire n’est possible pour cet enfant.
+              </p>
             ) : (
               <select
                 value={membershipProductId}
@@ -257,11 +276,16 @@ export function RegisterChildMemberCta() {
                 disabled={loading}
               >
                 {formulas.map((f) => (
-                  <option key={f.id} value={f.id}>
+                  <option
+                    key={f.id}
+                    value={f.id}
+                    disabled={f.alreadyTakenInSeason}
+                  >
                     {f.label} — {formatEuros(f.annualAmountCents)} / an
                     {f.monthlyAmountCents > 0
                       ? ` ou ${formatEuros(f.monthlyAmountCents)} / mois`
                       : ''}
+                    {f.alreadyTakenInSeason ? ' (déjà prise)' : ''}
                   </option>
                 ))}
               </select>

@@ -285,14 +285,31 @@ export class ViewerResolver {
   @Query(() => [ViewerMembershipFormulaGraph], {
     name: 'viewerEligibleMembershipFormulas',
     description:
-      'Formules d\u2019adh\u00e9sion du club compatibles avec la date de naissance donn\u00e9e (utilis\u00e9 par le portail avant cr\u00e9ation de la fiche adh\u00e9rent).',
+      'Formules d\u2019adh\u00e9sion du club compatibles avec la date de naissance donn\u00e9e (utilis\u00e9 par le portail avant cr\u00e9ation de la fiche adh\u00e9rent). Si `identityFirstName` + `identityLastName` sont fournis, chaque formule est annot\u00e9e d\u2019un flag `alreadyTakenInSeason` (Member existant + pending + invoice valid\u00e9e) pour gris\u00e9 c\u00f4t\u00e9 UI.',
   })
   @RequireClubModule(ModuleCode.PAYMENT)
   viewerEligibleMembershipFormulas(
+    @CurrentUser() user: RequestUser,
     @CurrentClub() club: Club,
     @Args('birthDate', { type: () => String }) birthDate: string,
+    @Args('identityFirstName', { type: () => String, nullable: true })
+    identityFirstName?: string,
+    @Args('identityLastName', { type: () => String, nullable: true })
+    identityLastName?: string,
+    @Args('excludePendingItemId', { type: () => String, nullable: true })
+    excludePendingItemId?: string,
   ): Promise<ViewerMembershipFormulaGraph[]> {
-    return this.viewer.viewerEligibleMembershipFormulas(club.id, birthDate);
+    return this.viewer.viewerEligibleMembershipFormulas(
+      club.id,
+      birthDate,
+      {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      identityFirstName ?? null,
+      identityLastName ?? null,
+      excludePendingItemId ?? null,
+    );
   }
 
   @Mutation(() => ViewerPendingRegistrationResultGraph, {

@@ -315,6 +315,10 @@ export class ViewerService {
   async viewerEligibleMembershipFormulas(
     clubId: string,
     birthDate: string,
+    activeProfile?: { memberId: string | null; contactId: string | null },
+    identityFirstName?: string | null,
+    identityLastName?: string | null,
+    excludePendingItemId?: string | null,
   ): Promise<ViewerMembershipFormulaGraph[]> {
     const bd = new Date(birthDate);
     if (Number.isNaN(bd.getTime())) {
@@ -322,6 +326,25 @@ export class ViewerService {
     }
     const ref = new Date();
     const products = await this.membership.listMembershipProducts(clubId);
+
+    // Pour annoter `alreadyTakenInSeason`, on calcule la liste des
+    // productIds déjà pris par cette identité dans la saison active du
+    // foyer. Sources cumulées :
+    //   1) Member existant matchant identité + ses InvoiceLine
+    //      MEMBERSHIP_SUBSCRIPTION (factures OPEN/PAID, saison active)
+    //   2) Member existant matchant identité + ses MembershipCartItem
+    //      dans un cart OPEN du foyer
+    //   3) MembershipCartPendingItem matchant identité dans un cart OPEN
+    //      du foyer (sauf `excludePendingItemId` pour le edit context)
+    const takenProductIds = await this.computeAlreadyTakenProductIds(
+      clubId,
+      activeProfile ?? { memberId: null, contactId: null },
+      bd,
+      identityFirstName?.trim() ?? null,
+      identityLastName?.trim() ?? null,
+      excludePendingItemId ?? null,
+    );
+
     return products
       .filter((p) =>
         memberMatchesMembershipProduct(
@@ -347,7 +370,159 @@ export class ViewerService {
         minAge: p.minAge,
         maxAge: p.maxAge,
         allowProrata: p.allowProrata,
+        alreadyTakenInSeason: takenProductIds.has(p.id),
       }));
+  }
+
+  /**
+   * Pour une identité donnée (firstName + lastName + birthDate), liste
+   * les productIds déjà pris dans la saison active du foyer du viewer.
+   *
+   * Match identité **insensible à la casse + accents**, sur :
+   *   - Member existant du foyer (firstName + lastName + birthDate)
+   *   - PendingItem du cart OPEN (firstName + lastName + birthDate)
+   *   - Si activeProfile.contactId, on inclut aussi le Contact lui-même
+   *     (cas de l'auto-inscription du payeur)
+   *
+   * Retourne un Set<productId> représentant tous les produits déjà
+   * souscrits / en cours de souscription par cette identité.
+   */
+  private async computeAlreadyTakenProductIds(
+    clubId: string,
+    activeProfile: { memberId: string | null; contactId: string | null },
+    birthDate: Date,
+    firstName: string | null,
+    lastName: string | null,
+    excludePendingItemId: string | null,
+  ): Promise<Set<string>> {
+    const taken = new Set<string>();
+    if (!firstName || !lastName) {
+      return taken;
+    }
+    // Saison active du club
+    const season = await this.prisma.clubSeason.findFirst({
+      where: { clubId, isActive: true },
+      select: { id: true },
+    });
+    if (!season) return taken;
+    // Foyer du viewer
+    const familyId = await this.resolveViewerFamilyId(clubId, activeProfile);
+    if (!familyId) return taken;
+
+    const norm = (s: string): string =>
+      s
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .toLowerCase()
+        .trim();
+    const targetFirst = norm(firstName);
+    const targetLast = norm(lastName);
+    const targetBd = new Date(
+      Date.UTC(
+        birthDate.getUTCFullYear(),
+        birthDate.getUTCMonth(),
+        birthDate.getUTCDate(),
+      ),
+    );
+    const sameIdentity = (
+      f: string | null | undefined,
+      l: string | null | undefined,
+      b: Date | null | undefined,
+    ): boolean => {
+      if (!f || !l || !b) return false;
+      if (norm(f) !== targetFirst) return false;
+      if (norm(l) !== targetLast) return false;
+      const bd2 = new Date(
+        Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate()),
+      );
+      return bd2.getTime() === targetBd.getTime();
+    };
+
+    // 1) Members du foyer matchant identité
+    const familyLinks = await this.prisma.familyMember.findMany({
+      where: { familyId, memberId: { not: null } },
+      select: {
+        memberId: true,
+        member: {
+          select: { id: true, firstName: true, lastName: true, birthDate: true },
+        },
+      },
+    });
+    const matchingMemberIds = familyLinks
+      .map((l) => l.member)
+      .filter(
+        (m): m is NonNullable<typeof m> =>
+          m != null && sameIdentity(m.firstName, m.lastName, m.birthDate),
+      )
+      .map((m) => m.id);
+
+    // 2) Leurs InvoiceLine SUBSCRIPTION pour la saison (factures pas void)
+    if (matchingMemberIds.length > 0) {
+      const lines = await this.prisma.invoiceLine.findMany({
+        where: {
+          memberId: { in: matchingMemberIds },
+          kind: 'MEMBERSHIP_SUBSCRIPTION',
+          membershipProductId: { not: null },
+          invoice: {
+            clubId,
+            clubSeasonId: season.id,
+            status: { in: ['OPEN', 'PAID', 'DRAFT'] },
+          },
+        },
+        select: { membershipProductId: true },
+      });
+      for (const l of lines) {
+        if (l.membershipProductId) taken.add(l.membershipProductId);
+      }
+
+      // 3) Leurs MembershipCartItem dans un cart OPEN du foyer
+      const cartItems = await this.prisma.membershipCartItem.findMany({
+        where: {
+          memberId: { in: matchingMemberIds },
+          cart: {
+            clubId,
+            familyId,
+            clubSeasonId: season.id,
+            status: 'OPEN',
+          },
+          membershipProductId: { not: null },
+        },
+        select: { membershipProductId: true },
+      });
+      for (const i of cartItems) {
+        if (i.membershipProductId) taken.add(i.membershipProductId);
+      }
+    }
+
+    // 4) PendingItems du foyer (cart OPEN) matchant identité, sauf le
+    //    pending en cours d'édition (excludePendingItemId).
+    const pendings = await this.prisma.membershipCartPendingItem.findMany({
+      where: {
+        cart: {
+          clubId,
+          familyId,
+          clubSeasonId: season.id,
+          status: 'OPEN',
+        },
+        convertedToMemberId: null,
+        ...(excludePendingItemId ? { id: { not: excludePendingItemId } } : {}),
+      },
+      select: {
+        firstName: true,
+        lastName: true,
+        birthDate: true,
+        membershipProductIds: true,
+      },
+    });
+    for (const p of pendings) {
+      if (sameIdentity(p.firstName, p.lastName, p.birthDate)) {
+        for (const pid of p.membershipProductIds) {
+          taken.add(pid);
+        }
+      }
+    }
+
+    return taken;
   }
 
   async viewerMe(

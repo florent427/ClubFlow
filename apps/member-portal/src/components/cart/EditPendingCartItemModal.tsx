@@ -28,19 +28,32 @@ export function EditPendingCartItemModal({ pending, onClose }: Props) {
   );
   const [localError, setLocalError] = useState<string | null>(null);
 
-  // Charge les formules éligibles selon la date de naissance du pending.
+  // Charge les formules éligibles selon la date de naissance du
+  // pending + l'identité (firstName + lastName) pour annoter
+  // `alreadyTakenInSeason`. On exclut le pending courant via
+  // `excludePendingItemId` pour ne pas se "voler" ses propres formules.
   const { data: formulasData, loading: formulasLoading } = useQuery<{
     viewerEligibleMembershipFormulas: Array<{
       id: string;
       label: string;
       annualAmountCents: number;
       monthlyAmountCents: number;
+      alreadyTakenInSeason: boolean;
     }>;
   }>(VIEWER_ELIGIBLE_MEMBERSHIP_FORMULAS, {
-    variables: { birthDate: pending.birthDate },
+    variables: {
+      birthDate: pending.birthDate,
+      identityFirstName: pending.firstName,
+      identityLastName: pending.lastName,
+      excludePendingItemId: pending.id,
+    },
     fetchPolicy: 'cache-and-network',
   });
   const formulas = formulasData?.viewerEligibleMembershipFormulas ?? [];
+  const availableFormulas = formulas.filter(
+    (f) => !f.alreadyTakenInSeason || pending.membershipProductIds.includes(f.id),
+  );
+  const allTaken = formulas.length > 0 && availableFormulas.length === 0;
 
   const [updatePending, { loading }] = useMutation(
     VIEWER_UPDATE_CART_PENDING_ITEM,
@@ -152,36 +165,77 @@ export function EditPendingCartItemModal({ pending, onClose }: Props) {
               Aucune formule disponible pour cette date de naissance —
               contactez le club.
             </p>
+          ) : allTaken ? (
+            <p className="mp-hint mp-hint--warn">
+              Toutes les autres formules compatibles ont déjà été prises
+              cette saison. Vous pouvez seulement conserver les formules
+              déjà sélectionnées sur cette inscription.
+            </p>
           ) : (
             formulas.map((f) => {
               const checked = selectedProductIds.includes(f.id);
+              // On ne grise PAS les formules déjà cochées sur ce
+              // pending — sinon impossible de les conserver lors de
+              // l'édition. On grise uniquement celles prises ailleurs.
+              const taken =
+                f.alreadyTakenInSeason &&
+                !pending.membershipProductIds.includes(f.id);
               return (
                 <label
                   key={f.id}
                   className="mp-checkbox"
+                  title={
+                    taken
+                      ? 'Formule déjà prise cette saison pour cette identité.'
+                      : undefined
+                  }
                   style={{
                     display: 'flex',
                     alignItems: 'flex-start',
                     gap: 8,
                     padding: '8px 12px',
                     marginBottom: 6,
-                    border: checked
-                      ? '2px solid #2563eb'
-                      : '1px solid #e5e7eb',
+                    border: taken
+                      ? '1px dashed #cbd5e1'
+                      : checked
+                        ? '2px solid #2563eb'
+                        : '1px solid #e5e7eb',
                     borderRadius: 6,
-                    cursor: 'pointer',
-                    background: checked ? 'rgba(37, 99, 235, 0.05)' : 'white',
+                    cursor: taken ? 'not-allowed' : 'pointer',
+                    background: taken
+                      ? '#f8fafc'
+                      : checked
+                        ? 'rgba(37, 99, 235, 0.05)'
+                        : 'white',
+                    opacity: taken ? 0.6 : 1,
                   }}
                 >
                   <input
                     type="checkbox"
-                    checked={checked}
-                    onChange={() => toggleProduct(f.id)}
-                    disabled={loading}
+                    checked={checked && !taken}
+                    onChange={() => {
+                      if (!taken) toggleProduct(f.id);
+                    }}
+                    disabled={loading || taken}
                     style={{ marginTop: 3 }}
                   />
                   <span style={{ flex: 1 }}>
                     <strong>{f.label}</strong>
+                    {taken ? (
+                      <span
+                        style={{
+                          marginLeft: 8,
+                          padding: '2px 8px',
+                          background: '#e2e8f0',
+                          color: '#475569',
+                          borderRadius: 12,
+                          fontSize: '0.7rem',
+                          fontWeight: 600,
+                        }}
+                      >
+                        déjà prise
+                      </span>
+                    ) : null}
                     <br />
                     <small className="mp-hint">
                       {formatEuroCents(f.annualAmountCents)} / an

@@ -595,6 +595,8 @@ export function AdhesionPage() {
 
       {selfOpen ? (
         <RegisterSelfAsMemberModal
+          identityFirstName={meData?.viewerMe?.firstName ?? ''}
+          identityLastName={meData?.viewerMe?.lastName ?? ''}
           onClose={() => {
             setSelfOpen(false);
             void refetch();
@@ -609,7 +611,15 @@ export function AdhesionPage() {
 
 type SelfBillingRhythm = 'ANNUAL' | 'MONTHLY';
 
-function RegisterSelfAsMemberModal({ onClose }: { onClose: () => void }) {
+function RegisterSelfAsMemberModal({
+  onClose,
+  identityFirstName,
+  identityLastName,
+}: {
+  onClose: () => void;
+  identityFirstName: string;
+  identityLastName: string;
+}) {
   const { showToast } = useToast();
   const [civility, setCivility] = useState<Civility>('MR');
   const [birthDate, setBirthDate] = useState<string>('');
@@ -629,29 +639,37 @@ function RegisterSelfAsMemberModal({ onClose }: { onClose: () => void }) {
     },
   );
 
-  // Charge les formules éligibles dès que la date de naissance est saisie.
-  // L'utilisateur peut en cocher 1 ou plusieurs.
+  // Charge les formules éligibles dès que la date de naissance est
+  // saisie. On passe l'identité du viewer (Contact) pour annoter
+  // `alreadyTakenInSeason` et empêcher les doublons.
   const { data: formulasData, loading: formulasLoading } = useQuery<{
     viewerEligibleMembershipFormulas: Array<{
       id: string;
       label: string;
       annualAmountCents: number;
       monthlyAmountCents: number;
+      alreadyTakenInSeason: boolean;
     }>;
   }>(VIEWER_ELIGIBLE_MEMBERSHIP_FORMULAS, {
-    variables: { birthDate },
+    variables: {
+      birthDate,
+      identityFirstName,
+      identityLastName,
+    },
     skip: !birthDate,
     fetchPolicy: 'cache-and-network',
   });
   const formulas = formulasData?.viewerEligibleMembershipFormulas ?? [];
+  const availableFormulas = formulas.filter((f) => !f.alreadyTakenInSeason);
+  const allTaken = formulas.length > 0 && availableFormulas.length === 0;
 
-  // Pré-sélection automatique de la première formule éligible dès que
-  // la liste se peuple — cohérent avec les autres modales du panier.
+  // Pré-sélection automatique de la première formule DISPONIBLE (non
+  // déjà prise) — cohérent avec les autres modales du panier.
   useEffect(() => {
-    if (formulas.length > 0 && selectedProductIds.length === 0) {
-      setSelectedProductIds([formulas[0].id]);
+    if (availableFormulas.length > 0 && selectedProductIds.length === 0) {
+      setSelectedProductIds([availableFormulas[0].id]);
     }
-  }, [formulas, selectedProductIds.length]);
+  }, [availableFormulas, selectedProductIds.length]);
 
   // Si une des formules cochées n'a pas de tarif mensuel, on retombe
   // automatiquement en ANNUAL pour éviter un input invalide.
@@ -800,41 +818,75 @@ function RegisterSelfAsMemberModal({ onClose }: { onClose: () => void }) {
             ) : formulas.length === 0 ? (
               <p className="mp-hint">
                 Aucune formule disponible pour cette date de naissance —
-                contacte le club.
+                contactez le club.
+              </p>
+            ) : allTaken ? (
+              <p className="mp-hint mp-hint--warn">
+                Vous avez déjà pris toutes les formules d&rsquo;adhésion
+                compatibles pour cette saison. Plus aucune adhésion
+                supplémentaire n&rsquo;est possible.
               </p>
             ) : (
               <div className="mp-checkboxes">
                 {formulas.map((f) => {
                   const checked = selectedProductIds.includes(f.id);
+                  const taken = f.alreadyTakenInSeason;
                   return (
                     <label
                       key={f.id}
                       className="mp-checkbox"
+                      title={
+                        taken
+                          ? 'Formule déjà prise cette saison.'
+                          : undefined
+                      }
                       style={{
                         display: 'flex',
                         alignItems: 'flex-start',
                         gap: 8,
                         padding: '8px 12px',
                         marginBottom: 6,
-                        border: checked
-                          ? '2px solid #2563eb'
-                          : '1px solid #e5e7eb',
+                        border: taken
+                          ? '1px dashed #cbd5e1'
+                          : checked
+                            ? '2px solid #2563eb'
+                            : '1px solid #e5e7eb',
                         borderRadius: 6,
-                        cursor: 'pointer',
-                        background: checked
-                          ? 'rgba(37, 99, 235, 0.05)'
-                          : 'white',
+                        cursor: taken ? 'not-allowed' : 'pointer',
+                        background: taken
+                          ? '#f8fafc'
+                          : checked
+                            ? 'rgba(37, 99, 235, 0.05)'
+                            : 'white',
+                        opacity: taken ? 0.6 : 1,
                       }}
                     >
                       <input
                         type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleProduct(f.id)}
-                        disabled={loading}
+                        checked={checked && !taken}
+                        onChange={() => {
+                          if (!taken) toggleProduct(f.id);
+                        }}
+                        disabled={loading || taken}
                         style={{ marginTop: 3 }}
                       />
                       <span style={{ flex: 1 }}>
                         <strong>{f.label}</strong>
+                        {taken ? (
+                          <span
+                            style={{
+                              marginLeft: 8,
+                              padding: '2px 8px',
+                              background: '#e2e8f0',
+                              color: '#475569',
+                              borderRadius: 12,
+                              fontSize: '0.7rem',
+                              fontWeight: 600,
+                            }}
+                          >
+                            déjà prise
+                          </span>
+                        ) : null}
                         <br />
                         <small className="mp-hint">
                           {formatEuroCents(f.annualAmountCents)} / an

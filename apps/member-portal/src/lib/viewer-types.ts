@@ -190,6 +190,13 @@ export type ViewerMembershipFormula = {
   minAge: number | null;
   maxAge: number | null;
   allowProrata: boolean;
+  /**
+   * `true` si cette formule est déjà prise par la même identité
+   * (firstName + lastName + birthDate) dans la saison active du foyer
+   * (Member existant, cart item, pending item, ou facture validée).
+   * Permet de griser les options pour éviter les doublons.
+   */
+  alreadyTakenInSeason: boolean;
 };
 
 export type ViewerEligibleMembershipFormulasData = {

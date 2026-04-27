@@ -26,4 +26,15 @@ export class ViewerMembershipFormulaGraph {
 
   @Field()
   allowProrata!: boolean;
+
+  /**
+   * `true` si cette formule a déjà été prise par la même identité dans
+   * la saison active (Member existant, cart item, pending item, ou
+   * facture validée). Permet à l'UI de griser les options et d'éviter
+   * un doublon (ex : Sophie ne peut pas prendre Karaté deux fois). Si
+   * aucune identité n'est fournie au query, ce flag est toujours
+   * `false`.
+   */
+  @Field()
+  alreadyTakenInSeason!: boolean;
 }

@@ -433,6 +433,27 @@ export class MembershipCartService {
       payerContactId: input.contactId ?? null,
     });
 
+    // Garde-fou anti-doublon : refuse si une des formules est déjà
+    // prise par cette identité dans la saison active (Member existant,
+    // cart item, autre pending). Le frontend grise déjà les options
+    // mais on protège aussi côté API contre les appels directs.
+    const taken = await this.computePendingTakenProductIds(
+      clubId,
+      familyId,
+      season.id,
+      cart.id,
+      input.firstName,
+      input.lastName,
+      input.birthDate,
+      null, // pas d'exclusion (création)
+    );
+    const conflict = input.membershipProductIds.filter((id) => taken.has(id));
+    if (conflict.length > 0) {
+      throw new BadRequestException(
+        `${input.firstName} ${input.lastName} a déjà pris ${conflict.length === 1 ? 'cette formule' : 'ces formules'} pour cette saison.`,
+      );
+    }
+
     // Idempotence : si un pending existe déjà sur ce cart pour cette
     // identité (même email + nom complet), on met à jour les formules
     // au lieu de créer un doublon.
@@ -473,6 +494,131 @@ export class MembershipCartService {
       },
     });
     return { cartId: cart.id, pendingItemId: pending.id };
+  }
+
+  /**
+   * Liste les `productId` déjà pris par une identité (firstName +
+   * lastName + birthDate) dans la saison active du foyer. Sources :
+   *   - Member existant matchant identité + InvoiceLine SUBSCRIPTION
+   *     pour la saison (factures OPEN/PAID/DRAFT)
+   *   - Member existant + MembershipCartItem dans le cart courant
+   *   - Autres MembershipCartPendingItem du cart courant matchant
+   *     identité (sauf `excludePendingItemId`)
+   *
+   * Match identité insensible à la casse + accents.
+   */
+  private async computePendingTakenProductIds(
+    clubId: string,
+    familyId: string,
+    seasonId: string,
+    cartId: string,
+    firstName: string,
+    lastName: string,
+    birthDate: Date,
+    excludePendingItemId: string | null,
+  ): Promise<Set<string>> {
+    const taken = new Set<string>();
+    const norm = (s: string): string =>
+      s
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .toLowerCase()
+        .trim();
+    const targetFirst = norm(firstName);
+    const targetLast = norm(lastName);
+    const targetBd = new Date(
+      Date.UTC(
+        birthDate.getUTCFullYear(),
+        birthDate.getUTCMonth(),
+        birthDate.getUTCDate(),
+      ),
+    );
+    const sameIdentity = (
+      f: string | null | undefined,
+      l: string | null | undefined,
+      b: Date | null | undefined,
+    ): boolean => {
+      if (!f || !l || !b) return false;
+      if (norm(f) !== targetFirst) return false;
+      if (norm(l) !== targetLast) return false;
+      const bd2 = new Date(
+        Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate()),
+      );
+      return bd2.getTime() === targetBd.getTime();
+    };
+
+    // Members du foyer matchant l'identité
+    const links = await this.prisma.familyMember.findMany({
+      where: { familyId, memberId: { not: null } },
+      select: {
+        member: {
+          select: { id: true, firstName: true, lastName: true, birthDate: true },
+        },
+      },
+    });
+    const matchingMemberIds = links
+      .map((l) => l.member)
+      .filter(
+        (m): m is NonNullable<typeof m> =>
+          m != null && sameIdentity(m.firstName, m.lastName, m.birthDate),
+      )
+      .map((m) => m.id);
+
+    if (matchingMemberIds.length > 0) {
+      // Factures de la saison
+      const lines = await this.prisma.invoiceLine.findMany({
+        where: {
+          memberId: { in: matchingMemberIds },
+          kind: InvoiceLineKind.MEMBERSHIP_SUBSCRIPTION,
+          membershipProductId: { not: null },
+          invoice: {
+            clubId,
+            clubSeasonId: seasonId,
+            status: { in: [InvoiceStatus.OPEN, InvoiceStatus.PAID] },
+          },
+        },
+        select: { membershipProductId: true },
+      });
+      for (const l of lines) {
+        if (l.membershipProductId) taken.add(l.membershipProductId);
+      }
+      // CartItems dans le cart en cours
+      const items = await this.prisma.membershipCartItem.findMany({
+        where: {
+          cartId,
+          memberId: { in: matchingMemberIds },
+          membershipProductId: { not: null },
+        },
+        select: { membershipProductId: true },
+      });
+      for (const i of items) {
+        if (i.membershipProductId) taken.add(i.membershipProductId);
+      }
+    }
+
+    // Autres pending items du même cart matchant l'identité
+    const pendings = await this.prisma.membershipCartPendingItem.findMany({
+      where: {
+        cartId,
+        convertedToMemberId: null,
+        ...(excludePendingItemId ? { id: { not: excludePendingItemId } } : {}),
+      },
+      select: {
+        firstName: true,
+        lastName: true,
+        birthDate: true,
+        membershipProductIds: true,
+      },
+    });
+    for (const p of pendings) {
+      if (sameIdentity(p.firstName, p.lastName, p.birthDate)) {
+        for (const pid of p.membershipProductIds) {
+          taken.add(pid);
+        }
+      }
+    }
+
+    return taken;
   }
 
   /**
@@ -542,6 +688,31 @@ export class MembershipCartService {
     ) {
       throw new BadRequestException(
         'Le rythme mensuel n’est pas disponible pour une des formules choisies.',
+      );
+    }
+    // Garde-fou anti-doublon : si le payeur essaie de cocher une
+    // formule qui est déjà prise par cette identité ailleurs (autre
+    // pending, member existant, facture validée), on refuse. On
+    // exclut le pending lui-même de la recherche pour qu'il puisse
+    // garder ses propres formules pendant l'édition.
+    const cartFull = await this.prisma.membershipCart.findUniqueOrThrow({
+      where: { id: item.cart.id },
+      select: { familyId: true, clubSeasonId: true },
+    });
+    const taken = await this.computePendingTakenProductIds(
+      clubId,
+      cartFull.familyId,
+      cartFull.clubSeasonId,
+      item.cart.id,
+      item.firstName,
+      item.lastName,
+      item.birthDate,
+      pendingItemId, // exclude self
+    );
+    const conflict = patch.membershipProductIds.filter((id) => taken.has(id));
+    if (conflict.length > 0) {
+      throw new BadRequestException(
+        `${item.firstName} ${item.lastName} a déjà pris ${conflict.length === 1 ? 'cette formule' : 'ces formules'} pour cette saison — impossible de la sélectionner ici.`,
       );
     }
     await this.prisma.membershipCartPendingItem.update({
@@ -969,7 +1140,11 @@ export class MembershipCartService {
     if (memberIds.length === 0) {
       return 0;
     }
-    return this.prisma.invoiceLine.count({
+    // On compte les MEMBRES distincts ayant au moins une cotisation
+    // facturée cette saison — pas le nombre de lignes. Sinon un membre
+    // qui prend Karaté + Cross Training compterait pour 2 dans le rang
+    // famille (alors qu'il s'agit d'un seul adhérent).
+    const distinctMemberLines = await this.prisma.invoiceLine.findMany({
       where: {
         memberId: { in: memberIds },
         kind: InvoiceLineKind.MEMBERSHIP_SUBSCRIPTION,
@@ -979,7 +1154,10 @@ export class MembershipCartService {
           status: { in: [InvoiceStatus.OPEN, InvoiceStatus.PAID] },
         },
       },
+      select: { memberId: true },
+      distinct: ['memberId'],
     });
+    return distinctMemberLines.length;
   }
 
   async computeCartPreview(
