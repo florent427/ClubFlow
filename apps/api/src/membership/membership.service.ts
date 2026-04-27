@@ -704,8 +704,15 @@ export class MembershipService {
         clubId_method: { clubId, method: lockedPaymentMethod },
       },
     });
+    // ⚠️ CRITIQUE : on applique la surcharge/remise par méthode de
+    // paiement sur le `amountCents` (NET après remises legacy +
+    // pricing-rules), pas sur `baseAmountCents` (gross catalogue).
+    // Sinon on écraserait toutes les remises déjà calculées par
+    // validateCart avec le montant brut, et le payeur paierait le
+    // tarif catalogue plein pot. Bug critique précédent : 267 € de
+    // panier devenaient 280 € sur la facture finale.
     const amountCents = applyPricing(
-      invoice.baseAmountCents,
+      invoice.amountCents,
       lockedPaymentMethod,
       rule,
     );
