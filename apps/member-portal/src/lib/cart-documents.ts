@@ -47,6 +47,11 @@ export const MEMBERSHIP_CART_FIELDS = gql`
       membershipProductLabels
       estimatedTotalCents
       billingRhythm
+      pricingRulePreviews {
+        ruleLabel
+        deltaAmountCents
+        reason
+      }
       createdAt
     }
   }
@@ -102,6 +107,15 @@ export const VIEWER_TOGGLE_CART_LICENSE = gql`
 export const VIEWER_REMOVE_CART_ITEM = gql`
   mutation ViewerRemoveCartItem($itemId: String!) {
     viewerRemoveCartItem(itemId: $itemId) {
+      ...MembershipCartFields
+    }
+  }
+  ${MEMBERSHIP_CART_FIELDS}
+`;
+
+export const VIEWER_REMOVE_CART_PENDING_ITEM = gql`
+  mutation ViewerRemoveCartPendingItem($pendingItemId: String!) {
+    viewerRemoveCartPendingItem(pendingItemId: $pendingItemId) {
       ...MembershipCartFields
     }
   }
@@ -177,6 +191,11 @@ export type CartPendingItem = {
   membershipProductLabels: string[];
   estimatedTotalCents: number;
   billingRhythm: 'ANNUAL' | 'MONTHLY';
+  pricingRulePreviews: Array<{
+    ruleLabel: string;
+    deltaAmountCents: number;
+    reason: string;
+  }>;
   createdAt: string;
 };
 

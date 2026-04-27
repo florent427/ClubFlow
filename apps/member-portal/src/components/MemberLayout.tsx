@@ -21,6 +21,10 @@ import { clearAuth, clearClubId, getClubId, setMemberSession } from '../lib/stor
 import { VIEWER_ADMIN_SWITCH, VIEWER_ME } from '../lib/viewer-documents';
 import type { ViewerAdminSwitchData, ViewerMeData } from '../lib/viewer-types';
 import { PendingFamilyInvitesBanner } from './PendingFamilyInvitesBanner';
+import {
+  VIEWER_ACTIVE_CART,
+  type ViewerActiveCartData,
+} from '../lib/cart-documents';
 
 function profileRowKey(p: ViewerProfile): string {
   if (p.memberId) return `m:${p.memberId}`;
@@ -39,7 +43,7 @@ function breadcrumbLabel(pathname: string): string {
   if (pathname.startsWith('/progression')) return 'Ma progression';
   if (pathname.startsWith('/planning')) return 'Planning';
   if (pathname.startsWith('/famille')) return 'Famille & espace partagé';
-  if (pathname.startsWith('/adhesion')) return 'Projet d\u2019adhésion';
+  if (pathname.startsWith('/adhesion')) return 'Panier d\u2019adhésion';
   if (pathname.startsWith('/parametres')) return 'Paramètres';
   if (pathname.startsWith('/messagerie')) return 'Messagerie';
   if (pathname.startsWith('/actus')) return 'Vie du club';
@@ -64,6 +68,25 @@ export function MemberLayout() {
     skip: !clubId,
     fetchPolicy: 'cache-first',
   });
+
+  // Compteur global "panier d'adhésion" affiché en topbar quand le viewer
+  // peut gérer un panier (payeur du foyer). On utilise cache-and-network
+  // pour rester à jour après ajout/suppression d'un membre depuis
+  // n'importe quelle page.
+  const canManageCart = meData?.viewerMe?.canManageMembershipCart === true;
+  const { data: activeCartData } = useQuery<ViewerActiveCartData>(
+    VIEWER_ACTIVE_CART,
+    {
+      skip: !clubId || !canManageCart,
+      fetchPolicy: 'cache-and-network',
+      nextFetchPolicy: 'cache-first',
+    },
+  );
+  const activeCart = activeCartData?.viewerActiveMembershipCart ?? null;
+  const cartItemCount =
+    activeCart && activeCart.status === 'OPEN'
+      ? activeCart.items.length + (activeCart.pendingItems?.length ?? 0)
+      : 0;
 
   const { data: adminSwitchData } = useQuery<ViewerAdminSwitchData>(
     VIEWER_ADMIN_SWITCH,
@@ -241,6 +264,46 @@ export function MemberLayout() {
                   …
                 </button>
               </div>
+            ) : null}
+            {canManageCart ? (
+              <NavLink
+                to="/adhesion"
+                className="mp-icon-btn mp-cart-icon"
+                aria-label={
+                  cartItemCount > 0
+                    ? `Panier d’adhésion (${cartItemCount} article${cartItemCount > 1 ? 's' : ''})`
+                    : 'Panier d’adhésion (vide)'
+                }
+                title="Panier d’adhésion"
+                style={{ position: 'relative' }}
+              >
+                <span className="material-symbols-outlined">
+                  shopping_cart
+                </span>
+                {cartItemCount > 0 ? (
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      position: 'absolute',
+                      top: -2,
+                      right: -2,
+                      minWidth: 18,
+                      height: 18,
+                      padding: '0 4px',
+                      borderRadius: 9,
+                      background: '#dc2626',
+                      color: 'white',
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      lineHeight: '18px',
+                      textAlign: 'center',
+                      boxShadow: '0 0 0 2px white',
+                    }}
+                  >
+                    {cartItemCount}
+                  </span>
+                ) : null}
+              </NavLink>
             ) : null}
             <button
               type="button"

@@ -3,8 +3,10 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   VIEWER_ACTIVE_CART,
+  VIEWER_MEMBERSHIP_CARTS,
   VIEWER_OPEN_CART,
   VIEWER_REGISTER_SELF_AS_MEMBER,
+  VIEWER_REMOVE_CART_PENDING_ITEM,
   type Cart,
   type ViewerActiveCartData,
 } from '../lib/cart-documents';
@@ -48,6 +50,39 @@ export function AdhesionPage() {
     refetchQueries: [{ query: VIEWER_ACTIVE_CART }],
     awaitRefetchQueries: true,
   });
+  const [removePending, { loading: removing }] = useMutation(
+    VIEWER_REMOVE_CART_PENDING_ITEM,
+    {
+      refetchQueries: [
+        { query: VIEWER_ACTIVE_CART },
+        { query: VIEWER_MEMBERSHIP_CARTS },
+      ],
+      awaitRefetchQueries: true,
+    },
+  );
+
+  async function handleRemovePending(
+    pendingItemId: string,
+    name: string,
+  ): Promise<void> {
+    if (removing) return;
+    if (
+      !window.confirm(
+        `Retirer ${name} du panier ? Cette action est immédiate et réversible (vous pourrez l'ajouter à nouveau).`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await removePending({ variables: { pendingItemId } });
+      showToast(`${name} retiré du panier.`, 'success');
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : 'Suppression impossible.',
+        'error',
+      );
+    }
+  }
 
   const isContactOnly = meData?.viewerMe?.isContactProfile === true;
   const canManageMembershipCart =
@@ -291,42 +326,100 @@ export function AdhesionPage() {
                   dans les montants affichés.
                 </p>
                 <div className="mp-cart-item-list">
-                  {cart.pendingItems.map((p) => (
-                    <div
-                      key={p.id}
-                      style={{
-                        padding: 12,
-                        marginBottom: 8,
-                        background: 'rgba(37, 99, 235, 0.04)',
-                        border: '1px solid rgba(37, 99, 235, 0.2)',
-                        borderRadius: 6,
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'flex-start',
-                        gap: 12,
-                      }}
-                    >
-                      <div style={{ flex: 1 }}>
-                        <strong>
-                          {p.firstName} {p.lastName}
-                        </strong>
-                        <br />
-                        <small className="mp-hint">
-                          {p.membershipProductLabels.length} formule
-                          {p.membershipProductLabels.length > 1 ? 's' : ''} :{' '}
-                          {p.membershipProductLabels.join(', ')}
-                        </small>
-                      </div>
+                  {cart.pendingItems.map((p) => {
+                    const fullName = `${p.firstName} ${p.lastName}`;
+                    return (
                       <div
+                        key={p.id}
                         style={{
-                          textAlign: 'right',
-                          fontWeight: 600,
+                          padding: 12,
+                          marginBottom: 8,
+                          background: 'rgba(37, 99, 235, 0.04)',
+                          border: '1px solid rgba(37, 99, 235, 0.2)',
+                          borderRadius: 6,
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'flex-start',
+                          gap: 12,
                         }}
                       >
-                        {(p.estimatedTotalCents / 100).toFixed(2)} €
+                        <div style={{ flex: 1 }}>
+                          <strong>{fullName}</strong>
+                          <br />
+                          <small className="mp-hint">
+                            {p.membershipProductLabels.length} formule
+                            {p.membershipProductLabels.length > 1 ? 's' : ''} :{' '}
+                            {p.membershipProductLabels.join(', ')}
+                          </small>
+                          {p.pricingRulePreviews.length > 0 ? (
+                            <ul
+                              style={{
+                                marginTop: 6,
+                                marginBottom: 0,
+                                paddingLeft: 18,
+                                fontSize: '0.78rem',
+                                color: '#0f766e',
+                              }}
+                            >
+                              {p.pricingRulePreviews.map((r, idx) => (
+                                <li key={idx}>
+                                  <strong>{r.ruleLabel}</strong> :{' '}
+                                  {r.deltaAmountCents < 0 ? '−' : '+'}
+                                  {Math.abs(r.deltaAmountCents / 100).toFixed(2)} €
+                                  <small
+                                    style={{
+                                      marginLeft: 6,
+                                      color: '#475569',
+                                    }}
+                                  >
+                                    {r.reason}
+                                  </small>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </div>
+                        <div
+                          style={{
+                            textAlign: 'right',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'flex-end',
+                            gap: 6,
+                          }}
+                        >
+                          <span style={{ fontWeight: 600 }}>
+                            {(p.estimatedTotalCents / 100).toFixed(2)} €
+                          </span>
+                          <button
+                            type="button"
+                            className="mp-btn mp-btn-outline mp-btn-compact"
+                            disabled={removing}
+                            onClick={() =>
+                              void handleRemovePending(p.id, fullName)
+                            }
+                            aria-label={`Retirer ${fullName} du panier`}
+                            title="Retirer du panier"
+                            style={{
+                              fontSize: '0.75rem',
+                              padding: '4px 8px',
+                              color: '#b91c1c',
+                              borderColor: 'rgba(185, 28, 28, 0.3)',
+                            }}
+                          >
+                            <span
+                              className="material-symbols-outlined"
+                              aria-hidden="true"
+                              style={{ fontSize: '1rem' }}
+                            >
+                              delete
+                            </span>{' '}
+                            Retirer
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ) : null}

@@ -60,12 +60,25 @@ export class MembershipCartPendingItemGraph {
   @Field(() => [String])
   membershipProductLabels!: string[];
 
-  /** Total estimé (somme des annualAmountCents des formules choisies). */
+  /**
+   * Total **définitif** : montant que la facture portera pour ce
+   * pending au moment de la validation (prorata + remises famille +
+   * remises pricing-rules + frais auto déjà appliqués).
+   */
   @Field(() => Int)
   estimatedTotalCents!: number;
 
   @Field(() => SubscriptionBillingRhythm)
   billingRhythm!: SubscriptionBillingRhythm;
+
+  /**
+   * Aperçu des remises pricing-rule qui s'appliqueront sur ce pending
+   * (ex "🎁 Famille progressive : -10 € — 3ᵉ adhérent du foyer"). Le
+   * montant `estimatedTotalCents` les inclut déjà ; ce champ est
+   * informatif (pour expliquer le prix à l'utilisateur).
+   */
+  @Field(() => [PricingRulePreviewGraph])
+  pricingRulePreviews!: PricingRulePreviewGraph[];
 
   @Field(() => GraphQLISODateTime)
   createdAt!: Date;

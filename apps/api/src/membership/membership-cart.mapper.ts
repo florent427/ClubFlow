@@ -109,6 +109,7 @@ export function toMembershipCartGraph(
         membershipProductLabels: labels,
         estimatedTotalCents: pp?.definitiveTotalCents ?? fallbackEstimate,
         billingRhythm: p.billingRhythm,
+        pricingRulePreviews: pp?.pricingRulePreviews ?? [],
         createdAt: p.createdAt,
       };
     });

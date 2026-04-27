@@ -519,6 +519,30 @@ export class ViewerResolver {
     return toMembershipCartGraph(full, preview, productsById);
   }
 
+  @Mutation(() => MembershipCartGraph, {
+    name: 'viewerRemoveCartPendingItem',
+    description:
+      "Retire une inscription en attente du panier d'adhésion. L'utilisateur supprime librement, aucune validation club requise.",
+  })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  async viewerRemoveCartPendingItem(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('pendingItemId') pendingItemId: string,
+  ): Promise<MembershipCartGraph> {
+    const { cartId } = await this.viewer.viewerRemoveMembershipCartPendingItem(
+      club.id,
+      {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      pendingItemId,
+    );
+    const { cart: full, preview, productsById } =
+      await this.membershipCart.getCartFullForGraph(club.id, cartId);
+    return toMembershipCartGraph(full, preview, productsById);
+  }
+
   @Mutation(() => MembershipCartGraph, { name: 'viewerValidateMembershipCart' })
   @RequireClubModule(ModuleCode.MEMBERS)
   async viewerValidateMembershipCart(

@@ -1556,6 +1556,42 @@ export class ViewerService {
     return this.membershipCart.removeItem(clubId, itemId);
   }
 
+  /**
+   * Supprime une inscription en attente du panier (Member non encore créé).
+   * L'utilisateur peut retirer un membre tant que le panier est OPEN — c'est
+   * lui-même qui décide, aucune validation club requise.
+   */
+  async viewerRemoveMembershipCartPendingItem(
+    clubId: string,
+    activeProfile: { memberId: string | null; contactId: string | null },
+    pendingItemId: string,
+  ): Promise<{ cartId: string }> {
+    await this.assertViewerCanManageMembershipCart(clubId, activeProfile);
+    const familyId = await this.resolveViewerFamilyId(clubId, activeProfile);
+    if (!familyId) {
+      throw new BadRequestException('Aucun foyer associé au profil.');
+    }
+    // Ownership : le pending appartient bien au foyer de l'utilisateur.
+    const row = await this.prisma.membershipCartPendingItem.findFirst({
+      where: { id: pendingItemId, cart: { clubId, familyId } },
+      select: { id: true, cartId: true, convertedToMemberId: true },
+    });
+    if (!row) {
+      throw new NotFoundException(
+        'Inscription en attente introuvable pour votre foyer.',
+      );
+    }
+    if (row.convertedToMemberId) {
+      // Edge case improbable (cart déjà validé) — on refuse pour ne pas
+      // créer d'incohérence avec le Member converti.
+      throw new BadRequestException(
+        'Cette inscription a déjà été convertie en adhérent — impossible de la supprimer ici.',
+      );
+    }
+    await this.membershipCart.removePendingItem(clubId, pendingItemId);
+    return { cartId: row.cartId };
+  }
+
   async viewerToggleMembershipCartItemLicense(
     clubId: string,
     activeProfile: { memberId: string | null; contactId: string | null },
