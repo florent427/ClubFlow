@@ -92,4 +92,12 @@ export class ViewerRegisterSelfAsMemberInput {
   @ArrayMaxSize(10)
   @IsUUID(undefined, { each: true })
   membershipProductIds!: string[];
+
+  /**
+   * Rythme de règlement souhaité. Default ANNUAL côté backend si omis.
+   */
+  @Field(() => SubscriptionBillingRhythm, { nullable: true })
+  @IsOptional()
+  @IsEnum(SubscriptionBillingRhythm)
+  billingRhythm?: SubscriptionBillingRhythm | null;
 }

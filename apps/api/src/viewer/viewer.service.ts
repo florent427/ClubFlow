@@ -1947,6 +1947,7 @@ export class ViewerService {
       civility: MemberCivility;
       birthDate: string;
       membershipProductIds: string[];
+      billingRhythm?: SubscriptionBillingRhythm | null;
     },
   ): Promise<{
     pendingItemId: string;
@@ -2042,6 +2043,7 @@ export class ViewerService {
         email,
         contactId: activeProfile.contactId,
         membershipProductIds: input.membershipProductIds,
+        billingRhythm: input.billingRhythm ?? null,
       },
     );
 

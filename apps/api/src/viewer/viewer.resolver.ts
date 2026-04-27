@@ -678,6 +678,7 @@ export class ViewerResolver {
         civility: input.civility,
         birthDate: input.birthDate,
         membershipProductIds: input.membershipProductIds,
+        billingRhythm: input.billingRhythm ?? undefined,
       },
     );
   }

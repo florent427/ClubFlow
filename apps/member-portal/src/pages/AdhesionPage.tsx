@@ -1,4 +1,4 @@
-﻿import { useMutation, useQuery } from '@apollo/client/react';
+import { useMutation, useQuery } from '@apollo/client/react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -501,16 +501,26 @@ export function AdhesionPage() {
 
 // ---------- Modale "M'inscrire aussi" inline ----------
 
+type SelfBillingRhythm = 'ANNUAL' | 'MONTHLY';
+
 function RegisterSelfAsMemberModal({ onClose }: { onClose: () => void }) {
   const { showToast } = useToast();
   const [civility, setCivility] = useState<Civility>('MR');
   const [birthDate, setBirthDate] = useState<string>('');
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [billingRhythm, setBillingRhythm] =
+    useState<SelfBillingRhythm>('ANNUAL');
   const [localError, setLocalError] = useState<string | null>(null);
 
   const [register, { loading }] = useMutation<RegisterSelfResponse>(
     VIEWER_REGISTER_SELF_AS_MEMBER,
-    { refetchQueries: [{ query: VIEWER_ACTIVE_CART }] },
+    {
+      refetchQueries: [
+        { query: VIEWER_ACTIVE_CART },
+        { query: VIEWER_MEMBERSHIP_CARTS },
+      ],
+      awaitRefetchQueries: true,
+    },
   );
 
   // Charge les formules éligibles dès que la date de naissance est saisie.
@@ -528,6 +538,37 @@ function RegisterSelfAsMemberModal({ onClose }: { onClose: () => void }) {
     fetchPolicy: 'cache-and-network',
   });
   const formulas = formulasData?.viewerEligibleMembershipFormulas ?? [];
+
+  // Pré-sélection automatique de la première formule éligible dès que
+  // la liste se peuple — cohérent avec les autres modales du panier.
+  useEffect(() => {
+    if (formulas.length > 0 && selectedProductIds.length === 0) {
+      setSelectedProductIds([formulas[0].id]);
+    }
+  }, [formulas, selectedProductIds.length]);
+
+  // Si une des formules cochées n'a pas de tarif mensuel, on retombe
+  // automatiquement en ANNUAL pour éviter un input invalide.
+  const selectedFormulas = formulas.filter((f) =>
+    selectedProductIds.includes(f.id),
+  );
+  const monthlyAvailable =
+    selectedFormulas.length > 0 &&
+    selectedFormulas.every((f) => f.monthlyAmountCents > 0);
+  useEffect(() => {
+    if (!monthlyAvailable && billingRhythm === 'MONTHLY') {
+      setBillingRhythm('ANNUAL');
+    }
+  }, [monthlyAvailable, billingRhythm]);
+
+  const totalAnnualCents = selectedFormulas.reduce(
+    (s, f) => s + f.annualAmountCents,
+    0,
+  );
+  const totalMonthlyCents = selectedFormulas.reduce(
+    (s, f) => s + f.monthlyAmountCents,
+    0,
+  );
 
   function toggleProduct(productId: string) {
     setSelectedProductIds((prev) =>
@@ -554,6 +595,7 @@ function RegisterSelfAsMemberModal({ onClose }: { onClose: () => void }) {
             civility,
             birthDate,
             membershipProductIds: selectedProductIds,
+            billingRhythm,
           },
         },
       });
@@ -563,7 +605,7 @@ function RegisterSelfAsMemberModal({ onClose }: { onClose: () => void }) {
         return;
       }
       showToast(
-        'Vous êtes ajouté au panier d\u2019adhésion.',
+        `Vous êtes ajouté au panier (${selectedProductIds.length} formule${selectedProductIds.length > 1 ? 's' : ''}, ${billingRhythm === 'ANNUAL' ? 'annuel' : 'mensuel'}).`,
         'success',
       );
       onClose();
@@ -700,6 +742,44 @@ function RegisterSelfAsMemberModal({ onClose }: { onClose: () => void }) {
                 })}
               </div>
             )}
+          </fieldset>
+        ) : null}
+
+        {selectedFormulas.length > 0 ? (
+          <fieldset className="mp-fieldset">
+            <legend className="mp-legend">Rythme de règlement</legend>
+            <label className="mp-radio mp-radio--inline">
+              <input
+                type="radio"
+                name="self-billing"
+                value="ANNUAL"
+                checked={billingRhythm === 'ANNUAL'}
+                onChange={() => setBillingRhythm('ANNUAL')}
+                disabled={loading}
+              />
+              <span>Annuel ({formatEuroCents(totalAnnualCents)})</span>
+            </label>
+            <label
+              className="mp-radio mp-radio--inline"
+              style={{ opacity: monthlyAvailable ? 1 : 0.5 }}
+              title={
+                monthlyAvailable
+                  ? undefined
+                  : 'Une des formules sélectionnées n’est pas disponible en mensuel.'
+              }
+            >
+              <input
+                type="radio"
+                name="self-billing"
+                value="MONTHLY"
+                checked={billingRhythm === 'MONTHLY'}
+                onChange={() => setBillingRhythm('MONTHLY')}
+                disabled={loading || !monthlyAvailable}
+              />
+              <span>
+                Mensuel ({formatEuroCents(totalMonthlyCents)} / mois)
+              </span>
+            </label>
           </fieldset>
         ) : null}
 
