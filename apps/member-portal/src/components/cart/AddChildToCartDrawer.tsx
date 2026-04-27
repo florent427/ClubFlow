@@ -1,7 +1,8 @@
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@apollo/client/react';
-import { useState } from 'react';
 import {
   VIEWER_ACTIVE_CART,
+  VIEWER_MEMBERSHIP_CARTS,
   VIEWER_REGISTER_CHILD_FOR_CART,
 } from '../../lib/cart-documents';
 import { VIEWER_ELIGIBLE_MEMBERSHIP_FORMULAS } from '../../lib/viewer-documents';
@@ -9,6 +10,7 @@ import { useToast } from '../ToastProvider';
 import { formatEuroCents } from '../../lib/format';
 
 type Civility = 'MR' | 'MME';
+type BillingRhythm = 'ANNUAL' | 'MONTHLY';
 
 interface Props {
   open: boolean;
@@ -31,11 +33,18 @@ export function AddChildToCartDrawer({ open, onClose }: Props) {
   const [civility, setCivility] = useState<Civility>('MR');
   const [birthDate, setBirthDate] = useState<string>('');
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [billingRhythm, setBillingRhythm] = useState<BillingRhythm>('ANNUAL');
   const [localError, setLocalError] = useState<string | null>(null);
 
   const [registerChild, { loading }] =
     useMutation<RegisterChildPendingResponse>(VIEWER_REGISTER_CHILD_FOR_CART, {
-      refetchQueries: [{ query: VIEWER_ACTIVE_CART }],
+      // Refetch immédiat pour que le badge panier dans le header se
+      // mette à jour aussitôt que le pending item est créé.
+      refetchQueries: [
+        { query: VIEWER_ACTIVE_CART },
+        { query: VIEWER_MEMBERSHIP_CARTS },
+      ],
+      awaitRefetchQueries: true,
     });
 
   // Charge les formules éligibles selon l'âge.
@@ -53,6 +62,40 @@ export function AddChildToCartDrawer({ open, onClose }: Props) {
   });
   const formulas = formulasData?.viewerEligibleMembershipFormulas ?? [];
 
+  // Pré-sélection automatique : dès que les formules sont chargées et
+  // qu'aucune n'est cochée, on coche la première (cotisation par défaut,
+  // ex. Karaté). L'utilisateur peut en cocher d'autres à la suite.
+  useEffect(() => {
+    if (formulas.length > 0 && selectedProductIds.length === 0) {
+      setSelectedProductIds([formulas[0].id]);
+    }
+  }, [formulas, selectedProductIds.length]);
+
+  // Si la seule formule sélectionnée n'a pas de tarif mensuel, on
+  // force ANNUAL (sinon le payeur enverrait un rythme invalide).
+  const selectedFormulas = useMemo(
+    () => formulas.filter((f) => selectedProductIds.includes(f.id)),
+    [formulas, selectedProductIds],
+  );
+  const monthlyAvailable = selectedFormulas.every(
+    (f) => f.monthlyAmountCents > 0,
+  );
+  useEffect(() => {
+    if (!monthlyAvailable && billingRhythm === 'MONTHLY') {
+      setBillingRhythm('ANNUAL');
+    }
+  }, [monthlyAvailable, billingRhythm]);
+
+  // Totaux affichés en regard du sélecteur de rythme.
+  const totalAnnualCents = selectedFormulas.reduce(
+    (s, f) => s + f.annualAmountCents,
+    0,
+  );
+  const totalMonthlyCents = selectedFormulas.reduce(
+    (s, f) => s + f.monthlyAmountCents,
+    0,
+  );
+
   function toggleProduct(productId: string) {
     setSelectedProductIds((prev) =>
       prev.includes(productId)
@@ -67,6 +110,7 @@ export function AddChildToCartDrawer({ open, onClose }: Props) {
     setCivility('MR');
     setBirthDate('');
     setSelectedProductIds([]);
+    setBillingRhythm('ANNUAL');
     setLocalError(null);
   }
 
@@ -95,7 +139,7 @@ export function AddChildToCartDrawer({ open, onClose }: Props) {
             civility,
             birthDate,
             membershipProductIds: selectedProductIds,
-            billingRhythm: null,
+            billingRhythm,
           },
         },
       });
@@ -105,16 +149,14 @@ export function AddChildToCartDrawer({ open, onClose }: Props) {
         return;
       }
       showToast(
-        `${res.firstName} ${res.lastName} ajouté au projet (${selectedProductIds.length} formule${selectedProductIds.length > 1 ? 's' : ''}). Sa fiche adhérent sera créée à la validation du projet.`,
+        `${res.firstName} ${res.lastName} ajouté au panier (${selectedProductIds.length} formule${selectedProductIds.length > 1 ? 's' : ''}, ${billingRhythm === 'ANNUAL' ? 'annuel' : 'mensuel'}).`,
         'success',
       );
       reset();
       onClose();
     } catch (err: unknown) {
       setLocalError(
-        err instanceof Error
-          ? err.message
-          : 'Impossible d’inscrire l’enfant.',
+        err instanceof Error ? err.message : 'Impossible d’inscrire l’enfant.',
       );
     }
   }
@@ -135,12 +177,12 @@ export function AddChildToCartDrawer({ open, onClose }: Props) {
         aria-labelledby="add-child-title"
       >
         <h2 id="add-child-title" className="mp-modal-title">
-          Ajouter un enfant au projet
+          Ajouter un enfant au panier
         </h2>
         <p className="mp-hint mp-modal-lede">
-          Vous pouvez sélectionner plusieurs formules (ex Karaté +
-          Cross Training). La fiche adhérent sera créée à la validation
-          du projet — pas avant.
+          Vous pouvez sélectionner plusieurs formules (ex Karaté + Cross
+          Training). La fiche adhérent sera créée à la validation du
+          panier — pas avant.
         </p>
 
         <label className="mp-field">
@@ -211,8 +253,8 @@ export function AddChildToCartDrawer({ open, onClose }: Props) {
             {formulasLoading ? (
               <p className="mp-hint">Chargement…</p>
             ) : formulas.length === 0 ? (
-              <p className="mp-hint">
-                Aucune formule disponible pour cet âge — contacte le club.
+              <p className="mp-hint mp-hint--warn">
+                Aucune formule disponible pour cet âge — contactez le club.
               </p>
             ) : (
               formulas.map((f) => {
@@ -232,7 +274,9 @@ export function AddChildToCartDrawer({ open, onClose }: Props) {
                         : '1px solid #e5e7eb',
                       borderRadius: 6,
                       cursor: 'pointer',
-                      background: checked ? 'rgba(37, 99, 235, 0.05)' : 'white',
+                      background: checked
+                        ? 'rgba(37, 99, 235, 0.05)'
+                        : 'white',
                     }}
                   >
                     <input
@@ -259,6 +303,44 @@ export function AddChildToCartDrawer({ open, onClose }: Props) {
           </fieldset>
         ) : null}
 
+        {selectedFormulas.length > 0 ? (
+          <fieldset className="mp-fieldset">
+            <legend className="mp-legend">Rythme de règlement</legend>
+            <label className="mp-radio mp-radio--inline">
+              <input
+                type="radio"
+                name="add-child-billing"
+                value="ANNUAL"
+                checked={billingRhythm === 'ANNUAL'}
+                onChange={() => setBillingRhythm('ANNUAL')}
+                disabled={loading}
+              />
+              <span>Annuel ({formatEuroCents(totalAnnualCents)})</span>
+            </label>
+            <label
+              className="mp-radio mp-radio--inline"
+              style={{ opacity: monthlyAvailable ? 1 : 0.5 }}
+              title={
+                monthlyAvailable
+                  ? undefined
+                  : 'Une des formules sélectionnées n’est pas disponible en mensuel.'
+              }
+            >
+              <input
+                type="radio"
+                name="add-child-billing"
+                value="MONTHLY"
+                checked={billingRhythm === 'MONTHLY'}
+                onChange={() => setBillingRhythm('MONTHLY')}
+                disabled={loading || !monthlyAvailable}
+              />
+              <span>
+                Mensuel ({formatEuroCents(totalMonthlyCents)} / mois)
+              </span>
+            </label>
+          </fieldset>
+        ) : null}
+
         {localError ? (
           <p className="mp-form-error" role="alert">
             {localError}
@@ -280,7 +362,7 @@ export function AddChildToCartDrawer({ open, onClose }: Props) {
             disabled={loading}
             onClick={() => void handleSubmit()}
           >
-            {loading ? 'Ajout…' : 'Ajouter au projet'}
+            {loading ? 'Ajout…' : 'Ajouter au panier'}
           </button>
         </div>
       </div>
