@@ -1728,7 +1728,15 @@ export class ViewerService {
         },
         select: { linkRole: true },
       });
-      if (!row) return false;
+      if (!row) {
+        // Pas encore de famille rattachée — un Contact (adulte par
+        // construction du portail) peut quand même piloter un panier :
+        // la famille sera auto-créée à la 1ère inscription via
+        // `viewerRegisterChildMember` / `viewerRegisterSelfAsMember`
+        // (le Contact y est posé comme PAYER). Sinon le user verrait
+        // "Accès refusé" alors qu'il vient juste de créer son compte.
+        return true;
+      }
       return row.linkRole === FamilyMemberLinkRole.PAYER;
     }
     return false;
@@ -1790,11 +1798,32 @@ export class ViewerService {
     seasonId?: string | null,
   ) {
     await this.assertViewerCanManageMembershipCart(clubId, activeProfile);
-    const familyId = await this.resolveViewerFamilyId(clubId, activeProfile);
+    let familyId = await this.resolveViewerFamilyId(clubId, activeProfile);
     if (!familyId) {
-      throw new BadRequestException(
-        'Aucun foyer associé au profil sélectionné.',
-      );
+      // Auto-création du foyer pour un Contact qui n'en a pas encore.
+      // Cas typique : 1er panier d'un nouveau compte portail. La même
+      // logique est appliquée dans viewerRegisterSelfAsMember /
+      // viewerRegisterChildMember (cohérence cross-flow).
+      if (!activeProfile.contactId) {
+        throw new BadRequestException(
+          'Aucun foyer associé au profil sélectionné.',
+        );
+      }
+      const newFamily = await this.prisma.family.create({
+        data: {
+          clubId,
+          familyMembers: {
+            create: [
+              {
+                contactId: activeProfile.contactId,
+                linkRole: FamilyMemberLinkRole.PAYER,
+              },
+            ],
+          },
+        },
+        select: { id: true },
+      });
+      familyId = newFamily.id;
     }
     const targetSeasonId =
       seasonId ??

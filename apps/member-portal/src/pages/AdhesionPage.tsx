@@ -124,7 +124,7 @@ export function AdhesionPage() {
         <header className="mp-page-head">
           <div>
             <p className="mp-eyebrow">Saison active</p>
-            <h1 className="mp-page-title">Projet d&rsquo;adhésion</h1>
+            <h1 className="mp-page-title">Panier d&rsquo;adhésion</h1>
           </div>
         </header>
         <section className="mp-empty-state">
