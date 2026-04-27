@@ -476,10 +476,35 @@ export const VIEWER_PLACE_SHOP_ORDER = gql`
 `;
 
 export const VIEWER_CREATE_INVOICE_CHECKOUT_SESSION = gql`
-  mutation ViewerCreateInvoiceCheckoutSession($invoiceId: String!) {
-    viewerCreateInvoiceCheckoutSession(invoiceId: $invoiceId) {
+  mutation ViewerCreateInvoiceCheckoutSession(
+    $invoiceId: String!
+    $installmentsCount: Int
+  ) {
+    viewerCreateInvoiceCheckoutSession(
+      invoiceId: $invoiceId
+      installmentsCount: $installmentsCount
+    ) {
       url
       sessionId
+    }
+  }
+`;
+
+export const VIEWER_LOCK_INVOICE_PAYMENT_CHOICE = gql`
+  mutation ViewerLockInvoicePaymentChoice(
+    $invoiceId: String!
+    $method: ClubPaymentMethod!
+    $installmentsCount: Int
+  ) {
+    viewerLockInvoicePaymentChoice(
+      invoiceId: $invoiceId
+      method: $method
+      installmentsCount: $installmentsCount
+    ) {
+      invoiceId
+      method
+      installmentsCount
+      instructions
     }
   }
 `;

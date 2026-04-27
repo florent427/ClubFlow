@@ -49,6 +49,16 @@ export class StripeCheckoutService {
     invoiceId: string;
     clubId: string;
     paidByMemberId: string | null;
+    /**
+     * Nombre de versements souhaités côté payeur (1 ou 3). Pour 3, on
+     * active l'option `payment_method_options.card.installments` côté
+     * Stripe — fonctionne uniquement si le compte Stripe du club a
+     * activé les paiements en plusieurs fois (sinon Stripe propose
+     * automatiquement un fallback paiement comptant). Le marquage
+     * `installmentsCount` sur l'Invoice est posé en amont par le
+     * resolver pour que le club voie le choix dans son back-office.
+     */
+    installmentsCount?: number;
   }): Promise<{ url: string; sessionId: string }> {
     const invoice = await this.prisma.invoice.findFirst({
       where: {
@@ -91,6 +101,11 @@ export class StripeCheckoutService {
     }
 
     const stripe = this.getStripe();
+    const installmentsRequested =
+      typeof args.installmentsCount === 'number' && args.installmentsCount > 1;
+    if (installmentsRequested) {
+      metadata.installmentsRequested = String(args.installmentsCount);
+    }
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
@@ -109,6 +124,17 @@ export class StripeCheckoutService {
       ],
       metadata,
       payment_intent_data: { metadata },
+      // Stripe propose au payeur le choix "comptant ou en plusieurs
+      // fois" si le compte du club a activé les installments France.
+      // On exprime simplement l'intention ; en cas d'incompatibilité,
+      // Stripe retombe automatiquement sur un paiement comptant.
+      ...(installmentsRequested
+        ? {
+            payment_method_options: {
+              card: { installments: { enabled: true } },
+            },
+          }
+        : {}),
       success_url: successUrl,
       cancel_url: cancelUrl,
     });

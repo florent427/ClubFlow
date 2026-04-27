@@ -1,7 +1,7 @@
 import { BadRequestException, UseGuards } from '@nestjs/common';
-import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Args, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Throttle } from '@nestjs/throttler';
-import type { Club } from '@prisma/client';
+import { ClubPaymentMethod, type Club } from '@prisma/client';
 import { CurrentClub } from '../common/decorators/current-club.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequireClubModule } from '../common/decorators/require-club-module.decorator';
@@ -29,6 +29,7 @@ import { ViewerUpdateMyProfileInput } from './dto/viewer-update-my-profile.input
 import { ViewerUpdateMyPseudoInput } from './dto/viewer-update-my-pseudo.input';
 import { ViewerCourseSlotGraph } from './models/viewer-course-slot.model';
 import { ViewerCheckoutSessionGraph } from './models/viewer-checkout-session.model';
+import { ViewerInvoicePaymentChoiceGraph } from './models/viewer-invoice-payment-choice.model';
 import { ViewerFamilyBillingSummaryGraph } from './models/viewer-family-billing.model';
 import { ViewerFamilyJoinResultGraph } from './models/viewer-family-join-result.model';
 import { ViewerMemberGraph } from './models/viewer-member.model';
@@ -375,7 +376,7 @@ export class ViewerResolver {
   @Mutation(() => ViewerCheckoutSessionGraph, {
     name: 'viewerCreateInvoiceCheckoutSession',
     description:
-      'Crée une session Stripe Checkout pour régler une facture du foyer viewer. Retourne l’URL hébergée Stripe.',
+      'Crée une session Stripe Checkout pour régler une facture du foyer viewer. Retourne l’URL hébergée Stripe. Si `installmentsCount=3`, l’option Stripe carte 3× est demandée (compatibilité dépend du compte Stripe du club).',
   })
   @RequireClubModule(ModuleCode.PAYMENT)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
@@ -383,6 +384,8 @@ export class ViewerResolver {
     @CurrentUser() user: RequestUser,
     @CurrentClub() club: Club,
     @Args('invoiceId') invoiceId: string,
+    @Args('installmentsCount', { type: () => Int, nullable: true })
+    installmentsCount?: number,
   ): Promise<ViewerCheckoutSessionGraph> {
     return this.viewer.viewerCreateInvoiceCheckoutSession({
       clubId: club.id,
@@ -392,6 +395,35 @@ export class ViewerResolver {
         contactId: user.activeProfileContactId ?? null,
       },
       viewerUserId: user.userId,
+      installmentsCount: installmentsCount ?? undefined,
+    });
+  }
+
+  @Mutation(() => ViewerInvoicePaymentChoiceGraph, {
+    name: 'viewerLockInvoicePaymentChoice',
+    description:
+      'Verrouille un mode de règlement manuel (espèces / chèque / virement) sur une facture, avec échéancier 1× ou 3×. Retourne les instructions à afficher au payeur.',
+  })
+  @RequireClubModule(ModuleCode.PAYMENT)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  viewerLockInvoicePaymentChoice(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('invoiceId') invoiceId: string,
+    @Args('method', { type: () => ClubPaymentMethod }) method: ClubPaymentMethod,
+    @Args('installmentsCount', { type: () => Int, nullable: true })
+    installmentsCount?: number,
+  ): Promise<ViewerInvoicePaymentChoiceGraph> {
+    return this.viewer.viewerLockInvoicePaymentChoice({
+      clubId: club.id,
+      invoiceId,
+      activeProfile: {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      viewerUserId: user.userId,
+      method,
+      installmentsCount: installmentsCount ?? undefined,
     });
   }
 

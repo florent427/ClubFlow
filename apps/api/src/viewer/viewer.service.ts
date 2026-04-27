@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  ClubPaymentMethod,
   FamilyMemberLinkRole,
   InvoiceStatus,
   MemberCivility,
@@ -44,6 +45,16 @@ import {
 import { ViewerFamilyJoinResultGraph } from './models/viewer-family-join-result.model';
 import { ViewerMemberGraph } from './models/viewer-member.model';
 import { MemberPseudoService } from '../messaging/member-pseudo.service';
+
+/**
+ * Réduit un input arbitraire au seul ensemble des échéanciers supportés
+ * en V1 : 1 (paiement comptant) ou 3 (en 3 fois). Tout autre nombre est
+ * borné silencieusement.
+ */
+function normalizeInstallments(n: unknown): number {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return 1;
+  return n >= 3 ? 3 : 1;
+}
 
 @Injectable()
 export class ViewerService {
@@ -154,6 +165,8 @@ export class ViewerService {
     invoiceId: string;
     activeProfile: { memberId: string | null; contactId: string | null };
     viewerUserId: string;
+    /** 1 = paiement comptant. 3 = échelonnement Stripe (carte 3 fois). */
+    installmentsCount?: number;
   }): Promise<{ url: string; sessionId: string }> {
     const where = args.activeProfile.memberId
       ? await this.buildPayerInvoiceWhereForMember(
@@ -180,11 +193,123 @@ export class ViewerService {
     if (!invoice) {
       throw new NotFoundException('Facture introuvable ou déjà réglée.');
     }
+    // Verrouille la méthode + l'échéancier sur la facture pour traçabilité
+    // back-office (le club voit "carte 3x" comme choix du payeur même si
+    // Stripe lui-même retombe en comptant).
+    const installments = normalizeInstallments(args.installmentsCount);
+    await this.prisma.invoice.update({
+      where: { id: invoice.id },
+      data: {
+        lockedPaymentMethod: ClubPaymentMethod.STRIPE_CARD,
+        installmentsCount: installments,
+      },
+    });
     return this.stripeCheckout.createInvoiceCheckoutSession({
       invoiceId: invoice.id,
       clubId: args.clubId,
       paidByMemberId: args.activeProfile.memberId ?? null,
+      installmentsCount: installments,
     });
+  }
+
+  /**
+   * Verrouille un mode de paiement manuel (espèces / chèque / virement)
+   * + un échéancier sur la facture. Le payeur reçoit en retour les
+   * instructions de règlement (RIB pour virement, adresse pour chèque,
+   * etc.). Le club marquera la facture comme réglée à réception du
+   * paiement (ou des paiements si 3×).
+   */
+  async viewerLockInvoicePaymentChoice(args: {
+    clubId: string;
+    invoiceId: string;
+    activeProfile: { memberId: string | null; contactId: string | null };
+    viewerUserId: string;
+    method: ClubPaymentMethod;
+    installmentsCount?: number;
+  }): Promise<{
+    invoiceId: string;
+    method: ClubPaymentMethod;
+    installmentsCount: number;
+    instructions: string;
+  }> {
+    const where = args.activeProfile.memberId
+      ? await this.buildPayerInvoiceWhereForMember(
+          args.clubId,
+          args.activeProfile.memberId,
+          args.viewerUserId,
+        )
+      : args.activeProfile.contactId
+        ? await this.buildPayerInvoiceWhereForContact(
+            args.clubId,
+            args.activeProfile.contactId,
+            args.viewerUserId,
+          )
+        : null;
+    if (!where) {
+      throw new BadRequestException(
+        'Seul le payeur du foyer peut choisir un mode de règlement.',
+      );
+    }
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { ...where, id: args.invoiceId, status: InvoiceStatus.OPEN },
+      select: { id: true, amountCents: true, label: true },
+    });
+    if (!invoice) {
+      throw new NotFoundException('Facture introuvable ou déjà réglée.');
+    }
+    if (args.method === ClubPaymentMethod.STRIPE_CARD) {
+      throw new BadRequestException(
+        'Pour la carte bancaire, utilisez `viewerCreateInvoiceCheckoutSession`.',
+      );
+    }
+    const installments = normalizeInstallments(args.installmentsCount);
+    await this.prisma.invoice.update({
+      where: { id: invoice.id },
+      data: {
+        lockedPaymentMethod: args.method,
+        installmentsCount: installments,
+      },
+    });
+    const instructions = this.buildManualPaymentInstructions({
+      method: args.method,
+      installments,
+      amountCents: invoice.amountCents,
+      label: invoice.label,
+    });
+    return {
+      invoiceId: invoice.id,
+      method: args.method,
+      installmentsCount: installments,
+      instructions,
+    };
+  }
+
+  /**
+   * Texte court à afficher au payeur après son choix de mode manuel.
+   * V1 : générique, pas encore les coordonnées RIB du club (ce sera
+   * une amélioration via Club.iban / Club.bic / Club.mailingAddress).
+   */
+  private buildManualPaymentInstructions(args: {
+    method: ClubPaymentMethod;
+    installments: number;
+    amountCents: number;
+    label: string;
+  }): string {
+    const perInstall = Math.round(args.amountCents / args.installments);
+    const installPart =
+      args.installments === 1
+        ? `Montant à régler : ${(args.amountCents / 100).toFixed(2)} €.`
+        : `Échéancier : ${args.installments} versements de ${(perInstall / 100).toFixed(2)} € (1 par mois).`;
+    switch (args.method) {
+      case ClubPaymentMethod.MANUAL_TRANSFER:
+        return `Virement bancaire — ${installPart} Le club vous transmet ses coordonnées (IBAN/BIC) par e-mail. Indiquez "${args.label}" en référence du virement.`;
+      case ClubPaymentMethod.MANUAL_CHECK:
+        return `Chèque — ${installPart} Libellez le(s) chèque(s) à l'ordre du club et déposez-les lors du prochain entraînement (ou envoyez-les par courrier).`;
+      case ClubPaymentMethod.MANUAL_CASH:
+        return `Espèces — ${installPart} Apportez le règlement au club lors du prochain entraînement, contre un reçu.`;
+      default:
+        return installPart;
+    }
   }
 
   async viewerEligibleMembershipFormulas(

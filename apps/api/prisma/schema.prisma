@@ -1294,6 +1294,11 @@ model Invoice {
   amountCents           Int
   status                InvoiceStatus      @default(OPEN)
   lockedPaymentMethod   ClubPaymentMethod?
+  /// Nombre de versements demandés par le payeur. 1 = paiement complet,
+  /// 3 = échelonnement en 3 versements (option exposée pour les
+  /// cotisations annuelles uniquement). Le club peut suivre l'échéancier
+  /// dans son back-office (paiements partiels reçus).
+  installmentsCount     Int                @default(1)
   dueAt                 DateTime?
   stripePaymentIntentId String?            @unique
   /// Dernière date d'envoi d'un e-mail de relance pour cette facture.
