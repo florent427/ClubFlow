@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   VIEWER_ACTIVE_CART,
@@ -342,72 +342,30 @@ export function AdhesionPage() {
                           background: 'rgba(37, 99, 235, 0.04)',
                           border: '1px solid rgba(37, 99, 235, 0.2)',
                           borderRadius: 6,
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'flex-start',
-                          gap: 12,
                         }}
                       >
-                        <div style={{ flex: 1 }}>
-                          <strong>{fullName}</strong>
-                          <br />
-                          <small className="mp-hint">
-                            {p.membershipProductLabels.length} formule
-                            {p.membershipProductLabels.length > 1 ? 's' : ''} :{' '}
-                            {p.membershipProductLabels.join(', ')}
-                          </small>
-                          {p.pricingRulePreviews.length > 0 ? (
-                            <ul
-                              style={{
-                                marginTop: 6,
-                                marginBottom: 0,
-                                paddingLeft: 18,
-                                fontSize: '0.78rem',
-                                color: '#0f766e',
-                              }}
-                            >
-                              {p.pricingRulePreviews.map((r, idx) => (
-                                <li key={idx}>
-                                  <strong>{r.ruleLabel}</strong> :{' '}
-                                  {r.deltaAmountCents < 0 ? '−' : '+'}
-                                  {Math.abs(r.deltaAmountCents / 100).toFixed(2)} €
-                                  <small
-                                    style={{
-                                      marginLeft: 6,
-                                      color: '#475569',
-                                    }}
-                                  >
-                                    {r.reason}
-                                  </small>
-                                </li>
-                              ))}
-                            </ul>
-                          ) : null}
-                        </div>
+                        {/* Header : nom + actions */}
                         <div
                           style={{
-                            textAlign: 'right',
                             display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'flex-end',
-                            gap: 6,
+                            justifyContent: 'space-between',
+                            alignItems: 'flex-start',
+                            gap: 12,
+                            marginBottom: 8,
                           }}
                         >
-                          <span style={{ fontWeight: 600 }}>
-                            {(p.estimatedTotalCents / 100).toFixed(2)} €
-                          </span>
-                          <small
-                            className="mp-hint"
-                            style={{
-                              fontSize: '0.7rem',
-                              fontWeight: 400,
-                              opacity: 0.85,
-                            }}
-                          >
-                            {p.billingRhythm === 'ANNUAL'
-                              ? 'annuel'
-                              : 'mensuel'}
-                          </small>
+                          <div>
+                            <strong style={{ fontSize: '1rem' }}>
+                              {fullName}
+                            </strong>
+                            <br />
+                            <small className="mp-hint">
+                              Rythme :{' '}
+                              {p.billingRhythm === 'ANNUAL'
+                                ? 'annuel'
+                                : 'mensuel'}
+                            </small>
+                          </div>
                           <div style={{ display: 'flex', gap: 6 }}>
                             <button
                               type="button"
@@ -457,6 +415,154 @@ export function AdhesionPage() {
                             </button>
                           </div>
                         </div>
+
+                        {/* Ventilation détaillée : 1 ligne par formule
+                            + frais uniques + remises pricing-rule + total */}
+                        <dl
+                          style={{
+                            margin: 0,
+                            display: 'grid',
+                            gridTemplateColumns: '1fr auto',
+                            rowGap: 4,
+                            columnGap: 12,
+                            fontSize: '0.85rem',
+                          }}
+                        >
+                          {p.perProduct.length > 0 ? (
+                            p.perProduct.map((entry) => (
+                              <Fragment key={entry.productId}>
+                                <dt style={{ margin: 0 }}>
+                                  Cotisation {entry.productLabel}
+                                  {entry.subscriptionBaseCents !==
+                                  entry.subscriptionAdjustedCents ? (
+                                    <small
+                                      className="mp-hint"
+                                      style={{
+                                        marginLeft: 4,
+                                        fontSize: '0.7rem',
+                                        textDecoration: 'line-through',
+                                        opacity: 0.6,
+                                      }}
+                                    >
+                                      {formatEuroCents(
+                                        entry.subscriptionBaseCents,
+                                      )}
+                                    </small>
+                                  ) : null}
+                                </dt>
+                                <dd
+                                  style={{
+                                    margin: 0,
+                                    textAlign: 'right',
+                                    fontVariantNumeric: 'tabular-nums',
+                                  }}
+                                >
+                                  {formatEuroCents(
+                                    entry.subscriptionAdjustedCents,
+                                  )}
+                                </dd>
+                              </Fragment>
+                            ))
+                          ) : (
+                            // Fallback si le preview n'a pas pu être calculé
+                            <>
+                              <dt style={{ margin: 0 }}>
+                                {p.membershipProductLabels.length} formule
+                                {p.membershipProductLabels.length > 1
+                                  ? 's'
+                                  : ''}{' '}
+                                : {p.membershipProductLabels.join(', ')}
+                              </dt>
+                              <dd
+                                style={{
+                                  margin: 0,
+                                  textAlign: 'right',
+                                  fontVariantNumeric: 'tabular-nums',
+                                }}
+                              >
+                                {formatEuroCents(p.subscriptionAdjustedCents)}
+                              </dd>
+                            </>
+                          )}
+
+                          {p.oneTimeFeesCents > 0 ? (
+                            <>
+                              <dt style={{ margin: 0 }}>
+                                Frais uniques (licence…)
+                              </dt>
+                              <dd
+                                style={{
+                                  margin: 0,
+                                  textAlign: 'right',
+                                  fontVariantNumeric: 'tabular-nums',
+                                }}
+                              >
+                                {formatEuroCents(p.oneTimeFeesCents)}
+                              </dd>
+                            </>
+                          ) : null}
+
+                          {p.pricingRulePreviews.map((r, idx) => (
+                            <Fragment key={`rule-${idx}`}>
+                              <dt
+                                style={{
+                                  margin: 0,
+                                  color: '#0f766e',
+                                }}
+                                title={r.reason}
+                              >
+                                🎁 {r.ruleLabel}
+                                <br />
+                                <small
+                                  className="mp-hint"
+                                  style={{
+                                    fontSize: '0.7rem',
+                                    color: '#0f766e',
+                                    opacity: 0.85,
+                                  }}
+                                >
+                                  {r.reason}
+                                </small>
+                              </dt>
+                              <dd
+                                style={{
+                                  margin: 0,
+                                  textAlign: 'right',
+                                  color: '#0f766e',
+                                  fontVariantNumeric: 'tabular-nums',
+                                }}
+                              >
+                                {r.deltaAmountCents < 0 ? '−' : '+'}
+                                {formatEuroCents(
+                                  Math.abs(r.deltaAmountCents),
+                                )}
+                              </dd>
+                            </Fragment>
+                          ))}
+
+                          <dt
+                            style={{
+                              margin: 0,
+                              paddingTop: 6,
+                              borderTop: '1px solid rgba(37, 99, 235, 0.25)',
+                              fontWeight: 600,
+                            }}
+                          >
+                            Total ligne
+                          </dt>
+                          <dd
+                            style={{
+                              margin: 0,
+                              paddingTop: 6,
+                              borderTop: '1px solid rgba(37, 99, 235, 0.25)',
+                              fontWeight: 700,
+                              textAlign: 'right',
+                              fontVariantNumeric: 'tabular-nums',
+                            }}
+                          >
+                            {formatEuroCents(p.estimatedTotalCents)}
+                          </dd>
+                        </dl>
                       </div>
                     );
                   })}

@@ -46,7 +46,16 @@ export const MEMBERSHIP_CART_FIELDS = gql`
       membershipProductIds
       membershipProductLabels
       estimatedTotalCents
+      subscriptionAdjustedCents
+      oneTimeFeesCents
       billingRhythm
+      perProduct {
+        productId
+        productLabel
+        subscriptionBaseCents
+        subscriptionAdjustedCents
+        pricingRulesDeltaCents
+      }
       pricingRulePreviews {
         ruleLabel
         deltaAmountCents
@@ -200,7 +209,20 @@ export type CartPendingItem = {
   birthDate: string;
   membershipProductIds: string[];
   membershipProductLabels: string[];
+  /** Total final que portera la facture (toutes remises incluses). */
   estimatedTotalCents: number;
+  /** Somme des cotisations ajustées (avant pricing-rules). */
+  subscriptionAdjustedCents: number;
+  /** Frais auto-applicables (licence, etc.). */
+  oneTimeFeesCents: number;
+  /** Détail par formule sélectionnée. */
+  perProduct: Array<{
+    productId: string;
+    productLabel: string;
+    subscriptionBaseCents: number;
+    subscriptionAdjustedCents: number;
+    pricingRulesDeltaCents: number;
+  }>;
   billingRhythm: 'ANNUAL' | 'MONTHLY';
   pricingRulePreviews: Array<{
     ruleLabel: string;

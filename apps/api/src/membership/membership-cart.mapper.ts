@@ -97,6 +97,22 @@ export function toMembershipCartGraph(
         (sum, id) => sum + (productsById?.get(id)?.annualAmountCents ?? 0),
         0,
       );
+      // Détail par formule : on enrichit chaque entrée du preview avec
+      // le label produit (résolu via productsById) pour un affichage
+      // sans round-trip côté front.
+      const perProduct = (pp?.perProduct ?? []).map((entry) => ({
+        productId: entry.productId,
+        productLabel:
+          productsById?.get(entry.productId)?.label ??
+          `Formule ${entry.productId.slice(0, 6)}…`,
+        subscriptionBaseCents: entry.subscriptionBaseCents,
+        subscriptionAdjustedCents: entry.subscriptionAdjustedCents,
+        pricingRulesDeltaCents: entry.pricingRulesDeltaCents,
+      }));
+      const subscriptionAdjustedCents = perProduct.reduce(
+        (s, e) => s + e.subscriptionAdjustedCents,
+        0,
+      );
       return {
         id: p.id,
         cartId: p.cartId,
@@ -108,6 +124,9 @@ export function toMembershipCartGraph(
         membershipProductIds: p.membershipProductIds,
         membershipProductLabels: labels,
         estimatedTotalCents: pp?.definitiveTotalCents ?? fallbackEstimate,
+        subscriptionAdjustedCents,
+        oneTimeFeesCents: pp?.oneTimeFeesCents ?? 0,
+        perProduct,
         billingRhythm: p.billingRhythm,
         pricingRulePreviews: pp?.pricingRulePreviews ?? [],
         createdAt: p.createdAt,

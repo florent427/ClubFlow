@@ -24,6 +24,40 @@ export class PricingRulePreviewGraph {
 }
 
 /**
+ * Détail d'une formule au sein d'une inscription en attente. Permet à
+ * l'UI d'afficher la ventilation par formule (« Cotisation Karaté :
+ * 360 € », « Cotisation Cross Training : 690 € »…) avec les remises
+ * pricing-rule éventuellement appliquées sur chaque ligne.
+ */
+@ObjectType()
+export class MembershipCartPendingPerProductGraph {
+  @Field(() => ID)
+  productId!: string;
+
+  @Field(() => String)
+  productLabel!: string;
+
+  /** Tarif de base catalogue (annuel ou mensuel selon billingRhythm). */
+  @Field(() => Int)
+  subscriptionBaseCents!: number;
+
+  /**
+   * Tarif après ajustements légacy (prorata + remise famille hard-codée
+   * + remise exceptionnelle). N'inclut PAS les remises pricing-rule —
+   * celles-ci sont sur le champ `pricingRulesDeltaCents` ci-dessous.
+   */
+  @Field(() => Int)
+  subscriptionAdjustedCents!: number;
+
+  /**
+   * Somme des deltas pricing-rule (config Settings → Adhésion) qui
+   * s'appliquent à cette formule. Toujours négatif pour une remise.
+   */
+  @Field(() => Int)
+  pricingRulesDeltaCents!: number;
+}
+
+/**
  * Inscription "en attente" : le Member n'est pas encore créé. Affiché
  * dans le cart au même titre que les `items`, avec un badge "à valider"
  * pour différenciation. Convertie en CartItem + Member réel à la
@@ -67,6 +101,25 @@ export class MembershipCartPendingItemGraph {
    */
   @Field(() => Int)
   estimatedTotalCents!: number;
+
+  /**
+   * Somme des cotisations ajustées (tarif après prorata + remise
+   * famille hard-codée + remise exceptionnelle), avant pricing-rules.
+   * Sert à afficher la ventilation détaillée dans le panier.
+   */
+  @Field(() => Int)
+  subscriptionAdjustedCents!: number;
+
+  /** Frais uniques auto-applicables (licence fédérale, etc.). */
+  @Field(() => Int)
+  oneTimeFeesCents!: number;
+
+  /**
+   * Détail par formule sélectionnée (1 entrée par membershipProductId).
+   * Permet à l'UI panier de lister chaque cotisation séparément.
+   */
+  @Field(() => [MembershipCartPendingPerProductGraph])
+  perProduct!: MembershipCartPendingPerProductGraph[];
 
   @Field(() => SubscriptionBillingRhythm)
   billingRhythm!: SubscriptionBillingRhythm;
