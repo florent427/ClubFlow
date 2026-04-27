@@ -1013,6 +1013,14 @@ export class MembershipCartService {
     const itemsPreview: CartItemPreview[] = [];
     let familyCursor = priorCount;
     let total = 0;
+    /**
+     * Stocke `subtotalAfterBusinessCents` (post-prorata + post-family
+     * legacy) par itemId. Utilisé plus bas dans le snapshot envoyé au
+     * PricingRulesEngine pour que les pourcentages soient calculés sur
+     * le bon montant — identique à validateCart, sinon le total preview
+     * dévie de quelques cents par rapport à la facture finale.
+     */
+    const subtotalByItemKey = new Map<string, number>();
 
     for (const item of cart.items) {
       const product = item.product;
@@ -1077,6 +1085,9 @@ export class MembershipCartService {
         exceptional,
       });
       familyCursor += 1;
+      // Snapshot post-legacy pour le pricing-engine plus bas (cohérent
+      // avec validateCart).
+      subtotalByItemKey.set(item.id, subtotalAfterBusinessCents);
 
       // Frais uniques auto-applicables filtrés par licence
       const effectiveFees = autoFees.filter((f) => {
@@ -1134,6 +1145,9 @@ export class MembershipCartService {
       string,
       { pendingId: string; productId: string; factorBp: number }
     >();
+    // Subtotal post-legacy par virtualItemId — utilisé comme base pour
+    // les pricing rules, EXACTEMENT comme validateCart.
+    const subtotalByVirtualId = new Map<string, number>();
     for (const p of activePending) {
       const virtualIds: string[] = [];
       const perProduct: CartPendingPreview['perProduct'] = [];
@@ -1179,6 +1193,7 @@ export class MembershipCartService {
           productId,
           factorBp,
         });
+        subtotalByVirtualId.set(virtualItemId, subtotalAfterBusinessCents);
         perProduct.push({
           productId,
           subscriptionBaseCents: subscriptionBase,
@@ -1231,8 +1246,6 @@ export class MembershipCartService {
             i.billingRhythm === SubscriptionBillingRhythm.ANNUAL
               ? product.annualAmountCents
               : product.monthlyAmountCents;
-          // Recalcule le prorata pour la preview avec le seuil
-          // membershipFullPriceFirstMonths du club.
           const allowProrataEffective =
             product.allowProrata &&
             i.billingRhythm === SubscriptionBillingRhythm.ANNUAL;
@@ -1244,9 +1257,17 @@ export class MembershipCartService {
                 club.membershipFullPriceFirstMonths,
               )
             : 10_000;
+          // Le `baseAmountCents` envoyé à l'engine doit être POST-LEGACY
+          // (post-prorata + post-family-legacy). Sinon les % se
+          // calculent sur un montant supérieur à la facture finale et
+          // le total preview dévie. validateCart fait pareil via
+          // `subtotalByItemKey.get(itemKey)`.
+          const subtotalPostLegacy =
+            subtotalByItemKey.get(i.id) ??
+            Math.round((base * factorBp) / 10_000);
           return {
             itemId: i.id,
-            baseAmountCents: Math.round((base * factorBp) / 10_000),
+            baseAmountCents: subtotalPostLegacy,
             membershipProductId: product.id,
             category: 'SUBSCRIPTION' as const,
             memberId: i.memberId,
@@ -1278,9 +1299,15 @@ export class MembershipCartService {
                 club.membershipFullPriceFirstMonths,
               )
             : 10_000;
+          const virtualItemId = `pending:${p.id}:${productId}`;
+          // Idem cart.items : on envoie le subtotal post-legacy à
+          // l'engine pour que les % soient calculés sur le bon montant.
+          const subtotalPostLegacy =
+            subtotalByVirtualId.get(virtualItemId) ??
+            Math.round((base * factorBp) / 10_000);
           snapshot.push({
-            itemId: `pending:${p.id}:${productId}`,
-            baseAmountCents: Math.round((base * factorBp) / 10_000),
+            itemId: virtualItemId,
+            baseAmountCents: subtotalPostLegacy,
             membershipProductId: product.id,
             category: 'SUBSCRIPTION' as const,
             // L'engine n'utilise `memberId` qu'en tant que clé de Map pour
@@ -1682,7 +1709,6 @@ export class MembershipCartService {
           prior,
         });
         // Persister chaque application en InvoiceLineAdjustment
-        let appliedDelta = 0;
         for (const app of result.applications) {
           for (const a of app.appliedTo) {
             await tx.invoiceLineAdjustment.create({
@@ -1700,16 +1726,7 @@ export class MembershipCartService {
                 }),
               },
             });
-            appliedDelta += a.deltaAmountCents;
           }
-        }
-        // Mise à jour du total facture
-        if (appliedDelta !== 0) {
-          const newAmount = Math.max(0, invoiceBaseCents + appliedDelta);
-          await tx.invoice.update({
-            where: { id: inv.id },
-            data: { amountCents: newAmount },
-          });
         }
         // Logging si erreurs (règles ignorées)
         if (result.errors.length > 0) {
@@ -1728,6 +1745,44 @@ export class MembershipCartService {
           (err as Error).message,
         );
       }
+
+      // ----------------------------------------------------------------
+      // Recomputation défensive des totaux facture (source unique de vérité)
+      // ----------------------------------------------------------------
+      // On refetch toutes les lignes + adjustments pour garantir que
+      // Invoice.baseAmountCents et Invoice.amountCents sont COHÉRENTS
+      // avec la somme réelle des lignes. Sans ça, si une remise est
+      // ajoutée par un autre code path (admin manuel par exemple) ou
+      // si une mise à jour passe à travers, le total facture diverge
+      // de la somme des lignes — le payeur voit un montant ≠ détail.
+      //
+      // Convention rétablie :
+      //   - baseAmountCents = somme des LINE.baseAmountCents (montant
+      //     catalogue brut, AVANT toute remise)
+      //   - amountCents = somme de (LINE.baseAmountCents + somme des
+      //     adjustments de la ligne) — représente exactement ce que le
+      //     payeur doit
+      const linesWithAdj = await tx.invoiceLine.findMany({
+        where: { invoiceId: inv.id },
+        select: {
+          baseAmountCents: true,
+          adjustments: { select: { amountCents: true } },
+        },
+      });
+      let totalGross = 0;
+      let totalNet = 0;
+      for (const l of linesWithAdj) {
+        totalGross += l.baseAmountCents;
+        const adjSum = l.adjustments.reduce((s, a) => s + a.amountCents, 0);
+        totalNet += l.baseAmountCents + adjSum;
+      }
+      await tx.invoice.update({
+        where: { id: inv.id },
+        data: {
+          baseAmountCents: totalGross,
+          amountCents: Math.max(0, totalNet),
+        },
+      });
 
       // Ligne de licence (stockage numéro sur Member)
       for (const item of cart.items) {
