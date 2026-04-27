@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { useMutation } from '@apollo/client/react';
 import {
-  VIEWER_CREATE_INVOICE_CHECKOUT_SESSION,
-  VIEWER_LOCK_INVOICE_PAYMENT_CHOICE,
-} from '../../lib/viewer-documents';
+  VIEWER_ACTIVE_CART,
+  VIEWER_MEMBERSHIP_CARTS,
+} from '../../lib/cart-documents';
+import { VIEWER_CHECKOUT_MEMBERSHIP_CART } from '../../lib/viewer-documents';
 import { formatEuroCents } from '../../lib/format';
 import { useToast } from '../ToastProvider';
 
@@ -13,33 +14,28 @@ type ClubPaymentMethod =
   | 'MANUAL_CHECK'
   | 'MANUAL_TRANSFER';
 
-interface CreateCheckoutData {
-  viewerCreateInvoiceCheckoutSession: {
-    url: string | null;
-    sessionId: string | null;
-  };
-}
-
-interface LockChoiceData {
-  viewerLockInvoicePaymentChoice: {
+interface CheckoutData {
+  viewerCheckoutMembershipCart: {
+    cartId: string;
     invoiceId: string;
     method: ClubPaymentMethod;
     installmentsCount: number;
-    instructions: string;
+    stripeCheckoutUrl: string | null;
+    instructions: string | null;
   };
 }
 
 interface Props {
-  /** Facture nouvellement créée à régler. */
-  invoiceId: string;
-  /** Total à payer (en cents). */
+  /** Panier OPEN à valider (les Members ne sont créés qu'au confirm). */
+  cartId: string;
+  /** Total TTC du panier (déjà tout-inclus, calculé par computeCartPreview). */
   totalCents: number;
   /**
-   * Rythme de facturation dominant du panier. ANNUAL → propose les 8
-   * options (1× ou 3×). MONTHLY → seulement 1×.
+   * Rythme dominant du panier. ANNUAL → propose 1× ou 3×. MONTHLY →
+   * comptant uniquement.
    */
   billingRhythm: 'ANNUAL' | 'MONTHLY';
-  /** Fermeture (annulation explicite). */
+  /** Fermeture (annulation explicite, sans validation BDD). */
   onClose: () => void;
   /** Callback après acceptation d'un mode manuel (post instructions). */
   onDone: () => void;
@@ -49,7 +45,6 @@ const METHODS: Array<{
   method: ClubPaymentMethod;
   label: string;
   icon: string;
-  /** Clé pour la grille de description courte. */
   blurb: string;
 }> = [
   {
@@ -79,7 +74,7 @@ const METHODS: Array<{
 ];
 
 export function PaymentChoiceModal({
-  invoiceId,
+  cartId,
   totalCents,
   billingRhythm,
   onClose,
@@ -91,11 +86,18 @@ export function PaymentChoiceModal({
   const [selected, setSelected] = useState<ClubPaymentMethod | null>(null);
   const [instructions, setInstructions] = useState<string | null>(null);
 
-  const [createCheckout, { loading: redirecting }] =
-    useMutation<CreateCheckoutData>(VIEWER_CREATE_INVOICE_CHECKOUT_SESSION);
-  const [lockChoice, { loading: locking }] =
-    useMutation<LockChoiceData>(VIEWER_LOCK_INVOICE_PAYMENT_CHOICE);
-  const loading = redirecting || locking;
+  const [checkout, { loading }] = useMutation<CheckoutData>(
+    VIEWER_CHECKOUT_MEMBERSHIP_CART,
+    {
+      // Refetch des panier-related queries pour que le badge header se
+      // mette à jour (le panier passe en VALIDATED, son count tombe à 0).
+      refetchQueries: [
+        { query: VIEWER_ACTIVE_CART },
+        { query: VIEWER_MEMBERSHIP_CARTS },
+      ],
+      awaitRefetchQueries: true,
+    },
+  );
 
   const perInstallment = useMemo(
     () => Math.round(totalCents / installments),
@@ -106,34 +108,32 @@ export function PaymentChoiceModal({
     if (loading) return;
     setSelected(method);
     try {
+      const res = await checkout({
+        variables: {
+          cartId,
+          method,
+          installmentsCount: installments,
+        },
+      });
+      const data = res.data?.viewerCheckoutMembershipCart;
+      if (!data) {
+        throw new Error('Réponse serveur invalide.');
+      }
       if (method === 'STRIPE_CARD') {
-        const ck = await createCheckout({
-          variables: {
-            invoiceId,
-            installmentsCount: installments,
-          },
-        });
-        const url = ck.data?.viewerCreateInvoiceCheckoutSession.url ?? null;
+        const url = data.stripeCheckoutUrl;
         if (!url) {
-          throw new Error('URL de paiement Stripe indisponible.');
+          throw new Error(
+            'URL Stripe indisponible. Choisissez un autre mode (chèque, espèces, virement) ou réessayez plus tard.',
+          );
         }
         showToast('Redirection vers le paiement Stripe…', 'success');
         window.location.assign(url);
         return;
       }
-      const res = await lockChoice({
-        variables: {
-          invoiceId,
-          method,
-          installmentsCount: installments,
-        },
-      });
-      const data = res.data?.viewerLockInvoicePaymentChoice;
-      if (!data) {
-        throw new Error('Réponse serveur invalide.');
-      }
-      setInstructions(data.instructions);
-      showToast('Mode de règlement enregistré.', 'success');
+      // Méthodes manuelles : on affiche les instructions retournées
+      // par le backend (montant, échéancier, modalités).
+      setInstructions(data.instructions ?? '');
+      showToast('Adhésion confirmée. Mode de règlement enregistré.', 'success');
     } catch (e) {
       showToast(
         e instanceof Error ? e.message : 'Choix indisponible.',
@@ -157,12 +157,15 @@ export function PaymentChoiceModal({
         aria-labelledby="payment-choice-title"
         style={{ maxWidth: 560 }}
       >
-        {instructions ? (
+        {instructions !== null ? (
           <>
             <h2 id="payment-choice-title" className="mp-modal-title">
-              Mode de règlement enregistré
+              Adhésion confirmée
             </h2>
-            <p className="mp-hint mp-modal-lede">{instructions}</p>
+            <p className="mp-hint mp-modal-lede">
+              {instructions ||
+                'Mode de règlement enregistré. Le club vous contactera si nécessaire.'}
+            </p>
             <div
               style={{
                 padding: 12,
@@ -173,8 +176,9 @@ export function PaymentChoiceModal({
                 fontSize: '0.85rem',
               }}
             >
-              Le club a été notifié de votre choix. Vous pourrez suivre
-              l’état du règlement dans <strong>Mes factures</strong>.
+              Vos fiches adhérent ont été créées et la facture est
+              accessible dans <strong>Mes factures</strong>. Le club a
+              été notifié de votre choix de règlement.
             </div>
             <div className="mp-modal-actions">
               <button
@@ -196,6 +200,11 @@ export function PaymentChoiceModal({
               {supportsInstallments
                 ? " — vous pouvez choisir un échéancier en 3 fois."
                 : ' — paiement comptant uniquement (cotisation mensuelle).'}
+              <br />
+              <small>
+                Vos fiches adhérent et la facture seront créées dès que
+                vous aurez confirmé votre choix.
+              </small>
             </p>
 
             {supportsInstallments ? (
@@ -316,7 +325,7 @@ export function PaymentChoiceModal({
                 disabled={loading}
                 onClick={onClose}
               >
-                {loading ? 'Patientez…' : 'Annuler'}
+                {loading ? 'Validation…' : 'Annuler'}
               </button>
             </div>
           </>

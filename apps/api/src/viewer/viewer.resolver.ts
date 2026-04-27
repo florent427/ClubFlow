@@ -30,6 +30,7 @@ import { ViewerUpdateMyPseudoInput } from './dto/viewer-update-my-pseudo.input';
 import { ViewerCourseSlotGraph } from './models/viewer-course-slot.model';
 import { ViewerCheckoutSessionGraph } from './models/viewer-checkout-session.model';
 import { ViewerInvoicePaymentChoiceGraph } from './models/viewer-invoice-payment-choice.model';
+import { ViewerCheckoutMembershipCartGraph } from './models/viewer-checkout-membership-cart.model';
 import { ViewerFamilyBillingSummaryGraph } from './models/viewer-family-billing.model';
 import { ViewerFamilyJoinResultGraph } from './models/viewer-family-join-result.model';
 import { ViewerMemberGraph } from './models/viewer-member.model';
@@ -573,6 +574,35 @@ export class ViewerResolver {
     const { cart: full, preview, productsById } =
       await this.membershipCart.getCartFullForGraph(club.id, cartId);
     return toMembershipCartGraph(full, preview, productsById);
+  }
+
+  @Mutation(() => ViewerCheckoutMembershipCartGraph, {
+    name: 'viewerCheckoutMembershipCart',
+    description:
+      "Valide le panier d'adhésion ET verrouille le mode de règlement en une seule transaction. C'est cette mutation qui crée les Members + l'Invoice — pas avant. Ainsi, si l'utilisateur ferme la modale de paiement sans choisir, rien n'est créé en base.",
+  })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  viewerCheckoutMembershipCart(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('cartId') cartId: string,
+    @Args('method', { type: () => ClubPaymentMethod })
+    method: ClubPaymentMethod,
+    @Args('installmentsCount', { type: () => Int, nullable: true })
+    installmentsCount?: number,
+  ): Promise<ViewerCheckoutMembershipCartGraph> {
+    return this.viewer.viewerCheckoutMembershipCart({
+      clubId: club.id,
+      userId: user.userId,
+      activeProfile: {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      cartId,
+      method,
+      installmentsCount: installmentsCount ?? undefined,
+    });
   }
 
   @Mutation(() => MembershipCartGraph, { name: 'viewerValidateMembershipCart' })

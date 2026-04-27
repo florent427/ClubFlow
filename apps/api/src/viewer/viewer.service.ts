@@ -1753,6 +1753,120 @@ export class ViewerService {
     return this.membershipCart.validateCart(clubId, userId, cartId);
   }
 
+  /**
+   * Validation atomique du panier + verrouillage du mode de règlement
+   * en une seule transaction visible côté front.
+   *
+   * Différence avec `viewerValidateMembershipCart` : ici la création des
+   * Members + de l'Invoice n'a lieu QUE quand le payeur a explicitement
+   * choisi son mode de règlement (carte, chèque, espèces, virement) et
+   * son échéancier. Si l'utilisateur ferme la modale de paiement avant
+   * d'avoir choisi, rien n'est créé en base — le panier reste en `OPEN`,
+   * il peut le modifier (retirer un membre, ajouter une formule…) puis
+   * recliquer "Valider et payer".
+   *
+   * Pour STRIPE_CARD : crée la session Stripe Checkout et retourne l'URL
+   * dans `stripeCheckoutUrl`.
+   * Pour les méthodes manuelles : retourne `instructions` (texte
+   * affiché au payeur).
+   */
+  async viewerCheckoutMembershipCart(args: {
+    clubId: string;
+    userId: string;
+    activeProfile: { memberId: string | null; contactId: string | null };
+    cartId: string;
+    method: ClubPaymentMethod;
+    installmentsCount?: number;
+  }): Promise<{
+    cartId: string;
+    invoiceId: string;
+    method: ClubPaymentMethod;
+    installmentsCount: number;
+    stripeCheckoutUrl: string | null;
+    instructions: string | null;
+  }> {
+    await this.assertViewerCanManageMembershipCart(
+      args.clubId,
+      args.activeProfile,
+    );
+    const familyId = await this.resolveViewerFamilyId(
+      args.clubId,
+      args.activeProfile,
+    );
+    const cart = await this.membershipCart['getCartById'].call(
+      this.membershipCart,
+      args.clubId,
+      args.cartId,
+    );
+    if (!familyId || cart.familyId !== familyId) {
+      throw new BadRequestException('Panier d’adhésion hors de votre foyer.');
+    }
+    const installments = normalizeInstallments(args.installmentsCount);
+
+    // Étape 1 : valider le panier (finalisation pending → Members
+    // réels + création Invoice). Le `lockedPaymentMethod` est positionné
+    // dès la finalisation pour que le club voie immédiatement le choix
+    // du payeur dans son back-office.
+    const validatedCart = await this.membershipCart.validateCart(
+      args.clubId,
+      args.userId,
+      args.cartId,
+      args.method,
+    );
+    const invoiceId = validatedCart.invoiceId;
+    if (!invoiceId) {
+      // Cas dégénéré : aucune invoice produite (panier vide après
+      // validation). validateCart aurait normalement déjà jeté.
+      throw new BadRequestException(
+        'Aucune facture n’a pu être créée pour ce panier.',
+      );
+    }
+
+    // Étape 2 : poser l'échéancier sur l'Invoice (validateCart ne le
+    // gère pas — il ne connaît que la méthode).
+    await this.prisma.invoice.update({
+      where: { id: invoiceId },
+      data: { installmentsCount: installments },
+    });
+
+    // Étape 3 : selon la méthode, construire la suite (URL Stripe ou
+    // instructions manuelles).
+    if (args.method === ClubPaymentMethod.STRIPE_CARD) {
+      const session = await this.stripeCheckout.createInvoiceCheckoutSession({
+        invoiceId,
+        clubId: args.clubId,
+        paidByMemberId: args.activeProfile.memberId ?? null,
+        installmentsCount: installments,
+      });
+      return {
+        cartId: validatedCart.id,
+        invoiceId,
+        method: args.method,
+        installmentsCount: installments,
+        stripeCheckoutUrl: session.url,
+        instructions: null,
+      };
+    }
+    const invoiceRow = await this.prisma.invoice.findUniqueOrThrow({
+      where: { id: invoiceId },
+      select: { amountCents: true, label: true },
+    });
+    const instructions = this.buildManualPaymentInstructions({
+      method: args.method,
+      installments,
+      amountCents: invoiceRow.amountCents,
+      label: invoiceRow.label,
+    });
+    return {
+      cartId: validatedCart.id,
+      invoiceId,
+      method: args.method,
+      installmentsCount: installments,
+      stripeCheckoutUrl: null,
+      instructions,
+    };
+  }
+
   private async assertViewerItemOwnership(
     clubId: string,
     activeProfile: { memberId: string | null; contactId: string | null },

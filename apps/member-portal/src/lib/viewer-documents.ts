@@ -509,6 +509,33 @@ export const VIEWER_LOCK_INVOICE_PAYMENT_CHOICE = gql`
   }
 `;
 
+/**
+ * Mutation **atomique** : valide le panier ET verrouille le mode de
+ * règlement en un seul appel. C'est elle qui crée les Members +
+ * l'Invoice — pas avant. Si l'utilisateur ferme la modale sans
+ * choisir, rien n'est créé en base.
+ */
+export const VIEWER_CHECKOUT_MEMBERSHIP_CART = gql`
+  mutation ViewerCheckoutMembershipCart(
+    $cartId: String!
+    $method: ClubPaymentMethod!
+    $installmentsCount: Int
+  ) {
+    viewerCheckoutMembershipCart(
+      cartId: $cartId
+      method: $method
+      installmentsCount: $installmentsCount
+    ) {
+      cartId
+      invoiceId
+      method
+      installmentsCount
+      stripeCheckoutUrl
+      instructions
+    }
+  }
+`;
+
 export const VIEWER_UPDATE_MY_PROFILE = gql`
   mutation ViewerUpdateMyProfile($input: ViewerUpdateMyProfileInput!) {
     viewerUpdateMyProfile(input: $input) {
