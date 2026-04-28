@@ -12,6 +12,7 @@ export type ViewerMeData = {
     lastName: string;
     photoUrl: string | null;
     civility: string;
+    pseudo: string | null;
     medicalCertExpiresAt: string | null;
     gradeLevelId: string | null;
     gradeLevelLabel: string | null;

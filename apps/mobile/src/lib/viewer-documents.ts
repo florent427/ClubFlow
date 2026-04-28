@@ -17,6 +17,7 @@ export const VIEWER_ME = gql`
       lastName
       photoUrl
       civility
+      pseudo
       medicalCertExpiresAt
       gradeLevelId
       gradeLevelLabel

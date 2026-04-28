@@ -5,6 +5,7 @@ export type MainTabParamList = {
   Actus: undefined;
   Evenements: undefined;
   Reservations: undefined;
+  Messagerie: undefined;
   Famille: undefined;
   Parametres: undefined;
 };

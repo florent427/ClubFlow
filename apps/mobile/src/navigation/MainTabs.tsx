@@ -6,6 +6,7 @@ import { EventsScreen } from '../screens/EventsScreen';
 import { FamilyScreen } from '../screens/FamilyScreen';
 import { HomeContactScreen } from '../screens/HomeContactScreen';
 import { HomeDashboardScreen } from '../screens/HomeDashboardScreen';
+import { MessagingScreen } from '../screens/MessagingScreen';
 import { NewsScreen } from '../screens/NewsScreen';
 import { PlanningScreen } from '../screens/PlanningScreen';
 import { ProgressionScreen } from '../screens/ProgressionScreen';
@@ -97,6 +98,17 @@ export function MemberTabsNavigator() {
           tabBarLabel: 'Events',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="star-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <MemberTab.Screen
+        name="Messagerie"
+        component={MessagingScreen}
+        options={{
+          title: 'Messagerie',
+          tabBarLabel: 'Chat',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="chatbubbles-outline" size={size} color={color} />
           ),
         }}
       />
