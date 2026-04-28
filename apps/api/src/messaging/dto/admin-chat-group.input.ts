@@ -38,7 +38,7 @@ export class CreateAdminChatGroupInput {
   @Length(2, 80)
   name!: string;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsString()
   @MaxLength(2000)
@@ -53,7 +53,7 @@ export class CreateAdminChatGroupInput {
   @IsEnum(ChatRoomChannelMode)
   channelMode!: ChatRoomChannelMode;
 
-  @Field()
+  @Field(() => Boolean)
   @IsBoolean()
   isBroadcastChannel!: boolean;
 
@@ -84,19 +84,19 @@ export class UpdateAdminChatGroupInput {
   @IsUUID()
   roomId!: string;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsString()
   @Length(2, 80)
   name?: string;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsString()
   @MaxLength(2000)
   description?: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsString()
   coverImageUrl?: string | null;
@@ -106,12 +106,12 @@ export class UpdateAdminChatGroupInput {
   @IsEnum(ChatRoomChannelMode)
   channelMode?: ChatRoomChannelMode;
 
-  @Field({ nullable: true })
+  @Field(() => Boolean, { nullable: true })
   @IsOptional()
   @IsBoolean()
   isBroadcastChannel?: boolean;
 
-  @Field({ nullable: true })
+  @Field(() => Boolean, { nullable: true })
   @IsOptional()
   @IsBoolean()
   archived?: boolean;

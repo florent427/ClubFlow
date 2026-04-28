@@ -1,4 +1,4 @@
-import { Field, ID, ObjectType } from '@nestjs/graphql';
+import { Field, GraphQLISODateTime, ID, ObjectType } from '@nestjs/graphql';
 import {
   ChatRoomChannelMode,
   ChatRoomKind,
@@ -14,10 +14,10 @@ export class ChatMemberSnippetGraph {
   @Field(() => String, { nullable: true })
   pseudo!: string | null;
 
-  @Field()
+  @Field(() => String)
   firstName!: string;
 
-  @Field()
+  @Field(() => String)
   lastName!: string;
 }
 
@@ -80,13 +80,13 @@ export class ChatRoomGql {
   @Field(() => ChatRoomChannelMode)
   channelMode!: ChatRoomChannelMode;
 
-  @Field()
+  @Field(() => Boolean)
   isBroadcastChannel!: boolean;
 
-  @Field({ nullable: true })
+  @Field(() => GraphQLISODateTime, { nullable: true })
   archivedAt!: Date | null;
 
-  @Field()
+  @Field(() => GraphQLISODateTime)
   updatedAt!: Date;
 
   @Field(() => [ChatRoomMemberGql])
@@ -104,13 +104,13 @@ export class ChatRoomGql {
    * Vrai si le viewer (membre courant) peut poster un message racine dans
    * ce salon. Calculé côté serveur via `canWrite`.
    */
-  @Field()
+  @Field(() => Boolean)
   viewerCanPost!: boolean;
 
   /**
    * Vrai si le viewer peut au moins répondre en fil (toujours true pour
    * un membre du salon, sauf si READ_ONLY).
    */
-  @Field()
+  @Field(() => Boolean)
   viewerCanReply!: boolean;
 }

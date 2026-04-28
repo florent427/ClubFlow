@@ -1,10 +1,16 @@
-import { Field, ID, Int, ObjectType } from '@nestjs/graphql';
+import {
+  Field,
+  GraphQLISODateTime,
+  ID,
+  Int,
+  ObjectType,
+} from '@nestjs/graphql';
 import { ChatMemberSnippetGraph } from './chat-room-gql.model';
 
 @ObjectType()
 export class ChatMessageReactionGroupGql {
   /** Emoji court (Unicode). */
-  @Field()
+  @Field(() => String)
   emoji!: string;
 
   /** Nombre total de membres ayant réagi avec cet emoji sur ce message. */
@@ -12,7 +18,7 @@ export class ChatMessageReactionGroupGql {
   count!: number;
 
   /** Vrai si l'utilisateur courant a déjà cette réaction. */
-  @Field()
+  @Field(() => Boolean)
   reactedByViewer!: boolean;
 }
 
@@ -24,10 +30,10 @@ export class ChatMessageGql {
   @Field(() => ID)
   roomId!: string;
 
-  @Field()
+  @Field(() => String)
   body!: string;
 
-  @Field()
+  @Field(() => GraphQLISODateTime)
   createdAt!: Date;
 
   @Field(() => ChatMemberSnippetGraph)
@@ -42,7 +48,7 @@ export class ChatMessageGql {
   replyCount!: number;
 
   /** Date de la dernière réponse (utile pour ordre/affichage). */
-  @Field({ nullable: true })
+  @Field(() => GraphQLISODateTime, { nullable: true })
   lastReplyAt!: Date | null;
 
   /** Réactions agrégées par emoji. */
@@ -50,6 +56,6 @@ export class ChatMessageGql {
   reactions!: ChatMessageReactionGroupGql[];
 
   /** Si true : l'admin a posté ce message en se faisant passer pour le sender. */
-  @Field()
+  @Field(() => Boolean)
   postedByAdmin!: boolean;
 }
