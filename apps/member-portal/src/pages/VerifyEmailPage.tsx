@@ -4,6 +4,7 @@ import { useMutation } from '@apollo/client/react';
 import { VERIFY_EMAIL } from '../lib/documents';
 import type { VerifyEmailData } from '../lib/auth-types';
 import {
+  clearAuth,
   clearClubId,
   hasMemberSession,
   setMemberContactSession,
@@ -37,13 +38,20 @@ export function VerifyEmailPage() {
   // Ce ref persiste à travers les re-mount et empêche le 2ème appel.
   const verifyAttempted = useRef(false);
 
+  // Si l'utilisateur a déjà une session active (par exemple un parent
+  // qui clique sur le lien d'activation de son enfant depuis le même
+  // navigateur), on déconnecte d'abord. Sinon le early-return ci-dessous
+  // empêcherait la consommation du token et le compte resterait non
+  // vérifié — le user voyait juste "Presque terminé…" en boucle.
+  useEffect(() => {
+    if (token.trim() && hasMemberSession()) {
+      clearAuth();
+    }
+  }, [token]);
+
   useEffect(() => {
     if (!token.trim()) {
       setError('Lien incomplet (token manquant).');
-      return;
-    }
-    if (hasMemberSession()) {
-      void navigate(consumeReturnTo() ?? '/', { replace: true });
       return;
     }
     if (verifyAttempted.current) {
@@ -69,13 +77,23 @@ export function VerifyEmailPage() {
         const cClub = payload.contactClubId ?? null;
         if (profiles.length === 0 && cClub) {
           setMemberContactSession(payload.accessToken, cClub);
+          void navigate(consumeReturnTo() ?? '/', { replace: true });
         } else if (profiles.length === 1) {
           setMemberSession(payload.accessToken, profiles[0].clubId);
-        } else {
+          void navigate(consumeReturnTo() ?? '/', { replace: true });
+        } else if (profiles.length > 1) {
+          // Plusieurs profils rattachés → écran de sélection.
           clearClubId();
           setToken(payload.accessToken);
+          void navigate('/select-profile', { replace: true });
+        } else {
+          // Aucun profil et aucun espace contact → cas dégénéré : on
+          // ne sait pas où envoyer l'utilisateur. Affichage d'une
+          // erreur explicite plutôt qu'un écran d'attente infini.
+          setError(
+            'Compte vérifié, mais aucun profil rattaché à votre adresse e-mail. Contactez votre club pour qu’il vous ajoute.',
+          );
         }
-        void navigate(consumeReturnTo() ?? '/', { replace: true });
       } catch (e) {
         if (!cancelled) {
           setError(
