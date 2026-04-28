@@ -1,9 +1,10 @@
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation } from '@apollo/client/react';
 import { RESET_PASSWORD } from '../lib/documents';
 import type { ResetPasswordData } from '../lib/auth-types';
 import {
+  clearAuth,
   clearClubId,
   hasMemberSession,
   setMemberContactSession,
@@ -21,7 +22,19 @@ export function ResetPasswordPage() {
 
   const [runReset, { loading }] = useMutation<ResetPasswordData>(RESET_PASSWORD);
 
-  if (hasMemberSession()) {
+  // Si l'utilisateur arrive sur ce lien avec un token mais déjà
+  // connecté (cas typique : parent qui clique le lien d'activation
+  // de son enfant depuis son propre client mail), on déconnecte
+  // d'abord la session courante. Sinon le redirect vers / empêcherait
+  // de définir le nouveau mot de passe et le parent resterait
+  // connecté à son propre profil au lieu de basculer sur l'enfant.
+  useEffect(() => {
+    if (token.trim() && hasMemberSession()) {
+      clearAuth();
+    }
+  }, [token]);
+
+  if (hasMemberSession() && !token.trim()) {
     return <Navigate to="/" replace />;
   }
   if (!token.trim()) {
