@@ -30,7 +30,20 @@ function formatDate(iso: string | null): string {
   });
 }
 
-function StatusPill({ status }: { status: InvoiceStatusStr }) {
+function StatusPill({
+  status,
+  isCreditNote,
+}: {
+  status: InvoiceStatusStr;
+  isCreditNote?: boolean;
+}) {
+  // Cas spécial : un avoir affiche toujours « Avoir » au lieu de
+  // « Payée » même s'il porte InvoiceStatus.PAID en base. C'est moins
+  // ambigü pour le trésorier qui scanne la liste — un avoir n'est pas
+  // « payée » au sens encaissement, c'est un document de compensation.
+  if (isCreditNote) {
+    return <span className="cf-pill cf-pill--info">Avoir</span>;
+  }
   const cls: Record<InvoiceStatusStr, string> = {
     DRAFT: 'cf-pill cf-pill--draft',
     OPEN: 'cf-pill cf-pill--warn',
@@ -288,7 +301,10 @@ export function BillingPage() {
                     {formatEuros(inv.balanceCents)}
                   </td>
                   <td>
-                    <StatusPill status={inv.status} />
+                    <StatusPill
+                      status={inv.status}
+                      isCreditNote={inv.isCreditNote}
+                    />
                   </td>
                 </tr>
               );

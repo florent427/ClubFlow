@@ -172,12 +172,35 @@ export class PaymentsService {
     return agg._sum.amountCents ?? 0;
   }
 
+  /**
+   * Somme des avoirs émis sur une facture parente (excluant ceux qui
+   * seraient en VOID — annulation d'avoir = rare).
+   */
+  async sumCreditNotesForInvoice(parentInvoiceId: string): Promise<number> {
+    const agg = await this.prisma.invoice.aggregate({
+      where: {
+        parentInvoiceId,
+        isCreditNote: true,
+        status: { not: InvoiceStatus.VOID },
+      },
+      _sum: { amountCents: true },
+    });
+    return agg._sum.amountCents ?? 0;
+  }
+
   async listInvoices(clubId: string) {
     const rows = await this.prisma.invoice.findMany({
       where: { clubId },
       orderBy: { createdAt: 'desc' },
       include: {
         payments: { select: { amountCents: true } },
+        // Avoirs liés à cette facture — on déduit leur montant du
+        // balanceCents pour que le « Reste dû » reflète bien le crédit
+        // émis. On exclut les avoirs eux-mêmes en VOID (rares).
+        creditNotes: {
+          where: { isCreditNote: true, status: { not: 'VOID' } },
+          select: { amountCents: true },
+        },
         family: {
           select: {
             label: true,
@@ -192,16 +215,19 @@ export class PaymentsService {
         householdGroup: { select: { label: true } },
       },
     });
-    return rows.map(({ payments, family, householdGroup, ...inv }) => {
+    return rows.map(({ payments, creditNotes, family, householdGroup, ...inv }) => {
       const paid = payments.reduce((s, p) => s + p.amountCents, 0);
-      const { totalPaidCents, balanceCents } = invoicePaymentTotals(
-        inv.amountCents,
-        paid,
+      const creditNotesTotal = creditNotes.reduce(
+        (s, cn) => s + cn.amountCents,
+        0,
       );
+      const { totalPaidCents, balanceCents, creditNotesAppliedCents } =
+        invoicePaymentTotals(inv.amountCents, paid, creditNotesTotal, inv.isCreditNote);
       return {
         ...inv,
         totalPaidCents,
         balanceCents,
+        creditNotesAppliedCents,
         familyLabel: family?.label ?? deriveFamilyLabel(family) ?? null,
         householdGroupLabel: householdGroup?.label ?? null,
       };
@@ -228,6 +254,10 @@ export class PaymentsService {
             paidByContact: { select: { id: true, firstName: true, lastName: true } },
           },
         },
+        creditNotes: {
+          where: { isCreditNote: true, status: { not: 'VOID' } },
+          select: { id: true, amountCents: true, label: true, createdAt: true },
+        },
         family: {
           include: {
             familyMembers: {
@@ -245,10 +275,17 @@ export class PaymentsService {
       throw new NotFoundException('Facture introuvable');
     }
     const paid = inv.payments.reduce((s, p) => s + p.amountCents, 0);
-    const { totalPaidCents, balanceCents } = invoicePaymentTotals(
-      inv.amountCents,
-      paid,
+    const creditNotesTotal = inv.creditNotes.reduce(
+      (s, cn) => s + cn.amountCents,
+      0,
     );
+    const { totalPaidCents, balanceCents, creditNotesAppliedCents } =
+      invoicePaymentTotals(
+        inv.amountCents,
+        paid,
+        creditNotesTotal,
+        inv.isCreditNote,
+      );
     const familyWithLabel = inv.family
       ? {
           id: inv.family.id,
@@ -495,9 +532,12 @@ export class PaymentsService {
     }
 
     const paidBefore = await this.sumPaidCentsForInvoice(invoice.id);
+    const creditNotesBefore = await this.sumCreditNotesForInvoice(invoice.id);
     const { balanceCents } = invoicePaymentTotals(
       invoice.amountCents,
       paidBefore,
+      creditNotesBefore,
+      invoice.isCreditNote,
     );
     if (balanceCents <= 0) {
       throw new BadRequestException('Facture déjà entièrement encaissée');
@@ -611,9 +651,12 @@ export class PaymentsService {
     }
     await this.assertPaidByMemberAllowedForInvoice(invoice, paidByMemberId);
     const paidBefore = await this.sumPaidCentsForInvoice(invoice.id);
+    const creditNotesBefore = await this.sumCreditNotesForInvoice(invoice.id);
     const { balanceCents } = invoicePaymentTotals(
       invoice.amountCents,
       paidBefore,
+      creditNotesBefore,
+      invoice.isCreditNote,
     );
     if (balanceCents <= 0) {
       return;

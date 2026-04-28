@@ -49,9 +49,17 @@ export class InvoiceGraph {
   totalPaidCents!: number;
 
   @Field(() => Int, {
-    description: 'Reste à payer : amountCents − totalPaidCents (plancher 0).',
+    description:
+      'Reste à payer : amountCents − totalPaidCents − creditNotesAppliedCents (plancher 0). Toujours 0 pour un avoir.',
   })
   balanceCents!: number;
+
+  @Field(() => Int, {
+    defaultValue: 0,
+    description:
+      "Somme des avoirs émis sur cette facture parente (réduit le balanceCents). Toujours 0 pour un avoir lui-même.",
+  })
+  creditNotesAppliedCents?: number;
 
   @Field(() => Boolean, {
     description: 'true si ce document est un avoir (credit note).',

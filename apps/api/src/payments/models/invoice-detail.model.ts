@@ -58,6 +58,8 @@ export class InvoiceDetailGraph {
   @Field(() => Int) amountCents!: number;
   @Field(() => Int) totalPaidCents!: number;
   @Field(() => Int) balanceCents!: number;
+  @Field(() => Int, { defaultValue: 0 })
+  creditNotesAppliedCents?: number;
   @Field(() => InvoiceStatus) status!: InvoiceStatus;
   @Field(() => ClubPaymentMethod, { nullable: true })
   lockedPaymentMethod!: ClubPaymentMethod | null;

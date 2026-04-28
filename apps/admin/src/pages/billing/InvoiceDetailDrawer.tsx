@@ -98,7 +98,16 @@ const METHOD_LABELS: Record<ClubPaymentMethodStr, string> = {
   MANUAL_TRANSFER: 'Virement',
 };
 
-function StatusPill({ status }: { status: InvoiceStatusStr }) {
+function StatusPill({
+  status,
+  isCreditNote,
+}: {
+  status: InvoiceStatusStr;
+  isCreditNote?: boolean;
+}) {
+  if (isCreditNote) {
+    return <span className="cf-pill cf-pill--info">Avoir</span>;
+  }
   const cls: Record<InvoiceStatusStr, string> = {
     DRAFT: 'cf-pill cf-pill--draft',
     OPEN: 'cf-pill cf-pill--warn',
@@ -390,7 +399,10 @@ export function InvoiceDetailDrawer({
           inv ? (
             <span className="cf-drawer__title-row">
               <span>{inv.label}</span>
-              <StatusPill status={inv.status} />
+              <StatusPill
+                status={inv.status}
+                isCreditNote={inv.isCreditNote}
+              />
             </span>
           ) : (
             'Facture'
@@ -570,6 +582,14 @@ export function InvoiceDetailDrawer({
                   {formatEuros(inv.totalPaidCents)}
                 </span>
               </div>
+              {inv.creditNotesAppliedCents > 0 ? (
+                <div className="cf-invoice-detail__total-row">
+                  <span>Avoirs émis</span>
+                  <span className="cf-cell-ok">
+                    -{formatEuros(inv.creditNotesAppliedCents)}
+                  </span>
+                </div>
+              ) : null}
               <div className="cf-invoice-detail__total-row cf-invoice-detail__total-row--strong">
                 <span>Reste dû</span>
                 <span

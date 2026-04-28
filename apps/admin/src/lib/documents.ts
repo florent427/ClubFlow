@@ -679,6 +679,7 @@ export const CLUB_INVOICES = gql`
       dueAt
       totalPaidCents
       balanceCents
+      creditNotesAppliedCents
       isCreditNote
       parentInvoiceId
       creditNoteReason
@@ -724,6 +725,7 @@ export const CLUB_INVOICE_DETAIL = gql`
       amountCents
       totalPaidCents
       balanceCents
+      creditNotesAppliedCents
       status
       lockedPaymentMethod
       dueAt

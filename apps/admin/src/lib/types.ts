@@ -425,6 +425,7 @@ export type ClubInvoicesQueryData = {
     dueAt: string | null;
     totalPaidCents: number;
     balanceCents: number;
+    creditNotesAppliedCents: number;
     isCreditNote: boolean;
     parentInvoiceId: string | null;
     creditNoteReason: string | null;
@@ -510,6 +511,7 @@ export type ClubInvoiceDetailQueryData = {
     amountCents: number;
     totalPaidCents: number;
     balanceCents: number;
+    creditNotesAppliedCents: number;
     status: InvoiceStatusStr;
     lockedPaymentMethod: ClubPaymentMethodStr | null;
     dueAt: string | null;
