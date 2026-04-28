@@ -34,7 +34,7 @@ export function Card({
     <View
       style={[
         styles.card,
-        !flat && shadow.sm,
+        !flat && shadow.md,
         { padding: padding ?? spacing.lg },
         style,
       ]}
@@ -56,7 +56,7 @@ export function Card({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: palette.surface,
-    borderRadius: radius.lg,
+    borderRadius: radius.xl,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: palette.border,
   },

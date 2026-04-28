@@ -28,8 +28,11 @@ export function MemberTabsNavigator() {
   return (
     <MemberTab.Navigator
       key={hideMemberModules ? 'min' : 'full'}
-      screenOptions={{
-        headerShown: true,
+      screenOptions={({ route }) => ({
+        // Le Dashboard / HomeContact gèrent leur propre hero gradient
+        // donc on cache le header système. Les autres écrans gardent
+        // le header default (sans ombre, fond surface).
+        headerShown: route.name !== 'Home',
         headerStyle: { backgroundColor: palette.surface },
         headerTitleStyle: { ...typography.h3, color: palette.ink },
         headerShadowVisible: false,
@@ -37,10 +40,22 @@ export function MemberTabsNavigator() {
         tabBarInactiveTintColor: palette.muted,
         tabBarStyle: {
           backgroundColor: palette.surface,
-          borderTopColor: palette.border,
+          borderTopWidth: 0,
+          elevation: 12,
+          shadowColor: '#0f172a',
+          shadowOffset: { width: 0, height: -4 },
+          shadowOpacity: 0.06,
+          shadowRadius: 12,
+          height: 64,
+          paddingTop: 6,
+          paddingBottom: 8,
         },
-        tabBarLabelStyle: { ...typography.caption, fontSize: 11 },
-      }}
+        tabBarLabelStyle: {
+          ...typography.caption,
+          fontSize: 11,
+          marginTop: 2,
+        },
+      })}
     >
       <MemberTab.Screen
         name="Home"
@@ -150,8 +165,11 @@ export function MemberTabsNavigator() {
 export function ContactTabsNavigator() {
   return (
     <ContactTab.Navigator
-      screenOptions={{
-        headerShown: true,
+      screenOptions={({ route }) => ({
+        // Le Dashboard / HomeContact gèrent leur propre hero gradient
+        // donc on cache le header système. Les autres écrans gardent
+        // le header default (sans ombre, fond surface).
+        headerShown: route.name !== 'Home',
         headerStyle: { backgroundColor: palette.surface },
         headerTitleStyle: { ...typography.h3, color: palette.ink },
         headerShadowVisible: false,
@@ -159,10 +177,22 @@ export function ContactTabsNavigator() {
         tabBarInactiveTintColor: palette.muted,
         tabBarStyle: {
           backgroundColor: palette.surface,
-          borderTopColor: palette.border,
+          borderTopWidth: 0,
+          elevation: 12,
+          shadowColor: '#0f172a',
+          shadowOffset: { width: 0, height: -4 },
+          shadowOpacity: 0.06,
+          shadowRadius: 12,
+          height: 64,
+          paddingTop: 6,
+          paddingBottom: 8,
         },
-        tabBarLabelStyle: { ...typography.caption, fontSize: 11 },
-      }}
+        tabBarLabelStyle: {
+          ...typography.caption,
+          fontSize: 11,
+          marginTop: 2,
+        },
+      })}
     >
       <ContactTab.Screen
         name="Home"

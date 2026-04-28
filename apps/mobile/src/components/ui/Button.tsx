@@ -1,14 +1,21 @@
 import { useMemo } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
   StyleSheet,
   Text,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { palette, radius, spacing, tapTarget, typography } from '../../lib/theme';
+import { AnimatedPressable } from './AnimatedPressable';
+import {
+  palette,
+  radius,
+  shadow,
+  spacing,
+  tapTarget,
+  typography,
+} from '../../lib/theme';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'subtle';
 type Size = 'md' | 'sm' | 'lg';
@@ -48,16 +55,17 @@ export function Button({
   const isDisabled = disabled || loading;
 
   return (
-    <Pressable
+    <AnimatedPressable
       onPress={onPress}
       disabled={isDisabled}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled: isDisabled, busy: loading }}
-      style={({ pressed }) => [
+      haptic={variant === 'primary' || variant === 'danger'}
+      style={[
         styles.base,
+        variant === 'primary' && !isDisabled ? shadow.glowPrimary : null,
         isDisabled && styles.disabled,
-        pressed && !isDisabled && styles.pressed,
         style,
       ]}
     >
@@ -84,7 +92,7 @@ export function Button({
           ) : null}
         </>
       )}
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 
@@ -154,7 +162,6 @@ function useStyles(variant: Variant, size: Size, fullWidth: boolean) {
         ...labelTypo,
       },
       disabled: { opacity: 0.4 },
-      pressed: { opacity: 0.85 },
     });
   }, [variant, size, fullWidth]);
 }

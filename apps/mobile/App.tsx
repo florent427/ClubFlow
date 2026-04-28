@@ -3,16 +3,34 @@ import {
   NavigationContainer,
   type LinkingOptions,
 } from '@react-navigation/native';
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+  Inter_800ExtraBold,
+  Inter_900Black,
+  useFonts,
+} from '@expo-google-fonts/inter';
 import * as Linking from 'expo-linking';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { apolloClient } from './src/lib/apollo';
 import * as storage from './src/lib/storage';
+import { palette } from './src/lib/theme';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import type { RootStackParamList } from './src/types/navigation';
 
 export default function App() {
+  const [fontsLoaded] = useFonts({
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    Inter_800ExtraBold,
+    Inter_900Black,
+  });
   const [initialRoute, setInitialRoute] = useState<
     keyof RootStackParamList | null
   >(null);
@@ -68,10 +86,10 @@ export default function App() {
     [],
   );
 
-  if (initialRoute === null) {
+  if (initialRoute === null || !fontsLoaded) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color={palette.primary} />
       </View>
     );
   }
@@ -92,6 +110,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: palette.bg,
   },
 });

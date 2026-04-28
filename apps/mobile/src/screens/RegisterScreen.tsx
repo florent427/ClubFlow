@@ -1,6 +1,7 @@
 import { useMutation } from '@apollo/client/react';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -12,9 +13,21 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button, TextField } from '../components/ui';
+import {
+  AnimatedPressable,
+  Button,
+  GradientButton,
+  TextField,
+} from '../components/ui';
 import { REGISTER_CONTACT } from '../lib/documents';
-import { palette, spacing, typography } from '../lib/theme';
+import {
+  gradients,
+  palette,
+  radius,
+  shadow,
+  spacing,
+  typography,
+} from '../lib/theme';
 import type { RegisterContactData } from '../lib/auth-types';
 import type { RootStackParamList } from '../types/navigation';
 
@@ -69,25 +82,30 @@ export function RegisterScreen() {
 
   if (done) {
     return (
-      <View style={styles.flexCenter}>
-        <View style={styles.successIcon}>
-          <Ionicons name="mail-unread" size={48} color={palette.primary} />
-        </View>
-        <Text style={styles.title}>Vérifiez votre e-mail</Text>
-        <Text style={styles.lead}>
+      <View style={styles.feedbackContainer}>
+        <LinearGradient
+          colors={gradients.hero.colors}
+          start={gradients.hero.start}
+          end={gradients.hero.end}
+          style={styles.feedbackIcon}
+        >
+          <Ionicons name="mail-unread" size={56} color="#ffffff" />
+        </LinearGradient>
+        <Text style={styles.feedbackTitle}>Vérifiez votre e-mail</Text>
+        <Text style={styles.feedbackLead}>
           Un lien de confirmation a été envoyé à{'\n'}
           <Text style={styles.strong}>{email.trim()}</Text>.
         </Text>
-        <Text style={styles.muted}>
-          Cliquez dessus depuis votre téléphone — le lien ouvrira l'app
-          ClubFlow directement (deep link).
+        <Text style={styles.feedbackMuted}>
+          Cliquez sur le lien depuis votre téléphone — il ouvrira l'app
+          ClubFlow directement.
         </Text>
-        <Button
+        <GradientButton
           label="Retour à la connexion"
-          onPress={() => navigation.navigate('Login')}
-          variant="ghost"
-          fullWidth
           icon="arrow-back-outline"
+          onPress={() => navigation.navigate('Login')}
+          fullWidth
+          size="lg"
         />
       </View>
     );
@@ -95,110 +113,192 @@ export function RegisterScreen() {
 
   if (alreadyExists) {
     return (
-      <View style={styles.flexCenter}>
-        <View style={[styles.successIcon, styles.warningIcon]}>
-          <Ionicons name="alert-circle" size={48} color={palette.warning} />
+      <View style={styles.feedbackContainer}>
+        <View style={[styles.feedbackIcon, styles.warningIcon]}>
+          <Ionicons name="alert-circle" size={56} color={palette.warning} />
         </View>
-        <Text style={styles.title}>Compte déjà existant</Text>
-        <Text style={styles.lead}>
+        <Text style={styles.feedbackTitle}>Compte déjà existant</Text>
+        <Text style={styles.feedbackLead}>
           Un compte existe déjà pour{' '}
           <Text style={styles.strong}>{email.trim()}</Text>.
         </Text>
-        <Button
+        <GradientButton
           label="Se connecter"
+          icon="log-in-outline"
           onPress={() => navigation.navigate('Login')}
           fullWidth
-          icon="log-in-outline"
+          size="lg"
         />
       </View>
     );
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView
-        contentContainerStyle={[
-          styles.scroll,
-          { paddingTop: insets.top + spacing.xl },
-        ]}
-        keyboardShouldPersistTaps="handled"
+    <View style={styles.flex}>
+      <LinearGradient
+        colors={gradients.hero.colors}
+        start={gradients.hero.start}
+        end={gradients.hero.end}
+        style={[styles.hero, { paddingTop: insets.top + spacing.xl }]}
       >
+        <View style={[styles.circle, styles.circle1]} />
+        <View style={[styles.circle, styles.circle2]} />
+
+        <AnimatedPressable
+          onPress={() => navigation.navigate('Login')}
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Retour"
+        >
+          <Ionicons name="arrow-back" size={24} color="#ffffff" />
+        </AnimatedPressable>
+
         <View style={styles.brand}>
-          <Text style={styles.eyebrow}>CLUBFLOW</Text>
-          <Text style={styles.title}>Créer un compte</Text>
+          <Text style={styles.eyebrow}>CRÉER UN COMPTE</Text>
+          <Text style={styles.title}>Bienvenue</Text>
           <Text style={styles.lead}>
-            Inscription rapide en tant que contact du club. Vous pourrez
-            compléter votre dossier plus tard.
+            Inscription rapide en tant que contact du club.
           </Text>
         </View>
+      </LinearGradient>
 
-        <View style={styles.form}>
-          <View style={styles.row}>
-            <TextField
-              label="Prénom"
-              value={firstName}
-              onChangeText={setFirstName}
-              autoCapitalize="words"
-              autoComplete="given-name"
-              containerStyle={styles.flex}
-            />
-            <TextField
-              label="Nom"
-              value={lastName}
-              onChangeText={setLastName}
-              autoCapitalize="words"
-              autoComplete="family-name"
-              containerStyle={styles.flex}
-            />
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={[
+            styles.scroll,
+            { paddingBottom: insets.bottom + spacing.xl },
+          ]}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.cardWrap}>
+            <View style={styles.card}>
+              <View style={styles.row}>
+                <TextField
+                  label="Prénom"
+                  value={firstName}
+                  onChangeText={setFirstName}
+                  autoCapitalize="words"
+                  autoComplete="given-name"
+                  containerStyle={{ flex: 1 }}
+                />
+                <TextField
+                  label="Nom"
+                  value={lastName}
+                  onChangeText={setLastName}
+                  autoCapitalize="words"
+                  autoComplete="family-name"
+                  containerStyle={{ flex: 1 }}
+                />
+              </View>
+
+              <TextField
+                label="E-mail"
+                value={email}
+                onChangeText={setEmail}
+                placeholder="vous@exemple.fr"
+                autoCapitalize="none"
+                keyboardType="email-address"
+                autoComplete="email"
+                autoCorrect={false}
+              />
+
+              <TextField
+                label="Mot de passe"
+                hint="8 caractères minimum"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                autoComplete="new-password"
+                error={error}
+              />
+
+              <GradientButton
+                label="S'inscrire"
+                icon="checkmark-circle-outline"
+                onPress={() => void onSubmit()}
+                loading={loading}
+                fullWidth
+                size="lg"
+              />
+              <Button
+                label="Déjà un compte ? Connexion"
+                onPress={() => navigation.navigate('Login')}
+                variant="ghost"
+                fullWidth
+              />
+            </View>
           </View>
-
-          <TextField
-            label="E-mail"
-            value={email}
-            onChangeText={setEmail}
-            placeholder="vous@exemple.fr"
-            autoCapitalize="none"
-            keyboardType="email-address"
-            autoComplete="email"
-            autoCorrect={false}
-          />
-
-          <TextField
-            label="Mot de passe"
-            hint="8 caractères minimum"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoComplete="new-password"
-            error={error}
-          />
-
-          <Button
-            label="S'inscrire"
-            onPress={() => void onSubmit()}
-            loading={loading}
-            fullWidth
-            size="lg"
-            icon="checkmark-circle-outline"
-          />
-          <Button
-            label="Déjà un compte ? Connexion"
-            onPress={() => navigation.navigate('Login')}
-            variant="ghost"
-            fullWidth
-          />
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: palette.bg },
-  flexCenter: {
+
+  hero: {
+    paddingHorizontal: spacing.xxl,
+    paddingBottom: spacing.giant,
+    minHeight: 240,
+    overflow: 'hidden',
+  },
+  circle: { position: 'absolute', borderRadius: 1000 },
+  circle1: {
+    width: 200,
+    height: 200,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    top: -50,
+    right: -50,
+  },
+  circle2: {
+    width: 140,
+    height: 140,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    top: 60,
+    left: -60,
+  },
+  backBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brand: { marginTop: spacing.xl, gap: spacing.xs },
+  eyebrow: {
+    ...typography.eyebrow,
+    color: 'rgba(255,255,255,0.85)',
+  },
+  title: {
+    ...typography.displayLg,
+    color: '#ffffff',
+    marginTop: spacing.sm,
+  },
+  lead: {
+    ...typography.body,
+    color: 'rgba(255,255,255,0.85)',
+  },
+
+  scroll: {
+    flexGrow: 1,
+    paddingHorizontal: spacing.xl,
+    marginTop: -spacing.xxxl,
+  },
+  cardWrap: { ...shadow.lg },
+  card: {
+    backgroundColor: palette.surface,
+    borderRadius: radius.xxl,
+    padding: spacing.xxl,
+    gap: spacing.lg,
+  },
+  row: { flexDirection: 'row', gap: spacing.md },
+
+  feedbackContainer: {
     flex: 1,
     backgroundColor: palette.bg,
     alignItems: 'center',
@@ -206,39 +306,34 @@ const styles = StyleSheet.create({
     padding: spacing.xxl,
     gap: spacing.lg,
   },
-  scroll: {
-    flexGrow: 1,
-    paddingHorizontal: spacing.xxl,
-    paddingBottom: spacing.huge,
-    gap: spacing.xxl,
+  feedbackIcon: {
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadow.glowPrimary,
   },
-  brand: { gap: spacing.sm, alignItems: 'center' },
-  eyebrow: { ...typography.eyebrow, color: palette.primary },
-  title: {
-    ...typography.displayLg,
+  warningIcon: {
+    backgroundColor: palette.warningBg,
+  },
+  feedbackTitle: {
+    ...typography.h1,
     color: palette.ink,
     textAlign: 'center',
   },
-  lead: {
+  feedbackLead: {
     ...typography.body,
+    color: palette.body,
+    textAlign: 'center',
+  },
+  feedbackMuted: {
+    ...typography.small,
     color: palette.muted,
     textAlign: 'center',
   },
-  muted: {
-    ...typography.small,
-    color: palette.mutedSoft,
-    textAlign: 'center',
+  strong: {
+    fontFamily: typography.bodyStrong.fontFamily,
+    color: palette.ink,
   },
-  strong: { fontWeight: '700', color: palette.ink },
-  form: { gap: spacing.lg },
-  row: { flexDirection: 'row', gap: spacing.md },
-  successIcon: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: palette.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  warningIcon: { backgroundColor: palette.warningBg },
 });

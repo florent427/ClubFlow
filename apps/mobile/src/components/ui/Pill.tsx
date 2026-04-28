@@ -72,22 +72,22 @@ const pillStyles: Record<
   },
   success: {
     row: { backgroundColor: palette.successBg, borderColor: palette.successBorder },
-    label: { color: '#15803d' },
-    icon: { color: '#15803d' },
+    label: { color: palette.successText },
+    icon: { color: palette.successText },
   },
   warning: {
     row: { backgroundColor: palette.warningBg, borderColor: palette.warningBorder },
-    label: { color: '#92400e' },
-    icon: { color: '#92400e' },
+    label: { color: palette.warningText },
+    icon: { color: palette.warningText },
   },
   danger: {
     row: { backgroundColor: palette.dangerBg, borderColor: palette.dangerBorder },
-    label: { color: '#991b1b' },
-    icon: { color: '#991b1b' },
+    label: { color: palette.dangerText },
+    icon: { color: palette.dangerText },
   },
   info: {
     row: { backgroundColor: palette.infoBg, borderColor: '#bae6fd' },
-    label: { color: '#075985' },
-    icon: { color: '#075985' },
+    label: { color: palette.infoText },
+    icon: { color: palette.infoText },
   },
 };
