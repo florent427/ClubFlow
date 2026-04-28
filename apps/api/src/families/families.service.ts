@@ -239,12 +239,36 @@ export class FamiliesService {
     };
 
     if (legacyFamilyIds.length > 0) {
+      // Pour chaque famille légacy, déterminer si CE user est PAYER de
+      // la famille. Si oui → il peut voir TOUS les Members (vue parent /
+      // payeur). Sinon (= il est juste rattaché en tant que membre) →
+      // il ne voit que SON propre Member, pas les autres adhérents du
+      // foyer (sinon un enfant pourrait voir et choisir le profil de
+      // ses parents/frères/sœurs après l'activation de son compte).
+      const payerLinks = await this.prisma.familyMember.findMany({
+        where: {
+          familyId: { in: legacyFamilyIds },
+          linkRole: FamilyMemberLinkRole.PAYER,
+          OR: [
+            { member: { userId } },
+            { contact: { userId } },
+          ],
+        },
+        select: { familyId: true },
+      });
+      const payerFamilyIds = new Set(payerLinks.map((p) => p.familyId));
+
       const fromLegacy = await this.prisma.familyMember.findMany({
         where: { familyId: { in: legacyFamilyIds }, memberId: { not: null } },
         include: { member: true },
       });
       for (const fm of fromLegacy) {
         if (!fm.member || fm.member.status !== MemberStatus.ACTIVE) {
+          continue;
+        }
+        const isOwnMember = fm.member.userId === userId;
+        const isPayerOfFamily = payerFamilyIds.has(fm.familyId);
+        if (!isOwnMember && !isPayerOfFamily) {
           continue;
         }
         putProfile({
