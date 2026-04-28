@@ -14,6 +14,7 @@ import { useMembersUi } from '../members/members-ui-context';
 import { ContactDetailDrawer } from './ContactDetailDrawer';
 
 type VerifiedFilter = 'all' | 'yes' | 'no';
+type LinkFilter = 'unlinked' | 'linked' | 'all';
 type SortKey = 'lastName' | 'firstName' | 'email';
 
 export function ContactsPage() {
@@ -22,6 +23,10 @@ export function ContactsPage() {
   const [drawerContactId, setDrawerContactId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [verified, setVerified] = useState<VerifiedFilter>('all');
+  // Par défaut, on cache les Contacts déjà promus en Member (= la même
+  // personne est visible dans la page Membres). Évite la confusion
+  // « pourquoi adulte1 apparaît 2 fois ? ». Filtre exposé pour debug.
+  const [linkFilter, setLinkFilter] = useState<LinkFilter>('unlinked');
   const [sortKey, setSortKey] = useState<SortKey>('lastName');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
@@ -53,6 +58,11 @@ export function ContactsPage() {
     } else if (verified === 'no') {
       rows = rows.filter((c) => !c.emailVerified);
     }
+    if (linkFilter === 'unlinked') {
+      rows = rows.filter((c) => !c.linkedMemberId);
+    } else if (linkFilter === 'linked') {
+      rows = rows.filter((c) => c.linkedMemberId);
+    }
     const dir = sortDir === 'asc' ? 1 : -1;
     const sorted = [...rows].sort((a, b) => {
       const va = a[sortKey].toLowerCase();
@@ -60,7 +70,7 @@ export function ContactsPage() {
       return va.localeCompare(vb, 'fr') * dir;
     });
     return sorted;
-  }, [contacts, search, verified, sortKey, sortDir]);
+  }, [contacts, search, verified, linkFilter, sortKey, sortDir]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -218,6 +228,34 @@ export function ContactsPage() {
                 onClick={() => setVerified('no')}
               >
                 Non vérifiés
+              </button>
+            </div>
+            <div
+              className="cf-segmented"
+              role="group"
+              aria-label="Filtre liaison membre"
+              title="Un Contact promu en Member est visible dans la page Membres ; on le cache ici par défaut pour éviter les doublons."
+            >
+              <button
+                type="button"
+                className={`cf-segmented__btn${linkFilter === 'unlinked' ? ' cf-segmented__btn--active' : ''}`}
+                onClick={() => setLinkFilter('unlinked')}
+              >
+                Sans fiche membre
+              </button>
+              <button
+                type="button"
+                className={`cf-segmented__btn${linkFilter === 'linked' ? ' cf-segmented__btn--active' : ''}`}
+                onClick={() => setLinkFilter('linked')}
+              >
+                Promus en membre
+              </button>
+              <button
+                type="button"
+                className={`cf-segmented__btn${linkFilter === 'all' ? ' cf-segmented__btn--active' : ''}`}
+                onClick={() => setLinkFilter('all')}
+              >
+                Tous
               </button>
             </div>
           </div>

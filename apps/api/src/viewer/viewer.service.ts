@@ -1143,6 +1143,15 @@ export class ViewerService {
           paidByContact: { select: { firstName: true, lastName: true } },
         },
       },
+      // Avoirs émis sur cette facture parente — déduits du balanceCents
+      // pour cohérence avec l'admin (cf. invoicePaymentTotals).
+      creditNotes: {
+        where: {
+          isCreditNote: true,
+          status: { not: InvoiceStatus.VOID },
+        },
+        select: { amountCents: true },
+      },
     };
     const [openRows, paidRows] = await Promise.all([
       this.prisma.invoice.findMany({
@@ -1172,9 +1181,15 @@ export class ViewerService {
 
     const toSummary = (inv: (typeof openRows)[0]) => {
       const paidSum = inv.payments.reduce((s, p) => s + p.amountCents, 0);
+      const creditNotesSum = inv.creditNotes.reduce(
+        (s, cn) => s + cn.amountCents,
+        0,
+      );
       const { totalPaidCents, balanceCents } = invoicePaymentTotals(
         inv.amountCents,
         paidSum,
+        creditNotesSum,
+        inv.isCreditNote,
       );
       const payments: ViewerInvoicePaymentSnippetGraph[] = inv.payments.map(
         (p) => ({

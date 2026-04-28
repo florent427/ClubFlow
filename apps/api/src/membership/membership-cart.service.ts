@@ -2068,7 +2068,27 @@ export class MembershipCartService {
     });
 
     for (const p of pendings) {
-      // 1. Créer le Member
+      // Cas spécial : si le pending est lié à un Contact existant
+      // (auto-inscription du payeur via "M'inscrire aussi"), on PROMEUT
+      // le Contact en Member pour fusionner les profils. Sinon on aurait
+      // 2 fiches pour la même personne (Contact pour le login + Member
+      // pour l'adhésion). Le Member créé hérite du `userId` du Contact
+      // pour que la connexion portail continue à fonctionner sur la
+      // fiche unique.
+      let userId: string | null = null;
+      let payerLinkToMigrate: string | null = null;
+      if (p.contactId) {
+        const contact = await this.prisma.contact.findFirst({
+          where: { id: p.contactId, clubId },
+          select: { userId: true },
+        });
+        if (contact?.userId) {
+          userId = contact.userId;
+          payerLinkToMigrate = p.contactId;
+        }
+      }
+
+      // 1. Créer le Member (avec userId si auto-inscription Contact)
       const pseudo = await this.memberPseudo.pickAvailablePseudo(
         this.prisma,
         clubId,
@@ -2086,22 +2106,56 @@ export class MembershipCartService {
           email: p.email,
           birthDate: p.birthDate,
           status: 'ACTIVE',
-          // Ne pas hériter du userId : le Contact garde son User mais le
-          // Member créé n'a pas de User pour l'instant (il sera lié plus
-          // tard si l'admin promeut le Contact en passant par
-          // promoteContactToMember, ou via l'email matching).
+          ...(userId ? { userId } : {}),
         },
         select: { id: true },
       });
 
-      // 2. Rattacher au foyer (linkRole=MEMBER)
-      await this.prisma.familyMember.create({
-        data: {
-          familyId: cart.familyId,
-          memberId: member.id,
-          linkRole: FamilyMemberLinkRole.MEMBER,
-        },
-      });
+      // 2. Rattacher au foyer
+      //    - Cas auto-inscription Contact (PAYER) : on migre le lien
+      //      Family↔Contact PAYER vers Family↔Member PAYER (via update
+      //      du FamilyMember existant). Le Contact est ainsi
+      //      "transformé" en Member sans perdre son rôle de payeur ni
+      //      sa famille.
+      //    - Sinon (ajout enfant) : on crée un nouveau lien MEMBER.
+      if (payerLinkToMigrate) {
+        const existingPayerLink = await this.prisma.familyMember.findFirst({
+          where: {
+            familyId: cart.familyId,
+            contactId: payerLinkToMigrate,
+            linkRole: FamilyMemberLinkRole.PAYER,
+          },
+          select: { id: true },
+        });
+        if (existingPayerLink) {
+          await this.prisma.familyMember.update({
+            where: { id: existingPayerLink.id },
+            data: {
+              memberId: member.id,
+              contactId: null,
+              // linkRole reste PAYER — le Member garde le rôle de payeur.
+            },
+          });
+        } else {
+          // Filet de sécurité : le contact n'avait pas de lien PAYER, on
+          // crée un nouveau lien MEMBER (pas idéal mais évite un crash).
+          await this.prisma.familyMember.create({
+            data: {
+              familyId: cart.familyId,
+              memberId: member.id,
+              linkRole: FamilyMemberLinkRole.MEMBER,
+            },
+          });
+        }
+      } else {
+        await this.prisma.familyMember.create({
+          data: {
+            familyId: cart.familyId,
+            memberId: member.id,
+            linkRole: FamilyMemberLinkRole.MEMBER,
+          },
+        });
+      }
 
       // 3. Créer 1 CartItem par formule sélectionnée (multi-formules
       //    rendu possible par la contrainte unique composite
