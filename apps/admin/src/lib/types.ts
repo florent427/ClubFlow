@@ -138,6 +138,7 @@ export type MembersQueryData = {
     customFieldValues: MemberCustomFieldValueRow[];
     assignedDynamicGroups: { id: string; name: string }[];
     telegramLinked: boolean;
+    systemRole: SystemRoleStr | null;
   }[];
 };
 

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ClubContextGuard } from '../common/guards/club-context.guard';
 import {
   SuperAdminGuard,
   SystemAdminGuard,
@@ -14,6 +15,7 @@ import { SystemAdminService } from './system-admin.service';
     SystemAdminResolver,
     SystemAdminGuard,
     SuperAdminGuard,
+    ClubContextGuard,
   ],
   exports: [SystemAdminService, SystemAdminGuard, SuperAdminGuard],
 })

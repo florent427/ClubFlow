@@ -144,6 +144,7 @@ export const CLUB_MEMBERS = gql`
         name
       }
       telegramLinked
+      systemRole
     }
   }
 `;
@@ -1447,6 +1448,12 @@ export const SYSTEM_DEMOTE_ADMIN = gql`
 export const SYSTEM_DELETE_USER = gql`
   mutation SystemDeleteUser($userId: ID!) {
     systemDeleteUser(userId: $userId)
+  }
+`;
+
+export const SYSTEM_SET_MEMBER_ADMIN_ROLE = gql`
+  mutation SystemSetMemberAdminRole($memberId: ID!, $role: SystemRole) {
+    systemSetMemberAdminRole(memberId: $memberId, role: $role)
   }
 `;
 

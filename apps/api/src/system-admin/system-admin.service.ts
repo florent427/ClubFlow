@@ -25,6 +25,57 @@ import { PrismaService } from '../prisma/prisma.service';
 export class SystemAdminService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Promeut ou rétrograde le `User` lié à un `Member` (du club courant).
+   * Pratique pour l'UI "fiche adhérent" : on agit sur l'identité réelle
+   * (User) sans avoir à connaître son UUID de toutes pièces.
+   *
+   * Règles :
+   * - Le membre doit avoir un `userId` (compte créé). Sinon erreur claire.
+   * - role=ADMIN : tout admin système peut promouvoir un user lambda.
+   * - role=null  : retirer le rôle ADMIN → réservé SUPER_ADMIN.
+   * - On ne touche jamais à un SUPER_ADMIN, et personne ne se modifie soi.
+   */
+  async setMemberSystemRole(
+    actorUserId: string,
+    clubId: string,
+    memberId: string,
+    role: SystemRole | null,
+  ) {
+    if (role !== null && role !== SystemRole.ADMIN) {
+      // SUPER_ADMIN n'est jamais octroyé via cette API.
+      throw new BadRequestException(
+        'Seuls les rôles ADMIN ou « aucun » sont configurables ici.',
+      );
+    }
+    const member = await this.prisma.member.findFirst({
+      where: { id: memberId, clubId },
+      select: { id: true, userId: true },
+    });
+    if (!member) {
+      throw new NotFoundException('Adhérent introuvable.');
+    }
+    if (!member.userId) {
+      throw new BadRequestException(
+        "Ce membre n'a pas encore de compte utilisateur. Demandez-lui de créer son compte (ou changez son e-mail dans la fiche pour déclencher l'invitation) avant de lui attribuer un rôle système.",
+      );
+    }
+    if (member.userId === actorUserId) {
+      throw new BadRequestException(
+        'Vous ne pouvez pas modifier votre propre rôle système ici.',
+      );
+    }
+    // Délègue aux méthodes existantes pour réutiliser leur logique de
+    // permission (assertSystemAdmin / assertSuperAdmin) et leurs
+    // garde-fous (refuser de toucher au SUPER_ADMIN, etc.).
+    if (role === SystemRole.ADMIN) {
+      await this.promoteToAdmin(actorUserId, member.userId);
+    } else {
+      await this.demoteAdmin(actorUserId, member.userId);
+    }
+    return { id: member.id };
+  }
+
   async listSystemUsers() {
     return this.prisma.user.findMany({
       where: { systemRole: { not: null } },

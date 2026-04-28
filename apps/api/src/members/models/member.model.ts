@@ -4,6 +4,7 @@ import {
   MemberCivility,
   MemberClubRole,
   MemberStatus,
+  SystemRole,
 } from '@prisma/client';
 import { ClubRoleDefinitionGraph } from './club-role-definition.model';
 import { GradeLevelGraph } from './grade-level.model';
@@ -123,4 +124,11 @@ export class MemberGraph {
     description: 'True si le membre a relié son compte Telegram (chat_id enregistré).',
   })
   telegramLinked!: boolean;
+
+  @Field(() => SystemRole, {
+    nullable: true,
+    description:
+      'Rôle système global du compte User lié à ce membre (ADMIN/SUPER_ADMIN). Null si le membre n\'a pas de compte ou n\'a pas de rôle global.',
+  })
+  systemRole!: SystemRole | null;
 }

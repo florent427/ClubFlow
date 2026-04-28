@@ -127,6 +127,7 @@ export class MembersService {
     gradeLevel: true,
     roleAssignments: true,
     customRoleAssignments: { include: { roleDefinition: true } },
+    user: { select: { systemRole: true } },
     familyMembers: {
       take: 1 as const,
       include: {
@@ -156,6 +157,7 @@ export class MembersService {
         gradeLevel: true;
         roleAssignments: true;
         customRoleAssignments: { include: { roleDefinition: true } };
+        user: { select: { systemRole: true } };
         familyMembers: {
           take: 1;
           include: {
@@ -229,6 +231,7 @@ export class MembersService {
         })),
       assignedDynamicGroups,
       telegramLinked: Boolean(row.telegramChatId),
+      systemRole: row.user?.systemRole ?? null,
     };
   }
 

@@ -1,10 +1,8 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import { useState } from 'react';
 import {
   SYSTEM_ADMINS,
   SYSTEM_DELETE_USER,
   SYSTEM_DEMOTE_ADMIN,
-  SYSTEM_PROMOTE_TO_ADMIN,
   VIEWER_SYSTEM_ROLE,
 } from '../../lib/documents';
 import type {
@@ -28,7 +26,6 @@ function rolePillClass(role: SystemRoleStr | null): string {
 
 export function SystemAdminsPage() {
   const { showToast } = useToast();
-  const [promoteEmail, setPromoteEmail] = useState('');
 
   const { data: viewerRoleData } = useQuery<ViewerSystemRoleQueryData>(
     VIEWER_SYSTEM_ROLE,
@@ -39,9 +36,6 @@ export function SystemAdminsPage() {
     { fetchPolicy: 'cache-and-network' },
   );
 
-  const [promote, { loading: promoting }] = useMutation(
-    SYSTEM_PROMOTE_TO_ADMIN,
-  );
   const [demote, { loading: demoting }] = useMutation(SYSTEM_DEMOTE_ADMIN);
   const [deleteUser, { loading: deleting }] = useMutation(SYSTEM_DELETE_USER);
 
@@ -64,21 +58,6 @@ export function SystemAdminsPage() {
   }
 
   const admins = adminsData?.systemAdmins ?? [];
-
-  async function onPromote(e: React.FormEvent) {
-    e.preventDefault();
-    const uuid = promoteEmail.trim();
-    if (!uuid) return;
-    try {
-      await promote({ variables: { userId: uuid } });
-      showToast('Utilisateur promu administrateur.', 'success');
-      setPromoteEmail('');
-      await refetch();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Erreur inconnue';
-      showToast(msg, 'error');
-    }
-  }
 
   async function onDemote(userId: string, email: string) {
     if (
@@ -217,37 +196,18 @@ export function SystemAdminsPage() {
         </section>
 
         <aside className="members-panel members-panel--aside">
-          <h2 className="members-panel__h">Promouvoir un utilisateur</h2>
+          <h2 className="members-panel__h">Comment promouvoir ?</h2>
           <p className="muted">
-            Saisissez l'identifiant (UUID) de l'utilisateur à promouvoir
-            au rôle <strong>Administrateur</strong>. L'utilisateur doit
-            déjà avoir un compte ClubFlow.
+            Pour donner le rôle <strong>Administrateur système</strong>{' '}
+            à un membre, ouvrez sa fiche depuis{' '}
+            <strong>Membres → Annuaire</strong>, puis utilisez le bloc{' '}
+            <em>Rôle système global</em> dans la fiche.
           </p>
-          <form className="members-form" onSubmit={(e) => void onPromote(e)}>
-            <label className="members-field">
-              <span className="members-field__label">Identifiant UUID</span>
-              <input
-                className="members-field__input"
-                value={promoteEmail}
-                onChange={(e) => setPromoteEmail(e.target.value)}
-                placeholder="ex. 2c60ab45-3432-4fbb-8ee1-…"
-                required
-              />
-            </label>
-            <div className="members-actions">
-              <button
-                type="submit"
-                className="members-btn members-btn--primary"
-                disabled={promoting || !promoteEmail.trim()}
-              >
-                {promoting ? 'Promotion…' : 'Promouvoir'}
-              </button>
-            </div>
-          </form>
-          <p className="muted" style={{ fontSize: '0.78rem' }}>
-            La promotion par email arrivera dans une prochaine itération
-            (besoin d'un endpoint de recherche User par email côté
-            système).
+          <p className="muted" style={{ fontSize: '0.85rem' }}>
+            Le membre doit avoir un compte (e-mail validé) pour être
+            promu. Si ce n'est pas le cas, mettez à jour son adresse
+            e-mail dans la fiche : ClubFlow envoie automatiquement une
+            invitation à finaliser le compte.
           </p>
         </aside>
       </div>

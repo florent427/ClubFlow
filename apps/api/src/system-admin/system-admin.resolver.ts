@@ -1,7 +1,9 @@
 import { UseGuards } from '@nestjs/common';
 import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { SystemRole } from '@prisma/client';
+import { type Club, SystemRole } from '@prisma/client';
+import { CurrentClub } from '../common/decorators/current-club.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { ClubContextGuard } from '../common/guards/club-context.guard';
 import { GqlJwtAuthGuard } from '../common/guards/gql-jwt-auth.guard';
 import {
   SuperAdminGuard,
@@ -108,5 +110,31 @@ export class SystemAdminResolver {
     @Args('userId', { type: () => ID }) userId: string,
   ): Promise<boolean> {
     return this.service.deleteUser(user.userId, userId);
+  }
+
+  /**
+   * Variante "depuis la fiche adhérent" : promeut/dégrade le User lié
+   * au membre. Pratique pour l'UI : pas besoin de connaître le UUID
+   * du User, on agit directement depuis la liste des membres.
+   *
+   * `role = ADMIN`  → promotion (tout admin système peut)
+   * `role = null`   → retrait du rôle ADMIN (réservé SUPER_ADMIN)
+   */
+  @Mutation(() => Boolean, { name: 'systemSetMemberAdminRole' })
+  @UseGuards(ClubContextGuard, SystemAdminGuard)
+  async systemSetMemberAdminRole(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('memberId', { type: () => ID }) memberId: string,
+    @Args('role', { type: () => SystemRole, nullable: true })
+    role: SystemRole | null,
+  ): Promise<boolean> {
+    await this.service.setMemberSystemRole(
+      user.userId,
+      club.id,
+      memberId,
+      role,
+    );
+    return true;
   }
 }

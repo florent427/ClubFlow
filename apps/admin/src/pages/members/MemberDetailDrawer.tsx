@@ -19,6 +19,7 @@ import {
   SET_CLUB_FAMILY_PAYER,
   TRANSFER_CLUB_MEMBER_TO_FAMILY,
   UPDATE_CLUB_MEMBER,
+  VIEWER_SYSTEM_ROLE,
 } from '../../lib/documents';
 import { MEMBER_CATALOG_FIELD_LABELS } from '../../lib/member-field-labels';
 import type {
@@ -32,7 +33,9 @@ import type {
   SetClubFamilyPayerMutationData,
   TransferMemberFamilyMutationData,
   UpdateMemberMutationData,
+  ViewerSystemRoleQueryData,
 } from '../../lib/types';
+import { SYSTEM_SET_MEMBER_ADMIN_ROLE } from '../../lib/documents';
 import { BUILTIN_ROLE_OPTIONS } from './members-constants';
 import { MemberAdhesionPanels } from './MemberAdhesionPanels';
 import { MemberPhotoField } from './MemberPhotoField';
@@ -460,6 +463,25 @@ export function MemberDetailDrawer({
     },
     onError: (e) => setFormError(e.message),
   });
+
+  // Rôle système global (transverse aux clubs).
+  const { data: viewerSystemRoleData } =
+    useQuery<ViewerSystemRoleQueryData>(VIEWER_SYSTEM_ROLE, {
+      fetchPolicy: 'cache-first',
+    });
+  const viewerSystemRole = viewerSystemRoleData?.viewerSystemRole ?? null;
+  const viewerIsSystemAdmin = viewerSystemRole !== null;
+  const viewerIsSuperAdmin = viewerSystemRole === 'SUPER_ADMIN';
+  const [setSystemRole, { loading: settingSystemRole }] = useMutation(
+    SYSTEM_SET_MEMBER_ADMIN_ROLE,
+    {
+      onCompleted: () => {
+        showToast('Rôle système mis à jour.', 'success');
+        void refetch();
+      },
+      onError: (e) => showToast(e.message, 'error'),
+    },
+  );
 
   const [deleteMember, { loading: deleting }] = useMutation<
     DeleteMemberMutationData
@@ -1268,6 +1290,91 @@ export function MemberDetailDrawer({
                   <span>{r.label}</span>
                 </label>
               ))}
+            </div>
+          ) : null}
+
+          {viewerIsSystemAdmin ? (
+            <div className="members-form__fieldset">
+              <span className="members-form__legend">Rôle système global</span>
+              <p className="muted members-form__hint">
+                Accès au back-office <strong>tous clubs confondus</strong>.
+                Réservé à l'équipe ClubFlow.
+              </p>
+              {member.systemRole === 'SUPER_ADMIN' ? (
+                <p className="muted">
+                  Super administrateur — compte protégé.
+                </p>
+              ) : member.systemRole === 'ADMIN' ? (
+                <div>
+                  <p>
+                    <strong>Administrateur système actif.</strong>{' '}
+                    {viewerIsSuperAdmin
+                      ? 'Vous pouvez retirer ce rôle.'
+                      : 'Seul le super administrateur peut retirer ce rôle.'}
+                  </p>
+                  {viewerIsSuperAdmin ? (
+                    <button
+                      type="button"
+                      className="btn btn-ghost members-table__danger"
+                      disabled={settingSystemRole}
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            `Retirer le rôle administrateur système à ${member.firstName} ${member.lastName} ?`,
+                          )
+                        ) {
+                          void setSystemRole({
+                            variables: {
+                              memberId: member.id,
+                              role: null,
+                            },
+                          });
+                        }
+                      }}
+                    >
+                      {settingSystemRole
+                        ? 'En cours…'
+                        : 'Retirer le rôle administrateur'}
+                    </button>
+                  ) : null}
+                </div>
+              ) : (
+                <div>
+                  <p className="muted members-form__hint">
+                    Aucun rôle système.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={settingSystemRole}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `Promouvoir ${member.firstName} ${member.lastName} en administrateur système ? Ce rôle donne accès au back-office tous clubs confondus.`,
+                        )
+                      ) {
+                        void setSystemRole({
+                          variables: {
+                            memberId: member.id,
+                            role: 'ADMIN',
+                          },
+                        });
+                      }
+                    }}
+                  >
+                    {settingSystemRole
+                      ? 'En cours…'
+                      : 'Promouvoir administrateur système'}
+                  </button>
+                  <p
+                    className="muted members-form__hint"
+                    style={{ fontSize: '0.78rem', marginTop: '0.4rem' }}
+                  >
+                    Le membre doit avoir un compte (e-mail validé) pour
+                    être promu. Sinon, l'API renverra une erreur explicite.
+                  </p>
+                </div>
+              )}
             </div>
           ) : null}
 
