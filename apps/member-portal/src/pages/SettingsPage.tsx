@@ -9,6 +9,7 @@ import {
   VIEWER_CLEAR_PAYER_SPACE_PIN,
 } from '../lib/viewer-documents';
 import type { ViewerMeData } from '../lib/viewer-types';
+import { useToast } from '../components/ToastProvider';
 
 type UpdateProfileData = {
   viewerUpdateMyProfile: {
@@ -23,6 +24,7 @@ type UpdateProfileData = {
 
 export function SettingsPage() {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const { data, loading } = useQuery<ViewerMeData>(VIEWER_ME);
   const me = data?.viewerMe;
   const isContact = me?.isContactProfile ?? false;
@@ -50,9 +52,15 @@ export function SettingsPage() {
     VIEWER_UPDATE_MY_PROFILE,
     {
       refetchQueries: [{ query: VIEWER_ME }],
-      onCompleted: () =>
-        setStatus({ tone: 'ok', msg: 'Profil mis à jour.' }),
-      onError: (e) => setStatus({ tone: 'error', msg: e.message }),
+      onCompleted: () => {
+        const msg = 'Profil mis à jour.';
+        setStatus({ tone: 'ok', msg });
+        showToast(msg, 'success');
+      },
+      onError: (e) => {
+        setStatus({ tone: 'error', msg: e.message });
+        showToast(e.message, 'error');
+      },
     },
   );
 
@@ -198,6 +206,7 @@ interface PinResultData {
 }
 
 function PayerSpacePinCard({ pinSet }: { pinSet: boolean }) {
+  const { showToast } = useToast();
   const [mode, setMode] = useState<'idle' | 'set' | 'clear'>('idle');
   const [currentPin, setCurrentPin] = useState('');
   const [newPin, setNewPin] = useState('');
@@ -249,12 +258,11 @@ function PayerSpacePinCard({ pinSet }: { pinSet: boolean }) {
           currentPin: pinSet ? currentPin : null,
         },
       });
-      setStatus({
-        tone: 'ok',
-        msg: pinSet
-          ? 'Code PIN modifié.'
-          : 'Code PIN activé. Vos pages /factures et /famille sont désormais protégées.',
-      });
+      const successMsg = pinSet
+        ? 'Code PIN modifié.'
+        : 'Code PIN activé. Vos pages /factures et /famille sont désormais protégées.';
+      setStatus({ tone: 'ok', msg: successMsg });
+      showToast(successMsg, 'success');
       // Invalide aussi l'unlock session (forcer une nouvelle saisie)
       try {
         sessionStorage.removeItem('mp:payer-space-unlocked-at');
@@ -263,10 +271,9 @@ function PayerSpacePinCard({ pinSet }: { pinSet: boolean }) {
       }
       reset();
     } catch (e) {
-      setStatus({
-        tone: 'error',
-        msg: e instanceof Error ? e.message : 'Échec de l’activation.',
-      });
+      const errMsg = e instanceof Error ? e.message : 'Échec de l’activation.';
+      setStatus({ tone: 'error', msg: errMsg });
+      showToast(errMsg, 'error');
     }
   }
 
@@ -274,7 +281,9 @@ function PayerSpacePinCard({ pinSet }: { pinSet: boolean }) {
     setStatus(null);
     try {
       await clearPin({ variables: { currentPin } });
-      setStatus({ tone: 'ok', msg: 'Code PIN désactivé.' });
+      const msg = 'Code PIN désactivé.';
+      setStatus({ tone: 'ok', msg });
+      showToast(msg, 'success');
       try {
         sessionStorage.removeItem('mp:payer-space-unlocked-at');
       } catch {
@@ -282,10 +291,10 @@ function PayerSpacePinCard({ pinSet }: { pinSet: boolean }) {
       }
       reset();
     } catch (e) {
-      setStatus({
-        tone: 'error',
-        msg: e instanceof Error ? e.message : 'Échec de la désactivation.',
-      });
+      const errMsg =
+        e instanceof Error ? e.message : 'Échec de la désactivation.';
+      setStatus({ tone: 'error', msg: errMsg });
+      showToast(errMsg, 'error');
     }
   }
 
