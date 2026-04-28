@@ -1,7 +1,14 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import { useEffect, useState, type FormEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from 'react';
 import { useNavigate } from 'react-router-dom';
-import { clearAuth } from '../lib/storage';
+import { getApiBaseUrl } from '../lib/api-base';
+import { clearAuth, getClubId, getToken } from '../lib/storage';
 import {
   VIEWER_ME,
   VIEWER_UPDATE_MY_PROFILE,
@@ -34,6 +41,8 @@ export function SettingsPage() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [photoUrl, setPhotoUrl] = useState('');
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [status, setStatus] = useState<null | {
     tone: 'ok' | 'error';
     msg: string;
@@ -63,6 +72,93 @@ export function SettingsPage() {
       },
     },
   );
+
+  async function handlePhotoSelect(
+    e: ChangeEvent<HTMLInputElement>,
+  ): Promise<void> {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('Format invalide — choisis une image (JPG, PNG, WebP).', 'error');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('Image trop lourde (max 10 Mo).', 'error');
+      e.target.value = '';
+      return;
+    }
+    const token = getToken();
+    const clubId = getClubId();
+    if (!token || !clubId) {
+      showToast('Session expirée — reconnecte-toi.', 'error');
+      return;
+    }
+    setUploadingPhoto(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(
+        `${getApiBaseUrl()}/media/upload?kind=image`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'X-Club-Id': clubId,
+          },
+          body: form,
+        },
+      );
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(
+          `Upload échoué (HTTP ${res.status}). ${text || 'Vérifie taille / format.'}`,
+        );
+      }
+      const data = (await res.json()) as { publicUrl: string };
+      setPhotoUrl(data.publicUrl);
+      // Auto-save : on persiste le nouveau photoUrl tout de suite pour
+      // que l'utilisateur n'ait pas à cliquer "Enregistrer" ensuite.
+      // Les autres champs (firstName, lastName, etc.) restent éditables
+      // et seront enregistrés au submit du formulaire comme avant.
+      void updateProfile({
+        variables: {
+          input: {
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
+            email: email.trim() || null,
+            phone: phone.trim(),
+            photoUrl: data.publicUrl,
+          },
+        },
+      });
+      showToast('Photo de profil mise à jour.', 'success');
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : 'Upload échoué.',
+        'error',
+      );
+    } finally {
+      setUploadingPhoto(false);
+      e.target.value = '';
+    }
+  }
+
+  function handleRemovePhoto(): void {
+    setPhotoUrl('');
+    void updateProfile({
+      variables: {
+        input: {
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          email: email.trim() || null,
+          phone: phone.trim(),
+          photoUrl: '',
+        },
+      },
+    });
+    showToast('Photo de profil retirée.', 'success');
+  }
 
   function onSubmit(e: FormEvent): void {
     e.preventDefault();
@@ -150,15 +246,105 @@ export function SettingsPage() {
                 onChange={(e) => setPhone(e.target.value)}
               />
             </label>
-            <label className="mp-field mp-field-wide">
-              <span>URL de photo (avatar)</span>
-              <input
-                type="url"
-                value={photoUrl}
-                onChange={(e) => setPhotoUrl(e.target.value)}
-                placeholder="https://…"
-              />
-            </label>
+            <div className="mp-field mp-field-wide">
+              <span>Photo de profil</span>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 16,
+                  marginTop: 6,
+                }}
+              >
+                {photoUrl ? (
+                  <img
+                    src={photoUrl}
+                    alt="Photo de profil"
+                    style={{
+                      width: 64,
+                      height: 64,
+                      borderRadius: '50%',
+                      objectFit: 'cover',
+                      border: '1px solid #cbd5e1',
+                    }}
+                  />
+                ) : (
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      width: 64,
+                      height: 64,
+                      borderRadius: '50%',
+                      background: '#e2e8f0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#64748b',
+                      fontSize: '1.5rem',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {(firstName[0] ?? '').toUpperCase()}
+                    {(lastName[0] ?? '').toUpperCase()}
+                  </div>
+                )}
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 6,
+                  }}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => void handlePhotoSelect(e)}
+                    style={{ display: 'none' }}
+                  />
+                  <button
+                    type="button"
+                    className="mp-btn mp-btn-outline mp-btn-compact"
+                    disabled={uploadingPhoto}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <span
+                      className="material-symbols-outlined"
+                      aria-hidden="true"
+                      style={{ fontSize: '1.05rem' }}
+                    >
+                      upload
+                    </span>{' '}
+                    {uploadingPhoto
+                      ? 'Envoi…'
+                      : photoUrl
+                        ? 'Changer la photo'
+                        : 'Choisir une photo'}
+                  </button>
+                  {photoUrl ? (
+                    <button
+                      type="button"
+                      className="mp-btn mp-btn-outline mp-btn-compact"
+                      disabled={uploadingPhoto}
+                      onClick={handleRemovePhoto}
+                      style={{
+                        color: '#b91c1c',
+                        borderColor: 'rgba(185, 28, 28, 0.3)',
+                      }}
+                    >
+                      Retirer
+                    </button>
+                  ) : null}
+                  <small
+                    className="mp-hint"
+                    style={{ fontSize: '0.75rem', marginTop: 4 }}
+                  >
+                    JPG, PNG, WebP — max 10 Mo. La photo est sauvegardée
+                    automatiquement après l’envoi.
+                  </small>
+                </div>
+              </div>
+            </div>
           </div>
           {status ? (
             <p
