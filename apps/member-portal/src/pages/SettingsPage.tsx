@@ -8,7 +8,7 @@ import {
 } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getApiBaseUrl } from '../lib/api-base';
-import { clearAuth, getClubId, getToken } from '../lib/storage';
+import { clearAuth, clearClubId, getClubId, getToken } from '../lib/storage';
 import {
   VIEWER_ME,
   VIEWER_UPDATE_MY_PROFILE,
@@ -375,7 +375,13 @@ export function SettingsPage() {
         <button
           type="button"
           className="mp-btn mp-btn-secondary"
-          onClick={() => void navigate('/select-profile', { replace: true })}
+          onClick={() => {
+            // Vide le clubId pour que SelectProfilePage n'auto-redirige
+            // pas vers /. Sans ça, hasMemberSession() reste true et la
+            // page envoie immédiatement vers le tableau de bord.
+            clearClubId();
+            void navigate('/select-profile', { replace: true });
+          }}
         >
           Choisir un autre profil
         </button>

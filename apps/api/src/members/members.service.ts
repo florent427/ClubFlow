@@ -34,6 +34,7 @@ import {
   isCatalogFieldEmpty,
   normalizeCustomFieldValue,
 } from './member-field-helpers';
+import { MemberAccountActivationService } from './member-account-activation.service';
 import { MemberFieldConfigService } from './member-field-config.service';
 import { ClubRoleDefinitionGraph } from './models/club-role-definition.model';
 import { DynamicGroupGraph } from './models/dynamic-group.model';
@@ -69,6 +70,7 @@ export class MembersService {
     private readonly memberPseudo: MemberPseudoService,
     @Inject(forwardRef(() => MembershipCartService))
     private readonly membershipCart: MembershipCartService,
+    private readonly memberActivation: MemberAccountActivationService,
   ) {}
 
   private assertMemberIdentityComplete(
@@ -848,6 +850,25 @@ export class MembersService {
     }
     await this.families.syncContactUserPayerMemberLinksByEmail(clubId, email);
     await this.assertMemberMatchesFieldRules(clubId, input.id);
+
+    // Si l'admin a modifié l'e-mail, déclenche l'activation du
+    // compte enfant si applicable (création User + lien activation).
+    if (input.email !== undefined && email !== existing.email) {
+      try {
+        await this.memberActivation.maybeActivateMemberAccount({
+          clubId,
+          memberId: input.id,
+          previousEmail: existing.email ?? null,
+          newEmail: email,
+        });
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[members.updateMember] member activation failed:',
+          (e as Error).message,
+        );
+      }
+    }
     return this.getMember(clubId, input.id);
   }
 

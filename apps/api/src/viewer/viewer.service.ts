@@ -16,6 +16,7 @@ import {
 } from '@prisma/client';
 import { FamiliesService } from '../families/families.service';
 import { ClubContactsService } from '../members/club-contacts.service';
+import { MemberAccountActivationService } from '../members/member-account-activation.service';
 import {
   assertMemberEmailAllowedInClub,
   normalizeMemberEmail,
@@ -68,6 +69,7 @@ export class ViewerService {
     private readonly membership: MembershipService,
     private readonly membershipCart: MembershipCartService,
     private readonly stripeCheckout: StripeCheckoutService,
+    private readonly memberActivation: MemberAccountActivationService,
   ) {}
 
   /**
@@ -1698,12 +1700,20 @@ export class ViewerService {
       select: { id: true },
     });
     if (!m) throw new NotFoundException('Membre introuvable');
+    // Récupère l'e-mail actuel pour détecter un changement et
+    // déclencher l'activation de compte enfant (cf
+    // MemberAccountActivationService).
+    const previous = await this.prisma.member.findUniqueOrThrow({
+      where: { id: memberId },
+      select: { email: true },
+    });
     const data: Prisma.MemberUpdateInput = {};
     if (patch.firstName !== undefined) data.firstName = patch.firstName.trim();
     if (patch.lastName !== undefined) data.lastName = patch.lastName.trim();
     if (patch.phone !== undefined) data.phone = patch.phone.trim() || null;
     if (patch.photoUrl !== undefined)
       data.photoUrl = patch.photoUrl.trim() || null;
+    let nextEmail: string | null = null;
     if (patch.email !== undefined) {
       const next = normalizeMemberEmail(patch.email);
       if (next) {
@@ -1711,9 +1721,30 @@ export class ViewerService {
           memberId,
         });
         data.email = next;
+        nextEmail = next;
       }
     }
     await this.prisma.member.update({ where: { id: memberId }, data });
+    // Si l'e-mail a changé et est nouveau pour ce User, on déclenche
+    // l'activation du compte (création User + token + e-mail au Member).
+    if (nextEmail) {
+      try {
+        await this.memberActivation.maybeActivateMemberAccount({
+          clubId,
+          memberId,
+          previousEmail: previous.email,
+          newEmail: nextEmail,
+        });
+      } catch (e) {
+        // Non-bloquant : l'update du profil ne doit pas échouer pour
+        // une erreur d'envoi d'e-mail. Log et continue.
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[viewer.updateMyProfile] member activation failed:',
+          (e as Error).message,
+        );
+      }
+    }
     return this.viewerMe(clubId, memberId, userId);
   }
 
