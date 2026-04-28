@@ -133,7 +133,7 @@ export function HomeDashboardScreen() {
             )}
           </>
         ) : null}
-        {billing?.isHouseholdGroupSpace ? (
+        {billing?.isHouseholdGroupSpace && isPayer ? (
           <Pressable
             style={[styles.pill, styles.pillMuted]}
             onPress={() => navigation.navigate('Famille')}
@@ -202,6 +202,10 @@ export function HomeDashboardScreen() {
         </>
       ) : null}
 
+      {/* Section facturation visible uniquement aux payeurs (cohérent
+          avec le portail web : cacher complètement, pas afficher un
+          message confus aux non-payeurs). */}
+      {isPayer ? (
       <View style={[styles.panel, styles.panelWide]}>
         <View style={styles.panelHead}>
           <Text style={styles.panelTitle}>Mes factures</Text>
@@ -218,10 +222,6 @@ export function HomeDashboardScreen() {
           </Text>
         ) : !billing ? (
           <Text style={styles.hint}>Chargement…</Text>
-        ) : !isPayer ? (
-          <Text style={styles.hint}>
-            L’accès au détail des factures est réservé au payeur du foyer.
-          </Text>
         ) : (
           <>
             <View style={styles.kpiRow}>
@@ -279,6 +279,7 @@ export function HomeDashboardScreen() {
           </>
         )}
       </View>
+      ) : null}
     </ScrollView>
   );
 }

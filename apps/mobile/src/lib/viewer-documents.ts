@@ -16,6 +16,8 @@ export const VIEWER_ME = gql`
       firstName
       lastName
       photoUrl
+      email
+      phone
       civility
       pseudo
       medicalCertExpiresAt
@@ -28,6 +30,36 @@ export const VIEWER_ME = gql`
       isContactProfile
       hideMemberModules
       telegramLinked
+      payerSpacePinSet
+    }
+  }
+`;
+
+export const VIEWER_UPDATE_MY_PROFILE = gql`
+  mutation ViewerUpdateMyProfile($input: ViewerUpdateMyProfileInput!) {
+    viewerUpdateMyProfile(input: $input) {
+      id
+      firstName
+      lastName
+      email
+      phone
+      photoUrl
+    }
+  }
+`;
+
+export const VIEWER_SET_PAYER_SPACE_PIN = gql`
+  mutation ViewerSetPayerSpacePin($newPin: String!, $currentPin: String) {
+    viewerSetPayerSpacePin(newPin: $newPin, currentPin: $currentPin) {
+      ok
+    }
+  }
+`;
+
+export const VIEWER_CLEAR_PAYER_SPACE_PIN = gql`
+  mutation ViewerClearPayerSpacePin($currentPin: String!) {
+    viewerClearPayerSpacePin(currentPin: $currentPin) {
+      ok
     }
   }
 `;

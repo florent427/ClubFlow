@@ -11,6 +11,8 @@ export type ViewerMeData = {
     firstName: string;
     lastName: string;
     photoUrl: string | null;
+    email: string;
+    phone: string | null;
     civility: string;
     pseudo: string | null;
     medicalCertExpiresAt: string | null;
@@ -23,6 +25,7 @@ export type ViewerMeData = {
     isContactProfile: boolean;
     hideMemberModules: boolean;
     telegramLinked: boolean;
+    payerSpacePinSet: boolean;
   };
 };
 
