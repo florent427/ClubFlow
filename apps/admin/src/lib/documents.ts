@@ -1399,6 +1399,57 @@ export const ADMIN_ARCHIVE_CHAT_GROUP = gql`
   }
 `;
 
+// =====================================================
+// Administration système (SUPER_ADMIN / ADMIN)
+// =====================================================
+
+export const VIEWER_SYSTEM_ROLE = gql`
+  query ViewerSystemRole {
+    viewerSystemRole
+  }
+`;
+
+export const SYSTEM_ADMINS = gql`
+  query SystemAdmins {
+    systemAdmins {
+      id
+      email
+      displayName
+      systemRole
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const SYSTEM_PROMOTE_TO_ADMIN = gql`
+  mutation SystemPromoteToAdmin($userId: ID!) {
+    systemPromoteToAdmin(userId: $userId) {
+      id
+      email
+      displayName
+      systemRole
+    }
+  }
+`;
+
+export const SYSTEM_DEMOTE_ADMIN = gql`
+  mutation SystemDemoteAdmin($userId: ID!) {
+    systemDemoteAdmin(userId: $userId) {
+      id
+      email
+      displayName
+      systemRole
+    }
+  }
+`;
+
+export const SYSTEM_DELETE_USER = gql`
+  mutation SystemDeleteUser($userId: ID!) {
+    systemDeleteUser(userId: $userId)
+  }
+`;
+
 export const ADMIN_POST_CHAT_MESSAGE = gql`
   mutation AdminPostChatMessage($input: AdminPostChatMessageInput!) {
     adminPostChatMessage(input: $input) {

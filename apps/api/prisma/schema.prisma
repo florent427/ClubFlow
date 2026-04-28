@@ -320,12 +320,30 @@ enum MembershipRole {
   PROJECT_MANAGER
 }
 
+/// Rôle système (transverse aux clubs). Distinct des rôles `MembershipRole`
+/// qui sont scopés à un club.
+///
+/// - SUPER_ADMIN : seul rôle pouvant retirer / dégrader / supprimer un
+///   autre administrateur système. Compte « racine » du SaaS — typiquement
+///   `admin@clubflow.local`.
+/// - ADMIN       : peut tout faire au niveau système (gérer les clubs,
+///   les utilisateurs, etc.) sauf toucher à un autre administrateur.
+///
+/// Null sur `User.systemRole` = utilisateur lambda (membre ou contact).
+enum SystemRole {
+  ADMIN
+  SUPER_ADMIN
+}
+
 model User {
   id              String    @id @default(uuid())
   email           String    @unique
   passwordHash    String?
   emailVerifiedAt DateTime?
   displayName     String
+  /// Rôle système global (cf enum SystemRole). Null = pas de droits
+  /// d'administration globale.
+  systemRole      SystemRole?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 

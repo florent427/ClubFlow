@@ -638,6 +638,25 @@ export type CommunicationChannelStr =
   | 'MESSAGING';
 export type MessageCampaignStatusStr = 'DRAFT' | 'SENT';
 
+export type SystemRoleStr = 'ADMIN' | 'SUPER_ADMIN';
+
+export type ViewerSystemRoleQueryData = {
+  viewerSystemRole: SystemRoleStr | null;
+};
+
+export type SystemAdminRow = {
+  id: string;
+  email: string;
+  displayName: string;
+  systemRole: SystemRoleStr | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SystemAdminsQueryData = {
+  systemAdmins: SystemAdminRow[];
+};
+
 export type ChatRoomChannelModeStr = 'OPEN' | 'RESTRICTED' | 'READ_ONLY';
 export type ChatRoomKindStr = 'DIRECT' | 'GROUP' | 'COMMUNITY';
 export type ChatRoomPermissionTargetStr =

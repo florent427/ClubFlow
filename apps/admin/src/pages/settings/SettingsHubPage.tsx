@@ -1,6 +1,9 @@
+import { useQuery } from '@apollo/client/react';
 import { Link } from 'react-router-dom';
 import { useClubModules } from '../../lib/club-modules-context';
 import type { ModuleCodeStr } from '../../lib/module-catalog';
+import { VIEWER_SYSTEM_ROLE } from '../../lib/documents';
+import type { ViewerSystemRoleQueryData } from '../../lib/types';
 
 function SettingsHubCard({
   to,
@@ -36,6 +39,11 @@ function SettingsHubCard({
 }
 
 export function SettingsHubPage() {
+  const { data: viewerRoleData } = useQuery<ViewerSystemRoleQueryData>(
+    VIEWER_SYSTEM_ROLE,
+    { fetchPolicy: 'cache-and-network' },
+  );
+  const isSystemAdmin = viewerRoleData?.viewerSystemRole != null;
   return (
     <>
       <header className="members-loom__hero members-loom__hero--nested">
@@ -115,6 +123,22 @@ export function SettingsHubPage() {
                 desc="Remise famille progressive, combinaison de produits, tranche d'âge — règles appliquées automatiquement aux factures d'adhésion."
               />
             </li>
+            {isSystemAdmin ? (
+              <li>
+                <Link
+                  to="/settings/administrateurs"
+                  className="settings-hub-card"
+                >
+                  <span className="settings-hub-card__title">
+                    Administrateurs système
+                  </span>
+                  <span className="settings-hub-card__desc">
+                    Gérer les rôles SUPER_ADMIN / ADMIN globaux. Réservé
+                    aux administrateurs système.
+                  </span>
+                </Link>
+              </li>
+            ) : null}
           </ul>
         </section>
       </div>

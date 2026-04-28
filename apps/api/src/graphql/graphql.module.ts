@@ -15,6 +15,7 @@ import { ExternalFinanceModule } from '../external-finance/external-finance.modu
 import { FamiliesModule } from '../families/families.module';
 import { ViewerModule } from '../viewer/viewer.module';
 import { MessagingModule } from '../messaging/messaging.module';
+import { SystemAdminModule } from '../system-admin/system-admin.module';
 import { ClubLifeModule } from '../club-life/club-life.module';
 import { EventsModule } from '../events/events.module';
 import { BookingModule } from '../booking/booking.module';
@@ -128,6 +129,7 @@ import '../projects/dto/project.inputs';
     ViewerModule,
     TelegramModule,
     MessagingModule,
+    SystemAdminModule,
     ClubLifeModule,
     EventsModule,
     BookingModule,

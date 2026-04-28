@@ -32,6 +32,7 @@ import { AccountingPage } from './pages/accounting/AccountingPage';
 import { SettingsLayout } from './pages/settings/SettingsLayout';
 import { SettingsHubPage } from './pages/settings/SettingsHubPage';
 import { MemberFieldsSettingsPage } from './pages/settings/MemberFieldsSettingsPage';
+import { SystemAdminsPage } from './pages/settings/SystemAdminsPage';
 import { AdhesionSettingsPage } from './pages/settings/AdhesionSettingsPage';
 import { PricingRulesPage } from './pages/settings/PricingRulesPage';
 import { MailDomainSettingsPage } from './pages/settings/MailDomainSettingsPage';
@@ -152,6 +153,7 @@ export default function App() {
                 path="adhesion-pricing-rules"
                 element={<AdhesionPricingRulesPage />}
               />
+              <Route path="administrateurs" element={<SystemAdminsPage />} />
             </Route>
             <Route path="agent" element={<AgentChatPage />} />
             <Route path="agent/audit" element={<AgentAuditPage />} />

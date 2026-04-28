@@ -36,6 +36,7 @@ import {
   ChatRoomMemberRole,
   ChatRoomChannelMode,
   ChatRoomPermissionTarget,
+  SystemRole,
   ClubSurveyStatus,
   ClubEventStatus,
   ClubEventRegistrationStatus,
@@ -118,6 +119,7 @@ registerEnumType(ChatRoomChannelMode, { name: 'ChatRoomChannelMode' });
 registerEnumType(ChatRoomPermissionTarget, {
   name: 'ChatRoomPermissionTarget',
 });
+registerEnumType(SystemRole, { name: 'SystemRole' });
 registerEnumType(ClubSurveyStatus, { name: 'ClubSurveyStatus' });
 registerEnumType(ClubEventStatus, { name: 'ClubEventStatus' });
 registerEnumType(ClubEventRegistrationStatus, {

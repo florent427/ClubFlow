@@ -6,6 +6,7 @@ import {
   MemberClubRole,
   MemberCivility,
   MembershipRole,
+  SystemRole,
   type Prisma,
 } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
@@ -103,11 +104,13 @@ async function main(): Promise<void> {
       passwordHash,
       emailVerifiedAt: new Date(),
       displayName: 'Admin démo',
+      systemRole: SystemRole.SUPER_ADMIN,
     },
     update: {
       passwordHash,
       emailVerifiedAt: new Date(),
       displayName: 'Admin démo',
+      systemRole: SystemRole.SUPER_ADMIN,
     },
   });
 
