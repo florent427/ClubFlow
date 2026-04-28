@@ -1557,7 +1557,11 @@ export class ViewerService {
         civility: input.civility === 'MR' ? 'MR' : 'MME',
         birthDate: new Date(input.birthDate),
         email: payerEmail,
-        contactId: activeProfile.contactId ?? null,
+        // ⚠️ Pour un enfant, le `contactId` du pending DOIT être null :
+        // l'enfant n'est PAS le Contact du payeur. Sans ça,
+        // `finalizePendingItems` attribuerait le userId du parent
+        // à la fiche Member de l'enfant (bug).
+        contactId: null,
         membershipProductIds: input.membershipProductIds,
         billingRhythm:
           input.billingRhythm ?? SubscriptionBillingRhythm.ANNUAL,
