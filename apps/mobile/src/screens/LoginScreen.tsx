@@ -2,21 +2,27 @@ import { useMutation } from '@apollo/client/react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useState } from 'react';
 import {
-  ActivityIndicator,
-  Button,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Button, TextField } from '../components/ui';
 import type { LoginWithProfilesData } from '../lib/auth-types';
 import { LOGIN_WITH_PROFILES } from '../lib/documents';
 import * as storage from '../lib/storage';
+import { palette, spacing, typography } from '../lib/theme';
 import type { RootStackParamList } from '../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
 export function LoginScreen({ navigation }: Props) {
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -59,86 +65,137 @@ export function LoginScreen({ navigation }: Props) {
       await storage.clearClubId();
       navigation.reset({ index: 0, routes: [{ name: 'SelectProfile' }] });
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : 'Connexion impossible.';
+      const msg = err instanceof Error ? err.message : 'Connexion impossible.';
       setError(msg);
     }
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>ClubFlow</Text>
-      <Text style={styles.subtitle}>Connexion</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="E-mail"
-        autoCapitalize="none"
-        autoCorrect={false}
-        keyboardType="email-address"
-        value={email}
-        onChangeText={setEmail}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Mot de passe"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      {loading ? (
-        <ActivityIndicator />
-      ) : (
-        <Button title="Se connecter" onPress={() => void onSubmit()} />
-      )}
-      <View style={styles.registerRow}>
-        <Text style={styles.muted}>Pas encore de compte ?</Text>
-        <Button
-          title="Créer un compte"
+    <KeyboardAvoidingView
+      style={styles.flex}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView
+        contentContainerStyle={[
+          styles.container,
+          { paddingTop: insets.top + spacing.huge },
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.brand}>
+          <View style={styles.logoBubble}>
+            <Ionicons name="shield-checkmark" size={32} color="white" />
+          </View>
+          <Text style={styles.eyebrow}>CLUBFLOW</Text>
+          <Text style={styles.title}>Bienvenue</Text>
+          <Text style={styles.lead}>
+            Connectez-vous à votre espace membre.
+          </Text>
+        </View>
+
+        <View style={styles.form}>
+          <TextField
+            label="E-mail"
+            value={email}
+            onChangeText={setEmail}
+            placeholder="vous@exemple.fr"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            autoComplete="email"
+            textContentType="emailAddress"
+          />
+          <TextField
+            label="Mot de passe"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoComplete="current-password"
+            textContentType="password"
+            error={error}
+          />
+          <Button
+            label="Se connecter"
+            onPress={() => void onSubmit()}
+            loading={loading}
+            disabled={!email.trim() || !password}
+            fullWidth
+            size="lg"
+            icon="log-in-outline"
+          />
+        </View>
+
+        <View style={styles.divider}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>ou</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
+        <Pressable
+          style={styles.registerCta}
           onPress={() => navigation.navigate('Register')}
-        />
-      </View>
-    </View>
+          accessibilityRole="button"
+          accessibilityLabel="Créer un compte ClubFlow"
+        >
+          <Ionicons
+            name="person-add-outline"
+            size={18}
+            color={palette.primary}
+          />
+          <Text style={styles.registerCtaText}>Créer un compte</Text>
+        </Pressable>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1, backgroundColor: palette.bg },
   container: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 24,
-    backgroundColor: '#fff',
+    flexGrow: 1,
+    paddingHorizontal: spacing.xxl,
+    paddingBottom: spacing.huge,
+    gap: spacing.xxl,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#555',
-    marginBottom: 24,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 12,
-    fontSize: 16,
-  },
-  error: {
-    color: '#b00020',
-    marginBottom: 12,
-  },
-  registerRow: {
-    marginTop: 24,
+  brand: { alignItems: 'center', gap: spacing.sm },
+  logoBubble: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+    backgroundColor: palette.primary,
     alignItems: 'center',
-    gap: 6,
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
   },
-  muted: {
-    color: '#64748b',
-    fontSize: 13,
+  eyebrow: { ...typography.eyebrow, color: palette.primary },
+  title: { ...typography.displayLg, color: palette.ink, textAlign: 'center' },
+  lead: {
+    ...typography.body,
+    color: palette.muted,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  form: { gap: spacing.lg },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  dividerLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: palette.borderStrong,
+  },
+  dividerText: { ...typography.small, color: palette.muted },
+  registerCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+  },
+  registerCtaText: {
+    ...typography.bodyStrong,
+    color: palette.primary,
   },
 });

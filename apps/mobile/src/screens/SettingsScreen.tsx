@@ -7,15 +7,12 @@ import { useEffect, useState } from 'react';
 import {
   Alert,
   Image,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
+import { Button, Card, ScreenContainer, TextField } from '../components/ui';
 import { MemberProfileSwitcher } from '../components/MemberProfileSwitcher';
 import {
   VIEWER_CLEAR_PAYER_SPACE_PIN,
@@ -25,6 +22,7 @@ import {
 } from '../lib/viewer-documents';
 import type { ViewerMeData } from '../lib/viewer-types';
 import * as storage from '../lib/storage';
+import { palette, radius, spacing, typography } from '../lib/theme';
 import type { RootStackParamList } from '../types/navigation';
 
 function getApiBaseUrl(): string {
@@ -44,7 +42,6 @@ export function SettingsScreen() {
   });
   const me = meData?.viewerMe;
 
-  // ---------- Profil de base ----------
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
@@ -110,7 +107,7 @@ export function SettingsScreen() {
     if (!perm.granted) {
       Alert.alert(
         'Accès refusé',
-        'Autorisez l\'accès à la galerie photos dans les réglages de l\'appareil.',
+        "Autorisez l'accès à la galerie photos dans les réglages de l'appareil.",
       );
       return;
     }
@@ -137,23 +134,19 @@ export function SettingsScreen() {
       const form = new FormData();
       const fileName = asset.fileName ?? `photo-${Date.now()}.jpg`;
       const mimeType = asset.mimeType ?? 'image/jpeg';
-      // RN FormData : { uri, name, type } — supporté nativement par fetch.
       form.append('file', {
         uri: asset.uri,
         name: fileName,
         type: mimeType,
       } as unknown as Blob);
-      const res = await fetch(
-        `${getApiBaseUrl()}/media/upload?kind=image`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'X-Club-Id': clubId,
-          },
-          body: form,
+      const res = await fetch(`${getApiBaseUrl()}/media/upload?kind=image`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Club-Id': clubId,
         },
-      );
+        body: form,
+      });
       if (!res.ok) {
         const text = await res.text().catch(() => '');
         throw new Error(
@@ -162,7 +155,6 @@ export function SettingsScreen() {
       }
       const data = (await res.json()) as { publicUrl: string };
       setPhotoUrl(data.publicUrl);
-      // Auto-save de la nouvelle photo (cohérent avec le portail web).
       await updateProfile({
         variables: {
           input: {
@@ -178,142 +170,150 @@ export function SettingsScreen() {
       Alert.alert('Photo mise à jour', 'Votre photo de profil est enregistrée.');
     } catch (err: unknown) {
       const msg =
-        err instanceof Error ? err.message : 'Échec de l\'upload.';
+        err instanceof Error ? err.message : "Échec de l'upload.";
       Alert.alert('Erreur', msg);
     } finally {
       setUploadingPhoto(false);
     }
   }
 
+  const initials =
+    `${(firstName[0] ?? '?').toUpperCase()}${(lastName[0] ?? '').toUpperCase()}`.trim();
+
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView style={styles.page} contentContainerStyle={styles.pageInner}>
-        <Text style={styles.title}>Paramètres</Text>
+    <ScreenContainer keyboardAvoiding>
+      <View>
+        <Text style={styles.eyebrow}>MON COMPTE</Text>
+        <Text style={styles.pageTitle}>Paramètres</Text>
         <Text style={styles.lead}>
-          Gérez votre profil, votre photo, et la sécurité de votre espace.
+          Profil, photo, sécurité de l'espace payeur et session.
         </Text>
+      </View>
 
-        <MemberProfileSwitcher />
+      <MemberProfileSwitcher />
 
-        {/* ---- Photo de profil ---- */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Photo de profil</Text>
-          <View style={styles.photoRow}>
-            {photoUrl ? (
-              <Image source={{ uri: photoUrl }} style={styles.avatar} />
-            ) : (
-              <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                <Text style={styles.avatarInitials}>
-                  {(firstName[0] ?? '?').toUpperCase()}
-                  {(lastName[0] ?? '').toUpperCase()}
-                </Text>
-              </View>
-            )}
-            <Pressable
-              style={[styles.btnSecondary, uploadingPhoto && styles.btnDisabled]}
-              disabled={uploadingPhoto}
+      {/* Photo de profil */}
+      <Card title="Photo de profil">
+        <View style={styles.photoRow}>
+          {photoUrl ? (
+            <Image source={{ uri: photoUrl }} style={styles.avatar} />
+          ) : (
+            <View style={[styles.avatar, styles.avatarPlaceholder]}>
+              <Text style={styles.avatarInitials}>{initials || '?'}</Text>
+            </View>
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.photoHint}>
+              JPG ou PNG, carré recommandé (10 Mo max).
+            </Text>
+            <Button
+              label={uploadingPhoto ? 'Envoi…' : 'Choisir une photo'}
+              icon="camera-outline"
               onPress={() => void onPickPhoto()}
-            >
-              <Ionicons name="camera-outline" size={18} color="#1e293b" />
-              <Text style={styles.btnSecondaryText}>
-                {uploadingPhoto ? 'Envoi…' : 'Choisir une photo'}
-              </Text>
-            </Pressable>
+              loading={uploadingPhoto}
+              variant="secondary"
+              size="sm"
+            />
           </View>
         </View>
+      </Card>
 
-        {/* ---- Informations personnelles ---- */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Informations</Text>
-          <View style={styles.field}>
-            <Text style={styles.label}>Prénom</Text>
-            <TextInput
-              style={styles.input}
+      {/* Informations */}
+      <Card title="Informations">
+        <View style={{ gap: spacing.md }}>
+          <View style={styles.row}>
+            <TextField
+              label="Prénom"
               value={firstName}
               onChangeText={setFirstName}
               autoCapitalize="words"
+              containerStyle={{ flex: 1 }}
             />
-          </View>
-          <View style={styles.field}>
-            <Text style={styles.label}>Nom</Text>
-            <TextInput
-              style={styles.input}
+            <TextField
+              label="Nom"
               value={lastName}
               onChangeText={setLastName}
               autoCapitalize="words"
+              containerStyle={{ flex: 1 }}
             />
           </View>
-          <View style={styles.field}>
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              style={styles.input}
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              autoCorrect={false}
-            />
-            <Text style={styles.hint}>
-              Les e-mails du club concernant votre fiche y seront envoyés —
-              une copie sera toujours adressée au(x) payeur(s) si vous êtes
-              dans un foyer.
-            </Text>
-          </View>
-          <View style={styles.field}>
-            <Text style={styles.label}>Téléphone</Text>
-            <TextInput
-              style={styles.input}
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-            />
-          </View>
-          <Pressable
-            style={[styles.btnPrimary, savingProfile && styles.btnDisabled]}
-            disabled={savingProfile}
+          <TextField
+            label="Email"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            hint="Une copie sera adressée au(x) payeur(s) si vous êtes dans un foyer."
+          />
+          <TextField
+            label="Téléphone"
+            value={phone}
+            onChangeText={setPhone}
+            keyboardType="phone-pad"
+          />
+          <Button
+            label={savingProfile ? 'Enregistrement…' : 'Enregistrer'}
             onPress={() => void onSaveProfile()}
+            loading={savingProfile}
+            fullWidth
+            icon="save-outline"
+          />
+        </View>
+      </Card>
+
+      <PayerSpacePinCard
+        pinSet={Boolean(me?.payerSpacePinSet)}
+        onChanged={() => void refetch()}
+      />
+
+      {/* Session */}
+      <Card title="Session" padding={spacing.lg}>
+        <View style={{ gap: spacing.sm }}>
+          <Pressable
+            onPress={() => void chooseOtherProfile()}
+            style={({ pressed }) => [
+              styles.sessionRow,
+              pressed && styles.sessionRowPressed,
+            ]}
+            accessibilityRole="button"
           >
-            <Text style={styles.btnPrimaryText}>
-              {savingProfile ? 'Enregistrement…' : 'Enregistrer'}
+            <Ionicons
+              name="people-outline"
+              size={20}
+              color={palette.primary}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sessionLabel}>Choisir un autre profil</Text>
+              <Text style={styles.sessionSub}>Membres d'un même foyer.</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={palette.muted} />
+          </Pressable>
+
+          <Pressable
+            onPress={() => void logout()}
+            style={({ pressed }) => [
+              styles.sessionRow,
+              pressed && styles.sessionRowPressed,
+            ]}
+            accessibilityRole="button"
+          >
+            <Ionicons
+              name="log-out-outline"
+              size={20}
+              color={palette.danger}
+            />
+            <Text style={[styles.sessionLabel, { color: palette.danger }]}>
+              Se déconnecter
             </Text>
           </Pressable>
         </View>
-
-        {/* ---- PIN payeur ---- */}
-        <PayerSpacePinCard
-          pinSet={Boolean(me?.payerSpacePinSet)}
-          onChanged={() => void refetch()}
-        />
-
-        {/* ---- Actions session ---- */}
-        <View style={styles.actions}>
-          <Pressable
-            style={({ pressed }) => [styles.btnGhost, pressed && styles.pressed]}
-            onPress={() => void chooseOtherProfile()}
-          >
-            <Text style={styles.btnGhostText}>Choisir un autre profil</Text>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [styles.btnDanger, pressed && styles.pressed]}
-            onPress={() => void logout()}
-          >
-            <Text style={styles.btnDangerText}>Se déconnecter</Text>
-          </Pressable>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </Card>
+    </ScreenContainer>
   );
 }
 
-/**
- * Carte PIN payeur. 3 modes :
- *  - aucun PIN défini → afficher saisie nouveau PIN (4 chiffres)
- *  - PIN défini → afficher boutons "Modifier" et "Supprimer"
- *  - mode édition (set ou clear) avec champ "PIN actuel"
- */
+/** PIN payeur — version stylée avec Card + Buttons UI primitives. */
 function PayerSpacePinCard({
   pinSet,
   onChanged,
@@ -351,19 +351,13 @@ function PayerSpacePinCard({
     setBusy(true);
     try {
       await setPin({
-        variables: {
-          newPin,
-          currentPin: pinSet ? currentPin : null,
-        },
+        variables: { newPin, currentPin: pinSet ? currentPin : null },
       });
       Alert.alert('PIN enregistré', 'Votre PIN a été mis à jour.');
       reset();
       onChanged();
     } catch (err: unknown) {
-      Alert.alert(
-        'Erreur',
-        err instanceof Error ? err.message : 'Échec',
-      );
+      Alert.alert('Erreur', err instanceof Error ? err.message : 'Échec');
     } finally {
       setBusy(false);
     }
@@ -377,255 +371,192 @@ function PayerSpacePinCard({
     setBusy(true);
     try {
       await clearPin({ variables: { currentPin } });
-      Alert.alert('PIN supprimé', 'Votre espace payeur n\'est plus protégé.');
+      Alert.alert('PIN supprimé', "Votre espace payeur n'est plus protégé.");
       reset();
       onChanged();
     } catch (err: unknown) {
-      Alert.alert(
-        'Erreur',
-        err instanceof Error ? err.message : 'Échec',
-      );
+      Alert.alert('Erreur', err instanceof Error ? err.message : 'Échec');
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <View style={styles.card}>
-      <Text style={styles.cardTitle}>PIN espace payeur</Text>
-      <Text style={styles.hint}>
-        Code à 4 chiffres qui protège l'accès aux factures et à l'espace
-        familial. Optionnel — laissez vide si aucune protection
-        supplémentaire ne vous semble nécessaire.
-      </Text>
-
+    <Card title="PIN espace payeur" subtitle="Code à 4 chiffres protégeant l'accès aux factures.">
       {mode === 'idle' && !pinSet ? (
-        <Pressable
-          style={styles.btnPrimary}
+        <Button
+          label="Définir un PIN"
+          icon="lock-closed-outline"
           onPress={() => setMode('set')}
-        >
-          <Text style={styles.btnPrimaryText}>Définir un PIN</Text>
-        </Pressable>
+          fullWidth
+        />
       ) : null}
 
       {mode === 'idle' && pinSet ? (
-        <View style={{ gap: 8 }}>
-          <Text style={styles.muted}>✓ PIN actuellement défini.</Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Pressable
-              style={[styles.btnSecondary, styles.flex]}
+        <View style={{ gap: spacing.sm }}>
+          <View style={styles.pinStatusRow}>
+            <Ionicons
+              name="shield-checkmark"
+              size={20}
+              color={palette.success}
+            />
+            <Text style={styles.pinStatusText}>PIN actif.</Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+            <Button
+              label="Modifier"
               onPress={() => setMode('change')}
-            >
-              <Text style={styles.btnSecondaryText}>Modifier</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.btnGhost, styles.flex]}
+              variant="secondary"
+              style={{ flex: 1 }}
+            />
+            <Button
+              label="Supprimer"
               onPress={() => setMode('clear')}
-            >
-              <Text style={styles.btnGhostText}>Supprimer</Text>
-            </Pressable>
+              variant="ghost"
+              style={{ flex: 1 }}
+            />
           </View>
         </View>
       ) : null}
 
-      {(mode === 'set' || mode === 'change') ? (
-        <View style={{ gap: 8 }}>
+      {mode === 'set' || mode === 'change' ? (
+        <View style={{ gap: spacing.md }}>
           {mode === 'change' ? (
-            <View style={styles.field}>
-              <Text style={styles.label}>PIN actuel</Text>
-              <TextInput
-                style={styles.input}
-                value={currentPin}
-                onChangeText={setCurrentPin}
-                keyboardType="number-pad"
-                maxLength={4}
-                secureTextEntry
-              />
-            </View>
-          ) : null}
-          <View style={styles.field}>
-            <Text style={styles.label}>Nouveau PIN (4 chiffres)</Text>
-            <TextInput
-              style={styles.input}
-              value={newPin}
-              onChangeText={setNewPin}
-              keyboardType="number-pad"
-              maxLength={4}
-              secureTextEntry
-            />
-          </View>
-          <View style={styles.field}>
-            <Text style={styles.label}>Confirmer le PIN</Text>
-            <TextInput
-              style={styles.input}
-              value={confirmPin}
-              onChangeText={setConfirmPin}
-              keyboardType="number-pad"
-              maxLength={4}
-              secureTextEntry
-            />
-          </View>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Pressable
-              style={[styles.btnGhost, styles.flex]}
-              onPress={reset}
-            >
-              <Text style={styles.btnGhostText}>Annuler</Text>
-            </Pressable>
-            <Pressable
-              style={[
-                styles.btnPrimary,
-                styles.flex,
-                busy && styles.btnDisabled,
-              ]}
-              disabled={busy}
-              onPress={() => void onSubmitSet()}
-            >
-              <Text style={styles.btnPrimaryText}>
-                {busy ? 'En cours…' : 'Enregistrer'}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      ) : null}
-
-      {mode === 'clear' ? (
-        <View style={{ gap: 8 }}>
-          <View style={styles.field}>
-            <Text style={styles.label}>PIN actuel pour confirmer</Text>
-            <TextInput
-              style={styles.input}
+            <TextField
+              label="PIN actuel"
               value={currentPin}
               onChangeText={setCurrentPin}
               keyboardType="number-pad"
               maxLength={4}
               secureTextEntry
             />
-          </View>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Pressable
-              style={[styles.btnGhost, styles.flex]}
+          ) : null}
+          <TextField
+            label="Nouveau PIN (4 chiffres)"
+            value={newPin}
+            onChangeText={setNewPin}
+            keyboardType="number-pad"
+            maxLength={4}
+            secureTextEntry
+          />
+          <TextField
+            label="Confirmer"
+            value={confirmPin}
+            onChangeText={setConfirmPin}
+            keyboardType="number-pad"
+            maxLength={4}
+            secureTextEntry
+          />
+          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+            <Button
+              label="Annuler"
               onPress={reset}
-            >
-              <Text style={styles.btnGhostText}>Annuler</Text>
-            </Pressable>
-            <Pressable
-              style={[
-                styles.btnDanger,
-                styles.flex,
-                busy && styles.btnDisabled,
-              ]}
-              disabled={busy}
-              onPress={() => void onSubmitClear()}
-            >
-              <Text style={styles.btnDangerText}>
-                {busy ? 'En cours…' : 'Supprimer le PIN'}
-              </Text>
-            </Pressable>
+              variant="ghost"
+              style={{ flex: 1 }}
+            />
+            <Button
+              label={busy ? 'En cours…' : 'Enregistrer'}
+              onPress={() => void onSubmitSet()}
+              loading={busy}
+              style={{ flex: 1 }}
+            />
           </View>
         </View>
       ) : null}
-    </View>
+
+      {mode === 'clear' ? (
+        <View style={{ gap: spacing.md }}>
+          <TextField
+            label="PIN actuel pour confirmer"
+            value={currentPin}
+            onChangeText={setCurrentPin}
+            keyboardType="number-pad"
+            maxLength={4}
+            secureTextEntry
+          />
+          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+            <Button
+              label="Annuler"
+              onPress={reset}
+              variant="ghost"
+              style={{ flex: 1 }}
+            />
+            <Button
+              label={busy ? 'En cours…' : 'Supprimer le PIN'}
+              onPress={() => void onSubmitClear()}
+              loading={busy}
+              variant="danger"
+              style={{ flex: 1 }}
+            />
+          </View>
+        </View>
+      ) : null}
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  page: { flex: 1, backgroundColor: '#f8fafc' },
-  pageInner: { padding: 16, paddingBottom: 48, gap: 12 },
-  title: { fontSize: 24, fontWeight: '700', color: '#0f172a' },
-  lead: { fontSize: 14, color: '#475569', lineHeight: 20 },
-
-  card: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 16,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
+  eyebrow: { ...typography.eyebrow, color: palette.primary },
+  pageTitle: {
+    ...typography.h1,
+    color: palette.ink,
+    marginTop: spacing.xs,
   },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#0f172a',
+  lead: {
+    ...typography.body,
+    color: palette.muted,
+    marginTop: spacing.sm,
   },
-
   photoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: spacing.lg,
   },
   avatar: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#cbd5e1',
+    backgroundColor: palette.borderStrong,
   },
   avatarPlaceholder: {
+    backgroundColor: palette.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarInitials: {
+    color: 'white',
     fontSize: 28,
     fontWeight: '700',
-    color: 'white',
   },
-
-  field: { gap: 4 },
-  label: { fontSize: 12, fontWeight: '600', color: '#475569' },
-  input: {
-    backgroundColor: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
+  photoHint: {
+    ...typography.small,
+    color: palette.muted,
+    marginBottom: spacing.sm,
   },
-  hint: { fontSize: 12, color: '#64748b', lineHeight: 17 },
-  muted: { fontSize: 13, color: '#475569' },
-
-  btnPrimary: {
-    backgroundColor: '#1565c0',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    alignItems: 'center',
+  row: { flexDirection: 'row', gap: spacing.md },
+  pinStatusRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  btnPrimaryText: { color: 'white', fontWeight: '700', fontSize: 15 },
-  btnSecondary: {
-    backgroundColor: '#e2e8f0',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 8,
     alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: palette.successBg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+  },
+  pinStatusText: { ...typography.bodyStrong, color: '#15803d' },
+  sessionRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  btnSecondaryText: { color: '#1e293b', fontWeight: '600', fontSize: 14 },
-  btnGhost: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.md,
+    minHeight: 48,
   },
-  btnGhostText: { color: '#475569', fontWeight: '600', fontSize: 14 },
-  btnDanger: {
-    backgroundColor: '#c62828',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    alignItems: 'center',
+  sessionRowPressed: { backgroundColor: palette.bgAlt },
+  sessionLabel: {
+    ...typography.bodyStrong,
+    color: palette.ink,
   },
-  btnDangerText: { color: 'white', fontWeight: '700', fontSize: 15 },
-  btnDisabled: { opacity: 0.5 },
-  pressed: { opacity: 0.85 },
-
-  actions: { gap: 8, marginTop: 8 },
+  sessionSub: { ...typography.small, color: palette.muted, marginTop: 2 },
 });

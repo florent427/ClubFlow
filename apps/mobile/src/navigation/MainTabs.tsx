@@ -13,6 +13,7 @@ import { ProgressionScreen } from '../screens/ProgressionScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { VIEWER_ME } from '../lib/viewer-documents';
 import type { ViewerMeData } from '../lib/viewer-types';
+import { palette, typography } from '../lib/theme';
 import type { ContactTabParamList, MainTabParamList } from '../types/navigation';
 
 const MemberTab = createBottomTabNavigator<MainTabParamList>();
@@ -29,8 +30,16 @@ export function MemberTabsNavigator() {
       key={hideMemberModules ? 'min' : 'full'}
       screenOptions={{
         headerShown: true,
-        tabBarActiveTintColor: '#1565c0',
-        tabBarInactiveTintColor: '#666',
+        headerStyle: { backgroundColor: palette.surface },
+        headerTitleStyle: { ...typography.h3, color: palette.ink },
+        headerShadowVisible: false,
+        tabBarActiveTintColor: palette.primary,
+        tabBarInactiveTintColor: palette.muted,
+        tabBarStyle: {
+          backgroundColor: palette.surface,
+          borderTopColor: palette.border,
+        },
+        tabBarLabelStyle: { ...typography.caption, fontSize: 11 },
       }}
     >
       <MemberTab.Screen
@@ -143,8 +152,16 @@ export function ContactTabsNavigator() {
     <ContactTab.Navigator
       screenOptions={{
         headerShown: true,
-        tabBarActiveTintColor: '#1565c0',
-        tabBarInactiveTintColor: '#666',
+        headerStyle: { backgroundColor: palette.surface },
+        headerTitleStyle: { ...typography.h3, color: palette.ink },
+        headerShadowVisible: false,
+        tabBarActiveTintColor: palette.primary,
+        tabBarInactiveTintColor: palette.muted,
+        tabBarStyle: {
+          backgroundColor: palette.surface,
+          borderTopColor: palette.border,
+        },
+        tabBarLabelStyle: { ...typography.caption, fontSize: 11 },
       }}
     >
       <ContactTab.Screen

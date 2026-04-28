@@ -5,24 +5,21 @@ import { useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Button, TextField } from '../components/ui';
 import { REGISTER_CONTACT } from '../lib/documents';
+import { palette, spacing, typography } from '../lib/theme';
 import type { RegisterContactData } from '../lib/auth-types';
 import type { RootStackParamList } from '../types/navigation';
 
-/**
- * Inscription d'un nouveau contact (parent / responsable). Ne crée pas
- * de fiche membre directement : un email de vérification est envoyé,
- * le compte est actif après clic sur le lien (cf VerifyEmailScreen).
- */
 export function RegisterScreen() {
+  const insets = useSafeAreaInsets();
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
@@ -72,45 +69,47 @@ export function RegisterScreen() {
 
   if (done) {
     return (
-      <View style={styles.center}>
-        <Ionicons name="mail-unread" size={64} color="#1565c0" />
+      <View style={styles.flexCenter}>
+        <View style={styles.successIcon}>
+          <Ionicons name="mail-unread" size={48} color={palette.primary} />
+        </View>
         <Text style={styles.title}>Vérifiez votre e-mail</Text>
         <Text style={styles.lead}>
           Un lien de confirmation a été envoyé à{'\n'}
-          <Text style={styles.strong}>{email.trim()}</Text>.{'\n'}
-          Cliquez dessus pour activer votre compte.
+          <Text style={styles.strong}>{email.trim()}</Text>.
         </Text>
         <Text style={styles.muted}>
-          Sur mobile, le lien ouvre l'application directement (deep link
-          clubflow://). Sinon vous pouvez aussi le coller dans Safari /
-          Chrome.
+          Cliquez dessus depuis votre téléphone — le lien ouvrira l'app
+          ClubFlow directement (deep link).
         </Text>
-        <Pressable
-          style={styles.btnGhost}
+        <Button
+          label="Retour à la connexion"
           onPress={() => navigation.navigate('Login')}
-        >
-          <Text style={styles.btnGhostText}>Retour à la connexion</Text>
-        </Pressable>
+          variant="ghost"
+          fullWidth
+          icon="arrow-back-outline"
+        />
       </View>
     );
   }
 
   if (alreadyExists) {
     return (
-      <View style={styles.center}>
-        <Ionicons name="alert-circle-outline" size={64} color="#f59e0b" />
+      <View style={styles.flexCenter}>
+        <View style={[styles.successIcon, styles.warningIcon]}>
+          <Ionicons name="alert-circle" size={48} color={palette.warning} />
+        </View>
         <Text style={styles.title}>Compte déjà existant</Text>
         <Text style={styles.lead}>
           Un compte existe déjà pour{' '}
-          <Text style={styles.strong}>{email.trim()}</Text>.{'\n'}
-          Connectez-vous, ou réinitialisez votre mot de passe si nécessaire.
+          <Text style={styles.strong}>{email.trim()}</Text>.
         </Text>
-        <Pressable
-          style={styles.btnPrimary}
+        <Button
+          label="Se connecter"
           onPress={() => navigation.navigate('Login')}
-        >
-          <Text style={styles.btnPrimaryText}>Se connecter</Text>
-        </Pressable>
+          fullWidth
+          icon="log-in-outline"
+        />
       </View>
     );
   }
@@ -120,8 +119,14 @@ export function RegisterScreen() {
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <View style={styles.header}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingTop: insets.top + spacing.xl },
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.brand}>
           <Text style={styles.eyebrow}>CLUBFLOW</Text>
           <Text style={styles.title}>Créer un compte</Text>
           <Text style={styles.lead}>
@@ -131,61 +136,60 @@ export function RegisterScreen() {
         </View>
 
         <View style={styles.form}>
-          <Text style={styles.label}>Prénom</Text>
-          <TextInput
-            style={styles.input}
-            value={firstName}
-            onChangeText={setFirstName}
-            autoCapitalize="words"
-            autoComplete="given-name"
-          />
+          <View style={styles.row}>
+            <TextField
+              label="Prénom"
+              value={firstName}
+              onChangeText={setFirstName}
+              autoCapitalize="words"
+              autoComplete="given-name"
+              containerStyle={styles.flex}
+            />
+            <TextField
+              label="Nom"
+              value={lastName}
+              onChangeText={setLastName}
+              autoCapitalize="words"
+              autoComplete="family-name"
+              containerStyle={styles.flex}
+            />
+          </View>
 
-          <Text style={styles.label}>Nom</Text>
-          <TextInput
-            style={styles.input}
-            value={lastName}
-            onChangeText={setLastName}
-            autoCapitalize="words"
-            autoComplete="family-name"
-          />
-
-          <Text style={styles.label}>E-mail</Text>
-          <TextInput
-            style={styles.input}
+          <TextField
+            label="E-mail"
             value={email}
             onChangeText={setEmail}
+            placeholder="vous@exemple.fr"
             autoCapitalize="none"
             keyboardType="email-address"
             autoComplete="email"
             autoCorrect={false}
           />
 
-          <Text style={styles.label}>Mot de passe (8 caractères min.)</Text>
-          <TextInput
-            style={styles.input}
+          <TextField
+            label="Mot de passe"
+            hint="8 caractères minimum"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
             autoComplete="new-password"
+            error={error}
           />
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-
-          <Pressable
-            style={[styles.btnPrimary, loading && styles.btnDisabled]}
-            disabled={loading}
+          <Button
+            label="S'inscrire"
             onPress={() => void onSubmit()}
-          >
-            <Text style={styles.btnPrimaryText}>
-              {loading ? 'Envoi…' : "S'inscrire"}
-            </Text>
-          </Pressable>
-          <Pressable
-            style={styles.btnGhost}
+            loading={loading}
+            fullWidth
+            size="lg"
+            icon="checkmark-circle-outline"
+          />
+          <Button
+            label="Déjà un compte ? Connexion"
             onPress={() => navigation.navigate('Login')}
-          >
-            <Text style={styles.btnGhostText}>Déjà un compte ? Connexion</Text>
-          </Pressable>
+            variant="ghost"
+            fullWidth
+          />
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -193,67 +197,48 @@ export function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: '#f8fafc' },
-  center: {
+  flex: { flex: 1, backgroundColor: palette.bg },
+  flexCenter: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: palette.bg,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 32,
-    gap: 12,
+    padding: spacing.xxl,
+    gap: spacing.lg,
   },
-  scroll: { padding: 24, gap: 16, paddingBottom: 48 },
-  header: { gap: 8, marginBottom: 8 },
-  eyebrow: {
-    fontSize: 12,
-    color: '#1565c0',
-    fontWeight: '700',
-    letterSpacing: 1,
+  scroll: {
+    flexGrow: 1,
+    paddingHorizontal: spacing.xxl,
+    paddingBottom: spacing.huge,
+    gap: spacing.xxl,
   },
+  brand: { gap: spacing.sm, alignItems: 'center' },
+  eyebrow: { ...typography.eyebrow, color: palette.primary },
   title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#0f172a',
+    ...typography.displayLg,
+    color: palette.ink,
     textAlign: 'center',
   },
   lead: {
-    fontSize: 14,
-    color: '#475569',
-    lineHeight: 21,
+    ...typography.body,
+    color: palette.muted,
     textAlign: 'center',
   },
   muted: {
-    fontSize: 12,
-    color: '#94a3b8',
+    ...typography.small,
+    color: palette.mutedSoft,
     textAlign: 'center',
-    lineHeight: 17,
   },
-  strong: { fontWeight: '700', color: '#0f172a' },
-  form: { gap: 8 },
-  label: { fontSize: 13, fontWeight: '600', color: '#475569' },
-  input: {
-    backgroundColor: 'white',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 15,
-  },
-  error: { color: '#dc2626', fontSize: 13 },
-  btnPrimary: {
-    backgroundColor: '#1565c0',
-    paddingVertical: 14,
-    borderRadius: 8,
+  strong: { fontWeight: '700', color: palette.ink },
+  form: { gap: spacing.lg },
+  row: { flexDirection: 'row', gap: spacing.md },
+  successIcon: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: palette.primaryLight,
     alignItems: 'center',
-    marginTop: 12,
+    justifyContent: 'center',
   },
-  btnPrimaryText: { color: 'white', fontWeight: '700', fontSize: 15 },
-  btnGhost: {
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  btnGhostText: { color: '#1565c0', fontWeight: '600', fontSize: 14 },
-  btnDisabled: { opacity: 0.5 },
+  warningIcon: { backgroundColor: palette.warningBg },
 });

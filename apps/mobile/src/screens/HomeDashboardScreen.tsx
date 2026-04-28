@@ -1,14 +1,9 @@
 import { useQuery } from '@apollo/client/react';
 import { useNavigation } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { Button, Card, EmptyState, Pill, ScreenContainer } from '../components/ui';
 import { JoinFamilyByPayerEmailCta } from '../components/JoinFamilyByPayerEmailCta';
 import { MemberProfileSwitcher } from '../components/MemberProfileSwitcher';
 import { MemberRoleToggle } from '../components/MemberRoleToggle';
@@ -28,6 +23,7 @@ import type {
   ViewerUpcomingData,
 } from '../lib/viewer-types';
 import { formatEuroCents, medicalCertState } from '../lib/format';
+import { palette, radius, spacing, typography } from '../lib/theme';
 import type { MainTabParamList } from '../types/navigation';
 
 export function HomeDashboardScreen() {
@@ -70,382 +66,312 @@ export function HomeDashboardScreen() {
   const cert = medicalCertState(me?.medicalCertExpiresAt ?? null);
 
   return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.pageInner}>
-      <View style={styles.heroHead}>
-        <Text style={styles.eyebrow}>
-          {clubName ? clubName : 'Espace membre'}
+    <ScreenContainer>
+      {/* Hero */}
+      <View>
+        <View style={styles.heroHead}>
+          <Text style={styles.eyebrow}>{clubName ?? 'ESPACE MEMBRE'}</Text>
+          {adminSwitch?.canAccessClubBackOffice === true ? (
+            <MemberRoleToggle
+              canAccessClubBackOffice
+              adminWorkspaceClubId={adminSwitch.adminWorkspaceClubId}
+              variant="header"
+            />
+          ) : null}
+        </View>
+        <Text style={styles.heroTitle}>
+          {meLoading
+            ? '…'
+            : me
+              ? `Bonjour ${me.firstName}`
+              : meError
+                ? 'Espace membre'
+                : '…'}
         </Text>
-        {adminSwitch?.canAccessClubBackOffice === true ? (
-          <MemberRoleToggle
-            canAccessClubBackOffice
-            adminWorkspaceClubId={adminSwitch.adminWorkspaceClubId}
-            variant="header"
-          />
+        {me ? (
+          <Text style={styles.heroSubtitle}>
+            Heureux de vous revoir.
+          </Text>
         ) : null}
       </View>
 
       <MemberProfileSwitcher />
 
-      <Text style={styles.heroTitle}>
-        {meLoading
-          ? '…'
-          : me
-            ? `Content de te revoir, ${me.firstName}`
-            : meError
-              ? 'Espace membre'
-              : '…'}
-      </Text>
-
-      <View style={styles.badgesRow}>
+      {/* Pills */}
+      <View style={styles.pillsRow}>
         {!hideMemberModules ? (
           <>
-            <View
-              style={[
-                styles.pill,
-                !me?.gradeLevelLabel ? styles.pillMuted : null,
-              ]}
-            >
-              <Ionicons name="school-outline" size={16} color="#555" />
-              <Text style={styles.pillText}>
-                {me?.gradeLevelLabel ?? 'Grade non renseigné'}
-              </Text>
-            </View>
-            <View
-              style={[styles.pill, cert.ok ? styles.pillOk : styles.pillWarn]}
-            >
-              <Ionicons
-                name="shield-checkmark-outline"
-                size={16}
-                color={cert.ok ? '#2e7d32' : '#f57c00'}
-              />
-              <Text style={styles.pillText}>{cert.label}</Text>
-            </View>
+            <Pill
+              icon="school-outline"
+              tone={me?.gradeLevelLabel ? 'primary' : 'neutral'}
+              label={me?.gradeLevelLabel ?? 'Grade non renseigné'}
+            />
+            <Pill
+              icon="shield-checkmark-outline"
+              tone={cert.ok ? 'success' : 'warning'}
+              label={cert.label}
+            />
             {me?.telegramLinked ? (
-              <View style={[styles.pill, styles.pillOk]}>
-                <Ionicons name="send-outline" size={16} color="#2e7d32" />
-                <Text style={styles.pillText}>Telegram relié</Text>
-              </View>
+              <Pill icon="send-outline" tone="success" label="Telegram relié" />
             ) : (
-              <View style={[styles.pill, styles.pillMuted]}>
-                <Ionicons name="send-outline" size={16} color="#888" />
-                <Text style={styles.pillText}>Telegram non relié</Text>
-              </View>
+              <Pill
+                icon="send-outline"
+                tone="neutral"
+                label="Telegram non relié"
+              />
             )}
           </>
         ) : null}
         {billing?.isHouseholdGroupSpace && isPayer ? (
-          <Pressable
-            style={[styles.pill, styles.pillMuted]}
+          <Pill
+            icon="people-outline"
+            tone="info"
+            label="Espace familial partagé"
             onPress={() => navigation.navigate('Famille')}
-          >
-            <Ionicons name="people-outline" size={16} color="#555" />
-            <Text style={styles.pillLink}>Espace familial partagé</Text>
-          </Pressable>
+          />
         ) : null}
       </View>
 
       <JoinFamilyByPayerEmailCta variant="dashboard" />
 
+      {/* Mon programme */}
       {!hideMemberModules ? (
-        <>
-          <View style={styles.panel}>
-            <Text style={styles.panelTitle}>Mon programme</Text>
-            {me?.gradeLevelLabel ? (
-              <View style={styles.programBlock}>
-                <View style={styles.programRow}>
-                  <Ionicons name="school" size={22} color="#1565c0" />
-                  <View>
-                    <Text style={styles.programGrade}>{me.gradeLevelLabel}</Text>
-                    <Text style={styles.hint}>Votre grade actuel</Text>
-                  </View>
+        <Card title="Mon programme">
+          {me?.gradeLevelLabel ? (
+            <View style={{ gap: spacing.md }}>
+              <View style={styles.programRow}>
+                <View style={styles.gradeIcon}>
+                  <Ionicons name="school" size={22} color={palette.primary} />
                 </View>
-                <Pressable onPress={() => navigation.navigate('Progression')}>
-                  <Text style={styles.link}>Voir ma progression complète</Text>
-                </Pressable>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.programGrade}>{me.gradeLevelLabel}</Text>
+                  <Text style={styles.programGradeSub}>Votre grade actuel</Text>
+                </View>
               </View>
-            ) : (
-              <View style={styles.emptySoft}>
-                <Ionicons name="book-outline" size={32} color="#999" />
-                <Text style={styles.emptyText}>
-                  Votre grade n&apos;est pas encore renseigné. Les contenus
-                  pédagogiques par grade seront disponibles ici.
-                </Text>
-              </View>
-            )}
-            <Pressable
-              style={styles.btnOutline}
-              onPress={() => navigation.navigate('Planning')}
-            >
-              <Text style={styles.btnOutlineText}>Consulter le planning</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.panel}>
-            <View style={styles.panelHead}>
-              <Text style={styles.panelTitle}>Prochains cours</Text>
-              {slots.length > 3 ? (
-                <Pressable onPress={() => navigation.navigate('Planning')}>
-                  <Text style={styles.link}>Voir tout</Text>
-                </Pressable>
-              ) : null}
+              <Button
+                label="Voir ma progression"
+                onPress={() => navigation.navigate('Progression')}
+                variant="secondary"
+                icon="trending-up-outline"
+                fullWidth
+              />
             </View>
-            {slotsQ.error ? (
-              <Text style={styles.hint}>
-                Planning indisponible (module ou droits).
-              </Text>
-            ) : dashSlots.length === 0 ? (
-              <Text style={styles.hint}>Aucun cours à venir pour l’instant.</Text>
-            ) : (
-              dashSlots.map((s) => <SlotCard key={s.id} slot={s} />)
-            )}
-          </View>
-        </>
+          ) : (
+            <EmptyState
+              icon="book-outline"
+              title="Grade à compléter"
+              description="Les contenus pédagogiques par grade apparaîtront ici dès qu'il sera renseigné."
+            />
+          )}
+        </Card>
       ) : null}
 
-      {/* Section facturation visible uniquement aux payeurs (cohérent
-          avec le portail web : cacher complètement, pas afficher un
-          message confus aux non-payeurs). */}
-      {isPayer ? (
-      <View style={[styles.panel, styles.panelWide]}>
-        <View style={styles.panelHead}>
-          <Text style={styles.panelTitle}>Mes factures</Text>
-          {hasOverdue ? (
-            <View style={styles.overdueBadge}>
-              <Ionicons name="alert-circle" size={14} color="#b91c1c" />
-              <Text style={styles.overdueBadgeText}>En retard</Text>
-            </View>
-          ) : null}
-        </View>
-        {billQ.error ? (
-          <Text style={styles.hint}>
-            Facturation indisponible (module ou droits).
-          </Text>
-        ) : !billing ? (
-          <Text style={styles.hint}>Chargement…</Text>
-        ) : (
-          <>
-            <View style={styles.kpiRow}>
-              <View
-                style={[
-                  styles.kpi,
-                  totalBalance > 0 ? styles.kpiWarn : styles.kpiOk,
-                ]}
+      {/* Prochains cours */}
+      {!hideMemberModules ? (
+        <Card
+          title="Prochains cours"
+          headerRight={
+            slots.length > 3 ? (
+              <Pressable
+                onPress={() => navigation.navigate('Planning')}
+                accessibilityRole="link"
+                accessibilityLabel="Voir tous les cours"
+                hitSlop={8}
               >
-                <Text style={styles.kpiLabel}>Reste à payer</Text>
-                <Text
-                  style={[
-                    styles.kpiValue,
-                    totalBalance > 0 ? styles.kpiValueWarn : styles.kpiValueOk,
-                  ]}
-                >
-                  {formatEuroCents(totalBalance)}
-                </Text>
-              </View>
-              <View style={[styles.kpi, styles.kpiOk]}>
-                <Text style={styles.kpiLabel}>Déjà réglé</Text>
-                <Text style={[styles.kpiValue, styles.kpiValueOk]}>
-                  {formatEuroCents(totalPaid)}
-                </Text>
-              </View>
+                <Text style={styles.linkText}>Voir tout</Text>
+              </Pressable>
+            ) : null
+          }
+        >
+          {slotsQ.error ? (
+            <Text style={styles.hintError}>
+              Planning indisponible (module ou droits).
+            </Text>
+          ) : dashSlots.length === 0 ? (
+            <EmptyState
+              icon="calendar-outline"
+              title="Aucun cours à venir"
+              description="Les prochains créneaux planifiés apparaîtront ici."
+            />
+          ) : (
+            <View style={{ gap: spacing.md }}>
+              {dashSlots.map((s) => (
+                <SlotCard key={s.id} slot={s} />
+              ))}
             </View>
-            {openInvoices.length === 0 ? (
-              <Text style={styles.hint}>Aucun solde ouvert — tout est à jour.</Text>
-            ) : (
-              openInvoices.slice(0, 3).map((inv) => {
-                const overdue =
-                  inv.dueAt && new Date(inv.dueAt).getTime() < nowMs;
-                return (
-                  <View key={inv.id} style={styles.invoiceLine}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.invoiceLabel} numberOfLines={1}>
-                        {inv.label}
-                      </Text>
-                      {overdue ? (
-                        <Text style={styles.invoiceOverdue}>
-                          En retard
-                        </Text>
-                      ) : null}
-                    </View>
-                    <Text style={styles.invoiceAmt}>
-                      {formatEuroCents(inv.balanceCents)}
-                    </Text>
-                  </View>
-                );
-              })
-            )}
-            <Pressable onPress={() => navigation.navigate('Famille')}>
-              <Text style={styles.link}>Voir toutes les factures</Text>
-            </Pressable>
-          </>
-        )}
-      </View>
+          )}
+        </Card>
       ) : null}
-    </ScrollView>
+
+      {/* Mes factures (uniquement payeurs) */}
+      {isPayer ? (
+        <Card
+          title="Mes factures"
+          headerRight={
+            hasOverdue ? <Pill tone="danger" label="En retard" /> : null
+          }
+        >
+          {billQ.error ? (
+            <Text style={styles.hintError}>
+              Facturation indisponible (module ou droits).
+            </Text>
+          ) : !billing ? (
+            <Text style={styles.hint}>Chargement…</Text>
+          ) : (
+            <View style={{ gap: spacing.md }}>
+              <View style={styles.kpiRow}>
+                <Kpi
+                  label="Reste à payer"
+                  value={formatEuroCents(totalBalance)}
+                  tone={totalBalance > 0 ? 'warning' : 'success'}
+                />
+                <Kpi
+                  label="Déjà réglé"
+                  value={formatEuroCents(totalPaid)}
+                  tone="success"
+                />
+              </View>
+              {openInvoices.length === 0 ? (
+                <Text style={styles.hint}>
+                  ✓ Aucun solde ouvert — tout est à jour.
+                </Text>
+              ) : (
+                <View style={{ gap: spacing.sm }}>
+                  {openInvoices.slice(0, 3).map((inv) => {
+                    const overdue =
+                      inv.dueAt && new Date(inv.dueAt).getTime() < nowMs;
+                    return (
+                      <View key={inv.id} style={styles.invoiceLine}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.invoiceLabel} numberOfLines={1}>
+                            {inv.label}
+                          </Text>
+                          {overdue ? (
+                            <Text style={styles.invoiceOverdue}>En retard</Text>
+                          ) : null}
+                        </View>
+                        <Text style={styles.invoiceAmt}>
+                          {formatEuroCents(inv.balanceCents)}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+              <Pressable
+                onPress={() => navigation.navigate('Famille')}
+                accessibilityRole="link"
+                accessibilityLabel="Voir toutes les factures"
+                style={styles.linkRow}
+              >
+                <Text style={styles.linkText}>Voir toutes les factures</Text>
+                <Ionicons
+                  name="arrow-forward"
+                  size={16}
+                  color={palette.primary}
+                />
+              </Pressable>
+            </View>
+          )}
+        </Card>
+      ) : null}
+    </ScreenContainer>
+  );
+}
+
+function Kpi({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: 'success' | 'warning';
+}) {
+  const bg = tone === 'success' ? palette.successBg : palette.warningBg;
+  const fg = tone === 'success' ? '#15803d' : '#92400e';
+  return (
+    <View style={[styles.kpi, { backgroundColor: bg }]}>
+      <Text style={styles.kpiLabel}>{label}</Text>
+      <Text style={[styles.kpiValue, { color: fg }]}>{value}</Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#fff' },
-  pageInner: { padding: 16, paddingBottom: 32 },
   heroHead: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-    gap: 8,
+    alignItems: 'center',
+    gap: spacing.sm,
   },
-  eyebrow: {
-    fontSize: 12,
-    color: '#666',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    flex: 1,
-  },
+  eyebrow: { ...typography.eyebrow, color: palette.primary },
   heroTitle: {
-    fontSize: 26,
-    fontWeight: '700',
-    marginBottom: 12,
-    color: '#111',
+    ...typography.displayLg,
+    color: palette.ink,
+    marginTop: spacing.sm,
   },
-  badgesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  pill: {
+  heroSubtitle: {
+    ...typography.body,
+    color: palette.muted,
+    marginTop: spacing.xs,
+  },
+  pillsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+
+  programRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    backgroundColor: '#f5f5f5',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
+    gap: spacing.md,
   },
-  pillMuted: { opacity: 0.9 },
-  pillOk: {
-    backgroundColor: '#e8f5e9',
-    borderColor: '#c8e6c9',
-  },
-  pillWarn: {
-    backgroundColor: '#fff3e0',
-    borderColor: '#ffe0b2',
-  },
-  pillText: { fontSize: 13, color: '#333', maxWidth: 220 },
-  pillLink: { fontSize: 13, color: '#1565c0', fontWeight: '600' },
-  panel: {
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    backgroundColor: '#fafafa',
-  },
-  panelWide: {},
-  panelHead: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  gradeIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    backgroundColor: palette.primaryLight,
     alignItems: 'center',
-    marginBottom: 8,
+    justifyContent: 'center',
   },
-  panelTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 12,
-    color: '#111',
-  },
-  programBlock: { marginBottom: 12 },
-  programRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  programGrade: { fontSize: 17, fontWeight: '600' },
-  hint: { fontSize: 14, color: '#666', marginTop: 4 },
-  link: {
-    fontSize: 15,
-    color: '#1565c0',
-    fontWeight: '600',
-    marginTop: 8,
-  },
-  emptySoft: {
-    alignItems: 'center',
-    paddingVertical: 16,
-    marginBottom: 8,
-  },
-  emptyText: {
-    textAlign: 'center',
-    color: '#666',
-    marginTop: 8,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  btnOutline: {
-    borderWidth: 1,
-    borderColor: '#1565c0',
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  btnOutlineText: { color: '#1565c0', fontWeight: '600', fontSize: 15 },
-  familyLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    marginBottom: 8,
-    color: '#333',
-  },
-  invoiceLine: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#ddd',
-    gap: 12,
-  },
-  invoiceLabel: { fontSize: 14, color: '#333' },
-  invoiceOverdue: {
-    fontSize: 12,
-    color: '#b91c1c',
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  invoiceAmt: { fontSize: 14, fontWeight: '700', color: '#b45309' },
-  kpiRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12,
-  },
+  programGrade: { ...typography.h3, color: palette.ink },
+  programGradeSub: { ...typography.small, color: palette.muted },
+
+  hint: { ...typography.small, color: palette.muted },
+  hintError: { ...typography.small, color: palette.danger },
+
+  kpiRow: { flexDirection: 'row', gap: spacing.sm },
   kpi: {
     flex: 1,
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#fff',
+    padding: spacing.md,
+    borderRadius: radius.md,
+    gap: spacing.xxs,
   },
-  kpiWarn: { backgroundColor: '#fffbeb', borderColor: '#fcd34d' },
-  kpiOk: { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' },
-  kpiLabel: {
-    fontSize: 11,
-    color: '#64748b',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  kpiValue: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0f172a',
-    marginTop: 2,
-  },
-  kpiValueWarn: { color: '#b45309' },
-  kpiValueOk: { color: '#166534' },
-  overdueBadge: {
+  kpiLabel: { ...typography.caption, color: palette.muted },
+  kpiValue: { ...typography.metric },
+
+  invoiceLine: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#fee2e2',
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 999,
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: palette.border,
   },
-  overdueBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#b91c1c',
+  invoiceLabel: { ...typography.bodyStrong, color: palette.ink },
+  invoiceOverdue: {
+    ...typography.caption,
+    color: palette.danger,
+    marginTop: 2,
+  },
+  invoiceAmt: { ...typography.bodyStrong, color: palette.ink },
+
+  linkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingTop: spacing.xs,
+    minHeight: 36,
+  },
+  linkText: {
+    ...typography.bodyStrong,
+    color: palette.primary,
   },
 });
