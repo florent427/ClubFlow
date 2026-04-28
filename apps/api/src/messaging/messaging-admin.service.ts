@@ -510,26 +510,70 @@ export class MessagingAdminService {
    * Vérifie que le membre cible est bien dans le salon. L'audit est
    * conservé via `ChatMessage.postedAsAdminUserId`.
    */
-  async postAsMember(
+  /**
+   * Poste un message dans un salon **au nom de l'admin loggué**.
+   *
+   * Cherche le `Member` rattaché au User admin (via `Member.userId`) pour
+   * ce club. S'il n'est pas encore inscrit dans le salon, l'ajoute
+   * automatiquement (un admin a accès à tous les salons par définition).
+   *
+   * Le champ `postedAsAdminUserId` reste tracé pour audit, et permet à
+   * l'UI d'afficher un tag "admin" sur le message.
+   */
+  async postAsAdmin(
     clubId: string,
     adminUserId: string,
     roomId: string,
-    asMemberId: string,
     body: string,
     parentMessageId?: string | null,
   ) {
-    const isMember = await this.prisma.chatRoomMember.findFirst({
-      where: { roomId, memberId: asMemberId, room: { clubId } },
+    const adminMember = await this.prisma.member.findFirst({
+      where: {
+        clubId,
+        userId: adminUserId,
+        status: MemberStatus.ACTIVE,
+      },
       select: { id: true },
     });
-    if (!isMember) {
+    if (!adminMember) {
       throw new ForbiddenException(
-        'Le membre choisi n’appartient pas au salon',
+        "Votre compte admin n'a pas de fiche membre active dans ce club. Créez-vous une fiche pour pouvoir poster.",
       );
     }
-    return this.messaging.postMessage(clubId, roomId, asMemberId, body, {
-      postedAsAdminUserId: adminUserId,
-      parentMessageId: parentMessageId ?? null,
+
+    const room = await this.prisma.chatRoom.findFirst({
+      where: { id: roomId, clubId },
+      select: { id: true, archivedAt: true },
     });
+    if (!room) {
+      throw new NotFoundException('Salon introuvable');
+    }
+    if (room.archivedAt) {
+      throw new BadRequestException('Salon archivé : écriture impossible.');
+    }
+
+    // Inscrit l'admin au salon si pas déjà membre.
+    await this.prisma.chatRoomMember.upsert({
+      where: {
+        roomId_memberId: { roomId, memberId: adminMember.id },
+      },
+      create: {
+        roomId,
+        memberId: adminMember.id,
+        role: ChatRoomMemberRole.ADMIN,
+      },
+      update: {},
+    });
+
+    return this.messaging.postMessage(
+      clubId,
+      roomId,
+      adminMember.id,
+      body,
+      {
+        postedAsAdminUserId: adminUserId,
+        parentMessageId: parentMessageId ?? null,
+      },
+    );
   }
 }

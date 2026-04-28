@@ -138,14 +138,10 @@ export class UpdateAdminChatGroupInput {
 }
 
 @InputType()
-export class AdminPostAsMemberInput {
+export class AdminPostChatMessageInput {
   @Field(() => ID)
   @IsUUID()
   roomId!: string;
-
-  @Field(() => ID)
-  @IsUUID()
-  asMemberId!: string;
 
   @Field(() => String)
   @IsString()

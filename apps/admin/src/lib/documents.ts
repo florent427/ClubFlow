@@ -1399,9 +1399,9 @@ export const ADMIN_ARCHIVE_CHAT_GROUP = gql`
   }
 `;
 
-export const ADMIN_POST_CHAT_MESSAGE_AS_MEMBER = gql`
-  mutation AdminPostChatMessageAsMember($input: AdminPostAsMemberInput!) {
-    adminPostChatMessageAsMember(input: $input) {
+export const ADMIN_POST_CHAT_MESSAGE = gql`
+  mutation AdminPostChatMessage($input: AdminPostChatMessageInput!) {
+    adminPostChatMessage(input: $input) {
       id
       body
       createdAt

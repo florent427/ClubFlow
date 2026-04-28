@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   ADMIN_ARCHIVE_CHAT_GROUP,
   ADMIN_CREATE_CHAT_GROUP,
-  ADMIN_POST_CHAT_MESSAGE_AS_MEMBER,
+  ADMIN_POST_CHAT_MESSAGE,
   ADMIN_UPDATE_CHAT_GROUP,
   CLUB_CHAT_ROOMS_ADMIN,
   CLUB_CHAT_ROOM_MESSAGES_ADMIN,
@@ -255,7 +255,6 @@ export function MessagingAdminPage() {
         {conversationRoom ? (
           <ConversationPanel
             room={conversationRoom}
-            memberLabel={memberLabel}
             onClose={() => setConversationRoomId(null)}
           />
         ) : null}
@@ -315,35 +314,21 @@ export function MessagingAdminPage() {
 
 /**
  * Panel de conversation : affiche les messages racine du salon, permet de
- * poster un message et d'ouvrir un fil de réponses. Le composer présente
- * un sélecteur "Poster comme" qui retient le dernier choix de l'admin.
+ * poster un message au nom de l'admin loggué et d'ouvrir un fil de
+ * réponses.
  */
 function ConversationPanel({
   room,
-  memberLabel,
   onClose,
 }: {
   room: AdminChatRoomRow;
-  memberLabel: Map<string, string>;
   onClose: () => void;
 }) {
   const { showToast } = useToast();
   const [draft, setDraft] = useState('');
-  const [asMemberId, setAsMemberId] = useState<string>(
-    pickDefaultAsMember(room),
-  );
   const [openThreadId, setOpenThreadId] = useState<string | null>(null);
   const [threadDraft, setThreadDraft] = useState('');
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
-
-  // Si la liste des membres du salon change, ré-ajuster l'asMemberId si
-  // le membre actuel n'est plus dedans.
-  useEffect(() => {
-    const ids = new Set(room.members.map((m) => m.memberId));
-    if (!ids.has(asMemberId)) {
-      setAsMemberId(pickDefaultAsMember(room));
-    }
-  }, [room, asMemberId]);
 
   const { data: msgsData, refetch: refetchMessages } = useQuery<{
     clubChatRoomMessagesAdmin: AdminMessage[];
@@ -364,8 +349,8 @@ function ConversationPanel({
     fetchPolicy: 'cache-and-network',
   });
 
-  const [postAsMember, { loading: posting }] = useMutation(
-    ADMIN_POST_CHAT_MESSAGE_AS_MEMBER,
+  const [postMessage, { loading: posting }] = useMutation(
+    ADMIN_POST_CHAT_MESSAGE,
   );
 
   const messages = msgsData?.clubChatRoomMessagesAdmin ?? [];
@@ -382,13 +367,12 @@ function ConversationPanel({
 
   async function onSendRoot(e: FormEvent) {
     e.preventDefault();
-    if (!asMemberId || !draft.trim()) return;
+    if (!draft.trim()) return;
     try {
-      await postAsMember({
+      await postMessage({
         variables: {
           input: {
             roomId: room.id,
-            asMemberId,
             body: draft.trim(),
           },
         },
@@ -402,13 +386,12 @@ function ConversationPanel({
   }
 
   async function onSendReply(parentId: string) {
-    if (!asMemberId || !threadDraft.trim()) return;
+    if (!threadDraft.trim()) return;
     try {
-      await postAsMember({
+      await postMessage({
         variables: {
           input: {
             roomId: room.id,
-            asMemberId,
             body: threadDraft.trim(),
             parentMessageId: parentId,
           },
@@ -542,28 +525,13 @@ function ConversationPanel({
       </div>
 
       <form className="cf-chat-compose" onSubmit={(e) => void onSendRoot(e)}>
-        <div className="cf-chat-compose-row">
-          <label className="cf-chat-as">
-            <span className="muted">Poster comme</span>
-            <select
-              className="members-field__input"
-              value={asMemberId}
-              onChange={(ev) => setAsMemberId(ev.target.value)}
-            >
-              {room.members.map((m) => (
-                <option key={m.memberId} value={m.memberId}>
-                  {memberLabel.get(m.memberId) ??
-                    `${m.member.firstName} ${m.member.lastName}`}
-                  {m.role === 'ADMIN' ? ' · admin du salon' : ''}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+        <p className="muted" style={{ fontSize: '0.78rem', margin: 0 }}>
+          Vous postez avec votre compte administrateur. Le message sera
+          marqué « admin » côté membres pour la transparence.
+        </p>
         {room.channelMode === 'READ_ONLY' ? (
-          <p className="muted" style={{ fontSize: '0.85rem' }}>
-            Salon en diffusion seule : seul un admin peut poster, ce qui
-            est exactement ce que vous faites ici.
+          <p className="muted" style={{ fontSize: '0.78rem', margin: 0 }}>
+            Salon en diffusion seule : seul un admin peut poster.
           </p>
         ) : null}
         <div className="cf-chat-compose-row">
@@ -573,12 +541,12 @@ function ConversationPanel({
             placeholder="Écrire un message dans le salon…"
             value={draft}
             onChange={(ev) => setDraft(ev.target.value)}
-            disabled={posting || !asMemberId}
+            disabled={posting}
           />
           <button
             type="submit"
             className="members-btn members-btn--primary"
-            disabled={!draft.trim() || !asMemberId || posting}
+            disabled={!draft.trim() || posting}
           >
             {posting ? 'Envoi…' : 'Envoyer'}
           </button>
@@ -586,11 +554,6 @@ function ConversationPanel({
       </form>
     </section>
   );
-}
-
-function pickDefaultAsMember(room: AdminChatRoomRow): string {
-  const adminInRoom = room.members.find((m) => m.role === 'ADMIN');
-  return adminInRoom?.memberId ?? room.members[0]?.memberId ?? '';
 }
 
 type RoomDrawerProps = {

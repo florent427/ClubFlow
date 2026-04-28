@@ -11,7 +11,7 @@ import { ClubAdminRoleGuard } from '../common/guards/club-admin-role.guard';
 import type { RequestUser } from '../common/types/request-user';
 import { ModuleCode } from '../domain/module-registry/module-codes';
 import {
-  AdminPostAsMemberInput,
+  AdminPostChatMessageInput,
   CreateAdminChatGroupInput,
   UpdateAdminChatGroupInput,
 } from './dto/admin-chat-group.input';
@@ -145,18 +145,17 @@ export class MessagingAdminResolver {
     return true;
   }
 
-  @Mutation(() => ChatMessageGql, { name: 'adminPostChatMessageAsMember' })
+  @Mutation(() => ChatMessageGql, { name: 'adminPostChatMessage' })
   @RequireClubModule(ModuleCode.MESSAGING)
-  async adminPostChatMessageAsMember(
+  async adminPostChatMessage(
     @CurrentClub() club: Club,
     @CurrentUser() user: RequestUser,
-    @Args('input') input: AdminPostAsMemberInput,
+    @Args('input') input: AdminPostChatMessageInput,
   ): Promise<ChatMessageGql> {
-    const msg = await this.admin.postAsMember(
+    const msg = await this.admin.postAsAdmin(
       club.id,
       user.userId,
       input.roomId,
-      input.asMemberId,
       input.body,
       input.parentMessageId ?? null,
     );
