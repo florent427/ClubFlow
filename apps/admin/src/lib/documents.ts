@@ -1405,12 +1405,60 @@ export const ADMIN_POST_CHAT_MESSAGE_AS_MEMBER = gql`
       id
       body
       createdAt
+      parentMessageId
+      replyCount
+      lastReplyAt
+      postedByAdmin
       sender {
         id
         firstName
         lastName
         pseudo
       }
+    }
+  }
+`;
+
+const ADMIN_MESSAGE_FIELDS = `
+  id
+  roomId
+  body
+  createdAt
+  parentMessageId
+  replyCount
+  lastReplyAt
+  postedByAdmin
+  sender {
+    id
+    firstName
+    lastName
+    pseudo
+  }
+  reactions {
+    emoji
+    count
+    reactedByViewer
+  }
+`;
+
+export const CLUB_CHAT_ROOM_MESSAGES_ADMIN = gql`
+  query ClubChatRoomMessagesAdmin($roomId: ID!, $beforeMessageId: ID) {
+    clubChatRoomMessagesAdmin(
+      roomId: $roomId
+      beforeMessageId: $beforeMessageId
+    ) {
+      ${ADMIN_MESSAGE_FIELDS}
+    }
+  }
+`;
+
+export const CLUB_CHAT_THREAD_REPLIES_ADMIN = gql`
+  query ClubChatThreadRepliesAdmin($roomId: ID!, $parentMessageId: ID!) {
+    clubChatThreadRepliesAdmin(
+      roomId: $roomId
+      parentMessageId: $parentMessageId
+    ) {
+      ${ADMIN_MESSAGE_FIELDS}
     }
   }
 `;

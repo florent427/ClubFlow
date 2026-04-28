@@ -53,6 +53,37 @@ export class MessagingAdminResolver {
     return rows.map((r) => this.toRoomGql(r));
   }
 
+  @Query(() => [ChatMessageGql], { name: 'clubChatRoomMessagesAdmin' })
+  @RequireClubModule(ModuleCode.MESSAGING)
+  async clubChatRoomMessagesAdmin(
+    @CurrentClub() club: Club,
+    @Args('roomId', { type: () => ID }) roomId: string,
+    @Args('beforeMessageId', { type: () => ID, nullable: true })
+    beforeMessageId: string | null,
+  ): Promise<ChatMessageGql[]> {
+    const rows = await this.admin.listMessagesAdmin(
+      club.id,
+      roomId,
+      beforeMessageId,
+    );
+    return rows.map((m) => this.toMessageGql(m));
+  }
+
+  @Query(() => [ChatMessageGql], { name: 'clubChatThreadRepliesAdmin' })
+  @RequireClubModule(ModuleCode.MESSAGING)
+  async clubChatThreadRepliesAdmin(
+    @CurrentClub() club: Club,
+    @Args('roomId', { type: () => ID }) roomId: string,
+    @Args('parentMessageId', { type: () => ID }) parentMessageId: string,
+  ): Promise<ChatMessageGql[]> {
+    const rows = await this.admin.listThreadRepliesAdmin(
+      club.id,
+      roomId,
+      parentMessageId,
+    );
+    return rows.map((m) => this.toMessageGql(m));
+  }
+
   @Mutation(() => ChatRoomGql, { name: 'adminCreateChatGroup' })
   @RequireClubModule(ModuleCode.MESSAGING)
   async adminCreateChatGroup(
@@ -127,6 +158,7 @@ export class MessagingAdminResolver {
       input.roomId,
       input.asMemberId,
       input.body,
+      input.parentMessageId ?? null,
     );
     this.gateway.emitChatMessage(input.roomId, {
       id: msg.id,
@@ -141,6 +173,32 @@ export class MessagingAdminResolver {
         lastName: msg.sender.lastName,
       },
     });
+    return this.toMessageGql(msg);
+  }
+
+  private toMessageGql(msg: {
+    id: string;
+    roomId: string;
+    body: string;
+    createdAt: Date;
+    parentMessageId: string | null;
+    replyCount: number;
+    lastReplyAt: Date | null;
+    postedAsAdminUserId: string | null;
+    sender: {
+      id: string;
+      pseudo: string | null;
+      firstName: string;
+      lastName: string;
+    };
+    reactions: { memberId: string; emoji: string }[];
+  }): ChatMessageGql {
+    // Agrège les réactions par emoji (vue admin : pas de viewerMemberId,
+    // donc reactedByViewer toujours false côté admin).
+    const reactionMap = new Map<string, number>();
+    for (const r of msg.reactions) {
+      reactionMap.set(r.emoji, (reactionMap.get(r.emoji) ?? 0) + 1);
+    }
     return {
       id: msg.id,
       roomId: msg.roomId,
@@ -155,8 +213,12 @@ export class MessagingAdminResolver {
       parentMessageId: msg.parentMessageId,
       replyCount: msg.replyCount,
       lastReplyAt: msg.lastReplyAt,
-      postedByAdmin: true,
-      reactions: [],
+      postedByAdmin: Boolean(msg.postedAsAdminUserId),
+      reactions: [...reactionMap.entries()].map(([emoji, count]) => ({
+        emoji,
+        count,
+        reactedByViewer: false,
+      })),
     };
   }
 

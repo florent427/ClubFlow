@@ -147,8 +147,17 @@ export class AdminPostAsMemberInput {
   @IsUUID()
   asMemberId!: string;
 
-  @Field()
+  @Field(() => String)
   @IsString()
   @Length(1, 8000)
   body!: string;
+
+  /**
+   * Si fourni, le message est posté en réponse dans le fil du message
+   * désigné. Doit appartenir au même salon.
+   */
+  @Field(() => ID, { nullable: true })
+  @IsOptional()
+  @IsUUID()
+  parentMessageId?: string | null;
 }

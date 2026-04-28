@@ -29,6 +29,106 @@ export class MessagingAdminService {
   ) {}
 
   /**
+   * Liste les messages racine d'un salon (vue admin).
+   * Pas de check d'appartenance : l'admin a accès à tous les salons du club.
+   */
+  async listMessagesAdmin(
+    clubId: string,
+    roomId: string,
+    beforeMessageId: string | null,
+    take = 50,
+  ) {
+    const room = await this.prisma.chatRoom.findFirst({
+      where: { id: roomId, clubId },
+      select: { id: true },
+    });
+    if (!room) {
+      throw new NotFoundException('Salon introuvable');
+    }
+    let cursor: { createdAt: Date; id: string } | null = null;
+    if (beforeMessageId) {
+      const cur = await this.prisma.chatMessage.findFirst({
+        where: { id: beforeMessageId, roomId },
+        select: { createdAt: true, id: true },
+      });
+      if (!cur) {
+        throw new BadRequestException('Curseur invalide');
+      }
+      cursor = { createdAt: cur.createdAt, id: cur.id };
+    }
+    const where: Prisma.ChatMessageWhereInput = {
+      roomId,
+      deletedAt: null,
+      parentMessageId: null,
+      ...(cursor
+        ? {
+            OR: [
+              { createdAt: { lt: cursor.createdAt } },
+              {
+                AND: [
+                  { createdAt: cursor.createdAt },
+                  { id: { lt: cursor.id } },
+                ],
+              },
+            ],
+          }
+        : {}),
+    };
+    return this.prisma.chatMessage.findMany({
+      where,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take,
+      include: {
+        sender: {
+          select: {
+            id: true,
+            pseudo: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+        reactions: true,
+      },
+    });
+  }
+
+  /**
+   * Liste les réponses d'un thread (vue admin).
+   */
+  async listThreadRepliesAdmin(
+    clubId: string,
+    roomId: string,
+    parentMessageId: string,
+  ) {
+    const parent = await this.prisma.chatMessage.findFirst({
+      where: { id: parentMessageId, roomId, room: { clubId } },
+      select: { id: true },
+    });
+    if (!parent) {
+      throw new NotFoundException('Message parent introuvable');
+    }
+    return this.prisma.chatMessage.findMany({
+      where: {
+        roomId,
+        parentMessageId,
+        deletedAt: null,
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      include: {
+        sender: {
+          select: {
+            id: true,
+            pseudo: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+        reactions: true,
+      },
+    });
+  }
+
+  /**
    * Liste tous les salons d'un club, y compris archivés. Inclut les
    * permissions et scopes pour l'écran d'administration.
    */
@@ -416,6 +516,7 @@ export class MessagingAdminService {
     roomId: string,
     asMemberId: string,
     body: string,
+    parentMessageId?: string | null,
   ) {
     const isMember = await this.prisma.chatRoomMember.findFirst({
       where: { roomId, memberId: asMemberId, room: { clubId } },
@@ -428,6 +529,7 @@ export class MessagingAdminService {
     }
     return this.messaging.postMessage(clubId, roomId, asMemberId, body, {
       postedAsAdminUserId: adminUserId,
+      parentMessageId: parentMessageId ?? null,
     });
   }
 }

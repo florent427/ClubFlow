@@ -1,11 +1,13 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   ADMIN_ARCHIVE_CHAT_GROUP,
   ADMIN_CREATE_CHAT_GROUP,
   ADMIN_POST_CHAT_MESSAGE_AS_MEMBER,
   ADMIN_UPDATE_CHAT_GROUP,
   CLUB_CHAT_ROOMS_ADMIN,
+  CLUB_CHAT_ROOM_MESSAGES_ADMIN,
+  CLUB_CHAT_THREAD_REPLIES_ADMIN,
   CLUB_DYNAMIC_GROUPS,
   CLUB_MEMBERS,
 } from '../lib/documents';
@@ -17,9 +19,9 @@ import type {
   DynamicGroupsQueryData,
   MembersQueryData,
 } from '../lib/types';
+import { useToast } from '../components/ToastProvider';
 
 type ClubMembersQueryData = MembersQueryData;
-import { useToast } from '../components/ToastProvider';
 
 type Target = {
   targetKind: ChatRoomPermissionTargetStr;
@@ -27,11 +29,32 @@ type Target = {
   dynamicGroupId?: string | null;
 };
 
+type AdminMessage = {
+  id: string;
+  roomId: string;
+  body: string;
+  createdAt: string;
+  parentMessageId: string | null;
+  replyCount: number;
+  lastReplyAt: string | null;
+  postedByAdmin: boolean;
+  sender: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    pseudo: string | null;
+  };
+  reactions: {
+    emoji: string;
+    count: number;
+    reactedByViewer: boolean;
+  }[];
+};
+
 type DrawerState =
   | { kind: 'closed' }
   | { kind: 'create' }
-  | { kind: 'edit'; room: AdminChatRoomRow }
-  | { kind: 'post-as'; room: AdminChatRoomRow };
+  | { kind: 'edit'; room: AdminChatRoomRow };
 
 const SYSTEM_ROLES: { value: string; label: string }[] = [
   { value: 'CLUB_ADMIN', label: 'Administrateur' },
@@ -63,6 +86,9 @@ function modeLabel(mode: ChatRoomChannelModeStr): string {
 export function MessagingAdminPage() {
   const { showToast } = useToast();
   const [drawer, setDrawer] = useState<DrawerState>({ kind: 'closed' });
+  const [conversationRoomId, setConversationRoomId] = useState<string | null>(
+    null,
+  );
 
   const { data: roomsData, refetch } = useQuery<ClubChatRoomsAdminQueryData>(
     CLUB_CHAT_ROOMS_ADMIN,
@@ -77,7 +103,6 @@ export function MessagingAdminPage() {
   const [createRoom] = useMutation(ADMIN_CREATE_CHAT_GROUP);
   const [updateRoom] = useMutation(ADMIN_UPDATE_CHAT_GROUP);
   const [archiveRoom] = useMutation(ADMIN_ARCHIVE_CHAT_GROUP);
-  const [postAsMember] = useMutation(ADMIN_POST_CHAT_MESSAGE_AS_MEMBER);
 
   const rooms = roomsData?.clubChatRoomsAdmin ?? [];
   const members = membersData?.clubMembers ?? [];
@@ -91,6 +116,9 @@ export function MessagingAdminPage() {
     return m;
   }, [members]);
 
+  const conversationRoom =
+    rooms.find((r) => r.id === conversationRoomId) ?? null;
+
   async function onArchive(id: string, name: string) {
     if (
       !window.confirm(
@@ -102,6 +130,7 @@ export function MessagingAdminPage() {
     try {
       await archiveRoom({ variables: { roomId: id } });
       showToast('Salon archivé.', 'success');
+      if (conversationRoomId === id) setConversationRoomId(null);
       await refetch();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erreur inconnue';
@@ -116,8 +145,8 @@ export function MessagingAdminPage() {
         <h1 className="members-loom__title">Messagerie · Administration</h1>
         <p className="members-loom__lede">
           Créez les salons du club, autorisez les rôles à écrire ou
-          répondre, configurez les canaux de diffusion. Les salons marqués
-          « diffusion » apparaissent dans le canal MESSAGING des campagnes.
+          répondre, configurez les canaux de diffusion. Cliquez sur un
+          salon actif pour ouvrir la conversation et écrire comme un membre.
         </p>
       </header>
 
@@ -150,9 +179,30 @@ export function MessagingAdminPage() {
                 </thead>
                 <tbody>
                   {rooms.map((r) => (
-                    <tr key={r.id}>
+                    <tr
+                      key={r.id}
+                      className={
+                        r.id === conversationRoomId
+                          ? 'members-table-row--active'
+                          : undefined
+                      }
+                    >
                       <td>
-                        <strong>{r.name ?? '—'}</strong>
+                        <button
+                          type="button"
+                          className="members-table__name-link"
+                          onClick={() =>
+                            !r.archivedAt && setConversationRoomId(r.id)
+                          }
+                          disabled={Boolean(r.archivedAt)}
+                          title={
+                            r.archivedAt
+                              ? 'Salon archivé'
+                              : 'Ouvrir la conversation'
+                          }
+                        >
+                          <strong>{r.name ?? '—'}</strong>
+                        </button>
                         {r.description ? (
                           <div className="muted">{r.description}</div>
                         ) : null}
@@ -163,6 +213,15 @@ export function MessagingAdminPage() {
                       <td>{r.archivedAt ? 'Archivé' : 'Actif'}</td>
                       <td>
                         <div className="planning-slot-actions">
+                          {!r.archivedAt && r.kind === 'GROUP' ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-tight"
+                              onClick={() => setConversationRoomId(r.id)}
+                            >
+                              Ouvrir
+                            </button>
+                          ) : null}
                           <button
                             type="button"
                             className="btn btn-ghost btn-tight"
@@ -172,17 +231,6 @@ export function MessagingAdminPage() {
                           >
                             Modifier
                           </button>
-                          {!r.archivedAt && r.kind === 'GROUP' ? (
-                            <button
-                              type="button"
-                              className="btn btn-ghost btn-tight"
-                              onClick={() =>
-                                setDrawer({ kind: 'post-as', room: r })
-                              }
-                            >
-                              Poster comme membre
-                            </button>
-                          ) : null}
                           {!r.archivedAt && r.kind === 'GROUP' ? (
                             <button
                               type="button"
@@ -203,6 +251,14 @@ export function MessagingAdminPage() {
             </div>
           )}
         </section>
+
+        {conversationRoom ? (
+          <ConversationPanel
+            room={conversationRoom}
+            memberLabel={memberLabel}
+            onClose={() => setConversationRoomId(null)}
+          />
+        ) : null}
       </div>
 
       {drawer.kind === 'create' ? (
@@ -253,35 +309,288 @@ export function MessagingAdminPage() {
           }}
         />
       ) : null}
-
-      {drawer.kind === 'post-as' ? (
-        <PostAsDrawer
-          room={drawer.room}
-          memberLabel={memberLabel}
-          onClose={() => setDrawer({ kind: 'closed' })}
-          onSubmit={async (asMemberId, body) => {
-            try {
-              await postAsMember({
-                variables: {
-                  input: {
-                    roomId: drawer.room.id,
-                    asMemberId,
-                    body,
-                  },
-                },
-              });
-              showToast('Message posté.', 'success');
-              setDrawer({ kind: 'closed' });
-              await refetch();
-            } catch (err: unknown) {
-              const msg = err instanceof Error ? err.message : 'Erreur inconnue';
-              showToast(msg, 'error');
-            }
-          }}
-        />
-      ) : null}
     </div>
   );
+}
+
+/**
+ * Panel de conversation : affiche les messages racine du salon, permet de
+ * poster un message et d'ouvrir un fil de réponses. Le composer présente
+ * un sélecteur "Poster comme" qui retient le dernier choix de l'admin.
+ */
+function ConversationPanel({
+  room,
+  memberLabel,
+  onClose,
+}: {
+  room: AdminChatRoomRow;
+  memberLabel: Map<string, string>;
+  onClose: () => void;
+}) {
+  const { showToast } = useToast();
+  const [draft, setDraft] = useState('');
+  const [asMemberId, setAsMemberId] = useState<string>(
+    pickDefaultAsMember(room),
+  );
+  const [openThreadId, setOpenThreadId] = useState<string | null>(null);
+  const [threadDraft, setThreadDraft] = useState('');
+  const messagesScrollRef = useRef<HTMLDivElement | null>(null);
+
+  // Si la liste des membres du salon change, ré-ajuster l'asMemberId si
+  // le membre actuel n'est plus dedans.
+  useEffect(() => {
+    const ids = new Set(room.members.map((m) => m.memberId));
+    if (!ids.has(asMemberId)) {
+      setAsMemberId(pickDefaultAsMember(room));
+    }
+  }, [room, asMemberId]);
+
+  const { data: msgsData, refetch: refetchMessages } = useQuery<{
+    clubChatRoomMessagesAdmin: AdminMessage[];
+  }>(CLUB_CHAT_ROOM_MESSAGES_ADMIN, {
+    variables: { roomId: room.id, beforeMessageId: null },
+    fetchPolicy: 'cache-and-network',
+    pollInterval: 5000,
+  });
+
+  const { data: threadData, refetch: refetchThread } = useQuery<{
+    clubChatThreadRepliesAdmin: AdminMessage[];
+  }>(CLUB_CHAT_THREAD_REPLIES_ADMIN, {
+    variables: {
+      roomId: room.id,
+      parentMessageId: openThreadId ?? '',
+    },
+    skip: !openThreadId,
+    fetchPolicy: 'cache-and-network',
+  });
+
+  const [postAsMember, { loading: posting }] = useMutation(
+    ADMIN_POST_CHAT_MESSAGE_AS_MEMBER,
+  );
+
+  const messages = msgsData?.clubChatRoomMessagesAdmin ?? [];
+  // Affichage chronologique ascendant (le service renvoie desc).
+  const sorted = [...messages].sort((a, b) =>
+    a.createdAt.localeCompare(b.createdAt),
+  );
+
+  // Auto-scroll vers le bas à chaque nouveau message.
+  useEffect(() => {
+    const el = messagesScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [sorted.length]);
+
+  async function onSendRoot(e: FormEvent) {
+    e.preventDefault();
+    if (!asMemberId || !draft.trim()) return;
+    try {
+      await postAsMember({
+        variables: {
+          input: {
+            roomId: room.id,
+            asMemberId,
+            body: draft.trim(),
+          },
+        },
+      });
+      setDraft('');
+      await refetchMessages();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erreur inconnue';
+      showToast(msg, 'error');
+    }
+  }
+
+  async function onSendReply(parentId: string) {
+    if (!asMemberId || !threadDraft.trim()) return;
+    try {
+      await postAsMember({
+        variables: {
+          input: {
+            roomId: room.id,
+            asMemberId,
+            body: threadDraft.trim(),
+            parentMessageId: parentId,
+          },
+        },
+      });
+      setThreadDraft('');
+      await refetchThread();
+      await refetchMessages();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erreur inconnue';
+      showToast(msg, 'error');
+    }
+  }
+
+  function senderLabel(m: AdminMessage): string {
+    return m.sender.pseudo ?? m.sender.firstName;
+  }
+
+  return (
+    <section className="members-panel members-panel--aside members-panel--chat">
+      <div className="cf-toolbar">
+        <div>
+          <h2 className="members-panel__h">{room.name ?? 'Salon'}</h2>
+          <p className="muted">
+            {room.members.length} membre
+            {room.members.length > 1 ? 's' : ''} · {modeLabel(room.channelMode)}
+            {room.isBroadcastChannel ? ' · diffusion' : ''}
+          </p>
+        </div>
+        <button
+          type="button"
+          className="btn btn-ghost btn-tight"
+          onClick={onClose}
+          aria-label="Fermer la conversation"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div className="cf-chat-messages" ref={messagesScrollRef}>
+        {sorted.length === 0 ? (
+          <p className="muted">
+            Aucun message pour l’instant. Envoyez le premier !
+          </p>
+        ) : (
+          sorted.map((m) => (
+            <div key={m.id} className="cf-chat-msg">
+              <div className="cf-chat-msg-meta">
+                <strong>{senderLabel(m)}</strong>
+                {m.postedByAdmin ? (
+                  <span
+                    className="cf-chat-admin-tag"
+                    title="Posté par un admin via 'poster comme membre'"
+                  >
+                    admin
+                  </span>
+                ) : null}
+                <span className="cf-chat-msg-time">
+                  {new Date(m.createdAt).toLocaleString('fr-FR')}
+                </span>
+              </div>
+              <div className="cf-chat-msg-body">{m.body}</div>
+              {m.reactions.length > 0 ? (
+                <div className="cf-chat-reactions">
+                  {m.reactions.map((r) => (
+                    <span key={r.emoji} className="cf-chat-react">
+                      {r.emoji} {r.count}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              <div className="cf-chat-msg-actions">
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-tight"
+                  onClick={() => {
+                    setOpenThreadId(openThreadId === m.id ? null : m.id);
+                    setThreadDraft('');
+                  }}
+                >
+                  💬{' '}
+                  {m.replyCount > 0
+                    ? `${m.replyCount} réponse${m.replyCount > 1 ? 's' : ''}`
+                    : 'Répondre'}
+                </button>
+              </div>
+              {openThreadId === m.id ? (
+                <div className="cf-chat-thread">
+                  {(threadData?.clubChatThreadRepliesAdmin ?? []).map(
+                    (r) => (
+                      <div key={r.id} className="cf-chat-msg cf-chat-msg--reply">
+                        <div className="cf-chat-msg-meta">
+                          <strong>{senderLabel(r)}</strong>
+                          {r.postedByAdmin ? (
+                            <span className="cf-chat-admin-tag">admin</span>
+                          ) : null}
+                          <span className="cf-chat-msg-time">
+                            {new Date(r.createdAt).toLocaleString('fr-FR')}
+                          </span>
+                        </div>
+                        <div className="cf-chat-msg-body">{r.body}</div>
+                      </div>
+                    ),
+                  )}
+                  <form
+                    className="cf-chat-compose cf-chat-compose--inline"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void onSendReply(m.id);
+                    }}
+                  >
+                    <input
+                      className="members-field__input"
+                      placeholder="Répondre dans le fil…"
+                      value={threadDraft}
+                      onChange={(ev) => setThreadDraft(ev.target.value)}
+                    />
+                    <button
+                      type="submit"
+                      className="members-btn members-btn--primary"
+                      disabled={!threadDraft.trim() || posting}
+                    >
+                      Répondre
+                    </button>
+                  </form>
+                </div>
+              ) : null}
+            </div>
+          ))
+        )}
+      </div>
+
+      <form className="cf-chat-compose" onSubmit={(e) => void onSendRoot(e)}>
+        <div className="cf-chat-compose-row">
+          <label className="cf-chat-as">
+            <span className="muted">Poster comme</span>
+            <select
+              className="members-field__input"
+              value={asMemberId}
+              onChange={(ev) => setAsMemberId(ev.target.value)}
+            >
+              {room.members.map((m) => (
+                <option key={m.memberId} value={m.memberId}>
+                  {memberLabel.get(m.memberId) ??
+                    `${m.member.firstName} ${m.member.lastName}`}
+                  {m.role === 'ADMIN' ? ' · admin du salon' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {room.channelMode === 'READ_ONLY' ? (
+          <p className="muted" style={{ fontSize: '0.85rem' }}>
+            Salon en diffusion seule : seul un admin peut poster, ce qui
+            est exactement ce que vous faites ici.
+          </p>
+        ) : null}
+        <div className="cf-chat-compose-row">
+          <textarea
+            className="members-field__input"
+            rows={3}
+            placeholder="Écrire un message dans le salon…"
+            value={draft}
+            onChange={(ev) => setDraft(ev.target.value)}
+            disabled={posting || !asMemberId}
+          />
+          <button
+            type="submit"
+            className="members-btn members-btn--primary"
+            disabled={!draft.trim() || !asMemberId || posting}
+          >
+            {posting ? 'Envoi…' : 'Envoyer'}
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+function pickDefaultAsMember(room: AdminChatRoomRow): string {
+  const adminInRoom = room.members.find((m) => m.role === 'ADMIN');
+  return adminInRoom?.memberId ?? room.members[0]?.memberId ?? '';
 }
 
 type RoomDrawerProps = {
@@ -662,94 +971,6 @@ function TargetPicker({
       >
         Ajouter
       </button>
-    </div>
-  );
-}
-
-function PostAsDrawer({
-  room,
-  memberLabel,
-  onClose,
-  onSubmit,
-}: {
-  room: AdminChatRoomRow;
-  memberLabel: Map<string, string>;
-  onClose: () => void;
-  onSubmit: (asMemberId: string, body: string) => Promise<void>;
-}) {
-  const [asMemberId, setAsMemberId] = useState(
-    room.members[0]?.memberId ?? '',
-  );
-  const [body, setBody] = useState('');
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    if (!asMemberId || !body.trim()) return;
-    await onSubmit(asMemberId, body.trim());
-  }
-
-  return (
-    <div className="cf-drawer-backdrop" role="dialog" aria-modal="true">
-      <aside className="cf-drawer">
-        <header className="cf-drawer__head">
-          <h2>Poster dans « {room.name} »</h2>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={onClose}
-            aria-label="Fermer"
-          >
-            ✕
-          </button>
-        </header>
-        <form className="members-form" onSubmit={(e) => void submit(e)}>
-          <label className="members-field">
-            <span className="members-field__label">Poster comme</span>
-            <select
-              className="members-field__input"
-              value={asMemberId}
-              onChange={(e) => setAsMemberId(e.target.value)}
-              required
-            >
-              {room.members.map((m) => (
-                <option key={m.memberId} value={m.memberId}>
-                  {memberLabel.get(m.memberId) ??
-                    `${m.member.firstName} ${m.member.lastName}`}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="members-field">
-            <span className="members-field__label">Message</span>
-            <textarea
-              className="members-field__input"
-              rows={6}
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              required
-            />
-          </label>
-          <p className="muted">
-            Le message sera signé du membre choisi mais marqué comme posté
-            par un administrateur dans l’audit.
-          </p>
-          <div className="members-actions">
-            <button
-              type="button"
-              className="members-btn"
-              onClick={onClose}
-            >
-              Annuler
-            </button>
-            <button
-              type="submit"
-              className="members-btn members-btn--primary"
-            >
-              Poster
-            </button>
-          </div>
-        </form>
-      </aside>
     </div>
   );
 }
