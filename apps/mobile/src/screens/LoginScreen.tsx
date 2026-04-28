@@ -21,19 +21,24 @@ import type { LoginWithProfilesData } from '../lib/auth-types';
 import { LOGIN_WITH_PROFILES } from '../lib/documents';
 import * as storage from '../lib/storage';
 import {
-  gradients,
+  gradients as defaultGradients,
   palette,
   radius,
   shadow,
   spacing,
   typography,
 } from '../lib/theme';
+import { useClubTheme } from '../lib/theme-context';
 import type { RootStackParamList } from '../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
 export function LoginScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
+  const clubTheme = useClubTheme();
+  const gradients = clubTheme.isClubBranded
+    ? clubTheme.gradients
+    : defaultGradients;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);

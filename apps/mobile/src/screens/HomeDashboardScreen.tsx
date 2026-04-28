@@ -32,17 +32,22 @@ import type {
 } from '../lib/viewer-types';
 import { formatEuroCents, medicalCertState } from '../lib/format';
 import {
-  gradients,
+  gradients as defaultGradients,
   palette,
   radius,
   shadow,
   spacing,
   typography,
 } from '../lib/theme';
+import { useClubTheme } from '../lib/theme-context';
 import type { MainTabParamList } from '../types/navigation';
 
 export function HomeDashboardScreen() {
   const insets = useSafeAreaInsets();
+  const clubTheme = useClubTheme();
+  const gradients = clubTheme.isClubBranded
+    ? clubTheme.gradients
+    : defaultGradients;
   const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList>>();
   const { data: adminSwitchData } = useQuery<ViewerAdminSwitchData>(
     VIEWER_ADMIN_SWITCH,
@@ -389,10 +394,14 @@ function KpiTile({
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   value: string | null;
-  gradient: keyof typeof gradients;
+  gradient: keyof typeof defaultGradients;
   emphasized?: boolean;
 }) {
-  const grad = gradients[gradient];
+  const clubTheme = useClubTheme();
+  const grads = clubTheme.isClubBranded
+    ? clubTheme.gradients
+    : defaultGradients;
+  const grad = grads[gradient];
   return (
     <View style={[styles.kpi, emphasized && shadow.md]}>
       <LinearGradient

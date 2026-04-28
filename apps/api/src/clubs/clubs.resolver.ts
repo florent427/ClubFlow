@@ -8,9 +8,37 @@ import { ClubAdminRoleGuard } from '../common/guards/club-admin-role.guard';
 import { ClubContextGuard } from '../common/guards/club-context.guard';
 import { GqlJwtAuthGuard } from '../common/guards/gql-jwt-auth.guard';
 import type { RequestUser } from '../common/types/request-user';
+import {
+  ClubBrandingGql,
+  ClubBrandingPaletteGql,
+} from './models/club-branding.model';
 import { ClubGraphModel } from './models/club.model';
 import { ClubMembershipGraphModel } from './models/club-membership.model';
 import { UpdateClubBrandingInput } from './dto/update-club-branding.input';
+
+/**
+ * Extrait une palette typée depuis un Json Prisma (clés vitrine
+ * standardisées). Filtre les valeurs non-string pour éviter d'envoyer
+ * autre chose qu'un hex valide au client.
+ */
+function extractPalette(json: unknown): ClubBrandingPaletteGql | null {
+  if (!json || typeof json !== 'object') return null;
+  const src = json as Record<string, unknown>;
+  const pick = (key: string): string | null => {
+    const v = src[key];
+    return typeof v === 'string' && v.length > 0 ? v : null;
+  };
+  return {
+    ink: pick('ink'),
+    ink2: pick('ink2'),
+    paper: pick('paper'),
+    accent: pick('accent'),
+    goldBright: pick('goldBright'),
+    vermillion: pick('vermillion'),
+    line: pick('line'),
+    muted: pick('muted'),
+  };
+}
 
 function toClubGraph(row: {
   id: string;
@@ -47,6 +75,39 @@ export class ClubsResolver {
     // on relit pour s'assurer d'avoir les champs ajoutés récemment (logoUrl…).
     const fresh = await this.prisma.club.findUnique({ where: { id: club.id } });
     return toClubGraph(fresh ?? club);
+  }
+
+  /**
+   * Identité visuelle du club exposée à tout user authentifié sur le
+   * club courant (membre, contact, admin). Utilisé par le mobile pour
+   * styliser dynamiquement les couleurs selon le club.
+   */
+  @Query(() => ClubBrandingGql, { name: 'clubBranding' })
+  @UseGuards(GqlJwtAuthGuard, ClubContextGuard)
+  async clubBranding(@CurrentClub() club: Club): Promise<ClubBrandingGql> {
+    const fresh = await this.prisma.club.findUnique({
+      where: { id: club.id },
+      select: {
+        id: true,
+        name: true,
+        logoUrl: true,
+        vitrineKanjiTagline: true,
+        vitrinePaletteJson: true,
+      },
+    });
+    const row = fresh ?? club;
+    return {
+      id: row.id,
+      name: row.name,
+      logoUrl: row.logoUrl ?? null,
+      tagline:
+        'vitrineKanjiTagline' in row
+          ? (row.vitrineKanjiTagline ?? null)
+          : null,
+      palette: extractPalette(
+        'vitrinePaletteJson' in row ? row.vitrinePaletteJson : null,
+      ),
+    };
   }
 
   @Query(() => ClubMembershipGraphModel, { nullable: true })

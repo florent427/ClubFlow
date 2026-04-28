@@ -254,6 +254,32 @@ export const CLUB = gql`
   }
 `;
 
+/**
+ * Identité visuelle du club : couleurs (palette vitrine) + logo + nom +
+ * tagline. Utilisée par le ThemeProvider mobile pour styliser
+ * dynamiquement l'app aux couleurs du club courant.
+ */
+export const CLUB_BRANDING = gql`
+  query ClubBranding {
+    clubBranding {
+      id
+      name
+      logoUrl
+      tagline
+      palette {
+        ink
+        ink2
+        paper
+        accent
+        goldBright
+        vermillion
+        line
+        muted
+      }
+    }
+  }
+`;
+
 export const VIEWER_CLUB_ANNOUNCEMENTS = gql`
   query ViewerClubAnnouncements {
     viewerClubAnnouncements {

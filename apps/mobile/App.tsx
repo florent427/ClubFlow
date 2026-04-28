@@ -19,6 +19,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { apolloClient } from './src/lib/apollo';
 import * as storage from './src/lib/storage';
 import { palette } from './src/lib/theme';
+import { ClubThemeProvider } from './src/lib/theme-context';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import type { RootStackParamList } from './src/types/navigation';
 
@@ -97,9 +98,11 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ApolloProvider client={apolloClient}>
-        <NavigationContainer linking={linking}>
-          <RootNavigator initialRouteName={initialRoute} />
-        </NavigationContainer>
+        <ClubThemeProvider>
+          <NavigationContainer linking={linking}>
+            <RootNavigator initialRouteName={initialRoute} />
+          </NavigationContainer>
+        </ClubThemeProvider>
       </ApolloProvider>
     </SafeAreaProvider>
   );

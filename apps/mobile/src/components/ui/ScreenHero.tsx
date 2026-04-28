@@ -5,7 +5,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AnimatedPressable } from './AnimatedPressable';
-import { gradients, palette, spacing, typography } from '../../lib/theme';
+import { gradients, spacing, typography } from '../../lib/theme';
+import { useClubTheme } from '../../lib/theme-context';
 
 type Props = {
   /** Eyebrow uppercase au-dessus du titre. */
@@ -54,7 +55,10 @@ export function ScreenHero({
 }: Props) {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
-  const grad = gradients[gradient];
+  const clubTheme = useClubTheme();
+  // Si le club a sa propre palette, on bascule sur ses gradients ; sinon
+  // on retombe sur les défauts (indigo→violet→pink).
+  const grad = clubTheme.isClubBranded ? clubTheme.gradients[gradient] : gradients[gradient];
 
   const paddingTop = insets.top + spacing.lg;
   const paddingBottom = overlap ? spacing.giant : compact ? spacing.xl : spacing.xxxl;

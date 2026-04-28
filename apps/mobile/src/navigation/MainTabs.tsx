@@ -15,6 +15,7 @@ import { SettingsScreen } from '../screens/SettingsScreen';
 import { VIEWER_ME } from '../lib/viewer-documents';
 import type { ViewerMeData } from '../lib/viewer-types';
 import { palette, typography } from '../lib/theme';
+import { useClubTheme } from '../lib/theme-context';
 import type { ContactTabParamList, MainTabParamList } from '../types/navigation';
 
 const MemberTab = createBottomTabNavigator<MainTabParamList>();
@@ -22,13 +23,15 @@ const ContactTab = createBottomTabNavigator<ContactTabParamList>();
 
 export function MemberTabsNavigator() {
   const insets = useSafeAreaInsets();
+  const clubTheme = useClubTheme();
+  const tint = clubTheme.isClubBranded
+    ? clubTheme.palette.primary
+    : palette.primary;
   const { data: meData } = useQuery<ViewerMeData>(VIEWER_ME, {
     fetchPolicy: 'cache-first',
   });
   const hideMemberModules = meData?.viewerMe?.hideMemberModules === true;
 
-  // Edge-to-edge sur Android : le bouton système (home/back) chevauche
-  // sinon notre tab bar. On ajoute insets.bottom pour préserver l'espace.
   const bottomInset = insets.bottom;
 
   return (
@@ -36,13 +39,12 @@ export function MemberTabsNavigator() {
       key={hideMemberModules ? 'min' : 'full'}
       screenOptions={({ route }) => ({
         // Le Dashboard / HomeContact gèrent leur propre hero gradient
-        // donc on cache le header système. Les autres écrans gardent
-        // le header default (sans ombre, fond surface).
+        // donc on cache le header système.
         headerShown: route.name !== 'Home',
         headerStyle: { backgroundColor: palette.surface },
         headerTitleStyle: { ...typography.h3, color: palette.ink },
         headerShadowVisible: false,
-        tabBarActiveTintColor: palette.primary,
+        tabBarActiveTintColor: tint,
         tabBarInactiveTintColor: palette.muted,
         tabBarStyle: {
           backgroundColor: palette.surface,

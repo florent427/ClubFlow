@@ -5,7 +5,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { GqlExecutionContext } from '@nestjs/graphql';
-import { MembershipRole } from '@prisma/client';
+import { MembershipRole, SystemRole } from '@prisma/client';
 import type { Request } from 'express';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -41,6 +41,18 @@ export class ClubProjectAccessGuard implements CanActivate {
     const userId = (req.user as { userId?: string } | undefined)?.userId;
     const clubId = req.club?.id;
     if (!userId || !clubId) throw new ForbiddenException();
+
+    // System admins (transverses) ont accès à tous les projets.
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { systemRole: true },
+    });
+    if (
+      user?.systemRole === SystemRole.SUPER_ADMIN ||
+      user?.systemRole === SystemRole.ADMIN
+    ) {
+      return true;
+    }
 
     const membership = await this.prisma.clubMembership.findUnique({
       where: { userId_clubId: { userId, clubId } },
