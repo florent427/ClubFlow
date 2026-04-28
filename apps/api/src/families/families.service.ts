@@ -334,8 +334,67 @@ export class FamiliesService {
       });
     }
 
+    // Pré-calcul : pour chaque (userId, clubId), est-ce que ce User a
+    // déjà une fiche Member dans le même club ? Si oui, on n'affichera
+    // PAS de profil "ESPACE CONTACT" séparé (redondant avec la fiche
+    // Member qui couvre déjà la facturation + le rôle PAYER après
+    // unification via finalizePendingItems).
+    //
+    // Pour les données legacy créées avant l'unification, le Member
+    // peut exister sans `userId` mais avec le bon `email`. On fait
+    // alors une auto-réconciliation : on assigne le `userId` au Member
+    // qui a le même email que le User (et qui n'a pas encore d'userId).
+    // Le Contact est ensuite filtré comme pour les données récentes.
+    const userRow = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+    if (userRow?.email) {
+      const orphanMembers = await this.prisma.member.findMany({
+        where: {
+          userId: null,
+          email: userRow.email,
+          status: MemberStatus.ACTIVE,
+        },
+        select: { id: true, clubId: true },
+      });
+      for (const m of orphanMembers) {
+        // Vérifie qu'il n'y a pas DÉJÀ un Member rattaché au même User
+        // dans ce club (contrainte unique [clubId, userId] sur Member).
+        const conflict = await this.prisma.member.findFirst({
+          where: { clubId: m.clubId, userId },
+          select: { id: true },
+        });
+        if (conflict) continue;
+        try {
+          await this.prisma.member.update({
+            where: { id: m.id },
+            data: { userId },
+          });
+        } catch {
+          // Race condition / contrainte non-respectée → on ignore
+          // silencieusement, pas de blocage du listViewerProfiles.
+        }
+      }
+    }
+
+    const memberClubIdsForUser = new Set<string>(
+      (
+        await this.prisma.member.findMany({
+          where: { userId, status: MemberStatus.ACTIVE },
+          select: { clubId: true },
+        })
+      ).map((m) => m.clubId),
+    );
+
     for (const fm of contactPayerRows) {
       if (!fm.contactId || !fm.contact) {
+        continue;
+      }
+      // Filtre anti-doublon : si une fiche Member existe déjà dans le
+      // même club pour ce User, on saute le profil Contact (l'utilisateur
+      // verrait sinon "adulte1" en double : Member + Contact).
+      if (memberClubIdsForUser.has(fm.family.clubId)) {
         continue;
       }
       putProfile({
