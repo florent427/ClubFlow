@@ -97,7 +97,14 @@ export function SettingsPage() {
               n'est pas modifiable ici ; pour le changer, utilisez la
               procédure de changement d'e-mail dédiée.
             </p>
-          ) : null}
+          ) : (
+            <p className="mp-hint">
+              Vous pouvez saisir votre propre e-mail si vous en avez un.
+              Les e-mails du club concernant votre fiche y seront envoyés —
+              une copie sera toujours adressée au(x) payeur(s) de votre
+              foyer.
+            </p>
+          )}
           <div className="mp-form-grid">
             <label className="mp-field">
               <span>Prénom</span>
