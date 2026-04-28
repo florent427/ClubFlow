@@ -23,7 +23,13 @@ import type {
 } from '../lib/auth-types';
 import type { ViewerMeData } from '../lib/viewer-types';
 import * as storage from '../lib/storage';
+import { palette, radius, spacing, typography } from '../lib/theme';
 import type { RootStackParamList } from '../types/navigation';
+
+type Props = {
+  /** Si true, adapte les couleurs pour un fond sombre / hero gradient. */
+  onDark?: boolean;
+};
 
 function profileKey(p: {
   memberId: string | null;
@@ -44,7 +50,7 @@ function isActiveProfile(
   return p.memberId === me.id;
 }
 
-export function MemberProfileSwitcher() {
+export function MemberProfileSwitcher({ onDark = false }: Props = {}) {
   const navigation = useNavigation();
   const rootNav =
     navigation.getParent<NativeStackNavigationProp<RootStackParamList>>() ??
@@ -99,7 +105,9 @@ export function MemberProfileSwitcher() {
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.label}>Profil actif</Text>
+      <Text style={[styles.label, onDark && styles.labelOnDark]}>
+        Profil actif
+      </Text>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -113,13 +121,24 @@ export function MemberProfileSwitcher() {
               key={profileKey(p)}
               style={({ pressed }) => [
                 styles.chip,
-                active && styles.chipOn,
+                onDark && styles.chipOnDark,
+                active && (onDark ? styles.chipOnDarkActive : styles.chipOn),
                 pressed && styles.pressed,
               ]}
               onPress={() => void switchTo(p)}
               disabled={loading || active}
+              accessibilityRole="button"
+              accessibilityLabel={`Basculer sur ${label}`}
+              accessibilityState={{ selected: active }}
             >
-              <Text style={[styles.chipText, active && styles.chipTextOn]}>
+              <Text
+                style={[
+                  styles.chipText,
+                  onDark && styles.chipTextOnDark,
+                  active && (onDark ? styles.chipTextOnDarkActive : styles.chipTextOn),
+                ]}
+                numberOfLines={1}
+              >
                 {label}
               </Text>
             </Pressable>
@@ -127,36 +146,58 @@ export function MemberProfileSwitcher() {
         })}
       </ScrollView>
       {loading ? (
-        <ActivityIndicator style={styles.spin} size="small" color="#1565c0" />
+        <ActivityIndicator
+          style={styles.spin}
+          size="small"
+          color={onDark ? '#ffffff' : palette.primary}
+        />
       ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginBottom: 16 },
+  wrap: { marginBottom: spacing.sm },
   label: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    ...typography.eyebrow,
+    color: palette.muted,
+    marginBottom: spacing.sm,
   },
-  chips: { flexDirection: 'row', gap: 8, paddingVertical: 4 },
+  labelOnDark: {
+    color: 'rgba(255, 255, 255, 0.85)',
+  },
+  chips: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+    paddingRight: spacing.lg,
+  },
   chip: {
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    backgroundColor: '#fff',
+    borderColor: palette.borderStrong,
+    borderRadius: radius.pill,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    backgroundColor: palette.surface,
+    minHeight: 36,
+    maxWidth: 180,
+  },
+  chipOnDark: {
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    borderColor: 'rgba(255, 255, 255, 0.35)',
   },
   chipOn: {
-    borderColor: '#1565c0',
-    backgroundColor: '#e3f2fd',
+    borderColor: palette.primary,
+    backgroundColor: palette.primaryLight,
   },
-  chipText: { fontSize: 14, color: '#333' },
-  chipTextOn: { fontWeight: '700', color: '#0d47a1' },
+  chipOnDarkActive: {
+    backgroundColor: '#ffffff',
+    borderColor: '#ffffff',
+  },
+  chipText: { ...typography.smallStrong, color: palette.body },
+  chipTextOnDark: { color: '#ffffff' },
+  chipTextOn: { color: palette.primaryDark },
+  chipTextOnDarkActive: { color: palette.primary },
   pressed: { opacity: 0.8 },
-  spin: { marginTop: 8 },
+  spin: { marginTop: spacing.sm },
 });

@@ -125,7 +125,7 @@ export function HomeDashboardScreen() {
             ) : null}
           </View>
 
-          <MemberProfileSwitcher />
+          <MemberProfileSwitcher onDark />
         </LinearGradient>
 
         {/* === CONTENT (chevauche légèrement le hero) === */}

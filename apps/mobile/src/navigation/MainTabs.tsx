@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useQuery } from '@apollo/client/react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BookingScreen } from '../screens/BookingScreen';
 import { EventsScreen } from '../screens/EventsScreen';
 import { FamilyScreen } from '../screens/FamilyScreen';
@@ -20,10 +21,15 @@ const MemberTab = createBottomTabNavigator<MainTabParamList>();
 const ContactTab = createBottomTabNavigator<ContactTabParamList>();
 
 export function MemberTabsNavigator() {
+  const insets = useSafeAreaInsets();
   const { data: meData } = useQuery<ViewerMeData>(VIEWER_ME, {
     fetchPolicy: 'cache-first',
   });
   const hideMemberModules = meData?.viewerMe?.hideMemberModules === true;
+
+  // Edge-to-edge sur Android : le bouton système (home/back) chevauche
+  // sinon notre tab bar. On ajoute insets.bottom pour préserver l'espace.
+  const bottomInset = insets.bottom;
 
   return (
     <MemberTab.Navigator
@@ -46,9 +52,9 @@ export function MemberTabsNavigator() {
           shadowOffset: { width: 0, height: -4 },
           shadowOpacity: 0.06,
           shadowRadius: 12,
-          height: 64,
+          height: 64 + bottomInset,
           paddingTop: 6,
-          paddingBottom: 8,
+          paddingBottom: 8 + bottomInset,
         },
         tabBarLabelStyle: {
           ...typography.caption,
@@ -163,12 +169,11 @@ export function MemberTabsNavigator() {
 }
 
 export function ContactTabsNavigator() {
+  const insets = useSafeAreaInsets();
+  const bottomInset = insets.bottom;
   return (
     <ContactTab.Navigator
       screenOptions={({ route }) => ({
-        // Le Dashboard / HomeContact gèrent leur propre hero gradient
-        // donc on cache le header système. Les autres écrans gardent
-        // le header default (sans ombre, fond surface).
         headerShown: route.name !== 'Home',
         headerStyle: { backgroundColor: palette.surface },
         headerTitleStyle: { ...typography.h3, color: palette.ink },
@@ -183,9 +188,9 @@ export function ContactTabsNavigator() {
           shadowOffset: { width: 0, height: -4 },
           shadowOpacity: 0.06,
           shadowRadius: 12,
-          height: 64,
+          height: 64 + bottomInset,
           paddingTop: 6,
-          paddingBottom: 8,
+          paddingBottom: 8 + bottomInset,
         },
         tabBarLabelStyle: {
           ...typography.caption,
