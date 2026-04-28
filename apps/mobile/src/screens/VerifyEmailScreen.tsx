@@ -2,9 +2,18 @@ import { useMutation } from '@apollo/client/react';
 import { CommonActions, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp, NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { GradientButton } from '../components/ui';
 import { VERIFY_EMAIL } from '../lib/documents';
+import {
+  gradients,
+  palette,
+  shadow,
+  spacing,
+  typography,
+} from '../lib/theme';
 import type { VerifyEmailData } from '../lib/auth-types';
 import {
   clearAuth,
@@ -124,23 +133,38 @@ export function VerifyEmailScreen() {
     phase === 'success'
       ? 'checkmark-circle'
       : phase === 'error'
-        ? 'alert-circle-outline'
-        : 'mail-open-outline';
-  const iconColor =
-    phase === 'success' ? '#16a34a' : phase === 'error' ? '#dc2626' : '#1565c0';
+        ? 'alert-circle'
+        : 'mail-open';
 
   return (
     <View style={styles.center}>
-      <Ionicons name={icon} size={64} color={iconColor} />
+      {phase === 'error' ? (
+        <View style={[styles.iconBubble, styles.iconError]}>
+          <Ionicons name={icon} size={56} color={palette.danger} />
+        </View>
+      ) : phase === 'success' ? (
+        <View style={[styles.iconBubble, styles.iconSuccess]}>
+          <Ionicons name={icon} size={56} color={palette.success} />
+        </View>
+      ) : (
+        <LinearGradient
+          colors={gradients.hero.colors}
+          start={gradients.hero.start}
+          end={gradients.hero.end}
+          style={[styles.iconBubble, shadow.glowPrimary]}
+        >
+          <Ionicons name={icon} size={56} color="#ffffff" />
+        </LinearGradient>
+      )}
       <Text style={styles.title}>Confirmation</Text>
       <Text style={styles.lead}>{subText}</Text>
       {phase === 'error' ? (
-        <Pressable
-          style={styles.btnPrimary}
+        <GradientButton
+          label="Retour à la connexion"
+          icon="arrow-back-outline"
           onPress={() => navigation.navigate('Login')}
-        >
-          <Text style={styles.btnPrimaryText}>Retour à la connexion</Text>
-        </Pressable>
+          fullWidth
+        />
       ) : null}
     </View>
   );
@@ -149,25 +173,29 @@ export function VerifyEmailScreen() {
 const styles = StyleSheet.create({
   center: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: palette.bg,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 32,
-    gap: 16,
+    padding: spacing.xxl,
+    gap: spacing.lg,
   },
-  title: { fontSize: 24, fontWeight: '700', color: '#0f172a' },
+  iconBubble: {
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconSuccess: { backgroundColor: palette.successBg },
+  iconError: { backgroundColor: palette.dangerBg },
+  title: {
+    ...typography.h1,
+    color: palette.ink,
+    marginTop: spacing.md,
+  },
   lead: {
-    fontSize: 15,
-    color: '#475569',
+    ...typography.body,
+    color: palette.body,
     textAlign: 'center',
-    lineHeight: 21,
   },
-  btnPrimary: {
-    backgroundColor: '#1565c0',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    marginTop: 8,
-  },
-  btnPrimaryText: { color: 'white', fontWeight: '700', fontSize: 15 },
 });

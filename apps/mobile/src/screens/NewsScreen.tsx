@@ -8,6 +8,14 @@ import {
   Text,
   View,
 } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import {
+  Button,
+  EmptyState,
+  Pill,
+  ScreenHero,
+  Skeleton,
+} from '../components/ui';
 import {
   VIEWER_CLUB_ANNOUNCEMENTS,
   VIEWER_CLUB_SURVEYS,
@@ -18,9 +26,31 @@ import type {
   ViewerClubSurvey,
   ViewerClubSurveysData,
 } from '../lib/viewer-types';
+import { palette, radius, shadow, spacing, typography } from '../lib/theme';
 
-function SurveyCard({ survey, refetch }: { survey: ViewerClubSurvey; refetch: () => void }) {
-  const [selected, setSelected] = useState<string[]>(survey.viewerSelectedOptionIds);
+function formatPublishedDate(iso: string | null): string {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString('fr-FR', {
+      day: 'numeric',
+      month: 'long',
+    });
+  } catch {
+    return '';
+  }
+}
+
+function SurveyCard({
+  survey,
+  refetch,
+}: {
+  survey: ViewerClubSurvey;
+  refetch: () => void;
+}) {
+  const [selected, setSelected] = useState<string[]>(
+    survey.viewerSelectedOptionIds,
+  );
   const [respond, { loading }] = useMutation(VIEWER_RESPOND_TO_CLUB_SURVEY);
   const [err, setErr] = useState<string | null>(null);
   const closed = survey.status === 'CLOSED';
@@ -29,7 +59,9 @@ function SurveyCard({ survey, refetch }: { survey: ViewerClubSurvey; refetch: ()
   function toggle(id: string) {
     if (closed) return;
     if (survey.multipleChoice) {
-      setSelected((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+      setSelected((p) =>
+        p.includes(id) ? p.filter((x) => x !== id) : [...p, id],
+      );
     } else {
       setSelected([id]);
     }
@@ -48,39 +80,121 @@ function SurveyCard({ survey, refetch }: { survey: ViewerClubSurvey; refetch: ()
   }
 
   const total = survey.totalResponses || 1;
+
   return (
     <View style={styles.card}>
-      <Text style={styles.title}>{survey.title}</Text>
-      {survey.description ? <Text style={styles.body}>{survey.description}</Text> : null}
-      {survey.options.map((o) => {
-        const pct = Math.round((o.responseCount / total) * 100);
-        const mine = selected.includes(o.id);
-        return (
-          <Pressable
-            key={o.id}
-            onPress={() => toggle(o.id)}
-            style={[styles.option, mine && styles.optionOn]}
-            disabled={closed}
-          >
-            <View style={[styles.optionBar, { width: `${pct}%` }]} />
-            <Text style={styles.optionLabel}>
-              {o.label} — {o.responseCount} ({pct}%)
-            </Text>
-          </Pressable>
-        );
-      })}
+      <View style={styles.surveyHeader}>
+        <View style={styles.surveyIcon}>
+          <Ionicons name="bar-chart" size={18} color={palette.accent} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.kind}>SONDAGE</Text>
+          <Text style={styles.title}>{survey.title}</Text>
+        </View>
+        {closed ? <Pill label="Clos" tone="neutral" /> : null}
+      </View>
+      {survey.description ? (
+        <Text style={styles.body}>{survey.description}</Text>
+      ) : null}
+      <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
+        {survey.options.map((o) => {
+          const pct = Math.round((o.responseCount / total) * 100);
+          const mine = selected.includes(o.id);
+          return (
+            <Pressable
+              key={o.id}
+              onPress={() => toggle(o.id)}
+              style={[styles.option, mine && styles.optionOn]}
+              disabled={closed}
+              accessibilityRole="button"
+              accessibilityLabel={`Option ${o.label}`}
+              accessibilityState={{ selected: mine }}
+            >
+              <View
+                style={[
+                  styles.optionBar,
+                  { width: `${pct}%` },
+                  mine && styles.optionBarOn,
+                ]}
+              />
+              <View style={styles.optionContent}>
+                <View style={styles.optionLeft}>
+                  <Ionicons
+                    name={
+                      mine
+                        ? survey.multipleChoice
+                          ? 'checkbox'
+                          : 'radio-button-on'
+                        : survey.multipleChoice
+                          ? 'square-outline'
+                          : 'radio-button-off'
+                    }
+                    size={18}
+                    color={mine ? palette.primary : palette.muted}
+                  />
+                  <Text
+                    style={[styles.optionLabel, mine && styles.optionLabelOn]}
+                  >
+                    {o.label}
+                  </Text>
+                </View>
+                <Text style={styles.optionPct}>{pct}%</Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+      <Text style={styles.surveyFooter}>
+        {survey.totalResponses} réponse{survey.totalResponses > 1 ? 's' : ''}
+      </Text>
       {err ? <Text style={styles.err}>{err}</Text> : null}
       {!closed ? (
-        <Pressable
+        <Button
+          label={already ? 'Mettre à jour' : 'Voter'}
           onPress={() => void onSubmit()}
-          style={[styles.btn, loading && styles.btnDisabled]}
-          disabled={loading || selected.length === 0}
+          loading={loading}
+          disabled={selected.length === 0}
+          icon="send-outline"
+          fullWidth
+        />
+      ) : null}
+    </View>
+  );
+}
+
+function AnnouncementCard({
+  ann,
+}: {
+  ann: ViewerClubAnnouncementsData['viewerClubAnnouncements'][number];
+}) {
+  return (
+    <View style={[styles.card, ann.pinned && styles.cardPinned]}>
+      <View style={styles.surveyHeader}>
+        <View
+          style={[
+            styles.annIcon,
+            ann.pinned && { backgroundColor: palette.warningBg },
+          ]}
         >
-          <Text style={styles.btnText}>{already ? 'Mettre à jour' : 'Voter'}</Text>
-        </Pressable>
-      ) : (
-        <Text style={styles.muted}>Sondage clos</Text>
-      )}
+          <Ionicons
+            name={ann.pinned ? 'star' : 'megaphone'}
+            size={18}
+            color={ann.pinned ? palette.warning : palette.primary}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.kind}>
+            {ann.pinned ? 'ÉPINGLÉ' : 'ANNONCE'}
+          </Text>
+          <Text style={styles.title}>{ann.title}</Text>
+        </View>
+      </View>
+      <Text style={styles.body}>{ann.body}</Text>
+      {ann.publishedAt ? (
+        <Text style={styles.published}>
+          {formatPublishedDate(ann.publishedAt)}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -99,6 +213,7 @@ export function NewsScreen() {
 
   const announcements = annData?.viewerClubAnnouncements ?? [];
   const surveys = surData?.viewerClubSurveys ?? [];
+  const loading = annLoading || surLoading;
   const items: Array<
     | { kind: 'ann'; ann: ViewerClubAnnouncementsData['viewerClubAnnouncements'][number] }
     | { kind: 'sur'; sur: ViewerClubSurvey }
@@ -108,87 +223,157 @@ export function NewsScreen() {
   ];
 
   return (
-    <FlatList
-      contentContainerStyle={styles.list}
-      data={items}
-      keyExtractor={(it) =>
-        it.kind === 'ann' ? `ann-${it.ann.id}` : `sur-${it.sur.id}`
-      }
-      refreshControl={
-        <RefreshControl
-          refreshing={annLoading || surLoading}
-          onRefresh={() => {
-            void annRefetch();
-            void surRefetch();
-          }}
-        />
-      }
-      renderItem={({ item }) =>
-        item.kind === 'ann' ? (
-          <View style={[styles.card, item.ann.pinned && styles.pinned]}>
-            <Text style={styles.title}>
-              {item.ann.pinned ? '📌 ' : ''}
-              {item.ann.title}
-            </Text>
-            <Text style={styles.body}>{item.ann.body}</Text>
-          </View>
-        ) : (
-          <SurveyCard
-            survey={item.sur}
-            refetch={() => {
+    <View style={styles.flex}>
+      <ScreenHero
+        eyebrow="VIE DU CLUB"
+        title="Actualités"
+        subtitle={
+          items.length > 0
+            ? `${announcements.length} annonce${announcements.length > 1 ? 's' : ''}, ${surveys.length} sondage${surveys.length > 1 ? 's' : ''}`
+            : 'Annonces et sondages du club.'
+        }
+        gradient="hero"
+        overlap
+      />
+      <FlatList
+        style={styles.flex}
+        contentContainerStyle={styles.list}
+        data={items}
+        keyExtractor={(it) =>
+          it.kind === 'ann' ? `ann-${it.ann.id}` : `sur-${it.sur.id}`
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={loading}
+            onRefresh={() => {
+              void annRefetch();
               void surRefetch();
             }}
+            tintColor={palette.primary}
           />
-        )
-      }
-      ListEmptyComponent={
-        <Text style={styles.muted}>Aucune actualité pour le moment.</Text>
-      }
-    />
+        }
+        renderItem={({ item }) =>
+          item.kind === 'ann' ? (
+            <AnnouncementCard ann={item.ann} />
+          ) : (
+            <SurveyCard
+              survey={item.sur}
+              refetch={() => {
+                void surRefetch();
+              }}
+            />
+          )
+        }
+        ListEmptyComponent={
+          loading ? (
+            <View style={{ gap: spacing.md }}>
+              <Skeleton height={140} borderRadius={radius.xl} />
+              <Skeleton height={140} borderRadius={radius.xl} />
+            </View>
+          ) : (
+            <EmptyState
+              icon="megaphone-outline"
+              title="Pas d'actualités"
+              description="Les annonces et sondages du club apparaîtront ici."
+              variant="card"
+            />
+          )
+        }
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  list: { padding: 12, gap: 10 },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    marginBottom: 10,
+  flex: { flex: 1, backgroundColor: palette.bg },
+  list: {
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xxxl,
+    marginTop: -spacing.xxl,
+    gap: spacing.md,
   },
-  pinned: { borderLeftWidth: 4, borderLeftColor: '#f59e0b' },
-  title: { fontSize: 16, fontWeight: '700', marginBottom: 6, color: '#0f172a' },
-  body: { fontSize: 14, color: '#334155' },
+
+  card: {
+    backgroundColor: palette.surface,
+    borderRadius: radius.xl,
+    padding: spacing.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: palette.border,
+    gap: spacing.sm,
+    ...shadow.md,
+  },
+  cardPinned: {
+    borderLeftWidth: 4,
+    borderLeftColor: palette.warning,
+  },
+
+  surveyHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+  },
+  surveyIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: palette.accentLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  annIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: palette.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  kind: { ...typography.eyebrow, color: palette.muted, fontSize: 10 },
+  title: {
+    ...typography.h3,
+    color: palette.ink,
+    marginTop: 2,
+  },
+  body: { ...typography.body, color: palette.body },
+  published: { ...typography.caption, color: palette.mutedSoft },
+
   option: {
     position: 'relative',
-    borderRadius: 8,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
-    padding: 10,
-    marginTop: 8,
+    borderColor: palette.border,
+    padding: spacing.md,
     overflow: 'hidden',
-    backgroundColor: '#f8fafc',
+    backgroundColor: palette.bgAlt,
   },
-  optionOn: { borderColor: '#1a237e', backgroundColor: '#eef2ff' },
+  optionOn: { borderColor: palette.primary, backgroundColor: palette.primaryTint },
   optionBar: {
     position: 'absolute',
     top: 0,
     left: 0,
     bottom: 0,
-    backgroundColor: '#dbeafe',
+    backgroundColor: palette.bgAlt,
   },
-  optionLabel: { fontSize: 14, color: '#0f172a' },
-  btn: {
-    marginTop: 10,
-    backgroundColor: '#1a237e',
-    paddingVertical: 10,
-    borderRadius: 8,
+  optionBarOn: { backgroundColor: palette.primaryLight },
+  optionContent: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
   },
-  btnDisabled: { opacity: 0.5 },
-  btnText: { color: '#fff', fontWeight: '600' },
-  err: { color: '#dc2626', marginTop: 6 },
-  muted: { color: '#64748b', textAlign: 'center', padding: 20 },
+  optionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flex: 1,
+  },
+  optionLabel: { ...typography.body, color: palette.ink, flex: 1 },
+  optionLabelOn: {
+    fontFamily: typography.bodyStrong.fontFamily,
+    color: palette.primaryDark,
+  },
+  optionPct: { ...typography.smallStrong, color: palette.muted },
+
+  surveyFooter: { ...typography.caption, color: palette.muted },
+  err: { ...typography.small, color: palette.danger },
 });

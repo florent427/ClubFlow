@@ -7,5 +7,6 @@ export { GradientButton } from './GradientButton';
 export { GradientCard } from './GradientCard';
 export { Pill } from './Pill';
 export { ScreenContainer } from './ScreenContainer';
+export { ScreenHero } from './ScreenHero';
 export { Skeleton } from './Skeleton';
 export { TextField } from './TextField';

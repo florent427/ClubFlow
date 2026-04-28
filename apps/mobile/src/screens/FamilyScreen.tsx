@@ -9,6 +9,12 @@ import {
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import {
+  Card,
+  EmptyState,
+  ScreenHero,
+  Skeleton,
+} from '../components/ui';
 import { InviteFamilyMemberCta } from '../components/InviteFamilyMemberCta';
 import { JoinFamilyByPayerEmailCta } from '../components/JoinFamilyByPayerEmailCta';
 import { VIEWER_ALL_FAMILY_BILLING } from '../lib/viewer-documents';
@@ -17,6 +23,7 @@ import type {
   ViewerFamilyBillingSummary,
 } from '../lib/viewer-types';
 import { formatEuroCents } from '../lib/format';
+import { palette, radius, shadow, spacing, typography } from '../lib/theme';
 
 function statusLabel(status: string): string {
   switch (status) {
@@ -134,30 +141,26 @@ export function FamilyScreen() {
     return map;
   }, [activeSummary, shared]);
 
+  const heroSubtitle = multiFamily
+    ? `Vous êtes rattaché à ${summaries.length} foyers.`
+    : shared
+      ? 'Espace partagé entre plusieurs foyers, factures et enfants en commun.'
+      : 'Membres du foyer et factures visibles par les responsables.';
+
   return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.inner}>
-      <Text style={styles.title}>{pageTitle}</Text>
-
-      {multiFamily ? (
-        <Text style={styles.lead}>
-          Vous êtes rattaché à <Text style={styles.strong}>{summaries.length} foyers</Text>.
-          Sélectionnez un onglet pour voir le détail.
-        </Text>
-      ) : shared ? (
-        <Text style={styles.lead}>
-          Votre club a relié plusieurs foyers dans un{' '}
-          <Text style={styles.strong}>espace partagé</Text>. Vous partagez les{' '}
-          <Text style={styles.strong}>mêmes factures</Text> et voyez les{' '}
-          <Text style={styles.strong}>mêmes enfants</Text>, mais chaque parent garde
-          son <Text style={styles.strong}>espace personnel privé</Text>.
-        </Text>
-      ) : (
-        <Text style={styles.leadTight}>
-          Membres du foyer et factures visibles par les adultes responsables de
-          la facturation.
-        </Text>
-      )}
-
+    <View style={styles.flex}>
+      <ScreenHero
+        eyebrow={multiFamily ? 'MES FOYERS' : 'MA FAMILLE'}
+        title={pageTitle}
+        subtitle={heroSubtitle}
+        gradient="hero"
+        overlap
+      />
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={styles.inner}
+        showsVerticalScrollIndicator={false}
+      >
       <JoinFamilyByPayerEmailCta variant="compact" />
 
       {anyPayerView ? <InviteFamilyMemberCta /> : null}
@@ -196,18 +199,31 @@ export function FamilyScreen() {
       ) : null}
 
       {error ? (
-        <Text style={styles.hint}>
-          Facturation indisponible (module ou droits).
-        </Text>
+        <EmptyState
+          icon="alert-circle-outline"
+          title="Facturation indisponible"
+          description="Module désactivé ou droits insuffisants."
+          variant="card"
+        />
       ) : loading && !activeSummary ? (
-        <Text style={styles.hint}>Chargement…</Text>
+        <View style={{ gap: spacing.md }}>
+          <Skeleton height={120} borderRadius={radius.xl} />
+          <Skeleton height={88} borderRadius={radius.lg} />
+        </View>
       ) : !activeSummary ? (
-        <Text style={styles.hint}>Aucune donnée foyer.</Text>
+        <EmptyState
+          icon="people-outline"
+          title="Aucune donnée foyer"
+          description="Votre club ne vous a pas encore rattaché à un foyer."
+          variant="card"
+        />
       ) : !activeSummary.isPayerView ? (
-        <Text style={styles.hint}>
-          Réservé aux comptes adultes du foyer (mineurs : pas d&apos;accès
-          facturation).
-        </Text>
+        <EmptyState
+          icon="lock-closed-outline"
+          title="Accès facturation restreint"
+          description="Réservé aux comptes adultes du foyer."
+          variant="card"
+        />
       ) : (
         <FamilySummaryView
           summary={activeSummary}
@@ -215,7 +231,8 @@ export function FamilyScreen() {
           invoicesByFamily={invoicesByFamily}
         />
       )}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -369,121 +386,132 @@ function InvoiceCard({
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#fff' },
-  inner: { padding: 16, paddingBottom: 32 },
-  title: { fontSize: 24, fontWeight: '700', marginBottom: 12, color: '#111' },
-  lead: { fontSize: 15, color: '#444', lineHeight: 22, marginBottom: 16 },
-  leadTight: { fontSize: 15, color: '#444', marginBottom: 16 },
-  strong: { fontWeight: '700' },
-  hint: { fontSize: 14, color: '#666', lineHeight: 20, marginBottom: 8 },
-  section: { marginBottom: 20 },
-  subtitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    marginBottom: 8,
-    color: '#111',
+  flex: { flex: 1, backgroundColor: palette.bg },
+  inner: {
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xxxl,
+    marginTop: -spacing.xxl,
+    gap: spacing.lg,
   },
+  strong: { fontFamily: typography.bodyStrong.fontFamily },
+  hint: { ...typography.small, color: palette.muted, marginBottom: spacing.sm },
+  section: { gap: spacing.sm },
+  subtitle: { ...typography.h3, color: palette.ink, marginBottom: spacing.sm },
 
   tabs: {
-    marginBottom: 16,
-    marginHorizontal: -16,
+    marginHorizontal: -spacing.xl,
   },
   tabsRow: {
-    paddingHorizontal: 16,
-    gap: 8,
+    paddingHorizontal: spacing.xl,
+    gap: spacing.sm,
   },
   tab: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: '#cbd5e1',
-    backgroundColor: 'white',
+    borderColor: palette.borderStrong,
+    backgroundColor: palette.surface,
+    minHeight: 36,
   },
-  tabActive: { backgroundColor: '#dbeafe', borderColor: '#1565c0' },
-  tabText: { color: '#475569', fontWeight: '600', fontSize: 13 },
-  tabTextActive: { color: '#1565c0', fontWeight: '700' },
+  tabActive: { backgroundColor: palette.primaryLight, borderColor: palette.primary },
+  tabText: { ...typography.smallStrong, color: palette.body },
+  tabTextActive: { color: palette.primary },
 
   familyLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 12,
-    color: '#333',
+    ...typography.bodyStrong,
+    color: palette.body,
+    marginBottom: spacing.md,
   },
   linkedCard: {
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    backgroundColor: '#fafafa',
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    backgroundColor: palette.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: palette.border,
+    ...shadow.sm,
   },
-  linkedTitle: { fontSize: 16, fontWeight: '700', marginBottom: 8 },
-  linkedRoleLine: {
-    fontSize: 13,
-    color: '#475569',
-    marginBottom: 4,
+  linkedTitle: {
+    ...typography.bodyStrong,
+    color: palette.ink,
+    marginBottom: spacing.sm,
   },
-  linkedRoleLabel: { fontWeight: '700', color: '#0f172a' },
-  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  linkedRoleLine: { ...typography.small, color: palette.body, marginBottom: 2 },
+  linkedRoleLabel: {
+    fontFamily: typography.bodyStrong.fontFamily,
+    color: palette.ink,
+  },
+  chipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    backgroundColor: '#f5f5f5',
+    gap: spacing.xs,
+    paddingVertical: 4,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.pill,
+    backgroundColor: palette.bgAlt,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: palette.border,
   },
-  chipImg: { width: 32, height: 32, borderRadius: 16 },
+  chipImg: { width: 26, height: 26, borderRadius: 13 },
   chipPh: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#1565c0',
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: palette.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  chipPhText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  chipName: { fontSize: 14, color: '#333' },
+  chipPhText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontFamily: typography.smallStrong.fontFamily,
+  },
+  chipName: { ...typography.small, color: palette.body },
 
-  invoiceGroup: { marginBottom: 12 },
+  invoiceGroup: { marginBottom: spacing.md, gap: spacing.sm },
   invoiceGroupTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#475569',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    ...typography.eyebrow,
+    color: palette.muted,
+    marginBottom: spacing.xs,
   },
 
   invCard: {
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
     borderWidth: 1,
+    ...shadow.sm,
   },
-  invOpen: { backgroundColor: '#fff3e0', borderColor: '#ffcc80' },
-  invPaid: { backgroundColor: '#e8f5e9', borderColor: '#a5d6a7' },
-  invDraft: { backgroundColor: '#f5f5f5', borderColor: '#e0e0e0' },
-  invVoid: { backgroundColor: '#fce4ec', borderColor: '#f48fb1' },
+  invOpen: { backgroundColor: palette.warningBg, borderColor: palette.warningBorder },
+  invPaid: { backgroundColor: palette.successBg, borderColor: palette.successBorder },
+  invDraft: { backgroundColor: palette.bgAlt, borderColor: palette.border },
+  invVoid: { backgroundColor: palette.dangerBg, borderColor: palette.dangerBorder },
   invHead: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
-  invBadge: { fontSize: 13, fontWeight: '700', color: '#333' },
-  invAmount: { fontSize: 17, fontWeight: '700', color: '#111' },
-  invLabel: { fontSize: 15, fontWeight: '600', marginBottom: 8, color: '#222' },
-  invDetails: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  invDetailText: { fontSize: 14, color: '#555' },
-  invBalance: { fontSize: 14, fontWeight: '700', color: '#c62828' },
-  payList: { marginTop: 8 },
-  payLine: { fontSize: 13, color: '#666', marginBottom: 4 },
+  invBadge: { ...typography.smallStrong, color: palette.body },
+  invAmount: { ...typography.h3, color: palette.ink },
+  invLabel: {
+    ...typography.bodyStrong,
+    color: palette.ink,
+    marginBottom: spacing.sm,
+  },
+  invDetails: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  invDetailText: { ...typography.small, color: palette.body },
+  invBalance: { ...typography.smallStrong, color: palette.danger },
+  payList: { marginTop: spacing.sm, gap: 2 },
+  payLine: { ...typography.small, color: palette.muted },
 });

@@ -2,31 +2,71 @@ import { useMutation, useQuery } from '@apollo/client/react';
 import { useState } from 'react';
 import {
   FlatList,
-  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { LinearGradient } from 'expo-linear-gradient';
+import {
+  Button,
+  EmptyState,
+  Pill,
+  ScreenHero,
+  Skeleton,
+} from '../components/ui';
 import {
   VIEWER_CANCEL_EVENT_REGISTRATION,
   VIEWER_CLUB_EVENTS,
   VIEWER_REGISTER_TO_EVENT,
 } from '../lib/viewer-documents';
-import type { ViewerClubEvent, ViewerClubEventsData } from '../lib/viewer-types';
+import type {
+  ViewerClubEvent,
+  ViewerClubEventsData,
+} from '../lib/viewer-types';
+import {
+  gradients,
+  palette,
+  radius,
+  shadow,
+  spacing,
+  typography,
+} from '../lib/theme';
 
-function fmtDate(iso: string) {
+function fmtDateBlock(iso: string): { day: string; month: string } {
   try {
-    return new Date(iso).toLocaleString('fr-FR', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
+    const d = new Date(iso);
+    return {
+      day: String(d.getDate()),
+      month: d
+        .toLocaleDateString('fr-FR', { month: 'short' })
+        .replace('.', '')
+        .toUpperCase(),
+    };
+  } catch {
+    return { day: '?', month: '' };
+  }
+}
+
+function fmtTime(iso: string): string {
+  try {
+    return new Date(iso).toLocaleTimeString('fr-FR', {
+      hour: '2-digit',
+      minute: '2-digit',
     });
   } catch {
     return iso;
   }
 }
 
-function EventCard({ event, refetch }: { event: ViewerClubEvent; refetch: () => void }) {
+function EventCard({
+  event,
+  refetch,
+}: {
+  event: ViewerClubEvent;
+  refetch: () => void;
+}) {
   const [register, { loading: r }] = useMutation(VIEWER_REGISTER_TO_EVENT);
   const [cancel, { loading: c }] = useMutation(VIEWER_CANCEL_EVENT_REGISTRATION);
   const [err, setErr] = useState<string | null>(null);
@@ -34,6 +74,7 @@ function EventCard({ event, refetch }: { event: ViewerClubEvent; refetch: () => 
   const registered = event.viewerRegistrationStatus === 'REGISTERED';
   const wait = event.viewerRegistrationStatus === 'WAITLISTED';
   const full = event.capacity !== null && event.registeredCount >= event.capacity;
+  const dateBlock = fmtDateBlock(event.startsAt);
 
   async function onReg() {
     setErr(null);
@@ -56,111 +97,207 @@ function EventCard({ event, refetch }: { event: ViewerClubEvent; refetch: () => 
 
   return (
     <View style={styles.card}>
-      <View style={styles.head}>
-        <Text style={styles.title}>{event.title}</Text>
+      <View style={styles.headerRow}>
+        <LinearGradient
+          colors={gradients.warm.colors}
+          start={gradients.warm.start}
+          end={gradients.warm.end}
+          style={styles.dateBlock}
+        >
+          <Text style={styles.dateMonth}>{dateBlock.month}</Text>
+          <Text style={styles.dateDay}>{dateBlock.day}</Text>
+        </LinearGradient>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title} numberOfLines={2}>
+            {event.title}
+          </Text>
+          <View style={styles.metaRow}>
+            <Ionicons name="time-outline" size={13} color={palette.muted} />
+            <Text style={styles.meta}>{fmtTime(event.startsAt)}</Text>
+          </View>
+          {event.location ? (
+            <View style={styles.metaRow}>
+              <Ionicons name="location-outline" size={13} color={palette.muted} />
+              <Text style={styles.meta} numberOfLines={1}>
+                {event.location}
+              </Text>
+            </View>
+          ) : null}
+        </View>
         {registered ? (
-          <Text style={styles.pillOk}>Inscrit</Text>
+          <Pill tone="success" icon="checkmark-circle" label="Inscrit" />
         ) : wait ? (
-          <Text style={styles.pillWarn}>En attente</Text>
+          <Pill tone="warning" icon="time-outline" label="Attente" />
         ) : null}
       </View>
-      <Text style={styles.meta}>
-        {fmtDate(event.startsAt)}
-        {event.location ? ` · ${event.location}` : ''}
-      </Text>
-      <Text style={styles.meta}>
-        {event.registeredCount}
-        {event.capacity !== null ? ` / ${event.capacity}` : ''} inscrit
-        {event.waitlistCount > 0 ? ` (+${event.waitlistCount} attente)` : ''}
-        {event.priceCents !== null
-          ? ` · ${(event.priceCents / 100).toFixed(2).replace('.', ',')} €`
-          : ' · Gratuit'}
-      </Text>
-      {event.description ? <Text style={styles.body}>{event.description}</Text> : null}
-      {err ? <Text style={styles.err}>{err}</Text> : null}
-      {registered || wait ? (
-        <Pressable onPress={() => void onCancel()} style={styles.btnGhost} disabled={c}>
-          <Text style={styles.btnGhostText}>Se désinscrire</Text>
-        </Pressable>
-      ) : (
-        <Pressable onPress={() => void onReg()} style={styles.btn} disabled={r}>
-          <Text style={styles.btnText}>
-            {full ? 'Rejoindre la liste d’attente' : 'S’inscrire'}
+
+      {event.description ? (
+        <Text style={styles.body} numberOfLines={3}>
+          {event.description}
+        </Text>
+      ) : null}
+
+      <View style={styles.statRow}>
+        <View style={styles.statItem}>
+          <Ionicons name="people-outline" size={14} color={palette.muted} />
+          <Text style={styles.statText}>
+            {event.registeredCount}
+            {event.capacity !== null ? ` / ${event.capacity}` : ''}
           </Text>
-        </Pressable>
+        </View>
+        <View style={styles.statItem}>
+          <Ionicons name="cash-outline" size={14} color={palette.muted} />
+          <Text style={styles.statText}>
+            {event.priceCents !== null
+              ? `${(event.priceCents / 100).toFixed(2).replace('.', ',')} €`
+              : 'Gratuit'}
+          </Text>
+        </View>
+        {event.waitlistCount > 0 ? (
+          <View style={styles.statItem}>
+            <Ionicons name="hourglass-outline" size={14} color={palette.muted} />
+            <Text style={styles.statText}>
+              +{event.waitlistCount} attente
+            </Text>
+          </View>
+        ) : null}
+      </View>
+
+      {err ? <Text style={styles.err}>{err}</Text> : null}
+
+      {registered || wait ? (
+        <Button
+          label="Se désinscrire"
+          onPress={() => void onCancel()}
+          variant="ghost"
+          loading={c}
+          fullWidth
+          icon="close-circle-outline"
+        />
+      ) : (
+        <Button
+          label={full ? "Liste d'attente" : "S'inscrire"}
+          onPress={() => void onReg()}
+          loading={r}
+          fullWidth
+          variant={full ? 'secondary' : 'primary'}
+          icon="ticket-outline"
+        />
       )}
     </View>
   );
 }
 
 export function EventsScreen() {
-  const { data, refetch, loading } = useQuery<ViewerClubEventsData>(VIEWER_CLUB_EVENTS);
+  const { data, refetch, loading } =
+    useQuery<ViewerClubEventsData>(VIEWER_CLUB_EVENTS);
   const events = data?.viewerClubEvents ?? [];
+
   return (
-    <FlatList
-      contentContainerStyle={styles.list}
-      data={events}
-      keyExtractor={(e) => e.id}
-      refreshControl={
-        <RefreshControl refreshing={loading} onRefresh={() => void refetch()} />
-      }
-      renderItem={({ item }) => (
-        <EventCard event={item} refetch={() => void refetch()} />
-      )}
-      ListEmptyComponent={<Text style={styles.muted}>Aucun événement à venir.</Text>}
-    />
+    <View style={styles.flex}>
+      <ScreenHero
+        eyebrow="LE CLUB ORGANISE"
+        title="Événements"
+        subtitle={
+          events.length > 0
+            ? `${events.length} événement${events.length > 1 ? 's' : ''} à venir`
+            : 'Stages, compétitions, soirées du club.'
+        }
+        gradient="warm"
+        overlap
+      />
+      <FlatList
+        style={styles.flex}
+        contentContainerStyle={styles.list}
+        data={events}
+        keyExtractor={(e) => e.id}
+        refreshControl={
+          <RefreshControl
+            refreshing={loading}
+            onRefresh={() => void refetch()}
+            tintColor={palette.primary}
+          />
+        }
+        renderItem={({ item }) => (
+          <EventCard event={item} refetch={() => void refetch()} />
+        )}
+        ListEmptyComponent={
+          loading ? (
+            <View style={{ gap: spacing.md }}>
+              <Skeleton height={160} borderRadius={radius.xl} />
+              <Skeleton height={160} borderRadius={radius.xl} />
+            </View>
+          ) : (
+            <EmptyState
+              icon="star-outline"
+              title="Aucun événement à venir"
+              description="Les stages, compétitions et soirées du club apparaîtront ici."
+              variant="card"
+            />
+          )
+        }
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  list: { padding: 12 },
+  flex: { flex: 1, backgroundColor: palette.bg },
+  list: {
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xxxl,
+    marginTop: -spacing.xxl,
+    gap: spacing.md,
+  },
+
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    marginBottom: 10,
+    backgroundColor: palette.surface,
+    borderRadius: radius.xl,
+    padding: spacing.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: palette.border,
+    gap: spacing.md,
+    ...shadow.md,
   },
-  head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  title: { fontSize: 16, fontWeight: '700', color: '#0f172a', flex: 1, marginRight: 8 },
-  meta: { fontSize: 13, color: '#475569', marginTop: 4 },
-  body: { fontSize: 14, color: '#334155', marginTop: 6 },
-  pillOk: {
-    backgroundColor: '#dcfce7',
-    color: '#15803d',
-    fontSize: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-    fontWeight: '600',
-  },
-  pillWarn: {
-    backgroundColor: '#fef3c7',
-    color: '#92400e',
-    fontSize: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-    fontWeight: '600',
-  },
-  btn: {
-    marginTop: 10,
-    backgroundColor: '#1a237e',
-    paddingVertical: 10,
-    borderRadius: 8,
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
+  dateBlock: {
+    width: 56,
+    height: 64,
+    borderRadius: radius.lg,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  btnText: { color: '#fff', fontWeight: '600' },
-  btnGhost: {
-    marginTop: 10,
-    borderWidth: 1,
-    borderColor: '#1a237e',
-    paddingVertical: 10,
-    borderRadius: 8,
+  dateMonth: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 11,
+    fontFamily: typography.smallStrong.fontFamily,
+    letterSpacing: 1,
+  },
+  dateDay: {
+    color: '#ffffff',
+    fontSize: 24,
+    fontFamily: typography.h1.fontFamily,
+    letterSpacing: -0.5,
+  },
+  title: { ...typography.h3, color: palette.ink, marginBottom: spacing.xs },
+  metaRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: 2,
   },
-  btnGhostText: { color: '#1a237e', fontWeight: '600' },
-  err: { color: '#dc2626', marginTop: 6 },
-  muted: { color: '#64748b', textAlign: 'center', padding: 20 },
+  meta: { ...typography.small, color: palette.muted },
+  body: { ...typography.body, color: palette.body },
+
+  statRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: palette.border,
+  },
+  statItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  statText: { ...typography.small, color: palette.body },
+  err: { ...typography.small, color: palette.danger },
 });

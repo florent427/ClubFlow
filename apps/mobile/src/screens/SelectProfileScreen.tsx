@@ -3,12 +3,19 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Button,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import {
+  AnimatedPressable,
+  EmptyState,
+  GradientButton,
+  Pill,
+  ScreenHero,
+} from '../components/ui';
 import type {
   SelectContactProfileData,
   SelectProfileData,
@@ -21,6 +28,7 @@ import {
   VIEWER_PROFILES,
 } from '../lib/documents';
 import * as storage from '../lib/storage';
+import { palette, radius, shadow, spacing, typography } from '../lib/theme';
 import type { RootStackParamList } from '../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SelectProfile'>;
@@ -32,13 +40,8 @@ function profileRowKey(p: ViewerProfile): string {
 }
 
 function profileBadge(p: ViewerProfile): string | null {
-  if (p.contactId && !p.memberId) return 'Espace Contact';
+  if (p.contactId && !p.memberId) return 'Espace contact';
   if (p.isPrimaryProfile) return 'Responsable facturation';
-  return null;
-}
-
-function profileSubline(p: ViewerProfile): string | null {
-  if (p.contactId && !p.memberId) return 'Accès facturation uniquement';
   return null;
 }
 
@@ -51,10 +54,6 @@ function isUnauthorized(err: {
   const ne = err.networkError as { statusCode?: number } | undefined;
   if (ne?.statusCode === 401) return true;
   return false;
-}
-
-function formatProfileQueryError(err: { message: string }): string {
-  return err.message;
 }
 
 export function SelectProfileScreen({ navigation }: Props) {
@@ -70,7 +69,6 @@ export function SelectProfileScreen({ navigation }: Props) {
     useMutation<SelectProfileData>(SELECT_VIEWER_PROFILE);
   const [selectContactProfile, { loading: selectingContact }] =
     useMutation<SelectContactProfileData>(SELECT_VIEWER_CONTACT_PROFILE);
-
   const selecting = selectingMember || selectingContact;
 
   useEffect(() => {
@@ -103,18 +101,14 @@ export function SelectProfileScreen({ navigation }: Props) {
         variables: { memberId: p.memberId },
       });
       const newTok = sel?.selectActiveViewerProfile?.accessToken;
-      if (!newTok) {
-        return;
-      }
+      if (!newTok) return;
       await storage.setMemberSession(newTok, p.clubId);
     } else if (p.contactId) {
       const { data: sel } = await selectContactProfile({
         variables: { contactId: p.contactId },
       });
       const newTok = sel?.selectActiveViewerContactProfile?.accessToken;
-      if (!newTok) {
-        return;
-      }
+      if (!newTok) return;
       await storage.setMemberSession(newTok, p.clubId);
     } else {
       return;
@@ -128,12 +122,13 @@ export function SelectProfileScreen({ navigation }: Props) {
     if (loading || autoPickedRef.current || profiles.length !== 1) return;
     autoPickedRef.current = true;
     void pick(profiles[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, profiles]);
 
   if (token === undefined) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color={palette.primary} />
       </View>
     );
   }
@@ -141,111 +136,196 @@ export function SelectProfileScreen({ navigation }: Props) {
   if (error && isUnauthorized(error)) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" />
-        <Text style={styles.hint}>Session invalide ou expirée. Retour à la connexion…</Text>
+        <ActivityIndicator size="large" color={palette.primary} />
+        <Text style={styles.muted}>
+          Session expirée — retour à la connexion…
+        </Text>
       </View>
     );
   }
 
-  const errMsg = error ? formatProfileQueryError(error) : null;
-
-  if (!loading && profiles.length === 1 && !errMsg) {
+  if (!loading && profiles.length === 1 && !error) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.title}>Connexion en cours…</Text>
-        <Text style={styles.hint}>Redirection automatique.</Text>
-        <ActivityIndicator style={styles.spinner} />
+        <ActivityIndicator size="large" color={palette.primary} />
+        <Text style={styles.muted}>Redirection en cours…</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Choisir un profil</Text>
-      <Text style={styles.subtitle}>
-        Plusieurs espaces sont liés à votre compte. Sélectionnez celui avec
-        lequel vous souhaitez naviguer.
-      </Text>
-      {loading ? <Text style={styles.hint}>Chargement des profils…</Text> : null}
-      {errMsg ? <Text style={styles.error}>{errMsg}</Text> : null}
-      {!loading && profiles.length === 0 && !errMsg ? (
-        <Text style={styles.error}>Aucun profil disponible.</Text>
-      ) : null}
-      {profiles.map((p) => {
-        const badge = profileBadge(p);
-        const subline = profileSubline(p);
-        return (
-          <View key={profileRowKey(p)} style={styles.card}>
-            <Text style={styles.name}>
-              {p.firstName} {p.lastName}
-            </Text>
-            {badge ? <Text style={styles.badge}>{badge}</Text> : null}
-            {subline ? <Text style={styles.subline}>{subline}</Text> : null}
-            <Button
-              title="Utiliser ce profil"
-              onPress={() => void pick(p)}
-              disabled={selecting}
+    <View style={styles.flex}>
+      <ScreenHero
+        eyebrow="VOTRE COMPTE"
+        title="Quel profil ?"
+        subtitle="Plusieurs espaces sont liés à votre compte."
+        compact
+        overlap
+      />
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.list}>
+          {loading ? (
+            <View style={{ gap: spacing.md }}>
+              <ProfileSkeleton />
+              <ProfileSkeleton />
+            </View>
+          ) : profiles.length === 0 ? (
+            <EmptyState
+              icon="person-outline"
+              title="Aucun profil disponible"
+              description="Contactez votre club pour qu'il vous rattache à un espace."
+              variant="card"
             />
-          </View>
-        );
-      })}
-    </ScrollView>
+          ) : (
+            profiles.map((p) => {
+              const badge = profileBadge(p);
+              const isContact = p.contactId && !p.memberId;
+              const initials = `${(p.firstName[0] ?? '?').toUpperCase()}${(
+                p.lastName[0] ?? ''
+              ).toUpperCase()}`;
+              return (
+                <AnimatedPressable
+                  key={profileRowKey(p)}
+                  onPress={() => void pick(p)}
+                  disabled={selecting}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Choisir ${p.firstName} ${p.lastName}`}
+                  haptic
+                  style={styles.card}
+                >
+                  <View style={styles.cardInner}>
+                    <View
+                      style={[
+                        styles.avatar,
+                        isContact && styles.avatarContact,
+                      ]}
+                    >
+                      <Text style={styles.avatarText}>{initials}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.name}>
+                        {p.firstName} {p.lastName}
+                      </Text>
+                      {badge ? (
+                        <View style={{ marginTop: spacing.xs, alignSelf: 'flex-start' }}>
+                          <Pill
+                            label={badge}
+                            tone={isContact ? 'info' : 'primary'}
+                            icon={isContact ? 'mail-outline' : 'star-outline'}
+                          />
+                        </View>
+                      ) : null}
+                    </View>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={22}
+                      color={palette.muted}
+                    />
+                  </View>
+                </AnimatedPressable>
+              );
+            })
+          )}
+        </View>
+
+        <View style={styles.footerActions}>
+          <GradientButton
+            label="Changer de compte"
+            icon="log-out-outline"
+            onPress={async () => {
+              await storage.clearAuth();
+              navigation.replace('Login');
+            }}
+            gradient="dark"
+            glow="none"
+            fullWidth
+          />
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+function ProfileSkeleton() {
+  return (
+    <View style={[styles.card, { padding: spacing.lg }]}>
+      <View style={styles.cardInner}>
+        <View style={[styles.avatar, { backgroundColor: palette.bgAlt }]} />
+        <View style={{ flex: 1, gap: spacing.sm }}>
+          <View
+            style={{
+              height: 18,
+              width: '60%',
+              backgroundColor: palette.bgAlt,
+              borderRadius: radius.sm,
+            }}
+          />
+          <View
+            style={{
+              height: 12,
+              width: '40%',
+              backgroundColor: palette.bgAlt,
+              borderRadius: radius.sm,
+            }}
+          />
+        </View>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1, backgroundColor: palette.bg },
   centered: {
     flex: 1,
-    justifyContent: 'center',
+    backgroundColor: palette.bg,
     alignItems: 'center',
-    padding: 24,
-    backgroundColor: '#fff',
+    justifyContent: 'center',
+    gap: spacing.md,
   },
-  container: {
-    padding: 24,
-    backgroundColor: '#fff',
+  muted: { ...typography.body, color: palette.muted },
+
+  scroll: {
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xxxl,
+    marginTop: -spacing.xxl,
   },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: '#555',
-    marginBottom: 16,
-  },
-  hint: {
-    marginBottom: 8,
-    color: '#555',
-  },
-  error: {
-    color: '#b00020',
-    marginBottom: 8,
-  },
-  spinner: {
-    marginTop: 16,
-  },
+  list: { gap: spacing.md },
+
   card: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 12,
+    backgroundColor: palette.surface,
+    borderRadius: radius.xl,
+    padding: spacing.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: palette.border,
+    ...shadow.md,
   },
-  name: {
+  cardInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  avatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: palette.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarContact: { backgroundColor: palette.cool },
+  avatarText: {
+    color: '#ffffff',
+    fontFamily: typography.bodyStrong.fontFamily,
     fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 4,
   },
-  badge: {
-    fontSize: 13,
-    color: '#1565c0',
-    marginBottom: 4,
-  },
-  subline: {
-    fontSize: 13,
-    color: '#666',
-    marginBottom: 8,
+  name: { ...typography.h3, color: palette.ink },
+
+  footerActions: {
+    marginTop: spacing.xl,
   },
 });

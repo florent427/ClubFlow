@@ -3,22 +3,25 @@ import { useNavigation } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useEffect } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { Card, ScreenHero, Skeleton } from '../components/ui';
 import { VIEWER_ME } from '../lib/viewer-documents';
 import type { ViewerMeData } from '../lib/viewer-types';
+import { palette, radius, shadow, spacing, typography } from '../lib/theme';
 import type { MainTabParamList } from '../types/navigation';
 
 const GRADE_HIERARCHY = [
-  { label: 'Ceinture blanche', color: '#ffffff', border: '#ccc' },
-  { label: 'Ceinture jaune', color: '#fdd835', border: '#f9a825' },
-  { label: 'Ceinture orange', color: '#ff9800', border: '#e65100' },
-  { label: 'Ceinture verte', color: '#4caf50', border: '#2e7d32' },
-  { label: 'Ceinture bleue', color: '#2196f3', border: '#1565c0' },
-  { label: 'Ceinture marron', color: '#795548', border: '#4e342e' },
-  { label: 'Ceinture noire 1er Dan', color: '#212121', border: '#000' },
-  { label: 'Ceinture noire 2e Dan', color: '#212121', border: '#000' },
-  { label: 'Ceinture noire 3e Dan', color: '#212121', border: '#000' },
-  { label: 'Ceinture noire 4e Dan', color: '#212121', border: '#000' },
-  { label: 'Ceinture noire 5e Dan', color: '#212121', border: '#000' },
+  { label: 'Ceinture blanche', color: '#ffffff', border: '#cbd5e1' },
+  { label: 'Ceinture jaune', color: '#fde047', border: '#eab308' },
+  { label: 'Ceinture orange', color: '#fb923c', border: '#ea580c' },
+  { label: 'Ceinture verte', color: '#22c55e', border: '#15803d' },
+  { label: 'Ceinture bleue', color: '#3b82f6', border: '#1d4ed8' },
+  { label: 'Ceinture marron', color: '#92400e', border: '#451a03' },
+  { label: 'Ceinture noire 1er Dan', color: '#0f172a', border: '#000' },
+  { label: 'Ceinture noire 2e Dan', color: '#0f172a', border: '#000' },
+  { label: 'Ceinture noire 3e Dan', color: '#0f172a', border: '#000' },
+  { label: 'Ceinture noire 4e Dan', color: '#0f172a', border: '#000' },
+  { label: 'Ceinture noire 5e Dan', color: '#0f172a', border: '#000' },
 ];
 
 function findGradeIndex(gradeLabel: string | null | undefined): number {
@@ -43,128 +46,224 @@ export function ProgressionScreen() {
     }
   }, [loading, me?.hideMemberModules, navigation]);
 
-  if (loading) {
-    return (
-      <View style={styles.centered}>
-        <Text style={styles.pageTitle}>Ma progression</Text>
-        <Text style={styles.hint}>Chargement…</Text>
-      </View>
-    );
-  }
-  if (me?.hideMemberModules === true) {
-    return null;
-  }
+  if (me?.hideMemberModules === true) return null;
 
   const currentGradeLabel = me?.gradeLevelLabel ?? null;
   const currentIndex = findGradeIndex(currentGradeLabel);
+  const totalGrades = GRADE_HIERARCHY.length;
+  const progress = currentIndex >= 0 ? (currentIndex + 1) / totalGrades : 0;
 
   return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.inner}>
-      <Text style={styles.pageTitle}>Ma progression</Text>
-      <Text style={styles.lead}>
-        Votre parcours au sein du club. Les jalons et ressources pédagogiques
-        seront enrichis progressivement.
-      </Text>
-
-      <View style={styles.currentBlock}>
-        <View style={styles.badgeRow}>
+    <View style={styles.flex}>
+      <ScreenHero
+        eyebrow="MA PROGRESSION"
+        title={loading ? '…' : currentGradeLabel ?? 'Niveau à confirmer'}
+        subtitle={
+          currentIndex >= 0
+            ? `${currentIndex + 1} / ${totalGrades} grades atteints`
+            : 'Votre grade sera renseigné par le club.'
+        }
+        gradient="hero"
+        overlap
+      >
+        {/* Progress bar */}
+        <View style={styles.progressTrack}>
           <View
-            style={[
-              styles.belt,
-              {
-                backgroundColor:
-                  currentIndex >= 0 ? GRADE_HIERARCHY[currentIndex].color : '#e0e0e0',
-                borderColor:
-                  currentIndex >= 0 ? GRADE_HIERARCHY[currentIndex].border : '#bbb',
-              },
-            ]}
+            style={[styles.progressFill, { width: `${progress * 100}%` }]}
           />
-          <View>
-            <Text style={styles.gradeTitle}>
-              {currentGradeLabel ?? 'Niveau à confirmer'}
-            </Text>
-            <Text style={styles.hint}>
-              Votre grade actuel tel que renseigné par le club.
-            </Text>
-          </View>
         </View>
-      </View>
+      </ScreenHero>
 
-      <Text style={styles.subtitle}>Hiérarchie des grades</Text>
-      {GRADE_HIERARCHY.map((grade, i) => {
-        const isCurrent = i === currentIndex;
-        const isPast = currentIndex >= 0 && i < currentIndex;
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        {loading ? (
+          <Card>
+            <View style={{ gap: spacing.md }}>
+              {[0, 1, 2, 3].map((i) => (
+                <Skeleton key={i} height={48} borderRadius={radius.md} />
+              ))}
+            </View>
+          </Card>
+        ) : (
+          <Card title="Hiérarchie des grades" subtitle="Votre parcours dans le club.">
+            <View style={{ gap: spacing.xs }}>
+              {GRADE_HIERARCHY.map((grade, i) => {
+                const isCurrent = i === currentIndex;
+                const isPast = currentIndex >= 0 && i < currentIndex;
+                const status: 'done' | 'current' | 'future' = isCurrent
+                  ? 'current'
+                  : isPast
+                    ? 'done'
+                    : 'future';
+                return (
+                  <View
+                    key={grade.label}
+                    style={[
+                      styles.tlRow,
+                      status === 'current' && styles.tlCurrent,
+                      status === 'done' && styles.tlDone,
+                    ]}
+                  >
+                    {/* Connector line entre les rows (sauf le dernier) */}
+                    {i < GRADE_HIERARCHY.length - 1 ? (
+                      <View
+                        style={[
+                          styles.tlConnector,
+                          status === 'done' || status === 'current'
+                            ? styles.tlConnectorActive
+                            : null,
+                        ]}
+                      />
+                    ) : null}
+                    <View
+                      style={[
+                        styles.belt,
+                        {
+                          backgroundColor: grade.color,
+                          borderColor: grade.border,
+                        },
+                      ]}
+                    >
+                      {status === 'done' ? (
+                        <Ionicons name="checkmark" size={14} color="#ffffff" />
+                      ) : null}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[
+                          styles.tlTitle,
+                          status === 'current' && styles.tlTitleCurrent,
+                          status === 'future' && styles.tlTitleFuture,
+                        ]}
+                      >
+                        {grade.label}
+                      </Text>
+                      {status === 'current' ? (
+                        <Text style={styles.tlBadge}>Grade actuel</Text>
+                      ) : status === 'future' ? (
+                        <Text style={styles.tlSub}>À venir</Text>
+                      ) : null}
+                    </View>
+                    {status === 'current' ? (
+                      <View style={styles.dotPulse} />
+                    ) : null}
+                  </View>
+                );
+              })}
+            </View>
+          </Card>
+        )}
 
-        let rowStyle = styles.tlFuture;
-        if (isCurrent) rowStyle = styles.tlActive;
-        else if (isPast) rowStyle = styles.tlDone;
-
-        return (
-          <View key={grade.label} style={[styles.tlRow, rowStyle]}>
-            <View
-              style={[
-                styles.tlDot,
-                {
-                  backgroundColor: grade.color,
-                  borderColor: grade.border,
-                },
-              ]}
-            />
-            <View>
-              <Text style={styles.tlTitle}>{grade.label}</Text>
-              {isCurrent ? (
-                <Text style={styles.tlCurrent}>Votre grade actuel</Text>
-              ) : null}
+        {/* Carte info */}
+        <Card>
+          <View style={styles.infoRow}>
+            <View style={styles.infoIcon}>
+              <Ionicons name="information-circle" size={22} color={palette.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.infoTitle}>Contenus pédagogiques</Text>
+              <Text style={styles.infoText}>
+                Les vidéos, quiz et exercices par grade arriveront
+                prochainement dans votre espace.
+              </Text>
             </View>
           </View>
-        );
-      })}
-    </ScrollView>
+        </Card>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#fff' },
-  inner: { padding: 16, paddingBottom: 32 },
-  centered: { flex: 1, justifyContent: 'center', padding: 16, backgroundColor: '#fff' },
-  pageTitle: { fontSize: 24, fontWeight: '700', marginBottom: 8, color: '#111' },
-  lead: { fontSize: 16, color: '#444', lineHeight: 24, marginBottom: 16 },
-  hint: { fontSize: 14, color: '#666' },
-  currentBlock: { marginBottom: 16 },
-  badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  belt: {
-    width: 56,
-    height: 16,
+  flex: { flex: 1, backgroundColor: palette.bg },
+  progressTrack: {
+    marginTop: spacing.lg,
+    height: 8,
     borderRadius: 4,
-    borderWidth: 2,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    overflow: 'hidden',
   },
-  gradeTitle: { fontSize: 20, fontWeight: '700', color: '#111' },
-  subtitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    marginTop: 8,
-    marginBottom: 12,
-    color: '#111',
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#ffffff',
+    borderRadius: 4,
   },
+  scroll: {
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xxxl,
+    marginTop: -spacing.xxl,
+    gap: spacing.lg,
+  },
+
   tlRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-    marginBottom: 4,
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.md,
+    position: 'relative',
   },
-  tlDone: { backgroundColor: '#f1f8e9' },
-  tlActive: { backgroundColor: '#e3f2fd' },
-  tlFuture: { backgroundColor: '#fafafa' },
-  tlDot: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+  tlCurrent: {
+    backgroundColor: palette.primaryLight,
+  },
+  tlDone: {
+    opacity: 0.85,
+  },
+  tlConnector: {
+    position: 'absolute',
+    left: spacing.sm + 13,
+    top: 36,
+    width: 2,
+    height: 24,
+    backgroundColor: palette.border,
+  },
+  tlConnectorActive: { backgroundColor: palette.primary },
+  belt: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadow.sm,
+  },
+  tlTitle: { ...typography.bodyStrong, color: palette.ink },
+  tlTitleCurrent: { color: palette.primaryDark },
+  tlTitleFuture: { color: palette.muted },
+  tlBadge: {
+    ...typography.caption,
+    color: palette.primary,
     marginTop: 2,
   },
-  tlTitle: { fontSize: 15, fontWeight: '600', color: '#222' },
-  tlCurrent: { fontSize: 13, color: '#1565c0', marginTop: 2 },
+  tlSub: { ...typography.caption, color: palette.mutedSoft, marginTop: 2 },
+  dotPulse: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: palette.primary,
+  },
+
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  infoIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: palette.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoTitle: { ...typography.bodyStrong, color: palette.ink },
+  infoText: {
+    ...typography.small,
+    color: palette.muted,
+    marginTop: spacing.xxs,
+  },
 });

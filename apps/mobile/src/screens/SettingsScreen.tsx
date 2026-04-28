@@ -7,12 +7,20 @@ import { useEffect, useState } from 'react';
 import {
   Alert,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { Button, Card, ScreenContainer, TextField } from '../components/ui';
+import {
+  Button,
+  Card,
+  ScreenHero,
+  TextField,
+} from '../components/ui';
 import { MemberProfileSwitcher } from '../components/MemberProfileSwitcher';
 import {
   VIEWER_CLEAR_PAYER_SPACE_PIN,
@@ -181,15 +189,24 @@ export function SettingsScreen() {
     `${(firstName[0] ?? '?').toUpperCase()}${(lastName[0] ?? '').toUpperCase()}`.trim();
 
   return (
-    <ScreenContainer keyboardAvoiding>
-      <View>
-        <Text style={styles.eyebrow}>MON COMPTE</Text>
-        <Text style={styles.pageTitle}>Paramètres</Text>
-        <Text style={styles.lead}>
-          Profil, photo, sécurité de l'espace payeur et session.
-        </Text>
-      </View>
-
+    <View style={styles.flex}>
+      <ScreenHero
+        eyebrow="MON COMPTE"
+        title="Paramètres"
+        subtitle="Profil, photo, sécurité et session."
+        gradient="hero"
+        overlap
+      />
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          style={styles.flex}
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
       <MemberProfileSwitcher />
 
       {/* Photo de profil */}
@@ -309,7 +326,9 @@ export function SettingsScreen() {
           </Pressable>
         </View>
       </Card>
-    </ScreenContainer>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -496,16 +515,12 @@ function PayerSpacePinCard({
 }
 
 const styles = StyleSheet.create({
-  eyebrow: { ...typography.eyebrow, color: palette.primary },
-  pageTitle: {
-    ...typography.h1,
-    color: palette.ink,
-    marginTop: spacing.xs,
-  },
-  lead: {
-    ...typography.body,
-    color: palette.muted,
-    marginTop: spacing.sm,
+  flex: { flex: 1, backgroundColor: palette.bg },
+  scroll: {
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xxxl,
+    marginTop: -spacing.xxl,
+    gap: spacing.lg,
   },
   photoRow: {
     flexDirection: 'row',

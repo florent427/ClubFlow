@@ -1,9 +1,9 @@
 import { useQuery } from '@apollo/client/react';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Button, Card, ScreenContainer } from '../components/ui';
+import { Button, Card, ScreenHero } from '../components/ui';
 import { InviteFamilyMemberCta } from '../components/InviteFamilyMemberCta';
 import { JoinFamilyByPayerEmailCta } from '../components/JoinFamilyByPayerEmailCta';
 import { PromoteSelfToMemberCta } from '../components/PromoteSelfToMemberCta';
@@ -41,15 +41,19 @@ export function HomeContactScreen() {
   }
 
   return (
-    <ScreenContainer>
-      <View>
-        <Text style={styles.eyebrow}>BIENVENUE</Text>
-        <Text style={styles.title}>Votre espace contact</Text>
-        <Text style={styles.lead}>
-          Votre compte est actif. Voici ce que vous pouvez faire dès maintenant.
-        </Text>
-      </View>
-
+    <View style={styles.flex}>
+      <ScreenHero
+        eyebrow="BIENVENUE"
+        title="Votre espace"
+        subtitle="Votre compte est actif. Voici ce que vous pouvez faire."
+        gradient="hero"
+        overlap
+      />
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
       <JoinFamilyByPayerEmailCta variant="dashboard" />
 
       {/* Actions principales */}
@@ -107,7 +111,8 @@ export function HomeContactScreen() {
           />
         </View>
       </Card>
-    </ScreenContainer>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -138,9 +143,13 @@ function InfoTile({
 }
 
 const styles = StyleSheet.create({
-  eyebrow: { ...typography.eyebrow, color: palette.primary },
-  title: { ...typography.displayLg, color: palette.ink, marginTop: spacing.sm },
-  lead: { ...typography.body, color: palette.muted, marginTop: spacing.sm },
+  flex: { flex: 1, backgroundColor: palette.bg },
+  scroll: {
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xxxl,
+    marginTop: -spacing.xxl,
+    gap: spacing.lg,
+  },
 
   tile: {
     flexDirection: 'row',
