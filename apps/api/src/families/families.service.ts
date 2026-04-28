@@ -367,10 +367,45 @@ export class FamiliesService {
         });
         if (conflict) continue;
         try {
+          // 1. Assigne userId au Member orphelin
           await this.prisma.member.update({
             where: { id: m.id },
             data: { userId },
           });
+          // 2. Migre le FamilyMember PAYER du Contact vers ce Member.
+          //    Sans cette étape, l'utilisateur perdrait l'accès aux
+          //    factures + foyer car ces vues filtrent sur le rôle PAYER
+          //    rattaché au Member. Pour les données legacy, le rôle
+          //    PAYER était sur le Contact.
+          const contactPayerLinks = await this.prisma.familyMember.findMany({
+            where: {
+              linkRole: FamilyMemberLinkRole.PAYER,
+              contactId: { not: null },
+              contact: { userId, clubId: m.clubId },
+              family: { clubId: m.clubId },
+            },
+            select: { id: true, familyId: true },
+          });
+          for (const link of contactPayerLinks) {
+            // Si un FamilyMember row pour ce Member existe déjà dans
+            // la même famille (créé par finalizePendingItems pre-fix
+            // avec linkRole=MEMBER), on le supprime pour éviter le
+            // doublon. Sinon update du PAYER échouerait avec un Member
+            // apparaissant 2 fois dans le foyer.
+            const dupMemberLink = await this.prisma.familyMember.findFirst({
+              where: { familyId: link.familyId, memberId: m.id },
+              select: { id: true },
+            });
+            if (dupMemberLink) {
+              await this.prisma.familyMember.delete({
+                where: { id: dupMemberLink.id },
+              });
+            }
+            await this.prisma.familyMember.update({
+              where: { id: link.id },
+              data: { memberId: m.id, contactId: null },
+            });
+          }
         } catch {
           // Race condition / contrainte non-respectée → on ignore
           // silencieusement, pas de blocage du listViewerProfiles.
