@@ -17,95 +17,109 @@ import {
   safeReturnTo,
 } from '../lib/return-to';
 
+type Phase =
+  | 'preparing' // initial : on attend que l'effet de verify démarre
+  | 'verifying' // mutation runVerify en cours côté serveur
+  | 'redirecting' // succès : navigate appelé, transition courte
+  | 'error';
+
 export function VerifyEmailPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const token = params.get('token') ?? '';
-  // returnTo peut venir de l'URL (si le backend a propagé) OU du
-  // sessionStorage (si l'user avait cliqué "Créer un compte" depuis une
-  // invitation, avant d'arriver ici via email verification).
   const urlReturnTo = safeReturnTo(params.get('returnTo'));
   useEffect(() => {
     if (urlReturnTo) rememberReturnTo(urlReturnTo);
   }, [urlReturnTo]);
+
+  const [phase, setPhase] = useState<Phase>('preparing');
   const [error, setError] = useState<string | null>(null);
+  const [redirectTarget, setRedirectTarget] = useState<string | null>(null);
 
-  const [runVerify, { loading }] = useMutation<VerifyEmailData>(VERIFY_EMAIL);
+  const [runVerify] = useMutation<VerifyEmailData>(VERIFY_EMAIL);
 
-  // Garde anti double-exécution. React Strict Mode invoque useEffect 2x
-  // en dev (mount-unmount-mount), ce qui consommait le token à la 1ère
-  // exécution puis affichait "Lien invalide ou expiré" à la 2ème.
-  // Ce ref persiste à travers les re-mount et empêche le 2ème appel.
+  // Garde anti double-exécution. React StrictMode invoque useEffect 2x
+  // en dev (mount-unmount-mount). On ne veut consommer le token qu'une
+  // seule fois, et surtout ne PAS marquer la mutation comme cancelled,
+  // sinon les résultats sont ignorés et la page reste figée.
   const verifyAttempted = useRef(false);
-
-  // Si l'utilisateur a déjà une session active (par exemple un parent
-  // qui clique sur le lien d'activation de son enfant depuis le même
-  // navigateur), on déconnecte d'abord. Sinon le early-return ci-dessous
-  // empêcherait la consommation du token et le compte resterait non
-  // vérifié — le user voyait juste "Presque terminé…" en boucle.
-  useEffect(() => {
-    if (token.trim() && hasMemberSession()) {
-      clearAuth();
-    }
-  }, [token]);
 
   useEffect(() => {
     if (!token.trim()) {
       setError('Lien incomplet (token manquant).');
+      setPhase('error');
       return;
     }
     if (verifyAttempted.current) {
-      // Déjà tenté lors du mount précédent (StrictMode) — on laisse
-      // l'éventuelle erreur ou navigate du 1er appel finaliser sans
-      // refaire l'appel.
       return;
     }
     verifyAttempted.current = true;
-    let cancelled = false;
+
+    // Si l'utilisateur a déjà une session active (typique : un parent
+    // qui clique sur le lien d'activation de son enfant depuis le même
+    // navigateur), on déconnecte d'abord pour pouvoir basculer sur le
+    // nouveau profil.
+    if (hasMemberSession()) {
+      clearAuth();
+    }
+
+    setPhase('verifying');
     void (async () => {
       try {
         const { data } = await runVerify({
           variables: { input: { token: token.trim() } },
         });
-        if (cancelled) return;
         const payload = data?.verifyEmail;
         if (!payload?.accessToken) {
           setError('Réponse serveur inattendue.');
+          setPhase('error');
           return;
         }
         const profiles = payload.viewerProfiles ?? [];
         const cClub = payload.contactClubId ?? null;
+        let target: string;
         if (profiles.length === 0 && cClub) {
           setMemberContactSession(payload.accessToken, cClub);
-          void navigate(consumeReturnTo() ?? '/', { replace: true });
+          target = consumeReturnTo() ?? '/';
         } else if (profiles.length === 1) {
           setMemberSession(payload.accessToken, profiles[0].clubId);
-          void navigate(consumeReturnTo() ?? '/', { replace: true });
+          target = consumeReturnTo() ?? '/';
         } else if (profiles.length > 1) {
-          // Plusieurs profils rattachés → écran de sélection.
           clearClubId();
           setToken(payload.accessToken);
-          void navigate('/select-profile', { replace: true });
+          target = '/select-profile';
         } else {
-          // Aucun profil et aucun espace contact → cas dégénéré : on
-          // ne sait pas où envoyer l'utilisateur. Affichage d'une
-          // erreur explicite plutôt qu'un écran d'attente infini.
           setError(
             'Compte vérifié, mais aucun profil rattaché à votre adresse e-mail. Contactez votre club pour qu’il vous ajoute.',
           );
+          setPhase('error');
+          return;
         }
+        setRedirectTarget(target);
+        setPhase('redirecting');
+        // Navigate immédiatement ; en cas de race où le router ne
+        // change pas l'URL, l'utilisateur a un bouton de fallback.
+        void navigate(target, { replace: true });
       } catch (e) {
-        if (!cancelled) {
-          setError(
-            e instanceof Error ? e.message : 'Lien invalide ou expiré.',
-          );
-        }
+        setError(e instanceof Error ? e.message : 'Lien invalide ou expiré.');
+        setPhase('error');
       }
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, [token, runVerify, navigate]);
+    // ⚠️ Dépendance unique à `token`. Inclure runVerify/navigate ferait
+    // re-run l'effet si Apollo ou le router recréent leurs refs (ce qui
+    // arrive régulièrement), et même avec verifyAttempted, l'ancien
+    // bug du flag `cancelled` revenait.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
+  const subText =
+    phase === 'verifying'
+      ? 'Validation du lien en cours…'
+      : phase === 'redirecting'
+        ? 'Compte vérifié — redirection…'
+        : phase === 'error'
+          ? error
+          : 'Préparation…';
 
   return (
     <div className="auth-page">
@@ -113,15 +127,18 @@ export function VerifyEmailPage() {
         <header className="auth-header">
           <p className="auth-eyebrow">ClubFlow</p>
           <h1>Confirmation</h1>
-          <p className="auth-sub">
-            {loading && !error
-              ? 'Validation du lien en cours…'
-              : error
-                ? error
-                : 'Presque terminé…'}
-          </p>
+          <p className="auth-sub">{subText}</p>
         </header>
-        {error ? (
+        {phase === 'redirecting' && redirectTarget ? (
+          <p className="auth-footer">
+            La redirection ne se fait pas ?{' '}
+            <Link to={redirectTarget} replace className="auth-link">
+              Cliquez ici
+            </Link>
+            .
+          </p>
+        ) : null}
+        {phase === 'error' ? (
           <p className="auth-footer">
             <Link to="/login" className="auth-link">
               Retour à la connexion
