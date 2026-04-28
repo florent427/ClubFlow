@@ -64,6 +64,56 @@ export const VIEWER_CLEAR_PAYER_SPACE_PIN = gql`
   }
 `;
 
+// =====================================================
+// Inscription depuis l'espace contact
+// =====================================================
+
+export const VIEWER_PROMOTE_SELF_TO_MEMBER = gql`
+  mutation ViewerPromoteSelfToMember(
+    $input: ViewerPromoteSelfToMemberInput!
+  ) {
+    viewerPromoteSelfToMember(input: $input) {
+      memberId
+      firstName
+      lastName
+    }
+  }
+`;
+
+export const VIEWER_REGISTER_CHILD_MEMBER = gql`
+  mutation ViewerRegisterChildMember(
+    $input: ViewerRegisterChildMemberInput!
+  ) {
+    viewerRegisterChildMember(input: $input) {
+      pendingItemId
+      cartId
+      firstName
+      lastName
+    }
+  }
+`;
+
+// =====================================================
+// Famille — invitations
+// =====================================================
+
+export const CREATE_FAMILY_INVITE = gql`
+  mutation CreateFamilyInvite($input: CreateFamilyInviteInput!) {
+    createFamilyInvite(input: $input) {
+      code
+      rawToken
+      expiresAt
+      familyId
+    }
+  }
+`;
+
+export const SEND_FAMILY_INVITE_BY_EMAIL = gql`
+  mutation SendFamilyInviteByEmail($input: SendFamilyInviteByEmailInput!) {
+    sendFamilyInviteByEmail(input: $input)
+  }
+`;
+
 export const VIEWER_JOIN_FAMILY_BY_PAYER_EMAIL = gql`
   mutation ViewerJoinFamilyByPayerEmail($input: ViewerJoinFamilyByPayerEmailInput!) {
     viewerJoinFamilyByPayerEmail(input: $input) {
@@ -107,6 +157,68 @@ export const VIEWER_FAMILY_BILLING = gql`
       }
       invoices {
         id
+        label
+        status
+        dueAt
+        amountCents
+        totalPaidCents
+        balanceCents
+        payments {
+          id
+          amountCents
+          method
+          createdAt
+          paidByFirstName
+          paidByLastName
+        }
+      }
+      familyMembers {
+        memberId
+        firstName
+        lastName
+        photoUrl
+      }
+    }
+  }
+`;
+
+/**
+ * Multi-foyer : retourne TOUS les foyers auxquels le viewer est rattaché.
+ * Utilisé sur l'écran "Ma famille" mobile pour afficher des onglets quand
+ * un payeur est dans plusieurs foyers (ex : famille reconstituée).
+ */
+export const VIEWER_ALL_FAMILY_BILLING = gql`
+  query ViewerAllFamilyBillingSummaries {
+    viewerAllFamilyBillingSummaries {
+      familyId
+      householdGroupId
+      viewerRoleInFamily
+      isPayerView
+      familyLabel
+      isHouseholdGroupSpace
+      linkedHouseholdFamilies {
+        familyId
+        label
+        members {
+          memberId
+          firstName
+          lastName
+          photoUrl
+        }
+        payers {
+          firstName
+          lastName
+        }
+        observers {
+          firstName
+          lastName
+          role
+        }
+      }
+      invoices {
+        id
+        familyId
+        familyLabel
         label
         status
         dueAt

@@ -91,6 +91,13 @@ export function LoginScreen({ navigation }: Props) {
       ) : (
         <Button title="Se connecter" onPress={() => void onSubmit()} />
       )}
+      <View style={styles.registerRow}>
+        <Text style={styles.muted}>Pas encore de compte ?</Text>
+        <Button
+          title="Créer un compte"
+          onPress={() => navigation.navigate('Register')}
+        />
+      </View>
     </View>
   );
 }
@@ -124,5 +131,14 @@ const styles = StyleSheet.create({
   error: {
     color: '#b00020',
     marginBottom: 12,
+  },
+  registerRow: {
+    marginTop: 24,
+    alignItems: 'center',
+    gap: 6,
+  },
+  muted: {
+    color: '#64748b',
+    fontSize: 13,
   },
 });

@@ -93,6 +93,64 @@ export type ViewerBillingData = {
   };
 };
 
+/** Variante multi-foyer : entrée d'un summary parmi plusieurs. */
+export type ViewerFamilyBillingSummary = {
+  familyId: string;
+  householdGroupId: string | null;
+  viewerRoleInFamily: string | null;
+  isPayerView: boolean;
+  familyLabel: string | null;
+  isHouseholdGroupSpace: boolean;
+  linkedHouseholdFamilies: Array<{
+    familyId: string;
+    label: string | null;
+    members: Array<{
+      memberId: string;
+      firstName: string;
+      lastName: string;
+      photoUrl: string | null;
+    }>;
+    payers: Array<{
+      firstName: string;
+      lastName: string;
+    }>;
+    observers: Array<{
+      firstName: string;
+      lastName: string;
+      role: string;
+    }>;
+  }>;
+  invoices: Array<{
+    id: string;
+    familyId: string | null;
+    familyLabel: string | null;
+    label: string;
+    status: string;
+    dueAt: string | null;
+    amountCents: number;
+    totalPaidCents: number;
+    balanceCents: number;
+    payments: Array<{
+      id: string;
+      amountCents: number;
+      method: string;
+      createdAt: string;
+      paidByFirstName: string | null;
+      paidByLastName: string | null;
+    }>;
+  }>;
+  familyMembers: Array<{
+    memberId: string;
+    firstName: string;
+    lastName: string;
+    photoUrl: string | null;
+  }>;
+};
+
+export type ViewerAllFamilyBillingData = {
+  viewerAllFamilyBillingSummaries: ViewerFamilyBillingSummary[];
+};
+
 export type ClubQueryData = {
   club: { id: string; name: string; slug: string };
 };

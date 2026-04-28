@@ -44,3 +44,23 @@ export type SelectContactProfileData = {
     }[];
   };
 };
+
+export type RegisterContactData = {
+  registerContact: { ok: boolean };
+};
+
+export type VerifyEmailData = {
+  verifyEmail: {
+    accessToken: string;
+    contactClubId?: string | null;
+    viewerProfiles: {
+      memberId: string | null;
+      contactId: string | null;
+      clubId: string;
+    }[];
+  };
+};
+
+export type ResendVerificationData = {
+  resendVerificationEmail: { ok: boolean };
+};

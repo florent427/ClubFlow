@@ -2,7 +2,9 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../types/navigation';
 import { LoginScreen } from '../screens/LoginScreen';
 import { MainScreen } from '../screens/MainScreen';
+import { RegisterScreen } from '../screens/RegisterScreen';
 import { SelectProfileScreen } from '../screens/SelectProfileScreen';
+import { VerifyEmailScreen } from '../screens/VerifyEmailScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -17,6 +19,8 @@ export function RootNavigator({ initialRouteName }: Props) {
       screenOptions={{ headerShown: false }}
     >
       <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="Register" component={RegisterScreen} />
+      <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
       <Stack.Screen name="SelectProfile" component={SelectProfileScreen} />
       <Stack.Screen name="Main" component={MainScreen} />
     </Stack.Navigator>

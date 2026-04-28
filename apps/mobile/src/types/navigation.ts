@@ -18,6 +18,8 @@ export type ContactTabParamList = {
 
 export type RootStackParamList = {
   Login: undefined;
+  Register: undefined;
+  VerifyEmail: { token?: string } | undefined;
   SelectProfile: undefined;
   Main: undefined;
 };
