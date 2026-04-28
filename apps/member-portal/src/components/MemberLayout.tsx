@@ -21,6 +21,7 @@ import { clearAuth, clearClubId, getClubId, setMemberSession } from '../lib/stor
 import { VIEWER_ADMIN_SWITCH, VIEWER_ME } from '../lib/viewer-documents';
 import type { ViewerAdminSwitchData, ViewerMeData } from '../lib/viewer-types';
 import { PendingFamilyInvitesBanner } from './PendingFamilyInvitesBanner';
+import { PinGate } from './PinGate';
 import {
   VIEWER_ACTIVE_CART,
   type ViewerActiveCartData,
@@ -349,7 +350,9 @@ export function MemberLayout() {
 
         <main className="mp-content">
           <PendingFamilyInvitesBanner />
-          <Outlet />
+          <PinGate>
+            <Outlet />
+          </PinGate>
         </main>
       </div>
 

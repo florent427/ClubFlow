@@ -6,12 +6,16 @@ import {
 } from '../lib/viewer-documents';
 import type { ViewerMeData } from '../lib/viewer-types';
 
-const SESSION_STORAGE_KEY = 'mp:payer-space-unlocked-at';
+const STORAGE_PREFIX = 'mp:payer-space-unlocked:';
 const UNLOCK_TTL_MS = 30 * 60 * 1000; // 30 min
 
-function isUnlocked(): boolean {
+function storageKey(profileId: string): string {
+  return `${STORAGE_PREFIX}${profileId}`;
+}
+
+function isUnlocked(profileId: string): boolean {
   try {
-    const raw = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    const raw = sessionStorage.getItem(storageKey(profileId));
     if (!raw) return false;
     const ts = Number(raw);
     if (!Number.isFinite(ts)) return false;
@@ -21,9 +25,9 @@ function isUnlocked(): boolean {
   }
 }
 
-function markUnlocked(): void {
+function markUnlocked(profileId: string): void {
   try {
-    sessionStorage.setItem(SESSION_STORAGE_KEY, String(Date.now()));
+    sessionStorage.setItem(storageKey(profileId), String(Date.now()));
   } catch {
     /* ignore */
   }
@@ -34,31 +38,51 @@ interface VerifyResponse {
 }
 
 /**
- * Composant qui protège l'accès à un sous-arbre du portail par un PIN
- * à 4 chiffres si l'utilisateur en a défini un. Une fois validé, le
- * statut "déverrouillé" est gardé en sessionStorage avec un TTL de
- * 30 minutes — au-delà, le PIN est redemandé.
+ * Composant qui protège l'accès au profil payeur par un PIN à 4 chiffres
+ * si l'utilisateur en a défini un. Le déclenchement est :
  *
- * Si l'utilisateur n'a pas activé de PIN (`payerSpacePinSet=false`),
- * le composant affiche directement les enfants — pas de friction.
+ *  - **canManageMembershipCart === true** (= profil adulte payeur du foyer)
+ *  - **payerSpacePinSet === true** (= un PIN a été défini)
+ *  - **non déverrouillé** dans cette session pour CE profil
+ *    (sessionStorage `mp:payer-space-unlocked:<viewerMe.id>`, TTL 30 min)
+ *
+ * Pour les profils enfants ou les profils sans PIN, le composant rend
+ * directement les enfants — pas de friction.
+ *
+ * Le scope par `viewerMe.id` permet à un même User de protéger
+ * plusieurs profils indépendamment (ex 2 clubs avec 2 PINs différents).
  */
 export function PinGate({ children }: { children: React.ReactNode }) {
   const { data, loading } = useQuery<ViewerMeData>(VIEWER_ME, {
     fetchPolicy: 'cache-first',
   });
-  const pinSet = data?.viewerMe?.payerSpacePinSet === true;
-  const [unlocked, setUnlocked] = useState<boolean>(() => isUnlocked());
+  const me = data?.viewerMe;
+  const profileId = me?.id ?? null;
+  const pinSet = me?.payerSpacePinSet === true;
+  const isPayer = me?.canManageMembershipCart === true;
+  const [unlocked, setUnlocked] = useState<boolean>(() =>
+    profileId ? isUnlocked(profileId) : false,
+  );
+
+  // Re-vérifie l'unlock à chaque changement de profile (switch entre
+  // membres du foyer). Sans ça, le state local restait à `true` après
+  // un switch vers un profil enfant, puis à `true` quand on revenait
+  // sur le payeur — et le PIN n'était plus redemandé.
+  useEffect(() => {
+    if (!profileId) return;
+    setUnlocked(isUnlocked(profileId));
+  }, [profileId]);
 
   if (loading && !data) {
     return <p className="mp-hint">Chargement…</p>;
   }
-  if (!pinSet || unlocked) {
+  if (!isPayer || !pinSet || unlocked || !profileId) {
     return <>{children}</>;
   }
   return (
     <PinPrompt
       onSuccess={() => {
-        markUnlocked();
+        markUnlocked(profileId);
         setUnlocked(true);
       }}
     />
@@ -124,14 +148,14 @@ function PinPrompt({ onSuccess }: PinPromptProps) {
           lock
         </span>
         <h1 style={{ fontSize: '1.25rem', marginBottom: 8 }}>
-          Espace protégé
+          Profil protégé
         </h1>
         <p
           className="mp-hint"
           style={{ marginBottom: 24, fontSize: '0.9rem' }}
         >
-          Saisissez votre code PIN à 4 chiffres pour accéder aux factures et
-          au foyer.
+          Saisissez votre code PIN à 4 chiffres pour accéder à ce profil
+          payeur.
         </p>
         <input
           type="text"

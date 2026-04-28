@@ -20,6 +20,7 @@ import {
 import { VIEWER_ME } from '../lib/viewer-documents';
 import type { ViewerMeData } from '../lib/viewer-types';
 import { PendingFamilyInvitesBanner } from './PendingFamilyInvitesBanner';
+import { PinGate } from './PinGate';
 import {
   VIEWER_ACTIVE_CART,
   type ViewerActiveCartData,
@@ -269,7 +270,9 @@ export function ContactLayout() {
         </header>
         <main className="mp-content">
           <PendingFamilyInvitesBanner />
-          <Outlet />
+          <PinGate>
+            <Outlet />
+          </PinGate>
         </main>
       </div>
     </div>
