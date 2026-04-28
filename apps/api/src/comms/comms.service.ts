@@ -16,6 +16,8 @@ import { MembersService } from '../members/members.service';
 import { ClubSendingDomainService } from '../mail/club-sending-domain.service';
 import { MAIL_TRANSPORT } from '../mail/mail.constants';
 import type { MailTransport } from '../mail/mail-transport.interface';
+import { MessagingGateway } from '../messaging/messaging.gateway';
+import { MessagingService } from '../messaging/messaging.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TelegramApiService } from '../telegram/telegram-api.service';
 import { aggregateForParent } from './notification-aggregator';
@@ -37,6 +39,8 @@ export class CommsService {
     private readonly members: MembersService,
     private readonly sendingDomains: ClubSendingDomainService,
     private readonly telegram: TelegramApiService,
+    private readonly messaging: MessagingService,
+    private readonly messagingGateway: MessagingGateway,
     @Inject(MAIL_TRANSPORT) private readonly mail: MailTransport,
   ) {}
 
@@ -438,6 +442,59 @@ export class CommsService {
               `comms.telegram_send_failed campaign=${campaign.id} chat=${chatId}: ${err}`,
             );
           }
+        }
+      }
+    } else if (campaign.channel === CommunicationChannel.MESSAGING) {
+      // Diffusion via la messagerie interne : on poste le message dans
+      // chaque ChatRoom marqué `isBroadcastChannel = true` et qui contient
+      // au moins un membre de l'audience cible. Le message est posté
+      // « en tant que » chaque membre du salon ? Non — on choisit un
+      // membre admin du salon pour signer. Si pas trouvé, on prend le
+      // premier membre du salon (sender de service).
+      const memberIdSet = new Set(matched.map((m) => m.id));
+      const broadcastRooms = await this.prisma.chatRoom.findMany({
+        where: {
+          clubId,
+          isBroadcastChannel: true,
+          archivedAt: null,
+        },
+        include: { members: true },
+      });
+      const messageBody = `${campaign.title}\n\n${campaign.body}`;
+      for (const room of broadcastRooms) {
+        const inAudience = room.members.some((rm) =>
+          memberIdSet.has(rm.memberId),
+        );
+        if (!inAudience) continue;
+        const adminMember = room.members.find(
+          (rm) => rm.role === 'ADMIN',
+        );
+        const sender = adminMember ?? room.members[0];
+        if (!sender) continue;
+        try {
+          const msg = await this.messaging.postMessage(
+            clubId,
+            room.id,
+            sender.memberId,
+            messageBody,
+          );
+          this.messagingGateway.emitChatMessage(room.id, {
+            id: msg.id,
+            roomId: msg.roomId,
+            body: msg.body,
+            createdAt: msg.createdAt,
+            parentMessageId: msg.parentMessageId,
+            sender: {
+              id: msg.sender.id,
+              pseudo: msg.sender.pseudo,
+              firstName: msg.sender.firstName,
+              lastName: msg.sender.lastName,
+            },
+          });
+        } catch (err) {
+          this.log.error(
+            `comms.messaging_send_failed campaign=${campaign.id} room=${room.id}: ${err}`,
+          );
         }
       }
     } else {

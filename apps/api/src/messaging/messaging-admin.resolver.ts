@@ -1,0 +1,207 @@
+import { BadRequestException, UseGuards } from '@nestjs/common';
+import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
+import type { Club } from '@prisma/client';
+import { CurrentClub } from '../common/decorators/current-club.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { RequireClubModule } from '../common/decorators/require-club-module.decorator';
+import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.guard';
+import { ClubContextGuard } from '../common/guards/club-context.guard';
+import { GqlJwtAuthGuard } from '../common/guards/gql-jwt-auth.guard';
+import { ClubAdminRoleGuard } from '../common/guards/club-admin-role.guard';
+import type { RequestUser } from '../common/types/request-user';
+import { ModuleCode } from '../domain/module-registry/module-codes';
+import {
+  AdminPostAsMemberInput,
+  CreateAdminChatGroupInput,
+  UpdateAdminChatGroupInput,
+} from './dto/admin-chat-group.input';
+import { ChatMessageGql } from './models/chat-message-gql.model';
+import {
+  ChatRoomGql,
+  ChatRoomMemberGql,
+  ChatRoomMembershipScopeGql,
+  ChatRoomWritePermissionGql,
+} from './models/chat-room-gql.model';
+import { MessagingAdminService } from './messaging-admin.service';
+import { MessagingGateway } from './messaging.gateway';
+import { MessagingService } from './messaging.service';
+
+type AdminRoomRow = Awaited<
+  ReturnType<MessagingAdminService['listAllRooms']>
+>[number];
+
+@Resolver()
+@UseGuards(
+  GqlJwtAuthGuard,
+  ClubContextGuard,
+  ClubModuleEnabledGuard,
+  ClubAdminRoleGuard,
+)
+export class MessagingAdminResolver {
+  constructor(
+    private readonly messaging: MessagingService,
+    private readonly admin: MessagingAdminService,
+    private readonly gateway: MessagingGateway,
+  ) {}
+
+  @Query(() => [ChatRoomGql], { name: 'clubChatRoomsAdmin' })
+  @RequireClubModule(ModuleCode.MESSAGING)
+  async clubChatRoomsAdmin(
+    @CurrentClub() club: Club,
+  ): Promise<ChatRoomGql[]> {
+    const rows = await this.admin.listAllRooms(club.id);
+    return rows.map((r) => this.toRoomGql(r));
+  }
+
+  @Mutation(() => ChatRoomGql, { name: 'adminCreateChatGroup' })
+  @RequireClubModule(ModuleCode.MESSAGING)
+  async adminCreateChatGroup(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('input') input: CreateAdminChatGroupInput,
+  ): Promise<ChatRoomGql> {
+    const { id } = await this.admin.createGroup(
+      club.id,
+      user.activeProfileMemberId ?? null,
+      {
+        name: input.name,
+        description: input.description ?? null,
+        coverImageUrl: input.coverImageUrl ?? null,
+        channelMode: input.channelMode,
+        isBroadcastChannel: input.isBroadcastChannel,
+        memberIds: input.memberIds,
+        membershipScopes: input.membershipScopes,
+        writePermissions: input.writePermissions,
+      },
+    );
+    const rows = await this.admin.listAllRooms(club.id);
+    const r = rows.find((x) => x.id === id);
+    if (!r) throw new BadRequestException('Salon introuvable');
+    return this.toRoomGql(r);
+  }
+
+  @Mutation(() => ChatRoomGql, { name: 'adminUpdateChatGroup' })
+  @RequireClubModule(ModuleCode.MESSAGING)
+  async adminUpdateChatGroup(
+    @CurrentClub() club: Club,
+    @Args('input') input: UpdateAdminChatGroupInput,
+  ): Promise<ChatRoomGql> {
+    await this.admin.updateGroup(club.id, {
+      roomId: input.roomId,
+      name: input.name,
+      description: input.description ?? undefined,
+      coverImageUrl: input.coverImageUrl ?? undefined,
+      channelMode: input.channelMode,
+      isBroadcastChannel: input.isBroadcastChannel,
+      archived: input.archived,
+      memberIds: input.memberIds,
+      membershipScopes: input.membershipScopes,
+      writePermissions: input.writePermissions,
+    });
+    const rows = await this.admin.listAllRooms(club.id);
+    const r = rows.find((x) => x.id === input.roomId);
+    if (!r) throw new BadRequestException('Salon introuvable');
+    return this.toRoomGql(r);
+  }
+
+  @Mutation(() => Boolean, { name: 'adminArchiveChatGroup' })
+  @RequireClubModule(ModuleCode.MESSAGING)
+  async adminArchiveChatGroup(
+    @CurrentClub() club: Club,
+    @Args('roomId', { type: () => ID }) roomId: string,
+  ): Promise<boolean> {
+    await this.admin.archiveGroup(club.id, roomId);
+    return true;
+  }
+
+  @Mutation(() => ChatMessageGql, { name: 'adminPostChatMessageAsMember' })
+  @RequireClubModule(ModuleCode.MESSAGING)
+  async adminPostChatMessageAsMember(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('input') input: AdminPostAsMemberInput,
+  ): Promise<ChatMessageGql> {
+    const msg = await this.admin.postAsMember(
+      club.id,
+      user.userId,
+      input.roomId,
+      input.asMemberId,
+      input.body,
+    );
+    this.gateway.emitChatMessage(input.roomId, {
+      id: msg.id,
+      roomId: msg.roomId,
+      body: msg.body,
+      createdAt: msg.createdAt,
+      parentMessageId: msg.parentMessageId,
+      sender: {
+        id: msg.sender.id,
+        pseudo: msg.sender.pseudo,
+        firstName: msg.sender.firstName,
+        lastName: msg.sender.lastName,
+      },
+    });
+    return {
+      id: msg.id,
+      roomId: msg.roomId,
+      body: msg.body,
+      createdAt: msg.createdAt,
+      sender: {
+        id: msg.sender.id,
+        pseudo: msg.sender.pseudo,
+        firstName: msg.sender.firstName,
+        lastName: msg.sender.lastName,
+      },
+      parentMessageId: msg.parentMessageId,
+      replyCount: msg.replyCount,
+      lastReplyAt: msg.lastReplyAt,
+      postedByAdmin: true,
+      reactions: [],
+    };
+  }
+
+  private toRoomGql(row: AdminRoomRow): ChatRoomGql {
+    return {
+      id: row.id,
+      kind: row.kind,
+      name: row.name,
+      description: row.description,
+      coverImageUrl: row.coverImageUrl,
+      channelMode: row.channelMode,
+      isBroadcastChannel: row.isBroadcastChannel,
+      archivedAt: row.archivedAt,
+      updatedAt: row.updatedAt,
+      members: row.members.map(
+        (m): ChatRoomMemberGql => ({
+          memberId: m.memberId,
+          role: m.role,
+          member: {
+            id: m.member.id,
+            pseudo: m.member.pseudo,
+            firstName: m.member.firstName,
+            lastName: m.member.lastName,
+          },
+        }),
+      ),
+      writePermissions: row.writePermissions.map(
+        (p): ChatRoomWritePermissionGql => ({
+          id: p.id,
+          targetKind: p.targetKind,
+          targetValue: p.targetValue,
+        }),
+      ),
+      membershipScopes: row.membershipScopes.map(
+        (s): ChatRoomMembershipScopeGql => ({
+          id: s.id,
+          targetKind: s.targetKind,
+          targetValue: s.targetValue,
+          dynamicGroupId: s.dynamicGroupId,
+        }),
+      ),
+      // En vue admin, viewerCanPost / viewerCanReply ne sont pas pertinents ;
+      // on renvoie true pour ne pas bloquer l'UI admin.
+      viewerCanPost: true,
+      viewerCanReply: true,
+    };
+  }
+}

@@ -99,6 +99,7 @@ export class MessagingGateway implements OnGatewayConnection {
       roomId: string;
       body: string;
       createdAt: Date;
+      parentMessageId: string | null;
       sender: {
         id: string;
         pseudo: string | null;
@@ -108,5 +109,36 @@ export class MessagingGateway implements OnGatewayConnection {
     },
   ): void {
     this.server.to(roomChannel(roomId)).emit('chat:message', payload);
+  }
+
+  /**
+   * Notifie le salon qu'une réaction a été basculée. Le client met à jour
+   * localement les compteurs sans recharger toute la liste.
+   */
+  emitReactionUpdate(
+    roomId: string,
+    payload: {
+      messageId: string;
+      memberId: string;
+      emoji: string;
+      reacted: boolean;
+      count: number;
+    },
+  ): void {
+    this.server.to(roomChannel(roomId)).emit('chat:reaction', payload);
+  }
+
+  /**
+   * Notifie le salon qu'un thread a évolué (compteur replyCount).
+   */
+  emitThreadUpdate(
+    roomId: string,
+    payload: {
+      parentMessageId: string;
+      replyCount: number;
+      lastReplyAt: Date | null;
+    },
+  ): void {
+    this.server.to(roomChannel(roomId)).emit('chat:thread', payload);
   }
 }

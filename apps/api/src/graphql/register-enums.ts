@@ -34,6 +34,8 @@ import {
   VatMode,
   ChatRoomKind,
   ChatRoomMemberRole,
+  ChatRoomChannelMode,
+  ChatRoomPermissionTarget,
   ClubSurveyStatus,
   ClubEventStatus,
   ClubEventRegistrationStatus,
@@ -112,6 +114,10 @@ registerEnumType(SponsorshipDocumentKind, {
 });
 registerEnumType(ChatRoomKind, { name: 'ChatRoomKind' });
 registerEnumType(ChatRoomMemberRole, { name: 'ChatRoomMemberRole' });
+registerEnumType(ChatRoomChannelMode, { name: 'ChatRoomChannelMode' });
+registerEnumType(ChatRoomPermissionTarget, {
+  name: 'ChatRoomPermissionTarget',
+});
 registerEnumType(ClubSurveyStatus, { name: 'ClubSurveyStatus' });
 registerEnumType(ClubEventStatus, { name: 'ClubEventStatus' });
 registerEnumType(ClubEventRegistrationStatus, {

@@ -617,6 +617,7 @@ model Member {
   chatRoomMemberships       ChatRoomMember[]
   chatMessagesSent          ChatMessage[]                @relation("ChatMessageSender")
   chatRoomsCreated          ChatRoom[]                   @relation("MemberChatRoomsCreated")
+  chatMessageReactions      ChatMessageReaction[]
 
   /// Numéro de licence fédérale validé (saisi une fois via « J'ai déjà une licence »).
   licenseNumber             String?
@@ -644,22 +645,60 @@ enum ChatRoomMemberRole {
   ADMIN
 }
 
+/// Mode d'écriture d'un salon (groupe administré).
+/// OPEN     = tous les membres du salon peuvent poster un message racine.
+/// RESTRICTED = seuls les rôles autorisés (ChatRoomWritePermission) peuvent
+///              poster un message racine. Les autres peuvent seulement
+///              répondre en fil (thread) à un message existant.
+/// READ_ONLY = personne ne peut poster ni répondre, sauf un admin via
+///              "poster comme membre" (broadcast pur). Réactions toujours OK.
+enum ChatRoomChannelMode {
+  OPEN
+  RESTRICTED
+  READ_ONLY
+}
+
+/// Référentiel pour les permissions d'écriture d'un salon.
+/// SYSTEM_ROLE = rôle système Membership (CLUB_ADMIN, BOARD, COACH, ...)
+/// MEMBER_ROLE = rôle adhérent (STUDENT, COACH, BOARD)
+/// CUSTOM_ROLE = ClubRoleDefinition (rôle libellé créé par le club)
+/// CONTACT     = personne avec un lien Contact (parent payeur sans Member)
+enum ChatRoomPermissionTarget {
+  SYSTEM_ROLE
+  MEMBER_ROLE
+  CUSTOM_ROLE
+  CONTACT
+}
+
 model ChatRoom {
-  id                String       @id @default(uuid())
-  clubId            String
-  kind              ChatRoomKind
-  name              String?
-  directPairKey     String?      @unique
-  createdByMemberId String?
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  id                  String              @id @default(uuid())
+  clubId              String
+  kind                ChatRoomKind
+  name                String?
+  description         String?             @db.Text
+  /// Image de couverture du salon (groupe administré).
+  coverImageUrl       String?
+  /// Mode d'écriture pour les groupes administrés.
+  channelMode         ChatRoomChannelMode @default(OPEN)
+  /// Si true, le salon apparaît comme canal de diffusion dans
+  /// l'interface "Communication" admin (à côté de email/telegram/push).
+  isBroadcastChannel  Boolean             @default(false)
+  /// Salon archivé : reste lisible mais en lecture seule, masqué par défaut.
+  archivedAt          DateTime?
+  directPairKey       String?             @unique
+  createdByMemberId   String?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
 
   club     Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
   creator  Member?          @relation("MemberChatRoomsCreated", fields: [createdByMemberId], references: [id], onDelete: SetNull)
   members  ChatRoomMember[]
   messages ChatMessage[]
+  writePermissions ChatRoomWritePermission[]
+  membershipScopes ChatRoomMembershipScope[]
 
   @@index([clubId, kind])
+  @@index([clubId, isBroadcastChannel])
 }
 
 model ChatRoomMember {
@@ -676,19 +715,97 @@ model ChatRoomMember {
   @@index([memberId])
 }
 
-model ChatMessage {
-  id             String    @id @default(uuid())
-  roomId         String
-  senderMemberId String
-  body           String    @db.Text
-  createdAt      DateTime  @default(now())
-  editedAt       DateTime?
-  deletedAt      DateTime?
+/// Permission d'écriture (poster un message racine) pour un salon RESTRICTED.
+/// Vide => tous les membres du salon peuvent poster. Sinon, l'union des
+/// rôles ciblés détermine qui peut écrire.
+model ChatRoomWritePermission {
+  id          String                   @id @default(uuid())
+  roomId      String
+  clubId      String
+  targetKind  ChatRoomPermissionTarget
+  /// Valeur dépendant de targetKind : enum stringifié pour SYSTEM_ROLE /
+  /// MEMBER_ROLE, ID de ClubRoleDefinition pour CUSTOM_ROLE, null pour CONTACT.
+  targetValue String?
+  createdAt   DateTime                 @default(now())
 
-  room   ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  sender Member   @relation("ChatMessageSender", fields: [senderMemberId], references: [id], onDelete: Cascade)
+  room ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, targetKind, targetValue])
+  @@index([clubId, roomId])
+}
+
+/// Définit la portée d'un salon administré : qui est inscrit dedans.
+/// Vide => le salon est manuel (création explicite des ChatRoomMember).
+/// Sinon : l'union des scopes calcule la liste des Member, recomputée à la
+/// volée par le service quand un membre est ajouté/retiré ou que les rôles
+/// changent.
+model ChatRoomMembershipScope {
+  id              String                   @id @default(uuid())
+  roomId          String
+  clubId          String
+  targetKind      ChatRoomPermissionTarget
+  /// Valeur dépendant de targetKind (cf ChatRoomWritePermission).
+  /// Pour DynamicGroup, on utilise un targetKind dédié dans une future itération.
+  targetValue     String?
+  /// ID de DynamicGroup si scope = groupe dynamique. Mutuellement exclusif
+  /// avec targetKind/targetValue sur cette ligne.
+  dynamicGroupId  String?
+  createdAt       DateTime @default(now())
+
+  room          ChatRoom      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  dynamicGroup  DynamicGroup? @relation(fields: [dynamicGroupId], references: [id], onDelete: Cascade)
+
+  @@index([clubId, roomId])
+  @@index([dynamicGroupId])
+}
+
+model ChatMessage {
+  id                  String    @id @default(uuid())
+  roomId              String
+  senderMemberId      String
+  body                String    @db.Text
+  /// Si non null, ce message est une réponse en fil au message désigné.
+  /// Les réponses ne sont pas affichées dans le flux principal du salon
+  /// (récupérées via thread expand uniquement).
+  parentMessageId     String?
+  /// Compteur dénormalisé du nombre de réponses au message racine
+  /// (mis à jour quand une réponse est postée).
+  replyCount          Int       @default(0)
+  /// Date de la dernière réponse (pour ordonner / afficher "X réponses").
+  lastReplyAt         DateTime?
+  /// Si non null : un admin a posté ce message en se faisant passer pour
+  /// le membre senderMemberId. Stocké pour audit.
+  postedAsAdminUserId String?
+  createdAt           DateTime  @default(now())
+  editedAt            DateTime?
+  deletedAt           DateTime?
+
+  room      ChatRoom              @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  sender    Member                @relation("ChatMessageSender", fields: [senderMemberId], references: [id], onDelete: Cascade)
+  parent    ChatMessage?          @relation("ChatMessageThread", fields: [parentMessageId], references: [id], onDelete: Cascade)
+  replies   ChatMessage[]         @relation("ChatMessageThread")
+  reactions ChatMessageReaction[]
 
   @@index([roomId, createdAt])
+  @@index([parentMessageId, createdAt])
+}
+
+/// Réaction emoji sur un message (1 emoji par membre par message).
+model ChatMessageReaction {
+  id        String   @id @default(uuid())
+  messageId String
+  memberId  String
+  clubId    String
+  /// Emoji court (Unicode), ex: "👍", "❤️", "😂". Limité à 16 caractères.
+  emoji     String   @db.VarChar(16)
+  createdAt DateTime @default(now())
+
+  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  member  Member      @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, memberId, emoji])
+  @@index([messageId])
+  @@index([clubId, memberId])
 }
 
 /// Jeton ponctuel pour `t.me/Bot?start=TOKEN` — lie le chat Telegram au membre.
@@ -762,6 +879,7 @@ model DynamicGroup {
   messageCampaigns  MessageCampaign[]
   memberAssignments MemberDynamicGroup[]
   invoiceLines      InvoiceLine[]
+  chatRoomScopes    ChatRoomMembershipScope[]
 
   @@index([clubId])
 }
@@ -1380,6 +1498,10 @@ enum CommunicationChannel {
   EMAIL
   TELEGRAM
   PUSH
+  /// Diffusion via la messagerie interne : la campagne poste un message
+  /// dans tous les salons cibles (typiquement les ChatRoom marqués
+  /// `isBroadcastChannel = true`).
+  MESSAGING
 }
 
 enum MessageCampaignStatus {

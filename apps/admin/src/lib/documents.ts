@@ -1329,6 +1329,92 @@ export const SEND_CLUB_QUICK_MESSAGE = gql`
   }
 `;
 
+// =====================================================
+// Messagerie : administration des salons (groupes admin)
+// =====================================================
+
+export const CLUB_CHAT_ROOMS_ADMIN = gql`
+  query ClubChatRoomsAdmin {
+    clubChatRoomsAdmin {
+      id
+      kind
+      name
+      description
+      coverImageUrl
+      channelMode
+      isBroadcastChannel
+      archivedAt
+      updatedAt
+      members {
+        memberId
+        role
+        member {
+          id
+          firstName
+          lastName
+          pseudo
+        }
+      }
+      writePermissions {
+        id
+        targetKind
+        targetValue
+      }
+      membershipScopes {
+        id
+        targetKind
+        targetValue
+        dynamicGroupId
+      }
+    }
+  }
+`;
+
+export const ADMIN_CREATE_CHAT_GROUP = gql`
+  mutation AdminCreateChatGroup($input: CreateAdminChatGroupInput!) {
+    adminCreateChatGroup(input: $input) {
+      id
+      name
+      channelMode
+      isBroadcastChannel
+    }
+  }
+`;
+
+export const ADMIN_UPDATE_CHAT_GROUP = gql`
+  mutation AdminUpdateChatGroup($input: UpdateAdminChatGroupInput!) {
+    adminUpdateChatGroup(input: $input) {
+      id
+      name
+      channelMode
+      isBroadcastChannel
+      archivedAt
+    }
+  }
+`;
+
+export const ADMIN_ARCHIVE_CHAT_GROUP = gql`
+  mutation AdminArchiveChatGroup($roomId: ID!) {
+    adminArchiveChatGroup(roomId: $roomId)
+  }
+`;
+
+export const ADMIN_POST_CHAT_MESSAGE_AS_MEMBER = gql`
+  mutation AdminPostChatMessageAsMember($input: AdminPostAsMemberInput!) {
+    adminPostChatMessageAsMember(input: $input) {
+      id
+      body
+      createdAt
+      sender {
+        id
+        firstName
+        lastName
+        pseudo
+      }
+    }
+  }
+`;
+
 export const CLUB_ANNOUNCEMENTS = gql`
   query ClubAnnouncements {
     clubAnnouncements {

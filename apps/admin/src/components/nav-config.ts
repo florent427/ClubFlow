@@ -155,6 +155,12 @@ export const NAV_SECTIONS: NavSection[] = [
         modules: ['COMMUNICATION'],
       },
       {
+        to: '/communication/messagerie',
+        label: 'Messagerie',
+        icon: 'forum',
+        modules: ['MESSAGING'],
+      },
+      {
         to: '/vie-du-club',
         label: 'Vie du club',
         icon: 'forum',

@@ -18,6 +18,7 @@ import { NewMemberPage } from './pages/members/NewMemberPage';
 import { NewFamilyPage } from './pages/members/NewFamilyPage';
 import { PlanningPage } from './pages/PlanningPage';
 import { CommunicationPage } from './pages/CommunicationPage';
+import { MessagingAdminPage } from './pages/MessagingAdminPage';
 import { BillingPage } from './pages/billing/BillingPage';
 import { ClubLifePage } from './pages/club-life/ClubLifePage';
 import { EventsPage } from './pages/events/EventsPage';
@@ -105,6 +106,10 @@ export default function App() {
             <Route path="contacts" element={<ContactsPage />} />
             <Route path="planning" element={<PlanningPage />} />
             <Route path="communication" element={<CommunicationPage />} />
+            <Route
+              path="communication/messagerie"
+              element={<MessagingAdminPage />}
+            />
             <Route path="billing" element={<BillingPage />} />
             <Route path="vie-du-club" element={<ClubLifePage />} />
             <Route path="evenements" element={<EventsPage />} />

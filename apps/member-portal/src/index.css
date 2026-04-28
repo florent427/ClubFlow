@@ -2187,6 +2187,160 @@ a.mp-pill-link:hover {
 }
 
 /* ===========================
+   Messagerie : réactions + threads
+   =========================== */
+
+.mp-thread-banner {
+  background: #f6f0d6;
+  border-left: 3px solid #d4b32c;
+  padding: 0.5rem 0.75rem;
+  margin: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: #4a3a00;
+}
+
+.mp-thread-desc {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.mp-room-badge {
+  margin-left: 0.4rem;
+  font-size: 0.75rem;
+}
+
+.mp-msg {
+  background: #fafbff;
+  border: 1px solid #e8eaed;
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  position: relative;
+}
+
+.mp-msg--reply {
+  margin-left: 1.25rem;
+  background: #f3f5fb;
+}
+
+.mp-msg-admin-tag {
+  display: inline-block;
+  background: #000666;
+  color: white;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-left: 0.4rem;
+  letter-spacing: 0.04em;
+}
+
+.mp-msg-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 0.4rem;
+}
+
+.mp-react-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: white;
+  border: 1px solid #d8dbe2;
+  border-radius: 999px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 120ms;
+}
+
+.mp-react-pill:hover {
+  background: #f0f2f6;
+}
+
+.mp-react-pill--mine {
+  background: #e6e8ff;
+  border-color: #b9bdf0;
+}
+
+.mp-react-emoji {
+  font-size: 1rem;
+}
+
+.mp-react-count {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.mp-msg-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+}
+
+.mp-msg-action {
+  background: none;
+  border: none;
+  color: #4a4d5a;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 0.78rem;
+}
+
+.mp-msg-action:hover {
+  background: #ececf2;
+  color: #000666;
+}
+
+.mp-react-picker {
+  margin-top: 0.5rem;
+  background: white;
+  border: 1px solid #d8dbe2;
+  border-radius: 8px;
+  padding: 0.4rem;
+  display: grid;
+  grid-template-columns: repeat(10, minmax(28px, 1fr));
+  gap: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.mp-react-pick-btn {
+  background: none;
+  border: none;
+  font-size: 1.4rem;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.mp-react-pick-btn:hover {
+  background: #f0f2f6;
+}
+
+.mp-thread-panel {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed #d8dbe2;
+}
+
+.mp-thread-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+  font-size: 0.85rem;
+}
+
+.mp-thread-compose--inline {
+  border-top: none;
+  padding: 0.5rem 0 0;
+}
+
+/* ===========================
    UX primitives (Phase 0)
    =========================== */
 

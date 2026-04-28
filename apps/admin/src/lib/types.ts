@@ -631,8 +631,57 @@ export type SyncClubContactMemberLinksMutationData = {
 };
 
 /** Aligné sur Prisma / GraphQL (CommunicationChannel, MessageCampaignStatus). */
-export type CommunicationChannelStr = 'EMAIL' | 'TELEGRAM' | 'PUSH';
+export type CommunicationChannelStr =
+  | 'EMAIL'
+  | 'TELEGRAM'
+  | 'PUSH'
+  | 'MESSAGING';
 export type MessageCampaignStatusStr = 'DRAFT' | 'SENT';
+
+export type ChatRoomChannelModeStr = 'OPEN' | 'RESTRICTED' | 'READ_ONLY';
+export type ChatRoomKindStr = 'DIRECT' | 'GROUP' | 'COMMUNITY';
+export type ChatRoomPermissionTargetStr =
+  | 'SYSTEM_ROLE'
+  | 'MEMBER_ROLE'
+  | 'CUSTOM_ROLE'
+  | 'CONTACT';
+
+export type AdminChatRoomRow = {
+  id: string;
+  kind: ChatRoomKindStr;
+  name: string | null;
+  description: string | null;
+  coverImageUrl: string | null;
+  channelMode: ChatRoomChannelModeStr;
+  isBroadcastChannel: boolean;
+  archivedAt: string | null;
+  updatedAt: string;
+  members: {
+    memberId: string;
+    role: 'MEMBER' | 'ADMIN';
+    member: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      pseudo: string | null;
+    };
+  }[];
+  writePermissions: {
+    id: string;
+    targetKind: ChatRoomPermissionTargetStr;
+    targetValue: string | null;
+  }[];
+  membershipScopes: {
+    id: string;
+    targetKind: ChatRoomPermissionTargetStr;
+    targetValue: string | null;
+    dynamicGroupId: string | null;
+  }[];
+};
+
+export type ClubChatRoomsAdminQueryData = {
+  clubChatRoomsAdmin: AdminChatRoomRow[];
+};
 
 export type MessageCampaignsQueryData = {
   clubMessageCampaigns: {
