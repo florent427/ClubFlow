@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import * as bcrypt from 'bcryptjs';
 import {
   ClubPaymentMethod,
   FamilyMemberLinkRole,
@@ -312,6 +313,100 @@ export class ViewerService {
     }
   }
 
+  // --------------------------------------------------------------
+  // PIN à 4 chiffres pour protéger l'espace payeur (/factures + /famille)
+  // --------------------------------------------------------------
+
+  /**
+   * Définit ou modifie le PIN. Si l'utilisateur a déjà un PIN, le
+   * `currentPin` est requis. Sinon (1ère création), seul `newPin`
+   * suffit. `newPin` doit être exactement 4 chiffres.
+   */
+  async viewerSetPayerSpacePin(
+    userId: string,
+    newPin: string,
+    currentPin: string | null,
+  ): Promise<{ ok: boolean }> {
+    if (!/^[0-9]{4}$/.test(newPin)) {
+      throw new BadRequestException(
+        'Le code PIN doit contenir exactement 4 chiffres.',
+      );
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { payerSpacePinHash: true },
+    });
+    if (!user) {
+      throw new NotFoundException('Utilisateur introuvable.');
+    }
+    if (user.payerSpacePinHash) {
+      // PIN déjà défini → vérifier le current avant de le remplacer.
+      if (!currentPin) {
+        throw new BadRequestException(
+          'Code PIN actuel requis pour modifier le code.',
+        );
+      }
+      const ok = await bcrypt.compare(currentPin, user.payerSpacePinHash);
+      if (!ok) {
+        throw new BadRequestException('Code PIN actuel incorrect.');
+      }
+    }
+    const newHash = await bcrypt.hash(newPin, 10);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { payerSpacePinHash: newHash },
+    });
+    return { ok: true };
+  }
+
+  /** Désactive le PIN après vérification de l'actuel. */
+  async viewerClearPayerSpacePin(
+    userId: string,
+    currentPin: string,
+  ): Promise<{ ok: boolean }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { payerSpacePinHash: true },
+    });
+    if (!user) {
+      throw new NotFoundException('Utilisateur introuvable.');
+    }
+    if (!user.payerSpacePinHash) {
+      // Idempotence : pas de PIN → considéré comme OK.
+      return { ok: true };
+    }
+    const ok = await bcrypt.compare(currentPin, user.payerSpacePinHash);
+    if (!ok) {
+      throw new BadRequestException('Code PIN incorrect.');
+    }
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { payerSpacePinHash: null },
+    });
+    return { ok: true };
+  }
+
+  /**
+   * Vérifie le PIN. Renvoie `ok: true` si match, `ok: false` sinon.
+   * On ne throw pas pour éviter de "fuir" l'info de l'existence du PIN
+   * via un 401 vs 200. Le frontend gère la logique d'unlock localement
+   * (sessionStorage avec TTL).
+   */
+  async viewerVerifyPayerSpacePin(
+    userId: string,
+    pin: string,
+  ): Promise<{ ok: boolean }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { payerSpacePinHash: true },
+    });
+    if (!user || !user.payerSpacePinHash) {
+      return { ok: false };
+    }
+    const ok = await bcrypt.compare(pin, user.payerSpacePinHash);
+    return { ok };
+  }
+
   async viewerEligibleMembershipFormulas(
     clubId: string,
     birthDate: string,
@@ -552,6 +647,10 @@ export class ViewerService {
       clubId,
       { memberId, contactId: null },
     );
+    const userRow = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { payerSpacePinHash: true },
+    });
     return {
       id: m.id,
       firstName: m.firstName,
@@ -572,6 +671,7 @@ export class ViewerService {
       hideMemberModules: false,
       telegramLinked: Boolean(m.telegramChatId),
       canManageMembershipCart,
+      payerSpacePinSet: Boolean(userRow?.payerSpacePinHash),
     };
   }
 
@@ -620,6 +720,10 @@ export class ViewerService {
       clubId,
       { memberId: null, contactId },
     );
+    const userRow = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { payerSpacePinHash: true },
+    });
     return {
       id: contactId,
       firstName: c.firstName,
@@ -640,6 +744,7 @@ export class ViewerService {
       hideMemberModules: true,
       telegramLinked: false,
       canManageMembershipCart,
+      payerSpacePinSet: Boolean(userRow?.payerSpacePinHash),
     };
   }
 

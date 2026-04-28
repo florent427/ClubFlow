@@ -167,10 +167,12 @@ export function MemberLayout() {
               </NavLink>
             </>
           ) : null}
-          <NavLink to="/famille" className={navClass}>
-            <span className="mp-ico material-symbols-outlined">groups</span>
-            Famille &amp; partage
-          </NavLink>
+          {canManageMembershipCart ? (
+            <NavLink to="/famille" className={navClass}>
+              <span className="mp-ico material-symbols-outlined">groups</span>
+              Famille &amp; partage
+            </NavLink>
+          ) : null}
           {canManageMembershipCart ? (
             <NavLink to="/adhesion" className={navClass}>
               <span className="mp-ico material-symbols-outlined">
@@ -198,10 +200,14 @@ export function MemberLayout() {
               ) : null}
             </NavLink>
           ) : null}
-          <NavLink to="/factures" className={navClass}>
-            <span className="mp-ico material-symbols-outlined">receipt_long</span>
-            Factures
-          </NavLink>
+          {canManageMembershipCart ? (
+            <NavLink to="/factures" className={navClass}>
+              <span className="mp-ico material-symbols-outlined">
+                receipt_long
+              </span>
+              Factures
+            </NavLink>
+          ) : null}
           <NavLink to="/actus" className={navClass}>
             <span className="mp-ico material-symbols-outlined">campaign</span>
             Vie du club
@@ -364,10 +370,12 @@ export function MemberLayout() {
             </NavLink>
           </>
         ) : null}
-        <NavLink to="/famille" className={bottomClass}>
-          <span className="material-symbols-outlined">groups</span>
-          <span>Famille</span>
-        </NavLink>
+        {canManageMembershipCart ? (
+          <NavLink to="/famille" className={bottomClass}>
+            <span className="material-symbols-outlined">groups</span>
+            <span>Famille</span>
+          </NavLink>
+        ) : null}
         <NavLink to="/messagerie" className={bottomClass}>
           <span className="material-symbols-outlined">chat</span>
           <span>Chat</span>

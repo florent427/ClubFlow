@@ -4,6 +4,7 @@ import { apolloClient } from './lib/apollo';
 import { getClubId, getToken, hasMemberSession } from './lib/storage';
 import { MemberOrContactShell } from './components/MemberOrContactShell';
 import { MemberOnly } from './components/MemberOnly';
+import { PinGate } from './components/PinGate';
 import { ToastProvider } from './components/ToastProvider';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
@@ -89,9 +90,23 @@ export default function App() {
                   </MemberOnly>
                 }
               />
-              <Route path="/famille" element={<FamilyPage />} />
+              <Route
+                path="/famille"
+                element={
+                  <PinGate>
+                    <FamilyPage />
+                  </PinGate>
+                }
+              />
               <Route path="/adhesion" element={<AdhesionPage />} />
-              <Route path="/factures" element={<BillingPage />} />
+              <Route
+                path="/factures"
+                element={
+                  <PinGate>
+                    <BillingPage />
+                  </PinGate>
+                }
+              />
               <Route path="/parametres" element={<SettingsPage />} />
               <Route
                 path="/messagerie"

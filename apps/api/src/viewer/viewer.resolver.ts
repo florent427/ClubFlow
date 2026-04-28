@@ -32,6 +32,7 @@ import { ViewerCourseSlotGraph } from './models/viewer-course-slot.model';
 import { ViewerCheckoutSessionGraph } from './models/viewer-checkout-session.model';
 import { ViewerInvoicePaymentChoiceGraph } from './models/viewer-invoice-payment-choice.model';
 import { ViewerCheckoutMembershipCartGraph } from './models/viewer-checkout-membership-cart.model';
+import { ViewerPayerSpacePinResultGraph } from './models/viewer-pin-result.model';
 import { ViewerFamilyBillingSummaryGraph } from './models/viewer-family-billing.model';
 import { ViewerFamilyJoinResultGraph } from './models/viewer-family-join-result.model';
 import { ViewerMemberGraph } from './models/viewer-member.model';
@@ -280,6 +281,54 @@ export class ViewerResolver {
         billingRhythm: input.billingRhythm ?? null,
       },
     );
+  }
+
+  // ----------------------------------------------------------------
+  // PIN à 4 chiffres pour protéger l'espace payeur (/factures + /famille)
+  // ----------------------------------------------------------------
+
+  @Mutation(() => ViewerPayerSpacePinResultGraph, {
+    name: 'viewerSetPayerSpacePin',
+    description:
+      "Définit ou modifie le PIN à 4 chiffres qui protège l'espace payeur. Si un PIN existe déjà, `currentPin` est requis.",
+  })
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  viewerSetPayerSpacePin(
+    @CurrentUser() user: RequestUser,
+    @Args('newPin', { type: () => String }) newPin: string,
+    @Args('currentPin', { type: () => String, nullable: true })
+    currentPin?: string,
+  ): Promise<ViewerPayerSpacePinResultGraph> {
+    return this.viewer.viewerSetPayerSpacePin(
+      user.userId,
+      newPin,
+      currentPin ?? null,
+    );
+  }
+
+  @Mutation(() => ViewerPayerSpacePinResultGraph, {
+    name: 'viewerClearPayerSpacePin',
+    description: 'Désactive le PIN après vérification du code actuel.',
+  })
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  viewerClearPayerSpacePin(
+    @CurrentUser() user: RequestUser,
+    @Args('currentPin', { type: () => String }) currentPin: string,
+  ): Promise<ViewerPayerSpacePinResultGraph> {
+    return this.viewer.viewerClearPayerSpacePin(user.userId, currentPin);
+  }
+
+  @Mutation(() => ViewerPayerSpacePinResultGraph, {
+    name: 'viewerVerifyPayerSpacePin',
+    description:
+      "Valide le PIN. Renvoie `ok: false` si incorrect (pas d'erreur HTTP pour ne pas fuiter l'info).",
+  })
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  viewerVerifyPayerSpacePin(
+    @CurrentUser() user: RequestUser,
+    @Args('pin', { type: () => String }) pin: string,
+  ): Promise<ViewerPayerSpacePinResultGraph> {
+    return this.viewer.viewerVerifyPayerSpacePin(user.userId, pin);
   }
 
   @Query(() => [ViewerMembershipFormulaGraph], {

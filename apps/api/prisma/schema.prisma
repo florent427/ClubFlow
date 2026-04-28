@@ -329,6 +329,11 @@ model User {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
+  /// PIN à 4 chiffres (hashé bcrypt) qui protège l'accès aux pages
+  /// /factures + /famille du portail (espace payeur). Optionnel ; si
+  /// null, l'accès est libre dès qu'on est PAYER.
+  payerSpacePinHash String?
+
   memberships             ClubMembership[]
   tokens                  RefreshToken[]
   members                 Member[]

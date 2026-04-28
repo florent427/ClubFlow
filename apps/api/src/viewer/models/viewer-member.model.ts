@@ -80,4 +80,11 @@ export class ViewerMemberGraph {
     defaultValue: false,
   })
   canManageMembershipCart!: boolean;
+
+  @Field(() => Boolean, {
+    description:
+      "True si l'utilisateur a défini un code PIN à 4 chiffres pour protéger son espace payeur (/factures + /famille). False = accès libre dès qu'on est PAYER.",
+    defaultValue: false,
+  })
+  payerSpacePinSet!: boolean;
 }

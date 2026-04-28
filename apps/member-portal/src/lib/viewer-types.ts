@@ -26,6 +26,7 @@ export type ViewerMeData = {
     hideMemberModules: boolean;
     telegramLinked: boolean;
     canManageMembershipCart: boolean;
+    payerSpacePinSet: boolean;
   };
 };
 

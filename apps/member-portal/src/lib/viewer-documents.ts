@@ -32,6 +32,31 @@ export const VIEWER_ME = gql`
       hideMemberModules
       telegramLinked
       canManageMembershipCart
+      payerSpacePinSet
+    }
+  }
+`;
+
+export const VIEWER_SET_PAYER_SPACE_PIN = gql`
+  mutation ViewerSetPayerSpacePin($newPin: String!, $currentPin: String) {
+    viewerSetPayerSpacePin(newPin: $newPin, currentPin: $currentPin) {
+      ok
+    }
+  }
+`;
+
+export const VIEWER_CLEAR_PAYER_SPACE_PIN = gql`
+  mutation ViewerClearPayerSpacePin($currentPin: String!) {
+    viewerClearPayerSpacePin(currentPin: $currentPin) {
+      ok
+    }
+  }
+`;
+
+export const VIEWER_VERIFY_PAYER_SPACE_PIN = gql`
+  mutation ViewerVerifyPayerSpacePin($pin: String!) {
+    viewerVerifyPayerSpacePin(pin: $pin) {
+      ok
     }
   }
 `;
