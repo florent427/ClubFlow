@@ -1,5 +1,8 @@
 import { useMutation, useQuery } from '@apollo/client/react';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import * as ImagePicker from 'expo-image-picker';
 import {
+  BottomActionBar,
   Button,
   Card,
   ConfirmSheet,
@@ -13,6 +16,7 @@ import {
   memberDisplayName,
   memberInitials,
   palette,
+  shadow,
   spacing,
   typography,
 } from '@clubflow/mobile-shared';
@@ -20,12 +24,22 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { storage } from '../../lib/storage';
 import {
   CLUB_MEMBER,
   CLUB_MEMBERS,
   DELETE_CLUB_MEMBER,
   SET_CLUB_MEMBER_STATUS,
+  UPDATE_CLUB_MEMBER,
 } from '../../lib/documents/members';
 import type { MembersStackParamList } from '../../navigation/types';
 
@@ -69,6 +83,10 @@ const STATUS_LABEL: Record<MemberStatus, string> = {
   ARCHIVED: 'Archivé',
 };
 
+function getApiBaseUrl(): string {
+  return process.env.EXPO_PUBLIC_API_BASE ?? 'http://localhost:3000';
+}
+
 export function MemberDetailScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Rt>();
@@ -81,6 +99,8 @@ export function MemberDetailScreen() {
 
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [photoSheet, setPhotoSheet] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const [setStatus, setStatusState] = useMutation(SET_CLUB_MEMBER_STATUS, {
     refetchQueries: [{ query: CLUB_MEMBERS }],
@@ -88,6 +108,7 @@ export function MemberDetailScreen() {
   const [deleteMember, deleteState] = useMutation(DELETE_CLUB_MEMBER, {
     refetchQueries: [{ query: CLUB_MEMBERS }],
   });
+  const [updateMember] = useMutation(UPDATE_CLUB_MEMBER);
 
   const handleArchive = () => {
     void setStatus({ variables: { id: memberId, status: 'ARCHIVED' } })
@@ -109,6 +130,108 @@ export function MemberDetailScreen() {
       .catch(() => {
         setDeleteOpen(false);
       });
+  };
+
+  const onPickPhoto = async (source: 'camera' | 'gallery') => {
+    setPhotoSheet(false);
+
+    // 1) Permissions
+    const perm =
+      source === 'camera'
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert(
+        'Autorisation refusée',
+        source === 'camera'
+          ? 'Activez l\'accès à l\'appareil photo dans les réglages.'
+          : 'Activez l\'accès à la galerie dans les réglages.',
+      );
+      return;
+    }
+
+    // 2) Sélection / capture
+    const opts: ImagePicker.ImagePickerOptions = {
+      mediaTypes: ['images'],
+      quality: 0.85,
+      allowsEditing: true,
+      aspect: [1, 1],
+    };
+    const result =
+      source === 'camera'
+        ? await ImagePicker.launchCameraAsync(opts)
+        : await ImagePicker.launchImageLibraryAsync(opts);
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+
+    // 3) Upload + update
+    setUploading(true);
+    try {
+      const token = await storage.getToken();
+      const clubId = await storage.getClubId();
+      if (!token || !clubId) {
+        throw new Error('Session expirée. Reconnectez-vous.');
+      }
+
+      const form = new FormData();
+      const fileName = asset.fileName ?? `member-${memberId}-${Date.now()}.jpg`;
+      const mimeType = asset.mimeType ?? 'image/jpeg';
+      form.append('file', {
+        uri: asset.uri,
+        name: fileName,
+        type: mimeType,
+      } as unknown as Blob);
+
+      const url = `${getApiBaseUrl()}/media/upload?kind=image&ownerKind=MEMBER_PROFILE&ownerId=${encodeURIComponent(memberId)}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Club-Id': clubId,
+        },
+        body: form,
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(
+          `Upload échoué (HTTP ${res.status}). ${text.slice(0, 200)}`,
+        );
+      }
+      const json = (await res.json()) as { id: string; publicUrl?: string };
+      const photoUrl = json.publicUrl ?? `/media/${json.id}`;
+
+      await updateMember({
+        variables: {
+          input: { id: memberId, photoUrl },
+        },
+      });
+      await refetch();
+    } catch (err) {
+      Alert.alert(
+        'Erreur',
+        err instanceof Error ? err.message : 'Téléversement impossible.',
+      );
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const onRemovePhoto = async () => {
+    setPhotoSheet(false);
+    setUploading(true);
+    try {
+      await updateMember({
+        variables: { input: { id: memberId, photoUrl: null } },
+      });
+      await refetch();
+    } catch (err) {
+      Alert.alert(
+        'Erreur',
+        err instanceof Error ? err.message : 'Impossible de supprimer la photo.',
+      );
+    } finally {
+      setUploading(false);
+    }
   };
 
   if (loading && !data) {
@@ -153,6 +276,7 @@ export function MemberDetailScreen() {
   const displayName = memberDisplayName(member);
   const initials = memberInitials(member);
   const cert = medicalCertState(member.medicalCertExpiresAt);
+  const photoSrc = absolutizePhotoUrl(member.photoUrl);
 
   return (
     <ScreenContainer
@@ -167,11 +291,38 @@ export function MemberDetailScreen() {
         showBack
       />
 
-      {/* Avatar + identité (chevauche le hero) */}
+      {/* Avatar éditable + identité */}
       <View style={styles.avatarBlock}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{initials}</Text>
-        </View>
+        <Pressable
+          onPress={() => setPhotoSheet(true)}
+          disabled={uploading}
+          style={({ pressed }) => [
+            styles.avatarPressable,
+            pressed && { opacity: 0.85 },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Modifier la photo de profil"
+        >
+          <View style={styles.avatar}>
+            {photoSrc ? (
+              <Image
+                source={{ uri: photoSrc }}
+                style={styles.avatarImage}
+                resizeMode="cover"
+              />
+            ) : (
+              <Text style={styles.avatarText}>{initials}</Text>
+            )}
+            {uploading ? (
+              <View style={styles.avatarOverlay}>
+                <ActivityIndicator color={palette.surface} />
+              </View>
+            ) : null}
+          </View>
+          <View style={styles.cameraBadge}>
+            <Ionicons name="camera" size={16} color={palette.surface} />
+          </View>
+        </Pressable>
         <View style={styles.statusRow}>
           <Pill
             label={STATUS_LABEL[member.status]}
@@ -277,6 +428,40 @@ export function MemberDetailScreen() {
         </Card>
       </View>
 
+      <BottomActionBar
+        visible={photoSheet}
+        onClose={() => setPhotoSheet(false)}
+        title="Photo de profil"
+        actions={[
+          {
+            key: 'camera',
+            label: 'Prendre une photo',
+            icon: 'camera',
+            tone: 'primary',
+          },
+          {
+            key: 'gallery',
+            label: 'Choisir depuis la galerie',
+            icon: 'images-outline',
+          },
+          ...(member.photoUrl
+            ? ([
+                {
+                  key: 'remove',
+                  label: 'Supprimer la photo',
+                  icon: 'trash-outline',
+                  tone: 'danger',
+                },
+              ] as const)
+            : []),
+        ]}
+        onAction={(key) => {
+          if (key === 'camera') void onPickPhoto('camera');
+          else if (key === 'gallery') void onPickPhoto('gallery');
+          else if (key === 'remove') void onRemovePhoto();
+        }}
+      />
+
       <ConfirmSheet
         visible={archiveOpen}
         onCancel={() => setArchiveOpen(false)}
@@ -298,6 +483,13 @@ export function MemberDetailScreen() {
       />
     </ScreenContainer>
   );
+}
+
+/** Si l'API renvoie un chemin relatif (ex: /media/abc), on préfixe l'host. */
+function absolutizePhotoUrl(url: string | null): string | null {
+  if (!url) return null;
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  return `${getApiBaseUrl()}${url.startsWith('/') ? url : `/${url}`}`;
 }
 
 function InfoLine({ label, value }: { label: string; value: string }) {
@@ -325,19 +517,49 @@ const styles = StyleSheet.create({
     marginTop: -spacing.xxl,
     gap: spacing.sm,
   },
+  avatarPressable: {
+    width: 96,
+    height: 96,
+  },
   avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     backgroundColor: palette.primary,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 4,
     borderColor: palette.surface,
+    overflow: 'hidden',
+    ...shadow.md,
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
   },
   avatarText: {
-    ...typography.h1,
+    ...typography.displayLg,
     color: palette.surface,
+  },
+  avatarOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15,23,42,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cameraBadge: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: palette.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: palette.surface,
+    ...shadow.sm,
   },
   statusRow: {
     flexDirection: 'row',

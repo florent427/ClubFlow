@@ -16,7 +16,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CLUB_MEMBERS } from '../../lib/documents/members';
 import type { MembersStackParamList } from '../../navigation/types';
@@ -31,6 +31,16 @@ type MemberRow = {
   photoUrl: string | null;
   gradeLevel: { id: string; label: string } | null;
 };
+
+function getApiBaseUrl(): string {
+  return process.env.EXPO_PUBLIC_API_BASE ?? 'http://localhost:3000';
+}
+
+function absolutizePhotoUrl(url: string | null): string | null {
+  if (!url) return null;
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  return `${getApiBaseUrl()}${url.startsWith('/') ? url : `/${url}`}`;
+}
 
 type Data = { clubMembers: MemberRow[] };
 
@@ -77,7 +87,12 @@ export function MembersDirectoryScreen() {
       title: memberDisplayName(m),
       subtitle: [m.email, m.gradeLevel?.label].filter(Boolean).join(' · '),
       badge: STATUS_BADGE[m.status],
-      leading: <AvatarFallback initials={memberInitials(m)} />,
+      leading: (
+        <Avatar
+          photoUrl={absolutizePhotoUrl(m.photoUrl)}
+          initials={memberInitials(m)}
+        />
+      ),
     }));
   }, [data, debounced]);
 
@@ -139,7 +154,24 @@ export function MembersDirectoryScreen() {
   );
 }
 
-function AvatarFallback({ initials }: { initials: string }) {
+function Avatar({
+  photoUrl,
+  initials,
+}: {
+  photoUrl: string | null;
+  initials: string;
+}) {
+  if (photoUrl) {
+    return (
+      <View style={avatarStyles.wrap}>
+        <Image
+          source={{ uri: photoUrl }}
+          style={avatarStyles.img}
+          resizeMode="cover"
+        />
+      </View>
+    );
+  }
   return (
     <View style={avatarStyles.wrap}>
       <Text style={avatarStyles.text}>{initials}</Text>
@@ -178,6 +210,11 @@ const avatarStyles = StyleSheet.create({
     backgroundColor: palette.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  img: {
+    width: 40,
+    height: 40,
   },
   text: {
     ...typography.smallStrong,

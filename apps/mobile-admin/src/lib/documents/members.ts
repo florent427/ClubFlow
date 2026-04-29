@@ -91,6 +91,15 @@ export const SET_CLUB_MEMBER_STATUS = gql`
   }
 `;
 
+export const UPDATE_CLUB_MEMBER = gql`
+  mutation UpdateClubMember($input: UpdateMemberInput!) {
+    updateClubMember(input: $input) {
+      id
+      photoUrl
+    }
+  }
+`;
+
 export const CLUB_GRADE_LEVELS = gql`
   query ClubGradeLevels {
     clubGradeLevels {
