@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { palette, radius, shadow, spacing } from '../../theme/tokens';
 import { typography } from '../../theme/typography';
 import { useClubTheme } from '../../theme/theme-context';
@@ -15,11 +15,13 @@ type Props = {
   delta?: { value: string; positive: boolean } | null;
   tone?: Tone;
   compact?: boolean;
+  /** Si fourni, la tuile devient cliquable (Pressable). */
+  onPress?: () => void;
 };
 
 /**
  * Tuile KPI premium : icône gradient + label uppercase + métric grande
- * + delta optionnel coloré sémantiquement.
+ * + delta optionnel coloré sémantiquement. Cliquable si onPress fourni.
  */
 export function KpiTile({
   icon,
@@ -28,6 +30,7 @@ export function KpiTile({
   delta,
   tone = 'primary',
   compact = false,
+  onPress,
 }: Props) {
   const { gradients } = useClubTheme();
   const grad =
@@ -41,8 +44,8 @@ export function KpiTile({
             ? { colors: ['#1e1b4b', '#b45309'] as const, start: { x: 0, y: 0 }, end: { x: 1, y: 1 } }
             : gradients.primary;
 
-  return (
-    <View style={[styles.tile, compact && styles.tileCompact]}>
+  const inner = (
+    <>
       <LinearGradient
         colors={grad.colors as readonly [string, string, ...string[]]}
         start={grad.start}
@@ -71,6 +74,28 @@ export function KpiTile({
           {delta.positive ? '↑' : '↓'} {delta.value}
         </Text>
       ) : null}
+    </>
+  );
+
+  if (onPress) {
+    return (
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.tile,
+          compact && styles.tileCompact,
+          pressed && { opacity: 0.85 },
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel={`${label} : ${value}`}
+      >
+        {inner}
+      </Pressable>
+    );
+  }
+  return (
+    <View style={[styles.tile, compact && styles.tileCompact]}>
+      {inner}
     </View>
   );
 }

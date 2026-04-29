@@ -89,6 +89,12 @@ export function DashboardScreen() {
       {/* Quick actions */}
       <View style={styles.quickActions}>
         <QuickActionButton
+          icon="cash-outline"
+          label="Encaisser"
+          onPress={() => goNested('More', 'Invoices')}
+          highlight
+        />
+        <QuickActionButton
           icon="add-circle-outline"
           label="Écriture"
           onPress={() => goNested('More', 'NewEntry')}
@@ -102,11 +108,6 @@ export function DashboardScreen() {
           icon="paper-plane-outline"
           label="Message"
           onPress={() => goNested('More', 'QuickMessage')}
-        />
-        <QuickActionButton
-          icon="person-add-outline"
-          label="Adhérent"
-          onPress={() => goNested('Community', 'NewMember')}
         />
       </View>
 
@@ -124,12 +125,14 @@ export function DashboardScreen() {
                 }
               : null
           }
+          onPress={() => goNested('Community', 'Directory')}
         />
         <KpiTile
           icon="card-outline"
           label="Factures impayées"
           value={String(summary?.outstandingPaymentsCount ?? '—')}
           tone="warm"
+          onPress={() => goNested('More', 'Invoices')}
         />
       </View>
 
@@ -139,12 +142,14 @@ export function DashboardScreen() {
           label="Événements à venir"
           value={String(summary?.upcomingEventsCount ?? '—')}
           tone="cool"
+          onPress={() => goNested('Activities', 'Events')}
         />
         <KpiTile
           icon="time-outline"
           label="Cours à venir"
           value={String(summary?.upcomingSessionsCount ?? '—')}
           tone="primary"
+          onPress={() => goNested('Activities', 'Planning')}
         />
       </View>
 
@@ -154,12 +159,14 @@ export function DashboardScreen() {
           label="Annonces récentes"
           value={String(summary?.recentAnnouncementsCount ?? '—')}
           tone="primary"
+          onPress={() => goNested('More', 'Announcements')}
         />
         <KpiTile
           icon="bag-handle-outline"
           label="Commandes shop"
           value={String(summary?.pendingShopOrdersCount ?? '—')}
           tone="cool"
+          onPress={() => goNested('More', 'ShopOrders')}
         />
       </View>
 
@@ -172,6 +179,7 @@ export function DashboardScreen() {
               summary ? formatEuroCents(summary.revenueCentsMonth) : '—'
             }
             tone="success"
+            onPress={() => goNested('More', 'AccountingHome')}
           />
           <KpiTile
             icon="wallet-outline"
@@ -182,6 +190,7 @@ export function DashboardScreen() {
                 : '—'
             }
             tone="admin"
+            onPress={() => goNested('More', 'AccountingHome')}
           />
         </View>
       ) : null}
@@ -192,12 +201,14 @@ export function DashboardScreen() {
           label="Subventions"
           value={String(summary?.openGrantApplicationsCount ?? '—')}
           tone="warm"
+          onPress={() => goNested('More', 'Subsidies')}
         />
         <KpiTile
           icon="ribbon-outline"
           label="Sponsors actifs"
           value={String(summary?.activeSponsorshipDealsCount ?? '—')}
           tone="success"
+          onPress={() => goNested('More', 'Sponsorships')}
         />
       </View>
 
@@ -227,6 +238,12 @@ export function DashboardScreen() {
       <Card style={{ margin: spacing.lg }}>
         <Text style={styles.sectionTitle}>Ouverture rapide</Text>
         <View style={styles.pillsRow}>
+          <Pill
+            icon="card-outline"
+            label="Facturation"
+            tone="primary"
+            onPress={() => goNested('More', 'Invoices')}
+          />
           <Pill
             icon="storefront-outline"
             label="Boutique"
@@ -260,10 +277,12 @@ function QuickActionButton({
   icon,
   label,
   onPress,
+  highlight,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   onPress: () => void;
+  highlight?: boolean;
 }) {
   return (
     <Pressable
@@ -272,11 +291,28 @@ function QuickActionButton({
         quickStyles.btn,
         pressed && { opacity: 0.85 },
       ]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
     >
-      <View style={quickStyles.iconBubble}>
-        <Ionicons name={icon} size={22} color={palette.primary} />
+      <View
+        style={[
+          quickStyles.iconBubble,
+          highlight && quickStyles.iconBubbleHighlight,
+        ]}
+      >
+        <Ionicons
+          name={icon}
+          size={22}
+          color={highlight ? palette.surface : palette.primary}
+        />
       </View>
-      <Text style={quickStyles.label} numberOfLines={1}>
+      <Text
+        style={[
+          quickStyles.label,
+          highlight && { color: palette.primary, fontWeight: '700' },
+        ]}
+        numberOfLines={1}
+      >
         {label}
       </Text>
     </Pressable>
@@ -350,6 +386,14 @@ const quickStyles = StyleSheet.create({
     backgroundColor: palette.primaryTint,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  iconBubbleHighlight: {
+    backgroundColor: palette.success,
+    shadowColor: palette.success,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 6,
   },
   label: {
     ...typography.smallStrong,

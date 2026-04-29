@@ -11,7 +11,7 @@ import {
 } from '@clubflow/mobile-shared';
 import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useViewer } from '../lib/club-modules-context';
 import {
   canAccessAccounting,
@@ -237,7 +237,21 @@ export function MoreMenuScreen() {
                   <Pressable
                     key={tile.key}
                     onPress={() => {
-                      if (!enabled) return;
+                      if (!enabled) {
+                        Alert.alert(
+                          'Module désactivé',
+                          `Le module "${tile.label}" n'est pas activé sur votre club. Activez-le depuis Paramètres › Modules.`,
+                          [
+                            { text: 'Plus tard', style: 'cancel' },
+                            {
+                              text: 'Activer',
+                              onPress: () =>
+                                navigation.navigate('ClubModules' as never),
+                            },
+                          ],
+                        );
+                        return;
+                      }
                       navigation.navigate(tile.screen as never);
                     }}
                     style={({ pressed }) => [
