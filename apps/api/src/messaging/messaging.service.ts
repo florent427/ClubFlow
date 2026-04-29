@@ -563,8 +563,108 @@ export class MessagingService {
   }
 
   /**
-   * Vérifie qu'un User est admin/board d'un club (utilisé pour l'API admin).
+   * Édite un message existant. Vérifie que le viewer est l'auteur ;
+   * met à jour `body` et `editedAt`. Refuse si message déjà supprimé
+   * ou salon archivé / READ_ONLY.
    */
+  async editMessage(
+    clubId: string,
+    memberId: string,
+    messageId: string,
+    body: string,
+  ) {
+    const text = body.trim();
+    if (!text) {
+      throw new BadRequestException('Message vide');
+    }
+    const msg = await this.prisma.chatMessage.findFirst({
+      where: { id: messageId, room: { clubId } },
+      include: {
+        room: { select: { archivedAt: true, channelMode: true } },
+      },
+    });
+    if (!msg || msg.deletedAt) {
+      throw new NotFoundException('Message introuvable');
+    }
+    if (msg.senderMemberId !== memberId) {
+      throw new ForbiddenException(
+        'Seul l\'auteur peut modifier ce message.',
+      );
+    }
+    if (msg.room.archivedAt) {
+      throw new BadRequestException('Salon archivé.');
+    }
+    if (msg.room.channelMode === ChatRoomChannelMode.READ_ONLY) {
+      throw new BadRequestException('Salon en diffusion seule.');
+    }
+    return this.prisma.chatMessage.update({
+      where: { id: messageId },
+      data: { body: text, editedAt: new Date() },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            pseudo: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+        reactions: true,
+      },
+    });
+  }
+
+  /**
+   * Supprime un message (soft delete via `deletedAt`).
+   *
+   * Autorisations :
+   * - L'auteur peut toujours supprimer son propre message.
+   * - Un membre du salon avec rôle `ADMIN` peut supprimer n'importe quel
+   *   message du salon (modération).
+   *
+   * Conserve les réactions / replies en base pour l'historique.
+   */
+  async deleteMessage(
+    clubId: string,
+    memberId: string,
+    messageId: string,
+  ): Promise<{ id: string; roomId: string }> {
+    const msg = await this.prisma.chatMessage.findFirst({
+      where: { id: messageId, room: { clubId } },
+      select: {
+        id: true,
+        roomId: true,
+        senderMemberId: true,
+        deletedAt: true,
+      },
+    });
+    if (!msg || msg.deletedAt) {
+      throw new NotFoundException('Message introuvable');
+    }
+    const isAuthor = msg.senderMemberId === memberId;
+    if (!isAuthor) {
+      // Vérifie si le viewer est ADMIN du salon.
+      const isRoomAdmin = await this.prisma.chatRoomMember.findFirst({
+        where: {
+          roomId: msg.roomId,
+          memberId,
+          role: ChatRoomMemberRole.ADMIN,
+        },
+        select: { id: true },
+      });
+      if (!isRoomAdmin) {
+        throw new ForbiddenException(
+          'Seul l\'auteur ou un admin du salon peut supprimer ce message.',
+        );
+      }
+    }
+    await this.prisma.chatMessage.update({
+      where: { id: messageId },
+      data: { deletedAt: new Date() },
+    });
+    return { id: messageId, roomId: msg.roomId };
+  }
+
   /**
    * Récupère le `roomId` d'un message du club. Utile pour le resolver
    * (broadcast d'événements gateway après mutation).

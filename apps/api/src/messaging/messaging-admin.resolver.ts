@@ -183,6 +183,7 @@ export class MessagingAdminResolver {
     parentMessageId: string | null;
     replyCount: number;
     lastReplyAt: Date | null;
+    editedAt: Date | null;
     postedAsAdminUserId: string | null;
     sender: {
       id: string;
@@ -212,6 +213,7 @@ export class MessagingAdminResolver {
       parentMessageId: msg.parentMessageId,
       replyCount: msg.replyCount,
       lastReplyAt: msg.lastReplyAt,
+      editedAt: msg.editedAt,
       postedByAdmin: Boolean(msg.postedAsAdminUserId),
       reactions: [...reactionMap.entries()].map(([emoji, count]) => ({
         emoji,

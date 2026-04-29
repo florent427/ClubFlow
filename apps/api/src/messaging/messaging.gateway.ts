@@ -141,4 +141,22 @@ export class MessagingGateway implements OnGatewayConnection {
   ): void {
     this.server.to(roomChannel(roomId)).emit('chat:thread', payload);
   }
+
+  /**
+   * Notifie le salon qu'un message a été édité (clients re-fetchent
+   * le contenu pour afficher la nouvelle version + le tag "modifié").
+   */
+  emitMessageEdited(
+    roomId: string,
+    payload: { id: string; body: string; editedAt: Date },
+  ): void {
+    this.server.to(roomChannel(roomId)).emit('chat:message:edit', payload);
+  }
+
+  /**
+   * Notifie le salon qu'un message a été supprimé (soft delete).
+   */
+  emitMessageDeleted(roomId: string, payload: { id: string }): void {
+    this.server.to(roomChannel(roomId)).emit('chat:message:delete', payload);
+  }
 }

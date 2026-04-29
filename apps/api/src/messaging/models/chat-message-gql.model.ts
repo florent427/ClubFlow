@@ -51,6 +51,10 @@ export class ChatMessageGql {
   @Field(() => GraphQLISODateTime, { nullable: true })
   lastReplyAt!: Date | null;
 
+  /** Date de la dernière édition (null si jamais édité). */
+  @Field(() => GraphQLISODateTime, { nullable: true })
+  editedAt!: Date | null;
+
   /** Réactions agrégées par emoji. */
   @Field(() => [ChatMessageReactionGroupGql])
   reactions!: ChatMessageReactionGroupGql[];

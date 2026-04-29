@@ -13,6 +13,7 @@ import { ViewerActiveProfileGuard } from '../common/guards/viewer-active-profile
 import type { RequestUser } from '../common/types/request-user';
 import { ModuleCode } from '../domain/module-registry/module-codes';
 import { CreateChatGroupInput } from './dto/create-chat-group.input';
+import { EditChatMessageInput } from './dto/edit-chat-message.input';
 import { PostChatMessageInput } from './dto/post-chat-message.input';
 import { ToggleMessageReactionInput } from './dto/toggle-message-reaction.input';
 import {
@@ -37,6 +38,7 @@ type RawMessage = {
   parentMessageId: string | null;
   replyCount: number;
   lastReplyAt: Date | null;
+  editedAt: Date | null;
   postedAsAdminUserId: string | null;
   sender: {
     id: string;
@@ -316,6 +318,57 @@ export class MessagingResolver {
     return { emoji: input.emoji, count, reactedByViewer: reacted };
   }
 
+  @Mutation(() => ChatMessageGql, { name: 'viewerEditChatMessage' })
+  @RequireClubModule(ModuleCode.MESSAGING)
+  @UseGuards(GqlThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  async viewerEditChatMessage(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('input') input: EditChatMessageInput,
+  ): Promise<ChatMessageGql> {
+    if (!user.activeProfileMemberId) {
+      throw new BadRequestException('Profil adhérent requis.');
+    }
+    const msg = await this.messaging.editMessage(
+      club.id,
+      user.activeProfileMemberId,
+      input.messageId,
+      input.body,
+    );
+    const gql = this.toMessageGql(
+      msg as RawMessage,
+      user.activeProfileMemberId,
+    );
+    this.gateway.emitMessageEdited(msg.roomId, {
+      id: msg.id,
+      body: msg.body,
+      editedAt: msg.editedAt ?? new Date(),
+    });
+    return gql;
+  }
+
+  @Mutation(() => Boolean, { name: 'viewerDeleteChatMessage' })
+  @RequireClubModule(ModuleCode.MESSAGING)
+  @UseGuards(GqlThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  async viewerDeleteChatMessage(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('messageId', { type: () => ID }) messageId: string,
+  ): Promise<boolean> {
+    if (!user.activeProfileMemberId) {
+      throw new BadRequestException('Profil adhérent requis.');
+    }
+    const { roomId } = await this.messaging.deleteMessage(
+      club.id,
+      user.activeProfileMemberId,
+      messageId,
+    );
+    this.gateway.emitMessageDeleted(roomId, { id: messageId });
+    return true;
+  }
+
   private toRoomGql(
     row: Awaited<ReturnType<MessagingService['listRoomsForMember']>>[0],
     viewerCanPost: boolean,
@@ -382,6 +435,7 @@ export class MessagingResolver {
       parentMessageId: msg.parentMessageId,
       replyCount: msg.replyCount,
       lastReplyAt: msg.lastReplyAt,
+      editedAt: msg.editedAt,
       postedByAdmin: Boolean(msg.postedAsAdminUserId),
       reactions: aggregateReactions(msg.reactions, viewerMemberId),
     };

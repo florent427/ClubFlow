@@ -28,6 +28,7 @@ const MESSAGE_FIELDS = `
   roomId
   body
   createdAt
+  editedAt
   parentMessageId
   replyCount
   lastReplyAt
@@ -86,6 +87,20 @@ export const VIEWER_TOGGLE_CHAT_MESSAGE_REACTION = gql`
       count
       reactedByViewer
     }
+  }
+`;
+
+export const VIEWER_EDIT_CHAT_MESSAGE = gql`
+  mutation ViewerEditChatMessage($input: EditChatMessageInput!) {
+    viewerEditChatMessage(input: $input) {
+      ${MESSAGE_FIELDS}
+    }
+  }
+`;
+
+export const VIEWER_DELETE_CHAT_MESSAGE = gql`
+  mutation ViewerDeleteChatMessage($messageId: ID!) {
+    viewerDeleteChatMessage(messageId: $messageId)
   }
 `;
 

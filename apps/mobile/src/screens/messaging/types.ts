@@ -11,6 +11,7 @@ export type ChatMessageRow = {
   roomId: string;
   body: string;
   createdAt: string;
+  editedAt: string | null;
   parentMessageId: string | null;
   replyCount: number;
   lastReplyAt: string | null;

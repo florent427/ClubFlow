@@ -7,12 +7,14 @@ import type {
 } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -21,14 +23,18 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { io, type Socket } from 'socket.io-client';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Clipboard from 'expo-clipboard';
 import { AnimatedPressable } from '../../components/ui';
 import {
   VIEWER_CHAT_MESSAGES,
   VIEWER_CHAT_ROOMS,
   VIEWER_CHAT_THREAD_REPLIES,
+  VIEWER_DELETE_CHAT_MESSAGE,
+  VIEWER_EDIT_CHAT_MESSAGE,
   VIEWER_POST_CHAT_MESSAGE,
   VIEWER_TOGGLE_CHAT_MESSAGE_REACTION,
 } from '../../lib/messaging-documents';
+import { MessageActionsSheet, type ActionKey } from './MessageActionsSheet';
 import {
   authorColor,
   formatBubbleTime,
@@ -77,9 +83,17 @@ export function MessagingThreadScreen({ route }: Props) {
   const [draft, setDraft] = useState('');
   const [openThreadId, setOpenThreadId] = useState<string | null>(null);
   const [threadDraft, setThreadDraft] = useState('');
+  /** ID du message ciblé par le menu long-press (null = sheet fermé). */
+  const [actionTargetId, setActionTargetId] = useState<string | null>(null);
+  /** ID du message ciblé par le picker emoji "+" (null = picker fermé). */
   const [reactionPickerForId, setReactionPickerForId] = useState<
     string | null
   >(null);
+  /** ID du message en cours d'édition. Si non-null, le composer affiche
+   *  une bannière "Modification de…" + le contenu pré-rempli. */
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(
+    null,
+  );
   const socketRef = useRef<Socket | null>(null);
   const flatListRef = useRef<FlatList<ListItem> | null>(null);
 
@@ -111,6 +125,19 @@ export function MessagingThreadScreen({ route }: Props) {
 
   const [postMessage] = useMutation(VIEWER_POST_CHAT_MESSAGE);
   const [toggleReaction] = useMutation(VIEWER_TOGGLE_CHAT_MESSAGE_REACTION);
+  const [editMessage] = useMutation(VIEWER_EDIT_CHAT_MESSAGE);
+  const [deleteMessage] = useMutation(VIEWER_DELETE_CHAT_MESSAGE);
+
+  // Le viewer est-il modérateur (ADMIN) du salon ?
+  const viewerIsRoomAdmin = useMemo(
+    () =>
+      Boolean(
+        room?.members.some(
+          (m) => m.memberId === viewerMemberId && m.role === 'ADMIN',
+        ),
+      ),
+    [room, viewerMemberId],
+  );
 
   // Live updates via socket.io.
   useEffect(() => {
@@ -153,6 +180,13 @@ export function MessagingThreadScreen({ route }: Props) {
     [rawMessages],
   );
 
+  // Récupère le message ciblé par le sheet (utilisé pour les actions).
+  const targetMessage = useMemo(
+    () => sortedMessages.find((m) => m.id === actionTargetId) ?? null,
+    [sortedMessages, actionTargetId],
+  );
+  const targetIsMine = targetMessage?.sender.id === viewerMemberId;
+
   // Construit la liste avec séparateurs de date entre messages.
   const items = useMemo<ListItem[]>(() => {
     const out: ListItem[] = [];
@@ -189,14 +223,100 @@ export function MessagingThreadScreen({ route }: Props) {
   async function onSendRoot() {
     if (!draft.trim()) return;
     try {
+      // Mode édition : on appelle viewerEditChatMessage au lieu de
+      // postMessage et on ferme le mode édition après succès.
+      if (editingMessageId) {
+        await editMessage({
+          variables: {
+            input: { messageId: editingMessageId, body: draft.trim() },
+          },
+        });
+        setEditingMessageId(null);
+        setDraft('');
+        void refetchMessages();
+        return;
+      }
       await postMessage({
         variables: { input: { roomId, body: draft.trim() } },
       });
       setDraft('');
       void refetchMessages();
-    } catch {
-      /* silencieux */
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error ? err.message : 'Échec de l\'envoi.';
+      Alert.alert('Erreur', msg);
     }
+  }
+
+  async function onActionSheetAction(action: ActionKey) {
+    const target = targetMessage;
+    if (!target) {
+      setActionTargetId(null);
+      return;
+    }
+    switch (action) {
+      case 'reply': {
+        setOpenThreadId(target.id);
+        setThreadDraft('');
+        break;
+      }
+      case 'copy': {
+        await Clipboard.setStringAsync(target.body);
+        break;
+      }
+      case 'forward': {
+        try {
+          await Share.share({ message: target.body });
+        } catch {
+          /* user cancelled */
+        }
+        break;
+      }
+      case 'edit': {
+        setEditingMessageId(target.id);
+        setDraft(target.body);
+        break;
+      }
+      case 'delete': {
+        Alert.alert(
+          'Supprimer ce message ?',
+          'Cette action est irréversible.',
+          [
+            { text: 'Annuler', style: 'cancel' },
+            {
+              text: 'Supprimer',
+              style: 'destructive',
+              onPress: async () => {
+                try {
+                  await deleteMessage({
+                    variables: { messageId: target.id },
+                  });
+                  void refetchMessages();
+                } catch (err: unknown) {
+                  const msg =
+                    err instanceof Error
+                      ? err.message
+                      : 'Suppression impossible.';
+                  Alert.alert('Erreur', msg);
+                }
+              },
+            },
+          ],
+        );
+        break;
+      }
+      case 'morereact': {
+        // On ouvre le picker complet pour ce message.
+        setReactionPickerForId(target.id);
+        break;
+      }
+    }
+    setActionTargetId(null);
+  }
+
+  function onCancelEdit() {
+    setEditingMessageId(null);
+    setDraft('');
   }
 
   async function onSendReply() {
@@ -319,7 +439,7 @@ export function MessagingThreadScreen({ route }: Props) {
                 mine={mine}
                 showAuthor={item.showAuthor}
                 primary={primary}
-                onLongPress={() => setReactionPickerForId(m.id)}
+                onLongPress={() => setActionTargetId(m.id)}
                 onPressReaction={(e) => void onToggleReaction(m.id, e)}
                 onPressThread={() => {
                   setOpenThreadId(m.id);
@@ -334,6 +454,24 @@ export function MessagingThreadScreen({ route }: Props) {
           }
         />
 
+        {/* Bandeau "Modification du message" */}
+        {editingMessageId && canPost ? (
+          <View style={styles.editBanner}>
+            <Ionicons name="create-outline" size={16} color={primary} />
+            <Text style={[styles.editBannerText, { color: primary }]}>
+              Modification du message
+            </Text>
+            <Pressable
+              onPress={onCancelEdit}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Annuler la modification"
+            >
+              <Ionicons name="close" size={18} color={palette.muted} />
+            </Pressable>
+          </View>
+        ) : null}
+
         {/* Composer */}
         {canPost ? (
           <Composer
@@ -341,6 +479,7 @@ export function MessagingThreadScreen({ route }: Props) {
             onChange={setDraft}
             onSend={() => void onSendRoot()}
             primary={primary}
+            placeholder={editingMessageId ? 'Modifier…' : 'Message…'}
           />
         ) : (
           <View style={[styles.composer, { paddingBottom: insets.bottom || spacing.md }]}>
@@ -421,7 +560,23 @@ export function MessagingThreadScreen({ route }: Props) {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Modal picker emoji */}
+      {/* Action sheet long-press */}
+      <MessageActionsSheet
+        visible={actionTargetId !== null}
+        isMine={Boolean(targetIsMine)}
+        canModerate={viewerIsRoomAdmin}
+        canReply={Boolean(canReply)}
+        onClose={() => setActionTargetId(null)}
+        onPickEmoji={(e) => {
+          if (actionTargetId) {
+            void onToggleReaction(actionTargetId, e);
+          }
+          setActionTargetId(null);
+        }}
+        onAction={(a) => void onActionSheetAction(a)}
+      />
+
+      {/* Modal picker emoji complet (déclenché depuis "+" du sheet) */}
       <Modal
         visible={reactionPickerForId !== null}
         animationType="fade"
@@ -496,55 +651,75 @@ function Bubble({
   return (
     <View
       style={[
-        styles.bubbleRow,
+        styles.bubbleColumn,
         showAuthor || mine ? styles.bubbleRowLoose : styles.bubbleRowTight,
-        mine ? styles.bubbleRowMine : styles.bubbleRowTheirs,
       ]}
     >
-      {/* Avatar pour l'autre uniquement quand le message commence un nouveau bloc */}
-      {!mine ? (
-        <View style={styles.avatarSlot}>
-          {showAuthor ? (
-            <View style={[styles.bubbleAvatar, { backgroundColor: senderColor }]}>
-              <Text style={styles.bubbleAvatarText}>{initials(senderName)}</Text>
-            </View>
-          ) : null}
-        </View>
-      ) : null}
-
-      <Pressable
-        onLongPress={onLongPress}
+      {/* Row interne : avatar (autres uniquement) + bulle */}
+      <View
         style={[
-          styles.bubble,
-          { backgroundColor: bubbleBg },
-          mine ? styles.bubbleMine : styles.bubbleTheirs,
-          mine && showAuthor ? null : null, // shape preserved
+          styles.bubbleInnerRow,
+          mine ? styles.bubbleInnerRowMine : styles.bubbleInnerRowTheirs,
         ]}
       >
-        {/* Auteur en couleur (uniquement pour les autres et au début d'un bloc) */}
-        {!mine && showAuthor ? (
-          <Text style={[styles.author, { color: senderColor }]}>
-            {senderName}
-            {msg.postedByAdmin ? '  ' : ''}
-            {msg.postedByAdmin ? (
-              <Text style={[styles.adminTag, { backgroundColor: primary }]}>
-                {' '}admin{' '}
-              </Text>
+        {!mine ? (
+          <View style={styles.avatarSlot}>
+            {showAuthor ? (
+              <View
+                style={[styles.bubbleAvatar, { backgroundColor: senderColor }]}
+              >
+                <Text style={styles.bubbleAvatarText}>
+                  {initials(senderName)}
+                </Text>
+              </View>
             ) : null}
-          </Text>
-        ) : null}
-        {/* Si admin et c'est mon message, on garde un petit tag aussi */}
-        {mine && msg.postedByAdmin ? (
-          <Text style={[styles.adminTagInline, { color: primary }]}>
-            posté par admin
-          </Text>
+          </View>
         ) : null}
 
-        <Text style={styles.bubbleBody}>{msg.body}</Text>
-        <Text style={styles.bubbleTime}>{formatBubbleTime(msg.createdAt)}</Text>
-      </Pressable>
+        <Pressable
+          onLongPress={onLongPress}
+          delayLongPress={300}
+          style={[
+            styles.bubble,
+            { backgroundColor: bubbleBg },
+            mine ? styles.bubbleMine : styles.bubbleTheirs,
+          ]}
+          accessibilityLabel="Maintenir pour ouvrir les actions"
+        >
+          {/* Auteur en couleur (uniquement pour les autres et au début d'un bloc) */}
+          {!mine && showAuthor ? (
+            <View style={styles.authorRow}>
+              <Text style={[styles.author, { color: senderColor }]}>
+                {senderName}
+              </Text>
+              {msg.postedByAdmin ? (
+                <View
+                  style={[styles.adminTag, { backgroundColor: primary }]}
+                >
+                  <Text style={styles.adminTagText}>admin</Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+          {mine && msg.postedByAdmin ? (
+            <Text style={[styles.adminTagInline, { color: primary }]}>
+              posté par admin
+            </Text>
+          ) : null}
 
-      {/* Réactions affichées sous la bulle, légèrement débordantes (style WhatsApp) */}
+          <Text style={styles.bubbleBody}>{msg.body}</Text>
+          <View style={styles.bubbleFooter}>
+            {msg.editedAt ? (
+              <Text style={styles.bubbleEdited}>modifié</Text>
+            ) : null}
+            <Text style={styles.bubbleTime}>
+              {formatBubbleTime(msg.createdAt)}
+            </Text>
+          </View>
+        </Pressable>
+      </View>
+
+      {/* Réactions sous la bulle, débordantes vers la bulle */}
       {msg.reactions.length > 0 ? (
         <View
           style={[
@@ -575,11 +750,11 @@ function Bubble({
         </View>
       ) : null}
 
-      {/* Lien thread style "X réponses" sous la bulle */}
+      {/* "X réponses" cliquable sous la bulle */}
       {!mine && canReply && msg.replyCount > 0 && onPressThread ? (
         <AnimatedPressable
           onPress={onPressThread}
-          style={[styles.threadLink, styles.reactionsRowTheirs]}
+          style={[styles.threadLink, styles.threadLinkAlignTheirs]}
           accessibilityRole="link"
           accessibilityLabel={`Voir ${msg.replyCount} réponses`}
         >
@@ -592,21 +767,6 @@ function Bubble({
             {msg.replyCount} réponse{msg.replyCount > 1 ? 's' : ''}
           </Text>
           <Ionicons name="chevron-forward" size={14} color={primary} />
-        </AnimatedPressable>
-      ) : null}
-      {!mine && canReply && msg.replyCount === 0 && onPressThread ? (
-        <AnimatedPressable
-          onPress={onPressThread}
-          style={[styles.threadLinkSubtle, styles.reactionsRowTheirs]}
-          accessibilityRole="button"
-          accessibilityLabel="Répondre dans un fil"
-        >
-          <Ionicons
-            name="return-down-forward-outline"
-            size={13}
-            color={palette.muted}
-          />
-          <Text style={styles.threadLinkSubtleText}>Répondre</Text>
         </AnimatedPressable>
       ) : null}
     </View>
@@ -760,14 +920,16 @@ const styles = StyleSheet.create({
   },
   datePillText: { ...typography.caption, color: palette.body },
 
-  // Bubble
-  bubbleRow: { gap: 2 },
+  // Bubble — outer container (column) : bulle + réactions + thread link.
+  bubbleColumn: {},
   /** Espacement vertical entre 2 messages d'un même auteur (consécutifs). */
   bubbleRowTight: { marginTop: 2 },
   /** Espacement vertical en début d'un nouveau cluster (auteur change). */
   bubbleRowLoose: { marginTop: spacing.sm },
-  bubbleRowMine: { alignItems: 'flex-end' },
-  bubbleRowTheirs: { alignItems: 'flex-start', flexDirection: 'row' },
+  // Inner row : avatar (autres uniquement) + bulle.
+  bubbleInnerRow: { flexDirection: 'row', alignItems: 'flex-end' },
+  bubbleInnerRowMine: { justifyContent: 'flex-end' },
+  bubbleInnerRowTheirs: { justifyContent: 'flex-start' },
 
   avatarSlot: { width: 32, marginRight: spacing.xs, alignSelf: 'flex-end' },
   bubbleAvatar: {
@@ -787,8 +949,7 @@ const styles = StyleSheet.create({
   bubble: {
     maxWidth: '78%',
     paddingHorizontal: 10,
-    paddingTop: 6,
-    paddingBottom: 18, // place pour l'heure en bas-droite
+    paddingVertical: 6,
     ...shadow.sm,
   },
   bubbleTheirs: {
@@ -803,18 +964,24 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: radius.lg,
     borderBottomRightRadius: radius.lg,
   },
+  authorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 2,
+  },
   author: {
     fontSize: 13,
     fontFamily: typography.bodyStrong.fontFamily,
-    marginBottom: 2,
   },
   adminTag: {
-    fontSize: 10,
-    color: '#ffffff',
     paddingHorizontal: 6,
     paddingVertical: 1,
     borderRadius: 4,
-    overflow: 'hidden',
+  },
+  adminTagText: {
+    color: '#ffffff',
+    fontSize: 10,
     fontFamily: typography.smallStrong.fontFamily,
   },
   adminTagInline: {
@@ -828,25 +995,38 @@ const styles = StyleSheet.create({
     color: palette.ink,
     fontFamily: typography.body.fontFamily,
   },
+  bubbleFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 6,
+    marginTop: 2,
+  },
+  bubbleEdited: {
+    fontSize: 10,
+    color: palette.muted,
+    fontFamily: typography.caption.fontFamily,
+    fontStyle: 'italic',
+  },
   bubbleTime: {
-    position: 'absolute',
-    bottom: 4,
-    right: 8,
     fontSize: 10,
     color: palette.muted,
     fontFamily: typography.caption.fontFamily,
   },
 
-  // Reactions overlay sous la bulle
+  // Reactions placées juste sous la bulle, légèrement débordantes vers
+  // le haut pour mordre la bulle (style WhatsApp).
   reactionsRow: {
     flexDirection: 'row',
     gap: 4,
     marginTop: -10,
-    paddingHorizontal: spacing.xs,
     flexWrap: 'wrap',
   },
-  reactionsRowMine: { alignSelf: 'flex-end', marginRight: 0 },
-  reactionsRowTheirs: { alignSelf: 'flex-start', marginLeft: 32 + spacing.xs },
+  reactionsRowMine: { alignSelf: 'flex-end', marginRight: spacing.md },
+  reactionsRowTheirs: {
+    alignSelf: 'flex-start',
+    marginLeft: 32 + spacing.xs + spacing.md, // après l'avatar (32) + gap interne
+  },
   reactionPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -862,30 +1042,38 @@ const styles = StyleSheet.create({
   reactionEmoji: { fontSize: 14 },
   reactionCount: { ...typography.caption, color: palette.body, fontSize: 11 },
 
-  // Thread link
+  // Thread link "X réponses" en pill flottante sous la bulle.
   threadLink: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginTop: 4,
+    marginTop: 6,
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
     borderRadius: radius.md,
-    backgroundColor: 'rgba(255,255,255,0.7)',
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    alignSelf: 'flex-start',
+  },
+  threadLinkAlignTheirs: {
+    marginLeft: 32 + spacing.xs + spacing.md,
   },
   threadLinkText: {
     ...typography.smallStrong,
     fontSize: 12,
   },
-  threadLinkSubtle: {
+
+  // Banner "Modification du message"
+  editBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: 2,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: palette.border,
   },
-  threadLinkSubtleText: { ...typography.caption, color: palette.muted },
+  editBannerText: { ...typography.smallStrong, flex: 1 },
 
   // Composer
   composer: {
