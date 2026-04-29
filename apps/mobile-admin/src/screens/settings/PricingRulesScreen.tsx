@@ -109,7 +109,7 @@ export function PricingRulesScreen() {
     data?.clubMembershipPricingRules?.find((r) => r.id === id) ?? null;
 
   return (
-    <ScreenContainer padding={0}>
+    <ScreenContainer padding={0} scroll={false}>
       <ScreenHero
         eyebrow="RÉGLAGES"
         title="Tarifs"

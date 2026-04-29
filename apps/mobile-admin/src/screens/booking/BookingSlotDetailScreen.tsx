@@ -106,7 +106,7 @@ export function BookingSlotDetailScreen() {
 
   if (slotsQuery.loading && !slot) {
     return (
-      <ScreenContainer padding={0}>
+      <ScreenContainer padding={0} scroll={false}>
         <ScreenHero
           eyebrow="CRÉNEAU"
           title="Chargement…"
@@ -122,7 +122,7 @@ export function BookingSlotDetailScreen() {
 
   if (!slot) {
     return (
-      <ScreenContainer padding={0}>
+      <ScreenContainer padding={0} scroll={false}>
         <ScreenHero
           eyebrow="CRÉNEAU"
           title="Introuvable"
@@ -144,7 +144,7 @@ export function BookingSlotDetailScreen() {
     slot.bookingCapacity != null && slot.bookedCount >= slot.bookingCapacity;
 
   return (
-    <ScreenContainer padding={0}>
+    <ScreenContainer padding={0} scroll={false}>
       <ScreenHero
         eyebrow="CRÉNEAU"
         title={slot.title}

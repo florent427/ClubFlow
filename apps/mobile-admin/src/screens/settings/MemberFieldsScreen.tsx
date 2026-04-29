@@ -100,7 +100,7 @@ export function MemberFieldsScreen() {
   }, [data]);
 
   return (
-    <ScreenContainer padding={0}>
+    <ScreenContainer padding={0} scroll={false}>
       <ScreenHero
         eyebrow="RÉGLAGES"
         title="Champs adhérents"

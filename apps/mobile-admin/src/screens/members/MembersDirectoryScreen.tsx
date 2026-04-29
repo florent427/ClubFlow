@@ -82,7 +82,7 @@ export function MembersDirectoryScreen() {
   }, [data, debounced]);
 
   return (
-    <ScreenContainer>
+    <ScreenContainer scroll={false} padding={0}>
       <ScreenHero
         eyebrow="COMMUNAUTÉ"
         title="Adhérents"

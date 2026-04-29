@@ -141,7 +141,7 @@ export function NewChatGroupScreen() {
   };
 
   return (
-    <ScreenContainer padding={0} keyboardAvoiding>
+    <ScreenContainer padding={0} keyboardAvoiding scroll={false}>
       <ScreenHero
         eyebrow="NOUVEAU"
         title="Nouveau salon"

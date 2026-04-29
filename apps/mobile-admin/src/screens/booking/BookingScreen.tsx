@@ -70,7 +70,7 @@ export function BookingScreen() {
   }, [data]);
 
   return (
-    <ScreenContainer padding={0}>
+    <ScreenContainer padding={0} scroll={false}>
       <ScreenHero
         eyebrow="RÉSERVATIONS"
         title="Réservations"

@@ -108,7 +108,7 @@ export function CourseSlotDetailScreen() {
 
   if (slotsQuery.loading && !slot) {
     return (
-      <ScreenContainer padding={0}>
+      <ScreenContainer padding={0} scroll={false}>
         <ScreenHero
           eyebrow="CRÉNEAU"
           title="Chargement…"
@@ -124,7 +124,7 @@ export function CourseSlotDetailScreen() {
 
   if (!slot) {
     return (
-      <ScreenContainer padding={0}>
+      <ScreenContainer padding={0} scroll={false}>
         <ScreenHero
           eyebrow="CRÉNEAU"
           title="Introuvable"
@@ -146,7 +146,7 @@ export function CourseSlotDetailScreen() {
     slot.bookingCapacity != null && slot.bookedCount >= slot.bookingCapacity;
 
   return (
-    <ScreenContainer padding={0}>
+    <ScreenContainer padding={0} scroll={false}>
       <ScreenHero
         eyebrow="CRÉNEAU"
         title={slot.title}

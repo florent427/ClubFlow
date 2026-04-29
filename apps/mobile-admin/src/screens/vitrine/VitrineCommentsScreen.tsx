@@ -96,7 +96,7 @@ export function VitrineCommentsScreen() {
     data?.clubVitrineComments?.find((x) => x.id === id) ?? null;
 
   return (
-    <ScreenContainer padding={0}>
+    <ScreenContainer padding={0} scroll={false}>
       <ScreenHero
         eyebrow="MODÉRATION"
         title="Commentaires"

@@ -38,7 +38,7 @@ export function VitrineCategoriesScreen() {
   }, [data]);
 
   return (
-    <ScreenContainer padding={0}>
+    <ScreenContainer padding={0} scroll={false}>
       <ScreenHero
         eyebrow="VITRINE"
         title="Catégories"

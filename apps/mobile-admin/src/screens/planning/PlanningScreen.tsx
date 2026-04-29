@@ -75,7 +75,7 @@ export function PlanningScreen() {
   }, [data]);
 
   return (
-    <ScreenContainer padding={0}>
+    <ScreenContainer padding={0} scroll={false}>
       <ScreenHero
         eyebrow="PLANNING"
         title="Planning sportif"
