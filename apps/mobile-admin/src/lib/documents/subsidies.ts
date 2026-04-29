@@ -49,6 +49,16 @@ export const CLUB_GRANT_APPLICATION = gql`
   }
 `;
 
+export const CREATE_CLUB_GRANT_APPLICATION = gql`
+  mutation CreateClubGrantApplication($input: CreateGrantApplicationInput!) {
+    createClubGrantApplication(input: $input) {
+      id
+      title
+      status
+    }
+  }
+`;
+
 export const SUBMIT_GRANT = gql`
   mutation SubmitGrant($id: ID!) {
     submitClubGrantApplication(id: $id) {

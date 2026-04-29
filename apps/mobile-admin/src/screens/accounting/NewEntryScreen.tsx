@@ -40,8 +40,7 @@ export function NewEntryScreen() {
           emoji="🤖"
           title="Saisie rapide IA"
           subtitle="Décrivez en langage naturel, l'IA catégorise"
-          onPress={() => {}}
-          disabled
+          onPress={() => navigation.navigate('NewQuickEntry')}
           tone="accent"
         />
         <ActionCard
@@ -49,8 +48,7 @@ export function NewEntryScreen() {
           emoji="✏️"
           title="Saisie manuelle"
           subtitle="Compte, montant, libellé — vous gardez le contrôle"
-          onPress={() => {}}
-          disabled
+          onPress={() => navigation.navigate('NewManualEntry')}
           tone="neutral"
         />
       </View>

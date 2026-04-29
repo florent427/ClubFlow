@@ -74,3 +74,21 @@ export const DELETE_CLUB_SURVEY = gql`
     deleteClubSurvey(id: $id)
   }
 `;
+
+export const CREATE_CLUB_ANNOUNCEMENT = gql`
+  mutation CreateClubAnnouncement($input: CreateAnnouncementInput!) {
+    createClubAnnouncement(input: $input) {
+      id
+      title
+    }
+  }
+`;
+
+export const CREATE_CLUB_SURVEY = gql`
+  mutation CreateClubSurvey($input: CreateSurveyInput!) {
+    createClubSurvey(input: $input) {
+      id
+      title
+    }
+  }
+`;

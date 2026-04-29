@@ -122,3 +122,43 @@ export const CLUB_ROLE_DEFINITIONS = gql`
     }
   }
 `;
+
+export const CREATE_CLUB_MEMBER = gql`
+  mutation CreateClubMember($input: CreateMemberInput!) {
+    createClubMember(input: $input) {
+      id
+    }
+  }
+`;
+
+export const CLUB_FAMILIES = gql`
+  query ClubFamilies {
+    clubFamilies {
+      id
+      label
+      householdGroupId
+      needsPayer
+      links {
+        id
+        memberId
+        contactId
+        linkRole
+      }
+    }
+  }
+`;
+
+export const CREATE_CLUB_FAMILY = gql`
+  mutation CreateClubFamily($input: CreateClubFamilyInput!) {
+    createClubFamily(input: $input) {
+      id
+      label
+    }
+  }
+`;
+
+export const DELETE_CLUB_FAMILY = gql`
+  mutation DeleteClubFamily($familyId: ID!) {
+    deleteClubFamily(familyId: $familyId)
+  }
+`;

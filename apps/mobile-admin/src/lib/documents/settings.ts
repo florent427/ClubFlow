@@ -97,3 +97,51 @@ export const SET_CLUB_MODULE_ENABLED = gql`
     }
   }
 `;
+
+/**
+ * Identité du club (logo, SIRET, mentions légales). Réutilise
+ * `ClubGraphModel` côté API. La query `Club` est définie dans mobile-shared.
+ */
+export const CLUB_BRANDING_DETAIL = gql`
+  query ClubBrandingDetail {
+    club {
+      id
+      name
+      logoUrl
+      siret
+      address
+      legalMentions
+      contactPhone
+      contactEmail
+    }
+  }
+`;
+
+export const UPDATE_CLUB_BRANDING = gql`
+  mutation UpdateClubBranding($input: UpdateClubBrandingInput!) {
+    updateClubBranding(input: $input) {
+      id
+      name
+      logoUrl
+      siret
+      address
+      legalMentions
+      contactPhone
+      contactEmail
+    }
+  }
+`;
+
+export const CLUB_AI_SETTINGS = gql`
+  query ClubAiSettings {
+    clubAiSettings {
+      apiKeyMasked
+      hasApiKey
+      textModel
+      imageModel
+      tokensInputUsed
+      tokensOutputUsed
+      imagesGenerated
+    }
+  }
+`;

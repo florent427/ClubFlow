@@ -25,6 +25,21 @@ export const CLUB_VITRINE_PAGES = gql`
   }
 `;
 
+export const CLUB_VITRINE_PAGE = gql`
+  query ClubVitrinePage($slug: String!) {
+    clubVitrinePage(slug: $slug) {
+      id
+      slug
+      templateKey
+      status
+      seoTitle
+      seoDescription
+      sectionsJson
+      updatedAt
+    }
+  }
+`;
+
 export const CLUB_VITRINE_ARTICLES = gql`
   query ClubVitrineArticles($channel: VitrineArticleChannel) {
     clubVitrineArticles(channel: $channel) {
@@ -136,5 +151,68 @@ export const SET_VITRINE_COMMENT_STATUS = gql`
 export const DELETE_VITRINE_COMMENT = gql`
   mutation DeleteVitrineComment($id: ID!) {
     deleteVitrineComment(id: $id)
+  }
+`;
+
+export const VITRINE_ARTICLES_DETAIL = gql`
+  query VitrineArticlesDetail {
+    clubVitrineArticles {
+      id
+      slug
+      title
+      excerpt
+      bodyJson
+      status
+      channel
+      publishedAt
+      pinned
+      coverImageUrl
+      seoTitle
+      seoDescription
+      seoH1
+    }
+  }
+`;
+
+export const CREATE_VITRINE_ARTICLE = gql`
+  mutation CreateVitrineArticle($input: CreateVitrineArticleInput!) {
+    createVitrineArticle(input: $input) {
+      id
+      title
+      slug
+    }
+  }
+`;
+
+export const UPDATE_VITRINE_ARTICLE = gql`
+  mutation UpdateVitrineArticle($input: UpdateVitrineArticleInput!) {
+    updateVitrineArticle(input: $input) {
+      id
+    }
+  }
+`;
+
+export const ADD_VITRINE_GALLERY_PHOTO = gql`
+  mutation AddVitrineGalleryPhoto($input: AddVitrineGalleryPhotoInput!) {
+    addVitrineGalleryPhoto(input: $input) {
+      id
+      imageUrl
+      caption
+    }
+  }
+`;
+
+export const DELETE_VITRINE_GALLERY_PHOTO = gql`
+  mutation DeleteVitrineGalleryPhoto($id: ID!) {
+    deleteVitrineGalleryPhoto(id: $id)
+  }
+`;
+
+export const UPDATE_CLUB_VITRINE_SETTINGS = gql`
+  mutation UpdateClubVitrineSettings($input: UpdateVitrineSettingsInput!) {
+    updateClubVitrineSettings(input: $input) {
+      customDomain
+      vitrinePublished
+    }
   }
 `;

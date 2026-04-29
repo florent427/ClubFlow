@@ -97,6 +97,8 @@ export type AccountingStackParamList = {
   ReviewQueue: undefined;
   EntryDetail: { entryId: string };
   NewEntry: { mode?: 'camera' | 'quick' | 'manual' };
+  NewManualEntry: undefined;
+  NewQuickEntry: undefined;
   ReceiptScanner: undefined;
   PeriodLock: undefined;
   AccountingSettings: undefined;

@@ -78,3 +78,22 @@ export const ADMIN_ARCHIVE_CHAT_GROUP = gql`
     adminArchiveChatGroup(roomId: $roomId)
   }
 `;
+
+export const ADMIN_CREATE_CHAT_GROUP = gql`
+  mutation AdminCreateChatGroup($input: CreateAdminChatGroupInput!) {
+    adminCreateChatGroup(input: $input) {
+      id
+      name
+    }
+  }
+`;
+
+export const ADMIN_UPDATE_CHAT_GROUP = gql`
+  mutation AdminUpdateChatGroup($input: UpdateAdminChatGroupInput!) {
+    adminUpdateChatGroup(input: $input) {
+      id
+      name
+      description
+    }
+  }
+`;

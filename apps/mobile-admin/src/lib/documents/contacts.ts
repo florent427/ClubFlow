@@ -14,6 +14,21 @@ export const CLUB_CONTACTS = gql`
       email
       emailVerified
       linkedMemberId
+      canDeleteContact
     }
+  }
+`;
+
+export const PROMOTE_CONTACT_TO_MEMBER = gql`
+  mutation PromoteContactToMember($id: ID!) {
+    promoteContactToMember(id: $id) {
+      memberId
+    }
+  }
+`;
+
+export const DELETE_CLUB_CONTACT = gql`
+  mutation DeleteClubContact($id: ID!) {
+    deleteClubContact(id: $id)
   }
 `;

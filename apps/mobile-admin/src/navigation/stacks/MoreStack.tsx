@@ -23,6 +23,8 @@ import { NewBlogPostScreen } from '../../screens/blog/NewBlogPostScreen';
 import { NewCampaignScreen } from '../../screens/communication/NewCampaignScreen';
 import { NewChatGroupScreen } from '../../screens/messaging/NewChatGroupScreen';
 import { NewEntryScreen } from '../../screens/accounting/NewEntryScreen';
+import { NewManualEntryScreen } from '../../screens/accounting/NewManualEntryScreen';
+import { NewQuickEntryScreen } from '../../screens/accounting/NewQuickEntryScreen';
 import { NewInvoiceScreen } from '../../screens/billing/NewInvoiceScreen';
 import { NewShopProductScreen } from '../../screens/shop/NewShopProductScreen';
 import { NewSponsorshipScreen } from '../../screens/sponsoring/NewSponsorshipScreen';
@@ -109,6 +111,8 @@ export function MoreStack() {
       <Stack.Screen name="ReviewQueue" component={AccountingReviewQueueScreen} />
       <Stack.Screen name="EntryDetail" component={EntryDetailScreen} />
       <Stack.Screen name="NewEntry" component={NewEntryScreen} />
+      <Stack.Screen name="NewManualEntry" component={NewManualEntryScreen} />
+      <Stack.Screen name="NewQuickEntry" component={NewQuickEntryScreen} />
       <Stack.Screen name="ReceiptScanner" component={ReceiptScannerScreen} />
       <Stack.Screen name="PeriodLock" component={PeriodLockScreen} />
       <Stack.Screen name="AccountingSettings" component={AccountingSettingsScreen} />

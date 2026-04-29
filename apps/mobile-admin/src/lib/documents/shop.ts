@@ -30,6 +30,24 @@ export const SHOP_ORDERS = gql`
   }
 `;
 
+export const CREATE_SHOP_PRODUCT = gql`
+  mutation CreateShopProduct($input: CreateShopProductInput!) {
+    createShopProduct(input: $input) {
+      id
+      name
+      priceCents
+    }
+  }
+`;
+
+export const UPDATE_SHOP_PRODUCT = gql`
+  mutation UpdateShopProduct($input: UpdateShopProductInput!) {
+    updateShopProduct(input: $input) {
+      id
+    }
+  }
+`;
+
 export const MARK_SHOP_ORDER_PAID = gql`
   mutation MarkShopOrderPaid($id: ID!) {
     markShopOrderPaid(id: $id) {

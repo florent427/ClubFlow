@@ -17,6 +17,24 @@ export const CLUB_BLOG_POSTS = gql`
   }
 `;
 
+export const CREATE_CLUB_BLOG_POST = gql`
+  mutation CreateClubBlogPost($input: CreateBlogPostInput!) {
+    createClubBlogPost(input: $input) {
+      id
+      title
+      slug
+    }
+  }
+`;
+
+export const UPDATE_CLUB_BLOG_POST = gql`
+  mutation UpdateClubBlogPost($input: UpdateBlogPostInput!) {
+    updateClubBlogPost(input: $input) {
+      id
+    }
+  }
+`;
+
 export const PUBLISH_BLOG_POST = gql`
   mutation PublishBlogPost($id: ID!) {
     publishClubBlogPost(id: $id) {

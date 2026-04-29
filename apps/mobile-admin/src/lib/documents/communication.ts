@@ -40,3 +40,13 @@ export const SEND_QUICK_MESSAGE = gql`
     }
   }
 `;
+
+export const CREATE_CLUB_MESSAGE_CAMPAIGN = gql`
+  mutation CreateClubMessageCampaign($input: CreateMessageCampaignInput!) {
+    createClubMessageCampaign(input: $input) {
+      id
+      label
+      status
+    }
+  }
+`;

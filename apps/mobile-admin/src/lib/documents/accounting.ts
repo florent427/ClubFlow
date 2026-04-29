@@ -154,6 +154,26 @@ export const SUBMIT_RECEIPT_FOR_OCR = gql`
   }
 `;
 
+export const CREATE_CLUB_ACCOUNTING_ENTRY = gql`
+  mutation CreateClubAccountingEntry($input: CreateAccountingEntryInput!) {
+    createClubAccountingEntry(input: $input) {
+      id
+      status
+    }
+  }
+`;
+
+export const CREATE_CLUB_ACCOUNTING_ENTRY_QUICK = gql`
+  mutation CreateClubAccountingEntryQuick(
+    $input: CreateQuickAccountingEntryInput!
+  ) {
+    createClubAccountingEntryQuick(input: $input) {
+      id
+      pendingCategorization
+    }
+  }
+`;
+
 export const LOCK_ACCOUNTING_MONTH = gql`
   mutation LockAccountingMonth($month: String!) {
     lockClubAccountingMonth(month: $month)

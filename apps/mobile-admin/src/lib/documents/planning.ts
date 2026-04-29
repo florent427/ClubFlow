@@ -51,3 +51,14 @@ export const CLUB_COURSE_SLOT_BOOKINGS = gql`
     }
   }
 `;
+
+export const CREATE_CLUB_COURSE_SLOT = gql`
+  mutation CreateClubCourseSlot($input: CreateCourseSlotInput!) {
+    createClubCourseSlot(input: $input) {
+      id
+      title
+      startsAt
+      endsAt
+    }
+  }
+`;

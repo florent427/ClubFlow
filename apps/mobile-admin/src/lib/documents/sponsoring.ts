@@ -51,6 +51,16 @@ export const CLUB_SPONSORSHIP_DEAL = gql`
   }
 `;
 
+export const CREATE_CLUB_SPONSORSHIP_DEAL = gql`
+  mutation CreateClubSponsorshipDeal($input: CreateSponsorshipDealInput!) {
+    createClubSponsorshipDeal(input: $input) {
+      id
+      sponsorName
+      status
+    }
+  }
+`;
+
 export const ACTIVATE_SPONSORSHIP_DEAL = gql`
   mutation ActivateSponsorshipDeal($id: ID!) {
     activateClubSponsorshipDeal(id: $id) {
