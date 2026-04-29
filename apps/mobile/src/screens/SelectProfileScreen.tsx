@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.xxxl,
-    marginTop: -spacing.xxl,
+    marginTop: -spacing.md,
   },
   list: { gap: spacing.md },
 

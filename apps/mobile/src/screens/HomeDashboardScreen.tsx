@@ -473,7 +473,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.xl,
     gap: spacing.lg,
-    marginTop: -spacing.xxl,
+    // Faible chevauchement (12dp dans le hero) — gardons l'effet card
+    // flottante sans noyer les premières pills dans le gradient.
+    marginTop: -spacing.md,
   },
 
   pillsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },

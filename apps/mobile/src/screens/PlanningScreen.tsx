@@ -116,7 +116,7 @@ const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.xxxl,
-    marginTop: -spacing.xxl,
+    marginTop: -spacing.md,
     gap: spacing.lg,
   },
   daySection: { gap: spacing.sm },

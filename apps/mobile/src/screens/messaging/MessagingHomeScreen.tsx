@@ -77,7 +77,12 @@ export function MessagingHomeScreen() {
   }
 
   return (
-    <View style={[styles.flex, { paddingTop: insets.top }]}>
+    <View
+      style={[
+        styles.flex,
+        { paddingTop: Math.max(insets.top, spacing.lg) },
+      ]}
+    >
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Messagerie</Text>
         <Pressable
@@ -85,8 +90,9 @@ export function MessagingHomeScreen() {
           onPress={() => setPseudoModalOpen(true)}
           accessibilityRole="button"
           accessibilityLabel="Modifier mon pseudo"
+          hitSlop={8}
         >
-          <Ionicons name="person-circle-outline" size={26} color={palette.muted} />
+          <Ionicons name="person-circle-outline" size={28} color={palette.muted} />
         </Pressable>
       </View>
 

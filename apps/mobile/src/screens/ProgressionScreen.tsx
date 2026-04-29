@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.xxxl,
-    marginTop: -spacing.xxl,
+    marginTop: -spacing.md,
     gap: spacing.lg,
   },
 
@@ -215,10 +215,15 @@ const styles = StyleSheet.create({
   },
   tlConnector: {
     position: 'absolute',
-    left: spacing.sm + 13,
+    // Centre exact du belt rond (28×28) dans une row paddée de spacing.sm
+    // à gauche : 8 (padding) + 14 (rayon) − 1 (½ width) = 21.
+    left: spacing.sm + 14 - 1,
+    // Démarre juste sous le belt (center 22 + rayon 14 = bottom 36) et
+    // se termine juste avant le top du belt suivant (8 dans la row d'à
+    // côté, séparée par un gap de spacing.xs = 4) → height 12.
     top: 36,
     width: 2,
-    height: 24,
+    height: spacing.sm + spacing.xs,
     backgroundColor: palette.border,
   },
   tlConnectorActive: { backgroundColor: palette.primary },

@@ -136,13 +136,24 @@ export function MemberTabsNavigator() {
       <MemberTab.Screen
         name="Messagerie"
         component={MessagingNavigator}
-        options={{
-          // L'écran de discussion gère son propre header (style WhatsApp).
-          headerShown: false,
-          tabBarLabel: 'Chat',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="chatbubbles-outline" size={size} color={color} />
-          ),
+        options={({ route }) => {
+          // Cache la tab bar quand on est dans la vue conversation
+          // (évite de manger 64dp de hauteur sous le composer).
+          const sub = (
+            route as unknown as {
+              state?: { routes?: { name?: string }[]; index?: number };
+            }
+          ).state;
+          const focused = sub?.routes?.[sub?.index ?? 0]?.name;
+          const inThread = focused === 'MessagingThread';
+          return {
+            headerShown: false,
+            tabBarLabel: 'Chat',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="chatbubbles-outline" size={size} color={color} />
+            ),
+            tabBarStyle: inThread ? { display: 'none' } : undefined,
+          };
         }}
       />
       <MemberTab.Screen

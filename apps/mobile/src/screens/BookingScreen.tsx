@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
   list: {
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.xxxl,
-    marginTop: -spacing.xxl,
+    marginTop: -spacing.md,
     gap: spacing.md,
   },
 

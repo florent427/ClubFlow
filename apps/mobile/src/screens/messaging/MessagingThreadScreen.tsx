@@ -247,7 +247,12 @@ export function MessagingThreadScreen({ route }: Props) {
   return (
     <View style={[styles.flex, { backgroundColor: WA_BG }]}>
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+      <View
+        style={[
+          styles.header,
+          { paddingTop: Math.max(insets.top, spacing.md) + spacing.sm },
+        ]}
+      >
         <Pressable
           onPress={() => navigation.goBack()}
           style={styles.headerBack}
@@ -492,6 +497,7 @@ function Bubble({
     <View
       style={[
         styles.bubbleRow,
+        showAuthor || mine ? styles.bubbleRowLoose : styles.bubbleRowTight,
         mine ? styles.bubbleRowMine : styles.bubbleRowTheirs,
       ]}
     >
@@ -625,7 +631,7 @@ function Composer({
     <View
       style={[
         styles.composer,
-        { paddingBottom: (insets.bottom || 0) + spacing.sm },
+        { paddingBottom: Math.max(insets.bottom, spacing.sm) + spacing.xs },
       ]}
     >
       <View style={styles.composerInputWrap}>
@@ -737,7 +743,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
     paddingBottom: spacing.md,
-    gap: 2,
+    gap: 4,
   },
 
   // Date pill
@@ -755,7 +761,11 @@ const styles = StyleSheet.create({
   datePillText: { ...typography.caption, color: palette.body },
 
   // Bubble
-  bubbleRow: { gap: 2, marginVertical: 1 },
+  bubbleRow: { gap: 2 },
+  /** Espacement vertical entre 2 messages d'un même auteur (consécutifs). */
+  bubbleRowTight: { marginTop: 2 },
+  /** Espacement vertical en début d'un nouveau cluster (auteur change). */
+  bubbleRowLoose: { marginTop: spacing.sm },
   bubbleRowMine: { alignItems: 'flex-end' },
   bubbleRowTheirs: { alignItems: 'flex-start', flexDirection: 'row' },
 
@@ -882,7 +892,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
     backgroundColor: WA_BG,
   },

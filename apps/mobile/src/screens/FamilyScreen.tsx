@@ -390,7 +390,7 @@ const styles = StyleSheet.create({
   inner: {
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.xxxl,
-    marginTop: -spacing.xxl,
+    marginTop: -spacing.md,
     gap: spacing.lg,
   },
   strong: { fontFamily: typography.bodyStrong.fontFamily },
