@@ -1,10 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { palette, useClubTheme } from '@clubflow/mobile-shared';
-import { useEffect, useState } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ViewerProvider } from '../lib/club-modules-context';
-import { storage } from '../lib/storage';
-import type { MembershipRole } from '@clubflow/mobile-shared';
 import { ActivitiesStack } from './stacks/ActivitiesStack';
 import { CommunityStack } from './stacks/CommunityStack';
 import { DashboardStack } from './stacks/DashboardStack';
@@ -15,19 +13,13 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 
 export function MainTabs() {
   const { palette: p } = useClubTheme();
-  const [clubRole, setClubRole] = useState<MembershipRole | null>(null);
-
-  useEffect(() => {
-    void (async () => {
-      // En l'absence de query dédiée, on stocke le rôle au login.
-      // Pour l'instant on lit un éventuel stockage ; sinon null (= SystemAdmin probable).
-      const role = (await storage.raw.get('membership_role')) as MembershipRole | null;
-      setClubRole(role ?? null);
-    })();
-  }, []);
-
+  const insets = useSafeAreaInsets();
+  // Le rôle membership est calculé via viewerAdminSwitch côté API +
+  // les permissions utilisent enabledModules. Ici on passe null en
+  // attendant un endpoint dédié pour récupérer le rôle (les écrans
+  // appliquent leur propre gating via permissions.ts).
   return (
-    <ViewerProvider clubRole={clubRole}>
+    <ViewerProvider clubRole={null}>
       <Tab.Navigator
         screenOptions={({ route }) => ({
           headerShown: false,
@@ -36,9 +28,9 @@ export function MainTabs() {
           tabBarStyle: {
             backgroundColor: palette.surface,
             borderTopColor: palette.border,
-            paddingTop: 6,
-            paddingBottom: 6,
-            height: 64,
+            paddingTop: 8,
+            paddingBottom: Math.max(insets.bottom, 10),
+            height: 60 + Math.max(insets.bottom, 10),
           },
           tabBarLabelStyle: {
             fontSize: 11,

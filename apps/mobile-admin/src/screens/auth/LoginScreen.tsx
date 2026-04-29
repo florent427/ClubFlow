@@ -1,6 +1,5 @@
-import { useMutation } from '@apollo/client/react';
+import { useApolloClient, useMutation } from '@apollo/client/react';
 import {
-  Button,
   GradientButton,
   ScreenContainer,
   ScreenHero,
@@ -13,17 +12,26 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
-import { ADMIN_LOGIN } from '../../lib/documents/auth';
+import {
+  ADMIN_LOGIN,
+  VIEWER_ADMIN_SWITCH,
+} from '../../lib/documents/auth';
 import { storage } from '../../lib/storage';
 import type { LoginResponse } from '../../lib/auth-types';
 import type { RootStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
-const BACK_OFFICE_ROLES = new Set(['CLUB_ADMIN', 'BOARD', 'TREASURER', 'COMM_MANAGER']);
+type AdminSwitchData = {
+  viewerAdminSwitch: {
+    canAccessClubBackOffice: boolean;
+    adminWorkspaceClubId: string | null;
+  };
+};
 
 export function LoginScreen() {
   const navigation = useNavigation<Nav>();
+  const client = useApolloClient();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -44,36 +52,72 @@ export function LoginScreen() {
         Alert.alert('Erreur', 'Identifiants invalides.');
         return;
       }
-      const adminProfiles = (data.viewerProfiles ?? []).filter(
-        (p) => p.membershipRole && BACK_OFFICE_ROLES.has(p.membershipRole),
+
+      const profiles = data.viewerProfiles ?? [];
+      if (profiles.length === 0) {
+        Alert.alert(
+          'Accès refusé',
+          'Aucun profil club lié à ce compte. Contactez un administrateur.',
+        );
+        return;
+      }
+
+      // Si plusieurs profils dans des clubs différents → SelectClub.
+      // Sinon, on prend le profil unique et on vérifie l'accès admin.
+      const uniqueClubIds = Array.from(
+        new Set(profiles.map((p) => p.clubId)),
       );
 
-      if (adminProfiles.length === 0) {
-        // Pas de back-office membership → check si l'user est SystemAdmin
-        // (backend renvoie tous ses clubs même sans rôle back-office si SystemAdmin).
-        if (data.viewerProfiles.length === 0) {
+      if (uniqueClubIds.length > 1) {
+        // Plusieurs clubs → laisse l'utilisateur choisir.
+        await storage.setToken(data.accessToken);
+        // Reset Apollo cache pour repartir propre côté nouveau club.
+        await client.resetStore().catch(() => {});
+        navigation.replace('SelectClub', { profiles });
+        return;
+      }
+
+      // Un seul club → on tente directement.
+      const p = profiles[0]!;
+      await storage.setSession(data.accessToken, p.clubId);
+      if (p.memberId) {
+        await storage.setActiveMemberId(p.memberId);
+      }
+      await client.resetStore().catch(() => {});
+
+      // Vérifie l'accès back-office côté API.
+      try {
+        const r = await client.query<AdminSwitchData>({
+          query: VIEWER_ADMIN_SWITCH,
+          fetchPolicy: 'network-only',
+        });
+        const switchInfo = r.data?.viewerAdminSwitch;
+        if (!switchInfo?.canAccessClubBackOffice) {
+          await storage.clearAuth();
           Alert.alert(
             'Accès refusé',
-            'Cet identifiant n\'a pas de droit d\'administration.',
+            'Ce compte n\'a pas les droits pour administrer ce club.\nL\'application admin est réservée aux dirigeants, trésoriers et responsables communication.',
           );
           return;
         }
-        // SystemAdmin probable : laisser choisir le club.
-        await storage.setToken(data.accessToken);
-        navigation.replace('SelectClub', { profiles: data.viewerProfiles });
+        // Si l'API a un workspace par défaut différent (system admin), on bascule.
+        if (
+          switchInfo.adminWorkspaceClubId &&
+          switchInfo.adminWorkspaceClubId !== p.clubId
+        ) {
+          await storage.setClubId(switchInfo.adminWorkspaceClubId);
+          await client.resetStore().catch(() => {});
+        }
+      } catch (err) {
+        await storage.clearAuth();
+        Alert.alert(
+          'Erreur',
+          err instanceof Error ? err.message : 'Vérification d\'accès impossible.',
+        );
         return;
       }
 
-      if (adminProfiles.length === 1) {
-        const p = adminProfiles[0]!;
-        await storage.setSession(data.accessToken, p.club.id);
-        await storage.setActiveMemberId(p.memberId);
-        navigation.replace('Main');
-        return;
-      }
-
-      await storage.setToken(data.accessToken);
-      navigation.replace('SelectClub', { profiles: adminProfiles });
+      navigation.replace('Main');
     } catch (err) {
       Alert.alert(
         'Erreur',

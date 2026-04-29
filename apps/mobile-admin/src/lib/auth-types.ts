@@ -1,18 +1,16 @@
-import type { MembershipRole } from '@clubflow/mobile-shared';
-
+/**
+ * Shape réelle de `ViewerProfileGraph` côté API
+ * (apps/api/src/families/models/viewer-profile.model.ts).
+ */
 export type LoginProfile = {
-  id: string;
-  memberId: string;
-  displayName: string;
+  memberId: string | null;
+  contactId: string | null;
+  clubId: string;
+  firstName: string;
+  lastName: string;
   isPrimaryProfile: boolean;
   familyId: string | null;
-  /** Rôle au sein du club (CLUB_ADMIN/BOARD/TREASURER/COACH/MEMBER/COMM_MANAGER). */
-  membershipRole?: MembershipRole | null;
-  club: {
-    id: string;
-    name: string;
-    logoUrl?: string | null;
-  };
+  householdGroupId: string | null;
 };
 
 export type LoginResponse = {
@@ -20,3 +18,7 @@ export type LoginResponse = {
   viewerProfiles: LoginProfile[];
   contactClubId?: string | null;
 };
+
+export function profileDisplayName(p: LoginProfile): string {
+  return [p.firstName, p.lastName].filter(Boolean).join(' ') || 'Profil';
+}

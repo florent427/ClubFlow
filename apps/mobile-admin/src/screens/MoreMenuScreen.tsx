@@ -101,7 +101,7 @@ const SECTIONS: Section[] = [
       {
         key: 'sponsorships',
         label: 'Sponsoring',
-        icon: 'handshake-outline' as keyof typeof Ionicons.glyphMap,
+        icon: 'ribbon-outline',
         module: 'SPONSORING',
         screen: 'Sponsorships',
       },

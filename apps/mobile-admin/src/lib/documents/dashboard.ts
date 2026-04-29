@@ -1,23 +1,23 @@
 import { gql } from '@apollo/client';
 
-export const DASHBOARD_SUMMARY = gql`
-  query DashboardSummary {
-    dashboardSummary {
-      activeMembers
-      newMembersThisMonth
-      pendingPaymentsCount
-      pendingPaymentsTotalCents
+/**
+ * Cf apps/api/src/dashboard/dashboard.resolver.ts -> adminDashboardSummary.
+ */
+export const ADMIN_DASHBOARD_SUMMARY = gql`
+  query AdminDashboardSummary {
+    adminDashboardSummary {
+      activeMembersCount
+      activeModulesCount
+      upcomingSessionsCount
+      outstandingPaymentsCount
+      revenueCentsMonth
+      newMembersThisMonthCount
       upcomingEventsCount
-      upcomingSlotsCount
-      announcementsCount
-      surveysOpenCount
-      ordersThisMonth
-      revenueThisMonthCents
-      grantApplicationsActive
-      sponsorshipDealsActive
+      recentAnnouncementsCount
+      pendingShopOrdersCount
+      openGrantApplicationsCount
+      activeSponsorshipDealsCount
       accountingBalanceCents
-      accountingNeedsReviewCount
-      messagingUnreadCount
     }
   }
 `;

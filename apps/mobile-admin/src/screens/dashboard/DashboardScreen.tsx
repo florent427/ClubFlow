@@ -16,7 +16,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { DASHBOARD_SUMMARY } from '../../lib/documents/dashboard';
+import { ADMIN_DASHBOARD_SUMMARY } from '../../lib/documents/dashboard';
 import { storage } from '../../lib/storage';
 import { useViewer } from '../../lib/club-modules-context';
 import {
@@ -25,22 +25,19 @@ import {
 } from '../../lib/permissions';
 
 type DashboardData = {
-  dashboardSummary: {
-    activeMembers: number;
-    newMembersThisMonth: number;
-    pendingPaymentsCount: number;
-    pendingPaymentsTotalCents: number;
+  adminDashboardSummary: {
+    activeMembersCount: number;
+    activeModulesCount: number;
+    upcomingSessionsCount: number;
+    outstandingPaymentsCount: number;
+    revenueCentsMonth: number;
+    newMembersThisMonthCount: number;
     upcomingEventsCount: number;
-    upcomingSlotsCount: number;
-    announcementsCount: number;
-    surveysOpenCount: number;
-    ordersThisMonth: number;
-    revenueThisMonthCents: number;
-    grantApplicationsActive: number;
-    sponsorshipDealsActive: number;
+    recentAnnouncementsCount: number;
+    pendingShopOrdersCount: number;
+    openGrantApplicationsCount: number;
+    activeSponsorshipDealsCount: number;
     accountingBalanceCents: number;
-    accountingNeedsReviewCount: number;
-    messagingUnreadCount: number;
   } | null;
 };
 
@@ -49,15 +46,21 @@ export function DashboardScreen() {
   const { clubName, isClubBranded } = useClubTheme();
   const { permissions } = useViewer();
   const { data, loading, refetch } = useQuery<DashboardData>(
-    DASHBOARD_SUMMARY,
+    ADMIN_DASHBOARD_SUMMARY,
     { errorPolicy: 'all' },
   );
 
-  const summary = data?.dashboardSummary;
+  const summary = data?.adminDashboardSummary;
 
   const onLogout = async () => {
     await storage.clearAuth();
     navigation.reset({ index: 0, routes: [{ name: 'Login' as never }] });
+  };
+
+  // Helper pour naviguer vers un nested screen sans complications de types.
+  const goNested = (parent: string, screen: string) => {
+    (navigation as unknown as { navigate: (n: string, p?: unknown) => void })
+      .navigate(parent, { screen });
   };
 
   return (
@@ -88,38 +91,22 @@ export function DashboardScreen() {
         <QuickActionButton
           icon="add-circle-outline"
           label="Écriture"
-          onPress={() =>
-            navigation.navigate('More' as never, {
-              screen: 'NewEntry',
-            } as never)
-          }
+          onPress={() => goNested('More', 'NewEntry')}
         />
         <QuickActionButton
           icon="megaphone-outline"
           label="Annonce"
-          onPress={() =>
-            navigation.navigate('More' as never, {
-              screen: 'NewAnnouncement',
-            } as never)
-          }
+          onPress={() => goNested('More', 'NewAnnouncement')}
         />
         <QuickActionButton
           icon="paper-plane-outline"
           label="Message"
-          onPress={() =>
-            navigation.navigate('More' as never, {
-              screen: 'QuickMessage',
-            } as never)
-          }
+          onPress={() => goNested('More', 'QuickMessage')}
         />
         <QuickActionButton
           icon="person-add-outline"
           label="Adhérent"
-          onPress={() =>
-            navigation.navigate('Community' as never, {
-              screen: 'NewMember',
-            } as never)
-          }
+          onPress={() => goNested('Community', 'NewMember')}
         />
       </View>
 
@@ -128,21 +115,20 @@ export function DashboardScreen() {
         <KpiTile
           icon="people"
           label="Membres actifs"
-          value={String(summary?.activeMembers ?? '—')}
+          value={String(summary?.activeMembersCount ?? '—')}
           delta={
-            summary && summary.newMembersThisMonth > 0
-              ? { value: `+${summary.newMembersThisMonth} ce mois`, positive: true }
+            summary && summary.newMembersThisMonthCount > 0
+              ? {
+                  value: `+${summary.newMembersThisMonthCount} ce mois`,
+                  positive: true,
+                }
               : null
           }
         />
         <KpiTile
           icon="card-outline"
-          label="Impayés"
-          value={
-            summary
-              ? formatEuroCents(summary.pendingPaymentsTotalCents)
-              : '—'
-          }
+          label="Factures impayées"
+          value={String(summary?.outstandingPaymentsCount ?? '—')}
           tone="warm"
         />
       </View>
@@ -150,41 +136,73 @@ export function DashboardScreen() {
       <View style={styles.kpisRow}>
         <KpiTile
           icon="calendar-outline"
-          label="Événements"
+          label="Événements à venir"
           value={String(summary?.upcomingEventsCount ?? '—')}
           tone="cool"
         />
         <KpiTile
-          icon="chatbubble-ellipses-outline"
-          label="Messages non lus"
-          value={String(summary?.messagingUnreadCount ?? '—')}
+          icon="time-outline"
+          label="Cours à venir"
+          value={String(summary?.upcomingSessionsCount ?? '—')}
           tone="primary"
+        />
+      </View>
+
+      <View style={styles.kpisRow}>
+        <KpiTile
+          icon="megaphone-outline"
+          label="Annonces récentes"
+          value={String(summary?.recentAnnouncementsCount ?? '—')}
+          tone="primary"
+        />
+        <KpiTile
+          icon="bag-handle-outline"
+          label="Commandes shop"
+          value={String(summary?.pendingShopOrdersCount ?? '—')}
+          tone="cool"
         />
       </View>
 
       {canAccessAccounting(permissions) ? (
         <View style={styles.kpisRow}>
           <KpiTile
-            icon="receipt-outline"
-            label="À valider (compta)"
-            value={String(summary?.accountingNeedsReviewCount ?? '—')}
-            tone="admin"
-          />
-          <KpiTile
             icon="trending-up-outline"
             label="CA du mois"
             value={
-              summary
-                ? formatEuroCents(summary.revenueThisMonthCents)
-                : '—'
+              summary ? formatEuroCents(summary.revenueCentsMonth) : '—'
             }
             tone="success"
+          />
+          <KpiTile
+            icon="wallet-outline"
+            label="Solde compta"
+            value={
+              summary
+                ? formatEuroCents(summary.accountingBalanceCents)
+                : '—'
+            }
+            tone="admin"
           />
         </View>
       ) : null}
 
+      <View style={styles.kpisRow}>
+        <KpiTile
+          icon="gift-outline"
+          label="Subventions"
+          value={String(summary?.openGrantApplicationsCount ?? '—')}
+          tone="warm"
+        />
+        <KpiTile
+          icon="ribbon-outline"
+          label="Sponsors actifs"
+          value={String(summary?.activeSponsorshipDealsCount ?? '—')}
+          tone="success"
+        />
+      </View>
+
       {/* Activité récente */}
-      <Card padding="lg" style={{ marginTop: spacing.lg, marginHorizontal: spacing.lg }}>
+      <Card style={{ marginTop: spacing.lg, marginHorizontal: spacing.lg }}>
         <Text style={styles.sectionTitle}>Activité récente</Text>
         <View style={styles.recentList}>
           <RecentItem
@@ -206,46 +224,30 @@ export function DashboardScreen() {
       </Card>
 
       {/* Ouverture rapide */}
-      <Card padding="lg" style={{ margin: spacing.lg }}>
+      <Card style={{ margin: spacing.lg }}>
         <Text style={styles.sectionTitle}>Ouverture rapide</Text>
         <View style={styles.pillsRow}>
           <Pill
             icon="storefront-outline"
             label="Boutique"
-            onPress={() =>
-              navigation.navigate('More' as never, {
-                screen: 'ShopProducts',
-              } as never)
-            }
+            onPress={() => goNested('More', 'ShopProducts')}
           />
           <Pill
             icon="globe-outline"
             label="Vitrine"
-            onPress={() =>
-              navigation.navigate('More' as never, {
-                screen: 'VitrineHome',
-              } as never)
-            }
+            onPress={() => goNested('More', 'VitrineHome')}
           />
           <Pill
             icon="folder-open-outline"
             label="Subventions"
-            onPress={() =>
-              navigation.navigate('More' as never, {
-                screen: 'Subsidies',
-              } as never)
-            }
+            onPress={() => goNested('More', 'Subsidies')}
           />
           {canAccessSystem(permissions) ? (
             <Pill
               icon="shield-checkmark-outline"
               label="Système"
               tone="primary"
-              onPress={() =>
-                navigation.navigate('More' as never, {
-                  screen: 'SystemDashboard',
-                } as never)
-              }
+              onPress={() => goNested('More', 'SystemDashboard')}
             />
           ) : null}
         </View>
