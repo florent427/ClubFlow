@@ -1,0 +1,53 @@
+{
+  "name": "clubflow-mobile-admin",
+  "description": "ClubFlow — app mobile back-office (admin) Expo",
+  "license": "0BSD",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "dependencies": {
+    "@apollo/client": "^4.1.6",
+    "@expo-google-fonts/inter": "^0.4.2",
+    "@expo/vector-icons": "^15.0.3",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/datetimepicker": "8.5.0",
+    "@react-navigation/bottom-tabs": "^7.15.9",
+    "@react-navigation/native": "^7.2.2",
+    "@react-navigation/native-stack": "^7.14.10",
+    "babel-plugin-module-resolver": "^5.0.2",
+    "expo": "^55.0.18",
+    "expo-blur": "^55.0.14",
+    "expo-camera": "^17.0.7",
+    "expo-clipboard": "^55.0.13",
+    "expo-document-picker": "^14.0.6",
+    "expo-font": "^55.0.6",
+    "expo-haptics": "^55.0.14",
+    "expo-image-picker": "^55.0.19",
+    "expo-linear-gradient": "^55.0.13",
+    "expo-linking": "^55.0.14",
+    "expo-print": "^15.0.6",
+    "expo-status-bar": "~55.0.5",
+    "graphql": "^16.13.2",
+    "react": "19.2.0",
+    "react-native": "0.83.6",
+    "react-native-gesture-handler": "~2.30.0",
+    "react-native-markdown-display": "^7.0.2",
+    "react-native-pell-rich-editor": "^1.9.1",
+    "react-native-reanimated": "~4.1.3",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.23.0",
+    "react-native-svg": "15.13.0",
+    "react-native-webview": "13.16.0",
+    "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.10",
+    "typescript": "~5.9.2"
+  },
+  "private": true
+}
