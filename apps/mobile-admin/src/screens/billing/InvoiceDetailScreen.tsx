@@ -27,6 +27,7 @@ import { useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import {
   CLUB_INVOICE,
+  CLUB_OVERDUE_INVOICES,
   INVOICE_STATUS_BADGES,
   PAYMENT_METHOD_ICONS,
   PAYMENT_METHOD_LABELS,
@@ -83,6 +84,13 @@ type InvoicePayment = {
 };
 
 type Data = { clubInvoice: InvoiceDetail };
+type OverdueRow = {
+  invoiceId: string;
+  lastRemindedAt: string | null;
+  canSendReminder: boolean;
+  nextReminderAvailableAt: string | null;
+};
+type OverdueData = { clubOverdueInvoices: OverdueRow[] };
 
 export function InvoiceDetailScreen() {
   const nav = useNavigation<Nav>();
@@ -91,25 +99,41 @@ export function InvoiceDetailScreen() {
     variables: { id: invoiceId },
     errorPolicy: 'all',
   });
+  const { data: overdueData, refetch: refetchOverdue } = useQuery<OverdueData>(
+    CLUB_OVERDUE_INVOICES,
+    { errorPolicy: 'all' },
+  );
   const [voidInvoice] = useMutation(VOID_CLUB_INVOICE);
   const [sendReminder] = useMutation(SEND_INVOICE_REMINDER);
   const [voidConfirm, setVoidConfirm] = useState(false);
   const [voiding, setVoiding] = useState(false);
+  const [reminding, setReminding] = useState(false);
 
   const inv = data?.clubInvoice;
   const isOpen = inv?.status === 'OPEN' && !inv?.isCreditNote;
   const remaining = inv ? inv.balanceCents : 0;
+  const overdueInfo = overdueData?.clubOverdueInvoices.find(
+    (o) => o.invoiceId === invoiceId,
+  );
 
   const onSendReminder = async () => {
     if (!inv) return;
+    setReminding(true);
     try {
       const res = await sendReminder({ variables: { invoiceId: inv.id } });
       const sentTo = (
         res.data as { sendInvoiceReminder?: { sentTo: string } } | null | undefined
       )?.sendInvoiceReminder?.sentTo;
       Alert.alert('Relance envoyée', `Email envoyé à ${sentTo ?? 'destinataire'}.`);
+      void refetch();
+      void refetchOverdue();
     } catch (err) {
-      Alert.alert('Erreur', err instanceof Error ? err.message : 'Envoi impossible.');
+      Alert.alert(
+        'Erreur',
+        err instanceof Error ? err.message : 'Envoi impossible.',
+      );
+    } finally {
+      setReminding(false);
     }
   };
 
@@ -274,6 +298,39 @@ export function InvoiceDetailScreen() {
           ) : null}
         </Card>
 
+        {/* Bandeau historique de relance pour les factures en retard */}
+        {isOpen && overdueInfo ? (
+          <Card>
+            <View style={styles.reminderRow}>
+              <Ionicons
+                name={
+                  overdueInfo.canSendReminder ? 'mail-open-outline' : 'time-outline'
+                }
+                size={20}
+                color={
+                  overdueInfo.canSendReminder
+                    ? palette.warningText
+                    : palette.muted
+                }
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.reminderTitle}>
+                  {overdueInfo.lastRemindedAt
+                    ? `Dernière relance ${formatDateShort(overdueInfo.lastRemindedAt)}`
+                    : 'Aucune relance envoyée'}
+                </Text>
+                <Text style={styles.reminderSubtitle}>
+                  {overdueInfo.canSendReminder
+                    ? 'Vous pouvez envoyer une relance maintenant.'
+                    : overdueInfo.nextReminderAvailableAt
+                      ? `Prochaine relance possible à partir du ${formatDateShort(overdueInfo.nextReminderAvailableAt)} (1 / 30 jours).`
+                      : 'Email payeur inconnu — relance impossible.'}
+                </Text>
+              </View>
+            </View>
+          </Card>
+        ) : null}
+
         {/* Actions */}
         {isOpen ? (
           <View style={{ gap: spacing.sm }}>
@@ -288,8 +345,30 @@ export function InvoiceDetailScreen() {
             <View style={styles.secondaryActions}>
               <Pill
                 icon="mail-outline"
-                label="Relance"
-                onPress={() => void onSendReminder()}
+                label={
+                  reminding
+                    ? 'Envoi…'
+                    : overdueInfo && !overdueInfo.canSendReminder
+                      ? 'Déjà relancée'
+                      : 'Relance'
+                }
+                tone={
+                  overdueInfo && !overdueInfo.canSendReminder
+                    ? 'neutral'
+                    : 'warning'
+                }
+                onPress={() => {
+                  if (overdueInfo && !overdueInfo.canSendReminder) {
+                    Alert.alert(
+                      'Relance bloquée',
+                      overdueInfo.lastRemindedAt
+                        ? `Une relance a déjà été envoyée le ${formatDateShort(overdueInfo.lastRemindedAt)}. Une nouvelle relance sera possible ${overdueInfo.nextReminderAvailableAt ? `à partir du ${formatDateShort(overdueInfo.nextReminderAvailableAt)}` : 'dans 30 jours'}.`
+                        : 'Aucun email payeur connu pour cette facture.',
+                    );
+                    return;
+                  }
+                  void onSendReminder();
+                }}
               />
               <Pill
                 icon="trash-outline"
@@ -477,5 +556,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     flexWrap: 'wrap',
+  },
+  reminderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  reminderTitle: {
+    ...typography.bodyStrong,
+    color: palette.ink,
+  },
+  reminderSubtitle: {
+    ...typography.small,
+    color: palette.muted,
+    marginTop: 2,
   },
 });

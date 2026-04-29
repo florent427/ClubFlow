@@ -38,6 +38,9 @@ export const CLUB_OVERDUE_INVOICES = gql`
       balanceCents
       payerEmail
       payerName
+      lastRemindedAt
+      canSendReminder
+      nextReminderAvailableAt
     }
   }
 `;

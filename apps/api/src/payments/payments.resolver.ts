@@ -38,6 +38,26 @@ class OverdueInvoiceGraph {
 
   @Field(() => String, { nullable: true })
   payerName!: string | null;
+
+  @Field(() => Date, {
+    nullable: true,
+    description:
+      'Date de la dernière relance envoyée. Null si aucune relance.',
+  })
+  lastRemindedAt!: Date | null;
+
+  @Field({
+    description:
+      'true si une nouvelle relance peut être envoyée (intervalle >= 30j) ET email payeur connu.',
+  })
+  canSendReminder!: boolean;
+
+  @Field(() => Date, {
+    nullable: true,
+    description:
+      'Date à partir de laquelle une nouvelle relance pourra être envoyée. Null si déjà éligible.',
+  })
+  nextReminderAvailableAt!: Date | null;
 }
 
 @ObjectType()

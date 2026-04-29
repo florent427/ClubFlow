@@ -52,9 +52,14 @@ type Invoice = {
 };
 
 type Data = { clubInvoices: Invoice[] };
-type OverdueData = {
-  clubOverdueInvoices: { invoiceId: string; balanceCents: number }[];
+type OverdueRow = {
+  invoiceId: string;
+  balanceCents: number;
+  lastRemindedAt: string | null;
+  canSendReminder: boolean;
+  nextReminderAvailableAt: string | null;
 };
+type OverdueData = { clubOverdueInvoices: OverdueRow[] };
 
 type FilterKey = 'OPEN' | 'OVERDUE' | 'PAID' | 'CREDIT' | 'VOID';
 
@@ -97,9 +102,20 @@ export function InvoicesScreen() {
   } | null>(null);
 
   const list = data?.clubInvoices ?? [];
+  const overdueRows = overdue?.clubOverdueInvoices ?? [];
   const overdueIds = useMemo(
-    () => new Set((overdue?.clubOverdueInvoices ?? []).map((o) => o.invoiceId)),
-    [overdue],
+    () => new Set(overdueRows.map((o) => o.invoiceId)),
+    [overdueRows],
+  );
+  const overdueByInvoiceId = useMemo(() => {
+    const m = new Map<string, OverdueRow>();
+    for (const r of overdueRows) m.set(r.invoiceId, r);
+    return m;
+  }, [overdueRows]);
+  const eligibleOverdueIds = useMemo(
+    () =>
+      overdueRows.filter((r) => r.canSendReminder).map((r) => r.invoiceId),
+    [overdueRows],
   );
 
   const kpis = useMemo(() => {
@@ -147,6 +163,7 @@ export function InvoicesScreen() {
         ? { label: 'Avoir', color: palette.infoText, bg: palette.infoBg }
         : INVOICE_STATUS_BADGES[inv.status];
       const isOverdue = inv.status === 'OPEN' && overdueIds.has(inv.id);
+      const overdueInfo = overdueByInvoiceId.get(inv.id);
       const subtitleParts: string[] = [];
       if (inv.familyLabel) subtitleParts.push(inv.familyLabel);
       if (inv.dueAt) {
@@ -159,6 +176,11 @@ export function InvoicesScreen() {
       if (inv.status === 'OPEN' && inv.totalPaidCents > 0) {
         subtitleParts.push(`Acompte ${formatEuroCents(inv.totalPaidCents)}`);
       }
+      if (isOverdue && overdueInfo?.lastRemindedAt) {
+        subtitleParts.push(
+          `Relancée ${formatDateShort(overdueInfo.lastRemindedAt)}`,
+        );
+      }
       return {
         key: inv.id,
         title: `${inv.label} · ${formatEuroCents(inv.amountCents)}`,
@@ -168,7 +190,7 @@ export function InvoicesScreen() {
           : baseBadge,
       };
     });
-  }, [list, filter, debounced, overdueIds]);
+  }, [list, filter, debounced, overdueIds, overdueByInvoiceId]);
 
   const target = actionTargetId
     ? list.find((i) => i.id === actionTargetId) ?? null
@@ -184,17 +206,30 @@ export function InvoicesScreen() {
       case 'view':
         goTo('InvoiceDetail', { invoiceId: target.id });
         break;
-      case 'remind':
+      case 'remind': {
+        const overdueInfo = overdueByInvoiceId.get(target.id);
+        if (overdueInfo && !overdueInfo.canSendReminder) {
+          const next = overdueInfo.nextReminderAvailableAt;
+          Alert.alert(
+            'Relance bloquée',
+            overdueInfo.lastRemindedAt
+              ? `Une relance a déjà été envoyée le ${formatDateShort(overdueInfo.lastRemindedAt)}. Prochaine relance possible ${next ? `à partir du ${formatDateShort(next)}` : 'plus tard'}.`
+              : 'Email payeur inconnu — aucune relance possible.',
+          );
+          break;
+        }
         try {
           const res = await sendReminder({ variables: { invoiceId: target.id } });
           const sentTo = (
             res.data as { sendInvoiceReminder?: { sentTo: string } } | null | undefined
           )?.sendInvoiceReminder?.sentTo;
           Alert.alert('Relance envoyée', `Email envoyé à ${sentTo ?? 'destinataire'}.`);
+          void refetch();
         } catch (err) {
           Alert.alert('Erreur', err instanceof Error ? err.message : 'Envoi impossible.');
         }
         break;
+      }
       case 'void':
         setVoidConfirm(target.id);
         break;
@@ -218,26 +253,28 @@ export function InvoicesScreen() {
     }
   };
 
-  const overdueList = overdue?.clubOverdueInvoices ?? [];
-  const overdueCount = overdueList.length;
+  const overdueCount = overdueRows.length;
+  const eligibleCount = eligibleOverdueIds.length;
+  const blockedCount = overdueCount - eligibleCount;
 
   const onBulkRemind = async () => {
-    if (overdueCount === 0) return;
+    if (eligibleCount === 0) return;
     setBulkConfirm(false);
-    setBulkProgress({ sent: 0, failed: 0, total: overdueCount });
+    setBulkProgress({ sent: 0, failed: 0, total: eligibleCount });
 
     let sent = 0;
     let failed = 0;
     // Envoi séquentiel pour respecter les limites SMTP/relais et donner
-    // un feedback de progression utilisateur lisible.
-    for (const o of overdueList) {
+    // un feedback de progression utilisateur lisible. On ne traite que
+    // les factures éligibles (canSendReminder=true côté backend).
+    for (const invoiceId of eligibleOverdueIds) {
       try {
-        await sendReminder({ variables: { invoiceId: o.invoiceId } });
+        await sendReminder({ variables: { invoiceId } });
         sent += 1;
       } catch {
         failed += 1;
       }
-      setBulkProgress({ sent, failed, total: overdueCount });
+      setBulkProgress({ sent, failed, total: eligibleCount });
     }
 
     setBulkProgress(null);
@@ -245,6 +282,9 @@ export function InvoicesScreen() {
       'Relances envoyées',
       `${sent} relance${sent > 1 ? 's' : ''} envoyée${sent > 1 ? 's' : ''}` +
         (failed > 0 ? ` · ${failed} échec${failed > 1 ? 's' : ''}` : '') +
+        (blockedCount > 0
+          ? `\n${blockedCount} facture${blockedCount > 1 ? 's' : ''} non éligible${blockedCount > 1 ? 's' : ''} (déjà relancée${blockedCount > 1 ? 's' : ''} dans les 30 derniers jours).`
+          : '') +
         '.',
     );
     void refetch();
@@ -305,18 +345,25 @@ export function InvoicesScreen() {
             </Text>
             <Text style={styles.bulkSubtitle} numberOfLines={1}>
               {formatEuroCents(kpis.overdueTotal)} à recouvrer
+              {blockedCount > 0
+                ? ` · ${blockedCount} déjà relancée${blockedCount > 1 ? 's' : ''}`
+                : ''}
             </Text>
           </View>
           <Pressable
             onPress={() => setBulkConfirm(true)}
-            disabled={bulkProgress !== null}
+            disabled={bulkProgress !== null || eligibleCount === 0}
             style={({ pressed }) => [
               styles.bulkBtn,
-              pressed && { opacity: 0.85 },
-              bulkProgress !== null && { opacity: 0.6 },
+              pressed && eligibleCount > 0 && { opacity: 0.85 },
+              (bulkProgress !== null || eligibleCount === 0) && { opacity: 0.5 },
             ]}
             accessibilityRole="button"
-            accessibilityLabel={`Relancer les ${overdueCount} factures en retard`}
+            accessibilityLabel={
+              eligibleCount === 0
+                ? 'Aucune facture éligible à la relance'
+                : `Relancer les ${eligibleCount} factures éligibles`
+            }
           >
             {bulkProgress !== null ? (
               <>
@@ -325,10 +372,21 @@ export function InvoicesScreen() {
                   {bulkProgress.sent + bulkProgress.failed}/{bulkProgress.total}
                 </Text>
               </>
+            ) : eligibleCount === 0 ? (
+              <>
+                <Ionicons
+                  name="time-outline"
+                  size={16}
+                  color={palette.surface}
+                />
+                <Text style={styles.bulkBtnText}>Aucune éligible</Text>
+              </>
             ) : (
               <>
                 <Ionicons name="mail" size={16} color={palette.surface} />
-                <Text style={styles.bulkBtnText}>Tout relancer</Text>
+                <Text style={styles.bulkBtnText}>
+                  Relancer ({eligibleCount})
+                </Text>
               </>
             )}
           </Pressable>
@@ -442,9 +500,13 @@ export function InvoicesScreen() {
 
       <ConfirmSheet
         visible={bulkConfirm}
-        title={`Relancer ${overdueCount} facture${overdueCount > 1 ? 's' : ''} ?`}
-        message={`Un email de relance sera envoyé pour chaque facture en retard. Total : ${formatEuroCents(kpis.overdueTotal)}.`}
-        confirmLabel={`Relancer (${overdueCount})`}
+        title={`Relancer ${eligibleCount} facture${eligibleCount > 1 ? 's' : ''} ?`}
+        message={
+          blockedCount > 0
+            ? `Un email de relance sera envoyé pour ${eligibleCount} facture${eligibleCount > 1 ? 's' : ''} éligible${eligibleCount > 1 ? 's' : ''}.\n${blockedCount} facture${blockedCount > 1 ? 's' : ''} ${blockedCount > 1 ? 'sont ignorées' : 'est ignorée'} (relance dans les 30 derniers jours).`
+            : `Un email de relance sera envoyé pour chaque facture en retard. Total : ${formatEuroCents(kpis.overdueTotal)}.`
+        }
+        confirmLabel={`Relancer (${eligibleCount})`}
         cancelLabel="Annuler"
         onCancel={() => setBulkConfirm(false)}
         onConfirm={() => void onBulkRemind()}
