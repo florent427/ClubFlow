@@ -6,6 +6,7 @@ export function ExportScreen() {
       eyebrow="EXPORT"
       title="Exporter la compta"
       subtitle="CSV, FEC"
+      hint="L'export CSV / FEC arrivera dans une prochaine version. Pour l'instant, utilisez l'app web admin."
       icon="download-outline"
     />
   );

@@ -1,33 +1,38 @@
 import { gql } from '@apollo/client';
 
+/**
+ * GraphQL documents — module Members.
+ * Champs alignés avec les modèles backend (MemberGraph, GradeLevelGraph,
+ * DynamicGroupGraph, ClubRoleDefinitionGraph). Le backend prime — toute
+ * incohérence avec un précédent draft est intentionnelle.
+ */
+
 export const CLUB_MEMBERS = gql`
   query ClubMembers {
     clubMembers {
       id
       firstName
       lastName
-      pseudo
       email
+      pseudo
       phone
       birthDate
-      status
       photoUrl
-      gender
+      status
+      medicalCertExpiresAt
+      telegramLinked
       gradeLevel {
         id
         label
       }
-      familyId
       family {
         id
-        name
+        label
       }
-      currentMembership {
+      customRoles {
         id
-        productLabel
-        endsAt
+        label
       }
-      createdAt
     }
   }
 `;
@@ -38,46 +43,23 @@ export const CLUB_MEMBER = gql`
       id
       firstName
       lastName
-      pseudo
       email
+      pseudo
+      civility
       phone
+      addressLine
+      postalCode
+      city
       birthDate
-      status
       photoUrl
-      gender
+      status
+      medicalCertExpiresAt
+      telegramLinked
       gradeLevel {
         id
         label
       }
-      familyId
       family {
-        id
-        name
-      }
-      memberships {
-        id
-        productLabel
-        startsAt
-        endsAt
-      }
-      invoices {
-        id
-        number
-        totalCents
-        paidCents
-        status
-        issuedAt
-      }
-      eventRegistrations {
-        id
-        event {
-          id
-          title
-          startsAt
-        }
-        status
-      }
-      dynamicGroups {
         id
         label
       }
@@ -85,26 +67,11 @@ export const CLUB_MEMBER = gql`
         id
         label
       }
-      medicalCertificateExpiresAt
-      notes
-    }
-  }
-`;
-
-export const CREATE_CLUB_MEMBER = gql`
-  mutation CreateClubMember($input: CreateClubMemberInput!) {
-    createClubMember(input: $input) {
-      id
-      firstName
-      lastName
-    }
-  }
-`;
-
-export const UPDATE_CLUB_MEMBER = gql`
-  mutation UpdateClubMember($input: UpdateClubMemberInput!) {
-    updateClubMember(input: $input) {
-      id
+      customFieldValues {
+        id
+        definitionId
+        valueText
+      }
     }
   }
 `;
@@ -116,7 +83,7 @@ export const DELETE_CLUB_MEMBER = gql`
 `;
 
 export const SET_CLUB_MEMBER_STATUS = gql`
-  mutation SetClubMemberStatus($id: ID!, $status: String!) {
+  mutation SetClubMemberStatus($id: ID!, $status: MemberStatus!) {
     setClubMemberStatus(id: $id, status: $status) {
       id
       status
@@ -138,12 +105,10 @@ export const CLUB_DYNAMIC_GROUPS = gql`
   query ClubDynamicGroups {
     clubDynamicGroups {
       id
-      label
-      description
-      ageMin
-      ageMax
-      gradeIds
-      memberCount
+      name
+      minAge
+      maxAge
+      matchingActiveMembersCount
     }
   }
 `;
@@ -153,8 +118,7 @@ export const CLUB_ROLE_DEFINITIONS = gql`
     clubRoleDefinitions {
       id
       label
-      description
-      color
+      sortOrder
     }
   }
 `;
