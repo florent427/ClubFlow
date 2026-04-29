@@ -12,13 +12,22 @@ import {
   formatDateShort,
   formatEuroCents,
   palette,
+  radius,
   spacing,
+  typography,
   useDebounced,
   type DataTableRow,
 } from '@clubflow/mobile-shared';
 import { useNavigation } from '@react-navigation/native';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import {
   CLUB_INVOICES,
   CLUB_OVERDUE_INVOICES,
@@ -80,6 +89,12 @@ export function InvoicesScreen() {
   const [actionTargetId, setActionTargetId] = useState<string | null>(null);
   const [voidConfirm, setVoidConfirm] = useState<string | null>(null);
   const [voiding, setVoiding] = useState(false);
+  const [bulkConfirm, setBulkConfirm] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{
+    sent: number;
+    failed: number;
+    total: number;
+  } | null>(null);
 
   const list = data?.clubInvoices ?? [];
   const overdueIds = useMemo(
@@ -203,6 +218,38 @@ export function InvoicesScreen() {
     }
   };
 
+  const overdueList = overdue?.clubOverdueInvoices ?? [];
+  const overdueCount = overdueList.length;
+
+  const onBulkRemind = async () => {
+    if (overdueCount === 0) return;
+    setBulkConfirm(false);
+    setBulkProgress({ sent: 0, failed: 0, total: overdueCount });
+
+    let sent = 0;
+    let failed = 0;
+    // Envoi séquentiel pour respecter les limites SMTP/relais et donner
+    // un feedback de progression utilisateur lisible.
+    for (const o of overdueList) {
+      try {
+        await sendReminder({ variables: { invoiceId: o.invoiceId } });
+        sent += 1;
+      } catch {
+        failed += 1;
+      }
+      setBulkProgress({ sent, failed, total: overdueCount });
+    }
+
+    setBulkProgress(null);
+    Alert.alert(
+      'Relances envoyées',
+      `${sent} relance${sent > 1 ? 's' : ''} envoyée${sent > 1 ? 's' : ''}` +
+        (failed > 0 ? ` · ${failed} échec${failed > 1 ? 's' : ''}` : '') +
+        '.',
+    );
+    void refetch();
+  };
+
   return (
     <ScreenContainer scroll={false} padding={0}>
       <ScreenHero
@@ -223,12 +270,14 @@ export function InvoicesScreen() {
           value={formatEuroCents(kpis.overdueTotal)}
           tone="warm"
           compact
+          onPress={overdueCount > 0 ? () => setFilter('OVERDUE') : undefined}
         />
         <KpiTile
           icon="hourglass-outline"
           label="Impayé"
           value={formatEuroCents(kpis.openTotal)}
           compact
+          onPress={() => setFilter('OPEN')}
         />
         <KpiTile
           icon="trending-up-outline"
@@ -236,8 +285,55 @@ export function InvoicesScreen() {
           value={formatEuroCents(kpis.paidTotal)}
           tone="success"
           compact
+          onPress={() => setFilter('PAID')}
         />
       </View>
+
+      {/* Bandeau action en masse pour les retards */}
+      {overdueCount > 0 ? (
+        <View style={styles.bulkBanner}>
+          <View style={styles.bulkIcon}>
+            <Ionicons
+              name="alert-circle"
+              size={22}
+              color={palette.warningText}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.bulkTitle}>
+              {overdueCount} facture{overdueCount > 1 ? 's' : ''} en retard
+            </Text>
+            <Text style={styles.bulkSubtitle} numberOfLines={1}>
+              {formatEuroCents(kpis.overdueTotal)} à recouvrer
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => setBulkConfirm(true)}
+            disabled={bulkProgress !== null}
+            style={({ pressed }) => [
+              styles.bulkBtn,
+              pressed && { opacity: 0.85 },
+              bulkProgress !== null && { opacity: 0.6 },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={`Relancer les ${overdueCount} factures en retard`}
+          >
+            {bulkProgress !== null ? (
+              <>
+                <ActivityIndicator size="small" color={palette.surface} />
+                <Text style={styles.bulkBtnText}>
+                  {bulkProgress.sent + bulkProgress.failed}/{bulkProgress.total}
+                </Text>
+              </>
+            ) : (
+              <>
+                <Ionicons name="mail" size={16} color={palette.surface} />
+                <Text style={styles.bulkBtnText}>Tout relancer</Text>
+              </>
+            )}
+          </Pressable>
+        </View>
+      ) : null}
 
       <View style={styles.searchWrap}>
         <SearchBar
@@ -343,6 +439,16 @@ export function InvoicesScreen() {
         onCancel={() => setVoidConfirm(null)}
         onConfirm={() => void onVoidConfirm()}
       />
+
+      <ConfirmSheet
+        visible={bulkConfirm}
+        title={`Relancer ${overdueCount} facture${overdueCount > 1 ? 's' : ''} ?`}
+        message={`Un email de relance sera envoyé pour chaque facture en retard. Total : ${formatEuroCents(kpis.overdueTotal)}.`}
+        confirmLabel={`Relancer (${overdueCount})`}
+        cancelLabel="Annuler"
+        onCancel={() => setBulkConfirm(false)}
+        onConfirm={() => void onBulkRemind()}
+      />
     </ScreenContainer>
   );
 }
@@ -357,6 +463,51 @@ const styles = StyleSheet.create({
   searchWrap: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
+  },
+  bulkBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: palette.warningBg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: palette.warningBorder,
+  },
+  bulkIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: palette.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bulkTitle: {
+    ...typography.bodyStrong,
+    color: palette.warningText,
+  },
+  bulkSubtitle: {
+    ...typography.small,
+    color: palette.warningText,
+    opacity: 0.85,
+  },
+  bulkBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: palette.warningText,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    minWidth: 120,
+    justifyContent: 'center',
+  },
+  bulkBtnText: {
+    ...typography.smallStrong,
+    color: palette.surface,
   },
   fab: {
     position: 'absolute',
