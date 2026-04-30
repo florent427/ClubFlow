@@ -115,12 +115,19 @@ export class ViewerDocumentsResolver {
     @Args('input') input: SignClubDocumentInput,
   ): Promise<ClubSignedDocumentGraph> {
     const audit = extractAuditContext(ctx?.req);
+    // Symétrie avec viewerDocumentsToSign : si l'input ne fournit pas
+    // memberId, on retombe sur activeProfileMemberId. Sinon la signature
+    // est stockée avec memberId=null mais la query liste avec
+    // memberId=activeProfileMemberId → mismatch et la bannière reste
+    // affichée après signature.
+    const targetMemberId =
+      input.memberId ?? user.activeProfileMemberId ?? null;
     const row = await this.documents.signDocument(
       club.id,
       user.userId,
       {
         documentId: input.documentId,
-        memberId: input.memberId ?? null,
+        memberId: targetMemberId,
         fieldValues: input.fieldValues.map((v) => ({
           fieldId: v.fieldId,
           type: v.type,

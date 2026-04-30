@@ -72,7 +72,12 @@ export function DocumentSignScreen() {
     });
 
   const [signMutation, { loading: signing }] =
-    useMutation<ViewerSignClubDocumentData>(VIEWER_SIGN_CLUB_DOCUMENT);
+    useMutation<ViewerSignClubDocumentData>(VIEWER_SIGN_CLUB_DOCUMENT, {
+      // Rafraîchit la liste + la bannière HomeDashboard dès que la
+      // signature est validée (sans attendre le polling).
+      refetchQueries: ['ViewerDocumentsToSign'],
+      awaitRefetchQueries: true,
+    });
 
   const [fieldValues, setFieldValues] = useState<FieldValueMap>({});
   const [submitErr, setSubmitErr] = useState<string | null>(null);

@@ -38,6 +38,13 @@ export function DocumentsToSignPage() {
   });
   const [signMutation, { loading: signing }] = useMutation(
     VIEWER_SIGN_CLUB_DOCUMENT,
+    {
+      // Rafraîchit la bannière persistante affichée sur Dashboard /
+      // Billing / Adhesion / ContactHome dès que la signature est
+      // confirmée, sans attendre le polling 30s.
+      refetchQueries: ['ViewerDocumentsToSign'],
+      awaitRefetchQueries: true,
+    },
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
