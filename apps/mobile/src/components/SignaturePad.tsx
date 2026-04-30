@@ -92,7 +92,18 @@ export function SignaturePad({
           ) : null}
         </View>
       ) : null}
-      <View style={styles.padBox}>
+      {/*
+        Capture des gestes : sans cela, le ScrollView parent intercepte les
+        mouvements verticaux et le canvas de signature reçoit des "trous".
+        onStartShouldSetResponderCapture force ce View à devenir responder
+        avant que le ScrollView ne capture le geste.
+      */}
+      <View
+        style={styles.padBox}
+        onStartShouldSetResponderCapture={() => true}
+        onMoveShouldSetResponderCapture={() => true}
+        onResponderTerminationRequest={() => false}
+      >
         <SignatureScreen
           ref={ref}
           onOK={handleOK}

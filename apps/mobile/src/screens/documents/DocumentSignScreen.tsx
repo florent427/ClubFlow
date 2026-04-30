@@ -26,6 +26,7 @@ import {
   Skeleton,
   TextField,
 } from '../../components/ui';
+import { InlinePdfViewer } from '../../components/InlinePdfViewer';
 import { SignaturePad } from '../../components/SignaturePad';
 import {
   CATEGORY_ICON,
@@ -168,9 +169,19 @@ export function DocumentSignScreen() {
     }
   }
 
+  /** Préfixe l'URL relative `/media/{id}` avec l'host de l'API. */
+  function absolutizeUrl(url: string | null | undefined): string | null {
+    if (!url) return null;
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    const base =
+      process.env.EXPO_PUBLIC_API_BASE ?? 'http://localhost:3000';
+    return `${base}${url.startsWith('/') ? url : `/${url}`}`;
+  }
+
   function openPdfExternally() {
-    if (!doc?.mediaAssetUrl) return;
-    void Linking.openURL(doc.mediaAssetUrl).catch(() => {
+    const absolute = absolutizeUrl(doc?.mediaAssetUrl);
+    if (!absolute) return;
+    void Linking.openURL(absolute).catch(() => {
       Alert.alert(
         'Impossible d\'ouvrir',
         "Le PDF n'a pas pu être ouvert dans un navigateur.",
@@ -186,7 +197,6 @@ export function DocumentSignScreen() {
           title="Document"
           gradient="hero"
           showBack
-          overlap
           compact
         />
         <View style={styles.contentScroll}>
@@ -228,7 +238,6 @@ export function DocumentSignScreen() {
         title={doc.name}
         gradient="hero"
         showBack
-        overlap
         compact
       />
       <KeyboardAvoidingView
@@ -240,6 +249,10 @@ export function DocumentSignScreen() {
           contentContainerStyle={styles.contentScroll}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          // Permet à la WebView du viewer PDF + au canvas de signature
+          // de capturer leurs propres gestes sans que le ScrollView scroll
+          // en compétition (Android).
+          nestedScrollEnabled
         >
           {/* === En-tête : description + pills === */}
           <Card>
@@ -278,44 +291,39 @@ export function DocumentSignScreen() {
             </View>
           </Card>
 
-          {/* === Visualisation PDF === */}
+          {/* === Visualisation PDF inline === */}
           <Card title="Document">
             <Text style={styles.helper}>
-              Consultez le PDF avant de signer. Il s'ouvrira dans le
-              navigateur de votre téléphone.
+              Lisez attentivement le PDF avant de signer.
             </Text>
-            <Pressable
-              onPress={openPdfExternally}
-              disabled={!doc.mediaAssetUrl}
-              style={({ pressed }) => [
-                styles.pdfRow,
-                pressed && styles.pdfRowPressed,
-                !doc.mediaAssetUrl && styles.pdfRowDisabled,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Ouvrir le PDF"
-            >
-              <View style={styles.pdfIcon}>
-                <Ionicons
-                  name="document-text-outline"
-                  size={28}
-                  color={palette.primary}
+            {doc.mediaAssetUrl ? (
+              <>
+                <InlinePdfViewer
+                  url={absolutizeUrl(doc.mediaAssetUrl) ?? ''}
+                  height={460}
                 />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.pdfTitle}>Ouvrir le PDF</Text>
-                <Text style={styles.pdfSub} numberOfLines={1}>
-                  {doc.mediaAssetUrl
-                    ? `${doc.name} · v${doc.version}`
-                    : 'PDF non disponible'}
-                </Text>
-              </View>
-              <Ionicons
-                name="open-outline"
-                size={20}
-                color={palette.primary}
-              />
-            </Pressable>
+                <Pressable
+                  onPress={openPdfExternally}
+                  style={({ pressed }) => [
+                    styles.pdfOpenLink,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Ouvrir le PDF dans un navigateur"
+                >
+                  <Ionicons
+                    name="open-outline"
+                    size={16}
+                    color={palette.primary}
+                  />
+                  <Text style={styles.pdfOpenLinkText}>
+                    Ouvrir dans un navigateur (plein écran)
+                  </Text>
+                </Pressable>
+              </>
+            ) : (
+              <Text style={styles.pdfUnavailable}>PDF non disponible.</Text>
+            )}
           </Card>
 
           {/* === Champs à remplir === */}
@@ -574,7 +582,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.lg,
     paddingBottom: spacing.huge,
-    marginTop: -spacing.md,
     gap: spacing.lg,
   },
 
@@ -627,6 +634,25 @@ const styles = StyleSheet.create({
   },
   pdfTitle: { ...typography.bodyStrong, color: palette.ink },
   pdfSub: { ...typography.small, color: palette.muted, marginTop: 2 },
+
+  pdfOpenLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  pdfOpenLinkText: {
+    ...typography.smallStrong,
+    color: palette.primary,
+  },
+  pdfUnavailable: {
+    ...typography.body,
+    color: palette.muted,
+    textAlign: 'center',
+    paddingVertical: spacing.md,
+  },
 
   checkboxRow: {
     flexDirection: 'row',

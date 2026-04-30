@@ -108,7 +108,6 @@ export function DocumentsToSignScreen() {
         }
         gradient="hero"
         showBack
-        overlap
       />
       <FlatList
         style={styles.flex}
@@ -154,8 +153,8 @@ const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: palette.bg },
   list: {
     paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.xxxl,
-    marginTop: -spacing.md,
     gap: spacing.md,
   },
 
