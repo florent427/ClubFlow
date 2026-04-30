@@ -152,6 +152,9 @@ model Club {
   accountingAuditLogs        AccountingAuditLog[]
   financialAccounts          ClubFinancialAccount[]
   paymentRoutes              ClubPaymentRoute[]
+
+  documents       ClubDocument[]
+  signedDocuments ClubSignedDocument[]
 }
 
 enum AiUsageFeature {
@@ -2566,6 +2569,8 @@ model MediaAsset {
   accountingDocuments   AccountingDocument[]
   grantDocuments        GrantDocument[]
   sponsorshipDocuments  SponsorshipDocument[]
+  clubDocumentSources   ClubDocument[]         @relation("ClubDocumentSource")
+  clubSignedDocuments   ClubSignedDocument[]   @relation("ClubSignedDocumentRendered")
 
   @@index([clubId, ownerKind, ownerId])
   @@index([clubId, sha256])
@@ -3315,4 +3320,121 @@ model AiMonthlyUsage {
 
   @@unique([clubId, yearMonth])
   @@index([clubId])
+}
+
+/// Document à signer par les membres (règlement intérieur, droit à l'image,
+/// autorisation parentale, etc.). Chaque mise à jour crée une nouvelle
+/// version qui invalide les signatures précédentes.
+enum ClubDocumentCategory {
+  REGLEMENT_INTERIEUR
+  AUTORISATION_PARENTALE
+  DROIT_IMAGE
+  REGLEMENT_FEDERAL
+  AUTRE
+}
+
+enum ClubDocumentFieldType {
+  SIGNATURE
+  TEXT
+  DATE
+  CHECKBOX
+}
+
+model ClubDocument {
+  id           String               @id @default(uuid())
+  clubId       String
+  /// Catégorie sémantique (utile pour filtrer + savoir si autorisation
+  /// parentale demandée uniquement aux mineurs).
+  category     ClubDocumentCategory @default(AUTRE)
+  name         String
+  description  String?
+  /// MediaAsset du PDF source (kind=DOCUMENT).
+  mediaAssetId String
+  /// Numéro de version. Incrémenté à chaque mise à jour de fichier.
+  /// Une nouvelle version invalide les anciennes ClubSignedDocument.
+  version      Int                  @default(1)
+  /// SHA-256 du fichier (intégrité + détection de doublons).
+  fileSha256   String
+  /// Si true, doit être signé pour accéder à l'espace membre / inscriptions.
+  isRequired   Boolean              @default(true)
+  /// Désactivé = ne s'affiche plus aux membres (mais signatures conservées).
+  isActive     Boolean              @default(true)
+  /// Bornes de validité (saison sportive). validTo = null = sans expiration.
+  validFrom    DateTime
+  validTo      DateTime?
+  /// Si true, demandé uniquement aux mineurs (selon Member.birthDate).
+  minorsOnly   Boolean              @default(false)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  club             Club                  @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  mediaAsset       MediaAsset            @relation("ClubDocumentSource", fields: [mediaAssetId], references: [id], onDelete: Restrict)
+  fields           ClubDocumentField[]
+  signedDocuments  ClubSignedDocument[]
+
+  @@index([clubId, isActive, isRequired])
+  @@index([clubId, category])
+}
+
+/// Zone positionnée sur le PDF (signature, texte, date, case à cocher).
+/// Coordonnées toujours en % du format de la page (0..1).
+model ClubDocumentField {
+  id         String                @id @default(uuid())
+  documentId String
+  page       Int
+  x          Float
+  y          Float
+  width      Float
+  height     Float
+  fieldType  ClubDocumentFieldType
+  required   Boolean               @default(true)
+  /// Libellé interne (ex: "Signature parent", "Date du jour"). Optionnel.
+  label      String?
+  sortOrder  Int                   @default(0)
+
+  document ClubDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+}
+
+/// Snapshot d'une signature : PDF signé + audit trail. Lié à un user
+/// (compte connecté) plutôt qu'à un member, pour les autorisations
+/// parentales où le payer-contact signe pour son enfant.
+model ClubSignedDocument {
+  id              String   @id @default(uuid())
+  clubId          String
+  documentId      String
+  /// Version signée (snapshot du document au moment de la signature).
+  version         Int
+  /// User ayant signé (peut être un payer-contact pour autorisation
+  /// parentale d'un enfant).
+  userId          String
+  /// Member visé par la signature (pour autorisations parentales).
+  memberId        String?
+  /// MediaAsset du PDF signé (rendu final avec overlay).
+  signedAssetId   String
+  /// SHA-256 du fichier signé pour intégrité.
+  signedSha256    String
+  /// SHA-256 du document SOURCE au moment de la signature (anti-falsification).
+  sourceSha256    String
+  /// Adresse IP au moment de la signature (audit trail).
+  ipAddress       String?
+  /// User-Agent du device qui a signé (audit trail).
+  userAgent       String?
+  /// JSON des valeurs saisies dans les champs (signatures + texte + cases).
+  /// Format : { fieldId: { type, valuePngBase64? | text? | bool? } }
+  fieldValuesJson Json
+  signedAt        DateTime @default(now())
+  /// Invalidée si l'admin a publié une nouvelle version après cette signature.
+  /// Recalculé à la lecture (pas de migration nécessaire pour MAJ).
+  invalidatedAt   DateTime?
+
+  club        Club         @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  document    ClubDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  signedAsset MediaAsset   @relation("ClubSignedDocumentRendered", fields: [signedAssetId], references: [id], onDelete: Restrict)
+
+  @@unique([documentId, version, userId, memberId])
+  @@index([clubId, signedAt])
+  @@index([userId])
+  @@index([memberId])
 }

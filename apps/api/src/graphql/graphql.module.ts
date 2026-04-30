@@ -26,6 +26,7 @@ import { VitrineModule } from '../vitrine/vitrine.module';
 import { AiModule } from '../ai/ai.module';
 import { AgentModule } from '../agent/agent.module';
 import { ProjectsModule } from '../projects/projects.module';
+import { DocumentsModule } from '../documents/documents.module';
 import { MediaModule } from '../media/media.module';
 import { MembersModule } from '../members/members.module';
 import { MembershipModule } from '../membership/membership.module';
@@ -96,6 +97,13 @@ import '../viewer/models/viewer-checkout-session.model';
 import '../clubs/dto/update-club-branding.input';
 import '../projects/models/club-project.model';
 import '../projects/dto/project.inputs';
+import '../documents/models/club-document.model';
+import '../documents/models/club-signed-document.model';
+import '../documents/models/document-signature-stats.model';
+import '../documents/dto/create-club-document.input';
+import '../documents/dto/update-club-document.input';
+import '../documents/dto/club-document-field.input';
+import '../documents/dto/sign-club-document.input';
 
 @Module({
   imports: [
@@ -141,6 +149,7 @@ import '../projects/dto/project.inputs';
     AiModule,
     AgentModule,
     ProjectsModule,
+    DocumentsModule,
   ],
 })
 export class GraphqlAppModule {}
