@@ -122,6 +122,14 @@ export function DocumentEditorPage() {
   const [pdfError, setPdfError] = useState<string | null>(null);
   const canvasRefs = useRef<Array<HTMLCanvasElement | null>>([]);
   const pageContainerRefs = useRef<Array<HTMLDivElement | null>>([]);
+  /** Référence vers le PDFDocumentProxy pdf-js partagée entre les 2 effets. */
+  const pdfDocRef = useRef<{
+    numPages: number;
+    getPage: (n: number) => Promise<{
+      getViewport: (opts: { scale: number }) => { width: number; height: number };
+      render: (opts: unknown) => { promise: Promise<void> };
+    }>;
+  } | null>(null);
 
   /** Liste des champs (existants + nouveaux). */
   const [fields, setFields] = useState<EditingField[]>([]);
@@ -179,17 +187,22 @@ export function DocumentEditorPage() {
     );
   }, [documentRow]);
 
-  // -- Rendu du PDF via pdfjs-dist --------------------------------------------
+  /** Scale de rendu du PDF — partagé entre les 2 effets. */
+  const PDF_SCALE = 1.5;
+
+  // -- Effect 1 : Chargement du PDF + dimensions des pages --------------------
+  // setPages déclenche le commit React qui monte les <canvas>. Le rendu réel
+  // se fait dans Effect 2 qui dépend de pages.length (donc se déclenche
+  // après que les refs soient peuplées).
   useEffect(() => {
     if (!documentRow?.mediaAssetUrl) return;
     let cancelled = false;
     setPdfLoading(true);
     setPdfError(null);
+    pdfDocRef.current = null;
 
     void (async () => {
       try {
-        // Import dynamique pour éviter de charger pdfjs avant que la page
-        // documents existe (et pour l'instant le worker est copié dans /public).
         const pdfjs = await import('pdfjs-dist');
         // Le worker est copié dans /public/pdf.worker.min.mjs au build.
         pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
@@ -198,43 +211,21 @@ export function DocumentEditorPage() {
         const pdf = await loadingTask.promise;
         if (cancelled) return;
 
+        // Stocke le PDF pour la 2e passe.
+        pdfDocRef.current = pdf as unknown as typeof pdfDocRef.current;
+
         const newPages: Array<{ width: number; height: number }> = [];
-        // On rend toutes les pages avec un scale = 1.5 pour plus de lisibilité
-        // sans pour autant exploser la mémoire pour les PDFs volumineux.
-        const scale = 1.5;
         for (let p = 1; p <= pdf.numPages; p++) {
           const page = await pdf.getPage(p);
           if (cancelled) return;
-          const viewport = page.getViewport({ scale });
+          const viewport = page.getViewport({ scale: PDF_SCALE });
           newPages.push({ width: viewport.width, height: viewport.height });
         }
+        // Reset la liste de refs pour la nouvelle taille avant le commit.
+        canvasRefs.current = new Array(newPages.length).fill(null);
+        pageContainerRefs.current = new Array(newPages.length).fill(null);
         setPages(newPages);
-
-        // 2e passe : on rend dans les canvas une fois leur DOM monté.
-        // setTimeout 0 pour laisser React commit les nœuds.
-        setTimeout(() => {
-          void (async () => {
-            for (let p = 1; p <= pdf.numPages; p++) {
-              if (cancelled) return;
-              const page = await pdf.getPage(p);
-              const viewport = page.getViewport({ scale });
-              const canvas = canvasRefs.current[p - 1];
-              if (!canvas) continue;
-              canvas.width = viewport.width;
-              canvas.height = viewport.height;
-              const ctx = canvas.getContext('2d');
-              if (!ctx) continue;
-              await page.render({
-                canvasContext: ctx,
-                viewport,
-                // canvas natif requis par l'API ; cast pour rester compatible
-                // avec les définitions @types/pdfjs-dist (v5+).
-                canvas: canvas,
-              } as unknown as Parameters<typeof page.render>[0]).promise;
-            }
-            if (!cancelled) setPdfLoading(false);
-          })();
-        }, 0);
+        // setPdfLoading(false) sera déclenché par Effect 2 après le rendu.
       } catch (err) {
         if (cancelled) return;
         setPdfError(err instanceof Error ? err.message : 'PDF illisible');
@@ -246,6 +237,53 @@ export function DocumentEditorPage() {
       cancelled = true;
     };
   }, [documentRow?.mediaAssetUrl]);
+
+  // -- Effect 2 : Rendu canvas une fois les pages dimensionnées + DOM monté --
+  // Se déclenche quand `pages` change (donc après le commit React qui a posé
+  // les <canvas> dans le DOM). Lit `pdfDocRef.current` posé par Effect 1.
+  useEffect(() => {
+    if (pages.length === 0) return;
+    const pdf = pdfDocRef.current;
+    if (!pdf) return;
+    let cancelled = false;
+
+    void (async () => {
+      // Petit délai pour laisser React peupler les refs via callback ref.
+      await new Promise((r) => requestAnimationFrame(r));
+
+      for (let p = 1; p <= pdf.numPages; p++) {
+        if (cancelled) return;
+        const canvas = canvasRefs.current[p - 1];
+        if (!canvas) continue;
+        const page = await pdf.getPage(p);
+        if (cancelled) return;
+        const viewport = page.getViewport({ scale: PDF_SCALE });
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) continue;
+        try {
+          await page.render({
+            canvasContext: ctx,
+            viewport,
+            // canvas natif requis par l'API pdfjs-dist v5+.
+            canvas,
+          } as unknown as Parameters<typeof page.render>[0]).promise;
+        } catch (err) {
+          if (cancelled) return;
+          setPdfError(
+            err instanceof Error ? err.message : 'Erreur rendu PDF',
+          );
+          return;
+        }
+      }
+      if (!cancelled) setPdfLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pages]);
 
   // -- Création d'un nouveau field au clic sur le PDF -------------------------
   function onPageClick(
