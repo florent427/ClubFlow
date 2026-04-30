@@ -57,6 +57,9 @@ import { VitrineCategoriesPage } from './pages/vitrine/VitrineCategoriesPage';
 import { VitrineCommentsPage } from './pages/vitrine/VitrineCommentsPage';
 import { MembersUiProvider } from './pages/members/members-ui-context';
 import { ContactsPage } from './pages/contacts/ContactsPage';
+import { DocumentsPage } from './pages/documents/DocumentsPage';
+import { DocumentEditorPage } from './pages/documents/DocumentEditorPage';
+import { DocumentSignaturesPage } from './pages/documents/DocumentSignaturesPage';
 import { ToastProvider } from './components/ToastProvider';
 import { ClubModulesProvider } from './lib/club-modules-context';
 
@@ -105,6 +108,15 @@ export default function App() {
               element={<Navigate to="/members/families" replace />}
             />
             <Route path="contacts" element={<ContactsPage />} />
+            <Route path="documents" element={<DocumentsPage />} />
+            <Route
+              path="documents/:id/editor"
+              element={<DocumentEditorPage />}
+            />
+            <Route
+              path="documents/:id/signatures"
+              element={<DocumentSignaturesPage />}
+            />
             <Route path="planning" element={<PlanningPage />} />
             <Route path="communication" element={<CommunicationPage />} />
             <Route

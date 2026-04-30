@@ -112,6 +112,12 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: 'groups',
         modules: ['MEMBERS', 'PAYMENT'],
       },
+      {
+        to: '/documents',
+        label: 'Documents à signer',
+        icon: 'fact_check',
+        modules: ['DOCUMENTS'],
+      },
     ],
   },
   {

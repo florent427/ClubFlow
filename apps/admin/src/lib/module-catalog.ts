@@ -15,7 +15,8 @@ export type ModuleCodeStr =
   | 'CLUB_LIFE'
   | 'EVENTS'
   | 'BOOKING'
-  | 'PROJECTS';
+  | 'PROJECTS'
+  | 'DOCUMENTS';
 
 export type ModuleCatalogEntry = {
   code: ModuleCodeStr;
@@ -133,6 +134,14 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
     required: false,
     description:
       'Projets longs (gala, stage, subvention) avec sections structurées, contributeurs, phase Live modérée et comptes-rendus IA.',
+    dependsOn: ['MEMBERS'],
+  },
+  {
+    code: 'DOCUMENTS',
+    label: 'Documents à signer',
+    required: false,
+    description:
+      'Signature électronique de PDF (règlement intérieur, droit à l’image, autorisation parentale) avec versionning et audit trail.',
     dependsOn: ['MEMBERS'],
   },
 ];

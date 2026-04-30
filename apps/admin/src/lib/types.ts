@@ -1431,3 +1431,115 @@ export type MembershipPricingRule = {
 export type ClubMembershipPricingRulesData = {
   clubMembershipPricingRules: MembershipPricingRule[];
 };
+
+// ============================================================================
+// Documents à signer (livraison 2 — admin éditeur visuel + suivi signatures)
+// ============================================================================
+
+export type ClubDocumentCategory =
+  | 'REGLEMENT_INTERIEUR'
+  | 'AUTORISATION_PARENTALE'
+  | 'DROIT_IMAGE'
+  | 'REGLEMENT_FEDERAL'
+  | 'AUTRE';
+
+export type ClubDocumentFieldType =
+  | 'SIGNATURE'
+  | 'TEXT'
+  | 'DATE'
+  | 'CHECKBOX';
+
+export type ClubDocumentField = {
+  id: string;
+  page: number;
+  /** Coordonnée X en % du format (0..1). */
+  x: number;
+  /** Coordonnée Y en % du format (0..1). */
+  y: number;
+  /** Largeur en % (0..1). */
+  width: number;
+  /** Hauteur en % (0..1). */
+  height: number;
+  fieldType: ClubDocumentFieldType;
+  required: boolean;
+  label: string | null;
+  sortOrder: number;
+};
+
+export type ClubDocument = {
+  id: string;
+  name: string;
+  description: string | null;
+  category: ClubDocumentCategory;
+  version: number;
+  fileSha256: string;
+  isRequired: boolean;
+  isActive: boolean;
+  validFrom: string;
+  validTo: string | null;
+  minorsOnly: boolean;
+  mediaAssetId: string;
+  mediaAssetUrl: string | null;
+  signedCount: number;
+  fields: ClubDocumentField[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ClubSignedDocument = {
+  id: string;
+  documentId: string;
+  version: number;
+  userId: string;
+  memberId: string | null;
+  signedAssetUrl: string | null;
+  signedSha256: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+  signerDisplayName: string | null;
+  signedAt: string;
+  invalidatedAt: string | null;
+};
+
+export type ClubDocumentSignatureStats = {
+  totalRequired: number;
+  totalSigned: number;
+  percentSigned: number;
+  unsignedMemberIds: string[];
+};
+
+export type ClubDocumentsQueryData = {
+  clubDocuments: ClubDocument[];
+};
+
+export type ClubDocumentQueryData = {
+  clubDocument: ClubDocument | null;
+};
+
+export type ClubDocumentSignaturesQueryData = {
+  clubDocumentSignatures: ClubSignedDocument[];
+};
+
+export type ClubDocumentSignatureStatsQueryData = {
+  clubDocumentSignatureStats: ClubDocumentSignatureStats;
+};
+
+export type CreateClubDocumentMutationData = {
+  createClubDocument: ClubDocument;
+};
+
+export type UpdateClubDocumentMutationData = {
+  updateClubDocument: ClubDocument;
+};
+
+export type ArchiveClubDocumentMutationData = {
+  archiveClubDocument: ClubDocument;
+};
+
+export type DeleteClubDocumentMutationData = {
+  deleteClubDocument: boolean;
+};
+
+export type UpsertClubDocumentFieldsMutationData = {
+  upsertClubDocumentFields: ClubDocumentField[];
+};
