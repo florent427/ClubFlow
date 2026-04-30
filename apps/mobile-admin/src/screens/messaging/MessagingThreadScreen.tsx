@@ -2,6 +2,7 @@ import { useMutation, useQuery } from '@apollo/client/react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   AnimatedPressable,
+  BottomActionBar,
   EmptyState,
   Skeleton,
   formatBubbleTime,
@@ -18,6 +19,7 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -27,6 +29,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ADMIN_POST_CHAT_MESSAGE,
   CLUB_CHAT_ROOM_MESSAGES_ADMIN,
+  VIEWER_GET_OR_CREATE_DIRECT_CHAT,
 } from '../../lib/documents/messaging';
 
 type Sender = {
@@ -61,6 +64,8 @@ export function MessagingThreadScreen() {
   const { roomId } = route.params;
 
   const [draft, setDraft] = useState('');
+  const [dmTarget, setDmTarget] = useState<Sender | null>(null);
+  const [openingDm, setOpeningDm] = useState(false);
 
   const { data, loading, refetch } = useQuery<Data>(
     CLUB_CHAT_ROOM_MESSAGES_ADMIN,
@@ -73,6 +78,42 @@ export function MessagingThreadScreen() {
   const [postMessage, { loading: posting }] = useMutation(
     ADMIN_POST_CHAT_MESSAGE,
   );
+  const [getOrCreateDirect] = useMutation(VIEWER_GET_OR_CREATE_DIRECT_CHAT);
+
+  const onOpenDmWith = async (peerMemberId: string) => {
+    setOpeningDm(true);
+    try {
+      const res = await getOrCreateDirect({
+        variables: { peerMemberId },
+      });
+      const newRoomId = (
+        res.data as
+          | { viewerGetOrCreateDirectChat?: { id: string } }
+          | null
+          | undefined
+      )?.viewerGetOrCreateDirectChat?.id;
+      if (!newRoomId) throw new Error('Conversation introuvable.');
+      // Si on est déjà dans cette DM, on ne fait rien.
+      if (newRoomId === roomId) {
+        Alert.alert('Information', 'Vous êtes déjà dans cette conversation.');
+        return;
+      }
+      (
+        nav as unknown as {
+          navigate: (n: string, p: object) => void;
+        }
+      ).navigate('MessagingThread', { roomId: newRoomId });
+    } catch (e: unknown) {
+      Alert.alert(
+        'Erreur',
+        e instanceof Error
+          ? e.message
+          : 'Impossible d\'ouvrir le message privé.',
+      );
+    } finally {
+      setOpeningDm(false);
+    }
+  };
 
   const messages = data?.clubChatRoomMessagesAdmin ?? [];
 
@@ -156,7 +197,12 @@ export function MessagingThreadScreen() {
               paddingVertical: spacing.md,
               gap: spacing.sm,
             }}
-            renderItem={({ item }) => <Bubble message={item} />}
+            renderItem={({ item }) => (
+              <Bubble
+                message={item}
+                onPressSender={(sender) => setDmTarget(sender)}
+              />
+            )}
             refreshing={loading}
             onRefresh={() => void refetch()}
           />
@@ -190,15 +236,61 @@ export function MessagingThreadScreen() {
           <Ionicons name="send" size={20} color={palette.surface} />
         </AnimatedPressable>
       </View>
+
+      <BottomActionBar
+        visible={dmTarget !== null}
+        onClose={() => setDmTarget(null)}
+        title={dmTarget ? memberDisplayName(dmTarget) : ''}
+        actions={[
+          {
+            key: 'dm',
+            label: openingDm
+              ? 'Ouverture…'
+              : 'Envoyer un message privé',
+            icon: 'chatbubble-ellipses-outline',
+            tone: 'primary',
+            disabled: openingDm,
+          },
+          {
+            key: 'profile',
+            label: 'Voir le profil adhérent',
+            icon: 'person-outline',
+          },
+        ]}
+        onAction={(key) => {
+          const target = dmTarget;
+          setDmTarget(null);
+          if (!target) return;
+          if (key === 'dm') void onOpenDmWith(target.id);
+          else if (key === 'profile') {
+            // Navigation vers la fiche membre depuis la stack racine.
+            (
+              nav as unknown as {
+                navigate: (n: string, p?: object) => void;
+              }
+            ).navigate('Community', {
+              screen: 'MemberDetail',
+              params: { memberId: target.id },
+            });
+          }
+        }}
+      />
     </KeyboardAvoidingView>
   );
 }
 
-function Bubble({ message }: { message: ChatMessage }) {
+function Bubble({
+  message,
+  onPressSender,
+}: {
+  message: ChatMessage;
+  onPressSender: (sender: Sender) => void;
+}) {
   const isAdmin = message.postedByAdmin;
   const senderName = message.sender
     ? memberDisplayName(message.sender)
     : 'Système';
+  const canTapSender = !isAdmin && message.sender !== null;
   return (
     <View style={[styles.bubbleWrap, isAdmin ? styles.alignRight : styles.alignLeft]}>
       <View
@@ -207,7 +299,22 @@ function Bubble({ message }: { message: ChatMessage }) {
           isAdmin ? styles.bubbleRight : styles.bubbleLeft,
         ]}
       >
-        {!isAdmin ? <Text style={styles.sender}>{senderName}</Text> : null}
+        {!isAdmin ? (
+          canTapSender ? (
+            <Pressable
+              onPress={() => message.sender && onPressSender(message.sender)}
+              accessibilityRole="button"
+              accessibilityLabel={`Options pour ${senderName}`}
+              hitSlop={6}
+            >
+              <Text style={[styles.sender, styles.senderTappable]}>
+                {senderName}
+              </Text>
+            </Pressable>
+          ) : (
+            <Text style={styles.sender}>{senderName}</Text>
+          )
+        ) : null}
         <Text
           style={[
             styles.body_text,
@@ -288,6 +395,9 @@ const styles = StyleSheet.create({
     ...typography.smallStrong,
     fontSize: 12,
     color: palette.primary,
+  },
+  senderTappable: {
+    textDecorationLine: 'underline',
   },
   body_text: { ...typography.body },
   bodyLeft: { color: palette.ink },

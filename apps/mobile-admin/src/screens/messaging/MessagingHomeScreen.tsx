@@ -4,22 +4,27 @@ import {
   BottomActionBar,
   ConfirmSheet,
   DataTable,
+  FilterChipBar,
   ScreenContainer,
   ScreenHero,
   SearchBar,
   memberDisplayName,
+  memberInitials,
   palette,
   spacing,
+  typography,
   useDebounced,
   type DataTableRow,
 } from '@clubflow/mobile-shared';
 import { useNavigation } from '@react-navigation/native';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   ADMIN_ARCHIVE_CHAT_GROUP,
   CLUB_CHAT_ROOMS_ADMIN,
+  VIEWER_GET_OR_CREATE_DIRECT_CHAT,
 } from '../../lib/documents/messaging';
+import { CLUB_MEMBERS } from '../../lib/documents/members';
 
 type Member = {
   id: string;
@@ -48,7 +53,19 @@ type Room = {
   viewerCanReply: boolean;
 };
 
-type Data = { clubChatRoomsAdmin: Room[] };
+type RoomsData = { clubChatRoomsAdmin: Room[] };
+
+type FullMember = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  pseudo: string | null;
+  status: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
+  photoUrl: string | null;
+  gradeLevel: { id: string; label: string } | null;
+};
+
+type MembersData = { clubMembers: FullMember[] };
 
 function roomDisplayName(room: Room): string {
   if (room.name && room.name.length > 0) return room.name;
@@ -61,25 +78,39 @@ function roomDisplayName(room: Room): string {
   return 'Salon sans nom';
 }
 
+type Mode = 'rooms' | 'members';
+
+const MODE_CHIPS = [
+  { key: 'rooms' as const, label: 'Salons' },
+  { key: 'members' as const, label: 'Membres' },
+];
+
 export function MessagingHomeScreen() {
   const nav = useNavigation();
+  const [mode, setMode] = useState<Mode>('rooms');
   const [search, setSearch] = useState('');
   const debounced = useDebounced(search, 200);
   const [actionTargetId, setActionTargetId] = useState<string | null>(null);
   const [confirmArchiveId, setConfirmArchiveId] = useState<string | null>(null);
+  const [openingDmFor, setOpeningDmFor] = useState<string | null>(null);
 
-  const { data, loading, refetch } = useQuery<Data>(CLUB_CHAT_ROOMS_ADMIN, {
-    errorPolicy: 'all',
-  });
+  const { data: roomsData, loading: roomsLoading, refetch: refetchRooms } =
+    useQuery<RoomsData>(CLUB_CHAT_ROOMS_ADMIN, { errorPolicy: 'all' });
+  const { data: membersData, loading: membersLoading, refetch: refetchMembers } =
+    useQuery<MembersData>(CLUB_MEMBERS, { errorPolicy: 'all' });
 
   const [archiveRoom, { loading: archiving }] = useMutation(
     ADMIN_ARCHIVE_CHAT_GROUP,
   );
+  const [getOrCreateDirect] = useMutation(VIEWER_GET_OR_CREATE_DIRECT_CHAT);
 
-  const rooms = data?.clubChatRoomsAdmin ?? [];
+  const rooms = roomsData?.clubChatRoomsAdmin ?? [];
+  const members = (membersData?.clubMembers ?? []).filter(
+    (m) => m.status === 'ACTIVE',
+  );
   const target = rooms.find((r) => r.id === actionTargetId) ?? null;
 
-  const rows = useMemo<DataTableRow[]>(() => {
+  const roomRows = useMemo<DataTableRow[]>(() => {
     const q = debounced.trim().toLowerCase();
     return rooms
       .filter((r) => {
@@ -96,6 +127,19 @@ export function MessagingHomeScreen() {
           r.description && r.description.length > 0
             ? r.description
             : `${r.members.length} participant${r.members.length > 1 ? 's' : ''}`,
+        leading: (
+          <View style={dotStyles.bubble}>
+            <Ionicons
+              name={
+                r.kind === 'DIRECT' || r.kind === 'DM'
+                  ? 'person-outline'
+                  : 'chatbubbles-outline'
+              }
+              size={20}
+              color={palette.primary}
+            />
+          </View>
+        ),
         badge: r.archivedAt
           ? { label: 'Archivé', color: palette.muted, bg: palette.bgAlt }
           : r.isBroadcastChannel
@@ -108,54 +152,178 @@ export function MessagingHomeScreen() {
       }));
   }, [rooms, debounced]);
 
+  const memberRows = useMemo<DataTableRow[]>(() => {
+    const q = debounced.trim().toLowerCase();
+    return members
+      .filter((m) => {
+        if (q.length === 0) return true;
+        const hay = [m.firstName, m.lastName, m.pseudo]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return hay.includes(q);
+      })
+      .map((m) => ({
+        key: m.id,
+        title: memberDisplayName(m),
+        subtitle: m.gradeLevel?.label ?? null,
+        leading: (
+          <View style={dotStyles.avatar}>
+            <Text style={dotStyles.avatarText}>{memberInitials(m)}</Text>
+          </View>
+        ),
+        trailing:
+          openingDmFor === m.id ? (
+            <Ionicons
+              name="hourglass-outline"
+              size={20}
+              color={palette.muted}
+            />
+          ) : (
+            <Ionicons
+              name="chatbubble-ellipses-outline"
+              size={20}
+              color={palette.primary}
+            />
+          ),
+      }));
+  }, [members, debounced, openingDmFor]);
+
   const handleArchive = async () => {
     if (!confirmArchiveId) return;
     try {
       await archiveRoom({ variables: { roomId: confirmArchiveId } });
       setConfirmArchiveId(null);
-      await refetch();
-    } catch (e: any) {
-      Alert.alert('Erreur', e?.message ?? 'Archivage impossible');
+      await refetchRooms();
+    } catch (e: unknown) {
+      Alert.alert(
+        'Erreur',
+        e instanceof Error ? e.message : 'Archivage impossible',
+      );
     }
   };
+
+  const onPickMember = async (memberId: string) => {
+    if (openingDmFor) return;
+    setOpeningDmFor(memberId);
+    try {
+      const res = await getOrCreateDirect({
+        variables: { peerMemberId: memberId },
+      });
+      const roomId = (
+        res.data as
+          | { viewerGetOrCreateDirectChat?: { id: string } }
+          | null
+          | undefined
+      )?.viewerGetOrCreateDirectChat?.id;
+      if (!roomId) {
+        throw new Error('Impossible d\'ouvrir la conversation.');
+      }
+      await refetchRooms();
+      (nav as unknown as { navigate: (n: string, p: object) => void }).navigate(
+        'MessagingThread',
+        { roomId },
+      );
+    } catch (e: unknown) {
+      Alert.alert(
+        'Erreur',
+        e instanceof Error
+          ? e.message
+          : 'Impossible d\'ouvrir le message privé.',
+      );
+    } finally {
+      setOpeningDmFor(null);
+    }
+  };
+
+  const isMembers = mode === 'members';
+  const placeholder = isMembers
+    ? 'Rechercher un membre…'
+    : 'Rechercher un salon…';
+  const subtitle = isMembers
+    ? `${members.length} adhérent${members.length > 1 ? 's' : ''} actif${members.length > 1 ? 's' : ''}`
+    : `${rooms.length} conversation${rooms.length > 1 ? 's' : ''}`;
 
   return (
     <ScreenContainer padding={0} scroll={false}>
       <ScreenHero
         eyebrow="MESSAGERIE"
-        title="Salons"
-        subtitle={`${rooms.length} conversation${rooms.length > 1 ? 's' : ''}`}
+        title={isMembers ? 'Nouveau message privé' : 'Salons'}
+        subtitle={subtitle}
         compact
         showBack
       />
+
+      <View style={styles.modeWrap}>
+        <FilterChipBar
+          chips={MODE_CHIPS}
+          activeKey={mode}
+          onSelect={(k) => {
+            if (k === 'rooms' || k === 'members') setMode(k);
+          }}
+          withAll={false}
+        />
+      </View>
+
       <View style={styles.searchBar}>
         <SearchBar
           value={search}
           onChangeText={setSearch}
-          placeholder="Rechercher un salon…"
+          placeholder={placeholder}
         />
       </View>
-      <DataTable
-        data={rows}
-        loading={loading}
-        onRefresh={refetch}
-        refreshing={loading}
-        emptyTitle="Aucun salon"
-        emptySubtitle="Créez un salon pour démarrer une conversation."
-        emptyIcon="chatbubbles-outline"
-        onPressRow={(id) =>
-          (nav as any).navigate('MessagingThread', { roomId: id })
-        }
-        onLongPressRow={(id) => setActionTargetId(id)}
-      />
-      <Pressable
-        onPress={() => (nav as any).navigate('NewChatGroup')}
-        style={({ pressed }) => [styles.fab, pressed && { opacity: 0.85 }]}
-        accessibilityRole="button"
-        accessibilityLabel="Nouveau salon"
-      >
-        <Ionicons name="add" size={28} color={palette.surface} />
-      </Pressable>
+
+      {isMembers ? (
+        <DataTable
+          data={memberRows}
+          loading={membersLoading}
+          onRefresh={refetchMembers}
+          refreshing={membersLoading}
+          emptyTitle={
+            debounced.length > 0 ? 'Aucun résultat' : 'Aucun adhérent'
+          }
+          emptySubtitle={
+            debounced.length > 0
+              ? `Aucun membre ne correspond à « ${debounced} ».`
+              : 'Ajoutez des membres pour démarrer une conversation.'
+          }
+          emptyIcon={
+            debounced.length > 0 ? 'search-outline' : 'people-outline'
+          }
+          onPressRow={(memberId) => void onPickMember(memberId)}
+        />
+      ) : (
+        <DataTable
+          data={roomRows}
+          loading={roomsLoading}
+          onRefresh={refetchRooms}
+          refreshing={roomsLoading}
+          emptyTitle="Aucun salon"
+          emptySubtitle="Créez un salon ou démarrez une conversation privée depuis l'onglet Membres."
+          emptyIcon="chatbubbles-outline"
+          onPressRow={(id) =>
+            (
+              nav as unknown as { navigate: (n: string, p: object) => void }
+            ).navigate('MessagingThread', { roomId: id })
+          }
+          onLongPressRow={(id) => setActionTargetId(id)}
+        />
+      )}
+
+      {!isMembers ? (
+        <Pressable
+          onPress={() =>
+            (nav as unknown as { navigate: (n: string) => void }).navigate(
+              'NewChatGroup',
+            )
+          }
+          style={({ pressed }) => [styles.fab, pressed && { opacity: 0.85 }]}
+          accessibilityRole="button"
+          accessibilityLabel="Nouveau salon"
+        >
+          <Ionicons name="add" size={28} color={palette.surface} />
+        </Pressable>
+      ) : null}
 
       <BottomActionBar
         visible={actionTargetId != null}
@@ -192,6 +360,9 @@ export function MessagingHomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  modeWrap: {
+    paddingTop: spacing.sm,
+  },
   searchBar: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
@@ -211,5 +382,28 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 12,
     elevation: 8,
+  },
+});
+
+const dotStyles = StyleSheet.create({
+  bubble: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: palette.primaryTint,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: palette.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    ...typography.smallStrong,
+    color: palette.surface,
   },
 });
