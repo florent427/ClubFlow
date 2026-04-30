@@ -107,7 +107,7 @@ export function DashboardScreen() {
         <QuickActionButton
           icon="paper-plane-outline"
           label="Message"
-          onPress={() => goNested('More', 'QuickMessage')}
+          onPress={() => goNested('More', 'MessagingHub')}
         />
       </View>
 

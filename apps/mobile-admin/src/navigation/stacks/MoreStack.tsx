@@ -16,6 +16,7 @@ import { InvoiceDetailScreen } from '../../screens/billing/InvoiceDetailScreen';
 import { InvoicesScreen } from '../../screens/billing/InvoicesScreen';
 import { MediaLibraryScreen } from '../../screens/vitrine/MediaLibraryScreen';
 import { MessagingHomeScreen } from '../../screens/messaging/MessagingHomeScreen';
+import { MessagingHubScreen } from '../../screens/messaging-hub/MessagingHubScreen';
 import { MessagingThreadScreen } from '../../screens/messaging/MessagingThreadScreen';
 import { MoreMenuScreen } from '../../screens/MoreMenuScreen';
 import { NewAnnouncementScreen } from '../../screens/club-life/NewAnnouncementScreen';
@@ -87,6 +88,7 @@ export function MoreStack() {
       <Stack.Screen name="NewCampaign" component={NewCampaignScreen} />
       <Stack.Screen name="QuickMessage" component={QuickMessageScreen} />
       {/* Messaging */}
+      <Stack.Screen name="MessagingHub" component={MessagingHubScreen} />
       <Stack.Screen name="MessagingHome" component={MessagingHomeScreen} />
       <Stack.Screen name="MessagingThread" component={MessagingThreadScreen} />
       <Stack.Screen name="NewChatGroup" component={NewChatGroupScreen} />

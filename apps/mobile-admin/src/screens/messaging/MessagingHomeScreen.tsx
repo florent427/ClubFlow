@@ -126,6 +126,7 @@ export function MessagingHomeScreen() {
         title="Salons"
         subtitle={`${rooms.length} conversation${rooms.length > 1 ? 's' : ''}`}
         compact
+        showBack
       />
       <View style={styles.searchBar}>
         <SearchBar
