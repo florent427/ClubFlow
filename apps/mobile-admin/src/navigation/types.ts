@@ -118,6 +118,12 @@ export type SponsoringStackParamList = {
   NewSponsorship: undefined;
 };
 
+export type DocumentsStackParamList = {
+  Documents: undefined;
+  DocumentDetail: { documentId: string };
+  DocumentSignatures: { documentId: string };
+};
+
 export type SubsidiesStackParamList = {
   Subsidies: undefined;
   SubsidyDetail: { grantId: string };

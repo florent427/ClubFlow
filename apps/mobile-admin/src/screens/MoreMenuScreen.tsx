@@ -175,6 +175,13 @@ const SECTIONS: Section[] = [
         screen: 'ClubModules',
       },
       {
+        key: 'documents',
+        label: 'Documents',
+        icon: 'document-text-outline',
+        module: 'DOCUMENTS',
+        screen: 'Documents',
+      },
+      {
         key: 'agent',
         label: 'Aïko (IA)',
         icon: 'sparkles-outline',

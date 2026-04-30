@@ -18,7 +18,8 @@ export type ModuleCode =
   | 'CLUB_LIFE'
   | 'EVENTS'
   | 'BOOKING'
-  | 'PROJECTS';
+  | 'PROJECTS'
+  | 'DOCUMENTS';
 
 export const ALL_MODULE_CODES: ModuleCode[] = [
   'MEMBERS',
@@ -37,6 +38,7 @@ export const ALL_MODULE_CODES: ModuleCode[] = [
   'EVENTS',
   'BOOKING',
   'PROJECTS',
+  'DOCUMENTS',
 ];
 
 /** Labels FR pour affichage UI. */
@@ -57,4 +59,5 @@ export const MODULE_LABELS: Record<ModuleCode, string> = {
   EVENTS: 'Événements',
   BOOKING: 'Réservations',
   PROJECTS: 'Projets',
+  DOCUMENTS: 'Documents à signer',
 };

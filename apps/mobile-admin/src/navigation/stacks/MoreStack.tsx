@@ -10,6 +10,9 @@ import { BlogPostsScreen } from '../../screens/blog/BlogPostsScreen';
 import { CampaignDetailScreen } from '../../screens/communication/CampaignDetailScreen';
 import { CampaignsScreen } from '../../screens/communication/CampaignsScreen';
 import { ChatGroupSettingsScreen } from '../../screens/messaging/ChatGroupSettingsScreen';
+import { DocumentDetailScreen } from '../../screens/documents/DocumentDetailScreen';
+import { DocumentSignaturesScreen } from '../../screens/documents/DocumentSignaturesScreen';
+import { DocumentsScreen } from '../../screens/documents/DocumentsScreen';
 import { EntryDetailScreen } from '../../screens/accounting/EntryDetailScreen';
 import { ExportScreen } from '../../screens/accounting/ExportScreen';
 import { InvoiceDetailScreen } from '../../screens/billing/InvoiceDetailScreen';
@@ -131,6 +134,10 @@ export function MoreStack() {
       <Stack.Screen name="Subsidies" component={SubsidiesScreen} />
       <Stack.Screen name="SubsidyDetail" component={SubsidyDetailScreen} />
       <Stack.Screen name="NewSubsidy" component={NewSubsidyScreen} />
+      {/* Documents à signer */}
+      <Stack.Screen name="Documents" component={DocumentsScreen} />
+      <Stack.Screen name="DocumentDetail" component={DocumentDetailScreen} />
+      <Stack.Screen name="DocumentSignatures" component={DocumentSignaturesScreen} />
       {/* Vitrine */}
       <Stack.Screen name="VitrineHome" component={VitrineHomeScreen} />
       <Stack.Screen name="VitrinePages" component={VitrinePagesScreen} />
