@@ -4302,3 +4302,357 @@ a:focus-visible {
     align-items: stretch;
   }
 }
+
+/* ============================================================================
+ * Documents à signer (portail membre)
+ * ========================================================================== */
+
+.docs-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+  margin: 0 0 16px;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 12px;
+  color: #78350f;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.docs-banner__icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.docs-banner__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.docs-banner__title {
+  display: block;
+  font-size: 15px;
+  margin-bottom: 2px;
+}
+
+.docs-banner__subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: #92400e;
+}
+
+.docs-banner__cta {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: #b45309;
+  color: #fff;
+  font-weight: 600;
+  font-size: 13px;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.docs-banner__cta:hover {
+  background: #92400e;
+  color: #fff;
+}
+
+@media (max-width: 640px) {
+  .docs-banner {
+    flex-wrap: wrap;
+  }
+  .docs-banner__cta {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Liste */
+.docs-list {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+.docs-list__hero {
+  margin-bottom: 24px;
+}
+
+.docs-list__hero h1 {
+  margin: 0 0 8px;
+  font-size: 28px;
+}
+
+.docs-list__hero p {
+  margin: 0;
+  color: #475569;
+}
+
+.docs-list__cards {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 16px;
+}
+
+.docs-list__card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+.docs-list__card h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+.docs-list__card p {
+  margin: 0 0 16px;
+  color: #475569;
+  font-size: 14px;
+}
+
+.docs-list__card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.docs-list__pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #4338ca;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.docs-list__pill--minor {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.docs-list__version {
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* Empty state */
+.docs-empty {
+  max-width: 480px;
+  margin: 60px auto;
+  padding: 0 16px;
+  text-align: center;
+}
+
+.docs-empty h1 {
+  margin: 0 0 24px;
+  font-size: 24px;
+}
+
+.docs-empty__card {
+  background: #fff;
+  border: 1px solid #d1fae5;
+  border-radius: 16px;
+  padding: 32px 20px;
+}
+
+.docs-empty__card span {
+  display: inline-block;
+  width: 56px;
+  height: 56px;
+  line-height: 56px;
+  border-radius: 50%;
+  background: #d1fae5;
+  color: #047857;
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.docs-empty__card h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.docs-empty__card p {
+  margin: 0;
+  color: #475569;
+}
+
+/* Page de signature */
+.docs-sign {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+.docs-sign__header {
+  margin-bottom: 24px;
+}
+
+.docs-sign__header h1 {
+  margin: 12px 0 4px;
+  font-size: 26px;
+}
+
+.docs-sign__description {
+  margin: 0;
+  color: #475569;
+}
+
+.docs-sign__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .docs-sign__layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.docs-sign__pdf,
+.docs-sign__form {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 20px;
+}
+
+.docs-sign__pdf h2,
+.docs-sign__form h2 {
+  margin: 0 0 14px;
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #64748b;
+}
+
+.docs-sign__iframe {
+  width: 100%;
+  height: 600px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.docs-sign__open-external {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 13px;
+  color: #4338ca;
+  text-decoration: none;
+}
+
+.docs-sign__open-external:hover {
+  text-decoration: underline;
+}
+
+.docs-sign__field {
+  display: block;
+  margin-bottom: 14px;
+}
+
+.docs-sign__field span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.docs-sign__field input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.docs-sign__field input:focus {
+  outline: none;
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.docs-sign__checkbox {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  margin-bottom: 14px;
+  cursor: pointer;
+}
+
+.docs-sign__checkbox input {
+  margin-top: 2px;
+}
+
+.docs-sign__signature {
+  margin-bottom: 14px;
+}
+
+.docs-sign__signature-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.docs-sign__signature-header span {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.docs-sign__signature-canvas {
+  display: block;
+  width: 100%;
+  height: 160px;
+  background: #f8fafc;
+  border: 1px dashed #94a3b8;
+  border-radius: 8px;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.docs-sign__hint {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.docs-sign__legal {
+  margin: 16px 0 0;
+  padding: 12px;
+  background: #f8fafc;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.docs-sign__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}

@@ -22,6 +22,7 @@ import { AddChildToCartDrawer } from '../components/cart/AddChildToCartDrawer';
 import { EditPendingCartItemModal } from '../components/cart/EditPendingCartItemModal';
 import { useToast } from '../components/ToastProvider';
 import { formatEuroCents } from '../lib/format';
+import { DocumentsToSignBanner } from '../components/DocumentsToSignBanner';
 
 type Civility = 'MR' | 'MME';
 
@@ -149,6 +150,7 @@ export function AdhesionPage() {
 
   return (
     <div className="mp-page">
+      <DocumentsToSignBanner />
       <header className="mp-page-head">
         <div>
           <p className="mp-eyebrow">Saison active</p>

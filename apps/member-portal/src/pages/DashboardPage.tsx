@@ -21,6 +21,7 @@ import {
   medicalCertState,
   slotCalendarBits,
 } from '../lib/format';
+import { DocumentsToSignBanner } from '../components/DocumentsToSignBanner';
 import { JoinFamilyByPayerEmailCta } from '../components/JoinFamilyByPayerEmailCta';
 import { MemberRoleToggle } from '../components/MemberRoleToggle';
 
@@ -79,6 +80,7 @@ export function DashboardPage() {
 
   return (
     <div className="mp-page">
+      <DocumentsToSignBanner />
       <section className="mp-hero">
         <div className="mp-hero-head">
           <p className="mp-eyebrow">

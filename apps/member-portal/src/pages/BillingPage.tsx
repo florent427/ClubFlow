@@ -14,6 +14,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { LoadingState } from '../components/ui/LoadingState';
 import { ErrorState } from '../components/ui/ErrorState';
 import { useToast } from '../components/ToastProvider';
+import { DocumentsToSignBanner } from '../components/DocumentsToSignBanner';
 
 type StatusFilter = 'ALL' | 'OPEN' | 'PAID' | 'DRAFT';
 
@@ -170,6 +171,7 @@ export function BillingPage() {
 
   return (
     <div className="mp-page">
+      <DocumentsToSignBanner />
       <h1 className="mp-page-title">Mes factures</h1>
       <p className="mp-lead mp-lead--tight">
         Suivi des factures d'adhésion et paiements de votre foyer

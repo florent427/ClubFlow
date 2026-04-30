@@ -5,6 +5,7 @@ import { PromoteSelfToMemberCta } from '../components/PromoteSelfToMemberCta';
 import { RegisterChildMemberCta } from '../components/RegisterChildMemberCta';
 import { VIEWER_ME } from '../lib/viewer-documents';
 import type { ViewerMeData } from '../lib/viewer-types';
+import { DocumentsToSignBanner } from '../components/DocumentsToSignBanner';
 
 /**
  * Recommandation UX #5 — Glossaire UX / Onboarding contact
@@ -20,6 +21,7 @@ export function ContactHomePage() {
 
   return (
     <div className="mp-page">
+      <DocumentsToSignBanner />
       <section className="mp-hero">
         <div className="mp-hero-head">
           <p className="mp-eyebrow">Bienvenue</p>

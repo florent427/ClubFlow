@@ -25,6 +25,7 @@ import { BookingPage } from './pages/BookingPage';
 import { BlogListPage, BlogPostPage } from './pages/BlogPage';
 import { ShopPage } from './pages/ShopPage';
 import { AdhesionPage } from './pages/AdhesionPage';
+import { DocumentsToSignPage } from './pages/DocumentsToSignPage';
 import { MyProjectsPage } from './pages/MyProjectsPage';
 import { MyProjectUploadPage } from './pages/MyProjectUploadPage';
 import { JoinFamilyInvitePage } from './pages/JoinFamilyInvitePage';
@@ -92,6 +93,10 @@ export default function App() {
               <Route path="/famille" element={<FamilyPage />} />
               <Route path="/adhesion" element={<AdhesionPage />} />
               <Route path="/factures" element={<BillingPage />} />
+              <Route
+                path="/documents-a-signer"
+                element={<DocumentsToSignPage />}
+              />
               <Route path="/parametres" element={<SettingsPage />} />
               <Route
                 path="/messagerie"
