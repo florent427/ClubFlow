@@ -3364,6 +3364,17 @@ model ClubDocument {
   validTo      DateTime?
   /// Si true, demandé uniquement aux mineurs (selon Member.birthDate).
   minorsOnly   Boolean              @default(false)
+  /// Ciblage par rôles système (MembershipRole). Vide = tous rôles
+  /// éligibles. Si non vide, le doc n'est demandé qu'aux membres ayant
+  /// au moins l'un de ces rôles dans le club.
+  /// Exemples : ['COACH'] = charte des coachs ; ['CLUB_ADMIN','BOARD']
+  /// = engagement de confidentialité du bureau.
+  targetSystemRoles MembershipRole[] @default([])
+  /// Ciblage par rôles personnalisés du club (ClubRoleDefinition.id).
+  /// Vide = pas de filtre par rôle custom. Combiné en OR avec
+  /// targetSystemRoles : un membre est éligible s'il a un rôle système
+  /// matché OU un rôle custom matché.
+  targetCustomRoleIds String[]      @default([])
   /// Si true, le cron annuel (1er septembre 06:00 UTC) bump la version +
   /// invalide toutes les signatures existantes pour forcer une re-signature
   /// à chaque saison sportive (typique pour un règlement intérieur).

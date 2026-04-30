@@ -14,6 +14,7 @@ import {
   ClubDocumentFieldType,
   ClubSignedDocument,
   MemberStatus,
+  MembershipRole,
   Prisma,
 } from '@prisma/client';
 import { ClubSendingDomainService } from '../mail/club-sending-domain.service';
@@ -35,6 +36,10 @@ export interface CreateDocumentInput {
   validTo?: Date | null;
   minorsOnly?: boolean;
   resetAnnually?: boolean;
+  /** Ciblage par rôles système. Vide = tous rôles éligibles. */
+  targetSystemRoles?: MembershipRole[];
+  /** Ciblage par rôles personnalisés (ClubRoleDefinition.id). Vide = pas de filtre. */
+  targetCustomRoleIds?: string[];
 }
 
 /** Input pour mettre à jour un document. */
@@ -50,6 +55,8 @@ export interface UpdateDocumentInput {
   validTo?: Date | null;
   minorsOnly?: boolean;
   resetAnnually?: boolean;
+  targetSystemRoles?: MembershipRole[];
+  targetCustomRoleIds?: string[];
 }
 
 /** Input pour upsert d'un field positionné sur le PDF. */
@@ -171,6 +178,8 @@ export class DocumentsService {
         validTo: input.validTo ?? null,
         minorsOnly: input.minorsOnly ?? false,
         resetAnnually: input.resetAnnually ?? false,
+        targetSystemRoles: input.targetSystemRoles ?? [],
+        targetCustomRoleIds: input.targetCustomRoleIds ?? [],
       },
       include: { fields: { orderBy: { sortOrder: 'asc' } } },
     });
@@ -210,6 +219,10 @@ export class DocumentsService {
     if (input.minorsOnly !== undefined) data.minorsOnly = input.minorsOnly;
     if (input.resetAnnually !== undefined)
       data.resetAnnually = input.resetAnnually;
+    if (input.targetSystemRoles !== undefined)
+      data.targetSystemRoles = { set: input.targetSystemRoles };
+    if (input.targetCustomRoleIds !== undefined)
+      data.targetCustomRoleIds = { set: input.targetCustomRoleIds };
 
     // Changement du fichier source = nouvelle version : on bump le numéro,
     // on recalcule le hash, et on invalide toutes les signatures existantes.
@@ -384,13 +397,32 @@ export class DocumentsService {
     if (docs.length === 0) return [];
 
     // Pour minorsOnly, on a besoin de la birthDate du member visé.
+    // Pour le ciblage par rôles, on récupère ses rôles système (via
+    // ClubMembership pour le couple userId+clubId du Member) et ses rôles
+    // custom (via MemberCustomRoleAssignment).
     let memberIsMinor = false;
+    let memberSystemRoles: MembershipRole[] = [];
+    let memberCustomRoleIds: string[] = [];
     if (memberId) {
       const m = await this.prisma.member.findFirst({
         where: { id: memberId, clubId },
-        select: { birthDate: true },
+        select: {
+          birthDate: true,
+          userId: true,
+          customRoleAssignments: { select: { roleDefinitionId: true } },
+        },
       });
       memberIsMinor = m?.birthDate ? isMinor(m.birthDate) : false;
+      memberCustomRoleIds = (m?.customRoleAssignments ?? []).map(
+        (a) => a.roleDefinitionId,
+      );
+      if (m?.userId) {
+        const memberships = await this.prisma.clubMembership.findMany({
+          where: { userId: m.userId, clubId },
+          select: { role: true },
+        });
+        memberSystemRoles = memberships.map((cm) => cm.role);
+      }
     }
 
     // Signatures existantes pour ce userId + memberId.
@@ -410,6 +442,16 @@ export class DocumentsService {
     return docs.filter((d) => {
       // minorsOnly : ne garder que les docs si le member est mineur.
       if (d.minorsOnly && !memberIsMinor) return false;
+      // Ciblage par rôles : si non vide, le member doit matcher au moins
+      // un rôle système OU un rôle custom listé.
+      // Cas particulier : si pas de memberId fourni (cas SystemAdmin sans
+      // fiche membre), on ne filtre pas par rôle (semantique permissive
+      // — l'utilisateur voit tous les docs requis).
+      if (memberId) {
+        if (!isEligibleByRoles(d, memberSystemRoles, memberCustomRoleIds)) {
+          return false;
+        }
+      }
       // Déjà signé pour cette version ?
       if (signedKey.has(`${d.id}:${d.version}`)) return false;
       return true;
@@ -609,20 +651,69 @@ export class DocumentsService {
   ): Promise<SignatureStats> {
     const doc = await this.prisma.clubDocument.findFirst({
       where: { id: documentId, clubId },
-      select: { id: true, version: true, minorsOnly: true },
+      select: {
+        id: true,
+        version: true,
+        minorsOnly: true,
+        targetSystemRoles: true,
+        targetCustomRoleIds: true,
+      },
     });
     if (!doc) {
       throw new NotFoundException('Document introuvable');
     }
 
-    // Membres éligibles.
+    // Membres éligibles. On charge aussi les rôles (système via
+    // ClubMembership couplé à userId, custom via MemberCustomRoleAssignment)
+    // pour appliquer le même filtre que listToSignForViewer.
     const members = await this.prisma.member.findMany({
       where: { clubId, status: MemberStatus.ACTIVE },
-      select: { id: true, birthDate: true },
+      select: {
+        id: true,
+        birthDate: true,
+        userId: true,
+        customRoleAssignments: { select: { roleDefinitionId: true } },
+      },
     });
-    const eligibleMembers = doc.minorsOnly
-      ? members.filter((m) => m.birthDate && isMinor(m.birthDate))
-      : members;
+
+    // Récupère les rôles système des members ayant un userId via une seule
+    // requête sur ClubMembership (clubId fixé).
+    const userIds = members
+      .map((m) => m.userId)
+      .filter((id): id is string => !!id);
+    const memberships =
+      userIds.length > 0
+        ? await this.prisma.clubMembership.findMany({
+            where: { clubId, userId: { in: userIds } },
+            select: { userId: true, role: true },
+          })
+        : [];
+    const rolesByUserId = new Map<string, MembershipRole[]>();
+    for (const cm of memberships) {
+      const cur = rolesByUserId.get(cm.userId) ?? [];
+      cur.push(cm.role);
+      rolesByUserId.set(cm.userId, cur);
+    }
+
+    const eligibleMembers = members.filter((m) => {
+      if (doc.minorsOnly && !(m.birthDate && isMinor(m.birthDate))) {
+        return false;
+      }
+      const sysRoles = m.userId
+        ? (rolesByUserId.get(m.userId) ?? [])
+        : [];
+      const customRoleIds = m.customRoleAssignments.map(
+        (a) => a.roleDefinitionId,
+      );
+      return isEligibleByRoles(
+        {
+          targetSystemRoles: doc.targetSystemRoles,
+          targetCustomRoleIds: doc.targetCustomRoleIds,
+        },
+        sysRoles,
+        customRoleIds,
+      );
+    });
     const totalRequired = eligibleMembers.length;
 
     // Signatures de la version courante non invalidées, distinctes par
@@ -694,14 +785,22 @@ export class DocumentsService {
         validFrom: { lte: now },
         OR: [{ validTo: null }, { validTo: { gte: now } }],
       },
-      select: { id: true, name: true, version: true, minorsOnly: true },
+      select: {
+        id: true,
+        name: true,
+        version: true,
+        minorsOnly: true,
+        targetSystemRoles: true,
+        targetCustomRoleIds: true,
+      },
     });
     if (documents.length === 0) {
       return { sent: 0, failed: 0 };
     }
 
     // 2. Liste des membres ACTIFS du club, avec leur User pour récupérer
-    //    le bon userId (la signature est unique par couple userId+memberId).
+    //    le bon userId (la signature est unique par couple userId+memberId)
+    //    + rôles custom assignés.
     const members = await this.prisma.member.findMany({
       where: { clubId, status: MemberStatus.ACTIVE },
       select: {
@@ -711,8 +810,27 @@ export class DocumentsService {
         email: true,
         birthDate: true,
         userId: true,
+        customRoleAssignments: { select: { roleDefinitionId: true } },
       },
     });
+
+    // Rôles système par userId (jointure ClubMembership).
+    const userIds = members
+      .map((m) => m.userId)
+      .filter((id): id is string => !!id);
+    const memberships =
+      userIds.length > 0
+        ? await this.prisma.clubMembership.findMany({
+            where: { clubId, userId: { in: userIds } },
+            select: { userId: true, role: true },
+          })
+        : [];
+    const rolesByUserId = new Map<string, MembershipRole[]>();
+    for (const cm of memberships) {
+      const cur = rolesByUserId.get(cm.userId) ?? [];
+      cur.push(cm.role);
+      rolesByUserId.set(cm.userId, cur);
+    }
 
     // 3. Snapshot des signatures pour la version courante de chaque doc.
     //    On indexe par documentId+version → set de memberIds qui ont signé.
@@ -746,9 +864,25 @@ export class DocumentsService {
       const email = (m.email ?? '').trim();
       if (!email || !m.userId) continue;
       const memberMinor = m.birthDate ? isMinor(m.birthDate) : false;
+      const memberSysRoles = rolesByUserId.get(m.userId) ?? [];
+      const memberCustomRoleIds = m.customRoleAssignments.map(
+        (a) => a.roleDefinitionId,
+      );
       const pending: Pending[] = [];
       for (const d of documents) {
         if (d.minorsOnly && !memberMinor) continue;
+        if (
+          !isEligibleByRoles(
+            {
+              targetSystemRoles: d.targetSystemRoles,
+              targetCustomRoleIds: d.targetCustomRoleIds,
+            },
+            memberSysRoles,
+            memberCustomRoleIds,
+          )
+        ) {
+          continue;
+        }
         const key = `${d.id}:${d.version}`;
         if (signedByDocVersion.get(key)?.has(m.id)) continue;
         pending.push({ id: d.id, name: d.name });
@@ -865,6 +999,41 @@ export function isMinor(birthDate: Date): boolean {
   const eighteenth = new Date(birthDate);
   eighteenth.setFullYear(eighteenth.getFullYear() + 18);
   return now < eighteenth;
+}
+
+/**
+ * Filtre d'éligibilité par rôles pour les `ClubDocument`.
+ *
+ * Sémantique :
+ *  - Si `targetSystemRoles` ET `targetCustomRoleIds` sont vides → tous les
+ *    membres sont éligibles (rétro-compatibilité avec l'historique).
+ *  - Sinon, un membre est éligible s'il a AU MOINS un rôle système matché
+ *    OU un rôle custom matché (OR entre les deux listes).
+ *
+ * Exporté pour permettre des tests unitaires + réutilisation côté
+ * gating service ou autres consommateurs.
+ */
+export function isEligibleByRoles(
+  doc: {
+    targetSystemRoles: MembershipRole[];
+    targetCustomRoleIds: string[];
+  },
+  memberSystemRoles: MembershipRole[],
+  memberCustomRoleIds: string[],
+): boolean {
+  if (
+    doc.targetSystemRoles.length === 0 &&
+    doc.targetCustomRoleIds.length === 0
+  ) {
+    return true;
+  }
+  const sysMatch = doc.targetSystemRoles.some((r) =>
+    memberSystemRoles.includes(r),
+  );
+  const customMatch = doc.targetCustomRoleIds.some((id) =>
+    memberCustomRoleIds.includes(id),
+  );
+  return sysMatch || customMatch;
 }
 
 async function streamToBuffer(

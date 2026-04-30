@@ -42,6 +42,8 @@ const CLUB_DOCUMENT_FRAGMENT = gql`
     validFrom
     validTo
     minorsOnly
+    targetSystemRoles
+    targetCustomRoleIds
     mediaAssetId
     mediaAssetUrl
     signedCount

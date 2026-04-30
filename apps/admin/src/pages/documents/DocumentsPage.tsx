@@ -9,10 +9,13 @@ import {
   DELETE_CLUB_DOCUMENT,
   UPDATE_CLUB_DOCUMENT,
 } from '../../lib/documents-signature';
+import { CLUB_ROLE_DEFINITIONS } from '../../lib/documents';
 import type {
   ClubDocument,
   ClubDocumentCategory,
   ClubDocumentsQueryData,
+  MembershipRole,
+  RoleDefinitionsQueryData,
 } from '../../lib/types';
 import { useToast } from '../../components/ToastProvider';
 import { ConfirmModal, Drawer, EmptyState } from '../../components/ui';
@@ -32,6 +35,34 @@ const CATEGORY_LABEL: Record<ClubDocumentCategory, string> = {
   REGLEMENT_FEDERAL: 'Règlement fédéral',
   AUTRE: 'Autre',
 };
+
+/**
+ * Libellés FR des rôles système (`MembershipRole`).
+ * Utilisé par le drawer (multi-select) + le tooltip de la pill « Ciblé »
+ * dans la liste.
+ */
+const SYSTEM_ROLE_LABEL: Record<MembershipRole, string> = {
+  CLUB_ADMIN: 'Administrateur',
+  BOARD: 'Bureau',
+  TREASURER: 'Trésorier·e',
+  COACH: 'Coach',
+  SECRETARY: 'Secrétaire',
+  STAFF: 'Staff',
+  COMM_MANAGER: 'Communication',
+  PROJECT_MANAGER: 'Chef de projet',
+};
+
+/** Ordre stable d'affichage des rôles dans le drawer. */
+const SYSTEM_ROLE_ORDER: MembershipRole[] = [
+  'CLUB_ADMIN',
+  'BOARD',
+  'TREASURER',
+  'COACH',
+  'SECRETARY',
+  'STAFF',
+  'COMM_MANAGER',
+  'PROJECT_MANAGER',
+];
 
 /**
  * Mapping catégorie → palette pill. On garde des `--cf-pill` neutres pour les
@@ -82,6 +113,14 @@ interface FormState {
   validFrom: string;
   validTo: string;
   minorsOnly: boolean;
+  /**
+   * Ciblage par rôles système. Vide = tous rôles éligibles.
+   */
+  targetSystemRoles: MembershipRole[];
+  /**
+   * Ciblage par rôles personnalisés (ClubRoleDefinition.id).
+   */
+  targetCustomRoleIds: string[];
   /** id mediaAsset déjà uploadé (set après upload). */
   mediaAssetId: string | null;
   /** Nom du fichier sélectionné (UI hint avant upload). */
@@ -99,6 +138,8 @@ function emptyFormState(): FormState {
     validFrom: today,
     validTo: '',
     minorsOnly: false,
+    targetSystemRoles: [],
+    targetCustomRoleIds: [],
     mediaAssetId: null,
     fileName: null,
   };
@@ -120,6 +161,22 @@ export function DocumentsPage() {
   const { data, loading, error, refetch } = useQuery<ClubDocumentsQueryData>(
     CLUB_DOCUMENTS,
     { fetchPolicy: 'cache-and-network' },
+  );
+  /**
+   * Liste des rôles personnalisés du club, pour le multi-select de
+   * ciblage dans le drawer. La query est partagée avec d'autres modules
+   * (membres, paramétrage des rôles) — Apollo cache → un seul fetch.
+   */
+  const { data: roleDefsData } = useQuery<RoleDefinitionsQueryData>(
+    CLUB_ROLE_DEFINITIONS,
+    { fetchPolicy: 'cache-first' },
+  );
+  const customRoles = useMemo(
+    () =>
+      [...(roleDefsData?.clubRoleDefinitions ?? [])].sort(
+        (a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label),
+      ),
+    [roleDefsData?.clubRoleDefinitions],
   );
   const [createDoc, { loading: creating }] = useMutation(CREATE_CLUB_DOCUMENT);
   const [updateDoc, { loading: updating }] = useMutation(UPDATE_CLUB_DOCUMENT);
@@ -172,6 +229,8 @@ export function DocumentsPage() {
       validFrom: isoToInputDate(doc.validFrom),
       validTo: isoToInputDate(doc.validTo),
       minorsOnly: doc.minorsOnly,
+      targetSystemRoles: [...doc.targetSystemRoles],
+      targetCustomRoleIds: [...doc.targetCustomRoleIds],
       mediaAssetId: null, // null = pas de remplacement par défaut
       fileName: null,
     });
@@ -259,6 +318,8 @@ export function DocumentsPage() {
               validFrom: validFromIso,
               validTo: validToIso,
               minorsOnly: form.minorsOnly,
+              targetSystemRoles: form.targetSystemRoles,
+              targetCustomRoleIds: form.targetCustomRoleIds,
               ...(form.mediaAssetId
                 ? { mediaAssetId: form.mediaAssetId }
                 : {}),
@@ -288,6 +349,8 @@ export function DocumentsPage() {
               validFrom: validFromIso,
               validTo: validToIso,
               minorsOnly: form.minorsOnly,
+              targetSystemRoles: form.targetSystemRoles,
+              targetCustomRoleIds: form.targetCustomRoleIds,
             },
           },
         });
@@ -493,6 +556,22 @@ export function DocumentsPage() {
             <tbody>
               {documents.map((doc) => {
                 const pillStyle = CATEGORY_PILL_STYLE[doc.category];
+                // Pré-calcule les libellés du tooltip de ciblage (rôles
+                // système + rôles custom). Inclus dans la pill « Ciblé ».
+                const isTargeted =
+                  doc.targetSystemRoles.length > 0 ||
+                  doc.targetCustomRoleIds.length > 0;
+                const targetTooltip = isTargeted
+                  ? [
+                      ...doc.targetSystemRoles.map((r) => SYSTEM_ROLE_LABEL[r]),
+                      ...doc.targetCustomRoleIds
+                        .map(
+                          (id) =>
+                            customRoles.find((r) => r.id === id)?.label ?? null,
+                        )
+                        .filter((s): s is string => !!s),
+                    ].join(', ')
+                  : '';
                 return (
                   <tr key={doc.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <td style={{ padding: '10px 8px', verticalAlign: 'top' }}>
@@ -537,6 +616,19 @@ export function DocumentsPage() {
                           title="S’applique uniquement aux mineurs"
                         >
                           Mineurs
+                        </span>
+                      ) : null}
+                      {isTargeted ? (
+                        <span
+                          className="cf-pill"
+                          style={{
+                            marginLeft: 6,
+                            background: '#dbeafe',
+                            color: '#1e40af',
+                          }}
+                          title={`Ciblé : ${targetTooltip}`}
+                        >
+                          Ciblé
                         </span>
                       ) : null}
                     </td>
@@ -795,6 +887,143 @@ export function DocumentsPage() {
             />
             <span>Document actif (visible des adhérents)</span>
           </label>
+
+          {/* ===========================
+               Section : Ciblage par rôles
+               =========================== */}
+          <div
+            style={{
+              marginTop: 16,
+              padding: 12,
+              border: '1px solid #e5e7eb',
+              borderRadius: 8,
+              background: '#fff',
+            }}
+          >
+            <p style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 600 }}>
+              Ciblage par rôles
+            </p>
+            <p
+              className="cf-muted"
+              style={{ margin: '0 0 12px', fontSize: 12 }}
+            >
+              Laisse tout vide pour demander à tous les membres. Sinon, le
+              document ne sera demandé qu’aux membres ayant{' '}
+              <strong>au moins un</strong> des rôles cochés.
+            </p>
+
+            {/* Sous-section : rôles système */}
+            <p
+              style={{
+                margin: '4px 0 6px',
+                fontSize: 12,
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: 0.4,
+                color: '#475569',
+              }}
+            >
+              Rôles système
+            </p>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                gap: 6,
+                marginBottom: 12,
+              }}
+            >
+              {SYSTEM_ROLE_ORDER.map((role) => {
+                const checked = form.targetSystemRoles.includes(role);
+                return (
+                  <label
+                    key={role}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: 13,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) =>
+                        setForm((p) => ({
+                          ...p,
+                          targetSystemRoles: e.target.checked
+                            ? [...p.targetSystemRoles, role]
+                            : p.targetSystemRoles.filter((r) => r !== role),
+                        }))
+                      }
+                    />
+                    <span>{SYSTEM_ROLE_LABEL[role]}</span>
+                  </label>
+                );
+              })}
+            </div>
+
+            {/* Sous-section : rôles personnalisés */}
+            <p
+              style={{
+                margin: '4px 0 6px',
+                fontSize: 12,
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: 0.4,
+                color: '#475569',
+              }}
+            >
+              Rôles personnalisés
+            </p>
+            {customRoles.length === 0 ? (
+              <p
+                className="cf-muted"
+                style={{ margin: 0, fontSize: 12 }}
+              >
+                Aucun rôle personnalisé défini pour ce club.
+              </p>
+            ) : (
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                  gap: 6,
+                }}
+              >
+                {customRoles.map((role) => {
+                  const checked = form.targetCustomRoleIds.includes(role.id);
+                  return (
+                    <label
+                      key={role.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        fontSize: 13,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) =>
+                          setForm((p) => ({
+                            ...p,
+                            targetCustomRoleIds: e.target.checked
+                              ? [...p.targetCustomRoleIds, role.id]
+                              : p.targetCustomRoleIds.filter(
+                                  (id) => id !== role.id,
+                                ),
+                          }))
+                        }
+                      />
+                      <span>{role.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
           <div
             style={{

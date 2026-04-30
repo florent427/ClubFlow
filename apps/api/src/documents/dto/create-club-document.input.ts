@@ -1,6 +1,7 @@
 import { Field, ID, InputType } from '@nestjs/graphql';
-import { ClubDocumentCategory } from '@prisma/client';
+import { ClubDocumentCategory, MembershipRole } from '@prisma/client';
 import {
+  IsArray,
   IsBoolean,
   IsDate,
   IsEnum,
@@ -68,4 +69,24 @@ export class CreateClubDocumentInput {
   @IsOptional()
   @IsBoolean()
   resetAnnually?: boolean;
+
+  @Field(() => [MembershipRole], {
+    nullable: true,
+    description:
+      'Ciblage par rôles système. Vide ou non fourni = tous rôles éligibles. Combiné en OR avec targetCustomRoleIds.',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsEnum(MembershipRole, { each: true })
+  targetSystemRoles?: MembershipRole[];
+
+  @Field(() => [ID], {
+    nullable: true,
+    description:
+      'Ciblage par rôles personnalisés (ClubRoleDefinition.id). Vide ou non fourni = pas de filtre par rôle custom. Combiné en OR avec targetSystemRoles.',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsUUID(undefined, { each: true })
+  targetCustomRoleIds?: string[];
 }

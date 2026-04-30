@@ -1,5 +1,9 @@
 import { Field, Float, ID, Int, ObjectType, registerEnumType } from '@nestjs/graphql';
-import { ClubDocumentCategory, ClubDocumentFieldType } from '@prisma/client';
+import {
+  ClubDocumentCategory,
+  ClubDocumentFieldType,
+  MembershipRole,
+} from '@prisma/client';
 
 registerEnumType(ClubDocumentCategory, {
   name: 'ClubDocumentCategory',
@@ -96,6 +100,18 @@ export class ClubDocumentGraph {
       'Si true, le cron annuel (1er septembre) bump la version + invalide les signatures.',
   })
   resetAnnually!: boolean;
+
+  @Field(() => [MembershipRole], {
+    description:
+      'Ciblage par rôles système. Vide = tous rôles éligibles. Sinon, document demandé uniquement aux membres ayant au moins un de ces rôles.',
+  })
+  targetSystemRoles!: MembershipRole[];
+
+  @Field(() => [ID], {
+    description:
+      'Ciblage par rôles personnalisés (ClubRoleDefinition.id). Vide = pas de filtre. Combiné en OR avec targetSystemRoles.',
+  })
+  targetCustomRoleIds!: string[];
 
   @Field()
   createdAt!: Date;

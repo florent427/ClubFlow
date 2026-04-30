@@ -81,6 +81,8 @@ async function documentToGraph(
     validTo: doc.validTo,
     minorsOnly: doc.minorsOnly,
     resetAnnually: doc.resetAnnually,
+    targetSystemRoles: doc.targetSystemRoles,
+    targetCustomRoleIds: doc.targetCustomRoleIds,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
     fields: doc.fields.map(fieldToGraph),
@@ -167,6 +169,8 @@ export class DocumentsResolver {
       validTo: input.validTo ?? null,
       minorsOnly: input.minorsOnly,
       resetAnnually: input.resetAnnually,
+      targetSystemRoles: input.targetSystemRoles,
+      targetCustomRoleIds: input.targetCustomRoleIds,
     });
     return documentToGraph(this.prisma, row);
   }
@@ -187,6 +191,8 @@ export class DocumentsResolver {
       validTo: input.validTo,
       minorsOnly: input.minorsOnly,
       resetAnnually: input.resetAnnually,
+      targetSystemRoles: input.targetSystemRoles,
+      targetCustomRoleIds: input.targetCustomRoleIds,
     });
     return documentToGraph(this.prisma, row);
   }

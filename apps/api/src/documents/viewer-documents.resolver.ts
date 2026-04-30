@@ -65,6 +65,8 @@ export class ViewerDocumentsResolver {
         validTo: doc.validTo,
         minorsOnly: doc.minorsOnly,
         resetAnnually: doc.resetAnnually,
+        targetSystemRoles: doc.targetSystemRoles,
+        targetCustomRoleIds: doc.targetCustomRoleIds,
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
         fields: doc.fields.map((f) => ({

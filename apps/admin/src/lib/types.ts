@@ -1466,6 +1466,21 @@ export type ClubDocumentField = {
   sortOrder: number;
 };
 
+/**
+ * Rôles système (transverses au club) — alignés sur l'enum
+ * `MembershipRole` côté Prisma. Utilisés pour le ciblage des documents
+ * à signer (ainsi que d'autres modules à venir).
+ */
+export type MembershipRole =
+  | 'CLUB_ADMIN'
+  | 'BOARD'
+  | 'COACH'
+  | 'TREASURER'
+  | 'SECRETARY'
+  | 'STAFF'
+  | 'COMM_MANAGER'
+  | 'PROJECT_MANAGER';
+
 export type ClubDocument = {
   id: string;
   name: string;
@@ -1478,6 +1493,16 @@ export type ClubDocument = {
   validFrom: string;
   validTo: string | null;
   minorsOnly: boolean;
+  /**
+   * Ciblage par rôles système. Vide = tous rôles éligibles.
+   * Combiné en OR avec `targetCustomRoleIds`.
+   */
+  targetSystemRoles: MembershipRole[];
+  /**
+   * Ciblage par rôles personnalisés (ClubRoleDefinition.id).
+   * Vide = pas de filtre par rôle custom.
+   */
+  targetCustomRoleIds: string[];
   mediaAssetId: string;
   mediaAssetUrl: string | null;
   signedCount: number;
