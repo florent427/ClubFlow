@@ -144,6 +144,7 @@ export class EventsViewerResolver {
       {
         memberId: user.activeProfileMemberId,
         contactId: user.activeProfileContactId,
+        userId: user.userId,
       },
       eventId,
       note ?? undefined,

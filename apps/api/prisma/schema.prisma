@@ -3364,6 +3364,10 @@ model ClubDocument {
   validTo      DateTime?
   /// Si true, demandé uniquement aux mineurs (selon Member.birthDate).
   minorsOnly   Boolean              @default(false)
+  /// Si true, le cron annuel (1er septembre 06:00 UTC) bump la version +
+  /// invalide toutes les signatures existantes pour forcer une re-signature
+  /// à chaque saison sportive (typique pour un règlement intérieur).
+  resetAnnually Boolean             @default(false)
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
 

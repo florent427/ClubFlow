@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
@@ -15,8 +16,11 @@ import {
   MemberStatus,
   Prisma,
 } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import { ClubSendingDomainService } from '../mail/club-sending-domain.service';
+import { MAIL_TRANSPORT } from '../mail/mail.constants';
+import type { MailTransport } from '../mail/mail-transport.interface';
 import { MediaAssetsService } from '../media/media-assets.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { FieldValue, PdfSigningService } from './pdf-signing.service';
 
 /** Input pour créer un nouveau document. */
@@ -30,6 +34,7 @@ export interface CreateDocumentInput {
   validFrom: Date;
   validTo?: Date | null;
   minorsOnly?: boolean;
+  resetAnnually?: boolean;
 }
 
 /** Input pour mettre à jour un document. */
@@ -44,6 +49,7 @@ export interface UpdateDocumentInput {
   validFrom?: Date;
   validTo?: Date | null;
   minorsOnly?: boolean;
+  resetAnnually?: boolean;
 }
 
 /** Input pour upsert d'un field positionné sur le PDF. */
@@ -107,6 +113,8 @@ export class DocumentsService {
     private readonly prisma: PrismaService,
     private readonly mediaAssets: MediaAssetsService,
     private readonly pdfSigning: PdfSigningService,
+    private readonly sendingDomains: ClubSendingDomainService,
+    @Inject(MAIL_TRANSPORT) private readonly mail: MailTransport,
   ) {}
 
   // ========================================================================
@@ -162,6 +170,7 @@ export class DocumentsService {
         validFrom: input.validFrom,
         validTo: input.validTo ?? null,
         minorsOnly: input.minorsOnly ?? false,
+        resetAnnually: input.resetAnnually ?? false,
       },
       include: { fields: { orderBy: { sortOrder: 'asc' } } },
     });
@@ -199,6 +208,8 @@ export class DocumentsService {
     if (input.validFrom !== undefined) data.validFrom = input.validFrom;
     if (input.validTo !== undefined) data.validTo = input.validTo ?? null;
     if (input.minorsOnly !== undefined) data.minorsOnly = input.minorsOnly;
+    if (input.resetAnnually !== undefined)
+      data.resetAnnually = input.resetAnnually;
 
     // Changement du fichier source = nouvelle version : on bump le numéro,
     // on recalcule le hash, et on invalide toutes les signatures existantes.
@@ -649,6 +660,170 @@ export class DocumentsService {
   }
 
   // ========================================================================
+  // Notifications — envoi de relances aux membres avec docs non signés
+  // ========================================================================
+
+  /**
+   * Envoie un email de relance à chaque membre du club ayant au moins un
+   * document requis non signé pour la version courante. Un seul email
+   * par membre, listant tous les documents en attente. Les contacts sans
+   * fiche membre ne sont pas relancés (leur scope de signature dépend du
+   * foyer auquel ils sont rattachés).
+   *
+   * Retourne le nombre d'envois réussis et le nombre d'échecs (l'agrégat
+   * suffit pour le feedback admin — les détails sont logués).
+   */
+  async sendSignatureReminders(
+    clubId: string,
+  ): Promise<{ sent: number; failed: number }> {
+    const club = await this.prisma.club.findUnique({
+      where: { id: clubId },
+      select: { id: true, name: true },
+    });
+    if (!club) {
+      throw new NotFoundException('Club introuvable');
+    }
+
+    // 1. Liste tous les documents actifs+requis en cours de validité.
+    const now = new Date();
+    const documents = await this.prisma.clubDocument.findMany({
+      where: {
+        clubId,
+        isActive: true,
+        isRequired: true,
+        validFrom: { lte: now },
+        OR: [{ validTo: null }, { validTo: { gte: now } }],
+      },
+      select: { id: true, name: true, version: true, minorsOnly: true },
+    });
+    if (documents.length === 0) {
+      return { sent: 0, failed: 0 };
+    }
+
+    // 2. Liste des membres ACTIFS du club, avec leur User pour récupérer
+    //    le bon userId (la signature est unique par couple userId+memberId).
+    const members = await this.prisma.member.findMany({
+      where: { clubId, status: MemberStatus.ACTIVE },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        birthDate: true,
+        userId: true,
+      },
+    });
+
+    // 3. Snapshot des signatures pour la version courante de chaque doc.
+    //    On indexe par documentId+version → set de memberIds qui ont signé.
+    const signatures = await this.prisma.clubSignedDocument.findMany({
+      where: {
+        clubId,
+        invalidatedAt: null,
+        memberId: { not: null },
+      },
+      select: { documentId: true, version: true, memberId: true },
+    });
+    const signedByDocVersion = new Map<string, Set<string>>();
+    for (const s of signatures) {
+      if (!s.memberId) continue;
+      const key = `${s.documentId}:${s.version}`;
+      let set = signedByDocVersion.get(key);
+      if (!set) {
+        set = new Set();
+        signedByDocVersion.set(key, set);
+      }
+      set.add(s.memberId);
+    }
+
+    // 4. Pour chaque membre, calcule la liste de docs en attente.
+    type Pending = { id: string; name: string };
+    const pendingByMember = new Map<
+      string,
+      { email: string; firstName: string; pending: Pending[] }
+    >();
+    for (const m of members) {
+      const email = (m.email ?? '').trim();
+      if (!email || !m.userId) continue;
+      const memberMinor = m.birthDate ? isMinor(m.birthDate) : false;
+      const pending: Pending[] = [];
+      for (const d of documents) {
+        if (d.minorsOnly && !memberMinor) continue;
+        const key = `${d.id}:${d.version}`;
+        if (signedByDocVersion.get(key)?.has(m.id)) continue;
+        pending.push({ id: d.id, name: d.name });
+      }
+      if (pending.length > 0) {
+        pendingByMember.set(m.id, {
+          email,
+          firstName: m.firstName,
+          pending,
+        });
+      }
+    }
+    if (pendingByMember.size === 0) {
+      return { sent: 0, failed: 0 };
+    }
+
+    // 5. Envoi des emails (une relance par membre, listant tous ses docs).
+    const profile = await this.sendingDomains.getVerifiedMailProfile(
+      clubId,
+      'transactional',
+    );
+    const portalUrl =
+      process.env.MEMBER_PORTAL_ORIGIN ?? 'http://localhost:5174';
+
+    let sent = 0;
+    let failed = 0;
+    for (const [memberId, info] of pendingByMember) {
+      const list = info.pending.map((p) => `- ${p.name}`).join('\n');
+      const listHtml = info.pending
+        .map((p) => `<li>${escapeReminderHtml(p.name)}</li>`)
+        .join('');
+      const subject = `${club.name} — Documents à signer`;
+      const text = `Bonjour ${info.firstName},
+
+Vous avez ${info.pending.length} document${info.pending.length > 1 ? 's' : ''} à signer pour ${club.name} :
+${list}
+
+Connectez-vous à votre espace membre : ${portalUrl}
+
+Cordialement,
+${club.name}`;
+      const html = `
+        <p>Bonjour ${escapeReminderHtml(info.firstName)},</p>
+        <p>Vous avez <strong>${info.pending.length}</strong> document${info.pending.length > 1 ? 's' : ''} à signer pour <em>${escapeReminderHtml(club.name)}</em> :</p>
+        <ul>${listHtml}</ul>
+        <p>Connectez-vous à votre espace membre :
+          <a href="${portalUrl}">Ouvrir le portail</a>
+        </p>
+        <p>Cordialement,<br>${escapeReminderHtml(club.name)}</p>
+      `;
+      try {
+        await this.mail.sendEmail({
+          clubId,
+          kind: 'transactional',
+          from: profile.from,
+          to: info.email,
+          subject,
+          html,
+          text,
+        });
+        sent += 1;
+      } catch (err) {
+        failed += 1;
+        this.logger.error(
+          `documents.signature_reminder_failed clubId=${clubId} memberId=${memberId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    this.logger.log(
+      `documents.signature_reminders_sent clubId=${clubId} sent=${sent} failed=${failed}`,
+    );
+    return { sent, failed };
+  }
+
+  // ========================================================================
   // Helpers internes
   // ========================================================================
 
@@ -665,6 +840,14 @@ export class DocumentsService {
     const { stream } = await this.mediaAssets.streamFor(mediaAssetId);
     return await streamToBuffer(stream);
   }
+}
+
+function escapeReminderHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 // ============================================================================

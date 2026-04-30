@@ -64,6 +64,7 @@ export class ViewerDocumentsResolver {
         validFrom: doc.validFrom,
         validTo: doc.validTo,
         minorsOnly: doc.minorsOnly,
+        resetAnnually: doc.resetAnnually,
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
         fields: doc.fields.map((f) => ({

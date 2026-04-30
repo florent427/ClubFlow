@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { InvoiceStatus } from '@prisma/client';
 import Stripe from 'stripe';
 import { AccountingService } from '../accounting/accounting.service';
+import { DocumentsGatingService } from '../documents/documents-gating.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from './payments.service';
 
@@ -15,10 +16,16 @@ describe('PaymentsService / Stripe webhook', () => {
     $transaction: jest.Mock;
   };
   let accounting: { recordIncomeFromPayment: jest.Mock };
+  let documentsGating: { hasUnsignedRequiredDocuments: jest.Mock };
 
   beforeEach(async () => {
     process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_secret';
     accounting = { recordIncomeFromPayment: jest.fn().mockResolvedValue(undefined) };
+    documentsGating = {
+      hasUnsignedRequiredDocuments: jest
+        .fn()
+        .mockResolvedValue({ count: 0, documents: [] }),
+    };
     prisma = {
       stripeWebhookEvent: {
         findUnique: jest.fn().mockResolvedValue(null),
@@ -60,6 +67,7 @@ describe('PaymentsService / Stripe webhook', () => {
         PaymentsService,
         { provide: PrismaService, useValue: prisma },
         { provide: AccountingService, useValue: accounting },
+        { provide: DocumentsGatingService, useValue: documentsGating },
       ],
     }).compile();
 

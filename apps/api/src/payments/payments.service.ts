@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -12,6 +13,8 @@ import {
 } from '@prisma/client';
 import Stripe from 'stripe';
 import { AccountingService } from '../accounting/accounting.service';
+import { DocumentsGatingService } from '../documents/documents-gating.service';
+import { ModuleCode } from '../domain/module-registry/module-codes';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateInvoiceInput } from './dto/create-invoice.input';
 import { RecordManualPaymentInput } from './dto/record-manual-payment.input';
@@ -43,7 +46,70 @@ export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accounting: AccountingService,
+    private readonly documentsGating: DocumentsGatingService,
   ) {}
+
+  /**
+   * Refuse l'enregistrement d'un paiement manuel si le payeur identifié
+   * (membre OU contact rattaché à un User) a des documents requis non
+   * signés. Pas de gating si :
+   *  - aucun payeur identifié n'est passé en input (saisie admin libre)
+   *  - le module DOCUMENTS est désactivé pour ce club
+   *  - le payeur est un Contact sans User lié (cas dégradé : on tracerait
+   *    une signature impossible à vérifier)
+   *
+   * NB : on ne gate PAS le webhook Stripe (`applyStripePaymentSuccess`) :
+   * le paiement est déjà encaissé côté Stripe au moment où on reçoit
+   * l'événement, le rejeter génèrerait un trou comptable. Le gating doit
+   * être fait en amont, lors de la création de la session Checkout.
+   */
+  private async assertPayerDocumentsSignedOrThrow(
+    clubId: string,
+    paidByMemberId: string | null | undefined,
+    paidByContactId: string | null | undefined,
+  ): Promise<void> {
+    if (!paidByMemberId && !paidByContactId) return;
+    const moduleRow = await this.prisma.clubModule.findUnique({
+      where: {
+        clubId_moduleCode: { clubId, moduleCode: ModuleCode.DOCUMENTS },
+      },
+      select: { enabled: true },
+    });
+    if (!moduleRow?.enabled) return;
+
+    let userId: string | null = null;
+    let memberId: string | null = null;
+
+    if (paidByMemberId) {
+      const member = await this.prisma.member.findFirst({
+        where: { id: paidByMemberId, clubId },
+        select: { userId: true, id: true },
+      });
+      if (!member?.userId) return;
+      userId = member.userId;
+      memberId = member.id;
+    } else if (paidByContactId) {
+      const contact = await this.prisma.contact.findFirst({
+        where: { id: paidByContactId, clubId },
+        select: { userId: true },
+      });
+      if (!contact?.userId) return;
+      userId = contact.userId;
+    }
+
+    if (!userId) return;
+    const result = await this.documentsGating.hasUnsignedRequiredDocuments(
+      clubId,
+      userId,
+      memberId,
+    );
+    if (result.count > 0) {
+      const lines = result.documents.map((d) => `- ${d.name}`).join('\n');
+      throw new ForbiddenException(
+        `Le payeur doit signer les documents suivants avant tout paiement :\n${lines}`,
+      );
+    }
+  }
 
   private async assertPaidByMemberAllowedForInvoice(
     invoice: {
@@ -512,6 +578,14 @@ export class PaymentsService {
     );
     await this.assertPaidByContactAllowedForInvoice(
       invoice,
+      input.paidByContactId,
+    );
+    // Gating Documents à signer : on bloque l'enregistrement d'un paiement
+    // si le payeur identifié a des documents non signés. Voir docstring de
+    // assertPayerDocumentsSignedOrThrow pour la liste des cas non gatés.
+    await this.assertPayerDocumentsSignedOrThrow(
+      clubId,
+      input.paidByMemberId,
       input.paidByContactId,
     );
     if (invoice.status === InvoiceStatus.DRAFT) {

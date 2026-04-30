@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.guard';
 import { ViewerActiveProfileGuard } from '../common/guards/viewer-active-profile.guard';
+import { DocumentsModule } from '../documents/documents.module';
 import { FamiliesModule } from '../families/families.module';
 import { MailModule } from '../mail/mail.module';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -13,7 +14,7 @@ import {
 } from './events.resolver';
 
 @Module({
-  imports: [PrismaModule, FamiliesModule, MailModule],
+  imports: [PrismaModule, FamiliesModule, MailModule, DocumentsModule],
   controllers: [EventAttachmentsController],
   providers: [
     EventsService,

@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ClubPaymentMethod, InvoiceStatus } from '@prisma/client';
 import { AccountingService } from '../accounting/accounting.service';
+import { DocumentsGatingService } from '../documents/documents-gating.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from './payments.service';
 
@@ -13,13 +14,20 @@ describe('PaymentsService / encaissements manuels', () => {
     contact: { findFirst: jest.Mock };
     family: { findFirst: jest.Mock };
     familyMember: { findFirst: jest.Mock };
+    clubModule: { findUnique: jest.Mock };
     payment: { aggregate: jest.Mock };
     $transaction: jest.Mock;
   };
   let accounting: { recordIncomeFromPayment: jest.Mock };
+  let documentsGating: { hasUnsignedRequiredDocuments: jest.Mock };
 
   beforeEach(async () => {
     accounting = { recordIncomeFromPayment: jest.fn().mockResolvedValue(undefined) };
+    documentsGating = {
+      hasUnsignedRequiredDocuments: jest
+        .fn()
+        .mockResolvedValue({ count: 0, documents: [] }),
+    };
     prisma = {
       invoice: { findFirst: jest.fn() },
       member: { findFirst: jest.fn() },
@@ -28,6 +36,10 @@ describe('PaymentsService / encaissements manuels', () => {
         findFirst: jest.fn().mockResolvedValue({ householdGroupId: null }),
       },
       familyMember: { findFirst: jest.fn() },
+      clubModule: {
+        // Module DOCUMENTS désactivé par défaut → gating no-op.
+        findUnique: jest.fn().mockResolvedValue({ enabled: false }),
+      },
       payment: {
         aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: null } }),
       },
@@ -39,6 +51,7 @@ describe('PaymentsService / encaissements manuels', () => {
         PaymentsService,
         { provide: PrismaService, useValue: prisma },
         { provide: AccountingService, useValue: accounting },
+        { provide: DocumentsGatingService, useValue: documentsGating },
       ],
     }).compile();
 

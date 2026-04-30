@@ -59,4 +59,13 @@ export class CreateClubDocumentInput {
   @IsOptional()
   @IsBoolean()
   minorsOnly?: boolean;
+
+  @Field({
+    nullable: true,
+    description:
+      'Si true, le cron annuel (1er septembre) bump la version + invalide les signatures pour forcer une re-signature à chaque saison.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  resetAnnually?: boolean;
 }

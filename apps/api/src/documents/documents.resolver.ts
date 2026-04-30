@@ -1,14 +1,23 @@
 import { UseGuards } from '@nestjs/common';
 import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
-import type { Club, ClubDocument, ClubDocumentField } from '@prisma/client';
+import {
+  ClubDocumentCategory,
+  type Club,
+  type ClubDocument,
+  type ClubDocumentField,
+} from '@prisma/client';
 import { CurrentClub } from '../common/decorators/current-club.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequireClubModule } from '../common/decorators/require-club-module.decorator';
 import { ClubAdminRoleGuard } from '../common/guards/club-admin-role.guard';
 import { ClubContextGuard } from '../common/guards/club-context.guard';
 import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.guard';
 import { GqlJwtAuthGuard } from '../common/guards/gql-jwt-auth.guard';
+import type { RequestUser } from '../common/types/request-user';
 import { ModuleCode } from '../domain/module-registry/module-codes';
 import { PrismaService } from '../prisma/prisma.service';
+import { DocumentsCronService } from './documents-cron.service';
+import { DocumentsSeedService } from './documents-seed.service';
 import { DocumentsService } from './documents.service';
 import { ClubDocumentFieldInput } from './dto/club-document-field.input';
 import { CreateClubDocumentInput } from './dto/create-club-document.input';
@@ -18,7 +27,9 @@ import {
   ClubDocumentGraph,
 } from './models/club-document.model';
 import { ClubSignedDocumentGraph } from './models/club-signed-document.model';
+import { DocumentRemindersResultGraph } from './models/document-reminders-result.model';
 import { DocumentSignatureStatsGraph } from './models/document-signature-stats.model';
+import { DocumentYearlyResetResultGraph } from './models/document-yearly-reset-result.model';
 
 type DocumentRow = ClubDocument & { fields: ClubDocumentField[] };
 
@@ -69,6 +80,7 @@ async function documentToGraph(
     validFrom: doc.validFrom,
     validTo: doc.validTo,
     minorsOnly: doc.minorsOnly,
+    resetAnnually: doc.resetAnnually,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
     fields: doc.fields.map(fieldToGraph),
@@ -87,6 +99,8 @@ async function documentToGraph(
 export class DocumentsResolver {
   constructor(
     private readonly documents: DocumentsService,
+    private readonly seed: DocumentsSeedService,
+    private readonly cron: DocumentsCronService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -152,6 +166,7 @@ export class DocumentsResolver {
       validFrom: input.validFrom,
       validTo: input.validTo ?? null,
       minorsOnly: input.minorsOnly,
+      resetAnnually: input.resetAnnually,
     });
     return documentToGraph(this.prisma, row);
   }
@@ -171,6 +186,7 @@ export class DocumentsResolver {
       validFrom: input.validFrom,
       validTo: input.validTo,
       minorsOnly: input.minorsOnly,
+      resetAnnually: input.resetAnnually,
     });
     return documentToGraph(this.prisma, row);
   }
@@ -221,6 +237,51 @@ export class DocumentsResolver {
       })),
     );
     return rows.map(fieldToGraph);
+  }
+
+  // ----------------------------------------------------------------
+  // Mutations — relances + templates
+  // ----------------------------------------------------------------
+
+  @Mutation(() => DocumentRemindersResultGraph, {
+    name: 'triggerClubDocumentReminders',
+    description:
+      'Envoie un email de relance à chaque membre actif ayant au moins un document requis non signé pour la version courante.',
+  })
+  triggerClubDocumentReminders(
+    @CurrentClub() club: Club,
+  ): Promise<DocumentRemindersResultGraph> {
+    return this.documents.sendSignatureReminders(club.id);
+  }
+
+  @Mutation(() => ClubDocumentGraph, {
+    name: 'createClubDocumentFromTemplate',
+    description:
+      'Crée un document pré-rempli (PDF généré) pour une catégorie donnée. L\'admin pourra ensuite remplacer le PDF source.',
+  })
+  async createClubDocumentFromTemplate(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('category', { type: () => ClubDocumentCategory })
+    category: ClubDocumentCategory,
+  ): Promise<ClubDocumentGraph> {
+    const row = await this.seed.createDocumentFromTemplate(
+      club.id,
+      user.userId,
+      category,
+    );
+    return documentToGraph(this.prisma, row);
+  }
+
+  @Mutation(() => DocumentYearlyResetResultGraph, {
+    name: 'triggerClubYearlyDocumentReset',
+    description:
+      "Déclenche manuellement le reset annuel pour le club courant : bump de version + invalidation des signatures pour tous les documents resetAnnually=true. À appeler aussi depuis un cron annuel (1er septembre 06h UTC).",
+  })
+  triggerClubYearlyDocumentReset(
+    @CurrentClub() club: Club,
+  ): Promise<DocumentYearlyResetResultGraph> {
+    return this.cron.resetYearlySignatures(club.id);
   }
 }
 

@@ -12,6 +12,8 @@ import {
   MemberStatus,
   Prisma,
 } from '@prisma/client';
+import { DocumentsGatingService } from '../documents/documents-gating.service';
+import { ModuleCode } from '../domain/module-registry/module-codes';
 import { ClubSendingDomainService } from '../mail/club-sending-domain.service';
 import { MAIL_TRANSPORT } from '../mail/mail.constants';
 import type { MailTransport } from '../mail/mail-transport.interface';
@@ -26,6 +28,8 @@ import { EventConvocationMode } from './enums/event-convocation-mode.enum';
 type Viewer = {
   memberId?: string | null;
   contactId?: string | null;
+  /** Auth user — utilisé pour le gating Documents à signer. */
+  userId?: string | null;
 };
 
 function escapeHtml(s: string): string {
@@ -64,7 +68,44 @@ export class EventsService {
     private readonly prisma: PrismaService,
     private readonly sendingDomains: ClubSendingDomainService,
     @Inject(MAIL_TRANSPORT) private readonly mail: MailTransport,
+    private readonly documentsGating: DocumentsGatingService,
   ) {}
+
+  /**
+   * Refuse l'inscription si le viewer (couple userId + memberId) a des
+   * documents requis non signés. Pas de gating si le module DOCUMENTS est
+   * désactivé pour le club, ni pour les contacts (qui n'ont pas de fiche
+   * membre — on n'a aucun moyen fiable de leur demander une signature).
+   *
+   * Comportement non bloquant si userId est absent (auto-sécurité : on ne
+   * gate que ce qu'on peut tracer côté audit trail).
+   */
+  private async assertDocumentsSignedOrThrow(
+    clubId: string,
+    userId: string | null | undefined,
+    memberId: string | null | undefined,
+  ): Promise<void> {
+    if (!userId) return;
+    if (!memberId) return;
+    const moduleRow = await this.prisma.clubModule.findUnique({
+      where: {
+        clubId_moduleCode: { clubId, moduleCode: ModuleCode.DOCUMENTS },
+      },
+      select: { enabled: true },
+    });
+    if (!moduleRow?.enabled) return;
+    const result = await this.documentsGating.hasUnsignedRequiredDocuments(
+      clubId,
+      userId,
+      memberId,
+    );
+    if (result.count > 0) {
+      const lines = result.documents.map((d) => `- ${d.name}`).join('\n');
+      throw new ForbiddenException(
+        `Vous devez signer les documents suivants avant de vous inscrire :\n${lines}`,
+      );
+    }
+  }
 
   async listAdmin(clubId: string) {
     const events = await this.prisma.clubEvent.findMany({
@@ -234,6 +275,16 @@ export class EventsService {
         : r.contactId === viewer.contactId,
     );
     if (alreadyRegistered) return this.hydrate(event, viewer);
+
+    // Gating Documents à signer : un membre avec des documents requis
+    // non signés ne peut pas s'inscrire à un événement. Le check est
+    // silencieux si pas de userId (admin agissant pour le membre — voir
+    // adminRegisterMember : on traite ce cas comme une exception manuelle).
+    await this.assertDocumentsSignedOrThrow(
+      clubId,
+      viewer.userId ?? null,
+      viewer.memberId ?? null,
+    );
 
     const registeredCount = activeRegs.filter(
       (r) => r.status === ClubEventRegistrationStatus.REGISTERED,

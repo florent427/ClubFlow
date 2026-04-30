@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -14,6 +15,8 @@ import {
   SubscriptionBillingRhythm,
   type Prisma,
 } from '@prisma/client';
+import { DocumentsGatingService } from '../documents/documents-gating.service';
+import { ModuleCode } from '../domain/module-registry/module-codes';
 import { FamiliesService } from '../families/families.service';
 import { ClubContactsService } from '../members/club-contacts.service';
 import { MemberAccountActivationService } from '../members/member-account-activation.service';
@@ -70,7 +73,39 @@ export class ViewerService {
     private readonly membershipCart: MembershipCartService,
     private readonly stripeCheckout: StripeCheckoutService,
     private readonly memberActivation: MemberAccountActivationService,
+    private readonly documentsGating: DocumentsGatingService,
   ) {}
+
+  /**
+   * Refuse la création d'une session Stripe Checkout si le payeur a des
+   * documents requis non signés. On gate ici (et pas dans le webhook) pour
+   * éviter d'avoir à rejeter un paiement déjà encaissé côté Stripe — le
+   * webhook payment_intent.succeeded reste sans gating.
+   */
+  private async assertViewerDocumentsSignedOrThrow(
+    clubId: string,
+    viewerUserId: string,
+    activeProfile: { memberId: string | null; contactId: string | null },
+  ): Promise<void> {
+    const moduleRow = await this.prisma.clubModule.findUnique({
+      where: {
+        clubId_moduleCode: { clubId, moduleCode: ModuleCode.DOCUMENTS },
+      },
+      select: { enabled: true },
+    });
+    if (!moduleRow?.enabled) return;
+    const result = await this.documentsGating.hasUnsignedRequiredDocuments(
+      clubId,
+      viewerUserId,
+      activeProfile.memberId,
+    );
+    if (result.count > 0) {
+      const lines = result.documents.map((d) => `- ${d.name}`).join('\n');
+      throw new ForbiddenException(
+        `Vous devez signer les documents suivants avant de payer :\n${lines}`,
+      );
+    }
+  }
 
   /**
    * Ensemble des foyers dont les factures sont accessibles au visiteur dans
@@ -196,6 +231,15 @@ export class ViewerService {
     if (!invoice) {
       throw new NotFoundException('Facture introuvable ou déjà réglée.');
     }
+    // Gating Documents à signer : avant de générer la session Checkout
+    // (et donc d'engager des frais Stripe non remboursables), on vérifie
+    // que le payeur a signé tous les documents requis. Le webhook reste
+    // sans gating.
+    await this.assertViewerDocumentsSignedOrThrow(
+      args.clubId,
+      args.viewerUserId,
+      args.activeProfile,
+    );
     // Verrouille la méthode + l'échéancier sur la facture pour traçabilité
     // back-office (le club voit "carte 3x" comme choix du payeur même si
     // Stripe lui-même retombe en comptant).

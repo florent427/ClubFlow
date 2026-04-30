@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.guard';
 import { ViewerActiveProfileGuard } from '../common/guards/viewer-active-profile.guard';
+import { DocumentsModule } from '../documents/documents.module';
 import { FamiliesModule } from '../families/families.module';
 import { MembersModule } from '../members/members.module';
 import { MembershipModule } from '../membership/membership.module';
@@ -20,6 +21,7 @@ import { ViewerService } from './viewer.service';
     MembersModule,
     MembershipModule,
     PaymentsModule,
+    DocumentsModule,
   ],
   providers: [
     ViewerService,

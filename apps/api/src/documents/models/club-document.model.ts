@@ -91,6 +91,12 @@ export class ClubDocumentGraph {
   @Field()
   minorsOnly!: boolean;
 
+  @Field({
+    description:
+      'Si true, le cron annuel (1er septembre) bump la version + invalide les signatures.',
+  })
+  resetAnnually!: boolean;
+
   @Field()
   createdAt!: Date;
 
