@@ -23,6 +23,10 @@ import {
   VIEWER_ME,
   VIEWER_UPCOMING_SLOTS,
 } from '../lib/viewer-documents';
+import {
+  VIEWER_DOCUMENTS_TO_SIGN,
+  type ViewerDocumentsToSignData,
+} from '../lib/documents-graphql';
 import type {
   ClubQueryData,
   ViewerAdminSwitchData,
@@ -68,6 +72,12 @@ export function HomeDashboardScreen() {
   const billQ = useQuery<ViewerBillingData>(VIEWER_FAMILY_BILLING, {
     errorPolicy: 'all',
   });
+  const docsToSignQ = useQuery<ViewerDocumentsToSignData>(
+    VIEWER_DOCUMENTS_TO_SIGN,
+    { errorPolicy: 'all', fetchPolicy: 'cache-and-network' },
+  );
+  const docsToSignCount =
+    docsToSignQ.data?.viewerDocumentsToSign?.length ?? 0;
 
   const me = meData?.viewerMe;
   const adminSwitch = adminSwitchData?.viewerAdminSwitch;
@@ -167,6 +177,41 @@ export function HomeDashboardScreen() {
               />
             ) : null}
           </View>
+
+          {/* === BANNIÈRE DOCUMENTS À SIGNER === */}
+          {docsToSignCount > 0 ? (
+            <AnimatedPressable
+              onPress={() => navigation.navigate('Documents')}
+              accessibilityRole="button"
+              accessibilityLabel={`${docsToSignCount} document à signer`}
+              style={styles.docsBanner}
+            >
+              <View style={styles.docsBannerIcon}>
+                <Ionicons
+                  name="alert-circle"
+                  size={22}
+                  color={palette.warningText}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.docsBannerTitle}>
+                  {docsToSignCount} document
+                  {docsToSignCount > 1 ? 's' : ''} à signer
+                </Text>
+                <Text style={styles.docsBannerSub}>
+                  Signez maintenant pour finaliser votre adhésion.
+                </Text>
+              </View>
+              <View style={styles.docsBannerCta}>
+                <Text style={styles.docsBannerCtaText}>Signer</Text>
+                <Ionicons
+                  name="arrow-forward"
+                  size={14}
+                  color={palette.warningText}
+                />
+              </View>
+            </AnimatedPressable>
+          ) : null}
 
           <JoinFamilyByPayerEmailCta variant="dashboard" />
 
@@ -573,4 +618,50 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   linkText: { ...typography.bodyStrong, color: palette.primary },
+
+  // === Bannière documents à signer ===
+  docsBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    backgroundColor: palette.warningBg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: palette.warningBorder,
+  },
+  docsBannerIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(245, 158, 11, 0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  docsBannerTitle: {
+    ...typography.bodyStrong,
+    color: palette.warningText,
+  },
+  docsBannerSub: {
+    ...typography.small,
+    color: palette.warningText,
+    marginTop: 2,
+  },
+  docsBannerCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: palette.warningBorder,
+  },
+  docsBannerCtaText: {
+    ...typography.smallStrong,
+    color: palette.warningText,
+    fontSize: 12,
+  },
 });

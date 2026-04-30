@@ -3,6 +3,7 @@ import { useQuery } from '@apollo/client/react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BookingScreen } from '../screens/BookingScreen';
+import { DocumentsNavigator } from '../screens/documents/DocumentsNavigator';
 import { EventsScreen } from '../screens/EventsScreen';
 import { FamilyScreen } from '../screens/FamilyScreen';
 import { HomeContactScreen } from '../screens/HomeContactScreen';
@@ -168,6 +169,30 @@ export function MemberTabsNavigator() {
         }}
       />
       <MemberTab.Screen
+        name="Documents"
+        component={DocumentsNavigator}
+        options={({ route }) => {
+          // Cache la tab bar quand on est sur l'écran de signature
+          // (libère de l'espace pour la signature tactile + boutons).
+          const sub = (
+            route as unknown as {
+              state?: { routes?: { name?: string }[]; index?: number };
+            }
+          ).state;
+          const focused = sub?.routes?.[sub?.index ?? 0]?.name;
+          const inSign = focused === 'DocumentSign';
+          return {
+            headerShown: false,
+            title: 'Documents',
+            tabBarLabel: 'Docs',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="document-text-outline" size={size} color={color} />
+            ),
+            tabBarStyle: inSign ? { display: 'none' } : undefined,
+          };
+        }}
+      />
+      <MemberTab.Screen
         name="Parametres"
         component={SettingsScreen}
         options={{
@@ -244,6 +269,28 @@ export function ContactTabsNavigator() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="star-outline" size={size} color={color} />
           ),
+        }}
+      />
+      <ContactTab.Screen
+        name="Documents"
+        component={DocumentsNavigator}
+        options={({ route }) => {
+          const sub = (
+            route as unknown as {
+              state?: { routes?: { name?: string }[]; index?: number };
+            }
+          ).state;
+          const focused = sub?.routes?.[sub?.index ?? 0]?.name;
+          const inSign = focused === 'DocumentSign';
+          return {
+            headerShown: false,
+            title: 'Documents',
+            tabBarLabel: 'Docs',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="document-text-outline" size={size} color={color} />
+            ),
+            tabBarStyle: inSign ? { display: 'none' } : undefined,
+          };
         }}
       />
     </ContactTab.Navigator>

@@ -8,12 +8,23 @@ export type MainTabParamList = {
   Messagerie: undefined;
   Famille: undefined;
   Parametres: undefined;
+  Documents: undefined;
 };
 
 export type ContactTabParamList = {
   Home: undefined;
   Actus: undefined;
   Evenements: undefined;
+  Documents: undefined;
+};
+
+/**
+ * Stack interne au tab "Documents" — liste puis écran de signature
+ * d'un document précis.
+ */
+export type DocumentsStackParamList = {
+  DocumentsToSign: undefined;
+  DocumentSign: { documentId: string };
 };
 
 export type RootStackParamList = {
