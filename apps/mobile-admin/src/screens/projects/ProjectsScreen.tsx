@@ -95,6 +95,7 @@ export function ProjectsScreen() {
         title="Projets"
         subtitle="Saisons, événements long-terme"
         compact
+        showBack
       />
       <FilterChipBar
         chips={STATUS_CHIPS}

@@ -81,6 +81,7 @@ export function PlanningScreen() {
         title="Planning sportif"
         subtitle={`${data?.clubCourseSlots?.length ?? 0} créneaux`}
         compact
+        showBack
       />
       <DataTable
         data={rows}

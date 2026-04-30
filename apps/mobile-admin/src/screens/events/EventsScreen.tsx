@@ -93,6 +93,7 @@ export function EventsScreen() {
         title="Agenda"
         subtitle={`${data?.clubEvents?.length ?? 0} événements`}
         compact
+        showBack
       />
       <View style={styles.filterWrap}>
         <FilterChipBar

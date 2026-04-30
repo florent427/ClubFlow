@@ -76,6 +76,7 @@ export function BookingScreen() {
         title="Réservations"
         subtitle={`${rows.length} créneaux réservables`}
         compact
+        showBack
       />
       <DataTable
         data={rows}

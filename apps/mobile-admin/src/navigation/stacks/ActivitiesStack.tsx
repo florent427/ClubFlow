@@ -1,4 +1,5 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { ActivitiesHomeScreen } from '../../screens/activities/ActivitiesHomeScreen';
 import { BookingScreen } from '../../screens/booking/BookingScreen';
 import { BookingSlotDetailScreen } from '../../screens/booking/BookingSlotDetailScreen';
 import { CourseSlotDetailScreen } from '../../screens/planning/CourseSlotDetailScreen';
@@ -16,16 +17,17 @@ import { ProjectsScreen } from '../../screens/projects/ProjectsScreen';
 const Stack = createNativeStackNavigator();
 
 /**
- * Stack "Activités" : agrège planning + events + projects + booking
- * dans une navigation imbriquée. La racine est une vue tabbée custom
- * (ActivitiesHomeScreen) qui aiguille vers chaque sous-section.
+ * Stack "Activités" : racine = écran de choix (ActivitiesHomeScreen)
+ * qui aiguille vers Planning / Événements / Projets / Réservations.
+ * Chaque sous-écran a un back button qui ramène à la racine.
  */
 export function ActivitiesStack() {
   return (
     <Stack.Navigator
-      initialRouteName="Planning"
+      initialRouteName="Home"
       screenOptions={{ headerShown: false }}
     >
+      <Stack.Screen name="Home" component={ActivitiesHomeScreen} />
       <Stack.Screen name="Planning" component={PlanningScreen} />
       <Stack.Screen name="CourseSlotDetail" component={CourseSlotDetailScreen} />
       <Stack.Screen name="NewCourseSlot" component={NewCourseSlotScreen} />
