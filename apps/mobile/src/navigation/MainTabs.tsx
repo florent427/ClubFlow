@@ -180,7 +180,12 @@ export function MemberTabsNavigator() {
             }
           ).state;
           const focused = sub?.routes?.[sub?.index ?? 0]?.name;
-          const inSign = focused === 'DocumentSign';
+          // Cache la tab bar dès qu'on quitte la liste — l'aperçu PDF
+          // (DocumentPreview) profite d'un viewer plein écran, et l'écran
+          // de signature (DocumentSign) a besoin de toute la hauteur dispo
+          // pour ses champs + bouton "Valider".
+          const hideTabBar =
+            focused === 'DocumentSign' || focused === 'DocumentPreview';
           return {
             headerShown: false,
             title: 'Documents',
@@ -188,7 +193,7 @@ export function MemberTabsNavigator() {
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="document-text-outline" size={size} color={color} />
             ),
-            tabBarStyle: inSign ? { display: 'none' } : undefined,
+            tabBarStyle: hideTabBar ? { display: 'none' } : undefined,
           };
         }}
       />
@@ -281,7 +286,12 @@ export function ContactTabsNavigator() {
             }
           ).state;
           const focused = sub?.routes?.[sub?.index ?? 0]?.name;
-          const inSign = focused === 'DocumentSign';
+          // Cache la tab bar dès qu'on quitte la liste — l'aperçu PDF
+          // (DocumentPreview) profite d'un viewer plein écran, et l'écran
+          // de signature (DocumentSign) a besoin de toute la hauteur dispo
+          // pour ses champs + bouton "Valider".
+          const hideTabBar =
+            focused === 'DocumentSign' || focused === 'DocumentPreview';
           return {
             headerShown: false,
             title: 'Documents',
@@ -289,7 +299,7 @@ export function ContactTabsNavigator() {
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="document-text-outline" size={size} color={color} />
             ),
-            tabBarStyle: inSign ? { display: 'none' } : undefined,
+            tabBarStyle: hideTabBar ? { display: 'none' } : undefined,
           };
         }}
       />

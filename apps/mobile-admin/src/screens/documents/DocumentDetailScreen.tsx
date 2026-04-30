@@ -8,6 +8,7 @@ import {
   Pill,
   ScreenContainer,
   ScreenHero,
+  absolutizeMediaUrl,
   formatDateShort,
   palette,
   radius,
@@ -173,12 +174,15 @@ export function DocumentDetailScreen() {
   };
 
   const onOpenSourcePdf = async () => {
-    if (!doc.mediaAssetUrl) {
+    // Réécrit `localhost` → IP LAN via EXPO_PUBLIC_API_BASE pour que le
+    // téléphone puisse résoudre l'URL (cf. helper absolutizeMediaUrl).
+    const resolved = absolutizeMediaUrl(doc.mediaAssetUrl);
+    if (!resolved) {
       Alert.alert('Indisponible', 'L\'URL du document source est introuvable.');
       return;
     }
     try {
-      await Linking.openURL(doc.mediaAssetUrl);
+      await Linking.openURL(resolved);
     } catch {
       Alert.alert('Erreur', 'Impossible d\'ouvrir le PDF.');
     }

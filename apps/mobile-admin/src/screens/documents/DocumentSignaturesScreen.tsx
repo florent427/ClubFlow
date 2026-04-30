@@ -5,6 +5,7 @@ import {
   FilterChipBar,
   ScreenContainer,
   ScreenHero,
+  absolutizeMediaUrl,
   formatDateTime,
   palette,
   type DataTableRow,
@@ -113,12 +114,15 @@ export function DocumentSignaturesScreen() {
   const handleOpenSigned = async (id: string) => {
     const sig = signatures.find((s) => s.id === id);
     if (!sig) return;
-    if (!sig.signedAssetUrl) {
+    // Réécrit `localhost` → IP LAN via EXPO_PUBLIC_API_BASE pour le
+    // téléphone (cf. helper absolutizeMediaUrl).
+    const resolved = absolutizeMediaUrl(sig.signedAssetUrl);
+    if (!resolved) {
       Alert.alert('Indisponible', 'L\'URL du PDF signé est introuvable.');
       return;
     }
     try {
-      await Linking.openURL(sig.signedAssetUrl);
+      await Linking.openURL(resolved);
     } catch {
       Alert.alert('Erreur', 'Impossible d\'ouvrir le PDF signé.');
     }

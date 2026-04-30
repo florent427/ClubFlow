@@ -36,10 +36,15 @@ type Nav = NativeStackNavigationProp<DocumentsStackParamList>;
 
 function DocumentCard({
   doc,
-  onSign,
+  onPreview,
 }: {
   doc: ClubDocumentToSign;
-  onSign: () => void;
+  /**
+   * Ouvre l'aperçu PDF (DocumentPreviewScreen). C'est l'étape obligatoire
+   * avant de pouvoir signer — l'utilisateur doit lire le PDF puis cliquer
+   * sur "Signer ce document" depuis le viewer plein écran.
+   */
+  onPreview: () => void;
 }) {
   const icon = CATEGORY_ICON[doc.category] ?? 'document-outline';
   const catLabel = CATEGORY_LABEL[doc.category] ?? 'Document';
@@ -77,10 +82,12 @@ function DocumentCard({
         />
       </View>
 
+      {/* CTA principal — ouvre l'aperçu PDF ; la signature elle-même
+          est l'étape suivante depuis le DocumentPreviewScreen. */}
       <GradientButton
-        label="Signer"
-        onPress={onSign}
-        icon="create-outline"
+        label="Lire et signer"
+        onPress={onPreview}
+        icon="eye-outline"
         gradient="primary"
         fullWidth
       />
@@ -124,8 +131,8 @@ export function DocumentsToSignScreen() {
         renderItem={({ item }) => (
           <DocumentCard
             doc={item}
-            onSign={() =>
-              navigation.navigate('DocumentSign', { documentId: item.id })
+            onPreview={() =>
+              navigation.navigate('DocumentPreview', { documentId: item.id })
             }
           />
         )}

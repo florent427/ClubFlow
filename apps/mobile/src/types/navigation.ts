@@ -19,11 +19,14 @@ export type ContactTabParamList = {
 };
 
 /**
- * Stack interne au tab "Documents" — liste puis écran de signature
- * d'un document précis.
+ * Stack interne au tab "Documents" — flux à 3 écrans :
+ *  1. liste des documents à signer
+ *  2. aperçu PDF plein écran (lecture avant signature)
+ *  3. écran de signature (champs + ouverture des modales de signature)
  */
 export type DocumentsStackParamList = {
   DocumentsToSign: undefined;
+  DocumentPreview: { documentId: string };
   DocumentSign: { documentId: string };
 };
 
