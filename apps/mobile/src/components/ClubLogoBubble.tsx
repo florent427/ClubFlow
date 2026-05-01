@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
-import { palette, radius, typography } from '../lib/theme';
+import { useApolloClient } from '@apollo/client/react';
+import { useEffect, useRef, useState } from 'react';
+import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { palette, typography } from '../lib/theme';
 import { useClubTheme } from '../lib/theme-context';
 import { absolutizeMediaUrl } from '../lib/absolutize-url';
+import { CLUB_BRANDING } from '../lib/viewer-documents';
 
 type Props = {
   /** Diamètre du cercle (par défaut 44 px). */
@@ -22,29 +24,31 @@ type Props = {
  * pas (URL invalide, 404, hors-ligne…), bascule automatiquement sur
  * les **initiales** du nom du club.
  *
- * Pourquoi ce composant ?
- *
- * Dans la version précédente, on essayait simplement `<Image source={uri}/>`
- * et on obtenait un **cercle blanc vide** quand l'URL était cassée — sans
- * indication ni fallback. Maintenant :
- *  1. on tente le chargement
- *  2. si succès → image affichée
- *  3. si erreur → fallback initiales colorées (toujours visible, identifiable)
+ * Tap → Alert de **diagnostic** affichant l'URL tentée + l'état de
+ * chargement (loading / loaded / failed avec message d'erreur). Sert
+ * à débugger les cas où le logo n'apparaît pas en prod : l'utilisateur
+ * peut prendre une capture d'écran de l'alerte et la partager pour
+ * que l'on identifie le problème (URL incorrecte ? 404 ? CORS ?).
  *
  * Le composant lit le club courant via `useClubTheme()` et n'affiche
- * **rien** si on n'est pas dans un contexte branded (pas de logo et pas
- * de nom — pas de contexte club).
+ * **rien** si on n'est pas dans un contexte branded (pas de logo et
+ * pas de nom — pas de contexte club).
  */
 export function ClubLogoBubble({
   size = 44,
   variant = 'light',
 }: Props = {}) {
   const clubTheme = useClubTheme();
+  const apolloClient = useApolloClient();
   const [imageFailed, setImageFailed] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const errorMsgRef = useRef<string | null>(null);
 
   // Réinitialise le fallback quand l'URL change (changement de club…).
   useEffect(() => {
     setImageFailed(false);
+    setImageLoaded(false);
+    errorMsgRef.current = null;
   }, [clubTheme.clubLogoUrl]);
 
   // Pas de logo défini ET pas de nom de club → on n'affiche rien.
@@ -55,17 +59,62 @@ export function ClubLogoBubble({
   const rawUrl = clubTheme.clubLogoUrl;
   // **Garde-fou anti-data URL legacy** : avant migration, l'admin stockait
   // le logo comme `data:image/png;base64,...` directement dans
-  // `Club.logoUrl`. Le DTO `UpdateClubBrandingInput.logoUrl` est limité
-  // à 2000 chars ; toute image > ~1.5 KB est nécessairement TRONQUÉE
-  // → la WebView RN reçoit un base64 invalide et ne fire pas toujours
-  // `onError`, laissant un cercle blanc vide. On treat ces URLs comme
-  // failed dès le départ pour fallback immédiat sur les initiales.
+  // `Club.logoUrl`. Le DTO est maintenant limité à 2000 chars ; toute
+  // image > ~1.5 KB est nécessairement TRONQUÉE → la WebView RN reçoit un
+  // base64 invalide et ne fire pas toujours `onError`. On treat ces URLs
+  // comme failed dès le départ pour fallback immédiat sur les initiales.
   const isLegacyDataUrl = rawUrl?.startsWith('data:') ?? false;
   const url = isLegacyDataUrl ? null : absolutizeMediaUrl(rawUrl);
   const showImage = url && !imageFailed;
 
   const initials = makeInitials(clubTheme.clubName);
   const isLight = variant === 'light';
+
+  /**
+   * Tap → diagnostic. Affiche le pipeline complet de l'URL pour
+   * débugger les cas où le logo ne s'affiche pas. Bouton "Recharger"
+   * force un refetch CLUB_BRANDING (utile si l'admin vient
+   * d'uploader un nouveau logo et qu'on a la valeur cachée).
+   */
+  function showDiagnostic() {
+    const lines: string[] = [];
+    lines.push(`Nom : ${clubTheme.clubName ?? '(non défini)'}`);
+    lines.push('');
+    lines.push(`URL en DB :\n${rawUrl ?? '(null — pas de logo configuré)'}`);
+    if (isLegacyDataUrl) {
+      lines.push('');
+      lines.push(
+        '⚠ Format legacy détecté (data:base64).\nRe-uploadez le logo via Admin → Identité du club.',
+      );
+    } else if (rawUrl) {
+      lines.push('');
+      lines.push(`URL résolue (mobile) :\n${url ?? '(échec absolutize)'}`);
+      lines.push('');
+      if (imageLoaded) {
+        lines.push('✓ Image chargée');
+      } else if (imageFailed) {
+        lines.push(`✗ Échec : ${errorMsgRef.current ?? '(pas de détail)'}`);
+      } else {
+        lines.push('… Chargement en cours');
+      }
+    }
+    Alert.alert('Diagnostic logo club', lines.join('\n'), [
+      {
+        text: 'Recharger',
+        onPress: () => {
+          // Force un refetch de CLUB_BRANDING pour récupérer le
+          // nouveau logoUrl si l'admin vient de l'uploader. Reset
+          // aussi les flags d'erreur pour donner une chance à la
+          // nouvelle image de se charger.
+          setImageFailed(false);
+          setImageLoaded(false);
+          errorMsgRef.current = null;
+          void apolloClient.refetchQueries({ include: [CLUB_BRANDING] });
+        },
+      },
+      { text: 'OK', style: 'cancel' },
+    ]);
+  }
 
   const containerStyle = [
     styles.bubble,
@@ -78,7 +127,12 @@ export function ClubLogoBubble({
   ];
 
   return (
-    <View style={containerStyle}>
+    <Pressable
+      onPress={showDiagnostic}
+      accessibilityRole="image"
+      accessibilityLabel={`Logo ${clubTheme.clubName ?? 'club'}. Toucher pour le diagnostic.`}
+      style={containerStyle}
+    >
       {showImage ? (
         <Image
           source={{ uri: url }}
@@ -88,9 +142,18 @@ export function ClubLogoBubble({
           }}
           resizeMode="contain"
           accessibilityIgnoresInvertColors
-          onError={() => {
-            // L'URL a échoué (404, CORS, hôte inaccessible…) — on bascule
-            // sur les initiales pour ne pas laisser un cercle blanc vide.
+          onLoad={() => {
+            setImageLoaded(true);
+          }}
+          onError={(evt) => {
+            // L'URL a échoué (404, CORS, hôte inaccessible, format
+            // invalide…) — on bascule sur les initiales pour ne pas
+            // laisser un cercle blanc vide. On capture aussi le
+            // message d'erreur natif pour l'afficher dans le diagnostic.
+            const err = evt?.nativeEvent?.error ?? 'erreur inconnue';
+            errorMsgRef.current = String(err);
+            // eslint-disable-next-line no-console
+            console.warn('[ClubLogoBubble] Image load error:', err, 'URL:', url);
             setImageFailed(true);
           }}
         />
@@ -107,7 +170,7 @@ export function ClubLogoBubble({
           {initials}
         </Text>
       )}
-    </View>
+    </Pressable>
   );
 }
 

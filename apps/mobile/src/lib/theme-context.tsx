@@ -151,15 +151,22 @@ function buildClubTheme(
 }
 
 /**
- * Provider qui charge la query CLUB_BRANDING (cache-first) et propage
- * un theme override basé sur les couleurs du club. Si la session
- * mobile n'est pas encore initialisée (token/clubId absents), Apollo
- * ne lance pas la query et le default theme s'applique.
+ * Provider qui charge la query CLUB_BRANDING et propage un theme
+ * override basé sur les couleurs du club. Si la session mobile n'est
+ * pas encore initialisée (token/clubId absents), Apollo ne lance pas
+ * la query et le default theme s'applique.
+ *
+ * **Politique de cache** : `cache-and-network` à chaque mount —
+ * affiche immédiatement la dernière valeur connue, puis rafraîchit
+ * depuis le serveur. Indispensable pour récupérer un nouveau logo
+ * dès que l'admin l'upload, sans devoir kill l'app. La requête est
+ * légère (un seul row, quelques champs), donc on peut se permettre de
+ * la rejouer à chaque ouverture du provider.
  */
 export function ClubThemeProvider({ children }: { children: ReactNode }) {
   const { data } = useQuery<ClubBrandingData>(CLUB_BRANDING, {
     fetchPolicy: 'cache-and-network',
-    nextFetchPolicy: 'cache-first',
+    nextFetchPolicy: 'cache-and-network',
     errorPolicy: 'all',
   });
 
