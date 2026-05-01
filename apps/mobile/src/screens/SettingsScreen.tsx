@@ -144,7 +144,10 @@ export function SettingsScreen() {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      // expo-image-picker v17+ : `MediaTypeOptions` est déprécié, on
+      // passe un tableau de `MediaType` (les valeurs sont 'images',
+      // 'videos', 'livePhotos').
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8,
@@ -166,7 +169,10 @@ export function SettingsScreen() {
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      // expo-image-picker v17+ : `MediaTypeOptions` est déprécié, on
+      // passe un tableau de `MediaType` (les valeurs sont 'images',
+      // 'videos', 'livePhotos').
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8,

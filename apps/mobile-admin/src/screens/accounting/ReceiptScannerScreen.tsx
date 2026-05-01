@@ -60,7 +60,9 @@ export function ReceiptScannerScreen() {
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      // expo-image-picker v17+ : `MediaTypeOptions` est déprécié — on
+      // passe un tableau de `MediaType` ('images' / 'videos' / 'livePhotos').
+      mediaTypes: ['images'],
       quality: 0.8,
       allowsEditing: false,
     });
@@ -79,7 +81,9 @@ export function ReceiptScannerScreen() {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      // expo-image-picker v17+ : `MediaTypeOptions` est déprécié — on
+      // passe un tableau de `MediaType` ('images' / 'videos' / 'livePhotos').
+      mediaTypes: ['images'],
       quality: 0.8,
     });
     if (result.canceled || result.assets.length === 0) return;
