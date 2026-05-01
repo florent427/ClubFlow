@@ -1225,12 +1225,18 @@ export class AccountingService {
       for (const line of entry.lines) {
         const isExpenseSide = line.debitCents > 0 && line.creditCents === 0;
         const isIncomeSide = line.creditCents > 0 && line.debitCents === 0;
-        // Détecte la ligne "banque/caisse" (contrepartie) :
-        // - codes PCG canoniques 512xxx (banques) ou 530xxx (caisses)
-        // - OU côté CREDIT pour une dépense (la convention OCR_AI)
-        const isBankLine =
-          /^51\d{4}$/.test(line.accountCode) ||
-          /^53\d{4}$/.test(line.accountCode);
+        // ⚠ Détection de la ligne "banque/caisse" basée sur le RÔLE
+        // (= side selon entry.kind), PAS sur le code de compte. Si
+        // l'IA a halluciné en plaçant un code 53xxxx sur la ligne
+        // ARTICLE débit, l'ancienne détection par regex de code la
+        // considérait comme "banque" → l'utilisateur ne pouvait PAS
+        // la modifier via le drawer.
+        //
+        // Logique :
+        // - Dépense : ligne DÉBIT = article, ligne CRÉDIT = banque/caisse
+        // - Recette : ligne DÉBIT = banque/caisse, ligne CRÉDIT = produit
+        const entryIsExpense = entry.kind === 'EXPENSE';
+        const isBankLine = entryIsExpense ? isIncomeSide : isExpenseSide;
         const dataLine: Record<string, unknown> = {};
 
         // Override explicite par lineAmounts (priorité)

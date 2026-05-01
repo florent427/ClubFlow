@@ -235,8 +235,27 @@ const KIND_LABEL: Record<'INCOME' | 'EXPENSE' | 'IN_KIND', string> = {
   IN_KIND: 'Don nature',
 };
 
-/** Codes PCG des comptes "banque/contrepartie" (ne pas modifier en review). */
-const BANK_CODES = new Set(['512000', '530000']);
+/**
+ * Détermine si une ligne est la "contrepartie banque/caisse" en se
+ * basant sur son RÔLE (côté débit/crédit selon le kind de l'entry),
+ * PAS sur son code de compte. Sinon une ligne article hallucinée par
+ * l'IA avec un code 51xxx/53xxx serait à tort traitée comme contrepartie
+ * et l'utilisateur ne pourrait plus la modifier.
+ *
+ * - Dépense (EXPENSE) : ligne CRÉDIT = banque, ligne DÉBIT = article
+ * - Recette (INCOME) : ligne DÉBIT = banque, ligne CRÉDIT = produit
+ * - IN_KIND : pas de banque, toujours article
+ */
+function isCounterpartyLine(
+  line: { debitCents: number; creditCents: number },
+  entryKind: 'INCOME' | 'EXPENSE' | 'IN_KIND',
+): boolean {
+  const isExpenseSide = line.debitCents > 0 && line.creditCents === 0;
+  const isIncomeSide = line.creditCents > 0 && line.debitCents === 0;
+  if (entryKind === 'EXPENSE') return isIncomeSide;
+  if (entryKind === 'INCOME') return isExpenseSide;
+  return false;
+}
 
 /** Convertit cents → string décimal "12.34" pour l'input éditable. */
 function centsToString(cents: number): string {
@@ -460,7 +479,7 @@ export function EntryDetailScreen() {
     const newTotal = parseEurosToCents(editAmount);
     if (newTotal == null) return result;
     const articleLinesLocal = (entry.lines ?? []).filter(
-      (l) => !BANK_CODES.has(l.accountCode),
+      (l) => !isCounterpartyLine(l, entry.kind),
     );
     const oldTotal = articleLinesLocal.reduce(
       (s, l) => s + l.debitCents,
@@ -550,8 +569,11 @@ export function EntryDetailScreen() {
 
   // Lignes hors banque (= articles) — celles qu'on peut requalifier.
   const articleLines = useMemo(
-    () => (entry?.lines ?? []).filter((l) => !BANK_CODES.has(l.accountCode)),
-    [entry?.lines],
+    () =>
+      entry
+        ? entry.lines.filter((l) => !isCounterpartyLine(l, entry.kind))
+        : [],
+    [entry],
   );
 
   if (loading && !entry) {
@@ -1227,7 +1249,7 @@ export function EntryDetailScreen() {
         ) : (
           <View style={styles.linesList}>
             {entry.lines.map((line) => {
-              const isBank = BANK_CODES.has(line.accountCode);
+              const isBank = isCounterpartyLine(line, entry.kind);
               const editable = isReview && !isBank;
               return (
                 <View key={line.id} style={styles.lineRow}>

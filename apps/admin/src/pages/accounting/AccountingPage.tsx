@@ -1531,9 +1531,26 @@ export function AccountingPage() {
                             </thead>
                             <tbody>
                               {e.lines.map((l) => {
+                                // Ligne "banque/contrepartie" identifiée
+                                // par son RÔLE (côté débit/crédit selon
+                                // le kind de l'entry), PAS par son code.
+                                // Sinon une ligne article hallucinée par
+                                // l'IA avec un code 5xxxx serait à tort
+                                // traitée comme contrepartie → le select
+                                // proposerait les comptes financiers
+                                // (banques) au lieu des comptes de charges.
+                                const isExpenseSide =
+                                  l.debitCents > 0 && l.creditCents === 0;
+                                const isIncomeSide =
+                                  l.creditCents > 0 && l.debitCents === 0;
                                 const isBank =
-                                  l.accountCode === '512000' ||
-                                  l.accountCode === '530000';
+                                  e.kind === 'EXPENSE'
+                                    ? isIncomeSide
+                                    : e.kind === 'INCOME'
+                                      ? isExpenseSide
+                                      : // IN_KIND : pas de "banque" — toujours considérer
+                                        // comme article modifiable
+                                        false;
                                 const validated = Boolean(l.validatedAt);
                                 const currentEdit =
                                   lineAccountEdits[l.id] ?? l.accountCode;
