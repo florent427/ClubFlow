@@ -12,6 +12,7 @@ import {
 } from '@clubflow/mobile-shared';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import { Alert, Image, StyleSheet, Text, View } from 'react-native';
@@ -38,11 +39,22 @@ function getApiBaseUrl(): string {
   return graphql.replace(/\/graphql\/?$/, '') || 'http://localhost:3000';
 }
 
+/**
+ * Représentation unifiée d'un fichier sélectionné (image OU PDF). Cette
+ * forme reste compatible avec l'ancien API ImagePickerAsset utilisée
+ * dans le composant + ajoute le support PDF multi-pages via expo-document-picker.
+ */
+type PickedFile = {
+  uri: string;
+  fileName: string | null;
+  mimeType: string;
+  /** True si c'est un PDF — affiche une icône PDF au lieu de l'image. */
+  isPdf: boolean;
+};
+
 export function ReceiptScannerScreen() {
   const navigation = useNavigation<Nav>();
-  const [picked, setPicked] = useState<ImagePicker.ImagePickerAsset | null>(
-    null,
-  );
+  const [picked, setPicked] = useState<PickedFile | null>(null);
   const [uploading, setUploading] = useState(false);
   const [phase, setPhase] = useState<
     'idle' | 'uploading' | 'analyzing' | 'done'
@@ -67,7 +79,13 @@ export function ReceiptScannerScreen() {
       allowsEditing: false,
     });
     if (result.canceled || result.assets.length === 0) return;
-    setPicked(result.assets[0]);
+    const a = result.assets[0];
+    setPicked({
+      uri: a.uri,
+      fileName: a.fileName ?? null,
+      mimeType: a.mimeType ?? 'image/jpeg',
+      isPdf: false,
+    });
     setPhase('idle');
   }
 
@@ -87,7 +105,35 @@ export function ReceiptScannerScreen() {
       quality: 0.8,
     });
     if (result.canceled || result.assets.length === 0) return;
-    setPicked(result.assets[0]);
+    const a = result.assets[0];
+    setPicked({
+      uri: a.uri,
+      fileName: a.fileName ?? null,
+      mimeType: a.mimeType ?? 'image/jpeg',
+      isPdf: false,
+    });
+    setPhase('idle');
+  }
+
+  /**
+   * Sélection d'un PDF (factures multi-pages, scans). expo-document-picker
+   * ouvre le picker système (Drive/Files/iCloud). On ne demande pas de
+   * permission caméra/photos — c'est un picker fichier natif.
+   */
+  async function onPickPdf() {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: 'application/pdf',
+      copyToCacheDirectory: true,
+      multiple: false,
+    });
+    if (result.canceled || result.assets.length === 0) return;
+    const a = result.assets[0];
+    setPicked({
+      uri: a.uri,
+      fileName: a.name ?? `facture-${Date.now()}.pdf`,
+      mimeType: a.mimeType ?? 'application/pdf',
+      isPdf: true,
+    });
     setPhase('idle');
   }
 
@@ -103,8 +149,12 @@ export function ReceiptScannerScreen() {
     setPhase('uploading');
     try {
       const form = new FormData();
-      const fileName = picked.fileName ?? `receipt-${Date.now()}.jpg`;
-      const mimeType = picked.mimeType ?? 'image/jpeg';
+      const fileName =
+        picked.fileName ??
+        (picked.isPdf
+          ? `facture-${Date.now()}.pdf`
+          : `receipt-${Date.now()}.jpg`);
+      const mimeType = picked.mimeType;
       form.append('file', {
         uri: picked.uri,
         name: fileName,
@@ -172,16 +222,23 @@ export function ReceiptScannerScreen() {
       <Card style={{ marginHorizontal: spacing.lg, marginTop: spacing.lg }}>
         {picked ? (
           <View style={styles.previewWrap}>
-            <Image source={{ uri: picked.uri }} style={styles.preview} />
+            {picked.isPdf ? (
+              <View style={styles.pdfPreview}>
+                <Text style={styles.pdfIcon}>📄</Text>
+                <Text style={styles.pdfLabel}>Document PDF</Text>
+              </View>
+            ) : (
+              <Image source={{ uri: picked.uri }} style={styles.preview} />
+            )}
             <Text style={styles.previewMeta}>
-              {picked.fileName ?? 'Photo capturée'}
+              {picked.fileName ?? (picked.isPdf ? 'Facture PDF' : 'Photo capturée')}
             </Text>
           </View>
         ) : (
           <EmptyState
             icon="camera-outline"
-            title="Aucune photo"
-            description="Prenez le reçu en photo ou sélectionnez-en une depuis la galerie."
+            title="Aucun fichier"
+            description="Photographie un reçu, choisis-en un dans la galerie, ou importe une facture PDF (multi-pages OK)."
           />
         )}
       </Card>
@@ -199,6 +256,12 @@ export function ReceiptScannerScreen() {
             variant="ghost"
             icon="images-outline"
             onPress={() => void onPickFromGallery()}
+          />
+          <Button
+            label="Importer un PDF (facture multi-pages)"
+            variant="ghost"
+            icon="document-attach-outline"
+            onPress={() => void onPickPdf()}
           />
           {picked ? (
             <Button
@@ -237,6 +300,22 @@ const styles = StyleSheet.create({
     aspectRatio: 3 / 4,
     borderRadius: 16,
     backgroundColor: palette.bgAlt,
+  },
+  pdfPreview: {
+    width: '100%',
+    aspectRatio: 3 / 4,
+    borderRadius: 16,
+    backgroundColor: palette.bgAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.md,
+  },
+  pdfIcon: {
+    fontSize: 96,
+  },
+  pdfLabel: {
+    ...typography.bodyStrong,
+    color: palette.ink,
   },
   previewMeta: {
     ...typography.small,

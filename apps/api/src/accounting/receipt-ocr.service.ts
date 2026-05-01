@@ -7,6 +7,11 @@ import {
   AiUsageFeature,
 } from '@prisma/client';
 import * as crypto from 'crypto';
+// pdf-parse n'expose pas de typings TS ; on importe en require() pour
+// éviter "module has no default export". Renvoie `{ numpages, text, … }`.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const pdfParse: (buf: Buffer) => Promise<{ numpages: number; text: string }> =
+  require('pdf-parse');
 import { AiBudgetService } from '../ai/ai-budget.service';
 import { AiSettingsService } from '../ai/ai-settings.service';
 import { OpenrouterService } from '../ai/openrouter.service';
@@ -341,6 +346,25 @@ export class ReceiptOcrService {
     const dataUrl = this.bufferToDataUrl(assetBuffer, asset.mimeType);
     const ctx = await this.loadClubContext(clubId);
 
+    // Comptage de pages PDF (informatif + persisté). Si l'asset n'est
+    // pas un PDF, pageCount = 1.
+    let pageCount = 1;
+    if (asset.mimeType === 'application/pdf') {
+      try {
+        const parsed = await pdfParse(assetBuffer);
+        pageCount = Math.max(1, Math.min(parsed.numpages, 50));
+      } catch (err) {
+        this.logger.warn(
+          `[OCR ${mediaAssetId}] pdf-parse échec : ${this.errorMsg(err)}`,
+        );
+      }
+    }
+    if (pageCount > 5) {
+      this.logger.warn(
+        `[OCR ${mediaAssetId}] PDF de ${pageCount} pages — l'IA peut tronquer`,
+      );
+    }
+
     // Si le textModel n'est pas vision-capable, on bascule sur un modèle
     // vision pour les 2 appels image (sinon OpenRouter renvoie 404
     // "no endpoints found"). Le comparateur garde le textModel original.
@@ -358,8 +382,8 @@ export class ReceiptOcrService {
     let lastErrorMsg: string | null = null;
 
     const [ocrRes, expRes] = await Promise.allSettled([
-      this.runOcrRaw(apiKey, visionModel, dataUrl),
-      this.runExpertise(apiKey, visionModel, dataUrl, ctx),
+      this.runOcrRaw(apiKey, visionModel, dataUrl, pageCount),
+      this.runExpertise(apiKey, visionModel, dataUrl, ctx, pageCount),
     ]);
 
     let ocrRaw: OcrRawExtraction | null = null;
@@ -472,7 +496,7 @@ export class ReceiptOcrService {
         inputTokens: totalInputTokens,
         outputTokens: totalOutputTokens,
         costCents: totalCostCents,
-        pageCount: 1,
+        pageCount,
         error: lastErrorMsg,
       },
     });
@@ -522,6 +546,7 @@ export class ReceiptOcrService {
     apiKey: string,
     model: string,
     dataUrl: string,
+    pageCount: number,
   ): Promise<{
     parsed: OcrRawExtraction | null;
     usage: { costCents: number; inputTokens: number; outputTokens: number };
@@ -539,7 +564,7 @@ export class ReceiptOcrService {
         {
           role: 'user',
           content: [
-            { type: 'text', text: this.buildOcrPrompt() },
+            { type: 'text', text: this.buildOcrPrompt(pageCount) },
             { type: 'image_url', image_url: { url: dataUrl } },
           ],
         },
@@ -564,6 +589,7 @@ export class ReceiptOcrService {
     model: string,
     dataUrl: string,
     ctx: { accounts: Array<{ code: string; label: string }>; projects: Array<{ id: string; title: string }> },
+    pageCount: number,
   ): Promise<{
     parsed: AccountingExpertise | null;
     usage: { costCents: number; inputTokens: number; outputTokens: number };
@@ -581,7 +607,7 @@ export class ReceiptOcrService {
         {
           role: 'user',
           content: [
-            { type: 'text', text: this.buildExpertisePrompt(ctx) },
+            { type: 'text', text: this.buildExpertisePrompt(ctx, pageCount) },
             { type: 'image_url', image_url: { url: dataUrl } },
           ],
         },
@@ -644,8 +670,12 @@ export class ReceiptOcrService {
   //  Prompts
   // ─────────────────────────────────────────────────────────────────────
 
-  private buildOcrPrompt(): string {
-    return `Extrais les informations littérales de cette facture/reçu. Pas d'interprétation comptable, juste lecture.
+  private buildOcrPrompt(pageCount: number): string {
+    const multiPageNote =
+      pageCount > 1
+        ? `\n\n**DOCUMENT MULTI-PAGES** (${pageCount} pages) : analyse TOUTES les pages, le total et les items peuvent être répartis. Le total final est généralement sur la dernière page.\n`
+        : '';
+    return `Extrais les informations littérales de cette facture/reçu. Pas d'interprétation comptable, juste lecture.${multiPageNote}
 
 Réponds en JSON strict :
 {
@@ -685,10 +715,17 @@ Règles :
   * null si aucune mention claire`;
   }
 
-  private buildExpertisePrompt(ctx: {
-    accounts: Array<{ code: string; label: string }>;
-    projects: Array<{ id: string; title: string }>;
-  }): string {
+  private buildExpertisePrompt(
+    ctx: {
+      accounts: Array<{ code: string; label: string }>;
+      projects: Array<{ id: string; title: string }>;
+    },
+    pageCount: number,
+  ): string {
+    const multiPageNote =
+      pageCount > 1
+        ? `\n\n**DOCUMENT MULTI-PAGES** (${pageCount} pages) : examine TOUTES les pages avant de produire la ventilation. Le récap des items et le total peuvent être en fin de document.\n`
+        : '';
     const accountsTxt =
       ctx.accounts.length > 0
         ? ctx.accounts.map((a) => `  - ${a.code} : ${a.label}`).join('\n')
@@ -701,7 +738,7 @@ Règles :
             .join('\n')
         : '  (aucun projet actif)';
 
-    return `Analyse cette facture en tant qu'expert-comptable d'une association sportive (régime non-assujetti TVA).
+    return `Analyse cette facture en tant qu'expert-comptable d'une association sportive (régime non-assujetti TVA).${multiPageNote}
 
 Plan comptable RÉEL du club (utiliser UNIQUEMENT ces codes) :
 ${accountsTxt}
