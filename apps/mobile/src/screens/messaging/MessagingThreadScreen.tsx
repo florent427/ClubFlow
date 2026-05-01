@@ -946,85 +946,144 @@ function Composer({
         { paddingBottom: Math.max(insets.bottom, spacing.sm) + spacing.xs },
       ]}
     >
-      {/* Chips des pièces jointes en attente — au-dessus de la zone d'input */}
+      {/*
+        Row de previews des pièces jointes en attente — AU-DESSUS de la
+        zone input. Chaque preview = miniature 64×64 avec :
+          - thumbnail réel pour les images
+          - icône typée (vidéo/PDF/audio) sur fond coloré pour les autres
+          - bouton X en overlay top-right pour retirer
+        Scroll horizontal si plus d'une PJ.
+      */}
       {pendingAttachments.length > 0 ? (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.attachChipsRow}
-          style={styles.attachChipsScroll}
+          contentContainerStyle={styles.attachPreviewsRow}
+          style={styles.attachPreviewsScroll}
         >
           {pendingAttachments.map((a) => (
-            <View key={a.asset.id} style={styles.attachChip}>
-              <Ionicons
-                name={iconForKind(a.kind)}
-                size={14}
-                color={palette.primary}
-              />
-              <Text style={styles.attachChipText} numberOfLines={1}>
-                {a.kind === 'audio' ? 'Vocal' : a.asset.fileName}
-              </Text>
-              <Pressable
-                onPress={() => onRemoveAttachment(a.asset.id)}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Retirer cette pièce jointe"
-              >
-                <Ionicons name="close" size={14} color={palette.muted} />
-              </Pressable>
-            </View>
+            <AttachmentPreview
+              key={a.asset.id}
+              pending={a}
+              onRemove={() => onRemoveAttachment(a.asset.id)}
+            />
           ))}
         </ScrollView>
       ) : null}
 
-      <View style={styles.composerInputWrap}>
+      {/*
+        Row composer : [+ attach] [input multiligne] [send/mic].
+        Layout horizontal, alignItems flex-end pour que les boutons
+        restent en bas même quand l'input grandit (multiline).
+      */}
+      <View style={styles.composerRow}>
         <Pressable
-          style={styles.composerIcon}
+          style={styles.composerIconBtn}
           accessibilityRole="button"
           accessibilityLabel="Joindre une pièce"
           onPress={onOpenAttachmentSheet}
         >
-          <Ionicons name="add-circle-outline" size={26} color={primary} />
+          <Ionicons name="add-circle-outline" size={28} color={primary} />
         </Pressable>
-        <TextInput
-          style={styles.composerInput}
-          value={value}
-          onChangeText={onChange}
-          placeholder={placeholder ?? 'Message…'}
-          placeholderTextColor={palette.muted}
-          multiline
-        />
-      </View>
-
-      {/*
-        Bouton droite :
-        - micro tant que pas de texte ET pas d'attachments → enregistre vocal
-        - bouton send dès qu'on a du texte ou des attachments
-      */}
-      {hasContent ? (
-        <AnimatedPressable
-          onPress={onSend}
-          haptic
-          accessibilityRole="button"
-          accessibilityLabel="Envoyer"
-          style={styles.sendBtn}
-        >
-          <LinearGradient
-            colors={[primary, '#7c3aed']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.sendBtnInner}
+        <View style={styles.composerInputWrap}>
+          <TextInput
+            style={styles.composerInput}
+            value={value}
+            onChangeText={onChange}
+            placeholder={placeholder ?? 'Message…'}
+            placeholderTextColor={palette.muted}
+            multiline
+          />
+        </View>
+        {/*
+          Bouton droite :
+          - micro tant que pas de texte ET pas d'attachments
+          - bouton send dès qu'on a du texte ou des attachments
+        */}
+        {hasContent ? (
+          <AnimatedPressable
+            onPress={onSend}
+            haptic
+            accessibilityRole="button"
+            accessibilityLabel="Envoyer"
+            style={styles.sendBtn}
           >
-            <Ionicons name="send" size={18} color="#ffffff" />
-          </LinearGradient>
-        </AnimatedPressable>
-      ) : (
-        <VoiceRecorder
-          color={primary}
-          onRecorded={onVoiceRecorded}
-          onRecordingStateChange={onVoiceRecordingChange}
+            <LinearGradient
+              colors={[primary, '#7c3aed']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.sendBtnInner}
+            >
+              <Ionicons name="send" size={18} color="#ffffff" />
+            </LinearGradient>
+          </AnimatedPressable>
+        ) : (
+          <VoiceRecorder
+            color={primary}
+            onRecorded={onVoiceRecorded}
+            onRecordingStateChange={onVoiceRecordingChange}
+          />
+        )}
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Miniature d'une pièce jointe en attente d'envoi dans le composer.
+ * - **IMAGE** → vraie thumbnail (préview de l'image uploadée)
+ * - **VIDEO / AUDIO / DOCUMENT** → icône typée sur fond coloré +
+ *   label court en dessous (Vidéo / Vocal / PDF)
+ * Bouton X en overlay top-right pour retirer la PJ avant envoi.
+ */
+function AttachmentPreview({
+  pending,
+  onRemove,
+}: {
+  pending: PendingAttachment;
+  onRemove: () => void;
+}) {
+  const url = absolutizeMediaUrl(pending.asset.publicUrl) ?? pending.asset.publicUrl;
+  const isImage = pending.kind === 'image';
+  const label =
+    pending.kind === 'audio'
+      ? 'Vocal'
+      : pending.kind === 'video'
+        ? 'Vidéo'
+        : pending.kind === 'document'
+          ? 'PDF'
+          : '';
+
+  return (
+    <View style={styles.attachPreview}>
+      {isImage ? (
+        <Image
+          source={{ uri: url }}
+          style={styles.attachPreviewImg}
+          resizeMode="cover"
         />
+      ) : (
+        <View style={styles.attachPreviewIcon}>
+          <Ionicons
+            name={iconForKind(pending.kind)}
+            size={28}
+            color={palette.primary}
+          />
+          <Text style={styles.attachPreviewKindLabel}>{label}</Text>
+        </View>
       )}
+      <Pressable
+        onPress={onRemove}
+        hitSlop={6}
+        accessibilityRole="button"
+        accessibilityLabel="Retirer cette pièce jointe"
+        style={({ pressed }) => [
+          styles.attachPreviewRemove,
+          pressed && { opacity: 0.7 },
+        ]}
+      >
+        <Ionicons name="close" size={14} color="#ffffff" />
+      </Pressable>
     </View>
   );
 }
@@ -1369,29 +1428,59 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // Pending attachments dans le composer (chips au-dessus de l'input)
-  attachChipsScroll: {
-    marginBottom: spacing.xs,
+  // Pending attachments — previews 64×64 avec thumbnail réel pour les
+  // images, icône typée pour les autres formats. Affichées AU-DESSUS du
+  // composer dans une row scrollable horizontalement.
+  attachPreviewsScroll: {
+    flexGrow: 0, // sinon le ScrollView prend toute la hauteur dispo
   },
-  attachChipsRow: {
-    gap: spacing.xs,
+  attachPreviewsRow: {
+    gap: spacing.sm,
     paddingRight: spacing.md,
+    paddingTop: spacing.xs,
   },
-  attachChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: radius.pill,
-    backgroundColor: palette.primaryLight,
+  attachPreview: {
+    width: 64,
+    height: 64,
+    borderRadius: radius.md,
+    backgroundColor: palette.surface,
     borderWidth: 1,
-    borderColor: palette.primary,
+    borderColor: palette.border,
+    overflow: 'visible', // pour que le bouton X dépasse
+    position: 'relative',
   },
-  attachChipText: {
+  attachPreviewImg: {
+    width: '100%',
+    height: '100%',
+    borderRadius: radius.md,
+  },
+  attachPreviewIcon: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: palette.primaryLight,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  attachPreviewKindLabel: {
     ...typography.caption,
-    color: palette.primaryDark ?? palette.primary,
-    maxWidth: 120,
+    color: palette.primary,
+    fontWeight: '700',
+    fontSize: 10,
+  },
+  attachPreviewRemove: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#ef4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#ffffff',
   },
   bubbleFooter: {
     flexDirection: 'row',
@@ -1473,31 +1562,35 @@ const styles = StyleSheet.create({
   },
   editBannerText: { ...typography.smallStrong, flex: 1 },
 
-  // Composer
+  // Composer — wrapper VERTICAL : [previews PJ] + [row input + boutons]
   composer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: spacing.sm,
+    flexDirection: 'column',
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
     backgroundColor: WA_BG,
+    gap: spacing.sm,
+  },
+  // Row interne du composer (input + boutons)
+  composerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: spacing.sm,
+  },
+  composerIconBtn: {
+    width: 40,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   composerInputWrap: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: '#ffffff',
     borderRadius: radius.pill,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.md,
     paddingVertical: 4,
     minHeight: 44,
-    ...shadow.sm,
-  },
-  composerIcon: {
-    width: 32,
-    height: 32,
-    alignItems: 'center',
     justifyContent: 'center',
+    ...shadow.sm,
   },
   composerInput: {
     flex: 1,
