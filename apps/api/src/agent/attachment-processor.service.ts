@@ -133,17 +133,15 @@ export class AgentAttachmentProcessorService {
     const m = mimeType.toLowerCase();
     try {
       if (m === 'application/pdf') {
-        // pdf-parse v2 : API class-based.
-        const { PDFParse } = await import('pdf-parse');
+        // pdf-parse v1.1.x : API CJS simple `pdfParse(buf) → { text }`.
+        // (downgrade depuis v2 — la v2 entre en conflit pdfjs-dist
+        // versions avec pdf-to-img utilisé dans receipt-ocr.service)
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const pdfParse: (buf: Buffer) => Promise<{ text: string }> =
+          require('pdf-parse');
         const buf = readFileSync(filePath);
-        const parser = new PDFParse({ data: new Uint8Array(buf) });
-        try {
-          const text = await parser.getText();
-          // TextResult concatène le texte de toutes les pages.
-          return (text as unknown as { text?: string }).text ?? '';
-        } finally {
-          await parser.destroy();
-        }
+        const result = await pdfParse(buf);
+        return result.text ?? '';
       }
       if (
         m ===

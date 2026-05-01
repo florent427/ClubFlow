@@ -8,32 +8,22 @@ import {
 } from '@prisma/client';
 import * as crypto from 'crypto';
 import sharp from 'sharp';
-// pdf-parse v2.x : l'API a changé. On importe la classe PDFParse et
-// on appelle `new PDFParse({data}).getText()`. Avant (v1) c'était
-// une simple fonction `pdfParse(buf)` ; cette signature ne marche
-// plus et levait silencieusement (try/catch) → l'extraction texte
-// natif PDF était de fait DÉSACTIVÉE depuis la mise à jour, ce qui
-// privait le modèle vision du texte exact et causait des
-// hallucinations sur les factures complexes.
+// pdf-parse v1.1.x : API CJS simple `pdfParse(buf) → { numpages, text }`.
+// On utilise volontairement la v1 et PAS la v2.x : la v2 charge
+// pdfjs-dist 5.4.x qui entre en conflit (mismatch worker version) avec
+// la pdfjs-dist 4.2.67 isolée embarquée par `pdf-to-img`. Symptôme :
+//   "The API version "5.4.296" does not match the Worker version
+//    "4.2.67"."
+// → l'extraction texte plante silencieusement, le LLM perd la
+// source de vérité textuelle et hallucine. La v1 est CJS pure, sans
+// dépendance pdfjs-dist top-level → cohabite proprement avec pdf-to-img.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { PDFParse } = require('pdf-parse') as {
-  PDFParse: new (opts: { data: Buffer | Uint8Array; verbosity?: number }) => {
-    getText(): Promise<{
-      text: string;
-      pages?: Array<{ text: string }>;
-    }>;
-    getInfo?(): Promise<{ numPages?: number; numpages?: number }>;
-  };
-};
+const pdfParse: (buf: Buffer) => Promise<{ numpages: number; text: string }> =
+  require('pdf-parse');
 async function extractPdfText(
   buf: Buffer,
 ): Promise<{ numpages: number; text: string }> {
-  const reader = new PDFParse({ data: buf });
-  const result = await reader.getText();
-  return {
-    numpages: result.pages?.length ?? 1,
-    text: result.text ?? '',
-  };
+  return pdfParse(buf);
 }
 
 // pdf-to-img v4 est ESM-only. Notre tsconfig est `"module": "commonjs"`,
