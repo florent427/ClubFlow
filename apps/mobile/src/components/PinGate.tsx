@@ -1,15 +1,11 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
-  type TextInput as TextInputType,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -171,21 +167,33 @@ export function PinGate({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * Mélange un tableau (Fisher-Yates) — utilisé pour randomiser l'ordre
+ * des chiffres du keypad PIN. Anti-shoulder-surfing : un observateur
+ * qui mémorise les positions des doigts ne peut pas reconstituer le
+ * code car les chiffres sont à des positions différentes à chaque
+ * ouverture du gate.
+ */
+function shuffle<T>(arr: T[]): T[] {
+  const out = [...arr];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 function PinPrompt({ onSuccess }: { onSuccess: () => void }) {
   const insets = useSafeAreaInsets();
   const [pin, setPin] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<TextInputType>(null);
+  // Keypad mélangé — re-shuffled au mount + après chaque PIN incorrect.
+  const [keypad, setKeypad] = useState<string[]>(() =>
+    shuffle(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']),
+  );
   const [verify, { loading }] = useMutation<VerifyResponse>(
     VIEWER_VERIFY_PAYER_SPACE_PIN,
   );
-
-  // Auto-focus à l'ouverture (utile sur Android où l'input ne capte pas
-  // le focus seul même avec autoFocus).
-  useEffect(() => {
-    const t = setTimeout(() => inputRef.current?.focus(), 200);
-    return () => clearTimeout(t);
-  }, []);
 
   // Reset l'erreur dès qu'on retape.
   useEffect(() => {
@@ -204,6 +212,12 @@ function PinPrompt({ onSuccess }: { onSuccess: () => void }) {
       } else {
         setError('Code PIN incorrect.');
         setPin('');
+        // Re-shuffle après chaque mauvais code → empêche un attaquant
+        // qui aurait observé les positions précédentes de tester un
+        // pattern.
+        setKeypad(
+          shuffle(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']),
+        );
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Vérification impossible.');
@@ -217,90 +231,143 @@ function PinPrompt({ onSuccess }: { onSuccess: () => void }) {
     }
   }, [pin]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  function handleDigit(d: string) {
+    if (loading || pin.length >= 4) return;
+    setPin(pin + d);
+  }
+
+  function handleBackspace() {
+    if (loading || pin.length === 0) return;
+    setPin(pin.slice(0, -1));
+  }
+
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    <View
+      style={[
+        styles.flex,
+        { paddingTop: insets.top, paddingBottom: insets.bottom },
+      ]}
     >
-      <View
-        style={[
-          styles.flex,
-          { paddingTop: insets.top, paddingBottom: insets.bottom },
-        ]}
-      >
-        <View style={styles.center}>
-          <View style={styles.card}>
-            <View style={styles.iconBubble}>
-              <Ionicons
-                name="lock-closed"
-                size={40}
-                color={palette.primary}
-              />
-            </View>
-            <Text style={styles.title}>Profil protégé</Text>
-            <Text style={styles.subtitle}>
-              Saisissez votre code PIN à 4 chiffres pour accéder à ce
-              profil payeur.
+      <View style={styles.center}>
+        <View style={styles.card}>
+          <View style={styles.iconBubble}>
+            <Ionicons
+              name="lock-closed"
+              size={40}
+              color={palette.primary}
+            />
+          </View>
+          <Text style={styles.title}>Profil protégé</Text>
+          <Text style={styles.subtitle}>
+            Saisissez votre code PIN à 4 chiffres pour accéder à ce
+            profil payeur.
+          </Text>
+
+          {/* Cells visuelles — affichent ●●●● */}
+          <View style={styles.cellsRow}>
+            {[0, 1, 2, 3].map((i) => (
+              <View
+                key={i}
+                style={[
+                  styles.cell,
+                  pin.length === i && styles.cellActive,
+                ]}
+              >
+                <Text style={styles.cellText}>{pin[i] ? '●' : ''}</Text>
+              </View>
+            ))}
+          </View>
+
+          {error ? (
+            <Text style={styles.error} accessibilityRole="alert">
+              {error}
             </Text>
+          ) : null}
+          {loading ? (
+            <View style={styles.loadingRow}>
+              <ActivityIndicator size="small" color={palette.primary} />
+              <Text style={styles.loadingText}>Vérification…</Text>
+            </View>
+          ) : null}
 
-            {/*
-              PIN input : pattern "input transparent superposé sur les
-              cells visuelles". L'input occupe vraiment la zone des
-              cells (width/height réels) pour capturer les touches sur
-              Android — l'ancien pattern `position:absolute,opacity:0,
-              width:1` ne capturait pas les keystrokes.
-              Le texte tapé est invisible (`color: transparent` + `caretHidden`),
-              et les cells affichées en-dessous montrent les puces ●.
-            */}
-            <View style={styles.pinWrap}>
-              <View style={styles.cellsRow} pointerEvents="none">
-                {[0, 1, 2, 3].map((i) => (
-                  <View
-                    key={i}
-                    style={[
-                      styles.cell,
-                      pin.length === i && styles.cellActive,
-                    ]}
-                  >
-                    <Text style={styles.cellText}>
-                      {pin[i] ? '•' : ''}
-                    </Text>
-                  </View>
-                ))}
+          {/*
+            Keypad numérique custom **mélangé** :
+            - 9 premiers chiffres en grille 3×3
+            - 10ème chiffre centré sur la dernière ligne, avec backspace
+              à droite
+            - Les positions des chiffres changent à chaque ouverture +
+              après chaque PIN incorrect (anti-shoulder-surfing)
+            - Pas de clavier système OS (le PIN n'est pas considéré
+              comme un mot de passe — pas d'autocomplete password
+              manager, pas de suggestions)
+          */}
+          <View style={styles.keypad}>
+            {[0, 1, 2].map((row) => (
+              <View key={row} style={styles.keypadRow}>
+                {[0, 1, 2].map((col) => {
+                  const idx = row * 3 + col;
+                  return (
+                    <KeypadButton
+                      key={idx}
+                      label={keypad[idx]}
+                      onPress={() => handleDigit(keypad[idx])}
+                      disabled={loading}
+                    />
+                  );
+                })}
               </View>
-              <TextInput
-                ref={inputRef}
-                value={pin}
-                onChangeText={(t) =>
-                  setPin(t.replace(/[^0-9]/g, '').slice(0, 4))
-                }
-                keyboardType="number-pad"
-                maxLength={4}
-                secureTextEntry
-                editable={!loading}
-                style={styles.pinInputOverlay}
-                accessibilityLabel="Code PIN à 4 chiffres"
-                autoFocus
-                caretHidden
-                selectionColor="transparent"
+            ))}
+            {/* Dernière ligne : [vide] [chiffre 10] [backspace] */}
+            <View style={styles.keypadRow}>
+              <View style={styles.keypadBtnSpacer} />
+              <KeypadButton
+                label={keypad[9]}
+                onPress={() => handleDigit(keypad[9])}
+                disabled={loading}
+              />
+              <KeypadButton
+                icon="backspace-outline"
+                onPress={handleBackspace}
+                disabled={loading || pin.length === 0}
               />
             </View>
-
-            {error ? (
-              <Text style={styles.error} accessibilityRole="alert">
-                {error}
-              </Text>
-            ) : null}
-            {loading ? (
-              <View style={styles.loadingRow}>
-                <ActivityIndicator size="small" color={palette.primary} />
-                <Text style={styles.loadingText}>Vérification…</Text>
-              </View>
-            ) : null}
           </View>
         </View>
       </View>
-    </KeyboardAvoidingView>
+    </View>
+  );
+}
+
+/** Touche du keypad PIN — chiffre OU icône (backspace). */
+function KeypadButton({
+  label,
+  icon,
+  onPress,
+  disabled,
+}: {
+  label?: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label ?? 'Effacer'}
+      style={({ pressed }) => [
+        styles.keypadBtn,
+        pressed && !disabled && styles.keypadBtnPressed,
+        disabled && { opacity: 0.4 },
+      ]}
+    >
+      {icon ? (
+        <Ionicons name={icon} size={24} color={palette.ink} />
+      ) : (
+        <Text style={styles.keypadBtnText}>{label}</Text>
+      )}
+    </Pressable>
   );
 }
 
@@ -378,27 +445,38 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: palette.ink,
   },
-  // Wrapper qui contient les cells visuelles + le TextInput overlay
-  // transparent. Position relative pour que l'overlay absolute soit
-  // calé sur ce wrapper.
-  pinWrap: {
-    position: 'relative',
-    marginVertical: spacing.md,
+  // Keypad numérique custom (3 colonnes × 4 lignes). Mélangé à
+  // chaque ouverture + après chaque PIN incorrect → anti-shoulder-surfing.
+  keypad: {
+    width: '100%',
+    marginTop: spacing.md,
+    gap: spacing.sm,
   },
-  // TextInput posé EN ABSOLU par-dessus les 4 cells. Largeur/hauteur
-  // réelles pour capturer les touches sur Android (l'ancien
-  // `width:1, height:1, opacity:0` ne capturait pas les events).
-  // Texte/curseur invisibles via `color: transparent` + `caretHidden`.
-  pinInputOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    color: 'transparent',
-    fontSize: 28,
-    textAlign: 'center',
-    backgroundColor: 'transparent',
+  keypadRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  keypadBtn: {
+    flex: 1,
+    aspectRatio: 1.4,
+    backgroundColor: palette.bg,
+    borderRadius: radius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: palette.border,
+  },
+  keypadBtnPressed: {
+    backgroundColor: palette.primaryLight,
+    borderColor: palette.primary,
+  },
+  keypadBtnSpacer: {
+    flex: 1,
+  },
+  keypadBtnText: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: palette.ink,
   },
   error: {
     ...typography.smallStrong,
