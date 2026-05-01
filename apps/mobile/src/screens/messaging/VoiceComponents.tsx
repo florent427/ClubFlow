@@ -1,12 +1,25 @@
-import {
-  AudioModule,
-  RecordingPresets,
-  setAudioModeAsync,
-  useAudioPlayer,
-  useAudioPlayerStatus,
-  useAudioRecorder,
-} from 'expo-audio';
 import { useEffect, useRef, useState } from 'react';
+/*
+ * Import défensif d'`expo-audio`. Si le module natif n'est pas dispo
+ * dans la version d'Expo Go installée (vieux build, SDK incompatible…),
+ * `require` throw et on bascule sur un mode "vocal indisponible" plutôt
+ * que de crasher l'app entière au boot.
+ *
+ * Cause initiale : SDK 55 a remplacé `expo-av` (déprécié) par
+ * `expo-audio`, et certaines installations Expo Go n'ont pas encore
+ * le nouveau module natif → `Cannot find native module 'ExpoAudio'`.
+ */
+let expoAudio: typeof import('expo-audio') | null = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  expoAudio = require('expo-audio');
+} catch (err) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    '[VoiceComponents] expo-audio indisponible — vocal désactivé.',
+    err,
+  );
+}
 import {
   ActivityIndicator,
   Alert,
@@ -48,7 +61,14 @@ export function VoiceRecorder({
   onRecordingStateChange,
   color = palette.primary,
 }: VoiceRecorderProps) {
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  // Si expo-audio n'est pas chargé (Expo Go incompatible), on n'affiche
+  // pas le bouton micro — pas de crash, juste de la fonctionnalité absente.
+  if (!expoAudio) return null;
+  // Hook expo-audio chargé via le require défensif. ESLint ne sait pas
+  // que `expoAudio` est non-null ici (vérifié à la ligne précédente).
+  const recorder = expoAudio.useAudioRecorder(
+    expoAudio.RecordingPresets.HIGH_QUALITY,
+  );
   const [isRecording, setIsRecording] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [uploading, setUploading] = useState(false);
@@ -67,8 +87,9 @@ export function VoiceRecorder({
   }, []);
 
   async function start() {
+    if (!expoAudio) return;
     try {
-      const perm = await AudioModule.requestRecordingPermissionsAsync();
+      const perm = await expoAudio.AudioModule.requestRecordingPermissionsAsync();
       if (!perm.granted) {
         Alert.alert(
           'Accès micro refusé',
@@ -79,7 +100,7 @@ export function VoiceRecorder({
       // `setAudioModeAsync` est nécessaire pour que l'iOS sorte du mode
       // silencieux et autorise l'enregistrement même si l'interrupteur
       // de sonnerie est sur silencieux.
-      await setAudioModeAsync({
+      await expoAudio.setAudioModeAsync({
         playsInSilentMode: true,
         allowsRecording: true,
       });
@@ -215,12 +236,24 @@ export function VoicePlayer({
   durationMs,
   color = palette.primary,
 }: VoicePlayerProps) {
+  // Si expo-audio absent, on affiche un fallback "module indisponible"
+  // au lieu de planter le rendu de la bulle.
+  if (!expoAudio) {
+    return (
+      <View style={styles.playerUnavailable}>
+        <Ionicons name="alert-circle-outline" size={18} color={palette.muted} />
+        <Text style={styles.playerUnavailableText}>
+          Lecteur vocal indisponible
+        </Text>
+      </View>
+    );
+  }
   // L'URL est rewrite localhost → IP LAN au cas où.
   const resolvedUrl = absolutizeMediaUrl(url) ?? url;
   // `useAudioPlayer` initialise un player à partir d'une source URI.
   // Le player est nettoyé automatiquement au unmount du composant.
-  const player = useAudioPlayer({ uri: resolvedUrl });
-  const status = useAudioPlayerStatus(player);
+  const player = expoAudio.useAudioPlayer({ uri: resolvedUrl });
+  const status = expoAudio.useAudioPlayerStatus(player);
 
   const totalMs =
     status.duration > 0
@@ -372,5 +405,17 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: palette.muted,
     fontVariant: ['tabular-nums'],
+  },
+  playerUnavailable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  playerUnavailableText: {
+    ...typography.caption,
+    color: palette.muted,
+    fontStyle: 'italic',
   },
 });
