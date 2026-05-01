@@ -24,9 +24,7 @@ import {
   CANCEL_ACCOUNTING_ENTRY,
   CLUB_ACCOUNTING_ENTRY,
   CONFIRM_ACCOUNTING_EXTRACTION,
-  CONSOLIDATE_ACCOUNTING_ENTRY,
   DELETE_ACCOUNTING_ENTRY_PERMANENT,
-  UNCONSOLIDATE_ACCOUNTING_ENTRY,
   VALIDATE_ACCOUNTING_ENTRY_LINE,
 } from '../../lib/documents/accounting';
 import { getAuthedImageSource } from '../../lib/media';
@@ -242,12 +240,12 @@ export function EntryDetailScreen() {
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const [consolidate, { loading: consolidating }] = useMutation(
-    CONSOLIDATE_ACCOUNTING_ENTRY,
-  );
-  const [unconsolidate, { loading: unconsolidating }] = useMutation(
-    UNCONSOLIDATE_ACCOUNTING_ENTRY,
-  );
+  // NOTE : pas de mutation Consolider/Déconsolider sur mobile-admin.
+  // Le pipeline IA produit déjà une décision avec 1 ligne par compte
+  // (groupes dédupliqués), donc rien à fusionner après. Et côté API,
+  // `consolidate()` n'autorise QUE NEEDS_REVIEW — incompatible avec le
+  // bouton qui s'affichait sur POSTED. À reconsidérer si on ajoute la
+  // saisie manuelle multi-lignes sur mobile.
   const [cancelEntry, { loading: cancelling }] = useMutation(
     CANCEL_ACCOUNTING_ENTRY,
   );
@@ -363,14 +361,6 @@ export function EntryDetailScreen() {
     entry.kind === 'INCOME' ? '+' : entry.kind === 'EXPENSE' ? '−' : '';
 
   // ───────── Handlers ─────────
-  const onConsolidate = async () => {
-    await consolidate({ variables: { entryId: entry.id } });
-    await refetch();
-  };
-  const onUnconsolidate = async () => {
-    await unconsolidate({ variables: { entryId: entry.id } });
-    await refetch();
-  };
   const onCancel = async () => {
     await cancelEntry({
       variables: { input: { id: entry.id, reason: 'Annulé via mobile' } },
@@ -707,6 +697,13 @@ export function EntryDetailScreen() {
                         C {formatEuroCents(line.creditCents)}
                       </Text>
                     ) : null}
+                    {/* Si les 2 montants sont à 0 (extraction OCR ratée
+                        sur le total), on affiche un placeholder pour
+                        montrer que la ligne existe bien — sinon visuel
+                        identique à "ligne absente". */}
+                    {line.debitCents === 0 && line.creditCents === 0 ? (
+                      <Text style={styles.amountPlaceholder}>—</Text>
+                    ) : null}
                   </View>
                 </View>
               );
@@ -720,26 +717,6 @@ export function EntryDetailScreen() {
         style={{ marginHorizontal: spacing.lg, marginTop: spacing.lg }}
       >
         <View style={styles.actions}>
-          {/* Pas de "Consolider" tant que pas POSTED. */}
-          {entry.status === 'POSTED' ? (
-            isConsolidated ? (
-              <Button
-                label="Défaire consolidation"
-                variant="ghost"
-                icon="git-network-outline"
-                onPress={() => void onUnconsolidate()}
-                loading={unconsolidating}
-              />
-            ) : (
-              <Button
-                label="Consolider"
-                variant="primary"
-                icon="git-merge-outline"
-                onPress={() => void onConsolidate()}
-                loading={consolidating}
-              />
-            )
-          ) : null}
           <Button
             label="Annuler l'écriture"
             variant="ghost"
@@ -915,5 +892,9 @@ const styles = StyleSheet.create({
     color: palette.muted,
     fontStyle: 'italic',
     marginTop: 2,
+  },
+  amountPlaceholder: {
+    ...typography.smallStrong,
+    color: palette.muted,
   },
 });
