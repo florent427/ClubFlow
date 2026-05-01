@@ -35,14 +35,32 @@ export const CLUB_ACCOUNTING_ENTRY = gql`
       lines {
         id
         accountCode
+        accountLabel
         label
         debitCents
         creditCents
+        sortOrder
+        validatedAt
+        iaSuggestedAccountCode
+        iaConfidencePct
+        mergedFromArticleLabels
       }
       documents {
         id
         mediaAssetId
         kind
+      }
+      extraction {
+        id
+        extractedVendor
+        extractedInvoiceNumber
+        extractedTotalCents
+        extractedVatCents
+        extractedDate
+        extractedAccountCode
+        confidencePerField
+        model
+        error
       }
     }
   }
@@ -150,6 +168,20 @@ export const SUBMIT_RECEIPT_FOR_OCR = gql`
       entryId
       duplicateOfEntryId
       budgetBlocked
+    }
+  }
+`;
+
+export const CONFIRM_ACCOUNTING_EXTRACTION = gql`
+  mutation ConfirmAccountingExtraction(
+    $input: ConfirmExtractionInput!
+  ) {
+    confirmAccountingExtraction(input: $input) {
+      id
+      status
+      label
+      amountCents
+      occurredAt
     }
   }
 `;

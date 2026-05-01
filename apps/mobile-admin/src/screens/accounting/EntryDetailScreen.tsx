@@ -4,9 +4,11 @@ import {
   Card,
   ConfirmSheet,
   EmptyState,
+  GradientButton,
   Pill,
   ScreenContainer,
   ScreenHero,
+  TextField,
   formatDateTime,
   formatEuroCents,
   palette,
@@ -16,15 +18,18 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
-import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, Image, StyleSheet, Text, View } from 'react-native';
 import {
   CANCEL_ACCOUNTING_ENTRY,
   CLUB_ACCOUNTING_ENTRY,
+  CONFIRM_ACCOUNTING_EXTRACTION,
   CONSOLIDATE_ACCOUNTING_ENTRY,
   DELETE_ACCOUNTING_ENTRY_PERMANENT,
   UNCONSOLIDATE_ACCOUNTING_ENTRY,
+  VALIDATE_ACCOUNTING_ENTRY_LINE,
 } from '../../lib/documents/accounting';
+import { getAuthedImageSource } from '../../lib/media';
 import type { AccountingStackParamList } from '../../navigation/types';
 
 type EntryStatus =
@@ -37,15 +42,34 @@ type EntryStatus =
 type EntryLine = {
   id: string;
   accountCode: string;
+  accountLabel: string | null;
   label: string | null;
   debitCents: number;
   creditCents: number;
+  sortOrder: number;
+  validatedAt: string | null;
+  iaSuggestedAccountCode: string | null;
+  iaConfidencePct: number | null;
+  mergedFromArticleLabels: string[];
 };
 
 type EntryDocument = {
   id: string;
   mediaAssetId: string;
   kind: string;
+};
+
+type EntryExtraction = {
+  id: string;
+  extractedVendor: string | null;
+  extractedInvoiceNumber: string | null;
+  extractedTotalCents: number | null;
+  extractedVatCents: number | null;
+  extractedDate: string | null;
+  extractedAccountCode: string | null;
+  confidencePerField: Record<string, number> | null;
+  model: string | null;
+  error: string | null;
 };
 
 type Entry = {
@@ -61,6 +85,7 @@ type Entry = {
   createdAt: string;
   lines: EntryLine[];
   documents: EntryDocument[];
+  extraction: EntryExtraction | null;
 };
 
 type Data = { clubAccountingEntry: Entry | null };
@@ -93,6 +118,60 @@ const KIND_LABEL: Record<'INCOME' | 'EXPENSE' | 'IN_KIND', string> = {
   IN_KIND: 'Don nature',
 };
 
+/** Codes PCG des comptes "banque/contrepartie" (ne pas modifier en review). */
+const BANK_CODES = new Set(['512000', '530000']);
+
+/** Convertit cents → string décimal "12.34" pour l'input éditable. */
+function centsToString(cents: number): string {
+  return (cents / 100).toFixed(2);
+}
+
+/** Parse "12.34" / "12,34" → cents (1234). Retourne null si invalide. */
+function parseEurosToCents(raw: string): number | null {
+  const cleaned = raw.replace(/\s/g, '').replace(',', '.');
+  const n = Number.parseFloat(cleaned);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n * 100);
+}
+
+/** Format ISO → "YYYY-MM-DD" pour l'input texte. */
+function isoToDateString(iso: string): string {
+  return iso.slice(0, 10);
+}
+
+/** Pill colorée selon score de confiance IA (0-1). */
+function ConfidencePill({ score }: { score: number | null | undefined }) {
+  if (score == null) return null;
+  const pct = Math.round(score * 100);
+  const tone: 'success' | 'warning' | 'danger' =
+    pct >= 85 ? 'success' : pct >= 50 ? 'warning' : 'danger';
+  return <Pill label={`IA ${pct}%`} tone={tone} />;
+}
+
+/** Source d'image authentifiée — résolue async via getAuthedImageSource. */
+function useAuthedImageSource(mediaAssetId: string | null) {
+  const [source, setSource] = useState<{
+    uri: string;
+    headers: Record<string, string>;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!mediaAssetId) {
+      setSource(null);
+      return;
+    }
+    let cancelled = false;
+    void getAuthedImageSource(mediaAssetId).then((src) => {
+      if (!cancelled) setSource(src);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [mediaAssetId]);
+
+  return source;
+}
+
 export function EntryDetailScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
@@ -100,6 +179,7 @@ export function EntryDetailScreen() {
 
   const { data, loading, refetch } = useQuery<Data>(CLUB_ACCOUNTING_ENTRY, {
     variables: { id: entryId },
+    fetchPolicy: 'cache-and-network',
     errorPolicy: 'all',
   });
 
@@ -118,8 +198,49 @@ export function EntryDetailScreen() {
   const [deleteEntry, { loading: deleting }] = useMutation(
     DELETE_ACCOUNTING_ENTRY_PERMANENT,
   );
+  const [confirmExtraction, { loading: confirming }] = useMutation(
+    CONFIRM_ACCOUNTING_EXTRACTION,
+  );
+  const [validateLine] = useMutation(VALIDATE_ACCOUNTING_ENTRY_LINE);
 
   const entry = data?.clubAccountingEntry ?? null;
+
+  // ───────── Mode "validation" pour status NEEDS_REVIEW ─────────
+  // État local des champs éditables. Initialisé depuis l'entry chargée.
+  const [editLabel, setEditLabel] = useState<string>('');
+  const [editAmount, setEditAmount] = useState<string>('');
+  const [editDate, setEditDate] = useState<string>('');
+  // Map<lineId, accountCode édité>. Vide tant que l'utilisateur n'a rien
+  // modifié — sinon on garderait des updates inutiles.
+  const [editLineCodes, setEditLineCodes] = useState<Record<string, string>>(
+    {},
+  );
+
+  // Reset l'état d'édition à chaque (re)chargement de l'entry — sinon
+  // les champs gardent les valeurs de l'écriture précédente quand on
+  // navigue vers une autre.
+  useEffect(() => {
+    if (!entry) return;
+    setEditLabel(entry.label);
+    setEditAmount(centsToString(entry.amountCents));
+    setEditDate(isoToDateString(entry.occurredAt));
+    setEditLineCodes({});
+  }, [entry?.id, entry?.label, entry?.amountCents, entry?.occurredAt]);
+
+  const isReview = entry?.status === 'NEEDS_REVIEW';
+  const firstReceipt = useMemo(
+    () => entry?.documents.find((d) => d.kind === 'RECEIPT') ?? null,
+    [entry?.documents],
+  );
+  const docImageSource = useAuthedImageSource(
+    firstReceipt?.mediaAssetId ?? null,
+  );
+
+  // Lignes hors banque (= articles) — celles qu'on peut requalifier.
+  const articleLines = useMemo(
+    () => (entry?.lines ?? []).filter((l) => !BANK_CODES.has(l.accountCode)),
+    [entry?.lines],
+  );
 
   if (loading && !entry) {
     return (
@@ -157,7 +278,9 @@ export function EntryDetailScreen() {
   const isConsolidated = entry.consolidatedAt != null;
   const sign =
     entry.kind === 'INCOME' ? '+' : entry.kind === 'EXPENSE' ? '−' : '';
+  const conf = entry.extraction?.confidencePerField ?? {};
 
+  // ───────── Handlers ─────────
   const onConsolidate = async () => {
     await consolidate({ variables: { entryId: entry.id } });
     await refetch();
@@ -179,6 +302,60 @@ export function EntryDetailScreen() {
     navigation.goBack();
   };
 
+  /**
+   * Validation post-OCR :
+   *  1. Pour chaque ligne dont le code a été modifié → validateAccountingEntryLine
+   *  2. confirmAccountingExtraction (passe NEEDS_REVIEW → POSTED + corrige header)
+   */
+  const onConfirmExtraction = async () => {
+    const amountCents = parseEurosToCents(editAmount);
+    if (amountCents == null) {
+      Alert.alert('Montant invalide', 'Saisis un montant en euros valide (ex. 42.50).');
+      return;
+    }
+    if (!editLabel.trim()) {
+      Alert.alert('Libellé manquant', 'Le libellé ne peut pas être vide.');
+      return;
+    }
+    let occurredAt: Date | undefined;
+    if (editDate.trim()) {
+      const d = new Date(editDate.trim());
+      if (Number.isNaN(d.getTime())) {
+        Alert.alert(
+          'Date invalide',
+          'Format attendu : YYYY-MM-DD (ex. 2026-05-01).',
+        );
+        return;
+      }
+      occurredAt = d;
+    }
+    try {
+      // 1. Mise à jour des comptes par ligne (si modifiés)
+      for (const [lineId, code] of Object.entries(editLineCodes)) {
+        if (!code.trim()) continue;
+        await validateLine({
+          variables: { lineId, accountCode: code.trim() },
+        });
+      }
+      // 2. Validation globale : header + statut POSTED
+      await confirmExtraction({
+        variables: {
+          input: {
+            entryId: entry.id,
+            label: editLabel.trim(),
+            amountCents,
+            occurredAt: occurredAt?.toISOString(),
+          },
+        },
+      });
+      await refetch();
+      Alert.alert('Écriture validée', "L'écriture a été passée en POSTED.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur inconnue';
+      Alert.alert('Validation échouée', msg);
+    }
+  };
+
   return (
     <ScreenContainer
       padding={0}
@@ -186,13 +363,102 @@ export function EntryDetailScreen() {
       refreshing={loading}
     >
       <ScreenHero
-        eyebrow="ÉCRITURE"
+        eyebrow={isReview ? 'À VALIDER' : 'ÉCRITURE'}
         title={entry.label}
         subtitle={`${sign}${formatEuroCents(entry.amountCents)}`}
         compact
         showBack
       />
 
+      {/* Photo du justificatif (si présent) */}
+      {firstReceipt && docImageSource ? (
+        <Card
+          title="Justificatif"
+          style={{ marginHorizontal: spacing.lg, marginTop: spacing.lg }}
+        >
+          <Image
+            source={docImageSource}
+            style={styles.receiptImg}
+            resizeMode="contain"
+          />
+        </Card>
+      ) : null}
+
+      {/* Bandeau "À valider" — uniquement en NEEDS_REVIEW */}
+      {isReview ? (
+        <Card
+          title="Validation post-OCR"
+          subtitle={
+            entry.extraction?.error
+              ? `OCR en échec : ${entry.extraction.error}`
+              : entry.extraction?.model
+                ? `Extraction IA · ${entry.extraction.model}`
+                : 'Saisie manuelle requise'
+          }
+          style={{ marginHorizontal: spacing.lg, marginTop: spacing.lg }}
+        >
+          {entry.extraction?.extractedInvoiceNumber ||
+          entry.extraction?.extractedVendor ? (
+            <View style={styles.metaList}>
+              {entry.extraction.extractedInvoiceNumber ? (
+                <MetaRow
+                  label="N° facture"
+                  value={entry.extraction.extractedInvoiceNumber}
+                  confidence={conf.invoiceNumber}
+                />
+              ) : null}
+              {entry.extraction.extractedVendor ? (
+                <MetaRow
+                  label="Fournisseur"
+                  value={entry.extraction.extractedVendor}
+                  confidence={conf.vendor}
+                />
+              ) : null}
+              {entry.extraction.extractedVatCents != null ? (
+                <MetaRow
+                  label="TVA détectée"
+                  value={`${formatEuroCents(entry.extraction.extractedVatCents)} (non récup. asso)`}
+                />
+              ) : null}
+            </View>
+          ) : null}
+
+          <View style={styles.editForm}>
+            <TextField
+              label="Libellé de l'écriture"
+              value={editLabel}
+              onChangeText={setEditLabel}
+              placeholder="Ex. F-2026-001 — Decathlon"
+            />
+            <TextField
+              label="Montant TTC (€)"
+              value={editAmount}
+              onChangeText={setEditAmount}
+              keyboardType="decimal-pad"
+              placeholder="0.00"
+              hint="L'asso ne sépare pas la TVA — saisis le total TTC."
+            />
+            <TextField
+              label="Date (YYYY-MM-DD)"
+              value={editDate}
+              onChangeText={setEditDate}
+              placeholder="2026-05-01"
+            />
+          </View>
+
+          <View style={styles.actions}>
+            <GradientButton
+              label="Valider l'écriture"
+              icon="checkmark-circle-outline"
+              onPress={() => void onConfirmExtraction()}
+              loading={confirming}
+              fullWidth
+            />
+          </View>
+        </Card>
+      ) : null}
+
+      {/* Métadonnées (toujours visibles) */}
       <Card style={{ marginHorizontal: spacing.lg, marginTop: spacing.lg }}>
         <View style={styles.pillsRow}>
           <Pill
@@ -221,6 +487,7 @@ export function EntryDetailScreen() {
         </View>
       </Card>
 
+      {/* Lignes — éditables par compte si NEEDS_REVIEW */}
       <Card
         title="Lignes"
         subtitle={`${entry.lines.length} ligne(s)`}
@@ -234,32 +501,71 @@ export function EntryDetailScreen() {
           />
         ) : (
           <View style={styles.linesList}>
-            {entry.lines.map((line) => (
-              <View key={line.id} style={styles.lineRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.lineCode} numberOfLines={1}>
-                    {line.accountCode}
-                  </Text>
-                  {line.label ? (
-                    <Text style={styles.lineLabel} numberOfLines={2}>
-                      {line.label}
-                    </Text>
-                  ) : null}
+            {entry.lines.map((line) => {
+              const isBank = BANK_CODES.has(line.accountCode);
+              const editable = isReview && !isBank;
+              return (
+                <View key={line.id} style={styles.lineRow}>
+                  <View style={{ flex: 1 }}>
+                    {editable ? (
+                      <TextField
+                        label="Compte PCG"
+                        value={editLineCodes[line.id] ?? line.accountCode}
+                        onChangeText={(v) =>
+                          setEditLineCodes((prev) => ({
+                            ...prev,
+                            [line.id]: v,
+                          }))
+                        }
+                        keyboardType="number-pad"
+                        containerStyle={styles.inlineEdit}
+                      />
+                    ) : (
+                      <>
+                        <Text style={styles.lineCode} numberOfLines={1}>
+                          {line.accountCode}
+                          {line.accountLabel ? ` · ${line.accountLabel}` : ''}
+                        </Text>
+                        {line.label ? (
+                          <Text style={styles.lineLabel} numberOfLines={2}>
+                            {line.label}
+                          </Text>
+                        ) : null}
+                      </>
+                    )}
+                    {/* Pills : confiance IA + indicateur "validée" */}
+                    {!isBank ? (
+                      <View style={styles.linePillsRow}>
+                        {line.iaConfidencePct != null ? (
+                          <ConfidencePill score={line.iaConfidencePct / 100} />
+                        ) : null}
+                        {line.validatedAt ? (
+                          <Pill label="Ligne validée" tone="success" />
+                        ) : null}
+                        {line.mergedFromArticleLabels.length > 0 ? (
+                          <Pill
+                            label={`${line.mergedFromArticleLabels.length} articles`}
+                            tone="info"
+                          />
+                        ) : null}
+                      </View>
+                    ) : null}
+                  </View>
+                  <View style={styles.lineAmounts}>
+                    {line.debitCents > 0 ? (
+                      <Text style={styles.debit}>
+                        D {formatEuroCents(line.debitCents)}
+                      </Text>
+                    ) : null}
+                    {line.creditCents > 0 ? (
+                      <Text style={styles.credit}>
+                        C {formatEuroCents(line.creditCents)}
+                      </Text>
+                    ) : null}
+                  </View>
                 </View>
-                <View style={styles.lineAmounts}>
-                  {line.debitCents > 0 ? (
-                    <Text style={styles.debit}>
-                      D {formatEuroCents(line.debitCents)}
-                    </Text>
-                  ) : null}
-                  {line.creditCents > 0 ? (
-                    <Text style={styles.credit}>
-                      C {formatEuroCents(line.creditCents)}
-                    </Text>
-                  ) : null}
-                </View>
-              </View>
-            ))}
+              );
+            })}
           </View>
         )}
       </Card>
@@ -269,23 +575,26 @@ export function EntryDetailScreen() {
         style={{ marginHorizontal: spacing.lg, marginTop: spacing.lg }}
       >
         <View style={styles.actions}>
-          {isConsolidated ? (
-            <Button
-              label="Défaire consolidation"
-              variant="ghost"
-              icon="git-network-outline"
-              onPress={() => void onUnconsolidate()}
-              loading={unconsolidating}
-            />
-          ) : (
-            <Button
-              label="Consolider"
-              variant="primary"
-              icon="git-merge-outline"
-              onPress={() => void onConsolidate()}
-              loading={consolidating}
-            />
-          )}
+          {/* Pas de "Consolider" tant que pas POSTED. */}
+          {entry.status === 'POSTED' ? (
+            isConsolidated ? (
+              <Button
+                label="Défaire consolidation"
+                variant="ghost"
+                icon="git-network-outline"
+                onPress={() => void onUnconsolidate()}
+                loading={unconsolidating}
+              />
+            ) : (
+              <Button
+                label="Consolider"
+                variant="primary"
+                icon="git-merge-outline"
+                onPress={() => void onConsolidate()}
+                loading={consolidating}
+              />
+            )
+          ) : null}
           <Button
             label="Annuler l'écriture"
             variant="ghost"
@@ -325,13 +634,24 @@ export function EntryDetailScreen() {
   );
 }
 
-function MetaRow({ label, value }: { label: string; value: string }) {
+function MetaRow({
+  label,
+  value,
+  confidence,
+}: {
+  label: string;
+  value: string;
+  confidence?: number;
+}) {
   return (
     <View style={styles.metaRow}>
       <Text style={styles.metaLabel}>{label}</Text>
-      <Text style={styles.metaValue} numberOfLines={2}>
-        {value}
-      </Text>
+      <View style={styles.metaValueWrap}>
+        <Text style={styles.metaValue} numberOfLines={2}>
+          {value}
+        </Text>
+        {confidence != null ? <ConfidencePill score={confidence} /> : null}
+      </View>
     </View>
   );
 }
@@ -361,6 +681,23 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'right',
   },
+  metaValueWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: spacing.xs,
+  },
+  receiptImg: {
+    width: '100%',
+    aspectRatio: 3 / 4,
+    borderRadius: 12,
+    backgroundColor: palette.bgAlt,
+  },
+  editForm: {
+    gap: spacing.md,
+    marginTop: spacing.md,
+  },
   linesList: { gap: spacing.sm },
   lineRow: {
     flexDirection: 'row',
@@ -377,6 +714,15 @@ const styles = StyleSheet.create({
     ...typography.small,
     color: palette.muted,
   },
+  linePillsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  inlineEdit: {
+    marginBottom: 0,
+  },
   lineAmounts: {
     alignItems: 'flex-end',
     gap: 2,
@@ -391,5 +737,6 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: spacing.sm,
+    marginTop: spacing.md,
   },
 });
