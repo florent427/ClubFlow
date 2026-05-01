@@ -7,6 +7,10 @@ export const DEFAULT_TEXT_MODEL = 'anthropic/claude-sonnet-4-5';
 // gemini-2.5-flash-image (GA, sans "-preview") = version stable de Nano Banana.
 // Même API que la version preview mais sensiblement plus fiable en prod.
 export const DEFAULT_IMAGE_MODEL = 'google/gemini-2.5-flash-image';
+// Modèle pour les tâches vision (OCR factures/reçus). Si le club n'en
+// configure pas un dédié, on utilise textModel s'il supporte la vision,
+// sinon fallback sur ce default.
+export const DEFAULT_VISION_MODEL = 'anthropic/claude-sonnet-4-5';
 
 /** Liste de modèles suggérés (affichée dans l'UI admin). */
 export const CURATED_TEXT_MODELS = [

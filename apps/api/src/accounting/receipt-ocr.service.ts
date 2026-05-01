@@ -532,7 +532,13 @@ export class ReceiptOcrService {
     // - Le pipeline IA peut donc recevoir N tuiles internes même si
     //   l'utilisateur a uploadé M < N pages logiques. Le pageCount affiché
     //   reste basé sur le nombre d'assets utilisateur.
+    // - Pour les PDFs : on extrait AUSSI le texte natif via pdf-parse et
+    //   on le passe au modèle en complément de l'image. Sur un PDF
+    //   généré (vs scanné), le texte natif est PARFAIT — bien meilleur
+    //   que l'OCR vision. Sur un PDF scanné, pdf-parse retourne vide
+    //   → fallback vision pure.
     const dataUrls: string[] = [];
+    const pdfTextChunks: string[] = [];
     for (let i = 0; i < orderedAssets.length; i++) {
       const a = orderedAssets[i];
       const pre = await this.preprocessImage(buffers[i], a.mimeType);
@@ -540,10 +546,28 @@ export class ReceiptOcrService {
       for (const tile of tiles) {
         dataUrls.push(this.bufferToDataUrl(tile.buffer, tile.mimeType));
       }
+      // Pour les PDFs : tente une extraction texte native
+      if (a.mimeType === 'application/pdf') {
+        try {
+          const parsed = await pdfParse(buffers[i]);
+          const text = (parsed.text ?? '').trim();
+          if (text.length > 50) {
+            pdfTextChunks.push(text.slice(0, 8000));
+          }
+        } catch {
+          // ignore — on a déjà l'image vision
+        }
+      }
     }
     if (dataUrls.length > orderedAssets.length) {
       this.logger.log(
         `[OCR multi] ${orderedAssets.length} pages utilisateur → ${dataUrls.length} images IA après tuilage`,
+      );
+    }
+    const pdfText = pdfTextChunks.join('\n\n--- PAGE ---\n\n');
+    if (pdfText) {
+      this.logger.log(
+        `[OCR multi] PDF texte natif extrait (${pdfText.length} chars) — boost qualité OCR`,
       );
     }
     const ctx = await this.loadClubContext(clubId);
@@ -590,8 +614,8 @@ export class ReceiptOcrService {
     let lastErrorMsg: string | null = null;
 
     const [ocrRes, expRes] = await Promise.allSettled([
-      this.runOcrRaw(apiKey, visionModel, dataUrls, pageCount),
-      this.runExpertise(apiKey, visionModel, dataUrls, ctx, pageCount),
+      this.runOcrRaw(apiKey, visionModel, dataUrls, pageCount, pdfText),
+      this.runExpertise(apiKey, visionModel, dataUrls, ctx, pageCount, pdfText),
     ]);
 
     let ocrRaw: OcrRawExtraction | null = null;
@@ -863,16 +887,35 @@ export class ReceiptOcrService {
   //  Appels IA
   // ─────────────────────────────────────────────────────────────────────
 
-  /** Appel 1 — extraction OCR brute (1 ou N images). */
+  /** Appel 1 — extraction OCR brute (1 ou N images, + texte PDF natif si dispo). */
   private async runOcrRaw(
     apiKey: string,
     model: string,
     dataUrls: string[],
     pageCount: number,
+    pdfText: string,
   ): Promise<{
     parsed: OcrRawExtraction | null;
     usage: { costCents: number; inputTokens: number; outputTokens: number };
   }> {
+    const userContent: Array<
+      | { type: 'text'; text: string }
+      | { type: 'image_url'; image_url: { url: string } }
+    > = [{ type: 'text', text: this.buildOcrPrompt(pageCount) }];
+    // Si on a du texte PDF natif (= PDF généré, pas scanné), on
+    // l'inclut comme source de vérité prioritaire. Le modèle utilise
+    // l'image en backup pour les éléments visuels (logos, tampons).
+    if (pdfText) {
+      userContent.push({
+        type: 'text',
+        text: `\n=== TEXTE PDF NATIF (source prioritaire, sans erreur OCR) ===\n${pdfText}\n=== FIN TEXTE PDF ===\n`,
+      });
+    }
+    // 1 bloc image_url par page — l'IA voit toutes les pages dans
+    // l'ordre fourni et les considère comme un document unique.
+    for (const url of dataUrls) {
+      userContent.push({ type: 'image_url', image_url: { url } });
+    }
     const result = await this.openrouter.chatCompletion({
       apiKey,
       model,
@@ -881,21 +924,9 @@ export class ReceiptOcrService {
         {
           role: 'system',
           content:
-            'Tu es un OCR comptable spécialisé. Tu réponds UNIQUEMENT en JSON strict, sans markdown.',
+            'Tu es un OCR comptable spécialisé en factures associatives françaises. Tu réponds UNIQUEMENT en JSON strict, sans markdown ni texte d\'introduction.',
         },
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: this.buildOcrPrompt(pageCount) },
-            // 1 bloc image_url par page — l'IA voit toutes les pages
-            // dans l'ordre fourni et les considère comme un document
-            // unique (cf. instruction multi-pages dans le prompt).
-            ...dataUrls.map((url) => ({
-              type: 'image_url' as const,
-              image_url: { url },
-            })),
-          ],
-        },
+        { role: 'user', content: userContent },
       ],
       temperature: 0.1,
       maxTokens: 2500,
@@ -911,17 +942,31 @@ export class ReceiptOcrService {
     };
   }
 
-  /** Appel 2 — expertise comptable (vision + contexte club, 1 ou N images). */
+  /** Appel 2 — expertise comptable (vision + contexte club + texte PDF natif). */
   private async runExpertise(
     apiKey: string,
     model: string,
     dataUrls: string[],
     ctx: { accounts: Array<{ code: string; label: string }>; projects: Array<{ id: string; title: string }> },
     pageCount: number,
+    pdfText: string,
   ): Promise<{
     parsed: AccountingExpertise | null;
     usage: { costCents: number; inputTokens: number; outputTokens: number };
   }> {
+    const userContent: Array<
+      | { type: 'text'; text: string }
+      | { type: 'image_url'; image_url: { url: string } }
+    > = [{ type: 'text', text: this.buildExpertisePrompt(ctx, pageCount) }];
+    if (pdfText) {
+      userContent.push({
+        type: 'text',
+        text: `\n=== TEXTE PDF NATIF (source prioritaire, sans erreur OCR) ===\n${pdfText}\n=== FIN TEXTE PDF ===\n`,
+      });
+    }
+    for (const url of dataUrls) {
+      userContent.push({ type: 'image_url', image_url: { url } });
+    }
     const result = await this.openrouter.chatCompletion({
       apiKey,
       model,
@@ -932,16 +977,7 @@ export class ReceiptOcrService {
           content:
             "Tu es un expert-comptable senior pour associations sportives françaises. Tu analyses les factures et proposes une ventilation comptable précise. Tu réponds UNIQUEMENT en JSON strict, sans markdown.",
         },
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: this.buildExpertisePrompt(ctx, pageCount) },
-            ...dataUrls.map((url) => ({
-              type: 'image_url' as const,
-              image_url: { url },
-            })),
-          ],
-        },
+        { role: 'user', content: userContent },
       ],
       temperature: 0.2,
       maxTokens: 2500,
@@ -1006,44 +1042,69 @@ export class ReceiptOcrService {
       pageCount > 1
         ? `\n\n**DOCUMENT MULTI-PAGES** (${pageCount} pages) : analyse TOUTES les pages, le total et les items peuvent être répartis. Le total final est généralement sur la dernière page.\n`
         : '';
-    return `Extrais les informations littérales de cette facture/reçu. Pas d'interprétation comptable, juste lecture.${multiPageNote}
+    return `Tu reçois une facture / reçu / ticket d'achat français. Extrais les informations littérales (lecture, pas d'interprétation comptable).${multiPageNote}
 
-Réponds en JSON strict :
+ZONES TYPIQUES sur une facture FR (sers-toi de ces indices pour fiabiliser la lecture) :
+- **vendor** : nom commercial en gros caractères en HAUT (souvent avec logo). Pas la raison sociale juridique du bas (ex. "Decathlon" plutôt que "Decathlon France SAS").
+- **invoiceNumber** : "Facture N°", "FACT", "FA-XXXX", "N° de facture", "Référence" — généralement haut/droite. Pas le n° client / SIRET.
+- **date** : "Date d'émission", "Le DD/MM/YYYY", "Date facture". Convertis vers YYYY-MM-DD strict (jamais DD/MM ou MM/DD).
+- **totalTtcCents** : "Total TTC", "Net à payer", "Montant à régler", "TOTAL". Multiplie par 100 (ex. 42,50 € → 4250).
+- **vatCents** : "TVA", "Montant TVA", parfois ventilé par taux. Somme de tous les TVA si plusieurs taux.
+- **items** : tableau central de la facture (Quantité × Désignation × PU × Montant). Le montant ligne EST le TTC pour une ligne (ou HT × (1+taux) — privilégie le TTC affiché).
+
+EXEMPLE de sortie pour une facture Decathlon :
+{
+  "vendor": "Decathlon",
+  "invoiceNumber": "FA2604-5575",
+  "totalTtcCents": 4460,
+  "vatCents": 743,
+  "date": "2026-04-15",
+  "items": [
+    { "description": "Tatami judo 2m × 1m × 4cm", "totalCents": 3500, "suggestedAccountCode": "606300" },
+    { "description": "Sifflet arbitrage", "totalCents": 960, "suggestedAccountCode": "606300" }
+  ],
+  "pcgAccountCode": "606300",
+  "paymentMethod": "CARD",
+  "paymentReference": null,
+  "confidencePerField": {
+    "vendor": 0.98, "invoiceNumber": 0.95, "totalTtcCents": 1.0, "date": 0.92, "paymentMethod": 0.85
+  }
+}
+
+Réponds STRICTEMENT en JSON sur ce schéma :
 {
   "vendor": "nom commerçant ou null",
   "invoiceNumber": "n° facture / ticket / reçu ou null",
   "totalTtcCents": "total TTC en centimes (entier) ou null",
   "vatCents": "TVA en centimes si visible ou null",
-  "date": "date émission YYYY-MM-DD ou null",
+  "date": "YYYY-MM-DD strict ou null",
   "items": [
-    {
-      "description": "libellé article",
-      "totalCents": "montant TTC ligne en centimes",
-      "suggestedAccountCode": "code PCG 6 chiffres si évident, sinon null"
-    }
+    { "description": "...", "totalCents": int, "suggestedAccountCode": "6 chiffres ou null" }
   ],
-  "pcgAccountCode": "compte PCG global proposé ou null",
+  "pcgAccountCode": "code PCG global proposé ou null",
   "paymentMethod": "CASH | CHECK | TRANSFER | CARD | DIRECT_DEBIT | OTHER | null",
-  "paymentReference": "n° chèque, n° opération virement, etc. — null si non visible ou non applicable",
+  "paymentReference": "n° chèque, n° opération virement, etc. ou null",
   "confidencePerField": {
-    "vendor": "0-1",
-    "invoiceNumber": "0-1",
-    "totalTtcCents": "0-1",
-    "date": "0-1",
-    "paymentMethod": "0-1"
+    "vendor": 0-1, "invoiceNumber": 0-1, "totalTtcCents": 0-1, "date": 0-1, "paymentMethod": 0-1
   }
 }
 
+CONTRÔLE ARITHMÉTIQUE OBLIGATOIRE :
+- La somme des items[].totalCents DOIT être proche de totalTtcCents (tolérance ±5 cts pour arrondis).
+- Si la somme ne colle pas → relis attentivement les montants ligne. Souvent l'erreur vient d'un OCR sur une virgule ou un "0" mal lu.
+
 Règles :
-- Montants en centimes (×100). Pas de récup TVA (asso). items[]=[] si pas de détail.
-- "paymentMethod" : repère les mentions explicites du document. Indices typiques :
-  * CHECK = "chèque", "CHQ", "CHQ N°", "réglé par chèque" → renseigne paymentReference avec le n° de chèque si visible
+- Montants en centimes (×100, jamais en euros décimaux). Pas de récup TVA (asso non-assujettie).
+- items[]=[] si la facture n'a pas de détail ligne (ex. ticket simple "TOTAL 12,50 €").
+- "paymentMethod" : repère les mentions explicites :
+  * CHECK = "chèque", "CHQ", "CHQ N°", "réglé par chèque" → paymentReference = n° de chèque si visible
   * TRANSFER = "virement", "VIR", "VIR SEPA" → paymentReference = n° d'opération si visible
   * CARD = "CB", "carte bancaire", "Visa/Mastercard"
   * CASH = "espèces", "cash", "ESP"
   * DIRECT_DEBIT = "prélèvement", "SEPA Direct Debit"
   * OTHER = autre moyen identifié mais hors liste
-  * null si aucune mention claire`;
+  * null si aucune mention claire
+- Confiance : 1.0 = lecture certaine (texte parfaitement net), 0.7 = probable mais ambigu, < 0.5 = devine.`;
   }
 
   private buildExpertisePrompt(
@@ -1696,13 +1757,41 @@ Règles :
       return { buffer: buf, mimeType };
     }
     try {
+      // Pipeline sharp en 2 passes :
+      // 1. rotate EXIF + resize → image "raisonnable"
+      // 2. analyse stats (luminosité moyenne) pour décider gamma + contraste
+      // 3. sharpen final (texte net) + JPEG haute qualité
+      const stage1 = sharp(buf)
+        .rotate()
+        .resize(2500, 2500, { fit: 'inside', withoutEnlargement: true });
+      const stats = await stage1.stats();
+      // Luminosité moyenne (pondérée RGB) — indique si l'image est sombre
+      const meanLum =
+        stats.channels.length >= 3
+          ? (stats.channels[0].mean + stats.channels[1].mean + stats.channels[2].mean) / 3
+          : stats.channels[0].mean;
+      // Si image sombre (< 110 sur 255), on applique un gamma > 1 pour
+      // éclaircir les zones moyennes. Si déjà bien exposée, on touche pas.
+      const gamma = meanLum < 110 ? 1.3 : meanLum < 140 ? 1.1 : 1.0;
+      // Coefficient de contraste — image plate (faible variance) → boost.
+      const meanStdDev =
+        stats.channels.length >= 3
+          ? (stats.channels[0].stdev + stats.channels[1].stdev + stats.channels[2].stdev) / 3
+          : stats.channels[0].stdev;
+      const linearMul = meanStdDev < 40 ? 1.2 : 1.0;
+
       const out = await sharp(buf)
-        .rotate() // EXIF auto-orient
+        .rotate()
         .resize(2500, 2500, { fit: 'inside', withoutEnlargement: true })
-        .normalise() // auto-contrast (stretch histogramme)
-        .sharpen({ sigma: 1, m1: 0.5, m2: 2 })
-        .jpeg({ quality: 90, mozjpeg: true })
+        .gamma(gamma)
+        .linear(linearMul, -(linearMul - 1) * 128) // boost contraste autour du gris moyen
+        .normalise() // auto-stretch histogramme final
+        .sharpen({ sigma: 1.2, m1: 0.6, m2: 2.5 }) // un peu plus marqué
+        .jpeg({ quality: 92, mozjpeg: true })
         .toBuffer();
+      this.logger.log(
+        `[OCR] preprocess gamma=${gamma} contrastMul=${linearMul.toFixed(2)} (lum=${meanLum.toFixed(0)} stdev=${meanStdDev.toFixed(0)})`,
+      );
       return { buffer: out, mimeType: 'image/jpeg' };
     } catch (err) {
       this.logger.warn(
