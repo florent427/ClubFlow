@@ -460,22 +460,29 @@ export function MessagingThreadScreen({ route }: Props) {
       ) : null}
 
       {/*
-        KeyboardAvoidingView : behavior conditionnel par plateforme.
-         - **iOS** : `behavior="padding"` + `keyboardVerticalOffset` =
-           hauteur du header custom (insets.top + 56). Sans ça l'input
-           passe sous le clavier.
-         - **Android** : `behavior={undefined}` → on laisse
-           `softwareKeyboardLayoutMode: "resize"` (app.json) gérer le
-           redimensionnement nativement. Si on laisse "padding" sur
-           Android, on a une DOUBLE compensation (resize + padding) qui
-           pousse le composer 2× trop haut au-dessus du clavier — bug
-           remonté par l'utilisateur.
+        KeyboardAvoidingView : behavior="padding" sur les 2 plateformes,
+        offsets différents.
+
+        Pourquoi `padding` sur Android aussi : avec `edgeToEdgeEnabled:
+        true` (app.json), Android ignore `softwareKeyboardLayoutMode:
+        "resize"` — la window n'est PAS redimensionnée à l'apparition
+        du clavier, donc sans KAV actif le clavier recouvre le composer.
+
+        Offsets :
+         - **iOS** : `insets.top + 56` = hauteur du header custom
+           au-dessus du KAV. Le KAV ajoute `paddingBottom =
+           keyboardHeight - offset`, donc on compense la portion d'écran
+           déjà occupée par le header.
+         - **Android** : `0`. Le KAV ajoute exactement `keyboardHeight`
+           de paddingBottom, ce qui pousse le composer pile au-dessus
+           du clavier. Mettre l'offset du header ici donnait un trop-haut
+           visible (~2× la hauteur du clavier) — bug remonté.
          - FlatList prend `style={styles.flex}` explicitement (sinon il
            ne s'étire pas et le composer flotte).
       */}
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         keyboardVerticalOffset={
           Platform.OS === 'ios' ? insets.top + 56 : 0
         }
