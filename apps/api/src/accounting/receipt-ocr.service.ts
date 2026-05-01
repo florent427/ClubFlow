@@ -16,12 +16,29 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AccountingAuditService } from './accounting-audit.service';
 import { AccountingMappingService } from './accounting-mapping.service';
 
+/**
+ * Article extrait sur une facture (1 ligne du détail vendor).
+ * - `description` : libellé brut (ex. "Tatamis 2x1m").
+ * - `totalCents`  : montant TTC de l'article (TVA INCLUSE — l'asso ne
+ *   sépare pas la TVA car non récupérable).
+ * - `suggestedAccountCode` : compte PCG proposé par l'IA pour CET item
+ *   spécifique. C'est ce qui permet la séparation auto en sous-lignes.
+ */
+interface OcrItem {
+  description: string;
+  totalCents: number | null;
+  suggestedAccountCode: string | null;
+}
+
 interface OcrExtracted {
   vendor: string | null;
+  invoiceNumber: string | null;
   totalTtcCents: number | null;
+  /** Stocké pour info mais ignoré par défaut (asso = pas de récup TVA). */
   vatCents: number | null;
   date: string | null; // ISO
-  items: string[];
+  items: OcrItem[];
+  /** Compte PCG global proposé pour TOUTE la facture (fallback si items vides). */
   pcgAccountCode: string | null;
   confidencePerField: Record<string, number>;
 }
@@ -33,8 +50,19 @@ interface OcrExtracted {
  *   1. Lire le MediaAsset (image ou PDF)
  *   2. Hash SHA-256 → check doublon (même fichier uploadé 2×)
  *   3. Appel OpenRouter vision avec prompt FR structuré
- *   4. Parse JSON strict
+ *   4. Parse JSON strict (extraction enrichie : items détaillés + n° facture)
  *   5. Persiste AccountingExtraction + crée AccountingEntry NEEDS_REVIEW
+ *
+ * Spécificités association :
+ * - **Pas de TVA** : on stocke `vatCents` pour info mais on ne crée PAS
+ *   de ligne TVA séparée. Le montant débit = montant TTC complet.
+ * - **Label auto** : `"{n°facture} — {vendor}"` (ou `vendor` seul si pas
+ *   de n° de facture, ou `"Reçu à qualifier"` en dernier recours).
+ * - **Séparation auto en sous-lignes** : si l'IA propose ≥ 2 codes
+ *   comptables différents pour les items, on crée 1 ligne débit par
+ *   compte (somme des items du même compte). Si tous les items partagent
+ *   le même compte (ou s'il n'y a pas d'items détaillés), 1 seule ligne
+ *   débit avec le total.
  */
 @Injectable()
 export class ReceiptOcrService {
@@ -181,7 +209,7 @@ export class ReceiptOcrService {
           },
         ],
         temperature: 0.1,
-        maxTokens: 1500,
+        maxTokens: 2500,
       });
       extracted = this.parseOcrJson(result.content);
     } catch (err) {
@@ -231,6 +259,7 @@ export class ReceiptOcrService {
         extractedVatCents: extracted?.vatCents ?? null,
         extractedDate: extracted?.date ? new Date(extracted.date) : null,
         extractedVendor: extracted?.vendor ?? null,
+        extractedInvoiceNumber: extracted?.invoiceNumber ?? null,
         extractedAccountCode: extracted?.pcgAccountCode ?? null,
         model: result.model,
         inputTokens: result.inputTokens,
@@ -271,6 +300,117 @@ export class ReceiptOcrService {
     };
   }
 
+  /**
+   * Construit le label automatique de l'écriture :
+   * - Si n° facture + vendor → `"{n°} — {vendor}"`
+   * - Si vendor seul → `"{vendor}"`
+   * - Sinon → `"Reçu à qualifier"`
+   */
+  private buildAutoLabel(extracted: OcrExtracted | null | undefined): string {
+    if (!extracted) return 'Reçu à qualifier';
+    const inv = extracted.invoiceNumber?.trim();
+    const ven = extracted.vendor?.trim();
+    if (inv && ven) return `${inv} — ${ven}`;
+    if (ven) return ven;
+    if (inv) return `Facture ${inv}`;
+    return 'Reçu à qualifier';
+  }
+
+  /**
+   * Calcule la ventilation des sous-lignes débit en fonction des items
+   * extraits. Retourne un tableau de groupes, chacun = 1 ligne débit
+   * future (avec compte PCG, montant total, libellés sources).
+   *
+   * Règles :
+   * - Items ayant un `suggestedAccountCode` non null sont groupés par code.
+   * - Items sans code (null) tombent dans le groupe `fallbackAccount`.
+   * - Si tous les items se retrouvent dans UN SEUL groupe (même compte),
+   *   on retourne 1 seul groupe avec le label "facture entière" (pas de
+   *   détail).
+   * - Si pas d'items du tout : 1 seul groupe avec `fallbackAccount` et
+   *   le total complet, sans labels d'items.
+   */
+  private buildLineGroups(
+    extracted: OcrExtracted | null | undefined,
+    fallbackAccount: string,
+    totalCents: number,
+  ): Array<{
+    accountCode: string;
+    amountCents: number;
+    sourceLabels: string[];
+  }> {
+    const items = extracted?.items ?? [];
+    const validItems = items.filter(
+      (it) => it && it.totalCents !== null && it.totalCents > 0,
+    );
+
+    // Pas d'items détaillés OU items sans montants → 1 seule ligne
+    if (validItems.length === 0) {
+      const code = extracted?.pcgAccountCode ?? fallbackAccount;
+      return [
+        {
+          accountCode: code,
+          amountCents: totalCents,
+          sourceLabels: [],
+        },
+      ];
+    }
+
+    // Group by accountCode (null → fallback)
+    const buckets = new Map<
+      string,
+      { amountCents: number; sourceLabels: string[] }
+    >();
+    for (const it of validItems) {
+      const code =
+        it.suggestedAccountCode ??
+        extracted?.pcgAccountCode ??
+        fallbackAccount;
+      const bucket = buckets.get(code) ?? {
+        amountCents: 0,
+        sourceLabels: [],
+      };
+      bucket.amountCents += it.totalCents ?? 0;
+      bucket.sourceLabels.push(it.description);
+      buckets.set(code, bucket);
+    }
+
+    // Réconcilie un éventuel écart de centimes vs total déclaré : on
+    // ajuste le PLUS GROS bucket (typique : arrondi sur la dernière ligne).
+    const sumItems = Array.from(buckets.values()).reduce(
+      (s, b) => s + b.amountCents,
+      0,
+    );
+    const diff = totalCents - sumItems;
+    if (diff !== 0 && buckets.size > 0) {
+      const biggest = Array.from(buckets.entries()).sort(
+        (a, b) => b[1].amountCents - a[1].amountCents,
+      )[0];
+      biggest[1].amountCents += diff;
+    }
+
+    // Si un seul bucket → on retourne 1 ligne SANS détail d'articles
+    // (cas "facture unique totale sans articles" demandé : pas la peine
+    // de polluer les libellés ligne par ligne).
+    if (buckets.size === 1) {
+      const [code, bucket] = Array.from(buckets.entries())[0];
+      return [
+        {
+          accountCode: code,
+          amountCents: bucket.amountCents,
+          sourceLabels: [],
+        },
+      ];
+    }
+
+    // Sinon ventilation par compte
+    return Array.from(buckets.entries()).map(([code, bucket]) => ({
+      accountCode: code,
+      amountCents: bucket.amountCents,
+      sourceLabels: bucket.sourceLabels,
+    }));
+  }
+
   private async createStubEntry(
     clubId: string,
     userId: string,
@@ -278,25 +418,32 @@ export class ReceiptOcrService {
     extraction: { id: string } | null,
     extracted?: OcrExtracted | null,
   ) {
-    const amount = extracted?.totalTtcCents ?? 0;
-    const label =
-      extracted?.vendor && extracted.totalTtcCents
-        ? `${extracted.vendor} — ${(extracted.totalTtcCents / 100).toFixed(2)} €`
-        : 'Reçu à qualifier';
+    // Total = TTC déclaré sur la facture (asso = pas de séparation TVA).
+    // On ignore vatCents pour le calcul des lignes débit.
+    const totalCents = extracted?.totalTtcCents ?? 0;
+    const label = this.buildAutoLabel(extracted);
     const date = extracted?.date ? new Date(extracted.date) : new Date();
-    const accountCode =
-      extracted?.pcgAccountCode ??
-      (await this.mapping.resolveAccountCode(clubId, 'EXPENSE_GENERIC'));
-    const account = await this.prisma.accountingAccount.findUnique({
-      where: { clubId_code: { clubId, code: accountCode } },
-    });
+
+    const fallbackCode = await this.mapping.resolveAccountCode(
+      clubId,
+      'EXPENSE_GENERIC',
+    );
     const bankCode = await this.mapping.resolveAccountCode(
       clubId,
       'BANK_ACCOUNT',
     );
-    const bank = await this.prisma.accountingAccount.findUnique({
-      where: { clubId_code: { clubId, code: bankCode } },
+
+    // Construit la ventilation des lignes débit (1 ou N selon items).
+    const groups = this.buildLineGroups(extracted, fallbackCode, totalCents);
+
+    // Pré-charge les libellés des comptes utilisés (pour stocker accountLabel)
+    const codes = Array.from(
+      new Set([...groups.map((g) => g.accountCode), bankCode]),
+    );
+    const accounts = await this.prisma.accountingAccount.findMany({
+      where: { clubId, code: { in: codes } },
     });
+    const accountByCode = new Map(accounts.map((a) => [a.code, a]));
 
     const entry = await this.prisma.$transaction(async (tx) => {
       const e = await tx.accountingEntry.create({
@@ -306,28 +453,51 @@ export class ReceiptOcrService {
           status: AccountingEntryStatus.NEEDS_REVIEW,
           source: AccountingEntrySource.OCR_AI,
           label,
-          amountCents: amount,
+          amountCents: totalCents,
           occurredAt: date,
           createdByUserId: userId,
           extractionId: extraction?.id ?? null,
         },
       });
-      // Ligne 1 : débit charge (proposition IA)
-      if (account) {
+
+      // Lignes débit (1 par compte distinct)
+      let sortOrder = 0;
+      for (const group of groups) {
+        const account = accountByCode.get(group.accountCode);
+        if (!account) {
+          this.logger.warn(
+            `[Stub ${e.id}] Compte ${group.accountCode} introuvable, ligne ignorée`,
+          );
+          continue;
+        }
+        // Si on a regroupé plusieurs items dans cette ligne, on stocke
+        // leurs libellés dans `mergedFromArticleLabels` pour la traçabilité.
+        const lineLabel =
+          group.sourceLabels.length > 0
+            ? group.sourceLabels.slice(0, 3).join(' · ') +
+              (group.sourceLabels.length > 3
+                ? ` (+${group.sourceLabels.length - 3})`
+                : '')
+            : null;
         await tx.accountingEntryLine.create({
           data: {
             entryId: e.id,
             clubId,
             accountCode: account.code,
             accountLabel: account.label,
+            label: lineLabel,
             side: AccountingLineSide.DEBIT,
-            debitCents: amount,
+            debitCents: group.amountCents,
             creditCents: 0,
-            sortOrder: 0,
+            sortOrder: sortOrder++,
+            mergedFromArticleLabels: group.sourceLabels,
+            iaSuggestedAccountCode: group.accountCode,
           },
         });
       }
-      // Ligne 2 : crédit banque (contrepartie)
+
+      // Ligne crédit banque (contrepartie totale)
+      const bank = accountByCode.get(bankCode);
       if (bank) {
         await tx.accountingEntryLine.create({
           data: {
@@ -337,11 +507,12 @@ export class ReceiptOcrService {
             accountLabel: bank.label,
             side: AccountingLineSide.CREDIT,
             debitCents: 0,
-            creditCents: amount,
-            sortOrder: 1,
+            creditCents: totalCents,
+            sortOrder: sortOrder++,
           },
         });
       }
+
       // Document attaché
       await tx.accountingDocument.create({
         data: {
@@ -358,28 +529,58 @@ export class ReceiptOcrService {
   }
 
   private buildPrompt(): string {
-    return `Analyse l'image de ce reçu ou facture et extrais les informations suivantes en JSON strict :
+    return `Analyse l'image de ce reçu ou facture et extrais les informations en JSON strict.
+
+CONTEXTE : Association sportive française. **Pas de récupération de TVA** (régime non-assujetti). Tous les montants sont en centimes d'euros (multiplier par 100). Les sous-lignes "items" doivent être en TTC (TVA comprise).
+
+Format JSON attendu :
 
 {
   "vendor": "nom du fournisseur ou enseigne (string ou null)",
-  "totalTtcCents": "montant total TTC en centimes d'euros (integer ou null)",
-  "vatCents": "montant TVA en centimes (integer ou null)",
-  "date": "date en ISO 8601 (YYYY-MM-DD) ou null",
-  "items": ["description ligne 1", "ligne 2", ...],
-  "pcgAccountCode": "code comptable PCG associatif proposé (6 chiffres), parmi :\\n    - 606100 Fournitures eau/énergie\\n    - 606300 Petit équipement\\n    - 606400 Fournitures administratives\\n    - 606800 Autres fournitures\\n    - 613200 Location salle/immeuble\\n    - 613500 Location matériel sportif\\n    - 615000 Entretien\\n    - 618000 Cotisations fédérales\\n    - 622600 Honoraires prestations\\n    - 624000 Déplacements/transports\\n    - 625100 Frais bénévoles\\n    - 626000 Téléphone/postaux\\n    - 627000 Frais bancaires\\n    Choisis le code le plus adapté, ou null si incertain.",
+  "invoiceNumber": "numéro de facture / ticket / reçu (string ou null si absent)",
+  "totalTtcCents": "montant total TTC en centimes (integer ou null)",
+  "vatCents": "montant TVA en centimes si visible (integer ou null) — informatif seulement",
+  "date": "date d'émission ISO 8601 (YYYY-MM-DD) ou null",
+  "items": [
+    {
+      "description": "libellé de l'article ou prestation",
+      "totalCents": "montant TTC de cette ligne en centimes (integer)",
+      "suggestedAccountCode": "code PCG le plus adapté à CET item parmi la liste ci-dessous, ou null si incertain"
+    }
+  ],
+  "pcgAccountCode": "code PCG global (fallback si items absents ou tous incertains)",
   "confidencePerField": {
-    "vendor": "score 0-1",
-    "totalTtcCents": "score 0-1",
-    "date": "score 0-1",
-    "pcgAccountCode": "score 0-1"
+    "vendor": "0 à 1",
+    "invoiceNumber": "0 à 1",
+    "totalTtcCents": "0 à 1",
+    "date": "0 à 1",
+    "pcgAccountCode": "0 à 1"
   }
 }
 
+Plan comptable associatif (choisir le code le plus précis par item) :
+- 606100 Fournitures eau, énergie
+- 606300 Petit équipement / matériel sportif consommable
+- 606400 Fournitures administratives (papeterie, encre)
+- 606800 Autres fournitures
+- 613200 Locations immobilières (salle, gymnase)
+- 613500 Locations matériel sportif
+- 615000 Entretien et réparations
+- 618000 Cotisations fédérales / affiliations
+- 622600 Honoraires (intervenant, prestataire)
+- 624000 Déplacements, transports, hôtellerie
+- 625100 Frais de bénévoles (remboursements)
+- 626000 Téléphone, frais postaux
+- 627000 Frais bancaires
+- 628100 Cotisations diverses
+
 Règles strictes :
-- Retourne UNIQUEMENT un objet JSON valide, sans texte avant/après.
-- Si un champ n'est pas lisible ou absent, utilise null (pas 0, pas "").
-- Les montants DOIVENT être en centimes (multiplier par 100).
-- Les scores de confiance reflètent ta certitude sur la lecture (0 = deviné, 1 = certain).`;
+- Retourne UNIQUEMENT un objet JSON valide, AUCUN texte avant/après.
+- Si un champ n'est pas lisible : null (pas 0, pas "").
+- "items" peut être [] si la facture n'a pas de détail (ex. ticket commerçant simple).
+- Pour CHAQUE item, propose le compte le plus pertinent. Exemple : sur une facture qui contient à la fois des tatamis (606300) et des fournitures bureau (606400), répartis correctement.
+- "totalCents" sur chaque item = TTC (TVA comprise), même si la facture affiche HT séparément.
+- La somme des "items[].totalCents" doit être proche de "totalTtcCents" (tolérer ±0.02 € pour arrondis).`;
   }
 
   private parseOcrJson(content: string): OcrExtracted | null {
@@ -389,20 +590,45 @@ Règles strictes :
         .replace(/^```(?:json)?\s*/i, '')
         .replace(/\s*```\s*$/i, '')
         .trim();
-      const parsed = JSON.parse(cleaned) as OcrExtracted;
+      const parsed = JSON.parse(cleaned) as Record<string, unknown>;
+      const itemsRaw = Array.isArray(parsed.items) ? parsed.items : [];
+      const items: OcrItem[] = itemsRaw
+        .filter((it): it is Record<string, unknown> => typeof it === 'object' && it !== null)
+        .map((it) => ({
+          description:
+            typeof it.description === 'string' && it.description.length > 0
+              ? it.description
+              : 'Article',
+          totalCents:
+            typeof it.totalCents === 'number' && Number.isFinite(it.totalCents)
+              ? Math.round(it.totalCents)
+              : null,
+          suggestedAccountCode:
+            typeof it.suggestedAccountCode === 'string' &&
+            it.suggestedAccountCode.length >= 4
+              ? it.suggestedAccountCode
+              : null,
+        }));
       return {
         vendor:
           typeof parsed.vendor === 'string' && parsed.vendor.length > 0
             ? parsed.vendor
             : null,
+        invoiceNumber:
+          typeof parsed.invoiceNumber === 'string' &&
+          parsed.invoiceNumber.length > 0
+            ? parsed.invoiceNumber
+            : null,
         totalTtcCents:
           typeof parsed.totalTtcCents === 'number'
-            ? parsed.totalTtcCents
+            ? Math.round(parsed.totalTtcCents)
             : null,
         vatCents:
-          typeof parsed.vatCents === 'number' ? parsed.vatCents : null,
+          typeof parsed.vatCents === 'number'
+            ? Math.round(parsed.vatCents)
+            : null,
         date: typeof parsed.date === 'string' ? parsed.date : null,
-        items: Array.isArray(parsed.items) ? parsed.items : [],
+        items,
         pcgAccountCode:
           typeof parsed.pcgAccountCode === 'string'
             ? parsed.pcgAccountCode
@@ -410,7 +636,7 @@ Règles strictes :
         confidencePerField:
           typeof parsed.confidencePerField === 'object' &&
           parsed.confidencePerField !== null
-            ? parsed.confidencePerField
+            ? (parsed.confidencePerField as Record<string, number>)
             : {},
       };
     } catch (err) {

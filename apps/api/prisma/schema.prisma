@@ -3297,6 +3297,8 @@ model AccountingExtraction {
   extractedVatCents    Int?
   extractedDate        DateTime?
   extractedVendor      String?
+  /// Numéro de facture extrait (si présent sur le document).
+  extractedInvoiceNumber String?
   /// Proposition de compte PCG par l'IA (à valider par l'humain).
   extractedAccountCode String?
   model                String
