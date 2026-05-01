@@ -7,6 +7,8 @@ export type ViewerProfile = {
   isPrimaryProfile: boolean;
   familyId: string | null;
   householdGroupId?: string | null;
+  /** URL photo de la fiche Member ou Contact (optionnel). */
+  photoUrl?: string | null;
 };
 
 export type LoginWithProfilesData = {

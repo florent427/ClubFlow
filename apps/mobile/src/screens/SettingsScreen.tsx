@@ -195,7 +195,6 @@ export function SettingsScreen() {
         title="Paramètres"
         subtitle="Profil, photo, sécurité et session."
         gradient="hero"
-        overlap
       />
       <KeyboardAvoidingView
         style={styles.flex}
@@ -518,8 +517,8 @@ const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: palette.bg },
   scroll: {
     paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.xxxl,
-    marginTop: -spacing.md,
     gap: spacing.lg,
   },
   photoRow: {

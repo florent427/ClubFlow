@@ -47,7 +47,6 @@ export function HomeContactScreen() {
         title="Votre espace"
         subtitle="Votre compte est actif. Voici ce que vous pouvez faire."
         gradient="hero"
-        overlap
       />
       <ScrollView
         style={styles.flex}
@@ -146,8 +145,8 @@ const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: palette.bg },
   scroll: {
     paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.xxxl,
-    marginTop: -spacing.md,
     gap: spacing.lg,
   },
 

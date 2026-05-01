@@ -250,6 +250,7 @@ export const CLUB = gql`
       id
       name
       slug
+      requiresMedicalCertificate
     }
   }
 `;

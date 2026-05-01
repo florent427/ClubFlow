@@ -40,17 +40,20 @@ function extractPalette(json: unknown): ClubBrandingPaletteGql | null {
   };
 }
 
-function toClubGraph(row: {
-  id: string;
-  name: string;
-  slug: string;
-  logoUrl?: string | null;
-  siret?: string | null;
-  address?: string | null;
-  legalMentions?: string | null;
-  contactPhone?: string | null;
-  contactEmail?: string | null;
-}): ClubGraphModel {
+function toClubGraph(
+  row: {
+    id: string;
+    name: string;
+    slug: string;
+    logoUrl?: string | null;
+    siret?: string | null;
+    address?: string | null;
+    legalMentions?: string | null;
+    contactPhone?: string | null;
+    contactEmail?: string | null;
+  },
+  extras: { requiresMedicalCertificate: boolean },
+): ClubGraphModel {
   return {
     id: row.id,
     name: row.name,
@@ -61,6 +64,7 @@ function toClubGraph(row: {
     legalMentions: row.legalMentions ?? null,
     contactPhone: row.contactPhone ?? null,
     contactEmail: row.contactEmail ?? null,
+    requiresMedicalCertificate: extras.requiresMedicalCertificate,
   };
 }
 
@@ -68,13 +72,34 @@ function toClubGraph(row: {
 export class ClubsResolver {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Lit la config catalogue pour savoir si le certificat médical est
+   * requis. Retourne `false` par défaut (ex. catalogue jamais initialisé,
+   * ou ligne MEDICAL_CERT_EXPIRES_AT absente).
+   */
+  private async getRequiresMedicalCertificate(clubId: string): Promise<boolean> {
+    const row = await this.prisma.clubMemberFieldCatalogSetting.findUnique({
+      where: {
+        clubId_fieldKey: {
+          clubId,
+          fieldKey: 'MEDICAL_CERT_EXPIRES_AT',
+        },
+      },
+      select: { required: true },
+    });
+    return row?.required === true;
+  }
+
   @Query(() => ClubGraphModel)
   @UseGuards(GqlJwtAuthGuard, ClubContextGuard)
   async club(@CurrentClub() club: Club): Promise<ClubGraphModel> {
     // club from @CurrentClub ne contient que les champs du middleware;
     // on relit pour s'assurer d'avoir les champs ajoutés récemment (logoUrl…).
     const fresh = await this.prisma.club.findUnique({ where: { id: club.id } });
-    return toClubGraph(fresh ?? club);
+    const requiresMedicalCertificate = await this.getRequiresMedicalCertificate(
+      club.id,
+    );
+    return toClubGraph(fresh ?? club, { requiresMedicalCertificate });
   }
 
   /**
@@ -165,6 +190,9 @@ export class ClubsResolver {
       where: { id: club.id },
       data,
     });
-    return toClubGraph(updated);
+    const requiresMedicalCertificate = await this.getRequiresMedicalCertificate(
+      club.id,
+    );
+    return toClubGraph(updated, { requiresMedicalCertificate });
   }
 }

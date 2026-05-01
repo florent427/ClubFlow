@@ -14,6 +14,7 @@ export const LOGIN_WITH_PROFILES = gql`
         isPrimaryProfile
         familyId
         householdGroupId
+        photoUrl
       }
     }
   }
@@ -30,6 +31,7 @@ export const VIEWER_PROFILES = gql`
       isPrimaryProfile
       familyId
       householdGroupId
+      photoUrl
     }
   }
 `;

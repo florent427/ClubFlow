@@ -1,12 +1,20 @@
 import { type ReactNode } from 'react';
-import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  Image,
+  StyleSheet,
+  Text,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AnimatedPressable } from './AnimatedPressable';
-import { gradients, spacing, typography } from '../../lib/theme';
+import { gradients, radius, spacing, typography } from '../../lib/theme';
 import { useClubTheme } from '../../lib/theme-context';
+import { absolutizeMediaUrl } from '../../lib/absolutize-url';
 
 type Props = {
   /** Eyebrow uppercase au-dessus du titre. */
@@ -15,7 +23,12 @@ type Props = {
   subtitle?: string;
   /** Bouton retour à gauche. Si false, pas de back. */
   showBack?: boolean;
-  /** Action à droite (ex: avatar, bouton). */
+  /**
+   * Action à droite (ex: avatar, bouton). Si non fourni, on affiche
+   * automatiquement le **logo du club** dans un cercle blanc 44 px.
+   * Pour explicitement masquer le logo, passer `trailing={null}` (note :
+   * `null` est différent de `undefined`).
+   */
   trailing?: ReactNode;
   /** Variante "compacte" pour les écrans secondaires (moins haut). */
   compact?: boolean;
@@ -39,6 +52,14 @@ type Props = {
  *  - `compact` : header simple type page interne
  *  - `overlap` : padding bas plus grand pour permettre à la 1ʳᵉ card
  *    de la page de chevaucher le hero avec un margin-top négatif
+ *
+ * Logo club :
+ *  - Si `trailing` est `undefined` ET que le club a un logo, affiche
+ *    automatiquement le logo dans un cercle blanc en haut à droite.
+ *  - Si `trailing` est explicitement `null`, pas de logo.
+ *  - Si `trailing` est un node, c'est ce node qui s'affiche.
+ *  - Mémo : `trailing={null}` retourne false côté `??` mais true côté
+ *    `!==` ; on distingue donc bien les 2 cas.
  */
 export function ScreenHero({
   eyebrow,
@@ -61,7 +82,37 @@ export function ScreenHero({
   const grad = clubTheme.isClubBranded ? clubTheme.gradients[gradient] : gradients[gradient];
 
   const paddingTop = insets.top + spacing.lg;
-  const paddingBottom = overlap ? spacing.giant : compact ? spacing.xl : spacing.xxxl;
+  // Padding bas standardisé — augmenté de spacing.lg→spacing.xxl pour le
+  // mode normal, afin d'éviter les collisions hero↔contenu observées sur
+  // Actus/Famille (les écrans qui posent leur 1ère card directement sous
+  // le hero sans marginTop négatif).
+  const paddingBottom = overlap
+    ? spacing.giant
+    : compact
+      ? spacing.xxl
+      : spacing.xxxl;
+
+  const logoUrl = absolutizeMediaUrl(clubTheme.clubLogoUrl);
+  // `trailing === undefined` → on affiche le logo auto si dispo
+  // `trailing === null` → on masque (placeholder vide pour garder l'alignement)
+  // sinon → on affiche le node fourni
+  let trailingNode: ReactNode;
+  if (trailing !== undefined) {
+    trailingNode = trailing ?? <View style={{ width: 44 }} />;
+  } else if (logoUrl) {
+    trailingNode = (
+      <View style={styles.logoBubble}>
+        <Image
+          source={{ uri: logoUrl }}
+          style={styles.logoImg}
+          resizeMode="contain"
+          accessibilityIgnoresInvertColors
+        />
+      </View>
+    );
+  } else {
+    trailingNode = <View style={{ width: 44 }} />;
+  }
 
   return (
     <LinearGradient
@@ -91,7 +142,7 @@ export function ScreenHero({
         ) : (
           <View style={{ width: 44 }} />
         )}
-        {trailing ?? <View style={{ width: 44 }} />}
+        {trailingNode}
       </View>
 
       <View style={[styles.brand, compact ? styles.brandCompact : null]}>
@@ -139,6 +190,28 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.35)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  logoBubble: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.pill,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    // Léger contour transparent pour faire ressortir le logo sur le hero
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
+    // Subtle shadow pour un effet "premium"
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  logoImg: {
+    width: 30,
+    height: 30,
   },
   brand: { gap: spacing.xs, marginTop: spacing.sm },
   brandCompact: { marginTop: 0 },

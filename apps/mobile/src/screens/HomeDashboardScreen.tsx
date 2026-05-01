@@ -154,11 +154,23 @@ export function HomeDashboardScreen() {
                   tone={me?.gradeLevelLabel ? 'primary' : 'neutral'}
                   label={me?.gradeLevelLabel ?? 'Grade non renseigné'}
                 />
-                <Pill
-                  icon="shield-checkmark-outline"
-                  tone={cert.ok ? 'success' : 'warning'}
-                  label={cert.label}
-                />
+                {/*
+                  Le certificat médical n'est affiché que si :
+                   - le club l'a marqué comme requis dans son catalogue
+                     champs adhérent (cf. ClubMemberFieldCatalogSetting
+                     fieldKey=MEDICAL_CERT_EXPIRES_AT, required=true)
+                   - OU le membre a déjà saisi un certificat valide
+                     (auquel cas on garde la pill verte "à jour")
+                  Évite d'inquiéter inutilement les adhérents des clubs
+                  où le certif n'est pas une obligation.
+                */}
+                {(clubData?.club?.requiresMedicalCertificate || cert.ok) ? (
+                  <Pill
+                    icon="shield-checkmark-outline"
+                    tone={cert.ok ? 'success' : 'warning'}
+                    label={cert.label}
+                  />
+                ) : null}
                 {me?.telegramLinked ? (
                   <Pill
                     icon="send-outline"

@@ -64,7 +64,6 @@ export function ProgressionScreen() {
             : 'Votre grade sera renseigné par le club.'
         }
         gradient="hero"
-        overlap
       >
         {/* Progress bar */}
         <View style={styles.progressTrack}>
@@ -193,8 +192,8 @@ const styles = StyleSheet.create({
   },
   scroll: {
     paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.xxxl,
-    marginTop: -spacing.md,
     gap: spacing.lg,
   },
 

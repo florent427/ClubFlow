@@ -152,7 +152,13 @@ export type ViewerAllFamilyBillingData = {
 };
 
 export type ClubQueryData = {
-  club: { id: string; name: string; slug: string };
+  club: {
+    id: string;
+    name: string;
+    slug: string;
+    /** True si l'admin du club a marqué le champ certificat médical comme requis. */
+    requiresMedicalCertificate: boolean;
+  };
 };
 
 export type ViewerClubAnnouncement = {

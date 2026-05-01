@@ -235,6 +235,9 @@ export class FamiliesService {
         isPrimaryProfile: prev.isPrimaryProfile || p.isPrimaryProfile,
         familyId: p.householdGroupId != null ? p.familyId : prev.familyId,
         householdGroupId: prev.householdGroupId ?? p.householdGroupId,
+        // Préserve la première photo trouvée — évite d'écraser avec null
+        // si une duplication arrive sans photo.
+        photoUrl: prev.photoUrl ?? p.photoUrl,
       });
     };
 
@@ -280,6 +283,7 @@ export class FamiliesService {
           isPrimaryProfile: fm.linkRole === FamilyMemberLinkRole.PAYER,
           familyId: fm.familyId,
           householdGroupId: null,
+          photoUrl: fm.member.photoUrl ?? null,
         });
       }
     }
@@ -331,6 +335,7 @@ export class FamiliesService {
           isPrimaryProfile: fm.linkRole === FamilyMemberLinkRole.PAYER,
           familyId: fm.familyId,
           householdGroupId: hgId,
+          photoUrl: fm.member.photoUrl ?? null,
         });
       }
     }
@@ -355,6 +360,7 @@ export class FamiliesService {
         isPrimaryProfile: true,
         familyId: null,
         householdGroupId: null,
+        photoUrl: m.photoUrl ?? null,
       });
     }
 
@@ -465,6 +471,7 @@ export class FamiliesService {
         isPrimaryProfile: true,
         familyId: fm.familyId,
         householdGroupId: fm.family.householdGroupId,
+        photoUrl: fm.contact.photoUrl ?? null,
       });
     }
 

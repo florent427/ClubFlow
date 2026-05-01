@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useQuery } from '@apollo/client/react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ActivitiesHubScreen } from '../screens/ActivitiesHubScreen';
 import { BookingScreen } from '../screens/BookingScreen';
 import { DocumentsNavigator } from '../screens/documents/DocumentsNavigator';
 import { EventsScreen } from '../screens/EventsScreen';
@@ -9,6 +10,7 @@ import { FamilyScreen } from '../screens/FamilyScreen';
 import { HomeContactScreen } from '../screens/HomeContactScreen';
 import { HomeDashboardScreen } from '../screens/HomeDashboardScreen';
 import { MessagingNavigator } from '../screens/messaging/MessagingNavigator';
+import { MoreMenuScreen } from '../screens/MoreMenuScreen';
 import { NewsScreen } from '../screens/NewsScreen';
 import { PlanningScreen } from '../screens/PlanningScreen';
 import { ProgressionScreen } from '../screens/ProgressionScreen';
@@ -22,6 +24,28 @@ import type { ContactTabParamList, MainTabParamList } from '../types/navigation'
 const MemberTab = createBottomTabNavigator<MainTabParamList>();
 const ContactTab = createBottomTabNavigator<ContactTabParamList>();
 
+/**
+ * Architecture **5 onglets max** (anti-overflow) :
+ *
+ *   1. **Accueil** — Dashboard
+ *   2. **Activités** — hub Planning / Réservations / Événements
+ *   3. **Chat** — Messagerie
+ *   4. **Famille** — Foyer + factures
+ *   5. **Plus** — overflow grid : Documents, Actus, Progression, Profil
+ *
+ * Les écrans secondaires (Planning, Réservations, Évenements, Documents,
+ * Actus, Progression, Parametres) restent **enregistrés** comme tabs
+ * mais sont rendus invisibles dans la tab bar via `tabBarButton: () => null`.
+ * Avantage : les `navigation.navigate('Documents')` du HomeDashboard
+ * continuent de fonctionner sans changement, et le ActivitiesHubScreen
+ * peut router vers Planning/Réservations/Événements en un seul tap.
+ *
+ * Pourquoi 5 tabs et pas 4 ?
+ * - 5 = limite UX iOS / Material recommandée pour de la navigation racine
+ * - Permet de tenir Famille + Activités + Chat sans compromis
+ * - Au-delà de 5, les labels deviennent illisibles (cf. screenshots avant
+ *   refactor : "Pla…", "Rés…", "Eve…", etc.)
+ */
 export function MemberTabsNavigator() {
   const insets = useSafeAreaInsets();
   const clubTheme = useClubTheme();
@@ -38,9 +62,9 @@ export function MemberTabsNavigator() {
   return (
     <MemberTab.Navigator
       key={hideMemberModules ? 'min' : 'full'}
+      // Démarre sur Accueil par défaut.
+      initialRouteName="Home"
       screenOptions={({ route }) => ({
-        // Le Dashboard / HomeContact gèrent leur propre hero gradient
-        // donc on cache le header système.
         headerShown: route.name !== 'Home',
         headerStyle: { backgroundColor: palette.surface },
         headerTitleStyle: { ...typography.h3, color: palette.ink },
@@ -66,6 +90,7 @@ export function MemberTabsNavigator() {
         },
       })}
     >
+      {/* ─── 1. ACCUEIL (visible) ──────────────────────────────────── */}
       <MemberTab.Screen
         name="Home"
         component={HomeDashboardScreen}
@@ -77,69 +102,31 @@ export function MemberTabsNavigator() {
           ),
         }}
       />
+
+      {/* ─── 2. ACTIVITÉS (visible, masqué si contact pur) ─────────── */}
       {!hideMemberModules ? (
-        <>
-          <MemberTab.Screen
-            name="Progression"
-            component={ProgressionScreen}
-            options={{
-              title: 'Ma progression',
-              tabBarIcon: ({ color, size }) => (
-                <Ionicons name="school-outline" size={size} color={color} />
-              ),
-            }}
-          />
-          <MemberTab.Screen
-            name="Planning"
-            component={PlanningScreen}
-            options={{
-              title: 'Planning',
-              tabBarIcon: ({ color, size }) => (
-                <Ionicons name="calendar-outline" size={size} color={color} />
-              ),
-            }}
-          />
-          <MemberTab.Screen
-            name="Reservations"
-            component={BookingScreen}
-            options={{
-              title: 'Réservations',
-              tabBarLabel: 'Réserver',
-              tabBarIcon: ({ color, size }) => (
-                <Ionicons name="checkmark-circle-outline" size={size} color={color} />
-              ),
-            }}
-          />
-        </>
+        <MemberTab.Screen
+          name="Activites"
+          component={ActivitiesHubScreen}
+          options={{
+            title: 'Activités',
+            tabBarLabel: 'Activités',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons
+                name="rocket-outline"
+                size={size}
+                color={color}
+              />
+            ),
+          }}
+        />
       ) : null}
-      <MemberTab.Screen
-        name="Actus"
-        component={NewsScreen}
-        options={{
-          title: 'Vie du club',
-          tabBarLabel: 'Actus',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="megaphone-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <MemberTab.Screen
-        name="Evenements"
-        component={EventsScreen}
-        options={{
-          title: 'Événements',
-          tabBarLabel: 'Events',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="star-outline" size={size} color={color} />
-          ),
-        }}
-      />
+
+      {/* ─── 3. CHAT / Messagerie (visible) ─────────────────────────── */}
       <MemberTab.Screen
         name="Messagerie"
         component={MessagingNavigator}
         options={({ route }) => {
-          // Cache la tab bar quand on est dans la vue conversation
-          // (évite de manger 64dp de hauteur sous le composer).
           const sub = (
             route as unknown as {
               state?: { routes?: { name?: string }[]; index?: number };
@@ -157,6 +144,8 @@ export function MemberTabsNavigator() {
           };
         }}
       />
+
+      {/* ─── 4. FAMILLE (visible) ──────────────────────────────────── */}
       <MemberTab.Screen
         name="Famille"
         component={FamilyScreen}
@@ -168,31 +157,93 @@ export function MemberTabsNavigator() {
           ),
         }}
       />
+
+      {/* ─── 5. PLUS — overflow menu (visible) ─────────────────────── */}
+      <MemberTab.Screen
+        name="Plus"
+        component={MoreMenuScreen}
+        options={{
+          headerShown: false,
+          tabBarLabel: 'Plus',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="apps-outline" size={size} color={color} />
+          ),
+        }}
+      />
+
+      {/* ─── ÉCRANS SECONDAIRES (cachés mais navigables) ──────────── */}
+      {/* Accessibles depuis ActivitiesHubScreen (Planning/Réservations/Events)
+          ou depuis MoreMenuScreen (Documents/Actus/Progression/Profil).
+          On les laisse comme tabs pour que `navigation.navigate('Documents')`
+          continue de fonctionner depuis n'importe quel écran sans casser
+          les liens existants (HomeDashboard, etc.). */}
+      {!hideMemberModules ? (
+        <>
+          <MemberTab.Screen
+            name="Progression"
+            component={ProgressionScreen}
+            options={{
+              title: 'Ma progression',
+              tabBarButton: () => null,
+              tabBarItemStyle: { display: 'none' },
+            }}
+          />
+          <MemberTab.Screen
+            name="Planning"
+            component={PlanningScreen}
+            options={{
+              title: 'Planning',
+              tabBarButton: () => null,
+              tabBarItemStyle: { display: 'none' },
+            }}
+          />
+          <MemberTab.Screen
+            name="Reservations"
+            component={BookingScreen}
+            options={{
+              title: 'Réservations',
+              tabBarButton: () => null,
+              tabBarItemStyle: { display: 'none' },
+            }}
+          />
+        </>
+      ) : null}
+      <MemberTab.Screen
+        name="Actus"
+        component={NewsScreen}
+        options={{
+          title: 'Vie du club',
+          tabBarButton: () => null,
+          tabBarItemStyle: { display: 'none' },
+        }}
+      />
+      <MemberTab.Screen
+        name="Evenements"
+        component={EventsScreen}
+        options={{
+          title: 'Événements',
+          tabBarButton: () => null,
+          tabBarItemStyle: { display: 'none' },
+        }}
+      />
       <MemberTab.Screen
         name="Documents"
         component={DocumentsNavigator}
         options={({ route }) => {
-          // Cache la tab bar quand on est sur l'écran de signature
-          // (libère de l'espace pour la signature tactile + boutons).
           const sub = (
             route as unknown as {
               state?: { routes?: { name?: string }[]; index?: number };
             }
           ).state;
           const focused = sub?.routes?.[sub?.index ?? 0]?.name;
-          // Cache la tab bar dès qu'on quitte la liste — l'aperçu PDF
-          // (DocumentPreview) profite d'un viewer plein écran, et l'écran
-          // de signature (DocumentSign) a besoin de toute la hauteur dispo
-          // pour ses champs + bouton "Valider".
+          // Sur les sous-écrans (Preview/Sign), on cache aussi la tab bar.
           const hideTabBar =
             focused === 'DocumentSign' || focused === 'DocumentPreview';
           return {
             headerShown: false,
             title: 'Documents',
-            tabBarLabel: 'Docs',
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="document-text-outline" size={size} color={color} />
-            ),
+            tabBarButton: () => null,
+            tabBarItemStyle: { display: 'none' },
             tabBarStyle: hideTabBar ? { display: 'none' } : undefined,
           };
         }}
@@ -202,10 +253,8 @@ export function MemberTabsNavigator() {
         component={SettingsScreen}
         options={{
           title: 'Paramètres',
-          tabBarLabel: 'Profil',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="settings-outline" size={size} color={color} />
-          ),
+          tabBarButton: () => null,
+          tabBarItemStyle: { display: 'none' },
         }}
       />
     </MemberTab.Navigator>
@@ -286,10 +335,6 @@ export function ContactTabsNavigator() {
             }
           ).state;
           const focused = sub?.routes?.[sub?.index ?? 0]?.name;
-          // Cache la tab bar dès qu'on quitte la liste — l'aperçu PDF
-          // (DocumentPreview) profite d'un viewer plein écran, et l'écran
-          // de signature (DocumentSign) a besoin de toute la hauteur dispo
-          // pour ses champs + bouton "Valider".
           const hideTabBar =
             focused === 'DocumentSign' || focused === 'DocumentPreview';
           return {

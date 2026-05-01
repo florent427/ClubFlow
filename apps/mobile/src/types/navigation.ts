@@ -1,5 +1,7 @@
 export type MainTabParamList = {
   Home: undefined;
+  /** Hub Activités — agrège Planning / Réservations / Événements. */
+  Activites: undefined;
   Progression: undefined;
   Planning: undefined;
   Actus: undefined;
@@ -9,6 +11,8 @@ export type MainTabParamList = {
   Famille: undefined;
   Parametres: undefined;
   Documents: undefined;
+  /** Overflow menu — modules secondaires (Documents, Actus, Profil…). */
+  Plus: undefined;
 };
 
 export type ContactTabParamList = {

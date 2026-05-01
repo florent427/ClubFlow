@@ -51,7 +51,6 @@ export function PlanningScreen() {
             : 'Vos créneaux planifiés.'
         }
         gradient="hero"
-        overlap
       />
       <ScrollView
         style={styles.flex}
@@ -115,8 +114,8 @@ const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: palette.bg },
   scroll: {
     paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.xxxl,
-    marginTop: -spacing.md,
     gap: spacing.lg,
   },
   daySection: { gap: spacing.sm },

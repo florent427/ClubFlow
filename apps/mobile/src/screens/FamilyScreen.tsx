@@ -154,7 +154,6 @@ export function FamilyScreen() {
         title={pageTitle}
         subtitle={heroSubtitle}
         gradient="hero"
-        overlap
       />
       <ScrollView
         style={styles.flex}
@@ -389,8 +388,8 @@ const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: palette.bg },
   inner: {
     paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.xxxl,
-    marginTop: -spacing.md,
     gap: spacing.lg,
   },
   strong: { fontFamily: typography.bodyStrong.fontFamily },
