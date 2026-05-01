@@ -5,6 +5,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useEffect, useState } from 'react';
 import {
   FlatList,
+  Image,
   Modal,
   Pressable,
   StyleSheet,
@@ -25,12 +26,18 @@ import {
   VIEWER_CHAT_ROOMS,
   VIEWER_UPDATE_MY_PSEUDO,
 } from '../../lib/messaging-documents';
+import { absolutizeMediaUrl } from '../../lib/absolutize-url';
 import { authorColor, formatRoomDate, initials } from '../../lib/messaging-format';
 import { palette, radius, spacing, typography } from '../../lib/theme';
 import { useClubTheme } from '../../lib/theme-context';
 import { VIEWER_ME } from '../../lib/viewer-documents';
 import type { ViewerMeData } from '../../lib/viewer-types';
-import { roomLabel, type ChatRoomRow, type MessagingStackParamList } from './types';
+import {
+  directPeer,
+  roomLabel,
+  type ChatRoomRow,
+  type MessagingStackParamList,
+} from './types';
 
 export function MessagingHomeScreen() {
   const insets = useSafeAreaInsets();
@@ -110,6 +117,7 @@ export function MessagingHomeScreen() {
           <RoomRow
             room={item}
             primary={primary}
+            viewerMemberId={meData?.viewerMe?.id ?? null}
             onPress={() =>
               navigation.navigate('MessagingThread', { roomId: item.id })
             }
@@ -219,19 +227,29 @@ export function MessagingHomeScreen() {
 function RoomRow({
   room,
   primary,
+  viewerMemberId,
   onPress,
 }: {
   room: ChatRoomRow;
   primary: string;
+  /** ID du membre courant — sert à identifier le peer dans les chats DIRECT. */
+  viewerMemberId: string | null;
   onPress: () => void;
 }) {
-  const label = roomLabel(room);
+  const label = roomLabel(room, viewerMemberId);
   const isCommunity = room.kind === 'COMMUNITY';
+  const isDirect = room.kind === 'DIRECT';
+  const peer = directPeer(room, viewerMemberId);
+  // Pour les chats DIRECT, on essaie d'abord la photo du peer ; sinon
+  // fallback sur les initiales colorées.
+  const peerPhoto = peer ? absolutizeMediaUrl(peer.photoUrl) : null;
   const subline =
     room.description ??
     (room.isBroadcastChannel
       ? 'Canal de diffusion'
-      : `${room.members.length} membre${room.members.length > 1 ? 's' : ''}`);
+      : isDirect
+        ? 'Conversation privée'
+        : `${room.members.length} membre${room.members.length > 1 ? 's' : ''}`);
 
   return (
     <AnimatedPressable
@@ -242,7 +260,7 @@ function RoomRow({
       scale={0.98}
     >
       <View style={styles.rowInner}>
-        {/* Avatar */}
+        {/* Avatar — gradient pour la communauté, photo pour DIRECT, initiales sinon */}
         {isCommunity ? (
           <LinearGradient
             colors={[primary, '#7c3aed']}
@@ -252,9 +270,22 @@ function RoomRow({
           >
             <Ionicons name="people" size={22} color="#ffffff" />
           </LinearGradient>
+        ) : isDirect && peerPhoto ? (
+          <Image
+            source={{ uri: peerPhoto }}
+            style={styles.avatar}
+            accessibilityIgnoresInvertColors
+          />
         ) : (
           <View
-            style={[styles.avatar, { backgroundColor: authorColor(room.id) }]}
+            style={[
+              styles.avatar,
+              {
+                backgroundColor: authorColor(
+                  isDirect && peer ? peer.id : room.id,
+                ),
+              },
+            ]}
           >
             <Text style={styles.avatarText}>{initials(label)}</Text>
           </View>

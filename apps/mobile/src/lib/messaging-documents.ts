@@ -19,6 +19,7 @@ const ROOM_FIELDS = `
       pseudo
       firstName
       lastName
+      photoUrl
     }
   }
 `;

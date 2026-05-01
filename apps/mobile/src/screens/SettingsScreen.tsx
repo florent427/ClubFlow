@@ -22,6 +22,7 @@ import {
   TextField,
 } from '../components/ui';
 import { MemberProfileSwitcher } from '../components/MemberProfileSwitcher';
+import { clearAllPinUnlocks } from '../components/PinGate';
 import { absolutizeMediaUrl } from '../lib/absolutize-url';
 import {
   VIEWER_CLEAR_PAYER_SPACE_PIN,
@@ -68,9 +69,26 @@ export function SettingsScreen() {
     setPhotoUrl(me.photoUrl ?? null);
   }, [me]);
 
-  const [updateProfile] = useMutation(VIEWER_UPDATE_MY_PROFILE);
+  // `refetchQueries` couvre toutes les queries qui dépendent de
+  // `Member.photoUrl` (et autres champs de profil) — sans ça, l'avatar
+  // restait obsolète sur HomeDashboard, FamilyScreen, MemberProfileSwitcher
+  // jusqu'à un switch de profil. Les noms doivent matcher EXACTEMENT
+  // l'`operationName` GraphQL (cf. les `query XXX` dans viewer-documents.ts
+  // et documents.ts).
+  const [updateProfile] = useMutation(VIEWER_UPDATE_MY_PROFILE, {
+    refetchQueries: [
+      'ViewerMe', // VIEWER_ME (le profil actif → photoUrl, firstName…)
+      'MemberViewerProfiles', // VIEWER_PROFILES (sélecteur de profil)
+      'ViewerAllFamilyBillingSummaries', // FamilyScreen membres + factures
+      'ViewerFamilyBillingSummary', // HomeDashboard factures
+    ],
+    awaitRefetchQueries: true,
+  });
 
   async function logout() {
+    // Reset les unlocks PIN — sinon un user qui se reconnecte avec
+    // le même profil garderait l'unlock de l'instance précédente.
+    clearAllPinUnlocks();
     await storage.clearAuth();
     rootNav.dispatch(
       CommonActions.reset({ index: 0, routes: [{ name: 'Login' }] }),
@@ -78,6 +96,7 @@ export function SettingsScreen() {
   }
 
   async function chooseOtherProfile() {
+    clearAllPinUnlocks();
     await storage.clearClubId();
     rootNav.dispatch(
       CommonActions.reset({ index: 0, routes: [{ name: 'SelectProfile' }] }),

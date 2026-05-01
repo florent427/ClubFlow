@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useQuery } from '@apollo/client/react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { PinGate } from '../components/PinGate';
 import { ActivitiesHubScreen } from '../screens/ActivitiesHubScreen';
 import { BookingScreen } from '../screens/BookingScreen';
 import { DocumentsNavigator } from '../screens/documents/DocumentsNavigator';
@@ -60,6 +61,17 @@ export function MemberTabsNavigator() {
   const bottomInset = insets.bottom;
 
   return (
+    /*
+      PinGate au niveau racine : si le profil actif a un PIN payeur
+      défini ET n'a pas encore été déverrouillé dans cette session,
+      l'utilisateur voit l'écran PIN AVANT d'accéder à la tab bar.
+      Pour les profils sans PIN ou déjà déverrouillés, le gate
+      passe-through transparent.
+      Le state `unlockedProfileIds` est volatile (mémoire process) →
+      à chaque switch profil ou redémarrage app, le PIN est
+      redemandé pour le profil protégé.
+    */
+    <PinGate>
     <MemberTab.Navigator
       key={hideMemberModules ? 'min' : 'full'}
       // Démarre sur Accueil par défaut.
@@ -258,6 +270,7 @@ export function MemberTabsNavigator() {
         }}
       />
     </MemberTab.Navigator>
+    </PinGate>
   );
 }
 

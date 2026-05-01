@@ -259,6 +259,10 @@ export class MessagingService {
                 firstName: true,
                 lastName: true,
                 pseudo: true,
+                // Nécessaire pour afficher l'avatar du peer dans la
+                // liste des salons (notamment pour les chats DIRECT
+                // 1-on-1) — cf. ChatMemberSnippetGraph.photoUrl.
+                photoUrl: true,
               },
             },
           },
@@ -319,6 +323,9 @@ export class MessagingService {
             pseudo: true,
             firstName: true,
             lastName: true,
+            // photoUrl propagé pour afficher l'avatar de l'expéditeur
+            // dans les bulles de chat côté mobile.
+            photoUrl: true,
           },
         },
         reactions: true,
@@ -348,6 +355,9 @@ export class MessagingService {
             pseudo: true,
             firstName: true,
             lastName: true,
+            // photoUrl propagé pour afficher l'avatar de l'expéditeur
+            // dans les bulles de chat côté mobile.
+            photoUrl: true,
           },
         },
         reactions: true,
@@ -544,6 +554,9 @@ export class MessagingService {
             pseudo: true,
             firstName: true,
             lastName: true,
+            // photoUrl propagé pour afficher l'avatar de l'expéditeur
+            // dans les bulles de chat côté mobile.
+            photoUrl: true,
           },
         },
         reactions: true,
@@ -573,6 +586,20 @@ export class MessagingService {
    * - reacted: true si la réaction est désormais présente, false si retirée.
    * - count : nombre de réactions de ce même emoji sur ce message après op.
    */
+  /**
+   * **1 seule réaction par membre par message** (cf. contrainte unique
+   * `[messageId, memberId]` dans schema.prisma).
+   *
+   * Comportement :
+   *  - Pas de réaction existante → CREATE
+   *  - Même emoji re-cliqué → DELETE (toggle off)
+   *  - Emoji différent cliqué → UPDATE (remplace l'ancien)
+   *
+   * Retourne `reacted=true` si l'emoji `emoji` est posé après l'opération
+   * (CREATE ou UPDATE vers cet emoji), `false` si DELETE. `count` =
+   * nombre total de membres ayant CET emoji sur le message après
+   * l'opération.
+   */
   async toggleReaction(
     clubId: string,
     memberId: string,
@@ -595,26 +622,37 @@ export class MessagingService {
 
     const existing = await this.prisma.chatMessageReaction.findUnique({
       where: {
-        messageId_memberId_emoji: {
-          messageId,
-          memberId,
-          emoji: trimmed,
-        },
+        messageId_memberId: { messageId, memberId },
       },
     });
-    if (existing) {
-      await this.prisma.chatMessageReaction.delete({
-        where: { id: existing.id },
-      });
-    } else {
+
+    let reacted: boolean;
+    if (!existing) {
+      // Aucune réaction → on pose la nouvelle.
       await this.prisma.chatMessageReaction.create({
         data: { messageId, memberId, clubId, emoji: trimmed },
       });
+      reacted = true;
+    } else if (existing.emoji === trimmed) {
+      // Même emoji re-cliqué → toggle off (DELETE).
+      await this.prisma.chatMessageReaction.delete({
+        where: { id: existing.id },
+      });
+      reacted = false;
+    } else {
+      // Emoji différent → REMPLACE l'ancien (UPDATE plutôt que
+      // DELETE+CREATE, plus efficient et conserve l'id).
+      await this.prisma.chatMessageReaction.update({
+        where: { id: existing.id },
+        data: { emoji: trimmed },
+      });
+      reacted = true;
     }
+
     const count = await this.prisma.chatMessageReaction.count({
       where: { messageId, emoji: trimmed },
     });
-    return { reacted: !existing, count };
+    return { reacted, count };
   }
 
   /**
@@ -662,6 +700,9 @@ export class MessagingService {
             pseudo: true,
             firstName: true,
             lastName: true,
+            // photoUrl propagé pour afficher l'avatar de l'expéditeur
+            // dans les bulles de chat côté mobile.
+            photoUrl: true,
           },
         },
         reactions: true,

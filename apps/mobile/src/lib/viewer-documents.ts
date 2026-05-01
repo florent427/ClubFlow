@@ -64,6 +64,18 @@ export const VIEWER_CLEAR_PAYER_SPACE_PIN = gql`
   }
 `;
 
+/**
+ * Vérifie le PIN payeur. Renvoie `ok: true` si match. Utilisé par
+ * `<PinGate>` pour déverrouiller le profil après chaque switch.
+ */
+export const VIEWER_VERIFY_PAYER_SPACE_PIN = gql`
+  mutation ViewerVerifyPayerSpacePin($pin: String!) {
+    viewerVerifyPayerSpacePin(pin: $pin) {
+      ok
+    }
+  }
+`;
+
 // =====================================================
 // Inscription depuis l'espace contact
 // =====================================================

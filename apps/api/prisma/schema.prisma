@@ -811,7 +811,15 @@ model ChatMessage {
   @@index([parentMessageId, createdAt])
 }
 
-/// Réaction emoji sur un message (1 emoji par membre par message).
+/// Réaction emoji sur un message — **1 SEULE réaction par membre par
+/// message**. La contrainte unique sur [messageId, memberId] garantit
+/// qu'un user ne peut pas avoir deux emojis sur le même message en
+/// même temps (le service `toggleReaction` fait UPDATE quand un autre
+/// emoji est cliqué, ou DELETE quand le même emoji est re-cliqué).
+///
+/// Avant : la contrainte était `[messageId, memberId, emoji]` qui
+/// permettait d'empiler plusieurs emojis sur un message — comportement
+/// retiré sur demande UX (cf. design-critique : "1 emoji par user").
 model ChatMessageReaction {
   id        String   @id @default(uuid())
   messageId String
@@ -824,7 +832,7 @@ model ChatMessageReaction {
   message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
   member  Member      @relation(fields: [memberId], references: [id], onDelete: Cascade)
 
-  @@unique([messageId, memberId, emoji])
+  @@unique([messageId, memberId])
   @@index([messageId])
   @@index([clubId, memberId])
 }

@@ -170,6 +170,10 @@ export class MessagingAdminResolver {
         pseudo: msg.sender.pseudo,
         firstName: msg.sender.firstName,
         lastName: msg.sender.lastName,
+        // photoUrl ajouté au schéma GraphQL — propagation pour le mobile.
+        photoUrl:
+          (msg.sender as unknown as { photoUrl?: string | null }).photoUrl ??
+          null,
       },
     });
     return this.toMessageGql(msg);
@@ -209,6 +213,10 @@ export class MessagingAdminResolver {
         pseudo: msg.sender.pseudo,
         firstName: msg.sender.firstName,
         lastName: msg.sender.lastName,
+        // photoUrl ajouté au schéma GraphQL — propagation pour le mobile.
+        photoUrl:
+          (msg.sender as unknown as { photoUrl?: string | null }).photoUrl ??
+          null,
       },
       parentMessageId: msg.parentMessageId,
       replyCount: msg.replyCount,
@@ -243,6 +251,9 @@ export class MessagingAdminResolver {
             pseudo: m.member.pseudo,
             firstName: m.member.firstName,
             lastName: m.member.lastName,
+            photoUrl:
+              (m.member as unknown as { photoUrl?: string | null }).photoUrl ??
+              null,
           },
         }),
       ),

@@ -44,6 +44,8 @@ export type ChatRoomRow = {
       pseudo: string | null;
       firstName: string;
       lastName: string;
+      /** URL de la photo de profil — affichée pour les chats DIRECT. */
+      photoUrl: string | null;
     };
   }[];
 };
@@ -71,9 +73,44 @@ export const QUICK_EMOJIS = [
   '😊',
 ];
 
-export function roomLabel(r: ChatRoomRow): string {
+/**
+ * Pour un chat DIRECT 1-on-1, retourne l'autre membre (le peer) en
+ * filtrant le viewer. Si on ne sait pas qui est le viewer (ex. chargement
+ * en cours), retombe sur le 1er membre. Pour un chat non-DIRECT,
+ * retourne null.
+ */
+export function directPeer(
+  r: ChatRoomRow,
+  viewerMemberId: string | null,
+): ChatRoomRow['members'][number]['member'] | null {
+  if (r.kind !== 'DIRECT') return null;
+  const others = viewerMemberId
+    ? r.members.filter((m) => m.memberId !== viewerMemberId)
+    : r.members;
+  return others[0]?.member ?? r.members[0]?.member ?? null;
+}
+
+/**
+ * Label affiché dans la liste des salons.
+ *  - COMMUNITY → nom du salon ou "Communauté"
+ *  - GROUP → nom du salon ou "Groupe"
+ *  - DIRECT → pseudo du peer (si défini), sinon "Prénom Nom"
+ *
+ * Pour DIRECT, on a besoin du `viewerMemberId` pour identifier le
+ * peer (on filtre soi-même de la liste des members). Si non fourni,
+ * on retombe sur "Discussion" (legacy).
+ */
+export function roomLabel(
+  r: ChatRoomRow,
+  viewerMemberId: string | null = null,
+): string {
   if (r.kind === 'COMMUNITY') return r.name ?? 'Communauté';
   if (r.kind === 'GROUP') return r.name ?? 'Groupe';
+  const peer = directPeer(r, viewerMemberId);
+  if (peer) {
+    if (peer.pseudo && peer.pseudo.trim().length > 0) return peer.pseudo;
+    return `${peer.firstName} ${peer.lastName}`.trim() || 'Discussion';
+  }
   return 'Discussion';
 }
 

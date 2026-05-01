@@ -105,6 +105,7 @@ export class MessagingGateway implements OnGatewayConnection {
         pseudo: string | null;
         firstName: string;
         lastName: string;
+        photoUrl?: string | null;
       };
     },
   ): void {

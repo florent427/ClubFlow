@@ -28,6 +28,7 @@ import type {
 import type { ViewerMeData } from '../lib/viewer-types';
 import { absolutizeMediaUrl } from '../lib/absolutize-url';
 import * as storage from '../lib/storage';
+import { clearAllPinUnlocks } from './PinGate';
 import { palette, radius, spacing, typography } from '../lib/theme';
 import type { RootStackParamList } from '../types/navigation';
 
@@ -143,6 +144,10 @@ export function MemberProfileSwitcher({ onDark = false }: Props = {}) {
         return;
       }
       setPickerOpen(false);
+      // Reset les unlocks PIN avant le switch — le nouveau profil
+      // (s'il a un PIN) DOIT redemander le code (cf. UX requirement
+      // "active à chaque retour sur le profil protégé").
+      clearAllPinUnlocks();
       rootNav.dispatch(
         CommonActions.reset({ index: 0, routes: [{ name: 'Main' }] }),
       );

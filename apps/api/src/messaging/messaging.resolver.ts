@@ -46,6 +46,7 @@ type RawMessage = {
     pseudo: string | null;
     firstName: string;
     lastName: string;
+    photoUrl: string | null;
   };
   reactions: {
     id: string;
@@ -422,6 +423,9 @@ export class MessagingResolver {
             pseudo: m.member.pseudo,
             firstName: m.member.firstName,
             lastName: m.member.lastName,
+            // photoUrl propagé pour permettre l'affichage de l'avatar
+            // du peer dans la liste des chats DIRECT côté mobile.
+            photoUrl: m.member.photoUrl ?? null,
           },
         }),
       ),
@@ -454,6 +458,7 @@ export class MessagingResolver {
       pseudo: msg.sender.pseudo,
       firstName: msg.sender.firstName,
       lastName: msg.sender.lastName,
+      photoUrl: msg.sender.photoUrl,
     };
     return {
       id: msg.id,

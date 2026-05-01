@@ -19,6 +19,14 @@ export class ChatMemberSnippetGraph {
 
   @Field(() => String)
   lastName!: string;
+
+  @Field(() => String, {
+    nullable: true,
+    description:
+      'URL de la photo de profil — affichée comme avatar dans la liste des ' +
+      'salons (notamment pour les chats DIRECT 1-on-1 où on veut voir le peer).',
+  })
+  photoUrl!: string | null;
 }
 
 @ObjectType()
