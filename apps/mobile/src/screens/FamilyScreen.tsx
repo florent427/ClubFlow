@@ -20,6 +20,7 @@ import {
 } from '../components/ui';
 import { InviteFamilyMemberCta } from '../components/InviteFamilyMemberCta';
 import { JoinFamilyByPayerEmailCta } from '../components/JoinFamilyByPayerEmailCta';
+import { absolutizeMediaUrl } from '../lib/absolutize-url';
 import {
   VIEWER_ALL_FAMILY_BILLING,
   VIEWER_CREATE_INVOICE_CHECKOUT_SESSION,
@@ -91,10 +92,15 @@ function MemberChip({
   photoUrl: string | null;
 }) {
   const initials = `${firstName[0] ?? ''}${lastName[0] ?? ''}`;
+  // Réécrit `localhost`/`127.0.0.1` → IP LAN via EXPO_PUBLIC_API_BASE
+  // pour que le téléphone physique puisse charger l'image. Sans ce
+  // helper, les URLs `http://localhost:3000/media/<uuid>` retournées
+  // par le backend en dev étaient inaccessibles → fallback initiales.
+  const resolvedUrl = absolutizeMediaUrl(photoUrl);
   return (
     <View style={styles.chip}>
-      {photoUrl ? (
-        <Image source={{ uri: photoUrl }} style={styles.chipImg} />
+      {resolvedUrl ? (
+        <Image source={{ uri: resolvedUrl }} style={styles.chipImg} />
       ) : (
         <View style={styles.chipPh}>
           <Text style={styles.chipPhText}>{initials}</Text>

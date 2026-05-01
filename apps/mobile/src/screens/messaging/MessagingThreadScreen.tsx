@@ -415,13 +415,35 @@ export function MessagingThreadScreen({ route }: Props) {
         </View>
       ) : null}
 
+      {/*
+        KeyboardAvoidingView : la version précédente utilisait
+        `behavior={Platform.OS === 'ios' ? 'padding' : undefined}` qui ne
+        faisait rien sur Android — combiné au mode edge-to-edge qui
+        passait par `softwareKeyboardLayoutMode: pan` (défaut), le
+        composer était littéralement poussé hors écran quand le clavier
+        s'ouvrait.
+
+        Fix :
+         - `softwareKeyboardLayoutMode: "resize"` posé dans app.json →
+           Android resize la window quand le clavier apparaît
+         - `behavior="padding"` sur les 2 plateformes pour homogénéité
+           (Android avec resize ignore quasi le KAV mais le `padding`
+           ajoute une marge bottom utile pour les cas edge-case)
+         - `keyboardVerticalOffset={insets.top + 56}` reste — c'est la
+           hauteur du header custom au-dessus du KAV (safe area + header
+           bar 56dp). Sans ça, sur iOS, la padding ajoutée serait trop
+           grande et créerait un trou en bas
+         - FlatList prend `style={styles.flex}` explicitement (sinon il
+           ne s'étire pas et le composer flotte)
+      */}
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         keyboardVerticalOffset={insets.top + 56}
       >
         <FlatList
           ref={flatListRef}
+          style={styles.flex}
           data={items}
           keyExtractor={(it) =>
             it.kind === 'date' ? it.key : `m-${it.msg.id}`
@@ -506,9 +528,15 @@ export function MessagingThreadScreen({ route }: Props) {
         }}
         presentationStyle="pageSheet"
       >
+        {/*
+          Modal "Fil de réponses" : KAV en padding sur 2 plateformes,
+          offset 0 car la modal occupe tout l'écran (pas de header
+          parent à compenser).
+        */}
         <KeyboardAvoidingView
           style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior="padding"
+          keyboardVerticalOffset={0}
         >
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Fil de réponses</Text>

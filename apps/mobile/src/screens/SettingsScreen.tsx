@@ -22,6 +22,7 @@ import {
   TextField,
 } from '../components/ui';
 import { MemberProfileSwitcher } from '../components/MemberProfileSwitcher';
+import { absolutizeMediaUrl } from '../lib/absolutize-url';
 import {
   VIEWER_CLEAR_PAYER_SPACE_PIN,
   VIEWER_ME,
@@ -260,11 +261,15 @@ export function SettingsScreen() {
         >
       <MemberProfileSwitcher />
 
-      {/* Photo de profil */}
+      {/* Photo de profil — `absolutizeMediaUrl` réécrit `localhost`
+          → IP LAN pour que le téléphone physique puisse charger l'image. */}
       <Card title="Photo de profil">
         <View style={styles.photoRow}>
           {photoUrl ? (
-            <Image source={{ uri: photoUrl }} style={styles.avatar} />
+            <Image
+              source={{ uri: absolutizeMediaUrl(photoUrl) ?? photoUrl }}
+              style={styles.avatar}
+            />
           ) : (
             <View style={[styles.avatar, styles.avatarPlaceholder]}>
               <Text style={styles.avatarInitials}>{initials || '?'}</Text>

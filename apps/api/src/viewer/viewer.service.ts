@@ -61,6 +61,22 @@ function normalizeInstallments(n: unknown): number {
   return n >= 3 ? 3 : 1;
 }
 
+/**
+ * Trim défensif tolérant `null`/`undefined`. Utilisé pour les patches
+ * partiels (PATCH-style) où :
+ *  - `undefined` = "ne pas toucher au champ" → renvoie `undefined`
+ *  - `null` = "effacer le champ" → renvoie `null`
+ *  - string = à trimer
+ *
+ * Évite les `null.trim()` qui crashaient la mutation viewerUpdateMyProfile
+ * quand le client envoyait `phone: null` ou `email: null` pour effacer.
+ */
+function safeTrim(v: string | null | undefined): string | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+  return v.trim();
+}
+
 @Injectable()
 export class ViewerService {
   constructor(
@@ -1731,12 +1747,15 @@ export class ViewerService {
     clubId: string,
     memberId: string,
     userId: string,
+    // GraphQL `nullable: true` autorise les `null` côté wire — on les
+    // accepte aussi côté TS (sémantique : `null` = effacer le champ,
+    // `undefined` = ne pas y toucher).
     patch: {
-      firstName?: string;
-      lastName?: string;
-      email?: string;
-      phone?: string;
-      photoUrl?: string;
+      firstName?: string | null;
+      lastName?: string | null;
+      email?: string | null;
+      phone?: string | null;
+      photoUrl?: string | null;
     },
   ): Promise<ViewerMemberGraph> {
     const m = await this.prisma.member.findFirst({
@@ -1751,14 +1770,28 @@ export class ViewerService {
       where: { id: memberId },
       select: { email: true },
     });
+    // Note : on tolère `null` (= "effacer") en plus de `undefined` (= "ne pas
+    // toucher"). Avant, `patch.phone !== undefined` laissait passer `null`
+    // puis `null.trim()` crashait avec "Cannot read properties of null".
+    // Le helper `safeTrimOrNull()` accepte string|null|undefined et retourne
+    // soit la chaîne trimée, soit null (si vide ou null), soit undefined
+    // (= field omis du patch).
     const data: Prisma.MemberUpdateInput = {};
-    if (patch.firstName !== undefined) data.firstName = patch.firstName.trim();
-    if (patch.lastName !== undefined) data.lastName = patch.lastName.trim();
-    if (patch.phone !== undefined) data.phone = patch.phone.trim() || null;
-    if (patch.photoUrl !== undefined)
-      data.photoUrl = patch.photoUrl.trim() || null;
+    const firstNameTrim = safeTrim(patch.firstName);
+    if (firstNameTrim !== undefined) data.firstName = firstNameTrim ?? '';
+    const lastNameTrim = safeTrim(patch.lastName);
+    if (lastNameTrim !== undefined) data.lastName = lastNameTrim ?? '';
+    const phoneTrim = safeTrim(patch.phone);
+    if (phoneTrim !== undefined) data.phone = phoneTrim || null;
+    const photoUrlTrim = safeTrim(patch.photoUrl);
+    if (photoUrlTrim !== undefined) data.photoUrl = photoUrlTrim || null;
     let nextEmail: string | null = null;
-    if (patch.email !== undefined) {
+    // L'email est traité à part : il déclenche l'activation de compte
+    // (mail au Member). NB : `Member.email` est non-nullable en DB
+    // (`String` sans `?` dans schema.prisma) donc `null` n'efface pas
+    // le champ — on ignore les valeurs null/vides (l'email courant
+    // reste en place).
+    if (patch.email != null) {
       const next = normalizeMemberEmail(patch.email);
       if (next) {
         await assertMemberEmailAllowedInClub(this.prisma, clubId, next, {
@@ -1803,10 +1836,10 @@ export class ViewerService {
     contactId: string,
     userId: string,
     patch: {
-      firstName?: string;
-      lastName?: string;
-      phone?: string;
-      photoUrl?: string;
+      firstName?: string | null;
+      lastName?: string | null;
+      phone?: string | null;
+      photoUrl?: string | null;
     },
   ): Promise<ViewerMemberGraph> {
     const c = await this.prisma.contact.findFirst({
@@ -1815,30 +1848,34 @@ export class ViewerService {
     });
     if (!c) throw new NotFoundException('Profil contact introuvable');
 
+    // Tolère `null` (= "effacer") en plus de `undefined` (= "ne pas
+    // toucher") sur tous les champs string — sinon `null.trim()` crashe.
     const data: Prisma.ContactUpdateInput = {};
     let nextFirstName = c.firstName;
     let nextLastName = c.lastName;
-    if (patch.firstName !== undefined) {
-      const next = patch.firstName.trim();
-      if (!next) {
+    const firstNameTrim = safeTrim(patch.firstName);
+    if (firstNameTrim !== undefined) {
+      if (!firstNameTrim) {
         throw new BadRequestException('Le prénom est obligatoire.');
       }
-      data.firstName = next;
-      nextFirstName = next;
+      data.firstName = firstNameTrim;
+      nextFirstName = firstNameTrim;
     }
-    if (patch.lastName !== undefined) {
-      const next = patch.lastName.trim();
-      if (!next) {
+    const lastNameTrim = safeTrim(patch.lastName);
+    if (lastNameTrim !== undefined) {
+      if (!lastNameTrim) {
         throw new BadRequestException('Le nom est obligatoire.');
       }
-      data.lastName = next;
-      nextLastName = next;
+      data.lastName = lastNameTrim;
+      nextLastName = lastNameTrim;
     }
-    if (patch.phone !== undefined) {
-      data.phone = patch.phone.trim() || null;
+    const phoneTrim = safeTrim(patch.phone);
+    if (phoneTrim !== undefined) {
+      data.phone = phoneTrim || null;
     }
-    if (patch.photoUrl !== undefined) {
-      data.photoUrl = patch.photoUrl.trim() || null;
+    const photoUrlTrim = safeTrim(patch.photoUrl);
+    if (photoUrlTrim !== undefined) {
+      data.photoUrl = photoUrlTrim || null;
     }
 
     await this.prisma.$transaction(async (tx) => {
