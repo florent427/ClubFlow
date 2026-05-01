@@ -62,6 +62,14 @@ export interface ManualEntryInput {
    * "encaissé sur Caisse buvette" plutôt que "Banque principale".
    */
   financialAccountId?: string | null;
+  /**
+   * Mode de paiement détecté ou choisi : CASH, CHECK, TRANSFER, CARD,
+   * DIRECT_DEBIT, OTHER, ou null pour effacer. Persisté sur l'entry
+   * pour la compta analytique par moyen de paiement.
+   */
+  paymentMethod?: string | null;
+  /** N° chèque / virement / autre référence textuelle. */
+  paymentReference?: string | null;
 }
 
 /**
@@ -1091,6 +1099,12 @@ export class AccountingService {
           ...(corrections.occurredAt
             ? { occurredAt: corrections.occurredAt }
             : {}),
+          ...(corrections.paymentMethod !== undefined && {
+            paymentMethod: corrections.paymentMethod,
+          }),
+          ...(corrections.paymentReference !== undefined && {
+            paymentReference: corrections.paymentReference,
+          }),
           updatedAt: new Date(),
         },
       });

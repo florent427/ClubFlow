@@ -1754,6 +1754,14 @@ model AccountingEntry {
   /// Snapshot JSON des lignes/allocations pré-consolidation. Permet
   /// `unconsolidate` pour restaurer la granularité d'origine.
   preConsolidationSnapshot Json?
+  /// Mode de paiement (compta analytique). Valeurs : "CASH", "CHECK",
+  /// "TRANSFER", "CARD", "DIRECT_DEBIT", "OTHER", null. Détecté par
+  /// l'IA OCR (mots-clés "Mode de règlement", "CHQ", "VIR"…) ou saisi
+  /// manuellement. Permet la traçabilité par moyen de paiement.
+  paymentMethod            String?
+  /// Référence textuelle (n° de chèque, n° d'opération virement, etc.).
+  /// Optionnel — utile uniquement pour CHECK / TRANSFER.
+  paymentReference         String?
   occurredAt               DateTime              @default(now())
   createdAt                DateTime              @default(now())
   updatedAt                DateTime              @default(now()) @updatedAt

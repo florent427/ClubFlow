@@ -206,6 +206,18 @@ export class AccountingEntryGraph {
   @Field(() => Date, { nullable: true })
   consolidatedAt!: Date | null;
 
+  /**
+   * Mode de paiement (compta analytique). String libre côté DB, mais en
+   * pratique : "CASH", "CHECK", "TRANSFER", "CARD", "DIRECT_DEBIT",
+   * "OTHER" ou null. Détecté par l'IA OCR ou saisi manuellement.
+   */
+  @Field(() => String, { nullable: true })
+  paymentMethod!: string | null;
+
+  /** N° chèque, n° d'opération virement, etc. — null si non applicable. */
+  @Field(() => String, { nullable: true })
+  paymentReference!: string | null;
+
   @Field()
   occurredAt!: Date;
 

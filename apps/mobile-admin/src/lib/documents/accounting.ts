@@ -31,6 +31,8 @@ export const CLUB_ACCOUNTING_ENTRY = gql`
       vatTotalCents
       occurredAt
       consolidatedAt
+      paymentMethod
+      paymentReference
       createdAt
       lines {
         id

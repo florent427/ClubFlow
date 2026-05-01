@@ -19,7 +19,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Image, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   CANCEL_ACCOUNTING_ENTRY,
   CLUB_ACCOUNTING_ENTRY,
@@ -81,6 +81,9 @@ type CategorizedDecision = {
   invoiceNumber: string | null;
   totalTtcCents: number;
   date: string | null;
+  paymentMethod: string | null;
+  paymentReference: string | null;
+  paymentMethodNeedsManual: boolean;
   globalReasoning: string;
   globalConfidencePct: number;
   agreement: {
@@ -88,6 +91,7 @@ type CategorizedDecision = {
     total: boolean;
     date: boolean;
     lines: boolean;
+    paymentMethod: boolean;
   };
   lines: Array<{
     accountCode: string;
@@ -136,11 +140,33 @@ type Entry = {
   vatTotalCents: number | null;
   occurredAt: string;
   consolidatedAt: string | null;
+  paymentMethod: string | null;
+  paymentReference: string | null;
   createdAt: string;
   lines: EntryLine[];
   documents: EntryDocument[];
   extraction: EntryExtraction | null;
 };
+
+/** Modes de paiement supportés (alignés sur API). */
+const PAYMENT_METHODS = [
+  { value: 'CASH', label: 'Espèces' },
+  { value: 'CHECK', label: 'Chèque' },
+  { value: 'TRANSFER', label: 'Virement' },
+  { value: 'CARD', label: 'Carte bancaire' },
+  { value: 'DIRECT_DEBIT', label: 'Prélèvement' },
+  { value: 'OTHER', label: 'Autre' },
+] as const;
+
+function paymentMethodLabel(code: string | null): string {
+  if (!code) return 'Non défini';
+  return PAYMENT_METHODS.find((m) => m.value === code)?.label ?? code;
+}
+
+/** Si le mode de paiement nécessite une référence (n° chèque, n° virement…). */
+function paymentMethodNeedsReference(code: string | null): boolean {
+  return code === 'CHECK' || code === 'TRANSFER' || code === 'OTHER';
+}
 
 type Data = { clubAccountingEntry: Entry | null };
 
@@ -264,6 +290,8 @@ export function EntryDetailScreen() {
   const [editLabel, setEditLabel] = useState<string>('');
   const [editAmount, setEditAmount] = useState<string>('');
   const [editDate, setEditDate] = useState<string>('');
+  const [editPaymentMethod, setEditPaymentMethod] = useState<string>('');
+  const [editPaymentRef, setEditPaymentRef] = useState<string>('');
   // Map<lineId, accountCode édité>. Vide tant que l'utilisateur n'a rien
   // modifié — sinon on garderait des updates inutiles.
   const [editLineCodes, setEditLineCodes] = useState<Record<string, string>>(
@@ -278,8 +306,17 @@ export function EntryDetailScreen() {
     setEditLabel(entry.label);
     setEditAmount(centsToString(entry.amountCents));
     setEditDate(isoToDateString(entry.occurredAt));
+    setEditPaymentMethod(entry.paymentMethod ?? '');
+    setEditPaymentRef(entry.paymentReference ?? '');
     setEditLineCodes({});
-  }, [entry?.id, entry?.label, entry?.amountCents, entry?.occurredAt]);
+  }, [
+    entry?.id,
+    entry?.label,
+    entry?.amountCents,
+    entry?.occurredAt,
+    entry?.paymentMethod,
+    entry?.paymentReference,
+  ]);
 
   const isReview = entry?.status === 'NEEDS_REVIEW';
   const firstReceipt = useMemo(
@@ -417,6 +454,12 @@ export function EntryDetailScreen() {
             label: editLabel.trim(),
             amountCents,
             occurredAt: occurredAt?.toISOString(),
+            paymentMethod: editPaymentMethod || null,
+            paymentReference:
+              paymentMethodNeedsReference(editPaymentMethod) &&
+              editPaymentRef.trim()
+                ? editPaymentRef.trim()
+                : null,
           },
         },
       });
@@ -565,6 +608,56 @@ export function EntryDetailScreen() {
                   placeholder="0.00"
                   hint="L'asso ne sépare pas la TVA — saisis le total TTC."
                 />
+                {/* Picker mode de paiement (chips) — bandeau "À saisir
+                    manuellement" si l'IA n'a pas pu trancher */}
+                <View>
+                  <Text style={styles.pickerLabel}>Mode de paiement</Text>
+                  {decision?.paymentMethodNeedsManual ? (
+                    <Text style={styles.pickerHint}>
+                      ⚠️ L'IA n'a pas pu détecter le mode de paiement —
+                      sélectionne manuellement.
+                    </Text>
+                  ) : null}
+                  <View style={styles.chipRow}>
+                    {PAYMENT_METHODS.map((m) => (
+                      <Pressable
+                        key={m.value}
+                        onPress={() => setEditPaymentMethod(m.value)}
+                        style={[
+                          styles.paymentChip,
+                          editPaymentMethod === m.value &&
+                            styles.paymentChipActive,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.paymentChipText,
+                            editPaymentMethod === m.value &&
+                              styles.paymentChipTextActive,
+                          ]}
+                        >
+                          {m.label}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+                {paymentMethodNeedsReference(editPaymentMethod) ? (
+                  <TextField
+                    label={
+                      editPaymentMethod === 'CHECK'
+                        ? 'N° de chèque'
+                        : editPaymentMethod === 'TRANSFER'
+                          ? 'Référence virement'
+                          : 'Référence (optionnel)'
+                    }
+                    value={editPaymentRef}
+                    onChangeText={setEditPaymentRef}
+                    placeholder={
+                      editPaymentMethod === 'CHECK' ? '0000123' : 'Réf...'
+                    }
+                  />
+                ) : null}
                 <TextField
                   label="Date (YYYY-MM-DD)"
                   value={editDate}
@@ -601,6 +694,15 @@ export function EntryDetailScreen() {
         <View style={styles.metaList}>
           <MetaRow label="Date" value={formatDateTime(entry.occurredAt)} />
           <MetaRow label="Créée le" value={formatDateTime(entry.createdAt)} />
+          {entry.paymentMethod ? (
+            <MetaRow
+              label="Mode de paiement"
+              value={
+                paymentMethodLabel(entry.paymentMethod) +
+                (entry.paymentReference ? ` · ${entry.paymentReference}` : '')
+              }
+            />
+          ) : null}
           {entry.vatTotalCents != null ? (
             <MetaRow
               label="TVA"
@@ -896,5 +998,40 @@ const styles = StyleSheet.create({
   amountPlaceholder: {
     ...typography.smallStrong,
     color: palette.muted,
+  },
+  pickerLabel: {
+    ...typography.smallStrong,
+    color: palette.ink,
+    marginBottom: spacing.xs,
+  },
+  pickerHint: {
+    ...typography.small,
+    color: palette.warningText,
+    marginBottom: spacing.xs,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  paymentChip: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: palette.border,
+    backgroundColor: palette.bg,
+  },
+  paymentChipActive: {
+    backgroundColor: palette.primary,
+    borderColor: palette.primary,
+  },
+  paymentChipText: {
+    ...typography.small,
+    color: palette.ink,
+  },
+  paymentChipTextActive: {
+    color: palette.bg,
+    fontWeight: '700',
   },
 });

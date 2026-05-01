@@ -20,6 +20,21 @@ import { AccountingMappingService } from './accounting-mapping.service';
 //  Types — pipeline en 3 appels IA
 // ─────────────────────────────────────────────────────────────────────────
 
+/**
+ * Modes de paiement supportés (compta analytique). String libre côté DB
+ * mais on contraint la sortie IA via cette liste pour la cohérence.
+ */
+const PAYMENT_METHODS = [
+  'CASH',
+  'CHECK',
+  'TRANSFER',
+  'CARD',
+  'DIRECT_DEBIT',
+  'OTHER',
+] as const;
+type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+const PAYMENT_METHOD_SET = new Set<string>(PAYMENT_METHODS);
+
 /** Appel 1 — OCR brut sur la photo (extraction littérale, sans contexte). */
 interface OcrRawExtraction {
   vendor: string | null;
@@ -34,6 +49,10 @@ interface OcrRawExtraction {
     suggestedAccountCode: string | null;
   }>;
   pcgAccountCode: string | null;
+  /** Mode de paiement détecté (CASH, CHECK, TRANSFER, CARD, DIRECT_DEBIT, OTHER, null). */
+  paymentMethod: PaymentMethod | null;
+  /** N° chèque, n° virement, etc. — null si pas applicable ou pas trouvé. */
+  paymentReference: string | null;
   confidencePerField: Record<string, number>;
 }
 
@@ -47,6 +66,8 @@ interface AccountingExpertise {
   invoiceNumber: string | null;
   totalTtcCents: number | null;
   date: string | null;
+  paymentMethod: PaymentMethod | null;
+  paymentReference: string | null;
   globalReasoning: string;
   globalConfidencePct: number;
   lines: Array<{
@@ -69,6 +90,17 @@ export interface CategorizedDecision {
   invoiceNumber: string | null;
   totalTtcCents: number;
   date: string | null;
+  /**
+   * Mode de paiement final retenu (compta analytique). Null si aucune
+   * source ne l'a détecté — l'utilisateur devra le saisir à la main.
+   */
+  paymentMethod: PaymentMethod | null;
+  paymentReference: string | null;
+  /**
+   * True si l'IA n'a pas pu déterminer le mode (absent du document OU
+   * divergence OCR/Expertise → demande explicite de saisie manuelle).
+   */
+  paymentMethodNeedsManual: boolean;
   globalReasoning: string;
   globalConfidencePct: number;
   /** Concordance entre OCR brut et Expertise sur chaque dimension clé. */
@@ -77,6 +109,7 @@ export interface CategorizedDecision {
     total: boolean;
     date: boolean;
     lines: boolean;
+    paymentMethod: boolean;
   };
   lines: Array<{
     accountCode: string;
@@ -629,15 +662,27 @@ Réponds en JSON strict :
     }
   ],
   "pcgAccountCode": "compte PCG global proposé ou null",
+  "paymentMethod": "CASH | CHECK | TRANSFER | CARD | DIRECT_DEBIT | OTHER | null",
+  "paymentReference": "n° chèque, n° opération virement, etc. — null si non visible ou non applicable",
   "confidencePerField": {
     "vendor": "0-1",
     "invoiceNumber": "0-1",
     "totalTtcCents": "0-1",
-    "date": "0-1"
+    "date": "0-1",
+    "paymentMethod": "0-1"
   }
 }
 
-Règles : montants en centimes (×100). Pas de récup TVA (asso). items[]=[] si pas de détail.`;
+Règles :
+- Montants en centimes (×100). Pas de récup TVA (asso). items[]=[] si pas de détail.
+- "paymentMethod" : repère les mentions explicites du document. Indices typiques :
+  * CHECK = "chèque", "CHQ", "CHQ N°", "réglé par chèque" → renseigne paymentReference avec le n° de chèque si visible
+  * TRANSFER = "virement", "VIR", "VIR SEPA" → paymentReference = n° d'opération si visible
+  * CARD = "CB", "carte bancaire", "Visa/Mastercard"
+  * CASH = "espèces", "cash", "ESP"
+  * DIRECT_DEBIT = "prélèvement", "SEPA Direct Debit"
+  * OTHER = autre moyen identifié mais hors liste
+  * null si aucune mention claire`;
   }
 
   private buildExpertisePrompt(ctx: {
@@ -670,6 +715,8 @@ Produis une ventilation comptable directe en JSON strict :
   "invoiceNumber": "n° ou null",
   "totalTtcCents": int,
   "date": "YYYY-MM-DD",
+  "paymentMethod": "CASH | CHECK | TRANSFER | CARD | DIRECT_DEBIT | OTHER | null",
+  "paymentReference": "n° chèque/virement si lisible, null sinon",
   "globalReasoning": "1 phrase synthèse",
   "globalConfidencePct": int 0-100,
   "lines": [
@@ -691,7 +738,9 @@ Règles :
 - Somme des lines[].amountCents == totalTtcCents (tolérer ±2 centimes).
 - accountCode obligatoirement issu du plan comptable du club.
 - projectId optionnel — null si aucune correspondance évidente.
-- confidencePct = ta confiance dans le compte choisi (pas la lecture).`;
+- confidencePct = ta confiance dans le compte choisi (pas la lecture).
+- paymentMethod : repère "Mode de règlement", "réglé par chèque", "VIR SEPA",
+  "CB", "espèces", etc. paymentReference = n° chèque OU n° opération si présent.`;
   }
 
   private buildComparatorPrompt(
@@ -724,13 +773,17 @@ Produis la DÉCISION FINALE en JSON strict :
   "invoiceNumber": "n° retenu ou null",
   "totalTtcCents": int (montant retenu),
   "date": "YYYY-MM-DD ou null",
+  "paymentMethod": "CASH | CHECK | TRANSFER | CARD | DIRECT_DEBIT | OTHER | null",
+  "paymentReference": "string ou null",
+  "paymentMethodNeedsManual": bool,
   "globalReasoning": "synthèse en 1-2 phrases — explique les choix et mentionne les divergences éventuelles",
   "globalConfidencePct": int 0-100 (HAUT si les 2 sources convergent, BAS si désaccord majeur),
   "agreement": {
     "vendor": bool,
     "total": bool,
     "date": bool,
-    "lines": bool (true si découpage des lignes cohérent)
+    "lines": bool,
+    "paymentMethod": bool
   },
   "lines": [
     {
@@ -750,7 +803,17 @@ Règles :
 - Si désaccord MAJEUR sur un compte : choisis l'expertise (mieux contextualisée) MAIS ramène confidencePct à ≤ 60.
 - Somme(lines[].amountCents) == totalTtcCents (±2 centimes).
 - accountCode strictement issu du plan comptable.
-- agreement.* reflète la concordance OBJECTIVE entre les 2 sources, pas ta confiance.`;
+- agreement.* reflète la concordance OBJECTIVE entre les 2 sources, pas ta confiance.
+- paymentMethod :
+  * Si OCR et Expertise concordent → choisis cette valeur, paymentMethodNeedsManual = false
+  * Si UNE source détecte un mode et l'autre null → retiens la source qui a trouvé,
+    paymentMethodNeedsManual = false (un seul indice = suffisant)
+  * Si DIVERGENCE (ex. OCR=CHECK, Expertise=TRANSFER) → paymentMethod = null,
+    paymentMethodNeedsManual = TRUE (l'utilisateur tranchera)
+  * Si AUCUNE source ne détecte → paymentMethod = null,
+    paymentMethodNeedsManual = TRUE
+- paymentReference : retiens la référence si l'une des 2 sources l'a trouvée
+  ET que paymentMethod ∈ {CHECK, TRANSFER, OTHER}.`;
   }
 
   // ─────────────────────────────────────────────────────────────────────
@@ -762,6 +825,19 @@ Règles :
       .replace(/^```(?:json)?\s*/i, '')
       .replace(/\s*```\s*$/i, '')
       .trim();
+  }
+
+  /** Valide une string contre la liste fermée des modes de paiement. */
+  private parsePaymentMethod(raw: unknown): PaymentMethod | null {
+    if (typeof raw !== 'string') return null;
+    const upper = raw.trim().toUpperCase();
+    return PAYMENT_METHOD_SET.has(upper) ? (upper as PaymentMethod) : null;
+  }
+
+  private parsePaymentReference(raw: unknown): string | null {
+    if (typeof raw !== 'string') return null;
+    const trimmed = raw.trim();
+    return trimmed.length > 0 && trimmed.length < 100 ? trimmed : null;
   }
 
   private parseOcrJson(content: string): OcrRawExtraction | null {
@@ -799,6 +875,8 @@ Règles :
         items,
         pcgAccountCode:
           typeof parsed.pcgAccountCode === 'string' ? parsed.pcgAccountCode : null,
+        paymentMethod: this.parsePaymentMethod(parsed.paymentMethod),
+        paymentReference: this.parsePaymentReference(parsed.paymentReference),
         confidencePerField:
           typeof parsed.confidencePerField === 'object' &&
           parsed.confidencePerField !== null
@@ -844,6 +922,8 @@ Règles :
             ? Math.round(parsed.totalTtcCents)
             : null,
         date: typeof parsed.date === 'string' ? parsed.date : null,
+        paymentMethod: this.parsePaymentMethod(parsed.paymentMethod),
+        paymentReference: this.parsePaymentReference(parsed.paymentReference),
         globalReasoning:
           typeof parsed.globalReasoning === 'string' ? parsed.globalReasoning : '',
         globalConfidencePct:
@@ -891,6 +971,7 @@ Règles :
           ? (parsed.agreement as Record<string, unknown>)
           : {};
 
+      const paymentMethod = this.parsePaymentMethod(parsed.paymentMethod);
       return {
         vendor: typeof parsed.vendor === 'string' ? parsed.vendor : null,
         invoiceNumber:
@@ -900,6 +981,14 @@ Règles :
             ? Math.round(parsed.totalTtcCents)
             : 0,
         date: typeof parsed.date === 'string' ? parsed.date : null,
+        paymentMethod,
+        paymentReference: this.parsePaymentReference(parsed.paymentReference),
+        // Force `needsManual` à true si l'IA n'a pas trouvé de mode,
+        // même si elle prétendait le contraire (sécurité contre les
+        // hallucinations LLM qui mettent paymentMethod=null mais oublient
+        // de cocher needsManual=true).
+        paymentMethodNeedsManual:
+          paymentMethod === null || parsed.paymentMethodNeedsManual === true,
         globalReasoning:
           typeof parsed.globalReasoning === 'string' ? parsed.globalReasoning : '',
         globalConfidencePct:
@@ -911,6 +1000,7 @@ Règles :
           total: agreementRaw.total === true,
           date: agreementRaw.date === true,
           lines: agreementRaw.lines === true,
+          paymentMethod: agreementRaw.paymentMethod === true,
         },
         lines,
       };
@@ -929,14 +1019,27 @@ Règles :
     exp: AccountingExpertise,
     ocrRaw: OcrRawExtraction | null,
   ): CategorizedDecision {
+    const paymentMethod = exp.paymentMethod ?? ocrRaw?.paymentMethod ?? null;
     return {
       vendor: exp.vendor ?? ocrRaw?.vendor ?? null,
       invoiceNumber: exp.invoiceNumber ?? ocrRaw?.invoiceNumber ?? null,
       totalTtcCents: exp.totalTtcCents ?? ocrRaw?.totalTtcCents ?? 0,
       date: exp.date ?? ocrRaw?.date ?? null,
+      paymentMethod,
+      paymentReference:
+        exp.paymentReference ?? ocrRaw?.paymentReference ?? null,
+      // Pas de comparateur → si une seule source a vu le mode, on
+      // demande quand même validation manuelle (pas de cross-check).
+      paymentMethodNeedsManual: paymentMethod === null,
       globalReasoning: exp.globalReasoning,
       globalConfidencePct: Math.max(0, exp.globalConfidencePct - 10), // pénalité (pas de comparaison)
-      agreement: { vendor: false, total: false, date: false, lines: false },
+      agreement: {
+        vendor: false,
+        total: false,
+        date: false,
+        lines: false,
+        paymentMethod: false,
+      },
       lines: exp.lines.map((l) => ({
         accountCode: l.accountCode,
         amountCents: l.amountCents,
@@ -1001,10 +1104,19 @@ Règles :
       invoiceNumber: raw.invoiceNumber,
       totalTtcCents: totalCents,
       date: raw.date,
+      paymentMethod: raw.paymentMethod,
+      paymentReference: raw.paymentReference,
+      paymentMethodNeedsManual: raw.paymentMethod === null,
       globalReasoning:
         'Catégorisation depuis OCR brut uniquement (expertise IA non disponible).',
       globalConfidencePct: 40,
-      agreement: { vendor: false, total: false, date: false, lines: false },
+      agreement: {
+        vendor: false,
+        total: false,
+        date: false,
+        lines: false,
+        paymentMethod: false,
+      },
       lines,
     };
   }
@@ -1081,6 +1193,8 @@ Règles :
           occurredAt: date,
           createdByUserId: userId,
           extractionId: extraction?.id ?? null,
+          paymentMethod: decision?.paymentMethod ?? null,
+          paymentReference: decision?.paymentReference ?? null,
         },
       });
 

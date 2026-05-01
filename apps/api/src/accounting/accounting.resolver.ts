@@ -76,6 +76,8 @@ interface EntryRow {
     accountingAccount: { code: string };
   } | null;
   consolidatedAt: Date | null;
+  paymentMethod: string | null;
+  paymentReference: string | null;
   occurredAt: Date;
   createdAt: Date;
   lines: Array<{
@@ -145,6 +147,8 @@ function toGraph(entry: EntryRow): AccountingEntryGraph {
     financialAccountCode:
       entry.financialAccount?.accountingAccount.code ?? null,
     consolidatedAt: entry.consolidatedAt,
+    paymentMethod: entry.paymentMethod,
+    paymentReference: entry.paymentReference,
     occurredAt: entry.occurredAt,
     createdAt: entry.createdAt,
     lines: entry.lines.map(
@@ -606,6 +610,8 @@ export class AccountingResolver {
       projectId: input.projectId ?? null,
       cohortCode: input.cohortCode ?? null,
       disciplineCode: input.disciplineCode ?? null,
+      paymentMethod: input.paymentMethod ?? undefined,
+      paymentReference: input.paymentReference ?? undefined,
       kind: 'EXPENSE' as const,
     });
     const entry = await this.accounting.getEntry(club.id, input.entryId);

@@ -51,4 +51,22 @@ export class ConfirmExtractionInput {
   @IsOptional()
   @IsString()
   disciplineCode?: string;
+
+  /**
+   * Mode de paiement (compta analytique) : CASH, CHECK, TRANSFER, CARD,
+   * DIRECT_DEBIT, OTHER, ou null pour effacer. String libre — la
+   * validation des valeurs se fait côté client.
+   */
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  paymentMethod?: string | null;
+
+  /** N° chèque / virement / autre référence textuelle. */
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  paymentReference?: string | null;
 }
