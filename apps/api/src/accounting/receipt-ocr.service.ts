@@ -90,6 +90,49 @@ export interface CategorizedDecision {
   }>;
 }
 
+/**
+ * Modèles connus pour supporter l'analyse d'images sur OpenRouter (au
+ * moment du dernier audit). Si le `textModel` configuré côté club n'est
+ * PAS dans cette liste, on bascule sur `DEFAULT_VISION_MODEL` pour les 2
+ * appels vision (OCR brut + Expertise). Le 3e appel (Comparateur, texte
+ * seul) garde le `textModel` choisi.
+ *
+ * Sans ce switch, OpenRouter renvoie un 404 :
+ *   "no endpoints found that match your filter"
+ * → c'est exactement le crash remonté par l'utilisateur lorsqu'un club
+ * a configuré un modèle texte-seul (ex. `meta-llama/llama-3.3-70b`).
+ */
+const VISION_CAPABLE_MODELS = new Set<string>([
+  'anthropic/claude-sonnet-4-5',
+  'anthropic/claude-sonnet-4',
+  'anthropic/claude-3.7-sonnet',
+  'anthropic/claude-3.5-sonnet',
+  'anthropic/claude-3.5-haiku',
+  'anthropic/claude-3-opus',
+  'anthropic/claude-3-sonnet',
+  'anthropic/claude-3-haiku',
+  'openai/gpt-4o',
+  'openai/gpt-4o-mini',
+  'openai/gpt-4-turbo',
+  'openai/gpt-5',
+  'openai/gpt-5-mini',
+  'google/gemini-2.5-pro',
+  'google/gemini-2.5-flash',
+  'google/gemini-2.0-flash-001',
+  'google/gemini-1.5-pro',
+  'google/gemini-1.5-flash',
+  'mistralai/pixtral-large-2411',
+  'mistralai/pixtral-12b',
+  'meta-llama/llama-3.2-90b-vision-instruct',
+  'meta-llama/llama-3.2-11b-vision-instruct',
+]);
+
+const DEFAULT_VISION_MODEL = 'anthropic/claude-sonnet-4-5';
+
+function pickVisionModel(textModel: string): string {
+  return VISION_CAPABLE_MODELS.has(textModel) ? textModel : DEFAULT_VISION_MODEL;
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 //  Service
 // ─────────────────────────────────────────────────────────────────────────
@@ -265,6 +308,16 @@ export class ReceiptOcrService {
     const dataUrl = this.bufferToDataUrl(assetBuffer, asset.mimeType);
     const ctx = await this.loadClubContext(clubId);
 
+    // Si le textModel n'est pas vision-capable, on bascule sur un modèle
+    // vision pour les 2 appels image (sinon OpenRouter renvoie 404
+    // "no endpoints found"). Le comparateur garde le textModel original.
+    const visionModel = pickVisionModel(models.textModel);
+    if (visionModel !== models.textModel) {
+      this.logger.log(
+        `[OCR ${mediaAssetId}] textModel ${models.textModel} sans vision → fallback ${visionModel}`,
+      );
+    }
+
     // 5. Appels 1 + 2 EN PARALLÈLE — extraction OCR brute & expertise
     let totalCostCents = 0;
     let totalInputTokens = 0;
@@ -272,8 +325,8 @@ export class ReceiptOcrService {
     let lastErrorMsg: string | null = null;
 
     const [ocrRes, expRes] = await Promise.allSettled([
-      this.runOcrRaw(apiKey, models.textModel, dataUrl),
-      this.runExpertise(apiKey, models.textModel, dataUrl, ctx),
+      this.runOcrRaw(apiKey, visionModel, dataUrl),
+      this.runExpertise(apiKey, visionModel, dataUrl, ctx),
     ]);
 
     let ocrRaw: OcrRawExtraction | null = null;
