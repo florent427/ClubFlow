@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -27,20 +27,24 @@ type Props = {
 /**
  * Modale **plein écran** dédiée à la capture d'une signature.
  *
- * Cette modale remplace l'ancien `SignaturePad` inline qui était noyé
- * dans un `ScrollView`. Le souci avec un canvas de signature à l'intérieur
- * d'un ScrollView : `react-native-signature-canvas` utilise une WebView
- * interne (`signature_pad`) ; les gestes verticaux y sont **interceptés**
- * par le ScrollView parent quand l'utilisateur essaie de tracer un trait
- * → résultat, on ne capture que quelques points.
+ * Contre l'ancien `SignaturePad` inline, cette modale isole le canvas
+ * dans une `Modal` plein écran sans aucun ScrollView parent, donc les
+ * gestes verticaux du canvas `signature_pad` ne sont plus mangés par
+ * un scroll concurrent.
  *
- * Solution radicale : on isole la signature dans une modale plein écran
- * **sans aucun ScrollView**. Le canvas occupe tout l'espace disponible
- * (`flex: 1`), il ne peut donc pas être scrollé par erreur.
+ * **Décalage doigt ↔ trait** :
+ * `react-native-signature-canvas` charge par défaut un CSS qui applique
+ * `.m-signature-pad { width: 700px; height: 400px; position: fixed }`.
+ * signature_pad calcule alors les coordonnées tactiles avec ces dimensions
+ * fixes au lieu de la taille réelle du conteneur — d'où un drift entre
+ * le doigt et le trait. Notre `webStyle` ci-dessous force le pad et le
+ * canvas à occuper **exactement** 100 % de la WebView, et on monte le
+ * `SignatureScreen` *après* l'animation slide de la modale (sinon les
+ * dimensions sont 0 lors de l'init de signature_pad).
  *
  * UX :
  *  - Header sombre fixe (titre + bouton fermer)
- *  - Canvas plein écran (95 % de la hauteur)
+ *  - Canvas plein écran (flex:1)
  *  - Footer fixe avec deux gros boutons "Effacer" / "Valider"
  *  - StatusBar style="light" pendant que la modale est ouverte
  */
@@ -53,13 +57,78 @@ export function SignatureCaptureModal({
   const ref = useRef<SignatureViewRef>(null);
   const insets = useSafeAreaInsets();
 
-  // Style HTML injecté dans la WebView pour matcher la palette de l'app.
-  // On masque le footer interne car on contrôle Effacer/Valider depuis RN.
+  // Délai avant de monter le `<SignatureScreen>` : on attend la fin de
+  // l'animation slide de la modale pour que `canvas.offsetWidth/Height`
+  // renvoie les bonnes valeurs au moment où signature_pad initialise
+  // son coordonnée system. Sans ce délai, le canvas est créé avec des
+  // dimensions 0 → coordonnées tactiles incohérentes après affichage.
+  const [padReady, setPadReady] = useState(false);
+  useEffect(() => {
+    if (!visible) {
+      setPadReady(false);
+      return;
+    }
+    const t = setTimeout(() => setPadReady(true), 350);
+    return () => clearTimeout(t);
+  }, [visible]);
+
+  /**
+   * Style HTML injecté dans la WebView. **Critique** : on override les
+   * dimensions par défaut de la lib (`width: 700px; height: 400px;
+   * position: fixed`) qui causent le décalage doigt ↔ trait. Ici on
+   * force tout en `100% / 100%` avec `position: relative`, et on
+   * impose la même chose au `<canvas>` lui-même.
+   */
   const webStyle = `
-    .m-signature-pad { box-shadow: none; border: none; height: 100%; }
-    .m-signature-pad--body { border: none; background-color: #ffffff; }
-    .m-signature-pad--footer { display: none; }
-    body, html { background-color: #ffffff; margin: 0; padding: 0; height: 100%; }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      background-color: #ffffff !important;
+      overflow: hidden !important;
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+    }
+    .m-signature-pad {
+      position: relative !important;
+      width: 100% !important;
+      height: 100% !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: none !important;
+      box-shadow: none !important;
+      background-color: #ffffff !important;
+      font-size: 10px;
+    }
+    .m-signature-pad--body {
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      border: none !important;
+      background-color: #ffffff !important;
+    }
+    .m-signature-pad--body canvas {
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      background-color: #ffffff !important;
+      box-shadow: none !important;
+      border-radius: 0 !important;
+    }
+    .m-signature-pad--footer { display: none !important; }
+    .description { display: none !important; }
   `;
 
   function handleClear() {
@@ -117,19 +186,39 @@ export function SignatureCaptureModal({
           </View>
         </View>
 
-        {/* Canvas plein écran — flex:1, AUCUN ScrollView parent */}
+        {/*
+          Canvas plein écran. NB : on retire la `margin` autour pour
+          éviter tout subpixel issue à la frontière de la WebView qui
+          ferait dériver les coordonnées tactiles. Le contour visuel
+          est dessiné par un `borderTop`/`borderBottom` discret sur le
+          conteneur.
+        */}
         <View style={styles.canvasContainer}>
-          <SignatureScreen
-            ref={ref}
-            onOK={handleOK}
-            onEmpty={handleEmpty}
-            descriptionText=""
-            webStyle={webStyle}
-            imageType="image/png"
-            autoClear={false}
-            backgroundColor="rgba(255,255,255,1)"
-            penColor={palette.ink}
-          />
+          {padReady ? (
+            <SignatureScreen
+              ref={ref}
+              onOK={handleOK}
+              onEmpty={handleEmpty}
+              descriptionText=""
+              webStyle={webStyle}
+              imageType="image/png"
+              autoClear={false}
+              backgroundColor="rgba(255,255,255,1)"
+              penColor={palette.ink}
+              // Réduire `dotSize`/`minWidth`/`maxWidth` pour un trait plus
+              // fin et plus précis perceptuellement.
+              dotSize={1}
+              minWidth={1.2}
+              maxWidth={2.6}
+              // `trimWhitespace` peut décaler le PNG résultant à la lecture
+              // — on le laisse off pour que la signature occupe les coordonnées
+              // exactes du canvas.
+              trimWhitespace={false}
+            />
+          ) : (
+            // Placeholder pendant l'animation pour éviter un flash blanc.
+            <View style={styles.padLoader} />
+          )}
           <View pointerEvents="none" style={styles.canvasHint}>
             <Ionicons
               name="create-outline"
@@ -222,14 +311,19 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     marginTop: 2,
   },
+  // Pas de margin/borderRadius ici — on veut que la WebView occupe un
+  // rectangle pixel-perfect aligné sur le viewport, sinon les
+  // coordonnées tactiles peuvent dériver de quelques px.
   canvasContainer: {
     flex: 1,
     backgroundColor: '#ffffff',
-    margin: spacing.md,
-    borderRadius: radius.xl,
-    overflow: 'hidden',
-    borderWidth: 2,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
     borderColor: 'rgba(255,255,255,0.18)',
+  },
+  padLoader: {
+    flex: 1,
+    backgroundColor: '#ffffff',
   },
   canvasHint: {
     position: 'absolute',
