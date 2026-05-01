@@ -57,6 +57,9 @@ export const CLUB_ACCOUNTING_ENTRY = gql`
       documents {
         id
         mediaAssetId
+        fileName
+        publicUrl
+        mimeType
       }
       extraction {
         id

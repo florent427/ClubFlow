@@ -137,7 +137,7 @@ export function AccountingReviewDrawer({
 
   const accounts = accountsData?.clubAccountingAccounts ?? [];
   const cohorts = cohortsData?.clubAccountingCohorts ?? [];
-  const firstDoc = entry?.documents[0];
+  const docs = entry?.documents ?? [];
 
   return (
     <Drawer
@@ -163,29 +163,111 @@ export function AccountingReviewDrawer({
     >
       {entry ? (
         <form id="cf-review-form" onSubmit={onSubmit} className="cf-form">
-          {firstDoc ? (
-            <div className="cf-ocr-preview">
-              {firstDoc.mimeType.startsWith('image/') ? (
-                <img
-                  src={firstDoc.publicUrl}
-                  alt={firstDoc.fileName}
-                  loading="lazy"
-                />
-              ) : (
-                <a
-                  href={firstDoc.publicUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="cf-ocr-preview__pdf"
-                >
-                  <span className="material-symbols-outlined" aria-hidden>
-                    description
-                  </span>
-                  {firstDoc.fileName}
-                </a>
-              )}
+          {/* Pièce(s) justificative(s) — preview inline complète.
+              Multi-pages : on affiche chaque doc à la suite. PDF →
+              iframe avec viewer natif (zoom + scroll multi-pages).
+              Image → <img> cliquable pour ouvrir en plein écran. */}
+          {docs.length > 0 ? (
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 12,
+                marginBottom: 16,
+              }}
+            >
+              {docs.map((d, idx) => {
+                const isImage = d.mimeType.startsWith('image/');
+                const isPdf = d.mimeType === 'application/pdf';
+                return (
+                  <div key={d.id} className="cf-ocr-preview-block">
+                    <div className="cf-ocr-preview-head">
+                      <strong>
+                        {docs.length > 1 ? `Page ${idx + 1} · ` : ''}
+                        {d.fileName}
+                      </strong>
+                      <a
+                        href={d.publicUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Ouvrir en plein écran"
+                      >
+                        <span
+                          className="material-symbols-outlined"
+                          aria-hidden
+                          style={{ fontSize: '1rem' }}
+                        >
+                          open_in_new
+                        </span>
+                      </a>
+                    </div>
+                    {isImage ? (
+                      <a
+                        href={d.publicUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <img
+                          src={d.publicUrl}
+                          alt={d.fileName}
+                          loading="lazy"
+                          className="cf-ocr-preview-img"
+                        />
+                      </a>
+                    ) : isPdf ? (
+                      <iframe
+                        src={d.publicUrl}
+                        title={d.fileName}
+                        className="cf-ocr-preview-pdf"
+                      />
+                    ) : (
+                      <div className="cf-ocr-preview-fallback">
+                        <span className="cf-muted">
+                          Type {d.mimeType} non prévisualisable.
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           ) : null}
+          <style>{`
+            .cf-ocr-preview-block {
+              border: 1px solid var(--cf-border, #e5e5e5);
+              border-radius: 8px;
+              overflow: hidden;
+              background: var(--cf-bg-alt, #fafafa);
+            }
+            .cf-ocr-preview-head {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              gap: 8px;
+              padding: 6px 10px;
+              background: var(--cf-bg, #f0f0f0);
+              border-bottom: 1px solid var(--cf-border, #e5e5e5);
+              font-size: 0.85rem;
+            }
+            .cf-ocr-preview-img {
+              display: block;
+              width: 100%;
+              max-height: 480px;
+              object-fit: contain;
+              background: #000;
+            }
+            .cf-ocr-preview-pdf {
+              display: block;
+              width: 100%;
+              height: 480px;
+              border: 0;
+              background: #fff;
+            }
+            .cf-ocr-preview-fallback {
+              padding: 24px;
+              text-align: center;
+            }
+          `}</style>
 
           <label
             className={`cf-field cf-ocr-field ${confidenceClass(confidencePerField?.vendor)}`}

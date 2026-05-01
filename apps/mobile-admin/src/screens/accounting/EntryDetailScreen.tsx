@@ -19,7 +19,16 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Alert,
+  Image,
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import {
   CANCEL_ACCOUNTING_ENTRY,
   CLUB_ACCOUNTING_ENTRIES,
@@ -57,6 +66,9 @@ type EntryLine = {
 type EntryDocument = {
   id: string;
   mediaAssetId: string;
+  fileName: string;
+  publicUrl: string;
+  mimeType: string;
 };
 
 type EntryExtraction = {
@@ -477,13 +489,7 @@ export function EntryDetailScreen() {
   // métadonnées ne sont pas encore prêtes).
   const isReview =
     entry?.status === 'NEEDS_REVIEW' && !entry?.aiProcessingStartedAt;
-  const firstReceipt = useMemo(
-    () => entry?.documents[0] ?? null,
-    [entry?.documents],
-  );
-  const docImageSource = useAuthedImageSource(
-    firstReceipt?.mediaAssetId ?? null,
-  );
+  const documents = entry?.documents ?? [];
 
   // Décision IA finale (issue du comparateur ou fallback). Présente si
   // l'écriture a traversé le pipeline OCR — null si saisie manuelle.
@@ -736,17 +742,72 @@ export function EntryDetailScreen() {
         </Card>
       ) : null}
 
-      {/* Photo du justificatif (si présent) */}
-      {firstReceipt && docImageSource ? (
+      {/* Pièces justificatives (toutes les pages) — chaque vignette
+          est cliquable : un tap ouvre la pièce complète dans le viewer
+          système (navigateur pour images / viewer PDF natif). Permet de
+          consulter les multi-pages, zoomer, partager, etc. */}
+      {documents.length > 0 ? (
         <Card
-          title="Justificatif"
+          title={
+            documents.length > 1
+              ? `Pièces justificatives (${documents.length} pages)`
+              : 'Pièce justificative'
+          }
+          subtitle="Tape sur une vignette pour ouvrir en plein écran"
           style={{ marginHorizontal: spacing.lg, marginTop: spacing.lg }}
         >
-          <Image
-            source={docImageSource}
-            style={styles.receiptImg}
-            resizeMode="contain"
-          />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.docsRow}
+          >
+            {documents.map((doc, idx) => {
+              const isPdf = doc.mimeType === 'application/pdf';
+              return (
+                <Pressable
+                  key={doc.id}
+                  onPress={() =>
+                    void Linking.openURL(doc.publicUrl).catch(() => {
+                      Alert.alert(
+                        'Ouverture impossible',
+                        "Aucune application n'a pu ouvrir ce fichier.",
+                      );
+                    })
+                  }
+                  style={({ pressed }) => [
+                    styles.docThumbWrap,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  {isPdf ? (
+                    <View style={[styles.docThumb, styles.docThumbPdf]}>
+                      <Text style={styles.docThumbPdfIcon}>📄</Text>
+                      <Text style={styles.docThumbPdfLabel}>PDF</Text>
+                    </View>
+                  ) : (
+                    <Image
+                      source={{ uri: doc.publicUrl }}
+                      style={styles.docThumb}
+                      resizeMode="cover"
+                    />
+                  )}
+                  {documents.length > 1 ? (
+                    <View style={styles.docPageBadge}>
+                      <Text style={styles.docPageBadgeText}>
+                        {idx + 1}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <Text
+                    style={styles.docThumbLabel}
+                    numberOfLines={1}
+                  >
+                    {doc.fileName}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
         </Card>
       ) : null}
 
@@ -1355,6 +1416,55 @@ const styles = StyleSheet.create({
     aspectRatio: 3 / 4,
     borderRadius: 12,
     backgroundColor: palette.bgAlt,
+  },
+  docsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  docThumbWrap: {
+    width: 120,
+    gap: 4,
+  },
+  docThumb: {
+    width: 120,
+    height: 160,
+    borderRadius: 12,
+    backgroundColor: palette.bgAlt,
+  },
+  docThumbPdf: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  docThumbPdfIcon: {
+    fontSize: 48,
+  },
+  docThumbPdfLabel: {
+    ...typography.smallStrong,
+    color: palette.muted,
+    letterSpacing: 1,
+  },
+  docPageBadge: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    minWidth: 22,
+    alignItems: 'center',
+  },
+  docPageBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  docThumbLabel: {
+    ...typography.small,
+    color: palette.muted,
+    fontSize: 11,
   },
   editForm: {
     gap: spacing.md,
