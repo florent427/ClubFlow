@@ -206,15 +206,22 @@ export function ReceiptScannerScreen() {
             name: fileName,
             type: page.mimeType,
           } as unknown as Blob);
-          form.append('kind', 'DOCUMENT');
-          const res = await fetch(`${getApiBaseUrl()}/media/upload`, {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'X-Club-Id': clubId,
+          // IMPORTANT : `kind` est lu en query string côté contrôleur
+          // (`@Query('kind')`), pas dans le body multipart. Sans ça,
+          // le fallback "image" se déclenche et un PDF est rejeté
+          // avec "Type de fichier non autorisé (application/pdf)".
+          const kindParam = page.isPdf ? 'document' : 'image';
+          const res = await fetch(
+            `${getApiBaseUrl()}/media/upload?kind=${kindParam}`,
+            {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'X-Club-Id': clubId,
+              },
+              body: form,
             },
-            body: form,
-          });
+          );
           if (!res.ok) {
             const text = await res.text().catch(() => '');
             throw new Error(

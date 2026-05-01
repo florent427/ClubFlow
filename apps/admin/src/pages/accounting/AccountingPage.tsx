@@ -736,15 +736,22 @@ export function AccountingPage() {
       const form = new FormData();
       form.append('file', file);
       const isImage = file.type.startsWith('image/');
-      form.append('kind', isImage ? 'IMAGE' : 'DOCUMENT');
-      const res = await fetch(`${apiBase()}/media/upload`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'X-Club-Id': clubId,
+      // IMPORTANT : `kind` est lu en query string côté contrôleur
+      // (`@Query('kind')`), pas dans le body multipart. L'envoyer dans
+      // le FormData ne fait rien → le fallback "image" se déclenche
+      // et un PDF est rejeté avec "Type de fichier non autorisé".
+      const kindParam = isImage ? 'image' : 'document';
+      const res = await fetch(
+        `${apiBase()}/media/upload?kind=${kindParam}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'X-Club-Id': clubId,
+          },
+          body: form,
         },
-        body: form,
-      });
+      );
       if (!res.ok) {
         const txt = await res.text();
         throw new Error(`Upload échoué (${res.status}) : ${txt.slice(0, 200)}`);
