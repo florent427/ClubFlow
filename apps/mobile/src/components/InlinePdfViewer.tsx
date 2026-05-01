@@ -152,11 +152,20 @@ function buildViewerHtml(pdfUrl: string): string {
 <html>
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=3, user-scalable=yes" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=4, user-scalable=yes" />
 <style>
   html, body { margin: 0; padding: 0; background: #f1f5f9; height: 100%; }
   body { -webkit-text-size-adjust: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
   #viewer { padding: 8px 0; }
+  /*
+   * Le canvas a 2 dimensions distinctes :
+   *  - bitmap : canvas.width / canvas.height (pixels physiques rendus
+   *    par PDF.js — élevés pour matcher devicePixelRatio)
+   *  - CSS : style.width / style.height (taille à l'écran — basée sur
+   *    la largeur disponible en CSS pixels)
+   * Le ratio bitmap/CSS = devicePixelRatio donne du rendu 1:1 pixel
+   * sur écran retina = aucun upscale flou.
+   */
   .page-canvas {
     display: block;
     margin: 0 auto 12px auto;
@@ -211,6 +220,17 @@ function buildViewerHtml(pdfUrl: string): string {
 
   var url = ${safeUrl};
 
+  // Densité d'écran réelle (typique : 2 sur iPhone, 2.5–3 sur Android).
+  // On rend les canvas à cette densité pour avoir du pixel-perfect sur
+  // retina et éviter le flou d'upscale. Cap à 3 pour borner la mémoire :
+  // certains téléphones haut de gamme déclarent dPR=3.5 ou 4, ce qui
+  // ferait exploser la taille des bitmaps (limite ~16M pixels par
+  // canvas sur iOS Safari).
+  var DPR = Math.min(window.devicePixelRatio || 1, 3);
+  // Taille max d'un canvas sur iOS Safari : 4096×4096 px. Si on dépasse,
+  // le canvas devient blanc. On clamp donc la dimension la plus longue.
+  var MAX_CANVAS_PX = 4000;
+
   // On fetch le binaire nous-mêmes pour avoir un message d'erreur clair
   // et éviter les soucis de header Range / CORS preflight.
   fetch(url)
@@ -232,17 +252,36 @@ function buildViewerHtml(pdfUrl: string): string {
           renderChain = renderChain.then(function() {
             return pdf.getPage(pageNum).then(function(page) {
               var unscaled = page.getViewport({ scale: 1 });
-              var availWidth = window.innerWidth - 16;
-              var scale = availWidth / unscaled.width;
-              var viewport = page.getViewport({ scale: scale });
+              var availCssWidth = window.innerWidth - 16;
+              // Échelle CSS : la page tient en largeur dans la WebView.
+              var cssScale = availCssWidth / unscaled.width;
+              // Échelle bitmap : on multiplie par devicePixelRatio pour
+              // avoir un rendu net sur retina.
+              var bitmapScale = cssScale * DPR;
+              // Clamp si la page rendue dépasse la limite canvas iOS.
+              var maxDim = Math.max(unscaled.width, unscaled.height) * bitmapScale;
+              if (maxDim > MAX_CANVAS_PX) {
+                bitmapScale = bitmapScale * (MAX_CANVAS_PX / maxDim);
+              }
+              var viewport = page.getViewport({ scale: bitmapScale });
+              var cssViewport = page.getViewport({ scale: cssScale });
               var canvas = document.createElement('canvas');
               canvas.className = 'page-canvas';
+              // Bitmap : haute résolution.
               canvas.width = Math.floor(viewport.width);
               canvas.height = Math.floor(viewport.height);
+              // CSS : taille d'affichage (le navigateur downscale le
+              // bitmap haute-res vers cette taille → rendu pixel-perfect
+              // sur écran retina, aucun flou).
+              canvas.style.width = Math.floor(cssViewport.width) + 'px';
+              canvas.style.height = Math.floor(cssViewport.height) + 'px';
               viewer.appendChild(canvas);
+              var ctx = canvas.getContext('2d');
               return page.render({
-                canvasContext: canvas.getContext('2d'),
-                viewport: viewport
+                canvasContext: ctx,
+                viewport: viewport,
+                // Pour un rendu encore plus net sur les détails fins.
+                intent: 'display'
               }).promise;
             });
           });
