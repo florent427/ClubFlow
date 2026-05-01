@@ -18,8 +18,12 @@ export class PostChatMessageInput {
    * Corps texte. **Optionnel** : un message peut être 100 % pièces
    * jointes (vocal seul, photo seule). Le service vérifie qu'au moins
    * `body` (non vide) ou `attachmentMediaAssetIds` est présent.
+   *
+   * NB : type explicite `() => String` requis car `nullable: true` +
+   * union `string | null` empêche NestJS GraphQL de deviner le type
+   * via reflect-metadata (`UndefinedTypeError` au boot sinon).
    */
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsString()
   @MaxLength(8000)
