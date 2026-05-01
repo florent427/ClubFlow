@@ -91,13 +91,25 @@ export function PinGate({ children }: { children: React.ReactNode }) {
     profileId ? unlockedProfileIds.has(profileId) : false,
   );
 
-  // **Fail-open après 5 secondes** : si la query VIEWER_ME ne répond
-  // pas (API down, réseau coupé, token invalide), on laisse passer
-  // au lieu de bloquer l'app indéfiniment sur l'ActivityIndicator.
-  // Le PIN reste prompté quand on aura vraiment des données.
-  // Sans ce timeout, un network failure rend toute l'app inutilisable.
+  // **Fail-open après 5 secondes** SI ET SEULEMENT SI on n'a toujours
+  // pas de data (API down, réseau coupé). Une fois que `data` arrive,
+  // le timeout est désactivé pour ne pas dégrader la sécurité — le
+  // PIN doit être respecté dès qu'on a les vraies infos. Sans cette
+  // re-évaluation, le timeout déclenché AVANT l'arrivée des données
+  // restait actif éternellement et bypassait le PIN à vie.
   const [timedOut, setTimedOut] = useState(false);
   useEffect(() => {
+    // Si on a déjà des data ou une erreur, pas besoin de timeout.
+    if (data || error) {
+      // Si timeout précédemment déclenché mais qu'on vient de recevoir
+      // les data, on annule le fail-open pour réactiver le gate.
+      if (timedOut) {
+        // eslint-disable-next-line no-console
+        console.log('[PinGate] data arrivée → annule fail-open');
+        setTimedOut(false);
+      }
+      return;
+    }
     const t = setTimeout(() => {
       // eslint-disable-next-line no-console
       console.warn(
@@ -106,7 +118,7 @@ export function PinGate({ children }: { children: React.ReactNode }) {
       setTimedOut(true);
     }, 5000);
     return () => clearTimeout(t);
-  }, []);
+  }, [data, error, timedOut]);
 
   // Sync quand profileId change (switch interne sans reset complet —
   // peu probable mais on couvre).
@@ -115,8 +127,10 @@ export function PinGate({ children }: { children: React.ReactNode }) {
     setUnlocked(unlockedProfileIds.has(profileId));
   }, [profileId]);
 
-  // Erreur GraphQL OU timeout : fail-open pour ne pas bloquer.
-  if (error || timedOut) {
+  // Fail-open uniquement quand on n'a vraiment AUCUNE data (timeout
+  // ou erreur GraphQL fatale). Dès qu'on a `data`, on respecte la
+  // logique normale du gate.
+  if (!data && (error || timedOut)) {
     return <>{children}</>;
   }
   if (loading && !data) {
