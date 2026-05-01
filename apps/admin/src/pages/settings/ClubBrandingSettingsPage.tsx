@@ -8,26 +8,69 @@ import type {
 import { LoadingState } from '../../components/ui/LoadingState';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { useToast } from '../../components/ToastProvider';
+import { getClubId, getToken } from '../../lib/storage';
 
 /**
  * Paramètres d'identité du club : logo, SIRET, adresse, mentions légales.
  * Ces champs alimentent les PDF (facture, avoir) et l'en-tête des documents
  * officiels.
  *
- * Le logo est stocké en data-URL (base64) pour éviter de dépendre d'un
- * hébergement fichier. Limité à ~400 Ko de PNG/JPEG → convient pour un pied
- * d'en-tête A4.
+ * **Logo** : uploadé via le pipeline `MediaAsset` standard
+ * (`POST /media/upload?kind=image`) qui retourne une URL publique
+ * `http(s)://api/media/<uuid>`. Cette URL est stockée dans `Club.logoUrl`
+ * (champ string court, indexable, partageable).
+ *
+ * Avant on stockait une **data URL base64** dans `Club.logoUrl` — solution
+ * abandonnée car :
+ *   - le DTO `UpdateClubBrandingInput.logoUrl` est limité à 500 chars
+ *     → toute image > ~370 octets faisait échouer la validation silencieusement
+ *   - le mobile (RN Image) ne charge pas toujours les data URLs longs
+ *   - chaque query CLUB_BRANDING transférait 50KB+ inutilement
+ *
+ * Le service de génération PDF (`invoice-pdf.service.ts`) accepte déjà
+ * BOTH formats (data URL et HTTP) — la migration est rétro-compatible.
  */
 
-const LOGO_MAX_BYTES = 400 * 1024;
+const LOGO_MAX_BYTES = 1 * 1024 * 1024; // 1 Mo (limite alignée sur MediaAsset.MAX_BYTES côté API)
 
-async function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Lecture du fichier impossible'));
-    reader.onload = () => resolve(String(reader.result));
-    reader.readAsDataURL(file);
+function apiBase(): string {
+  return (
+    (import.meta.env as Record<string, string | undefined>)
+      .VITE_GRAPHQL_HTTP?.replace(/\/graphql.*$/, '') ?? 'http://localhost:3000'
+  );
+}
+
+/**
+ * Upload un fichier vers l'endpoint MediaAsset générique. Retourne l'URL
+ * publique persistée. Throw en cas d'échec.
+ */
+async function uploadLogoToMedia(file: File): Promise<string> {
+  const token = getToken();
+  const clubId = getClubId();
+  if (!token || !clubId) {
+    throw new Error('Session expirée. Reconnectez-vous.');
+  }
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${apiBase()}/media/upload?kind=image`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'X-Club-Id': clubId,
+    },
+    body: form,
   });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(
+      `Upload échoué (HTTP ${res.status}). ${text || 'Vérifie taille / format.'}`,
+    );
+  }
+  const data = (await res.json()) as { id: string; publicUrl: string };
+  if (!data.publicUrl) {
+    throw new Error('Réponse upload invalide : publicUrl manquant.');
+  }
+  return data.publicUrl;
 }
 
 export function ClubBrandingSettingsPage() {
@@ -41,6 +84,7 @@ export function ClubBrandingSettingsPage() {
 
   const [name, setName] = useState('');
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [siret, setSiret] = useState('');
   const [address, setAddress] = useState('');
   const [legalMentions, setLegalMentions] = useState('');
@@ -61,6 +105,12 @@ export function ClubBrandingSettingsPage() {
     setContactEmail(c.contactEmail ?? '');
   }, [data?.club]);
 
+  /**
+   * Le file picker upload IMMÉDIATEMENT vers MediaAsset (pas d'attente du
+   * "Enregistrer" du form), pour avoir un preview de l'URL réelle qui sera
+   * stockée. La sauvegarde finale (mutation updateClubBranding) ne fait
+   * que persister l'URL dans `Club.logoUrl`.
+   */
   async function handlePickLogo(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -74,12 +124,18 @@ export function ClubBrandingSettingsPage() {
       );
       return;
     }
+    setUploadingLogo(true);
+    setFormError(null);
     try {
-      const url = await fileToDataUrl(file);
+      const url = await uploadLogoToMedia(file);
       setLogoUrl(url);
-      setFormError(null);
+      showToast('Logo uploadé. Cliquez "Enregistrer" pour appliquer.', 'success');
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Lecture impossible');
+      const msg = err instanceof Error ? err.message : 'Upload impossible';
+      setFormError(msg);
+      showToast(msg, 'error');
+    } finally {
+      setUploadingLogo(false);
     }
   }
 
@@ -176,8 +232,12 @@ export function ClubBrandingSettingsPage() {
                   accept="image/png,image/jpeg,image/webp,image/svg+xml"
                   onChange={handlePickLogo}
                   className="cf-branding-logo__file"
+                  disabled={uploadingLogo}
                 />
-                {logoUrl ? (
+                {uploadingLogo ? (
+                  <p className="cf-branding-logo__hint">Upload en cours…</p>
+                ) : null}
+                {logoUrl && !uploadingLogo ? (
                   <button
                     type="button"
                     className="btn-ghost"
@@ -187,8 +247,9 @@ export function ClubBrandingSettingsPage() {
                   </button>
                 ) : null}
                 <p className="cf-branding-logo__hint">
-                  PNG / JPEG / WebP / SVG · max 400 Ko. Le logo est affiché en
-                  en-tête des PDF.
+                  PNG / JPEG / WebP / SVG · max {LOGO_MAX_BYTES / 1024} Ko.
+                  L'image est uploadée dans la médiathèque du club et son
+                  URL est stockée pour les PDF + l'app mobile.
                 </p>
               </div>
             </div>
@@ -287,7 +348,7 @@ export function ClubBrandingSettingsPage() {
               <button
                 type="submit"
                 className="btn-primary"
-                disabled={updateState.loading}
+                disabled={updateState.loading || uploadingLogo}
               >
                 {updateState.loading ? 'Enregistrement…' : 'Enregistrer'}
               </button>

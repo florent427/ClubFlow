@@ -52,7 +52,16 @@ export function ClubLogoBubble({
     return null;
   }
 
-  const url = absolutizeMediaUrl(clubTheme.clubLogoUrl);
+  const rawUrl = clubTheme.clubLogoUrl;
+  // **Garde-fou anti-data URL legacy** : avant migration, l'admin stockait
+  // le logo comme `data:image/png;base64,...` directement dans
+  // `Club.logoUrl`. Le DTO `UpdateClubBrandingInput.logoUrl` est limité
+  // à 2000 chars ; toute image > ~1.5 KB est nécessairement TRONQUÉE
+  // → la WebView RN reçoit un base64 invalide et ne fire pas toujours
+  // `onError`, laissant un cercle blanc vide. On treat ces URLs comme
+  // failed dès le départ pour fallback immédiat sur les initiales.
+  const isLegacyDataUrl = rawUrl?.startsWith('data:') ?? false;
+  const url = isLegacyDataUrl ? null : absolutizeMediaUrl(rawUrl);
   const showImage = url && !imageFailed;
 
   const initials = makeInitials(clubTheme.clubName);

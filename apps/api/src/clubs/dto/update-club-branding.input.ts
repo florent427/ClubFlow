@@ -17,11 +17,20 @@ export class UpdateClubBrandingInput {
   @Length(1, 200)
   name?: string;
 
+  /**
+   * URL publique du logo du club (typiquement
+   * `http(s)://api/media/<uuid>` issue de `POST /media/upload?kind=image`).
+   *
+   * Limite à 2000 chars pour rester généreux avec d'éventuelles URLs
+   * de CDN signées (S3 / Cloudfront) qui peuvent contenir des query
+   * strings longs. Avant on stockait des data URLs base64 ici (50KB+) —
+   * solution abandonnée car incompatible avec cette limite et inefficace.
+   */
   @Field(() => String, { nullable: true })
   @IsOptional()
   @ValidateIf((_, v) => v !== null)
   @IsString()
-  @Length(0, 500)
+  @Length(0, 2000)
   logoUrl?: string | null;
 
   @Field(() => String, { nullable: true })
