@@ -5,10 +5,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  ChatMessageAttachmentKind,
   ChatRoomChannelMode,
   ChatRoomKind,
   ChatRoomMemberRole,
   ChatRoomPermissionTarget,
+  MediaAssetKind,
   MemberStatus,
   MembershipRole,
   Prisma,
@@ -16,6 +18,35 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 
 const COMMUNITY_NAME = 'Communauté';
+
+/**
+ * Map le kind d'un MediaAsset vers le kind d'un ChatMessageAttachment.
+ * Le mobile utilise ChatMessageAttachmentKind pour choisir le viewer
+ * (lecteur audio vs image inline vs lien PDF). On ne peut pas juste
+ * passer MediaAssetKind car l'enum diffère (pas d'OTHER côté chat).
+ */
+function mapMediaKindToAttachmentKind(
+  kind: MediaAssetKind,
+  mimeType: string,
+): ChatMessageAttachmentKind {
+  switch (kind) {
+    case 'IMAGE':
+      return ChatMessageAttachmentKind.IMAGE;
+    case 'VIDEO':
+      return ChatMessageAttachmentKind.VIDEO;
+    case 'AUDIO':
+      return ChatMessageAttachmentKind.AUDIO;
+    case 'DOCUMENT':
+      return ChatMessageAttachmentKind.DOCUMENT;
+    case 'OTHER':
+      // Détection basée sur le MIME pour les anciens uploads (avant
+      // l'introduction des kinds VIDEO/AUDIO).
+      if (mimeType.startsWith('video/')) return ChatMessageAttachmentKind.VIDEO;
+      if (mimeType.startsWith('audio/')) return ChatMessageAttachmentKind.AUDIO;
+      if (mimeType.startsWith('image/')) return ChatMessageAttachmentKind.IMAGE;
+      return ChatMessageAttachmentKind.DOCUMENT;
+  }
+}
 
 function directPairKey(
   clubId: string,
@@ -329,6 +360,10 @@ export class MessagingService {
           },
         },
         reactions: true,
+        attachments: {
+          include: { mediaAsset: true, thumbnailAsset: true },
+          orderBy: { position: 'asc' },
+        },
       },
     });
   }
@@ -361,6 +396,10 @@ export class MessagingService {
           },
         },
         reactions: true,
+        attachments: {
+          include: { mediaAsset: true, thumbnailAsset: true },
+          orderBy: { position: 'asc' },
+        },
       },
     });
   }
@@ -497,14 +536,18 @@ export class MessagingService {
     clubId: string,
     roomId: string,
     senderMemberId: string,
-    body: string,
+    body: string | null | undefined,
     options?: {
       parentMessageId?: string | null;
       postedAsAdminUserId?: string | null;
+      attachmentMediaAssetIds?: string[] | null;
     },
   ) {
-    const text = body.trim();
-    if (!text) {
+    const text = (body ?? '').trim();
+    const attachmentIds = options?.attachmentMediaAssetIds ?? [];
+    // Un message doit avoir AU MOINS un body non vide OU des attachments.
+    // Un message vide (ni texte ni pièces jointes) est rejeté.
+    if (!text && attachmentIds.length === 0) {
       throw new BadRequestException('Message vide');
     }
     await this.assertRoomMember(clubId, roomId, senderMemberId);
@@ -539,28 +582,103 @@ export class MessagingService {
       }
     }
 
-    const msg = await this.prisma.chatMessage.create({
-      data: {
-        roomId,
-        senderMemberId,
-        body: text,
-        parentMessageId: parentId,
-        postedAsAdminUserId: options?.postedAsAdminUserId ?? null,
-      },
-      include: {
-        sender: {
-          select: {
-            id: true,
-            pseudo: true,
-            firstName: true,
-            lastName: true,
-            // photoUrl propagé pour afficher l'avatar de l'expéditeur
-            // dans les bulles de chat côté mobile.
-            photoUrl: true,
+    // Pré-validation des MediaAssets référencés : doivent exister, être
+    // dans le même club, et ne pas être déjà attachés à un autre message
+    // (anti-réutilisation cross-message qui faciliterait l'exfiltration).
+    let attachmentRows: Array<{
+      id: string;
+      kind: import('@prisma/client').MediaAssetKind;
+      mimeType: string;
+    }> = [];
+    if (attachmentIds.length > 0) {
+      attachmentRows = await this.prisma.mediaAsset.findMany({
+        where: { id: { in: attachmentIds }, clubId },
+        select: { id: true, kind: true, mimeType: true },
+      });
+      if (attachmentRows.length !== attachmentIds.length) {
+        throw new BadRequestException(
+          'Une ou plusieurs pièces jointes sont introuvables.',
+        );
+      }
+      const reused = await this.prisma.chatMessageAttachment.count({
+        where: { mediaAssetId: { in: attachmentIds } },
+      });
+      if (reused > 0) {
+        throw new BadRequestException(
+          'Une pièce jointe est déjà rattachée à un autre message.',
+        );
+      }
+    }
+
+    // Création atomique : message + attachments dans une transaction.
+    const msg = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.chatMessage.create({
+        data: {
+          roomId,
+          senderMemberId,
+          body: text || null,
+          parentMessageId: parentId,
+          postedAsAdminUserId: options?.postedAsAdminUserId ?? null,
+        },
+        include: {
+          sender: {
+            select: {
+              id: true,
+              pseudo: true,
+              firstName: true,
+              lastName: true,
+              photoUrl: true,
+            },
+          },
+          reactions: true,
+          attachments: {
+            include: {
+              mediaAsset: true,
+              thumbnailAsset: true,
+            },
           },
         },
-        reactions: true,
-      },
+      });
+
+      // Crée les attachments en respectant l'ordre de l'input pour
+      // l'affichage côté client (galerie photo).
+      if (attachmentIds.length > 0) {
+        await tx.chatMessageAttachment.createMany({
+          data: attachmentIds.map((mediaAssetId, position) => {
+            const asset = attachmentRows.find((r) => r.id === mediaAssetId)!;
+            return {
+              messageId: created.id,
+              mediaAssetId,
+              kind: mapMediaKindToAttachmentKind(asset.kind, asset.mimeType),
+              position,
+            };
+          }),
+        });
+      }
+
+      // Re-read avec les attachments inclus (createMany ne renvoie pas).
+      return tx.chatMessage.findUniqueOrThrow({
+        where: { id: created.id },
+        include: {
+          sender: {
+            select: {
+              id: true,
+              pseudo: true,
+              firstName: true,
+              lastName: true,
+              photoUrl: true,
+            },
+          },
+          reactions: true,
+          attachments: {
+            include: {
+              mediaAsset: true,
+              thumbnailAsset: true,
+            },
+            orderBy: { position: 'asc' },
+          },
+        },
+      });
     });
 
     if (parentId) {
@@ -706,6 +824,10 @@ export class MessagingService {
           },
         },
         reactions: true,
+        attachments: {
+          include: { mediaAsset: true, thumbnailAsset: true },
+          orderBy: { position: 'asc' },
+        },
       },
     });
   }

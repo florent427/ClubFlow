@@ -182,7 +182,7 @@ export class MessagingAdminResolver {
   private toMessageGql(msg: {
     id: string;
     roomId: string;
-    body: string;
+    body: string | null;
     createdAt: Date;
     parentMessageId: string | null;
     replyCount: number;
@@ -228,6 +228,10 @@ export class MessagingAdminResolver {
         count,
         reactedByViewer: false,
       })),
+      // Vue admin : on n'utilise pas les attachments dans la modération
+      // pour l'instant, mais on retourne un tableau vide pour respecter
+      // le contrat GQL (ChatMessageGql.attachments non-nullable).
+      attachments: [],
     };
   }
 

@@ -34,6 +34,7 @@
     "bcryptjs": "^3.0.2",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.3",
+    "file-type": "^16.5.4",
     "graphql": "^16.12.0",
     "graphql-scalars": "^1.25.0",
     "libreoffice-convert": "^1.8.1",

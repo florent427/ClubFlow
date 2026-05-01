@@ -17,6 +17,11 @@ import sharp from 'sharp';
 // et le flux upload retombe sur le PPTX brut (le frontend affichera alors
 // Office Online Viewer comme fallback).
 import * as libreConvertLib from 'libreoffice-convert';
+// `file-type` v16 (CommonJS — v17+ est ESM-only et incompatible avec
+// notre build NestJS). Détecte le vrai type MIME d'un buffer en
+// inspectant les magic bytes — anti-spoofing : un .exe renommé .png
+// est reconnu comme `application/octet-stream` et rejeté en amont.
+import { fromBuffer as fileTypeFromBuffer } from 'file-type';
 import type { Readable } from 'stream';
 import type { MediaAsset, MediaAssetKind, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -84,12 +89,39 @@ export class MediaAssetsService {
     'video/quicktime', // .mov — beaucoup d'iPhone l'exportent tel quel
   ]);
   /**
+   * MIME audio acceptés — pour les messages vocaux de la messagerie.
+   * `audio/mp4` couvre m4a (sortie d'expo-av sur iOS).
+   * `audio/mpeg` = mp3.
+   * `audio/ogg` + `audio/webm` = formats opus / vorbis utilisés par Android.
+   */
+  static readonly ALLOWED_AUDIO_MIME = new Set<string>([
+    'audio/mp4',
+    'audio/mpeg',
+    'audio/ogg',
+    'audio/webm',
+    'audio/aac',
+  ]);
+  /**
    * Taille max pour les gros fichiers (vidéos, présentations). Plus souple
    * que la limite standard car ces médias sont lourds par nature. Le frontend
    * prévient l'utilisateur au-delà et un reverse-proxy peut serrer la vis si
    * besoin en production.
    */
   static readonly MAX_LARGE_BYTES = 100 * 1024 * 1024;
+
+  /**
+   * Limites taille **strictes** appliquées aux uploads chat (pièces jointes
+   * de messagerie). Plus serrées que les limites legacy pour éviter de
+   * faire exploser la bande passante mobile et les coûts de stockage.
+   * Spec utilisateur : "images 5MB, PDF 10MB, vidéos 50MB, vocal 10MB".
+   */
+  static readonly CHAT_LIMITS_BY_KIND: Record<MediaAssetKind, number> = {
+    IMAGE: 5 * 1024 * 1024,
+    DOCUMENT: 10 * 1024 * 1024,
+    VIDEO: 50 * 1024 * 1024,
+    AUDIO: 10 * 1024 * 1024,
+    OTHER: 5 * 1024 * 1024,
+  };
 
   constructor(
     private readonly prisma: PrismaService,
@@ -215,7 +247,12 @@ export class MediaAssetsService {
     }
   }
 
-  /** Upload d'une vidéo (MP4/WebM/OGG…). Kind = OTHER. */
+  /**
+   * Upload d'une vidéo (MP4/WebM/OGG/MOV). Kind = `VIDEO`.
+   * Note : pas de re-encoding ffmpeg pour l'instant (gracieusement
+   * ignoré si le binaire n'est pas dispo en dev Windows). À ajouter
+   * en v2 pour stripper les métadonnées et standardiser H264/AAC.
+   */
   async uploadVideo(
     clubId: string,
     userId: string | null,
@@ -227,7 +264,25 @@ export class MediaAssetsService {
     },
     owner?: { kind: string; id: string } | null,
   ): Promise<MediaAsset> {
-    return this.uploadGeneric(clubId, userId, file, 'OTHER', owner);
+    return this.uploadGeneric(clubId, userId, file, 'VIDEO', owner);
+  }
+
+  /**
+   * Upload d'un message vocal / audio. Kind = `AUDIO`. Limite
+   * stricte 10 Mo (cf. CHAT_LIMITS_BY_KIND.AUDIO).
+   */
+  async uploadAudio(
+    clubId: string,
+    userId: string | null,
+    file: {
+      originalname: string;
+      mimetype: string;
+      size: number;
+      buffer: Buffer;
+    },
+    owner?: { kind: string; id: string } | null,
+  ): Promise<MediaAsset> {
+    return this.uploadGeneric(clubId, userId, file, 'AUDIO', owner);
   }
 
   private async uploadGeneric(
@@ -245,12 +300,17 @@ export class MediaAssetsService {
     if (!file || !file.buffer || file.size <= 0) {
       throw new BadRequestException('Fichier vide.');
     }
-    // Images restent sur la limite serrée (10 Mo) ; documents et vidéos
-    // peuvent monter à 100 Mo car ils sont lourds par nature.
-    const sizeLimit =
-      kind === 'IMAGE'
-        ? MediaAssetsService.MAX_BYTES
-        : MediaAssetsService.MAX_LARGE_BYTES;
+    // Limite par kind. Images et audio restent serrés ; document/vidéo
+    // plus permissifs (capés à 100 Mo via MAX_LARGE_BYTES historique).
+    let sizeLimit: number;
+    switch (kind) {
+      case 'IMAGE':
+      case 'AUDIO':
+        sizeLimit = MediaAssetsService.MAX_BYTES; // 10 Mo
+        break;
+      default:
+        sizeLimit = MediaAssetsService.MAX_LARGE_BYTES; // 100 Mo
+    }
     if (file.size > sizeLimit) {
       throw new BadRequestException(
         `Fichier trop volumineux (max ${sizeLimit / (1024 * 1024)} Mo).`,
@@ -264,10 +324,15 @@ export class MediaAssetsService {
       case 'DOCUMENT':
         allowed = MediaAssetsService.ALLOWED_DOCUMENT_MIME;
         break;
+      case 'VIDEO':
       case 'OTHER':
-        // Pour l'instant on ne laisse passer que les vidéos. Si d'autres
-        // usages arrivent (audio par ex.), étendre ici.
+        // OTHER conserve la whitelist vidéo pour rétro-compat (anciens
+        // uploads). Les nouveaux uploads vidéos passent par kind=VIDEO
+        // depuis `uploadVideo`.
         allowed = MediaAssetsService.ALLOWED_VIDEO_MIME;
+        break;
+      case 'AUDIO':
+        allowed = MediaAssetsService.ALLOWED_AUDIO_MIME;
         break;
       default:
         allowed = new Set();
@@ -276,6 +341,50 @@ export class MediaAssetsService {
       throw new BadRequestException(
         `Type de fichier non autorisé (${file.mimetype}).`,
       );
+    }
+    // **Vérification magic-byte** — anti-spoofing. Le client peut
+    // facilement renommer un .exe en .png et changer le Content-Type ;
+    // on inspecte les premiers octets du buffer pour détecter le vrai
+    // type MIME. Si mismatch → reject. SVG est XML donc pas détectable
+    // par signature binaire — on l'exempte (sécurité texte gérée par
+    // sharp + sanitization aval éventuelle).
+    if (file.mimetype !== 'image/svg+xml') {
+      try {
+        const detected = await fileTypeFromBuffer(file.buffer);
+        if (detected) {
+          // Tolérance MIME : audio/mp4 ↔ video/mp4 (M4A est techniquement
+          // un container MP4 ; file-type peut renvoyer l'un ou l'autre).
+          // Pareil pour audio/mpeg vs audio/mp3.
+          const mimeMatch =
+            detected.mime === file.mimetype ||
+            (detected.mime === 'video/mp4' && file.mimetype === 'audio/mp4') ||
+            (detected.mime === 'audio/mp4' && file.mimetype === 'video/mp4');
+          if (!mimeMatch && allowed.has(detected.mime)) {
+            // Le fichier est valide mais le client a déclaré un autre MIME
+            // → on accepte mais on log pour audit.
+            this.logger.warn(
+              `MIME corrigé : déclaré=${file.mimetype}, détecté=${detected.mime} (${file.originalname})`,
+            );
+            file.mimetype = detected.mime;
+          } else if (!mimeMatch) {
+            throw new BadRequestException(
+              `Contenu du fichier ne correspond pas au type déclaré ` +
+                `(déclaré=${file.mimetype}, détecté=${detected.mime}).`,
+            );
+          }
+        }
+        // Si `detected` est undefined (file-type ne reconnaît pas), on
+        // tolère pour les formats text/SVG/etc. — la whitelist MIME
+        // déclarée a déjà filtré.
+      } catch (err) {
+        if (err instanceof BadRequestException) throw err;
+        // file-type peut throw sur des buffers corrompus — log + continue
+        // pour ne pas bloquer le flux upload sur une lib externe.
+        this.logger.warn(
+          `Magic-byte check échoué (${file.originalname}) : ` +
+            (err instanceof Error ? err.message : String(err)),
+        );
+      }
     }
     // S'assurer que le club existe — empêche qu'un bug amont n'écrive des
     // fichiers pour un clubId fantoche.

@@ -17,9 +17,11 @@ import { EditChatMessageInput } from './dto/edit-chat-message.input';
 import { PostChatMessageInput } from './dto/post-chat-message.input';
 import { ToggleMessageReactionInput } from './dto/toggle-message-reaction.input';
 import {
+  ChatMessageAttachmentGql,
   ChatMessageGql,
   ChatMessageReactionGroupGql,
 } from './models/chat-message-gql.model';
+import { ChatMessageAttachmentKind as ChatMessageAttachmentKindEnum } from '@prisma/client';
 import {
   ChatMemberSnippetGraph,
   ChatRoomGql,
@@ -34,7 +36,7 @@ import { MessagingService } from './messaging.service';
 type RawMessage = {
   id: string;
   roomId: string;
-  body: string;
+  body: string | null;
   createdAt: Date;
   parentMessageId: string | null;
   replyCount: number;
@@ -53,6 +55,24 @@ type RawMessage = {
     memberId: string;
     emoji: string;
   }[];
+  attachments?: Array<{
+    id: string;
+    kind: ChatMessageAttachmentKindEnum;
+    mediaAssetId: string;
+    durationMs: number | null;
+    position: number;
+    mediaAsset: {
+      id: string;
+      fileName: string;
+      mimeType: string;
+      sizeBytes: number;
+      publicUrl: string;
+    };
+    thumbnailAsset: {
+      id: string;
+      publicUrl: string;
+    } | null;
+  }>;
 };
 
 function aggregateReactions(
@@ -281,8 +301,11 @@ export class MessagingResolver {
       club.id,
       input.roomId,
       user.activeProfileMemberId,
-      input.body,
-      { parentMessageId: input.parentMessageId ?? null },
+      input.body ?? null,
+      {
+        parentMessageId: input.parentMessageId ?? null,
+        attachmentMediaAssetIds: input.attachmentMediaAssetIds ?? null,
+      },
     );
     const gql = this.toMessageGql(
       msg as RawMessage,
@@ -295,6 +318,7 @@ export class MessagingResolver {
       createdAt: gql.createdAt,
       parentMessageId: gql.parentMessageId,
       sender: gql.sender,
+      attachments: gql.attachments,
     });
     if (input.parentMessageId) {
       const counters = await this.messaging.getMessageThreadCounters(
@@ -460,6 +484,19 @@ export class MessagingResolver {
       lastName: msg.sender.lastName,
       photoUrl: msg.sender.photoUrl,
     };
+    const attachments: ChatMessageAttachmentGql[] = (msg.attachments ?? []).map(
+      (a) => ({
+        id: a.id,
+        kind: a.kind,
+        mediaAssetId: a.mediaAssetId,
+        mediaUrl: a.mediaAsset.publicUrl,
+        thumbnailUrl: a.thumbnailAsset?.publicUrl ?? null,
+        fileName: a.mediaAsset.fileName,
+        mimeType: a.mediaAsset.mimeType,
+        sizeBytes: a.mediaAsset.sizeBytes,
+        durationMs: a.durationMs,
+      }),
+    );
     return {
       id: msg.id,
       roomId: msg.roomId,
@@ -472,6 +509,7 @@ export class MessagingResolver {
       editedAt: msg.editedAt,
       postedByAdmin: Boolean(msg.postedAsAdminUserId),
       reactions: aggregateReactions(msg.reactions, viewerMemberId),
+      attachments,
     };
   }
 }

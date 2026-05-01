@@ -61,7 +61,7 @@ export class MediaController {
   )
   async upload(
     @Req() req: Request,
-    @Query('kind') kind: 'image' | 'document' | 'video' | undefined,
+    @Query('kind') kind: 'image' | 'document' | 'video' | 'audio' | undefined,
     @Query('ownerKind') ownerKind: string | undefined,
     @Query('ownerId') ownerId: string | undefined,
     @UploadedFile() file: Express.Multer.File | undefined,
@@ -119,7 +119,9 @@ export class MediaController {
         ? await this.service.uploadDocument(clubId, userId, file, owner)
         : kind === 'video'
           ? await this.service.uploadVideo(clubId, userId, file, owner)
-          : await this.service.uploadImage(clubId, userId, file, owner);
+          : kind === 'audio'
+            ? await this.service.uploadAudio(clubId, userId, file, owner)
+            : await this.service.uploadImage(clubId, userId, file, owner);
     return {
       id: row.id,
       clubId: row.clubId,

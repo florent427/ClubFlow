@@ -784,7 +784,10 @@ model ChatMessage {
   id                  String    @id @default(uuid())
   roomId              String
   senderMemberId      String
-  body                String    @db.Text
+  /// Corps texte du message — désormais nullable car un message peut
+  /// être 100 % pièces jointes (vocal, photo) sans texte. Le service
+  /// vérifie qu'au moins l'un de `body` ou `attachments` est présent.
+  body                String?   @db.Text
   /// Si non null, ce message est une réponse en fil au message désigné.
   /// Les réponses ne sont pas affichées dans le flux principal du salon
   /// (récupérées via thread expand uniquement).
@@ -801,14 +804,43 @@ model ChatMessage {
   editedAt            DateTime?
   deletedAt           DateTime?
 
-  room      ChatRoom              @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  sender    Member                @relation("ChatMessageSender", fields: [senderMemberId], references: [id], onDelete: Cascade)
-  parent    ChatMessage?          @relation("ChatMessageThread", fields: [parentMessageId], references: [id], onDelete: Cascade)
-  replies   ChatMessage[]         @relation("ChatMessageThread")
-  reactions ChatMessageReaction[]
+  room        ChatRoom                  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  sender      Member                    @relation("ChatMessageSender", fields: [senderMemberId], references: [id], onDelete: Cascade)
+  parent      ChatMessage?              @relation("ChatMessageThread", fields: [parentMessageId], references: [id], onDelete: Cascade)
+  replies     ChatMessage[]             @relation("ChatMessageThread")
+  reactions   ChatMessageReaction[]
+  attachments ChatMessageAttachment[]
 
   @@index([roomId, createdAt])
   @@index([parentMessageId, createdAt])
+}
+
+/// Pièce jointe d'un ChatMessage (image, vidéo, audio/vocal, document).
+/// Pointe sur un `MediaAsset` créé via le pipeline upload sécurisé
+/// (`POST /media/upload?kind=...`). Plusieurs attachments par message
+/// possible (galerie photo, multi-pdf…).
+model ChatMessageAttachment {
+  id            String                    @id @default(uuid())
+  messageId     String
+  mediaAssetId  String
+  kind          ChatMessageAttachmentKind
+  /// Pour AUDIO/VIDEO : durée en millisecondes (renseignée par le client
+  /// au moment de l'upload, ou extraite côté serveur si ffprobe dispo).
+  durationMs    Int?
+  /// Optionnel : asset image utilisé comme thumbnail pour les vidéos
+  /// (généré via ffmpeg `-frames:v 1` au moment du transcode).
+  thumbnailAssetId String?
+  /// Ordre d'affichage dans la bulle (0..N). Permet une "galerie" avec
+  /// plusieurs photos dans un seul message.
+  position      Int                       @default(0)
+  createdAt     DateTime                  @default(now())
+
+  message       ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  mediaAsset    MediaAsset  @relation("ChatAttachmentAsset", fields: [mediaAssetId], references: [id], onDelete: Restrict)
+  thumbnailAsset MediaAsset? @relation("ChatAttachmentThumbnail", fields: [thumbnailAssetId], references: [id], onDelete: SetNull)
+
+  @@index([messageId])
+  @@index([mediaAssetId])
 }
 
 /// Réaction emoji sur un message — **1 SEULE réaction par membre par
@@ -2318,7 +2350,22 @@ enum VitrineArticleChannel {
 enum MediaAssetKind {
   IMAGE
   DOCUMENT
+  /// Vidéo (mp4, mov…) — séparé de OTHER pour permettre une whitelist
+  /// claire et un viewer dédié côté mobile (lecteur expo-av).
+  VIDEO
+  /// Audio (vocal m4a/mp3/ogg) — utilisé pour les messages vocaux du
+  /// chat. Lecteur dédié côté mobile (play/pause + durée).
+  AUDIO
   OTHER
+}
+
+/// Type de pièce jointe attachée à un ChatMessage. Sert au mobile pour
+/// choisir le bon viewer (lecteur audio vs preview image vs lien PDF).
+enum ChatMessageAttachmentKind {
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
 }
 
 /// Page vitrine — un enregistrement par (clubId, slug).
@@ -2579,6 +2626,8 @@ model MediaAsset {
   sponsorshipDocuments  SponsorshipDocument[]
   clubDocumentSources   ClubDocument[]         @relation("ClubDocumentSource")
   clubSignedDocuments   ClubSignedDocument[]   @relation("ClubSignedDocumentRendered")
+  chatAttachments       ChatMessageAttachment[] @relation("ChatAttachmentAsset")
+  chatThumbnails        ChatMessageAttachment[] @relation("ChatAttachmentThumbnail")
 
   @@index([clubId, ownerKind, ownerId])
   @@index([clubId, sha256])

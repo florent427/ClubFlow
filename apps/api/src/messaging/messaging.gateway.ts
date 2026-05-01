@@ -97,7 +97,7 @@ export class MessagingGateway implements OnGatewayConnection {
     payload: {
       id: string;
       roomId: string;
-      body: string;
+      body: string | null;
       createdAt: Date;
       parentMessageId: string | null;
       sender: {
@@ -107,6 +107,16 @@ export class MessagingGateway implements OnGatewayConnection {
         lastName: string;
         photoUrl?: string | null;
       };
+      attachments?: Array<{
+        id: string;
+        kind: string;
+        mediaUrl: string;
+        thumbnailUrl: string | null;
+        fileName: string;
+        mimeType: string;
+        sizeBytes: number;
+        durationMs: number | null;
+      }>;
     },
   ): void {
     this.server.to(roomChannel(roomId)).emit('chat:message', payload);
@@ -149,7 +159,7 @@ export class MessagingGateway implements OnGatewayConnection {
    */
   emitMessageEdited(
     roomId: string,
-    payload: { id: string; body: string; editedAt: Date },
+    payload: { id: string; body: string | null; editedAt: Date },
   ): void {
     this.server.to(roomChannel(roomId)).emit('chat:message:edit', payload);
   }
