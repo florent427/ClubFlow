@@ -26,6 +26,13 @@ export type ViewerMeData = {
     hideMemberModules: boolean;
     telegramLinked: boolean;
     payerSpacePinSet: boolean;
+    /**
+     * True si ce profil est un payeur (adulte du foyer pouvant gérer
+     * les paniers d'adhésion + factures). Pour les profils enfants, ce
+     * flag est false → pas de PIN gate, pas d'accès à la gestion du PIN
+     * dans Settings.
+     */
+    canManageMembershipCart: boolean;
   };
 };
 

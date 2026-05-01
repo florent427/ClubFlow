@@ -73,6 +73,11 @@ export function PinGate({ children }: { children: React.ReactNode }) {
   const me = data?.viewerMe;
   const profileId = me?.id ?? null;
   const pinSet = me?.payerSpacePinSet === true;
+  // **Le PIN gate ne s'active QUE pour les payeurs** (adultes du foyer).
+  // Les profils enfants ne sont jamais gatés, même si le User parent a
+  // défini un PIN — le PIN protège l'accès aux infos sensibles
+  // (factures, gestion adhésion) qui ne concernent que le payeur.
+  const isPayer = me?.canManageMembershipCart === true;
   // eslint-disable-next-line no-console
   console.log(
     '[PinGate] loading?',
@@ -81,6 +86,8 @@ export function PinGate({ children }: { children: React.ReactNode }) {
     profileId,
     'pinSet?',
     pinSet,
+    'isPayer?',
+    isPayer,
     'error?',
     error?.message ?? null,
   );
@@ -140,7 +147,12 @@ export function PinGate({ children }: { children: React.ReactNode }) {
       </View>
     );
   }
-  if (!pinSet || unlocked || !profileId) {
+  // Cas où aucun gate n'est nécessaire :
+  //  - profil non-payeur (enfant)
+  //  - profil sans PIN défini
+  //  - profil déjà déverrouillé dans cette session
+  //  - pas encore de profileId résolu
+  if (!isPayer || !pinSet || unlocked || !profileId) {
     return <>{children}</>;
   }
 
@@ -226,8 +238,16 @@ function PinPrompt({ onSuccess }: { onSuccess: () => void }) {
               profil payeur.
             </Text>
 
-            {/* Affichage des 4 cellules */}
-            <Pressable onPress={() => inputRef.current?.focus()}>
+            {/*
+              PIN input : pattern "input transparent superposé sur les
+              cells visuelles". L'input occupe vraiment la zone des
+              cells (width/height réels) pour capturer les touches sur
+              Android — l'ancien pattern `position:absolute,opacity:0,
+              width:1` ne capturait pas les keystrokes.
+              Le texte tapé est invisible (`color: transparent` + `caretHidden`),
+              et les cells affichées en-dessous montrent les puces ●.
+            */}
+            <View style={styles.pinWrap}>
               <View style={styles.cellsRow} pointerEvents="none">
                 {[0, 1, 2, 3].map((i) => (
                   <View
@@ -243,23 +263,23 @@ function PinPrompt({ onSuccess }: { onSuccess: () => void }) {
                   </View>
                 ))}
               </View>
-            </Pressable>
-
-            {/* Input invisible — capture les touches */}
-            <TextInput
-              ref={inputRef}
-              value={pin}
-              onChangeText={(t) =>
-                setPin(t.replace(/[^0-9]/g, '').slice(0, 4))
-              }
-              keyboardType="number-pad"
-              maxLength={4}
-              secureTextEntry
-              editable={!loading}
-              style={styles.hiddenInput}
-              accessibilityLabel="Code PIN à 4 chiffres"
-              autoFocus
-            />
+              <TextInput
+                ref={inputRef}
+                value={pin}
+                onChangeText={(t) =>
+                  setPin(t.replace(/[^0-9]/g, '').slice(0, 4))
+                }
+                keyboardType="number-pad"
+                maxLength={4}
+                secureTextEntry
+                editable={!loading}
+                style={styles.pinInputOverlay}
+                accessibilityLabel="Code PIN à 4 chiffres"
+                autoFocus
+                caretHidden
+                selectionColor="transparent"
+              />
+            </View>
 
             {error ? (
               <Text style={styles.error} accessibilityRole="alert">
@@ -353,11 +373,27 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: palette.ink,
   },
-  hiddenInput: {
+  // Wrapper qui contient les cells visuelles + le TextInput overlay
+  // transparent. Position relative pour que l'overlay absolute soit
+  // calé sur ce wrapper.
+  pinWrap: {
+    position: 'relative',
+    marginVertical: spacing.md,
+  },
+  // TextInput posé EN ABSOLU par-dessus les 4 cells. Largeur/hauteur
+  // réelles pour capturer les touches sur Android (l'ancien
+  // `width:1, height:1, opacity:0` ne capturait pas les events).
+  // Texte/curseur invisibles via `color: transparent` + `caretHidden`.
+  pinInputOverlay: {
     position: 'absolute',
-    opacity: 0,
-    width: 1,
-    height: 1,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    color: 'transparent',
+    fontSize: 28,
+    textAlign: 'center',
+    backgroundColor: 'transparent',
   },
   error: {
     ...typography.smallStrong,

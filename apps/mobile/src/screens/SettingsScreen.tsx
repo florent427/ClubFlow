@@ -354,10 +354,18 @@ export function SettingsScreen() {
         </View>
       </Card>
 
-      <PayerSpacePinCard
-        pinSet={Boolean(me?.payerSpacePinSet)}
-        onChanged={() => void refetch()}
-      />
+      {/*
+        PIN payeur — visible uniquement pour les profils PAYEURS
+        (adultes du foyer pouvant gérer le panier d'adhésion). Les
+        enfants ne doivent pas pouvoir créer/modifier le PIN qui
+        protège l'accès aux factures de la famille.
+      */}
+      {me?.canManageMembershipCart === true ? (
+        <PayerSpacePinCard
+          pinSet={Boolean(me?.payerSpacePinSet)}
+          onChanged={() => void refetch()}
+        />
+      ) : null}
 
       {/* Session */}
       <Card title="Session" padding={spacing.lg}>

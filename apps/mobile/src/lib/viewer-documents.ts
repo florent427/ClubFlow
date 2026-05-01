@@ -31,6 +31,7 @@ export const VIEWER_ME = gql`
       hideMemberModules
       telegramLinked
       payerSpacePinSet
+      canManageMembershipCart
     }
   }
 `;
