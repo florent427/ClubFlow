@@ -460,30 +460,25 @@ export function MessagingThreadScreen({ route }: Props) {
       ) : null}
 
       {/*
-        KeyboardAvoidingView : la version précédente utilisait
-        `behavior={Platform.OS === 'ios' ? 'padding' : undefined}` qui ne
-        faisait rien sur Android — combiné au mode edge-to-edge qui
-        passait par `softwareKeyboardLayoutMode: pan` (défaut), le
-        composer était littéralement poussé hors écran quand le clavier
-        s'ouvrait.
-
-        Fix :
-         - `softwareKeyboardLayoutMode: "resize"` posé dans app.json →
-           Android resize la window quand le clavier apparaît
-         - `behavior="padding"` sur les 2 plateformes pour homogénéité
-           (Android avec resize ignore quasi le KAV mais le `padding`
-           ajoute une marge bottom utile pour les cas edge-case)
-         - `keyboardVerticalOffset={insets.top + 56}` reste — c'est la
-           hauteur du header custom au-dessus du KAV (safe area + header
-           bar 56dp). Sans ça, sur iOS, la padding ajoutée serait trop
-           grande et créerait un trou en bas
+        KeyboardAvoidingView : behavior conditionnel par plateforme.
+         - **iOS** : `behavior="padding"` + `keyboardVerticalOffset` =
+           hauteur du header custom (insets.top + 56). Sans ça l'input
+           passe sous le clavier.
+         - **Android** : `behavior={undefined}` → on laisse
+           `softwareKeyboardLayoutMode: "resize"` (app.json) gérer le
+           redimensionnement nativement. Si on laisse "padding" sur
+           Android, on a une DOUBLE compensation (resize + padding) qui
+           pousse le composer 2× trop haut au-dessus du clavier — bug
+           remonté par l'utilisateur.
          - FlatList prend `style={styles.flex}` explicitement (sinon il
-           ne s'étire pas et le composer flotte)
+           ne s'étire pas et le composer flotte).
       */}
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior="padding"
-        keyboardVerticalOffset={insets.top + 56}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={
+          Platform.OS === 'ios' ? insets.top + 56 : 0
+        }
       >
         <FlatList
           ref={flatListRef}
