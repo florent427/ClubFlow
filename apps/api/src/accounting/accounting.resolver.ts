@@ -639,6 +639,7 @@ export class AccountingResolver {
       disciplineCode: input.disciplineCode ?? null,
       paymentMethod: input.paymentMethod ?? undefined,
       paymentReference: input.paymentReference ?? undefined,
+      lineAmounts: input.lineAmounts,
       kind: 'EXPENSE' as const,
     });
     const entry = await this.accounting.getEntry(club.id, input.entryId);

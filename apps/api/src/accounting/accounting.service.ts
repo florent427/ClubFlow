@@ -70,6 +70,12 @@ export interface ManualEntryInput {
   paymentMethod?: string | null;
   /** N° chèque / virement / autre référence textuelle. */
   paymentReference?: string | null;
+  /**
+   * Montants à appliquer ligne par ligne (override). Utilisé par le
+   * mobile pour propager une modification du total sur les sous-lignes
+   * débit en respectant les ratios.
+   */
+  lineAmounts?: Array<{ lineId: string; amountCents: number }>;
 }
 
 /**
@@ -1110,17 +1116,49 @@ export class AccountingService {
       });
 
       // 2. Update les lignes (montant + éventuellement compte)
+      // Si `lineAmounts` est fourni (cas multi-lignes débit), il prend
+      // priorité sur la simple propagation du nouveau total — ça permet
+      // au mobile d'envoyer une ventilation explicite par ligne.
+      const lineAmountMap = new Map(
+        (corrections.lineAmounts ?? []).map((l) => [l.lineId, l.amountCents]),
+      );
+      // Total débit ciblé pour la ligne crédit banque (= header amountCents)
+      const targetTotal =
+        corrections.amountCents !== undefined
+          ? corrections.amountCents
+          : entry.amountCents;
+
       for (const line of entry.lines) {
         const isExpenseSide = line.debitCents > 0 && line.creditCents === 0;
         const isIncomeSide = line.creditCents > 0 && line.debitCents === 0;
+        const isBankLine =
+          line.accountCode === '512000' || line.accountCode === '530000';
         const dataLine: Record<string, unknown> = {};
-        if (corrections.amountCents !== undefined) {
+
+        // Override explicite par lineAmounts (priorité)
+        const override = lineAmountMap.get(line.id);
+        if (override !== undefined) {
+          if (isExpenseSide) dataLine.debitCents = override;
+          if (isIncomeSide) dataLine.creditCents = override;
+        } else if (isBankLine && corrections.amountCents !== undefined) {
+          // La ligne banque suit toujours le total entry (sauf si
+          // explicitement overridée ci-dessus).
+          if (isExpenseSide) dataLine.debitCents = targetTotal;
+          if (isIncomeSide) dataLine.creditCents = targetTotal;
+        } else if (
+          !isBankLine &&
+          corrections.amountCents !== undefined &&
+          lineAmountMap.size === 0
+        ) {
+          // Pas de lineAmounts fourni ET pas une ligne banque ET total
+          // changé : comportement legacy (mono-ligne — on assigne
+          // directement le total). Pour le multi-lignes, on attend que
+          // le client envoie lineAmounts.
           if (isExpenseSide) dataLine.debitCents = newAmount;
           if (isIncomeSide) dataLine.creditCents = newAmount;
         }
+
         // Change le compte uniquement sur la ligne "principale" (la non-banque)
-        const isBankLine =
-          line.accountCode === '512000' || line.accountCode === '530000';
         if (newAccount && !isBankLine) {
           dataLine.accountCode = newAccount.code;
           dataLine.accountLabel = newAccount.label;

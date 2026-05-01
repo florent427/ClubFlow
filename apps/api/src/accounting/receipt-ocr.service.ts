@@ -7,6 +7,7 @@ import {
   AiUsageFeature,
 } from '@prisma/client';
 import * as crypto from 'crypto';
+import sharp from 'sharp';
 // pdf-parse n'expose pas de typings TS ; on importe en require() pour
 // éviter "module has no default export". Renvoie `{ numpages, text, … }`.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -414,10 +415,29 @@ export class ReceiptOcrService {
       );
     }
 
-    // Construit la liste des data URLs (1 par asset)
-    const dataUrls = orderedAssets.map((a, i) =>
-      this.bufferToDataUrl(buffers[i], a.mimeType),
-    );
+    // Prétraitement + tuilage par asset.
+    // - Pour chaque page utilisateur, on applique sharp (rotate, normalise,
+    //   sharpen, resize 2500px max) sur les images.
+    // - Si l'image résultante est très haute (ratio > 2.5×), on la découpe
+    //   en tuiles verticales avec chevauchement pour fiabiliser l'OCR sans
+    //   perdre les lignes coupées.
+    // - Le pipeline IA peut donc recevoir N tuiles internes même si
+    //   l'utilisateur a uploadé M < N pages logiques. Le pageCount affiché
+    //   reste basé sur le nombre d'assets utilisateur.
+    const dataUrls: string[] = [];
+    for (let i = 0; i < orderedAssets.length; i++) {
+      const a = orderedAssets[i];
+      const pre = await this.preprocessImage(buffers[i], a.mimeType);
+      const tiles = await this.tileTallImage(pre.buffer, pre.mimeType);
+      for (const tile of tiles) {
+        dataUrls.push(this.bufferToDataUrl(tile.buffer, tile.mimeType));
+      }
+    }
+    if (dataUrls.length > orderedAssets.length) {
+      this.logger.log(
+        `[OCR multi] ${orderedAssets.length} pages utilisateur → ${dataUrls.length} images IA après tuilage`,
+      );
+    }
     const ctx = await this.loadClubContext(clubId);
 
     // 6. Comptage des pages effectives
@@ -1418,5 +1438,104 @@ Règles :
 
   private bufferToDataUrl(buf: Buffer, mimeType: string): string {
     return `data:${mimeType};base64,${buf.toString('base64')}`;
+  }
+
+  /**
+   * Prétraitement d'une image avant envoi au modèle vision pour améliorer
+   * la fiabilité de l'OCR :
+   *
+   *  1. **EXIF auto-rotate** — corrige les photos prises en mode portrait
+   *     mais stockées avec metadata d'orientation (très commun en mobile).
+   *  2. **Normalisation** — étire l'histogramme (auto-contraste). Une photo
+   *     prise dans une pièce sombre devient nettement plus lisible.
+   *  3. **Netteté légère** — `sharpen(sigma=1)` rehausse les bords du texte
+   *     sans amplifier le bruit (paramètres calibrés empiriquement).
+   *  4. **Resize max 2500px** — au-delà c'est inutile pour la lecture +
+   *     ça consomme des tokens vision pour rien.
+   *  5. **JPEG quality 90** — taille raisonnable et qualité largement
+   *     suffisante pour l'OCR.
+   *
+   * Pour les PDFs et autres mime non-image : retourne le buffer tel quel
+   * (sharp ne décode pas les PDFs ; le modèle vision les gère
+   * directement, et appliquer une autre transformation casserait le
+   * fichier).
+   *
+   * Retourne : `{ buffer, mimeType }` — le mime peut basculer
+   * `image/png` → `image/jpeg` après resize/recompression.
+   */
+  private async preprocessImage(
+    buf: Buffer,
+    mimeType: string,
+  ): Promise<{ buffer: Buffer; mimeType: string }> {
+    if (!mimeType.startsWith('image/')) {
+      return { buffer: buf, mimeType };
+    }
+    try {
+      const out = await sharp(buf)
+        .rotate() // EXIF auto-orient
+        .resize(2500, 2500, { fit: 'inside', withoutEnlargement: true })
+        .normalise() // auto-contrast (stretch histogramme)
+        .sharpen({ sigma: 1, m1: 0.5, m2: 2 })
+        .jpeg({ quality: 90, mozjpeg: true })
+        .toBuffer();
+      return { buffer: out, mimeType: 'image/jpeg' };
+    } catch (err) {
+      this.logger.warn(
+        `[OCR] preprocessImage échec, on envoie l'original : ${this.errorMsg(err)}`,
+      );
+      return { buffer: buf, mimeType };
+    }
+  }
+
+  /**
+   * Découpe une image très haute (ratio H/W > 2.5 — ticket de caisse,
+   * relevé long) en tuiles verticales avec chevauchement, pour que le
+   * modèle vision puisse lire chaque section sans perte de détail. La
+   * taille de chaque tuile reste inférieure à 2500px en hauteur.
+   *
+   * Si l'image n'est pas "tall" → retourne `[buffer]` (pas de tuilage).
+   *
+   * Le pageCount logique côté DB ne change pas — c'est un découpage
+   * INTERNE pour l'IA seule.
+   */
+  private async tileTallImage(
+    buf: Buffer,
+    mimeType: string,
+  ): Promise<Array<{ buffer: Buffer; mimeType: string }>> {
+    if (!mimeType.startsWith('image/')) {
+      return [{ buffer: buf, mimeType }];
+    }
+    try {
+      const meta = await sharp(buf).metadata();
+      const w = meta.width ?? 0;
+      const h = meta.height ?? 0;
+      // Pas de tuilage si pas tall ou si dimensions inconnues
+      if (w === 0 || h === 0 || h <= w * 2.5 || h <= 2500) {
+        return [{ buffer: buf, mimeType }];
+      }
+      const tileHeight = Math.min(2200, Math.ceil(h / 2));
+      const overlap = 200; // px de chevauchement pour capturer les lignes coupées
+      const tiles: Array<{ buffer: Buffer; mimeType: string }> = [];
+      let y = 0;
+      while (y < h) {
+        const cropH = Math.min(tileHeight, h - y);
+        const tile = await sharp(buf)
+          .extract({ left: 0, top: y, width: w, height: cropH })
+          .jpeg({ quality: 90 })
+          .toBuffer();
+        tiles.push({ buffer: tile, mimeType: 'image/jpeg' });
+        if (y + cropH >= h) break;
+        y += tileHeight - overlap;
+      }
+      this.logger.log(
+        `[OCR] image tall (${w}x${h}) → ${tiles.length} tuiles`,
+      );
+      return tiles;
+    } catch (err) {
+      this.logger.warn(
+        `[OCR] tileTallImage échec, on envoie l'image entière : ${this.errorMsg(err)}`,
+      );
+      return [{ buffer: buf, mimeType }];
+    }
   }
 }

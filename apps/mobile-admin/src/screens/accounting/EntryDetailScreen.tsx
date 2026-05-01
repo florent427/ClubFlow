@@ -287,7 +287,14 @@ export function EntryDetailScreen() {
 
   // ───────── Mode "validation" pour status NEEDS_REVIEW ─────────
   // État local des champs éditables. Initialisé depuis l'entry chargée.
-  const [editLabel, setEditLabel] = useState<string>('');
+  // - editVendor + editInvoiceNumber : sources du libellé (calculé,
+  //   pas saisi) — l'utilisateur édite ces 2 champs et le libellé
+  //   se met à jour en temps réel.
+  // - editAmount : total TTC. Quand il change, on propage
+  //   proportionnellement aux montants des lignes débit (preserve
+  //   les ratios IA). Affichage live des nouveaux montants.
+  const [editVendor, setEditVendor] = useState<string>('');
+  const [editInvoiceNumber, setEditInvoiceNumber] = useState<string>('');
   const [editAmount, setEditAmount] = useState<string>('');
   const [editDate, setEditDate] = useState<string>('');
   const [editPaymentMethod, setEditPaymentMethod] = useState<string>('');
@@ -303,7 +310,8 @@ export function EntryDetailScreen() {
   // navigue vers une autre.
   useEffect(() => {
     if (!entry) return;
-    setEditLabel(entry.label);
+    setEditVendor(entry.extraction?.extractedVendor ?? '');
+    setEditInvoiceNumber(entry.extraction?.extractedInvoiceNumber ?? '');
     setEditAmount(centsToString(entry.amountCents));
     setEditDate(isoToDateString(entry.occurredAt));
     setEditPaymentMethod(entry.paymentMethod ?? '');
@@ -311,12 +319,79 @@ export function EntryDetailScreen() {
     setEditLineCodes({});
   }, [
     entry?.id,
-    entry?.label,
     entry?.amountCents,
     entry?.occurredAt,
     entry?.paymentMethod,
     entry?.paymentReference,
+    entry?.extraction?.extractedVendor,
+    entry?.extraction?.extractedInvoiceNumber,
   ]);
+
+  /**
+   * Libellé calculé en direct depuis vendor + n° facture. Format :
+   *  - "{n°} — {vendor}"  si les deux présents
+   *  - "{vendor}"         si vendor seul
+   *  - "Facture {n°}"     si n° seul
+   *  - "Reçu à qualifier" sinon
+   */
+  const computedLabel = useMemo(() => {
+    const v = editVendor.trim();
+    const n = editInvoiceNumber.trim();
+    if (n && v) return `${n} — ${v}`;
+    if (v) return v;
+    if (n) return `Facture ${n}`;
+    return 'Reçu à qualifier';
+  }, [editVendor, editInvoiceNumber]);
+
+  /**
+   * Propagation proportionnelle du total TTC saisi vers les montants
+   * des lignes débit (hors banque). Préserve les ratios IA.
+   *
+   * - 1 seule ligne débit → assigne directement le total
+   * - N lignes débit → ratio = newTotal / oldTotal, applique sur chaque
+   *   ligne, réconcilie l'écart d'arrondi sur la dernière ligne
+   *
+   * Retourne `Map<lineId, newAmountCents>` — même si l'utilisateur
+   * n'a pas changé le total, on retourne la répartition courante (utile
+   * pour l'affichage live).
+   */
+  const propagatedLineAmounts = useMemo(() => {
+    const result = new Map<string, number>();
+    if (!entry) return result;
+    const newTotal = parseEurosToCents(editAmount);
+    if (newTotal == null) return result;
+    const articleLinesLocal = (entry.lines ?? []).filter(
+      (l) => !BANK_CODES.has(l.accountCode),
+    );
+    const oldTotal = articleLinesLocal.reduce(
+      (s, l) => s + l.debitCents,
+      0,
+    );
+    if (articleLinesLocal.length === 0) return result;
+    if (articleLinesLocal.length === 1) {
+      result.set(articleLinesLocal[0].id, newTotal);
+      return result;
+    }
+    if (oldTotal === 0) {
+      // Cas dégénéré : toutes les lignes à 0 → on met tout sur la 1re
+      result.set(articleLinesLocal[0].id, newTotal);
+      for (let i = 1; i < articleLinesLocal.length; i++) {
+        result.set(articleLinesLocal[i].id, 0);
+      }
+      return result;
+    }
+    // Distribution proportionnelle + réconciliation arrondi sur la dernière
+    let allocated = 0;
+    for (let i = 0; i < articleLinesLocal.length - 1; i++) {
+      const l = articleLinesLocal[i];
+      const newAmt = Math.round((l.debitCents / oldTotal) * newTotal);
+      result.set(l.id, newAmt);
+      allocated += newAmt;
+    }
+    const last = articleLinesLocal[articleLinesLocal.length - 1];
+    result.set(last.id, Math.max(0, newTotal - allocated));
+    return result;
+  }, [entry, editAmount]);
 
   const isReview = entry?.status === 'NEEDS_REVIEW';
   const firstReceipt = useMemo(
@@ -422,8 +497,11 @@ export function EntryDetailScreen() {
       Alert.alert('Montant invalide', 'Saisis un montant en euros valide (ex. 42.50).');
       return;
     }
-    if (!editLabel.trim()) {
-      Alert.alert('Libellé manquant', 'Le libellé ne peut pas être vide.');
+    if (!computedLabel.trim() || computedLabel === 'Reçu à qualifier') {
+      Alert.alert(
+        'Libellé manquant',
+        'Renseigne au moins le fournisseur ou le n° de facture.',
+      );
       return;
     }
     let occurredAt: Date | undefined;
@@ -438,6 +516,15 @@ export function EntryDetailScreen() {
       }
       occurredAt = d;
     }
+    // Construit le payload `lineAmounts` à partir de la propagation
+    // calculée — UNIQUEMENT si on a plusieurs lignes débit (sinon
+    // l'API se débrouille avec amountCents tout court).
+    const lineAmountsPayload =
+      propagatedLineAmounts.size >= 2
+        ? Array.from(propagatedLineAmounts.entries()).map(
+            ([lineId, amt]) => ({ lineId, amountCents: amt }),
+          )
+        : undefined;
     try {
       // 1. Mise à jour des comptes par ligne (si modifiés)
       for (const [lineId, code] of Object.entries(editLineCodes)) {
@@ -451,7 +538,7 @@ export function EntryDetailScreen() {
         variables: {
           input: {
             entryId: entry.id,
-            label: editLabel.trim(),
+            label: computedLabel.trim(),
             amountCents,
             occurredAt: occurredAt?.toISOString(),
             paymentMethod: editPaymentMethod || null,
@@ -460,6 +547,9 @@ export function EntryDetailScreen() {
               editPaymentRef.trim()
                 ? editPaymentRef.trim()
                 : null,
+            ...(lineAmountsPayload
+              ? { lineAmounts: lineAmountsPayload }
+              : {}),
           },
         },
       });
@@ -594,19 +684,41 @@ export function EntryDetailScreen() {
           ) : (
             <>
               <View style={styles.editForm}>
+                {/* N° facture + fournisseur séparés. Le libellé est
+                    calculé en direct depuis ces 2 champs. */}
                 <TextField
-                  label="Libellé de l'écriture"
-                  value={editLabel}
-                  onChangeText={setEditLabel}
-                  placeholder="Ex. F-2026-001 — Decathlon"
+                  label="N° de facture"
+                  value={editInvoiceNumber}
+                  onChangeText={setEditInvoiceNumber}
+                  placeholder="Ex. F-2026-001"
+                  autoCapitalize="characters"
                 />
+                <TextField
+                  label="Fournisseur"
+                  value={editVendor}
+                  onChangeText={setEditVendor}
+                  placeholder="Ex. Decathlon"
+                />
+                {/* Libellé readonly : reflet temps réel du calcul */}
+                <View style={styles.computedLabelBox}>
+                  <Text style={styles.computedLabelLabel}>
+                    Libellé écriture (auto)
+                  </Text>
+                  <Text style={styles.computedLabelValue} numberOfLines={2}>
+                    {computedLabel}
+                  </Text>
+                </View>
                 <TextField
                   label="Montant TTC (€)"
                   value={editAmount}
                   onChangeText={setEditAmount}
                   keyboardType="decimal-pad"
                   placeholder="0.00"
-                  hint="L'asso ne sépare pas la TVA — saisis le total TTC."
+                  hint={
+                    propagatedLineAmounts.size >= 2
+                      ? "L'asso ne sépare pas la TVA. Le total est réparti automatiquement entre les lignes selon les ratios IA."
+                      : "L'asso ne sépare pas la TVA — saisis le total TTC."
+                  }
                 />
                 {/* Picker mode de paiement (chips) — bandeau "À saisir
                     manuellement" si l'IA n'a pas pu trancher */}
@@ -789,23 +901,69 @@ export function EntryDetailScreen() {
                     ) : null}
                   </View>
                   <View style={styles.lineAmounts}>
-                    {line.debitCents > 0 ? (
-                      <Text style={styles.debit}>
-                        D {formatEuroCents(line.debitCents)}
-                      </Text>
-                    ) : null}
-                    {line.creditCents > 0 ? (
-                      <Text style={styles.credit}>
-                        C {formatEuroCents(line.creditCents)}
-                      </Text>
-                    ) : null}
-                    {/* Si les 2 montants sont à 0 (extraction OCR ratée
-                        sur le total), on affiche un placeholder pour
-                        montrer que la ligne existe bien — sinon visuel
-                        identique à "ligne absente". */}
-                    {line.debitCents === 0 && line.creditCents === 0 ? (
-                      <Text style={styles.amountPlaceholder}>—</Text>
-                    ) : null}
+                    {(() => {
+                      // Affichage live : si on est en review, on
+                      // affiche les montants propagés (basés sur
+                      // editAmount) plutôt que les montants persistés.
+                      // - Lignes débit non-banque : valeur propagée
+                      // - Ligne banque : nouveau total (= editAmount)
+                      // - Hors review (POSTED, etc.) : valeurs DB
+                      const proposedAmount = isReview
+                        ? !isBank
+                          ? propagatedLineAmounts.get(line.id)
+                          : parseEurosToCents(editAmount) ?? line.creditCents
+                        : undefined;
+                      const debit =
+                        proposedAmount !== undefined && line.debitCents > 0
+                          ? proposedAmount
+                          : line.debitCents;
+                      const credit =
+                        proposedAmount !== undefined && line.creditCents > 0
+                          ? proposedAmount
+                          : line.creditCents;
+                      const changed =
+                        isReview &&
+                        ((line.debitCents > 0 && debit !== line.debitCents) ||
+                          (line.creditCents > 0 &&
+                            credit !== line.creditCents));
+                      return (
+                        <>
+                          {debit > 0 ? (
+                            <Text
+                              style={[
+                                styles.debit,
+                                changed && styles.amountChanged,
+                              ]}
+                            >
+                              D {formatEuroCents(debit)}
+                            </Text>
+                          ) : null}
+                          {credit > 0 ? (
+                            <Text
+                              style={[
+                                styles.credit,
+                                changed && styles.amountChanged,
+                              ]}
+                            >
+                              C {formatEuroCents(credit)}
+                            </Text>
+                          ) : null}
+                          {debit === 0 && credit === 0 ? (
+                            <Text style={styles.amountPlaceholder}>—</Text>
+                          ) : null}
+                          {/* Indicateur "valeur recalculée live" */}
+                          {changed ? (
+                            <Text style={styles.amountOriginalHint}>
+                              (était {formatEuroCents(
+                                line.debitCents > 0
+                                  ? line.debitCents
+                                  : line.creditCents,
+                              )})
+                            </Text>
+                          ) : null}
+                        </>
+                      );
+                    })()}
                   </View>
                 </View>
               );
@@ -1033,5 +1191,36 @@ const styles = StyleSheet.create({
   paymentChipTextActive: {
     color: palette.bg,
     fontWeight: '700',
+  },
+  computedLabelBox: {
+    backgroundColor: palette.bgAlt,
+    borderRadius: 12,
+    padding: spacing.md,
+    gap: 4,
+    borderLeftWidth: 3,
+    borderLeftColor: palette.primary,
+  },
+  computedLabelLabel: {
+    ...typography.smallStrong,
+    color: palette.muted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    fontSize: 10,
+  },
+  computedLabelValue: {
+    ...typography.bodyStrong,
+    color: palette.ink,
+  },
+  amountChanged: {
+    // Quand le montant ligne a été recalculé live, on le rend en
+    // primary pour signaler "valeur en attente de validation".
+    color: palette.primary,
+  },
+  amountOriginalHint: {
+    ...typography.small,
+    color: palette.muted,
+    fontSize: 10,
+    fontStyle: 'italic',
+    marginTop: 2,
   },
 });

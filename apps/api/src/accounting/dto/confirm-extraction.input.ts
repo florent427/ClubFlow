@@ -1,5 +1,7 @@
 import { Field, ID, InputType, Int } from '@nestjs/graphql';
+import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsInt,
   IsOptional,
   IsString,
@@ -7,7 +9,20 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
+
+@InputType()
+export class ConfirmExtractionLineAmountInput {
+  @Field(() => ID)
+  @IsUUID()
+  lineId!: string;
+
+  @Field(() => Int)
+  @IsInt()
+  @Min(0)
+  amountCents!: number;
+}
 
 @InputType()
 export class ConfirmExtractionInput {
@@ -69,4 +84,17 @@ export class ConfirmExtractionInput {
   @IsString()
   @MaxLength(100)
   paymentReference?: string | null;
+
+  /**
+   * Montants par ligne (utilisé pour la propagation auto quand le
+   * total change ET qu'il y a plusieurs lignes débit). Si fourni,
+   * remplace les montants individuels des lignes correspondantes.
+   * Le service vérifie que la somme = `amountCents` (header) à ±2 cts.
+   */
+  @Field(() => [ConfirmExtractionLineAmountInput], { nullable: true })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ConfirmExtractionLineAmountInput)
+  lineAmounts?: ConfirmExtractionLineAmountInput[];
 }
