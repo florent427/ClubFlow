@@ -15,6 +15,7 @@ export const CLUB_ACCOUNTING_ENTRIES = gql`
       amountCents
       occurredAt
       consolidatedAt
+      aiProcessingStartedAt
     }
   }
 `;
@@ -33,6 +34,7 @@ export const CLUB_ACCOUNTING_ENTRY = gql`
       consolidatedAt
       paymentMethod
       paymentReference
+      aiProcessingStartedAt
       financialAccountId
       financialAccountLabel
       financialAccountCode

@@ -218,6 +218,15 @@ export class AccountingEntryGraph {
   @Field(() => String, { nullable: true })
   paymentReference!: string | null;
 
+  /**
+   * Timestamp de démarrage de l'analyse IA OCR. Présent = pipeline IA
+   * en cours d'exécution en arrière-plan ; null = pipeline terminé OU
+   * écriture saisie manuellement. Le client affiche un badge "Analyse
+   * en cours" tant que c'est non null.
+   */
+  @Field(() => Date, { nullable: true })
+  aiProcessingStartedAt!: Date | null;
+
   @Field()
   occurredAt!: Date;
 

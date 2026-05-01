@@ -78,6 +78,7 @@ interface EntryRow {
   consolidatedAt: Date | null;
   paymentMethod: string | null;
   paymentReference: string | null;
+  aiProcessingStartedAt: Date | null;
   occurredAt: Date;
   createdAt: Date;
   lines: Array<{
@@ -149,6 +150,7 @@ function toGraph(entry: EntryRow): AccountingEntryGraph {
     consolidatedAt: entry.consolidatedAt,
     paymentMethod: entry.paymentMethod,
     paymentReference: entry.paymentReference,
+    aiProcessingStartedAt: entry.aiProcessingStartedAt,
     occurredAt: entry.occurredAt,
     createdAt: entry.createdAt,
     lines: entry.lines.map(

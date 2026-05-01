@@ -73,6 +73,29 @@ export function MainTabs() {
           name="More"
           component={MoreStack}
           options={{ tabBarLabel: 'Plus' }}
+          listeners={({ navigation }) => ({
+            // UX : quand l'utilisateur tape l'onglet "Plus", on revient
+            // toujours au menu (popToTop). React Navigation par défaut
+            // conserve la dernière route du stack imbriqué — l'utilisateur
+            // re-voit la page comptabilité/facturation/etc. au lieu du
+            // menu d'accueil. C'est contre-intuitif.
+            tabPress: (e) => {
+              const state = navigation.getState();
+              const route = state.routes[state.index];
+              if (route.name !== 'More') return;
+              e.preventDefault();
+              // Cast nécessaire : `navigation.navigate('More')` est typé
+              // `(undefined)` par MainTabParamList, mais React Navigation
+              // accepte le 2e argument `{ screen }` pour cibler un écran
+              // dans le stack imbriqué (MoreStack).
+              (
+                navigation.navigate as unknown as (
+                  name: string,
+                  params: { screen: string },
+                ) => void
+              )('More', { screen: 'MoreMenu' });
+            },
+          })}
         />
       </Tab.Navigator>
     </ViewerProvider>

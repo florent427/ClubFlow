@@ -406,13 +406,121 @@ export class ReceiptOcrService {
       };
     }
 
-    // 5. Setup IA
+    // 5. Création IMMÉDIATE d'une entry stub avec marqueur "OCR en
+    //    cours". Le pipeline IA (étapes 6+) tourne en arrière-plan et
+    //    met à jour l'entry quand il a fini. L'utilisateur peut quitter
+    //    l'écran et continuer à scanner d'autres factures pendant ce
+    //    temps — le badge "Analyse en cours" sera affiché dans la liste
+    //    et disparaîtra dès que le pipeline aboutit.
+    const stubEntry = await this.prisma.$transaction(async (tx) => {
+      const e = await tx.accountingEntry.create({
+        data: {
+          clubId,
+          kind: AccountingEntryKind.EXPENSE,
+          status: AccountingEntryStatus.NEEDS_REVIEW,
+          source: AccountingEntrySource.OCR_AI,
+          label: 'Analyse OCR en cours…',
+          amountCents: 0,
+          occurredAt: new Date(),
+          createdByUserId: userId,
+          aiProcessingStartedAt: new Date(),
+        },
+      });
+      // Documents attachés tout de suite — l'utilisateur voit la photo
+      // dans EntryDetail même pendant l'analyse IA.
+      for (const id of mediaAssetIds) {
+        await tx.accountingDocument.create({
+          data: { clubId, entryId: e.id, mediaAssetId: id, kind: 'RECEIPT' },
+        });
+      }
+      return e;
+    });
+
+    // 6. Lance le pipeline IA en BACKGROUND (Promise détaché). Le
+    //    handler HTTP retourne immédiatement avec l'entryId. Erreur
+    //    éventuelle = log + audit ; l'entry reste avec son label
+    //    "Analyse en cours" jusqu'à intervention humaine (et le client
+    //    affiche un timeout après quelques minutes).
+    void this.runOcrPipelineInBackground({
+      clubId,
+      userId,
+      stubEntryId: stubEntry.id,
+      mediaAssetIds,
+      orderedAssets,
+      buffers,
+      hashes,
+      combinedHash,
+      primaryAssetId: primaryAsset.id,
+    }).catch((err) => {
+      this.logger.error(
+        `[BG OCR ${stubEntry.id}] échec inattendu : ${this.errorMsg(err)}`,
+      );
+      // Marquer l'entry comme "analyse échouée" (clear aiProcessingStartedAt
+      // + label clair) pour que l'UI ne reste pas coincée en spinner.
+      void this.prisma.accountingEntry
+        .update({
+          where: { id: stubEntry.id },
+          data: {
+            aiProcessingStartedAt: null,
+            label: 'Analyse OCR échouée — saisir manuellement',
+          },
+        })
+        .catch(() => {});
+    });
+
+    return {
+      extractionId: '',
+      entryId: stubEntry.id,
+      duplicateOfEntryId: null,
+      budgetBlocked: false,
+    };
+  }
+
+  /**
+   * Pipeline IA complet exécuté en arrière-plan APRÈS la création de
+   * l'entry stub. Met à jour l'entry et ses lignes quand fini.
+   *
+   * Toute erreur ici n'impacte plus la réponse HTTP (déjà envoyée). On
+   * log seulement et on clear le flag aiProcessingStartedAt pour que
+   * l'UI sorte du mode "en cours".
+   */
+  private async runOcrPipelineInBackground(params: {
+    clubId: string;
+    userId: string;
+    stubEntryId: string;
+    mediaAssetIds: string[];
+    orderedAssets: Array<{ id: string; mimeType: string }>;
+    buffers: Buffer[];
+    hashes: string[];
+    combinedHash: string;
+    primaryAssetId: string;
+  }): Promise<void> {
+    const {
+      clubId,
+      userId,
+      stubEntryId,
+      mediaAssetIds,
+      orderedAssets,
+      buffers,
+      combinedHash,
+      primaryAssetId,
+    } = params;
+
+    // Setup IA
     const apiKey = await this.aiSettings.getDecryptedApiKey(clubId);
     const models = await this.aiSettings.getModels(clubId);
     if (!apiKey || !models.textModel) {
-      throw new BadRequestException(
-        'Configuration IA du club incomplète (clé OpenRouter / modèle texte manquant).',
+      this.logger.warn(
+        `[BG OCR ${stubEntryId}] config IA incomplète, abort`,
       );
+      await this.prisma.accountingEntry.update({
+        where: { id: stubEntryId },
+        data: {
+          aiProcessingStartedAt: null,
+          label: 'Configuration IA manquante — saisir manuellement',
+        },
+      });
+      return;
     }
 
     // Prétraitement + tuilage par asset.
@@ -567,7 +675,7 @@ export class ReceiptOcrService {
     const extraction = await this.prisma.accountingExtraction.create({
       data: {
         clubId,
-        mediaAssetId: primaryAsset.id,
+        mediaAssetId: primaryAssetId,
         rawJson: JSON.parse(JSON.stringify(rawWithMeta)) as object,
         confidencePerField: (ocrRaw?.confidencePerField ?? {}) as object,
         extractedTotalCents:
@@ -600,20 +708,21 @@ export class ReceiptOcrService {
       },
     });
 
-    // 11. Crée l'AccountingEntry NEEDS_REVIEW + N AccountingDocument
-    const entry = await this.createStubEntry(
+    // 11. Met à jour l'entry stub avec la décision finale
+    //     (header + remplacement des lignes). On NE CRÉE PAS une nouvelle
+    //     entry — on enrichit celle qui existe déjà depuis l'étape 5.
+    await this.applyDecisionToEntry(
       clubId,
-      userId,
-      mediaAssetIds,
-      extraction,
+      stubEntryId,
+      extraction.id,
       decision,
     );
 
     await this.audit.log({
       clubId,
       userId,
-      entryId: entry.id,
-      action: 'CREATE',
+      entryId: stubEntryId,
+      action: 'UPDATE',
       metadata: {
         source: 'OCR_AI',
         extractionId: extraction.id,
@@ -629,13 +738,125 @@ export class ReceiptOcrService {
         },
       },
     });
+  }
 
-    return {
-      extractionId: extraction.id,
-      entryId: entry.id,
-      duplicateOfEntryId: null,
-      budgetBlocked: false,
-    };
+  /**
+   * Applique la décision IA finale à une entry stub existante : update
+   * du header (label, montant, date, paymentMethod, extractionId) +
+   * remplacement complet des lignes (delete + create) + clear du flag
+   * `aiProcessingStartedAt`.
+   *
+   * Si `decision` est null (tout le pipeline a échoué) : on clear
+   * juste le flag et on met un label explicite — l'utilisateur saisira
+   * manuellement.
+   */
+  private async applyDecisionToEntry(
+    clubId: string,
+    entryId: string,
+    extractionId: string | null,
+    decision: CategorizedDecision | null,
+  ): Promise<void> {
+    const totalCents = decision?.totalTtcCents ?? 0;
+    const label = this.buildAutoLabel(decision);
+    const date = decision?.date ? new Date(decision.date) : new Date();
+
+    const fallbackCode = await this.mapping.resolveAccountCode(
+      clubId,
+      'EXPENSE_GENERIC',
+    );
+    const bankCode = await this.mapping.resolveAccountCode(
+      clubId,
+      'BANK_ACCOUNT',
+    );
+
+    const decisionLines =
+      decision?.lines && decision.lines.length > 0
+        ? decision.lines
+        : [
+            {
+              accountCode: fallbackCode,
+              amountCents: totalCents,
+              label: 'À qualifier',
+              reasoning: '',
+              confidencePct: 0,
+              projectId: null,
+              sourceLabels: [] as string[],
+            },
+          ];
+
+    const codes = Array.from(
+      new Set([...decisionLines.map((l) => l.accountCode), bankCode]),
+    );
+    const accounts = await this.prisma.accountingAccount.findMany({
+      where: { clubId, code: { in: codes } },
+    });
+    const accountByCode = new Map(accounts.map((a) => [a.code, a]));
+
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Update entry header
+      await tx.accountingEntry.update({
+        where: { id: entryId },
+        data: {
+          label,
+          amountCents: totalCents,
+          occurredAt: date,
+          extractionId,
+          paymentMethod: decision?.paymentMethod ?? null,
+          paymentReference: decision?.paymentReference ?? null,
+          aiProcessingStartedAt: null, // pipeline terminé
+        },
+      });
+
+      // 2. Supprime les anciennes lignes (l'entry stub n'en avait pas
+      //    mais par sûreté en cas de retry).
+      await tx.accountingEntryLine.deleteMany({
+        where: { entryId },
+      });
+
+      // 3. Recrée les lignes débit (1 par groupe) + crédit banque
+      let sortOrder = 0;
+      for (const line of decisionLines) {
+        const account = accountByCode.get(line.accountCode);
+        if (!account) {
+          this.logger.warn(
+            `[BG OCR ${entryId}] Compte ${line.accountCode} introuvable, ligne ignorée`,
+          );
+          continue;
+        }
+        await tx.accountingEntryLine.create({
+          data: {
+            entryId,
+            clubId,
+            accountCode: account.code,
+            accountLabel: account.label,
+            label: line.label || null,
+            side: AccountingLineSide.DEBIT,
+            debitCents: line.amountCents,
+            creditCents: 0,
+            sortOrder: sortOrder++,
+            mergedFromArticleLabels: line.sourceLabels,
+            iaSuggestedAccountCode: line.accountCode,
+            iaReasoning: line.reasoning?.slice(0, 1500) || null,
+            iaConfidencePct: line.confidencePct,
+          },
+        });
+      }
+      const bank = accountByCode.get(bankCode);
+      if (bank) {
+        await tx.accountingEntryLine.create({
+          data: {
+            entryId,
+            clubId,
+            accountCode: bank.code,
+            accountLabel: bank.label,
+            side: AccountingLineSide.CREDIT,
+            debitCents: 0,
+            creditCents: totalCents,
+            sortOrder: sortOrder++,
+          },
+        });
+      }
+    });
   }
 
   // ─────────────────────────────────────────────────────────────────────

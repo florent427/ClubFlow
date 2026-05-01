@@ -143,6 +143,8 @@ type Entry = {
   consolidatedAt: string | null;
   paymentMethod: string | null;
   paymentReference: string | null;
+  /** Présent = pipeline IA OCR en cours (entry stub en attente). */
+  aiProcessingStartedAt: string | null;
   financialAccountId: string | null;
   financialAccountLabel: string | null;
   financialAccountCode: string | null;
@@ -275,11 +277,25 @@ export function EntryDetailScreen() {
   const route = useRoute<Route>();
   const { entryId } = route.params;
 
-  const { data, loading, refetch } = useQuery<Data>(CLUB_ACCOUNTING_ENTRY, {
-    variables: { id: entryId },
-    fetchPolicy: 'cache-and-network',
-    errorPolicy: 'all',
-  });
+  const { data, loading, refetch, startPolling, stopPolling } =
+    useQuery<Data>(CLUB_ACCOUNTING_ENTRY, {
+      variables: { id: entryId },
+      fetchPolicy: 'cache-and-network',
+      errorPolicy: 'all',
+    });
+
+  // Polling 4s tant que le pipeline IA tourne en background. Stop dès
+  // que l'entry sort du mode "Analyse en cours".
+  const isAiProcessing =
+    data?.clubAccountingEntry?.aiProcessingStartedAt != null;
+  useEffect(() => {
+    if (isAiProcessing) {
+      startPolling(4000);
+      return () => stopPolling();
+    }
+    stopPolling();
+    return undefined;
+  }, [isAiProcessing, startPolling, stopPolling]);
 
   /**
    * Liste des comptes financiers du club (banque, caisse, Stripe…) pour
@@ -442,7 +458,11 @@ export function EntryDetailScreen() {
     return result;
   }, [entry, editAmount]);
 
-  const isReview = entry?.status === 'NEEDS_REVIEW';
+  // L'écriture est "à valider" SEULEMENT si l'IA a fini son analyse.
+  // Pendant le pipeline IA, on masque le form de validation (les
+  // métadonnées ne sont pas encore prêtes).
+  const isReview =
+    entry?.status === 'NEEDS_REVIEW' && !entry?.aiProcessingStartedAt;
   const firstReceipt = useMemo(
     () => entry?.documents[0] ?? null,
     [entry?.documents],
@@ -642,12 +662,39 @@ export function EntryDetailScreen() {
       refreshing={loading}
     >
       <ScreenHero
-        eyebrow={isReview ? 'À VALIDER' : 'ÉCRITURE'}
+        eyebrow={
+          isAiProcessing
+            ? 'ANALYSE EN COURS'
+            : isReview
+              ? 'À VALIDER'
+              : 'ÉCRITURE'
+        }
         title={entry.label}
-        subtitle={`${sign}${formatEuroCents(entry.amountCents)}`}
+        subtitle={
+          isAiProcessing
+            ? "L'IA prépare votre écriture…"
+            : `${sign}${formatEuroCents(entry.amountCents)}`
+        }
         compact
         showBack
       />
+
+      {/* Bandeau "Analyse IA en cours" — masque tout le reste tant que
+          le pipeline tourne. L'utilisateur sait qu'il peut quitter
+          l'écran et continuer à scanner. */}
+      {isAiProcessing ? (
+        <Card style={{ marginHorizontal: spacing.lg, marginTop: spacing.lg }}>
+          <View style={styles.processingBox}>
+            <Text style={styles.processingEmoji}>⏳</Text>
+            <Text style={styles.processingTitle}>Analyse IA en cours</Text>
+            <Text style={styles.processingHint}>
+              L'IA lit votre facture, propose la ventilation comptable et le
+              mode de paiement. Vous pouvez quitter cet écran et continuer
+              à scanner d'autres factures — l'analyse continue en arrière-plan.
+            </Text>
+          </View>
+        </Card>
+      ) : null}
 
       {/* Photo du justificatif (si présent) */}
       {firstReceipt && docImageSource ? (
@@ -1395,5 +1442,22 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontStyle: 'italic',
     marginTop: 2,
+  },
+  processingBox: {
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.lg,
+  },
+  processingEmoji: {
+    fontSize: 48,
+  },
+  processingTitle: {
+    ...typography.bodyStrong,
+    color: palette.primary,
+  },
+  processingHint: {
+    ...typography.small,
+    color: palette.muted,
+    textAlign: 'center',
   },
 });

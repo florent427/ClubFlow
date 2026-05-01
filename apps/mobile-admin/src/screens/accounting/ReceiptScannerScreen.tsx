@@ -246,7 +246,27 @@ export function ReceiptScannerScreen() {
       }
       const targetId = entryId ?? duplicateOf;
       if (targetId) {
-        navigation.replace('EntryDetail', { entryId: targetId });
+        if (duplicateOf) {
+          // Doublon détecté — on ouvre directement l'entry existante.
+          navigation.replace('EntryDetail', { entryId: targetId });
+        } else {
+          // OCR lancé en background côté API. On revient AU REGISTRE pour
+          // que l'utilisateur voie sa nouvelle écriture en "Analyse en
+          // cours" + qu'il puisse enchaîner d'autres scans sans attendre.
+          Alert.alert(
+            'Analyse lancée',
+            "L'IA analyse votre facture en arrière-plan. Vous pouvez scanner d'autres factures pendant ce temps.",
+            [
+              {
+                text: 'Continuer',
+                onPress: () => {
+                  // Reset du scanner pour enchaîner
+                  navigation.replace('AccountingHome');
+                },
+              },
+            ],
+          );
+        }
       } else {
         Alert.alert(
           'Analyse incomplète',

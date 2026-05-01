@@ -86,7 +86,8 @@ export function DashboardScreen() {
         }
       />
 
-      {/* Quick actions */}
+      {/* Quick actions — toutes en style "highlight" pour cohérence
+          visuelle (avant seul "Encaisser" l'avait) */}
       <View style={styles.quickActions}>
         <QuickActionButton
           icon="cash-outline"
@@ -95,19 +96,22 @@ export function DashboardScreen() {
           highlight
         />
         <QuickActionButton
-          icon="add-circle-outline"
-          label="Écriture"
-          onPress={() => goNested('More', 'NewEntry')}
+          icon="receipt-outline"
+          label="Écritures"
+          onPress={() => goNested('More', 'AccountingHome')}
+          highlight
         />
         <QuickActionButton
           icon="megaphone-outline"
           label="Annonce"
           onPress={() => goNested('More', 'NewAnnouncement')}
+          highlight
         />
         <QuickActionButton
           icon="paper-plane-outline"
           label="Message"
           onPress={() => goNested('More', 'MessagingHub')}
+          highlight
         />
       </View>
 

@@ -1762,6 +1762,11 @@ model AccountingEntry {
   /// Référence textuelle (n° de chèque, n° d'opération virement, etc.).
   /// Optionnel — utile uniquement pour CHECK / TRANSFER.
   paymentReference         String?
+  /// Timestamp de démarrage du pipeline IA OCR. Présent = pipeline en
+  /// cours (l'utilisateur peut quitter l'écran et continuer à scanner
+  /// d'autres factures). Le service le clear à la fin du pipeline.
+  /// Le client affiche un badge "Analyse en cours" tant que c'est non null.
+  aiProcessingStartedAt    DateTime?
   occurredAt               DateTime              @default(now())
   createdAt                DateTime              @default(now())
   updatedAt                DateTime              @default(now()) @updatedAt

@@ -15,7 +15,7 @@ import {
 } from '@clubflow/mobile-shared';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import {
   CLUB_ACCOUNTING_ENTRIES,
@@ -39,6 +39,8 @@ type EntryRow = {
   amountCents: number;
   occurredAt: string;
   consolidatedAt: string | null;
+  /** Présent = pipeline IA OCR en cours. Affiche un badge spécial. */
+  aiProcessingStartedAt: string | null;
 };
 
 type EntriesData = { clubAccountingEntries: EntryRow[] };
@@ -101,13 +103,33 @@ export function AccountingHomeScreen() {
   const navigation = useNavigation<Nav>();
   const [status, setStatus] = useState<string | null>(null);
 
-  const { data, loading, refetch } = useQuery<EntriesData>(
-    CLUB_ACCOUNTING_ENTRIES,
-    {
+  const { data, loading, refetch, startPolling, stopPolling } =
+    useQuery<EntriesData>(CLUB_ACCOUNTING_ENTRIES, {
       variables: status ? { status } : {},
       errorPolicy: 'all',
-    },
+    });
+
+  /**
+   * Si au moins une écriture est en cours d'analyse OCR, on lance un
+   * polling de 4s pour rafraîchir la liste sans intervention de
+   * l'utilisateur. Dès qu'aucune n'est plus en cours, on arrête le
+   * polling pour économiser les ressources.
+   */
+  const anyProcessing = useMemo(
+    () =>
+      (data?.clubAccountingEntries ?? []).some(
+        (e) => e.aiProcessingStartedAt != null,
+      ),
+    [data],
   );
+  useEffect(() => {
+    if (anyProcessing) {
+      startPolling(4000);
+      return () => stopPolling();
+    }
+    stopPolling();
+    return undefined;
+  }, [anyProcessing, startPolling, stopPolling]);
 
   const { data: summaryData, refetch: refetchSummary } = useQuery<SummaryData>(
     CLUB_ACCOUNTING_SUMMARY,
@@ -122,12 +144,25 @@ export function AccountingHomeScreen() {
   const rows = useMemo<DataTableRow[]>(() => {
     const list = data?.clubAccountingEntries ?? [];
     return list.map((entry) => {
-      const sign = entry.kind === 'INCOME' ? '+' : entry.kind === 'EXPENSE' ? '−' : '';
+      const sign =
+        entry.kind === 'INCOME' ? '+' : entry.kind === 'EXPENSE' ? '−' : '';
+      const processing = entry.aiProcessingStartedAt != null;
+      // Si pipeline IA en cours : badge spécial "Analyse en cours" qui
+      // remplace le badge de statut, et label préfixé d'un loader emoji
+      // pour que l'utilisateur identifie la ligne dans le scan rapide.
       return {
         key: entry.id,
-        title: entry.label,
-        subtitle: `${formatDateShort(entry.occurredAt)} · ${sign}${formatEuroCents(entry.amountCents)}`,
-        badge: STATUS_BADGE[entry.status] ?? null,
+        title: processing ? `⏳ ${entry.label}` : entry.label,
+        subtitle: processing
+          ? `${formatDateShort(entry.occurredAt)} · IA en cours…`
+          : `${formatDateShort(entry.occurredAt)} · ${sign}${formatEuroCents(entry.amountCents)}`,
+        badge: processing
+          ? {
+              label: 'Analyse IA',
+              color: palette.primary,
+              bg: palette.bgAlt,
+            }
+          : (STATUS_BADGE[entry.status] ?? null),
       };
     });
   }, [data]);
