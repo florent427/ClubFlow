@@ -247,12 +247,40 @@ export class ReceiptOcrService {
   }
 
   /**
-   * Lance le pipeline complet. Retourne l'id de l'AccountingExtraction
-   * créée + de l'AccountingEntry NEEDS_REVIEW associée.
+   * Wrapper legacy 1-page. Délègue à `extractFromMediaAssets([id])`.
    */
   async extractFromMediaAsset(
     clubId: string,
     mediaAssetId: string,
+    userId: string,
+  ): Promise<{
+    extractionId: string;
+    entryId: string | null;
+    duplicateOfEntryId: string | null;
+    budgetBlocked: boolean;
+  }> {
+    return this.extractFromMediaAssets(clubId, [mediaAssetId], userId);
+  }
+
+  /**
+   * Lance le pipeline complet sur 1 OU PLUSIEURS pages (photos d'une
+   * facture multi-pages, OU PDF unique). Retourne l'id de
+   * l'AccountingExtraction + de l'AccountingEntry NEEDS_REVIEW associée.
+   *
+   * Multi-pages :
+   * - N images → on envoie les N data URLs au modèle vision dans un
+   *   seul `content` array. Le modèle voit la facture entière comme un
+   *   document logique unique.
+   * - 1 PDF (qui peut contenir N pages côté binaire) → on envoie le
+   *   PDF tel quel, l'IA le décode.
+   * - Mix images + PDF → on traite les 2 dans le même appel (rare,
+   *   mais supporté).
+   * - `pageCount` final = somme des pages effectives (N images = N
+   *   pages logiques ; PDF = pages réelles via pdf-parse).
+   */
+  async extractFromMediaAssets(
+    clubId: string,
+    mediaAssetIds: string[],
     userId: string,
   ): Promise<{
     extractionId: string;
@@ -265,67 +293,110 @@ export class ReceiptOcrService {
         'Module comptabilité désactivé pour ce club.',
       );
     }
-
-    const asset = await this.prisma.mediaAsset.findFirst({
-      where: { id: mediaAssetId, clubId },
-    });
-    if (!asset) {
-      throw new BadRequestException('Document introuvable.');
+    if (mediaAssetIds.length === 0) {
+      throw new BadRequestException('Aucun document fourni.');
+    }
+    if (mediaAssetIds.length > 10) {
+      throw new BadRequestException(
+        'Maximum 10 pages par facture (limite anti-abus IA).',
+      );
     }
 
-    // 1. Lecture du buffer via le storage adapter (compatible disque
-    //    local OU S3/R2). On garde le buffer en mémoire pour l'utiliser
-    //    à la fois pour le hash de dédup et pour l'envoi vision IA.
-    let assetBuffer: Buffer;
+    const assets = await this.prisma.mediaAsset.findMany({
+      where: { id: { in: mediaAssetIds }, clubId },
+    });
+    if (assets.length !== mediaAssetIds.length) {
+      throw new BadRequestException(
+        'Au moins un document est introuvable ou n appartient pas à ce club.',
+      );
+    }
+    // Préserve l'ordre fourni par le client (page 1, page 2…)
+    const orderedAssets = mediaAssetIds.map(
+      (id) => assets.find((a) => a.id === id)!,
+    );
+
+    // Le 1er asset est utilisé comme "représentant" pour les FKs
+    // (AccountingExtraction.mediaAssetId est non-nullable single — on
+    // prend la 1ère page). Tous les assets sont attachés à l'entry via
+    // AccountingDocument (relation many).
+    const primaryAsset = orderedAssets[0];
+
+    // 1. Charge tous les buffers en parallèle
+    let buffers: Buffer[];
     try {
-      assetBuffer = await this.loadAssetBuffer(mediaAssetId);
+      buffers = await Promise.all(
+        orderedAssets.map((a) => this.loadAssetBuffer(a.id)),
+      );
     } catch (err) {
       this.logger.error(
-        `[OCR ${mediaAssetId}] Impossible de lire le fichier : ${this.errorMsg(err)}`,
+        `[OCR multi] Lecture buffer échec : ${this.errorMsg(err)}`,
       );
       throw new BadRequestException(
-        'Impossible de récupérer le fichier source du document.',
+        'Impossible de récupérer le fichier source d un document.',
       );
     }
 
-    // 2. Hash du fichier pour déduplication
-    let sha256 = asset.sha256;
-    if (!sha256) {
-      sha256 = crypto.createHash('sha256').update(assetBuffer).digest('hex');
-      await this.prisma.mediaAsset.update({
-        where: { id: asset.id },
-        data: { sha256 },
-      });
-    }
-
-    // 2. Dédup par hash
-    if (sha256) {
-      const dupAsset = await this.prisma.mediaAsset.findFirst({
-        where: { clubId, sha256, id: { not: asset.id } },
-      });
-      if (dupAsset) {
-        const dupDoc = await this.prisma.accountingDocument.findFirst({
-          where: { clubId, mediaAssetId: dupAsset.id },
-          select: { entryId: true },
+    // 2. Hashes individuels (mis à jour si manquants en DB)
+    const hashes: string[] = [];
+    for (let i = 0; i < orderedAssets.length; i++) {
+      const a = orderedAssets[i];
+      let h = a.sha256;
+      if (!h) {
+        h = crypto.createHash('sha256').update(buffers[i]).digest('hex');
+        await this.prisma.mediaAsset.update({
+          where: { id: a.id },
+          data: { sha256: h },
         });
-        if (dupDoc) {
-          return {
-            extractionId: '',
-            entryId: null,
-            duplicateOfEntryId: dupDoc.entryId,
-            budgetBlocked: false,
-          };
-        }
+      }
+      hashes.push(h);
+    }
+    // Hash combiné : SHA-256 du concat des hashes individuels triés
+    // (l'ordre n'impacte pas la dédup — la même facture en 2 photos
+    // shootées dans un sens ou l'autre = même document logique).
+    const combinedHash = crypto
+      .createHash('sha256')
+      .update(hashes.slice().sort().join(''))
+      .digest('hex');
+
+    // 3. Dédup : on cherche une AccountingExtraction existante avec le
+    //    même combinedHash (stocké dans rawJson._combinedHash). Pour
+    //    l'instant on ne dédup que sur le 1er hash (compat ancien
+    //    comportement single-page) ; améliorer plus tard si besoin.
+    const dupAsset = await this.prisma.mediaAsset.findFirst({
+      where: {
+        clubId,
+        sha256: hashes[0],
+        id: { notIn: mediaAssetIds },
+      },
+    });
+    if (dupAsset && orderedAssets.length === 1) {
+      const dupDoc = await this.prisma.accountingDocument.findFirst({
+        where: { clubId, mediaAssetId: dupAsset.id },
+        select: { entryId: true },
+      });
+      if (dupDoc) {
+        return {
+          extractionId: '',
+          entryId: null,
+          duplicateOfEntryId: dupDoc.entryId,
+          budgetBlocked: false,
+        };
       }
     }
 
-    // 3. Check budget IA (1 fois pour les 3 appels)
+    // 4. Check budget IA
     const budget = await this.aiBudget.checkBudget(clubId);
     if (!budget.allowed) {
       this.logger.warn(
         `Club ${clubId} a dépassé son budget IA mensuel, OCR fallback manuel.`,
       );
-      const entry = await this.createStubEntry(clubId, userId, mediaAssetId, null, null);
+      const entry = await this.createStubEntry(
+        clubId,
+        userId,
+        mediaAssetIds,
+        null,
+        null,
+      );
       return {
         extractionId: '',
         entryId: entry.id,
@@ -334,7 +405,7 @@ export class ReceiptOcrService {
       };
     }
 
-    // 4. Setup commun
+    // 5. Setup IA
     const apiKey = await this.aiSettings.getDecryptedApiKey(clubId);
     const models = await this.aiSettings.getModels(clubId);
     if (!apiKey || !models.textModel) {
@@ -343,47 +414,56 @@ export class ReceiptOcrService {
       );
     }
 
-    const dataUrl = this.bufferToDataUrl(assetBuffer, asset.mimeType);
+    // Construit la liste des data URLs (1 par asset)
+    const dataUrls = orderedAssets.map((a, i) =>
+      this.bufferToDataUrl(buffers[i], a.mimeType),
+    );
     const ctx = await this.loadClubContext(clubId);
 
-    // Comptage de pages PDF (informatif + persisté). Si l'asset n'est
-    // pas un PDF, pageCount = 1.
-    let pageCount = 1;
-    if (asset.mimeType === 'application/pdf') {
-      try {
-        const parsed = await pdfParse(assetBuffer);
-        pageCount = Math.max(1, Math.min(parsed.numpages, 50));
-      } catch (err) {
-        this.logger.warn(
-          `[OCR ${mediaAssetId}] pdf-parse échec : ${this.errorMsg(err)}`,
-        );
+    // 6. Comptage des pages effectives
+    //    - Si 1 PDF : pdf-parse → nb pages réelles
+    //    - Si N images : pageCount = N
+    //    - Mix : somme (N images + pages PDF)
+    let pageCount = 0;
+    for (let i = 0; i < orderedAssets.length; i++) {
+      const a = orderedAssets[i];
+      if (a.mimeType === 'application/pdf') {
+        try {
+          const parsed = await pdfParse(buffers[i]);
+          pageCount += Math.max(1, Math.min(parsed.numpages, 50));
+        } catch (err) {
+          this.logger.warn(
+            `[OCR ${a.id}] pdf-parse échec : ${this.errorMsg(err)}`,
+          );
+          pageCount += 1;
+        }
+      } else {
+        pageCount += 1;
       }
     }
+    pageCount = Math.max(1, Math.min(pageCount, 50));
     if (pageCount > 5) {
       this.logger.warn(
-        `[OCR ${mediaAssetId}] PDF de ${pageCount} pages — l'IA peut tronquer`,
+        `[OCR multi] ${pageCount} pages au total — l'IA peut tronquer`,
       );
     }
 
-    // Si le textModel n'est pas vision-capable, on bascule sur un modèle
-    // vision pour les 2 appels image (sinon OpenRouter renvoie 404
-    // "no endpoints found"). Le comparateur garde le textModel original.
     const visionModel = pickVisionModel(models.textModel);
     if (visionModel !== models.textModel) {
       this.logger.log(
-        `[OCR ${mediaAssetId}] textModel ${models.textModel} sans vision → fallback ${visionModel}`,
+        `[OCR multi] textModel ${models.textModel} sans vision → fallback ${visionModel}`,
       );
     }
 
-    // 5. Appels 1 + 2 EN PARALLÈLE — extraction OCR brute & expertise
+    // 7. Appels 1 + 2 en PARALLÈLE
     let totalCostCents = 0;
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
     let lastErrorMsg: string | null = null;
 
     const [ocrRes, expRes] = await Promise.allSettled([
-      this.runOcrRaw(apiKey, visionModel, dataUrl, pageCount),
-      this.runExpertise(apiKey, visionModel, dataUrl, ctx, pageCount),
+      this.runOcrRaw(apiKey, visionModel, dataUrls, pageCount),
+      this.runExpertise(apiKey, visionModel, dataUrls, ctx, pageCount),
     ]);
 
     let ocrRaw: OcrRawExtraction | null = null;
@@ -396,7 +476,7 @@ export class ReceiptOcrService {
       totalOutputTokens += ocrRes.value.usage.outputTokens;
     } else {
       lastErrorMsg = `OCR raw failed: ${this.errorMsg(ocrRes.reason)}`;
-      this.logger.warn(`[OCR ${mediaAssetId}] ${lastErrorMsg}`);
+      this.logger.warn(`[OCR multi] ${lastErrorMsg}`);
     }
 
     if (expRes.status === 'fulfilled') {
@@ -407,10 +487,10 @@ export class ReceiptOcrService {
     } else {
       const m = `Expertise failed: ${this.errorMsg(expRes.reason)}`;
       lastErrorMsg = lastErrorMsg ? `${lastErrorMsg} | ${m}` : m;
-      this.logger.warn(`[OCR ${mediaAssetId}] ${m}`);
+      this.logger.warn(`[OCR multi] ${m}`);
     }
 
-    // 6. Appel 3 — comparateur (uniquement si on a au moins 2 sources)
+    // 8. Comparateur
     let decision: CategorizedDecision | null = null;
     if (ocrRaw && expertise) {
       try {
@@ -428,11 +508,11 @@ export class ReceiptOcrService {
       } catch (err) {
         const m = `Comparator failed: ${this.errorMsg(err)}`;
         lastErrorMsg = lastErrorMsg ? `${lastErrorMsg} | ${m}` : m;
-        this.logger.warn(`[OCR ${mediaAssetId}] ${m}`);
+        this.logger.warn(`[OCR multi] ${m}`);
       }
     }
 
-    // Fallbacks : si pas de décision comparateur, on synthétise depuis ce qu'on a.
+    // Fallbacks
     if (!decision) {
       if (expertise) {
         decision = this.expertiseToDecision(expertise, ocrRaw);
@@ -441,7 +521,7 @@ export class ReceiptOcrService {
       }
     }
 
-    // 7. Log usage IA cumulé
+    // 9. Log usage IA cumulé
     await this.aiSettings.logUsage({
       clubId,
       userId,
@@ -460,14 +540,15 @@ export class ReceiptOcrService {
       totalOutputTokens,
     );
 
-    // 8. Persiste AccountingExtraction (OCR brut + décision finale)
+    // 10. Persiste AccountingExtraction (mediaAssetId = primaire)
+    const rawWithMeta = ocrRaw
+      ? { ...ocrRaw, _combinedHash: combinedHash, _pageMediaIds: mediaAssetIds }
+      : { error: lastErrorMsg ?? 'no-result', _combinedHash: combinedHash };
     const extraction = await this.prisma.accountingExtraction.create({
       data: {
         clubId,
-        mediaAssetId,
-        rawJson: (ocrRaw
-          ? JSON.parse(JSON.stringify(ocrRaw))
-          : { error: lastErrorMsg ?? 'no-result' }) as object,
+        mediaAssetId: primaryAsset.id,
+        rawJson: JSON.parse(JSON.stringify(rawWithMeta)) as object,
         confidencePerField: (ocrRaw?.confidencePerField ?? {}) as object,
         extractedTotalCents:
           decision?.totalTtcCents ?? ocrRaw?.totalTtcCents ?? null,
@@ -482,9 +563,7 @@ export class ReceiptOcrService {
         extractedInvoiceNumber:
           decision?.invoiceNumber ?? ocrRaw?.invoiceNumber ?? null,
         extractedAccountCode:
-          ocrRaw?.pcgAccountCode ??
-          decision?.lines[0]?.accountCode ??
-          null,
+          ocrRaw?.pcgAccountCode ?? decision?.lines[0]?.accountCode ?? null,
         ...(decision
           ? {
               categorizationJson: JSON.parse(
@@ -501,11 +580,11 @@ export class ReceiptOcrService {
       },
     });
 
-    // 9. Crée l'AccountingEntry NEEDS_REVIEW
+    // 11. Crée l'AccountingEntry NEEDS_REVIEW + N AccountingDocument
     const entry = await this.createStubEntry(
       clubId,
       userId,
-      mediaAssetId,
+      mediaAssetIds,
       extraction,
       decision,
     );
@@ -520,6 +599,8 @@ export class ReceiptOcrService {
         extractionId: extraction.id,
         model: models.textModel,
         costCents: totalCostCents,
+        pageCount,
+        mediaAssetCount: mediaAssetIds.length,
         pipeline: {
           ocrRawOk: !!ocrRaw,
           expertiseOk: !!expertise,
@@ -541,11 +622,11 @@ export class ReceiptOcrService {
   //  Appels IA
   // ─────────────────────────────────────────────────────────────────────
 
-  /** Appel 1 — extraction OCR brute. */
+  /** Appel 1 — extraction OCR brute (1 ou N images). */
   private async runOcrRaw(
     apiKey: string,
     model: string,
-    dataUrl: string,
+    dataUrls: string[],
     pageCount: number,
   ): Promise<{
     parsed: OcrRawExtraction | null;
@@ -565,7 +646,13 @@ export class ReceiptOcrService {
           role: 'user',
           content: [
             { type: 'text', text: this.buildOcrPrompt(pageCount) },
-            { type: 'image_url', image_url: { url: dataUrl } },
+            // 1 bloc image_url par page — l'IA voit toutes les pages
+            // dans l'ordre fourni et les considère comme un document
+            // unique (cf. instruction multi-pages dans le prompt).
+            ...dataUrls.map((url) => ({
+              type: 'image_url' as const,
+              image_url: { url },
+            })),
           ],
         },
       ],
@@ -583,11 +670,11 @@ export class ReceiptOcrService {
     };
   }
 
-  /** Appel 2 — expertise comptable (vision + contexte club). */
+  /** Appel 2 — expertise comptable (vision + contexte club, 1 ou N images). */
   private async runExpertise(
     apiKey: string,
     model: string,
-    dataUrl: string,
+    dataUrls: string[],
     ctx: { accounts: Array<{ code: string; label: string }>; projects: Array<{ id: string; title: string }> },
     pageCount: number,
   ): Promise<{
@@ -608,7 +695,10 @@ export class ReceiptOcrService {
           role: 'user',
           content: [
             { type: 'text', text: this.buildExpertisePrompt(ctx, pageCount) },
-            { type: 'image_url', image_url: { url: dataUrl } },
+            ...dataUrls.map((url) => ({
+              type: 'image_url' as const,
+              image_url: { url },
+            })),
           ],
         },
       ],
@@ -1175,7 +1265,7 @@ Règles :
   private async createStubEntry(
     clubId: string,
     userId: string,
-    mediaAssetId: string,
+    mediaAssetIds: string[],
     extraction: { id: string } | null,
     decision: CategorizedDecision | null,
   ) {
@@ -1281,15 +1371,18 @@ Règles :
         });
       }
 
-      // Document attaché
-      await tx.accountingDocument.create({
-        data: {
-          clubId,
-          entryId: e.id,
-          mediaAssetId,
-          kind: 'RECEIPT',
-        },
-      });
+      // Documents attachés (1 AccountingDocument par page média).
+      // L'ordre est conservé : page 1 = mediaAssetIds[0], etc.
+      for (const mediaAssetId of mediaAssetIds) {
+        await tx.accountingDocument.create({
+          data: {
+            clubId,
+            entryId: e.id,
+            mediaAssetId,
+            kind: 'RECEIPT',
+          },
+        });
+      }
       return e;
     });
 

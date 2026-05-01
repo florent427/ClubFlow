@@ -174,6 +174,22 @@ export const SUBMIT_RECEIPT_FOR_OCR = gql`
   }
 `;
 
+/**
+ * Variante multi-pages : prend un array de `mediaAssetId`. L'IA voit
+ * toutes les pages dans l'ordre fourni et produit 1 seule écriture
+ * NEEDS_REVIEW. Limite : 10 pages max.
+ */
+export const SUBMIT_MULTIPAGE_RECEIPT_FOR_OCR = gql`
+  mutation SubmitMultiPageReceiptForOcr($mediaAssetIds: [ID!]!) {
+    submitMultiPageReceiptForOcr(mediaAssetIds: $mediaAssetIds) {
+      extractionId
+      entryId
+      duplicateOfEntryId
+      budgetBlocked
+    }
+  }
+`;
+
 export const CONFIRM_ACCOUNTING_EXTRACTION = gql`
   mutation ConfirmAccountingExtraction(
     $input: ConfirmExtractionInput!

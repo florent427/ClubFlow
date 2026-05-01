@@ -596,6 +596,33 @@ export class AccountingResolver {
     };
   }
 
+  /**
+   * Variante multi-pages : accepte plusieurs `mediaAssetId` (photos
+   * d'une facture multi-pages OU mix images + PDF). L'IA voit toutes
+   * les pages dans l'ordre fourni et produit UNE SEULE écriture +
+   * extraction. Limite : 10 pages max par appel.
+   */
+  @Mutation(() => ReceiptOcrResultGraph, {
+    name: 'submitMultiPageReceiptForOcr',
+  })
+  async submitMultiPageReceiptForOcr(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('mediaAssetIds', { type: () => [ID] }) mediaAssetIds: string[],
+  ): Promise<ReceiptOcrResultGraph> {
+    const result = await this.receiptOcr.extractFromMediaAssets(
+      club.id,
+      mediaAssetIds,
+      user.userId,
+    );
+    return {
+      extractionId: result.extractionId || null,
+      entryId: result.entryId,
+      duplicateOfEntryId: result.duplicateOfEntryId,
+      budgetBlocked: result.budgetBlocked,
+    };
+  }
+
   @Mutation(() => AccountingEntryGraph, { name: 'confirmAccountingExtraction' })
   async confirmAccountingExtraction(
     @CurrentClub() club: Club,
