@@ -3,7 +3,6 @@ import { useNavigation } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,6 +18,7 @@ import {
   Pill,
   Skeleton,
 } from '../components/ui';
+import { ClubLogoBubble } from '../components/ClubLogoBubble';
 import { JoinFamilyByPayerEmailCta } from '../components/JoinFamilyByPayerEmailCta';
 import { MemberProfileSwitcher } from '../components/MemberProfileSwitcher';
 import { MemberRoleToggle } from '../components/MemberRoleToggle';
@@ -51,7 +51,6 @@ import {
   typography,
 } from '../lib/theme';
 import { useClubTheme } from '../lib/theme-context';
-import { absolutizeMediaUrl } from '../lib/absolutize-url';
 import type { MainTabParamList } from '../types/navigation';
 
 export function HomeDashboardScreen() {
@@ -142,23 +141,12 @@ export function HomeDashboardScreen() {
             {/*
               Stack vertical à droite : logo club en haut + bouton admin
               en dessous (si l'utilisateur a un accès back-office).
-              Le logo est lu depuis le ClubTheme (CLUB_BRANDING query).
-              `absolutizeMediaUrl` rewrite localhost → IP LAN pour que le
-              téléphone puisse charger l'image en dev.
+              `<ClubLogoBubble>` gère le fallback automatique vers les
+              initiales du club si l'image ne charge pas (URL invalide,
+              404, hors-ligne…) — évite le cercle blanc vide.
             */}
             <View style={styles.heroTrailing}>
-              {clubTheme.clubLogoUrl ? (
-                <View style={styles.logoBubble}>
-                  <Image
-                    source={{
-                      uri: absolutizeMediaUrl(clubTheme.clubLogoUrl) ?? '',
-                    }}
-                    style={styles.logoImg}
-                    resizeMode="contain"
-                    accessibilityIgnoresInvertColors
-                  />
-                </View>
-              ) : null}
+              <ClubLogoBubble size={48} variant="light" />
               {adminSwitch?.canAccessClubBackOffice === true ? (
                 <MemberRoleToggle
                   canAccessClubBackOffice
@@ -259,6 +247,12 @@ export function HomeDashboardScreen() {
           {/* === KPIs FACTURES (payeur uniquement) === */}
           {isPayer ? (
             <View style={styles.kpiRow}>
+              {/*
+                Les 2 tiles sont cliquables → tab "Famille" qui regroupe
+                les factures + actions de paiement (Stripe checkout par
+                facture, géré dans FamilyScreen.tsx). Évite le frustration
+                "vignette d'apparence interactive mais sans tap".
+              */}
               <KpiTile
                 icon="wallet-outline"
                 label="Reste à payer"
@@ -269,6 +263,8 @@ export function HomeDashboardScreen() {
                 }
                 gradient="warm"
                 emphasized={totalBalance > 0}
+                onPress={() => navigation.navigate('Famille')}
+                accessibilityLabel={`Reste à payer ${formatEuroCents(totalBalance)} — voir mes factures`}
               />
               <KpiTile
                 icon="checkmark-circle-outline"
@@ -279,6 +275,8 @@ export function HomeDashboardScreen() {
                     : formatEuroCents(totalPaid)
                 }
                 gradient="cool"
+                onPress={() => navigation.navigate('Famille')}
+                accessibilityLabel={`Déjà réglé ${formatEuroCents(totalPaid)} — voir mes factures`}
               />
             </View>
           ) : null}
@@ -476,20 +474,26 @@ function KpiTile({
   value,
   gradient,
   emphasized,
+  onPress,
+  accessibilityLabel,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   value: string | null;
   gradient: keyof typeof defaultGradients;
   emphasized?: boolean;
+  /** Si fourni, la tile devient cliquable et navigue vers l'écran cible. */
+  onPress?: () => void;
+  accessibilityLabel?: string;
 }) {
   const clubTheme = useClubTheme();
   const grads = clubTheme.isClubBranded
     ? clubTheme.gradients
     : defaultGradients;
   const grad = grads[gradient];
-  return (
-    <View style={[styles.kpi, emphasized && shadow.md]}>
+
+  const content = (
+    <>
       <LinearGradient
         colors={grad.colors}
         start={grad.start}
@@ -504,6 +508,38 @@ function KpiTile({
       ) : (
         <Text style={styles.kpiValue}>{value}</Text>
       )}
+      {onPress ? (
+        <View style={styles.kpiChevron} pointerEvents="none">
+          <Ionicons
+            name="chevron-forward"
+            size={14}
+            color={palette.muted}
+          />
+        </View>
+      ) : null}
+    </>
+  );
+
+  // Si onPress, on wrap dans un Pressable pour la nav + feedback tactile.
+  if (onPress) {
+    return (
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel ?? label}
+        style={({ pressed }) => [
+          styles.kpi,
+          emphasized && shadow.md,
+          pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+        ]}
+      >
+        {content}
+      </Pressable>
+    );
+  }
+  return (
+    <View style={[styles.kpi, emphasized && shadow.md]}>
+      {content}
     </View>
   );
 }
@@ -544,26 +580,6 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: spacing.sm,
   },
-  logoBubble: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#ffffff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  logoImg: {
-    width: 32,
-    height: 32,
-  },
   heroEyebrow: {
     ...typography.eyebrow,
     color: 'rgba(255,255,255,0.85)',
@@ -600,6 +616,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: palette.border,
+    position: 'relative',
     ...shadow.sm,
   },
   kpiIconBubble: {
@@ -611,6 +628,13 @@ const styles = StyleSheet.create({
   },
   kpiLabel: { ...typography.caption, color: palette.muted },
   kpiValue: { ...typography.metric, color: palette.ink },
+  // Chevron discret en haut à droite des KPIs cliquables — signale
+  // l'interactivité sans surcharger.
+  kpiChevron: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.sm,
+  },
 
   // === Programme ===
   programRow: {

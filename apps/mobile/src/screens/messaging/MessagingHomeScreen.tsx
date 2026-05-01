@@ -49,17 +49,23 @@ export function MessagingHomeScreen() {
   const rooms = roomsData?.viewerChatRooms ?? [];
   const hasPseudo = Boolean(meData?.viewerMe?.pseudo?.trim());
 
-  const [pseudoModalOpen, setPseudoModalOpen] = useState(!hasPseudo);
+  // **À la demande uniquement** — la modale pseudo n'apparaît plus
+  // automatiquement à chaque visite de l'écran Chat. L'utilisateur
+  // l'ouvre via le bouton avatar en header (icône person-circle en
+  // haut à droite). Le pseudo reste optionnel ; pour les salons, le
+  // backend tombe sur le prénom + initiale de nom si pas de pseudo.
+  const [pseudoModalOpen, setPseudoModalOpen] = useState(false);
   const [pseudoDraft, setPseudoDraft] = useState('');
   const [pseudoError, setPseudoError] = useState<string | null>(null);
   const [updatePseudo, { loading: savingPseudo }] = useMutation(
     VIEWER_UPDATE_MY_PSEUDO,
   );
 
+  // Synchronise le draft avec la valeur serveur quand elle arrive,
+  // sans (jamais) rouvrir la modale automatiquement.
   useEffect(() => {
-    if (!hasPseudo && !pseudoModalOpen) setPseudoModalOpen(true);
     if (meData?.viewerMe?.pseudo) setPseudoDraft(meData.viewerMe.pseudo);
-  }, [hasPseudo, meData?.viewerMe?.pseudo, pseudoModalOpen]);
+  }, [meData?.viewerMe?.pseudo]);
 
   async function onSavePseudo() {
     setPseudoError(null);
@@ -156,11 +162,11 @@ export function MessagingHomeScreen() {
         </LinearGradient>
       </Pressable>
 
-      {/* Modal pseudo */}
+      {/* Modal pseudo — toujours fermable, le pseudo est optionnel. */}
       <Modal
         visible={pseudoModalOpen}
         animationType="slide"
-        onRequestClose={() => hasPseudo && setPseudoModalOpen(false)}
+        onRequestClose={() => setPseudoModalOpen(false)}
         presentationStyle="pageSheet"
       >
         <View style={[styles.flex, { backgroundColor: palette.bg }]}>
@@ -168,13 +174,14 @@ export function MessagingHomeScreen() {
             <Text style={styles.modalTitle}>
               {hasPseudo ? 'Mon pseudo' : 'Choisir un pseudo'}
             </Text>
-            {hasPseudo ? (
-              <Pressable onPress={() => setPseudoModalOpen(false)}>
-                <Ionicons name="close" size={26} color={palette.muted} />
-              </Pressable>
-            ) : (
-              <View style={{ width: 26 }} />
-            )}
+            <Pressable
+              onPress={() => setPseudoModalOpen(false)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Fermer"
+            >
+              <Ionicons name="close" size={26} color={palette.muted} />
+            </Pressable>
           </View>
           <View style={{ padding: spacing.xl, gap: spacing.lg }}>
             <Text style={styles.pseudoHint}>

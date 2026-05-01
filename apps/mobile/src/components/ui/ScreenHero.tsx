@@ -1,6 +1,5 @@
 import { type ReactNode } from 'react';
 import {
-  Image,
   StyleSheet,
   Text,
   View,
@@ -12,9 +11,9 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AnimatedPressable } from './AnimatedPressable';
-import { gradients, radius, spacing, typography } from '../../lib/theme';
+import { ClubLogoBubble } from '../ClubLogoBubble';
+import { gradients, spacing, typography } from '../../lib/theme';
 import { useClubTheme } from '../../lib/theme-context';
-import { absolutizeMediaUrl } from '../../lib/absolutize-url';
 
 type Props = {
   /** Eyebrow uppercase au-dessus du titre. */
@@ -92,24 +91,16 @@ export function ScreenHero({
       ? spacing.xxl
       : spacing.xxxl;
 
-  const logoUrl = absolutizeMediaUrl(clubTheme.clubLogoUrl);
   // `trailing === undefined` → on affiche le logo auto si dispo
   // `trailing === null` → on masque (placeholder vide pour garder l'alignement)
   // sinon → on affiche le node fourni
   let trailingNode: ReactNode;
   if (trailing !== undefined) {
     trailingNode = trailing ?? <View style={{ width: 44 }} />;
-  } else if (logoUrl) {
-    trailingNode = (
-      <View style={styles.logoBubble}>
-        <Image
-          source={{ uri: logoUrl }}
-          style={styles.logoImg}
-          resizeMode="contain"
-          accessibilityIgnoresInvertColors
-        />
-      </View>
-    );
+  } else if (clubTheme.clubLogoUrl || clubTheme.clubName) {
+    // ClubLogoBubble affiche soit l'image du logo, soit les initiales
+    // du club si l'image ne charge pas. Évite tout cercle blanc vide.
+    trailingNode = <ClubLogoBubble size={44} variant="light" />;
   } else {
     trailingNode = <View style={{ width: 44 }} />;
   }
@@ -190,28 +181,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.35)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  logoBubble: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.pill,
-    backgroundColor: '#ffffff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    // Léger contour transparent pour faire ressortir le logo sur le hero
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
-    // Subtle shadow pour un effet "premium"
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  logoImg: {
-    width: 30,
-    height: 30,
   },
   brand: { gap: spacing.xs, marginTop: spacing.sm },
   brandCompact: { marginTop: 0 },
