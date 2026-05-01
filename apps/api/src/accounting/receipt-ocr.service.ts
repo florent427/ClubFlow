@@ -8,11 +8,33 @@ import {
 } from '@prisma/client';
 import * as crypto from 'crypto';
 import sharp from 'sharp';
-// pdf-parse n'expose pas de typings TS ; on importe en require() pour
-// éviter "module has no default export". Renvoie `{ numpages, text, … }`.
+// pdf-parse v2.x : l'API a changé. On importe la classe PDFParse et
+// on appelle `new PDFParse({data}).getText()`. Avant (v1) c'était
+// une simple fonction `pdfParse(buf)` ; cette signature ne marche
+// plus et levait silencieusement (try/catch) → l'extraction texte
+// natif PDF était de fait DÉSACTIVÉE depuis la mise à jour, ce qui
+// privait le modèle vision du texte exact et causait des
+// hallucinations sur les factures complexes.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse: (buf: Buffer) => Promise<{ numpages: number; text: string }> =
-  require('pdf-parse');
+const { PDFParse } = require('pdf-parse') as {
+  PDFParse: new (opts: { data: Buffer | Uint8Array; verbosity?: number }) => {
+    getText(): Promise<{
+      text: string;
+      pages?: Array<{ text: string }>;
+    }>;
+    getInfo?(): Promise<{ numPages?: number; numpages?: number }>;
+  };
+};
+async function extractPdfText(
+  buf: Buffer,
+): Promise<{ numpages: number; text: string }> {
+  const reader = new PDFParse({ data: buf });
+  const result = await reader.getText();
+  return {
+    numpages: result.pages?.length ?? 1,
+    text: result.text ?? '',
+  };
+}
 
 // pdf-to-img v4 est ESM-only. Notre tsconfig est `"module": "commonjs"`,
 // ce qui transpile `await import('pdf-to-img')` en `require('pdf-to-img')`
@@ -565,7 +587,7 @@ export class ReceiptOcrService {
         imageBuffers = await this.rasterizePdf(buffers[i]);
         // Extraction texte natif en bonus (sur PDF généré uniquement)
         try {
-          const parsed = await pdfParse(buffers[i]);
+          const parsed = await extractPdfText(buffers[i]);
           const text = (parsed.text ?? '').trim();
           if (text.length > 50) {
             pdfTextChunks.push(text.slice(0, 8000));
@@ -606,7 +628,7 @@ export class ReceiptOcrService {
       const a = orderedAssets[i];
       if (a.mimeType === 'application/pdf') {
         try {
-          const parsed = await pdfParse(buffers[i]);
+          const parsed = await extractPdfText(buffers[i]);
           pageCount += Math.max(1, Math.min(parsed.numpages, 50));
         } catch (err) {
           this.logger.warn(
