@@ -16,6 +16,7 @@ import * as Linking from 'expo-linking';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { apolloClient } from './src/lib/apollo';
 import * as storage from './src/lib/storage';
 import { palette } from './src/lib/theme';
@@ -120,15 +121,17 @@ export default function App() {
   }
 
   return (
-    <SafeAreaProvider>
-      <ApolloProvider client={apolloClient}>
-        <ClubThemeProvider>
-          <NavigationContainer linking={linking}>
-            <RootNavigator initialRouteName={initialRoute} />
-          </NavigationContainer>
-        </ClubThemeProvider>
-      </ApolloProvider>
-    </SafeAreaProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <ApolloProvider client={apolloClient}>
+          <ClubThemeProvider>
+            <NavigationContainer linking={linking}>
+              <RootNavigator initialRouteName={initialRoute} />
+            </NavigationContainer>
+          </ClubThemeProvider>
+        </ApolloProvider>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }
 
