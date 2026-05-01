@@ -1,4 +1,11 @@
-import { Audio } from 'expo-av';
+import {
+  AudioModule,
+  RecordingPresets,
+  setAudioModeAsync,
+  useAudioPlayer,
+  useAudioPlayerStatus,
+  useAudioRecorder,
+} from 'expo-audio';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -17,8 +24,14 @@ import { absolutizeMediaUrl } from '../../lib/absolutize-url';
 import { palette, radius, spacing, typography } from '../../lib/theme';
 
 /* ─────────────────────────────────────────────────────────────────
- * Recorder — bouton press-and-hold qui enregistre via expo-av puis
- * upload en kind=audio. Affiche compteur et indicateur d'enregistrement.
+ * Recorder — bouton qui enregistre via expo-audio puis upload en
+ * kind=audio. Affiche compteur + boutons annuler/envoyer pendant
+ * l'enregistrement.
+ *
+ * **Pourquoi expo-audio et pas expo-av** : `expo-av` est déprécié
+ * dans Expo SDK 55 et son module natif `ExponentAV` n'est plus inclus
+ * dans Expo Go. La nouvelle lib `expo-audio` (recording + playback)
+ * est l'API recommandée.
  * ───────────────────────────────────────────────────────────────── */
 
 type VoiceRecorderProps = {
@@ -35,18 +48,19 @@ export function VoiceRecorder({
   onRecordingStateChange,
   color = palette.primary,
 }: VoiceRecorderProps) {
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const [isRecording, setIsRecording] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [uploading, setUploading] = useState(false);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startedAtRef = useRef<number>(0);
 
-  // Cleanup global au unmount.
+  // Cleanup au unmount.
   useEffect(() => {
     return () => {
       if (tickRef.current) clearInterval(tickRef.current);
-      if (recording) {
-        void recording.stopAndUnloadAsync().catch(() => {});
+      if (recorder.isRecording) {
+        void recorder.stop().catch(() => {});
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -54,7 +68,7 @@ export function VoiceRecorder({
 
   async function start() {
     try {
-      const perm = await Audio.requestPermissionsAsync();
+      const perm = await AudioModule.requestRecordingPermissionsAsync();
       if (!perm.granted) {
         Alert.alert(
           'Accès micro refusé',
@@ -62,18 +76,18 @@ export function VoiceRecorder({
         );
         return;
       }
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
+      // `setAudioModeAsync` est nécessaire pour que l'iOS sorte du mode
+      // silencieux et autorise l'enregistrement même si l'interrupteur
+      // de sonnerie est sur silencieux.
+      await setAudioModeAsync({
+        playsInSilentMode: true,
+        allowsRecording: true,
       });
-      const r = new Audio.Recording();
-      // Preset HIGH_QUALITY donne du m4a (audio/mp4) sur iOS et 3gpp
-      // ou m4a sur Android — tous deux dans la whitelist serveur.
-      await r.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-      await r.startAsync();
+      await recorder.prepareToRecordAsync();
+      recorder.record();
       startedAtRef.current = Date.now();
       setElapsedMs(0);
-      setRecording(r);
+      setIsRecording(true);
       onRecordingStateChange?.(true);
       tickRef.current = setInterval(() => {
         setElapsedMs(Date.now() - startedAtRef.current);
@@ -87,16 +101,16 @@ export function VoiceRecorder({
   }
 
   async function stop(send: boolean) {
-    if (!recording) return;
+    if (!isRecording) return;
     if (tickRef.current) {
       clearInterval(tickRef.current);
       tickRef.current = null;
     }
     const finalDurationMs = Date.now() - startedAtRef.current;
     try {
-      await recording.stopAndUnloadAsync();
-      const uri = recording.getURI();
-      setRecording(null);
+      await recorder.stop();
+      const uri = recorder.uri;
+      setIsRecording(false);
       onRecordingStateChange?.(false);
       if (!send || !uri || finalDurationMs < 500) {
         // Trop court (< 0.5s) → on annule silencieusement, on évite
@@ -134,8 +148,6 @@ export function VoiceRecorder({
       setUploading(false);
     }
   }
-
-  const isRecording = !!recording;
 
   if (uploading) {
     return (
@@ -188,7 +200,7 @@ export function VoiceRecorder({
 
 /* ─────────────────────────────────────────────────────────────────
  * Player — affiche durée + bouton play/pause sur un AttachmentRow
- * AUDIO. Lecture via expo-av Sound.
+ * AUDIO. Lecture via expo-audio.
  * ───────────────────────────────────────────────────────────────── */
 
 type VoicePlayerProps = {
@@ -203,47 +215,32 @@ export function VoicePlayer({
   durationMs,
   color = palette.primary,
 }: VoicePlayerProps) {
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [positionMs, setPositionMs] = useState(0);
-  const totalMs = durationMs && durationMs > 0 ? durationMs : 0;
+  // L'URL est rewrite localhost → IP LAN au cas où.
+  const resolvedUrl = absolutizeMediaUrl(url) ?? url;
+  // `useAudioPlayer` initialise un player à partir d'une source URI.
+  // Le player est nettoyé automatiquement au unmount du composant.
+  const player = useAudioPlayer({ uri: resolvedUrl });
+  const status = useAudioPlayerStatus(player);
 
-  useEffect(() => {
-    return () => {
-      if (sound) {
-        void sound.unloadAsync().catch(() => {});
-      }
-    };
-  }, [sound]);
+  const totalMs =
+    status.duration > 0
+      ? status.duration * 1000
+      : durationMs && durationMs > 0
+        ? durationMs
+        : 0;
+  const positionMs = status.currentTime * 1000;
 
-  async function toggle() {
+  function toggle() {
     try {
-      if (!sound) {
-        const resolvedUrl = absolutizeMediaUrl(url) ?? url;
-        const { sound: s } = await Audio.Sound.createAsync(
-          { uri: resolvedUrl },
-          { shouldPlay: true },
-        );
-        setSound(s);
-        setIsPlaying(true);
-        s.setOnPlaybackStatusUpdate((st) => {
-          if (!st.isLoaded) return;
-          setPositionMs(st.positionMillis);
-          if (st.didJustFinish) {
-            setIsPlaying(false);
-            setPositionMs(0);
-            void s.setPositionAsync(0);
-          }
-        });
-        return;
-      }
-      const status = await sound.getStatusAsync();
-      if (status.isLoaded && status.isPlaying) {
-        await sound.pauseAsync();
-        setIsPlaying(false);
+      if (status.playing) {
+        player.pause();
       } else {
-        await sound.playAsync();
-        setIsPlaying(true);
+        // Si on est à la fin (didJustFinish = position au max), on
+        // remet à zéro avant de relancer.
+        if (status.didJustFinish || (totalMs > 0 && positionMs >= totalMs)) {
+          void player.seekTo(0);
+        }
+        player.play();
       }
     } catch (err) {
       Alert.alert(
@@ -259,9 +256,9 @@ export function VoicePlayer({
   return (
     <View style={styles.player}>
       <Pressable
-        onPress={() => void toggle()}
+        onPress={toggle}
         accessibilityRole="button"
-        accessibilityLabel={isPlaying ? 'Pause' : 'Lecture'}
+        accessibilityLabel={status.playing ? 'Pause' : 'Lecture'}
         style={({ pressed }) => [
           styles.playBtn,
           { backgroundColor: color },
@@ -269,7 +266,7 @@ export function VoicePlayer({
         ]}
       >
         <Ionicons
-          name={isPlaying ? 'pause' : 'play'}
+          name={status.playing ? 'pause' : 'play'}
           size={18}
           color="#ffffff"
         />
