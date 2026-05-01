@@ -210,6 +210,14 @@ export const CONFIRM_ACCOUNTING_EXTRACTION = gql`
       label
       amountCents
       occurredAt
+      paymentMethod
+      paymentReference
+      invoiceNumber
+      duplicateOfEntryId
+      financialAccountId
+      financialAccountLabel
+      financialAccountCode
+      aiProcessingStartedAt
     }
   }
 `;

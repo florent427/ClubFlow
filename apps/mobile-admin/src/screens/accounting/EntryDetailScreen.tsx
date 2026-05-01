@@ -349,13 +349,21 @@ export function EntryDetailScreen() {
   const [confirmExtraction, { loading: confirming }] = useMutation(
     CONFIRM_ACCOUNTING_EXTRACTION,
     {
-      // Après validation d'une écriture, rafraîchit le registre + les
-      // KPIs Recettes/Dépenses/Solde pour qu'ils prennent en compte le
-      // nouveau POSTED. Strings = refetch TOUTES les versions actives
-      // de la query (avec leurs variables courantes — peu importe les
-      // dates from/to du summary, on refresh tout).
-      refetchQueries: ['ClubAccountingEntries', 'ClubAccountingSummary'],
-      awaitRefetchQueries: false,
+      // Refetch après mutation :
+      // - ClubAccountingEntries : registre (liste)
+      // - ClubAccountingSummary : KPIs Recettes/Dépenses/Solde
+      // - ClubAccountingEntry : DÉTAIL ouvert dans cet écran. Sans
+      //   ce refetch, après "Enregistrer brouillon" l'entry singular
+      //   garde l'ancien snapshot Apollo (la mutation ne retourne
+      //   pas TOUS les champs, donc le merge laisse les anciennes
+      //   valeurs pour vendor/paymentMethod/etc.) → modifications
+      //   "non persistantes" perçues côté UI.
+      refetchQueries: [
+        'ClubAccountingEntries',
+        'ClubAccountingSummary',
+        'ClubAccountingEntry',
+      ],
+      awaitRefetchQueries: true,
     },
   );
   const [validateLine] = useMutation(VALIDATE_ACCOUNTING_ENTRY_LINE);

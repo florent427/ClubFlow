@@ -202,11 +202,17 @@ export function AccountingReviewDrawer({
       showToast(
         mode === 'validate'
           ? 'Écriture validée et comptabilisée'
-          : 'Brouillon enregistré',
+          : 'Brouillon enregistré — tu peux continuer à éditer',
         'success',
       );
       onSaved();
-      onClose();
+      // Mode 'validate' : on ferme le drawer (l'écriture est POSTED,
+      //   plus rien à éditer dans ce drawer). Mode 'save' : on RESTE
+      //   ouvert pour permettre une saisie progressive (l'utilisateur
+      //   peut continuer à corriger des champs et re-save).
+      if (mode === 'validate') {
+        onClose();
+      }
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Erreur', 'error');
     }

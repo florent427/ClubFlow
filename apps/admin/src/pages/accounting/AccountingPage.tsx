@@ -1329,6 +1329,28 @@ export function AccountingPage() {
                           {' '}Détails
                         </button>
                       ) : null}
+                      {/* Bouton "Modifier" : ouvre le drawer Review
+                          aligné sur mobile (n° facture, vendor, paiement,
+                          banque, Enregistrer brouillon / Valider défini-
+                          tivement). Disponible pour NEEDS_REVIEW. */}
+                      {e.status === 'NEEDS_REVIEW' ? (
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() => setConfirmEntry(e)}
+                          title="Édition complète (n°, fournisseur, paiement, banque) avec Enregistrer/Valider"
+                          style={{ marginRight: 6 }}
+                        >
+                          <span
+                            className="material-symbols-outlined"
+                            aria-hidden
+                            style={{ fontSize: '1rem' }}
+                          >
+                            edit
+                          </span>
+                          {' '}Modifier
+                        </button>
+                      ) : null}
                       {e.status === 'CANCELLED' || e.status === 'LOCKED' ? (
                         <span className="cf-muted">—</span>
                       ) : e.status === 'NEEDS_REVIEW' ? (
