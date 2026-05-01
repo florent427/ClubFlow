@@ -152,18 +152,17 @@ export function ClubLogoBubble({
       {showImage ? (
         <Image
           source={{ uri: url }}
-          // Image à 92 % du bubble (vs ancien 70 %) → on remplit
-          // visuellement le cercle tout en gardant un léger inset pour
-          // que la bordure circulaire ne tronque pas les coins du logo
-          // (avec `overflow: hidden` + borderRadius=size/2, un logo qui
-          // utilise toute sa toile carrée verrait ses 4 coins clippés
-          // par le cercle).
-          // `resizeMode="contain"` préserve le ratio : un logo carré
-          // tient pleinement, un logo large (ex. logo+texte horizontal)
-          // est letterboxé verticalement plutôt que d'être étiré.
+          // Image à 100 % du bubble — remplissage maximal. Avec
+          // `overflow: hidden` + `borderRadius=size/2` sur le parent,
+          // les coins des logos qui utilisent toute leur toile carrée
+          // sont clippés par le cercle ; c'est acceptable pour la
+          // plupart des logos qui concentrent leur contenu au centre.
+          // `resizeMode="contain"` préserve le ratio : un logo large
+          // (ex. logo+texte horizontal) est letterboxé verticalement
+          // plutôt que d'être étiré.
           style={{
-            width: size * 0.92,
-            height: size * 0.92,
+            width: size,
+            height: size,
           }}
           resizeMode="contain"
           accessibilityIgnoresInvertColors
