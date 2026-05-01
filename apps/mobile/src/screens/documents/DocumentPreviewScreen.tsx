@@ -168,10 +168,16 @@ export function DocumentPreviewScreen() {
       ) : null}
 
       {/* PDF inline plein écran — flex:1 prend tout l'espace dispo
-          (InlinePdfViewer.tsx, sans prop height, applique `flex: 1`). */}
+          (InlinePdfViewer.tsx, sans prop height, applique `flex: 1`).
+          En cas d'erreur de chargement (réseau, CORS), le viewer
+          propose un bouton "Ouvrir dans le navigateur" via le callback
+          `onOpenExternal`. */}
       <View style={styles.pdfContainer}>
         {pdfUrl ? (
-          <InlinePdfViewer url={pdfUrl} />
+          <InlinePdfViewer
+            url={pdfUrl}
+            onOpenExternal={openExternally}
+          />
         ) : (
           <View style={styles.pdfMissing}>
             <Ionicons

@@ -163,6 +163,13 @@ export class MediaController {
   /**
    * Sert le fichier physique. Public (pas de JWT) : les URLs sont UUID-based
    * non-devinables. Rate-limit raisonnable pour empêcher un scan massif.
+   *
+   * **CORS ouvert** (`Access-Control-Allow-Origin: *`) : indispensable pour
+   * que le viewer PDF.js inline embarqué dans la WebView mobile (chargé
+   * via `source={{ html }}` — origin `null`) puisse fetcher le binaire.
+   * Aucun risque de fuite de données : les URLs sont UUID-based et
+   * non-devinables, et l'endpoint ne renvoie que des binaires (pas de
+   * cookies / headers d'auth).
    */
   @Get(':id')
   @Throttle({ default: { limit: 1000, ttl: 60_000 } })
@@ -180,6 +187,16 @@ export class MediaController {
     res.setHeader('Content-Length', String(row.sizeBytes));
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     res.setHeader('ETag', `"${this.service.etag(row)}"`);
+    // CORS — voir docstring ci-dessus.
+    // NB : `*` + `Allow-Credentials: true` est rejeté par les navigateurs.
+    // On overrideheader le `Access-Control-Allow-Credentials: true` posé par
+    // le middleware global (`enableCors({credentials: true})` dans main.ts)
+    // en le supprimant ici, puisque cet endpoint n'utilise pas les cookies.
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Range, If-None-Match');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Type, ETag');
+    res.removeHeader('Access-Control-Allow-Credentials');
     stream.on('error', () => {
       if (!res.headersSent) res.status(500);
       res.end();
