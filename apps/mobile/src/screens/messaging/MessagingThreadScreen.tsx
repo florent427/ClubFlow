@@ -1273,8 +1273,14 @@ const styles = StyleSheet.create({
   },
   bannerText: { ...typography.small, color: palette.warningText, flex: 1 },
 
-  // List
+  // List — `flexGrow: 1` + `justifyContent: 'flex-end'` empile les
+  // messages au BAS de la zone visible quand ils sont peu nombreux
+  // (pattern WhatsApp). Sans ces deux propriétés, les messages
+  // s'affichent en haut et un grand espace blanc reste sous le dernier
+  // message — pas naturel pour du chat.
   listContent: {
+    flexGrow: 1,
+    justifyContent: 'flex-end',
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
     paddingBottom: spacing.md,

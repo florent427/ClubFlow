@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useQuery } from '@apollo/client/react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PinGate } from '../components/PinGate';
 import { ActivitiesHubScreen } from '../screens/ActivitiesHubScreen';
@@ -148,20 +149,21 @@ export function MemberTabsNavigator() {
         name="Messagerie"
         component={MessagingNavigator}
         options={({ route }) => {
-          const sub = (
-            route as unknown as {
-              state?: { routes?: { name?: string }[]; index?: number };
-            }
-          ).state;
-          const focused = sub?.routes?.[sub?.index ?? 0]?.name;
-          const inThread = focused === 'MessagingThread';
+          // `getFocusedRouteNameFromRoute` est l'API officielle pour
+          // récupérer le nom de la route nested actuellement focused.
+          // Plus fiable que `route.state` (qui peut être undefined sur
+          // les premiers renders).
+          const focused =
+            getFocusedRouteNameFromRoute(route) ?? 'MessagingHome';
+          const hideTabBar =
+            focused === 'MessagingThread' || focused === 'NewChat';
           return {
             headerShown: false,
             tabBarLabel: 'Chat',
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="chatbubbles-outline" size={size} color={color} />
             ),
-            tabBarStyle: inThread ? { display: 'none' } : undefined,
+            tabBarStyle: hideTabBar ? { display: 'none' } : undefined,
           };
         }}
       />
@@ -251,12 +253,8 @@ export function MemberTabsNavigator() {
         name="Documents"
         component={DocumentsNavigator}
         options={({ route }) => {
-          const sub = (
-            route as unknown as {
-              state?: { routes?: { name?: string }[]; index?: number };
-            }
-          ).state;
-          const focused = sub?.routes?.[sub?.index ?? 0]?.name;
+          const focused =
+            getFocusedRouteNameFromRoute(route) ?? 'DocumentsToSign';
           // Sur les sous-écrans (Preview/Sign), on cache aussi la tab bar.
           const hideTabBar =
             focused === 'DocumentSign' || focused === 'DocumentPreview';
@@ -351,12 +349,8 @@ export function ContactTabsNavigator() {
         name="Documents"
         component={DocumentsNavigator}
         options={({ route }) => {
-          const sub = (
-            route as unknown as {
-              state?: { routes?: { name?: string }[]; index?: number };
-            }
-          ).state;
-          const focused = sub?.routes?.[sub?.index ?? 0]?.name;
+          const focused =
+            getFocusedRouteNameFromRoute(route) ?? 'DocumentsToSign';
           const hideTabBar =
             focused === 'DocumentSign' || focused === 'DocumentPreview';
           return {
