@@ -13,10 +13,19 @@ import {
   useFonts,
 } from '@expo-google-fonts/inter';
 import * as Linking from 'expo-linking';
+import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
+
+// Empêche le splash screen Expo de se cacher automatiquement avant
+// que l'app soit prête (storage check + fonts). Sans ça, le splash
+// peut soit disparaître trop tôt (flash blanc) soit rester bloqué
+// sur certaines configs (SDK 55 + Bridgeless = comportement instable).
+// Le call est wrap dans try/catch car en dev avec hot reload, le
+// splash peut déjà être hide → l'appel throw une seconde fois.
+void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 import { apolloClient } from './src/lib/apollo';
 import * as storage from './src/lib/storage';
 import { palette } from './src/lib/theme';
@@ -119,6 +128,11 @@ export default function App() {
       </View>
     );
   }
+
+  // Cache le splash screen Expo dès que l'app est prête à rendre.
+  // eslint-disable-next-line no-console
+  console.log('[App] hiding splash screen, rendering RootNavigator');
+  void SplashScreen.hideAsync().catch(() => undefined);
 
   return (
     <ErrorBoundary>
