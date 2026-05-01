@@ -61,12 +61,23 @@ export function clearAllPinUnlocks(): void {
 }
 
 export function PinGate({ children }: { children: React.ReactNode }) {
+  // eslint-disable-next-line no-console
+  console.log('[PinGate] render');
   const { data, loading } = useQuery<ViewerMeData>(VIEWER_ME, {
     fetchPolicy: 'cache-first',
   });
   const me = data?.viewerMe;
   const profileId = me?.id ?? null;
   const pinSet = me?.payerSpacePinSet === true;
+  // eslint-disable-next-line no-console
+  console.log(
+    '[PinGate] loading?',
+    loading,
+    'profileId?',
+    profileId,
+    'pinSet?',
+    pinSet,
+  );
 
   // L'état initial reflète si CE profil est déjà déverrouillé (ex.
   // navigation tab → tab dans la même session après unlock).

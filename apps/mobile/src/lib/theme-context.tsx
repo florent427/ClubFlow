@@ -164,11 +164,20 @@ function buildClubTheme(
  * la rejouer à chaque ouverture du provider.
  */
 export function ClubThemeProvider({ children }: { children: ReactNode }) {
-  const { data } = useQuery<ClubBrandingData>(CLUB_BRANDING, {
+  // eslint-disable-next-line no-console
+  console.log('[ClubThemeProvider] render');
+  const { data, error } = useQuery<ClubBrandingData>(CLUB_BRANDING, {
     fetchPolicy: 'cache-and-network',
     nextFetchPolicy: 'cache-and-network',
     errorPolicy: 'all',
   });
+  // eslint-disable-next-line no-console
+  console.log(
+    '[ClubThemeProvider] data?',
+    Boolean(data),
+    'error?',
+    error?.message ?? null,
+  );
 
   const value = useMemo(() => buildClubTheme(data), [data]);
 

@@ -48,6 +48,8 @@ const ContactTab = createBottomTabNavigator<ContactTabParamList>();
  *   refactor : "Pla…", "Rés…", "Eve…", etc.)
  */
 export function MemberTabsNavigator() {
+  // eslint-disable-next-line no-console
+  console.log('[MemberTabsNavigator] render');
   const insets = useSafeAreaInsets();
   const clubTheme = useClubTheme();
   const tint = clubTheme.isClubBranded
@@ -57,6 +59,13 @@ export function MemberTabsNavigator() {
     fetchPolicy: 'cache-first',
   });
   const hideMemberModules = meData?.viewerMe?.hideMemberModules === true;
+  // eslint-disable-next-line no-console
+  console.log(
+    '[MemberTabsNavigator] meData?',
+    Boolean(meData),
+    'hideMemberModules?',
+    hideMemberModules,
+  );
 
   const bottomInset = insets.bottom;
 
