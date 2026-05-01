@@ -63,8 +63,12 @@ export function clearAllPinUnlocks(): void {
 export function PinGate({ children }: { children: React.ReactNode }) {
   // eslint-disable-next-line no-console
   console.log('[PinGate] render');
-  const { data, loading } = useQuery<ViewerMeData>(VIEWER_ME, {
+  const { data, loading, error } = useQuery<ViewerMeData>(VIEWER_ME, {
     fetchPolicy: 'cache-first',
+    // `errorPolicy: 'all'` permet à `data` d'être renseigné même
+    // partiellement quand certains champs throw — on ne bloque pas
+    // l'UI sur une erreur GraphQL non-fatale.
+    errorPolicy: 'all',
   });
   const me = data?.viewerMe;
   const profileId = me?.id ?? null;
@@ -77,6 +81,8 @@ export function PinGate({ children }: { children: React.ReactNode }) {
     profileId,
     'pinSet?',
     pinSet,
+    'error?',
+    error?.message ?? null,
   );
 
   // L'état initial reflète si CE profil est déjà déverrouillé (ex.
@@ -85,6 +91,23 @@ export function PinGate({ children }: { children: React.ReactNode }) {
     profileId ? unlockedProfileIds.has(profileId) : false,
   );
 
+  // **Fail-open après 5 secondes** : si la query VIEWER_ME ne répond
+  // pas (API down, réseau coupé, token invalide), on laisse passer
+  // au lieu de bloquer l'app indéfiniment sur l'ActivityIndicator.
+  // Le PIN reste prompté quand on aura vraiment des données.
+  // Sans ce timeout, un network failure rend toute l'app inutilisable.
+  const [timedOut, setTimedOut] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[PinGate] timeout 5s — fail-open (laisse passer sans gate PIN)',
+      );
+      setTimedOut(true);
+    }, 5000);
+    return () => clearTimeout(t);
+  }, []);
+
   // Sync quand profileId change (switch interne sans reset complet —
   // peu probable mais on couvre).
   useEffect(() => {
@@ -92,6 +115,10 @@ export function PinGate({ children }: { children: React.ReactNode }) {
     setUnlocked(unlockedProfileIds.has(profileId));
   }, [profileId]);
 
+  // Erreur GraphQL OU timeout : fail-open pour ne pas bloquer.
+  if (error || timedOut) {
+    return <>{children}</>;
+  }
   if (loading && !data) {
     return (
       <View style={styles.loaderWrap}>
