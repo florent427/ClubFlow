@@ -30,18 +30,10 @@ export function NewEntryScreen() {
         <ActionCard
           icon="camera-outline"
           emoji="📷"
-          title="Scanner un reçu"
-          subtitle="Photographiez et laissez l'IA extraire les infos"
+          title="Scanner un reçu / une facture"
+          subtitle="Photo OU PDF. L'IA extrait, catégorise et propose la ventilation."
           onPress={() => navigation.navigate('ReceiptScanner')}
           tone="primary"
-        />
-        <ActionCard
-          icon="sparkles-outline"
-          emoji="🤖"
-          title="Saisie rapide IA"
-          subtitle="Décrivez en langage naturel, l'IA catégorise"
-          onPress={() => navigation.navigate('NewQuickEntry')}
-          tone="accent"
         />
         <ActionCard
           icon="create-outline"

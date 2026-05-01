@@ -33,6 +33,9 @@ export const CLUB_ACCOUNTING_ENTRY = gql`
       consolidatedAt
       paymentMethod
       paymentReference
+      financialAccountId
+      financialAccountLabel
+      financialAccountCode
       createdAt
       lines {
         id

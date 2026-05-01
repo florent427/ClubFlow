@@ -86,6 +86,18 @@ export class ConfirmExtractionInput {
   paymentReference?: string | null;
 
   /**
+   * Compte financier de contrepartie (Banque principale, Caisse, Stripe…).
+   * Référence un `ClubFinancialAccount` existant. Si fourni, le service
+   * met à jour la ligne CREDIT de l'écriture pour utiliser le code
+   * comptable lié (ex. 530200 pour "Caisse buvette" au lieu du 512000
+   * banque générique par défaut).
+   */
+  @Field(() => ID, { nullable: true })
+  @IsOptional()
+  @IsUUID()
+  financialAccountId?: string | null;
+
+  /**
    * Montants par ligne (utilisé pour la propagation auto quand le
    * total change ET qu'il y a plusieurs lignes débit). Si fourni,
    * remplace les montants individuels des lignes correspondantes.

@@ -23,6 +23,7 @@ import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   CANCEL_ACCOUNTING_ENTRY,
   CLUB_ACCOUNTING_ENTRY,
+  CLUB_FINANCIAL_ACCOUNTS,
   CONFIRM_ACCOUNTING_EXTRACTION,
   DELETE_ACCOUNTING_ENTRY_PERMANENT,
   VALIDATE_ACCOUNTING_ENTRY_LINE,
@@ -142,10 +143,27 @@ type Entry = {
   consolidatedAt: string | null;
   paymentMethod: string | null;
   paymentReference: string | null;
+  financialAccountId: string | null;
+  financialAccountLabel: string | null;
+  financialAccountCode: string | null;
   createdAt: string;
   lines: EntryLine[];
   documents: EntryDocument[];
   extraction: EntryExtraction | null;
+};
+
+/**
+ * Compte financier d'un club (banque/caisse/Stripe). Utilisé pour la
+ * contrepartie des dépenses (= ligne CREDIT). Chargé via
+ * `CLUB_FINANCIAL_ACCOUNTS`.
+ */
+type FinancialAccount = {
+  id: string;
+  label: string;
+  kind: string;
+  isActive: boolean;
+  isDefault: boolean;
+  accountingAccountCode: string;
 };
 
 /** Modes de paiement supportés (alignés sur API). */
@@ -263,6 +281,23 @@ export function EntryDetailScreen() {
     errorPolicy: 'all',
   });
 
+  /**
+   * Liste des comptes financiers du club (banque, caisse, Stripe…) pour
+   * permettre à l'utilisateur de choisir la contrepartie de la dépense.
+   * cache-first car ça change rarement (admin paramétrage).
+   */
+  const { data: faData } = useQuery<{
+    clubFinancialAccounts: FinancialAccount[];
+  }>(CLUB_FINANCIAL_ACCOUNTS, {
+    fetchPolicy: 'cache-first',
+    errorPolicy: 'all',
+  });
+  const financialAccounts = useMemo(
+    () =>
+      (faData?.clubFinancialAccounts ?? []).filter((f) => f.isActive),
+    [faData],
+  );
+
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -299,6 +334,9 @@ export function EntryDetailScreen() {
   const [editDate, setEditDate] = useState<string>('');
   const [editPaymentMethod, setEditPaymentMethod] = useState<string>('');
   const [editPaymentRef, setEditPaymentRef] = useState<string>('');
+  /** Compte financier de contrepartie sélectionné (banque/caisse/…). */
+  const [editFinancialAccountId, setEditFinancialAccountId] =
+    useState<string>('');
   // Map<lineId, accountCode édité>. Vide tant que l'utilisateur n'a rien
   // modifié — sinon on garderait des updates inutiles.
   const [editLineCodes, setEditLineCodes] = useState<Record<string, string>>(
@@ -316,6 +354,7 @@ export function EntryDetailScreen() {
     setEditDate(isoToDateString(entry.occurredAt));
     setEditPaymentMethod(entry.paymentMethod ?? '');
     setEditPaymentRef(entry.paymentReference ?? '');
+    setEditFinancialAccountId(entry.financialAccountId ?? '');
     setEditLineCodes({});
   }, [
     entry?.id,
@@ -323,9 +362,19 @@ export function EntryDetailScreen() {
     entry?.occurredAt,
     entry?.paymentMethod,
     entry?.paymentReference,
+    entry?.financialAccountId,
     entry?.extraction?.extractedVendor,
     entry?.extraction?.extractedInvoiceNumber,
   ]);
+
+  // Pré-sélection auto du compte financier "défaut" du club si l'entry
+  // n'en a pas encore (cas écriture OCR_AI nouvellement créée).
+  useEffect(() => {
+    if (editFinancialAccountId) return;
+    if (entry?.financialAccountId) return;
+    const def = financialAccounts.find((f) => f.isDefault);
+    if (def) setEditFinancialAccountId(def.id);
+  }, [financialAccounts, entry?.financialAccountId, editFinancialAccountId]);
 
   /**
    * Libellé calculé en direct depuis vendor + n° facture. Format :
@@ -572,6 +621,9 @@ export function EntryDetailScreen() {
             ...(lineAmountsPayload
               ? { lineAmounts: lineAmountsPayload }
               : {}),
+            ...(editFinancialAccountId
+              ? { financialAccountId: editFinancialAccountId }
+              : {}),
           },
         },
       });
@@ -811,6 +863,43 @@ export function EntryDetailScreen() {
                     }
                   />
                 ) : null}
+                {/* Compte financier de contrepartie (banque/caisse/Stripe).
+                    C'est ce qui détermine le compte comptable de la
+                    ligne CREDIT (= où l'argent sort). */}
+                {financialAccounts.length > 0 ? (
+                  <View>
+                    <Text style={styles.pickerLabel}>
+                      Encaissé / payé sur
+                    </Text>
+                    <Text style={styles.pickerHintMuted}>
+                      Détermine la ligne contrepartie en comptabilité
+                      (ex. Banque principale → compte 512000).
+                    </Text>
+                    <View style={styles.chipRow}>
+                      {financialAccounts.map((fa) => (
+                        <Pressable
+                          key={fa.id}
+                          onPress={() => setEditFinancialAccountId(fa.id)}
+                          style={[
+                            styles.paymentChip,
+                            editFinancialAccountId === fa.id &&
+                              styles.paymentChipActive,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.paymentChipText,
+                              editFinancialAccountId === fa.id &&
+                                styles.paymentChipTextActive,
+                            ]}
+                          >
+                            {fa.label} · {fa.accountingAccountCode}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </View>
+                ) : null}
                 <TextField
                   label="Date (YYYY-MM-DD)"
                   value={editDate}
@@ -853,6 +942,17 @@ export function EntryDetailScreen() {
               value={
                 paymentMethodLabel(entry.paymentMethod) +
                 (entry.paymentReference ? ` · ${entry.paymentReference}` : '')
+              }
+            />
+          ) : null}
+          {entry.financialAccountLabel ? (
+            <MetaRow
+              label="Compte de contrepartie"
+              value={
+                entry.financialAccountLabel +
+                (entry.financialAccountCode
+                  ? ` · ${entry.financialAccountCode}`
+                  : '')
               }
             />
           ) : null}
@@ -1229,6 +1329,11 @@ const styles = StyleSheet.create({
   pickerHint: {
     ...typography.small,
     color: palette.warningText,
+    marginBottom: spacing.xs,
+  },
+  pickerHintMuted: {
+    ...typography.small,
+    color: palette.muted,
     marginBottom: spacing.xs,
   },
   chipRow: {

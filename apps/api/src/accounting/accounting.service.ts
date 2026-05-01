@@ -76,6 +76,10 @@ export interface ManualEntryInput {
    * débit en respectant les ratios.
    */
   lineAmounts?: Array<{ lineId: string; amountCents: number }>;
+  // Note : `financialAccountId` est déjà déclaré plus haut dans
+  // l'interface (utilisé pour le mode manuel "encaissé sur caisse X").
+  // En mode confirmExtraction, c'est ce même champ qui est repropagé
+  // depuis ConfirmExtractionInput.
 }
 
 /**
@@ -1092,6 +1096,33 @@ export class AccountingService {
       newAccount = await this.lookupAccount(clubId, corrections.accountCode);
     }
 
+    // Récupère le compte financier (banque/caisse) si l'utilisateur en a
+    // sélectionné un. On charge AUSSI son AccountingAccount lié pour
+    // mettre à jour le code de la ligne CREDIT en conséquence.
+    let newFinancialAccount: {
+      id: string;
+      label: string;
+      accountingAccount: { code: string; label: string };
+    } | null = null;
+    if (corrections.financialAccountId !== undefined && corrections.financialAccountId !== null) {
+      const fa = await this.prisma.clubFinancialAccount.findFirst({
+        where: { id: corrections.financialAccountId, clubId },
+        include: {
+          accountingAccount: { select: { code: true, label: true } },
+        },
+      });
+      if (!fa) {
+        throw new NotFoundException(
+          'Compte financier sélectionné introuvable.',
+        );
+      }
+      newFinancialAccount = {
+        id: fa.id,
+        label: fa.label,
+        accountingAccount: fa.accountingAccount,
+      };
+    }
+
     const updated = await this.prisma.$transaction(async (tx) => {
       // 1. Update entry header
       const e = await tx.accountingEntry.update({
@@ -1111,6 +1142,9 @@ export class AccountingService {
           ...(corrections.paymentReference !== undefined && {
             paymentReference: corrections.paymentReference,
           }),
+          ...(newFinancialAccount
+            ? { financialAccountId: newFinancialAccount.id }
+            : {}),
           updatedAt: new Date(),
         },
       });
@@ -1131,8 +1165,12 @@ export class AccountingService {
       for (const line of entry.lines) {
         const isExpenseSide = line.debitCents > 0 && line.creditCents === 0;
         const isIncomeSide = line.creditCents > 0 && line.debitCents === 0;
+        // Détecte la ligne "banque/caisse" (contrepartie) :
+        // - codes PCG canoniques 512xxx (banques) ou 530xxx (caisses)
+        // - OU côté CREDIT pour une dépense (la convention OCR_AI)
         const isBankLine =
-          line.accountCode === '512000' || line.accountCode === '530000';
+          /^51\d{4}$/.test(line.accountCode) ||
+          /^53\d{4}$/.test(line.accountCode);
         const dataLine: Record<string, unknown> = {};
 
         // Override explicite par lineAmounts (priorité)
@@ -1162,6 +1200,13 @@ export class AccountingService {
         if (newAccount && !isBankLine) {
           dataLine.accountCode = newAccount.code;
           dataLine.accountLabel = newAccount.label;
+        }
+        // Si l'utilisateur a sélectionné un compte financier différent,
+        // on met à jour la ligne BANQUE avec le code comptable lié
+        // (ex. "Caisse buvette" lié à 530200).
+        if (newFinancialAccount && isBankLine) {
+          dataLine.accountCode = newFinancialAccount.accountingAccount.code;
+          dataLine.accountLabel = newFinancialAccount.accountingAccount.label;
         }
         if (Object.keys(dataLine).length > 0) {
           await tx.accountingEntryLine.update({
