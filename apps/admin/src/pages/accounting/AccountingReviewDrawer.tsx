@@ -4,13 +4,25 @@ import type { FormEvent } from 'react';
 import {
   CLUB_ACCOUNTING_ACCOUNTS,
   CLUB_ACCOUNTING_COHORTS,
+  CLUB_FINANCIAL_ACCOUNTS,
   CONFIRM_ACCOUNTING_EXTRACTION,
 } from '../../lib/documents';
 import type {
   AccountingEntry,
   ClubAccountingAccountsData,
   ClubAccountingCohortsData,
+  ClubFinancialAccount,
 } from '../../lib/types';
+
+const PAYMENT_METHODS: Array<{ value: string; label: string }> = [
+  { value: '', label: '— Non défini —' },
+  { value: 'CASH', label: 'Espèces' },
+  { value: 'CHECK', label: 'Chèque' },
+  { value: 'TRANSFER', label: 'Virement' },
+  { value: 'CARD', label: 'Carte bancaire' },
+  { value: 'DIRECT_DEBIT', label: 'Prélèvement' },
+  { value: 'OTHER', label: 'Autre' },
+];
 import { useToast } from '../../components/ToastProvider';
 import { Drawer } from '../../components/ui';
 
@@ -75,18 +87,47 @@ export function AccountingReviewDrawer({
     CLUB_ACCOUNTING_COHORTS,
     { fetchPolicy: 'cache-and-network' },
   );
+  const { data: faData } = useQuery<{
+    clubFinancialAccounts: ClubFinancialAccount[];
+  }>(CLUB_FINANCIAL_ACCOUNTS, { fetchPolicy: 'cache-and-network' });
+  const financialAccounts = (faData?.clubFinancialAccounts ?? []).filter(
+    (f) => f.isActive,
+  );
 
-  const [label, setLabel] = useState('');
+  // Champs alignés sur l'expérience mobile-admin :
+  // - vendor + invoiceNumber séparés (le label est calculé)
+  // - mode de paiement + référence
+  // - compte financier de contrepartie (banque/caisse)
+  const [vendor, setVendor] = useState('');
+  const [invoiceNumber, setInvoiceNumber] = useState('');
   const [amountEuros, setAmountEuros] = useState('');
   const [occurredOn, setOccurredOn] = useState('');
   const [accountCode, setAccountCode] = useState('');
   const [cohortCode, setCohortCode] = useState('');
   const [disciplineCode, setDisciplineCode] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('');
+  const [paymentReference, setPaymentReference] = useState('');
+  const [financialAccountId, setFinancialAccountId] = useState('');
 
-  // Pré-remplit les champs à l'ouverture
+  /** Libellé calculé dynamiquement depuis vendor + n°. */
+  const computedLabel = (() => {
+    const v = vendor.trim();
+    const n = invoiceNumber.trim();
+    if (n && v) return `${n} — ${v}`;
+    if (v) return v;
+    if (n) return `Facture ${n}`;
+    return 'Reçu à qualifier';
+  })();
+
+  // Pré-remplit les champs à l'ouverture (tente de splitter le label
+  // existant si vendor/n° ne sont pas fournis directement par l'API)
   useEffect(() => {
     if (!entry) return;
-    setLabel(entry.label);
+    const ext = entry.extraction;
+    setVendor(ext?.extractedVendor ?? '');
+    setInvoiceNumber(
+      entry.invoiceNumber ?? ext?.extractedInvoiceNumber ?? '',
+    );
     setAmountEuros(
       (entry.amountCents / 100).toFixed(2).replace('.', ','),
     );
@@ -96,14 +137,24 @@ export function AccountingReviewDrawer({
     const firstAlloc = firstLine?.allocations[0];
     setCohortCode(firstAlloc?.cohortCode ?? '');
     setDisciplineCode(firstAlloc?.disciplineCode ?? '');
+    setPaymentMethod(entry.paymentMethod ?? '');
+    setPaymentReference(entry.paymentReference ?? '');
+    setFinancialAccountId(entry.financialAccountId ?? '');
   }, [entry]);
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
+  /**
+   * Soumet l'écriture avec mode='save' (Enregistrer brouillon, conserve
+   * NEEDS_REVIEW) ou mode='validate' (Valider, passe POSTED). En mode
+   * validate, on demande une confirmation explicite à l'utilisateur car
+   * c'est irréversible (nécessite contre-passation pour annuler).
+   */
+  async function submitEntry(mode: 'save' | 'validate') {
     if (!entry) return;
-    const trimmedLabel = label.trim();
-    if (!trimmedLabel) {
-      showToast('Libellé requis', 'error');
+    if (!computedLabel.trim() || computedLabel === 'Reçu à qualifier') {
+      showToast(
+        'Renseigne le fournisseur ou le n° de facture pour le libellé',
+        'error',
+      );
       return;
     }
     const amountCents = parseEuros(amountEuros);
@@ -111,12 +162,24 @@ export function AccountingReviewDrawer({
       showToast('Montant invalide', 'error');
       return;
     }
+    if (mode === 'validate') {
+      const confirmed = window.confirm(
+        "Valider définitivement cette écriture ?\n\n" +
+          "Une fois validée, l'écriture est comptabilisée (POSTED) et " +
+          "ne peut plus être modifiée. Pour la corriger, il faudra " +
+          "créer une contre-passation.\n\n" +
+          'Si tu veux juste sauvegarder ton avancement sans valider, ' +
+          'utilise « Enregistrer ».',
+      );
+      if (!confirmed) return;
+    }
     try {
       await confirmExtraction({
         variables: {
           input: {
             entryId: entry.id,
-            label: trimmedLabel,
+            label: computedLabel.trim(),
+            invoiceNumber: invoiceNumber.trim() || null,
             amountCents,
             occurredAt: occurredOn
               ? new Date(occurredOn).toISOString()
@@ -124,15 +187,35 @@ export function AccountingReviewDrawer({
             accountCode: accountCode || undefined,
             cohortCode: cohortCode || undefined,
             disciplineCode: disciplineCode || undefined,
+            paymentMethod: paymentMethod || null,
+            paymentReference:
+              paymentMethod === 'CHECK' ||
+              paymentMethod === 'TRANSFER' ||
+              paymentMethod === 'OTHER'
+                ? paymentReference.trim() || null
+                : null,
+            ...(financialAccountId ? { financialAccountId } : {}),
+            validate: mode === 'validate',
           },
         },
       });
-      showToast('Écriture validée et comptabilisée', 'success');
+      showToast(
+        mode === 'validate'
+          ? 'Écriture validée et comptabilisée'
+          : 'Brouillon enregistré',
+        'success',
+      );
       onSaved();
       onClose();
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Erreur', 'error');
     }
+  }
+
+  async function onSubmit(e: FormEvent) {
+    // Submit du form = validation (cohérent avec le bouton primary)
+    e.preventDefault();
+    await submitEntry('validate');
   }
 
   const accounts = accountsData?.clubAccountingAccounts ?? [];
@@ -146,17 +229,30 @@ export function AccountingReviewDrawer({
       title="Révision OCR"
       width={560}
       footer={
-        <div className="cf-drawer-foot">
+        <div
+          className="cf-drawer-foot"
+          style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}
+        >
           <button type="button" className="btn-ghost" onClick={onClose}>
-            Annuler
+            Fermer
+          </button>
+          <button
+            type="button"
+            className="btn-ghost"
+            disabled={confirming}
+            onClick={() => void submitEntry('save')}
+            title="Sauvegarde les modifications, l'écriture reste « À valider »"
+          >
+            {confirming ? '…' : 'Enregistrer brouillon'}
           </button>
           <button
             type="submit"
             className="btn-primary"
             disabled={confirming}
             form="cf-review-form"
+            title="Comptabilise l'écriture (irréversible)"
           >
-            {confirming ? 'Validation…' : 'Valider l\u2019écriture'}
+            {confirming ? 'Validation…' : 'Valider définitivement'}
           </button>
         </div>
       }
@@ -269,25 +365,54 @@ export function AccountingReviewDrawer({
             }
           `}</style>
 
-          <label
-            className={`cf-field cf-ocr-field ${confidenceClass(confidencePerField?.vendor)}`}
+          {/* N° facture + Fournisseur séparés (le libellé est calculé) */}
+          <div className="cf-form-row">
+            <label className="cf-field">
+              <span>N° de facture</span>
+              <input
+                type="text"
+                value={invoiceNumber}
+                onChange={(e) => setInvoiceNumber(e.target.value)}
+                placeholder="Ex. F-2026-001"
+                maxLength={100}
+              />
+            </label>
+            <label
+              className={`cf-field cf-ocr-field ${confidenceClass(confidencePerField?.vendor)}`}
+            >
+              <span>
+                Fournisseur *
+                {confidencePerField?.vendor !== undefined ? (
+                  <small className="cf-ocr-hint">
+                    {confidenceLabel(confidencePerField.vendor)}
+                  </small>
+                ) : null}
+              </span>
+              <input
+                type="text"
+                value={vendor}
+                onChange={(e) => setVendor(e.target.value)}
+                placeholder="Ex. Decathlon"
+                maxLength={150}
+              />
+            </label>
+          </div>
+          {/* Libellé calculé (lecture seule) — pour transparence */}
+          <div
+            style={{
+              background: 'var(--cf-bg-alt, #f5f5f5)',
+              borderLeft: '3px solid var(--cf-primary, #0056c5)',
+              borderRadius: 6,
+              padding: '8px 12px',
+              fontSize: '0.85rem',
+              marginBottom: 12,
+            }}
           >
-            <span>
-              Libellé *
-              {confidencePerField?.vendor !== undefined ? (
-                <small className="cf-ocr-hint">
-                  {confidenceLabel(confidencePerField.vendor)}
-                </small>
-              ) : null}
-            </span>
-            <input
-              type="text"
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              maxLength={200}
-              required
-            />
-          </label>
+            <div style={{ color: 'var(--cf-muted, #666)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Libellé écriture (auto)
+            </div>
+            <strong>{computedLabel}</strong>
+          </div>
 
           <div className="cf-form-row">
             <label
@@ -381,6 +506,61 @@ export function AccountingReviewDrawer({
               />
             </label>
           </fieldset>
+
+          {/* Mode de paiement + référence (chèque/virement) */}
+          <div className="cf-form-row">
+            <label className="cf-field">
+              <span>Mode de paiement</span>
+              <select
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+              >
+                {PAYMENT_METHODS.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {paymentMethod === 'CHECK' ||
+            paymentMethod === 'TRANSFER' ||
+            paymentMethod === 'OTHER' ? (
+              <label className="cf-field">
+                <span>
+                  {paymentMethod === 'CHECK'
+                    ? 'N° de chèque'
+                    : paymentMethod === 'TRANSFER'
+                      ? 'Référence virement'
+                      : 'Référence'}
+                </span>
+                <input
+                  type="text"
+                  value={paymentReference}
+                  onChange={(e) => setPaymentReference(e.target.value)}
+                  placeholder={paymentMethod === 'CHECK' ? '0000123' : 'Réf...'}
+                  maxLength={100}
+                />
+              </label>
+            ) : null}
+          </div>
+
+          {/* Compte financier de contrepartie (banque/caisse) */}
+          {financialAccounts.length > 0 ? (
+            <label className="cf-field">
+              <span>Encaissé / payé sur (contrepartie)</span>
+              <select
+                value={financialAccountId}
+                onChange={(e) => setFinancialAccountId(e.target.value)}
+              >
+                <option value="">— Banque par défaut —</option>
+                {financialAccounts.map((fa) => (
+                  <option key={fa.id} value={fa.id}>
+                    {fa.label} · PCG {fa.accountingAccountCode}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
 
           <button type="submit" style={{ display: 'none' }} />
         </form>

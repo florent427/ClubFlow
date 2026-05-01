@@ -117,6 +117,18 @@ export class ConfirmExtractionInput {
   forceDuplicate?: boolean;
 
   /**
+   * Si false, "Enregistrer" : applique les corrections mais conserve
+   * le statut NEEDS_REVIEW (pas de comptabilisation définitive). Permet
+   * une saisie progressive par étapes.
+   * Si true (défaut), "Valider" : passe en POSTED, action irréversible
+   * dans le sens où l'écriture est désormais comptabilisée et nécessite
+   * une contre-passation pour être annulée.
+   */
+  @Field(() => Boolean, { nullable: true })
+  @IsOptional()
+  validate?: boolean;
+
+  /**
    * Montants par ligne (utilisé pour la propagation auto quand le
    * total change ET qu'il y a plusieurs lignes débit). Si fourni,
    * remplace les montants individuels des lignes correspondantes.

@@ -91,6 +91,12 @@ export interface ManualEntryInput {
    * qu'il veut valider malgré la collision détectée).
    */
   forceDuplicate?: boolean;
+  /**
+   * Si false, applique les corrections mais conserve NEEDS_REVIEW
+   * (mode "Enregistrer brouillon"). Si true (défaut), passe en POSTED
+   * (mode "Valider", irréversible côté comptabilité).
+   */
+  validate?: boolean;
 }
 
 /**
@@ -1164,12 +1170,19 @@ export class AccountingService {
       };
     }
 
+    // Mode "Enregistrer" (validate=false) : on update les champs mais on
+    // CONSERVE NEEDS_REVIEW pour permettre une saisie progressive. Mode
+    // "Valider" (validate=true, défaut) : passage à POSTED définitif.
+    const willValidate = corrections.validate !== false;
+
     const updated = await this.prisma.$transaction(async (tx) => {
       // 1. Update entry header
       const e = await tx.accountingEntry.update({
         where: { id: entryId },
         data: {
-          status: AccountingEntryStatus.POSTED,
+          status: willValidate
+            ? AccountingEntryStatus.POSTED
+            : AccountingEntryStatus.NEEDS_REVIEW,
           ...(corrections.label !== undefined && { label: corrections.label }),
           ...(corrections.amountCents !== undefined && {
             amountCents: corrections.amountCents,

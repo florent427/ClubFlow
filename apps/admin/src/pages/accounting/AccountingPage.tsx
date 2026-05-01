@@ -1382,6 +1382,112 @@ export function AccountingPage() {
                     <tr className="cf-expanded-row">
                       <td colSpan={7} style={{ padding: 0 }}>
                         <div className="cf-entry-lines">
+                          {/* Pièce(s) justificative(s) — preview inline.
+                              Cliquable pour ouvrir en plein écran. */}
+                          {e.documents.length > 0 ? (
+                            <div
+                              style={{
+                                display: 'flex',
+                                gap: 12,
+                                padding: 12,
+                                overflowX: 'auto',
+                                background: 'var(--cf-bg-alt, #fafafa)',
+                                borderBottom:
+                                  '1px solid var(--cf-border, #e5e5e5)',
+                              }}
+                            >
+                              {e.documents.map((d, didx) => {
+                                const isImg = d.mimeType.startsWith('image/');
+                                const isPdf = d.mimeType === 'application/pdf';
+                                return (
+                                  <a
+                                    key={d.id}
+                                    href={d.publicUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{
+                                      display: 'block',
+                                      flexShrink: 0,
+                                      width: 140,
+                                      textDecoration: 'none',
+                                    }}
+                                    title={`${e.documents.length > 1 ? `Page ${didx + 1} · ` : ''}${d.fileName}`}
+                                  >
+                                    {isImg ? (
+                                      <img
+                                        src={d.publicUrl}
+                                        alt={d.fileName}
+                                        style={{
+                                          width: 140,
+                                          height: 180,
+                                          objectFit: 'cover',
+                                          borderRadius: 6,
+                                          background: '#000',
+                                          border:
+                                            '1px solid var(--cf-border, #ddd)',
+                                        }}
+                                      />
+                                    ) : isPdf ? (
+                                      <div
+                                        style={{
+                                          width: 140,
+                                          height: 180,
+                                          borderRadius: 6,
+                                          background: '#fff',
+                                          border:
+                                            '1px solid var(--cf-border, #ddd)',
+                                          display: 'flex',
+                                          flexDirection: 'column',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          gap: 6,
+                                        }}
+                                      >
+                                        <span style={{ fontSize: 48 }}>📄</span>
+                                        <strong style={{ fontSize: 13 }}>
+                                          PDF
+                                        </strong>
+                                      </div>
+                                    ) : (
+                                      <div
+                                        style={{
+                                          width: 140,
+                                          height: 180,
+                                          borderRadius: 6,
+                                          background:
+                                            'var(--cf-bg-alt, #f0f0f0)',
+                                          border:
+                                            '1px solid var(--cf-border, #ddd)',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                        }}
+                                      >
+                                        <span className="cf-muted">
+                                          {d.mimeType}
+                                        </span>
+                                      </div>
+                                    )}
+                                    <div
+                                      style={{
+                                        fontSize: 11,
+                                        color: 'var(--cf-muted, #666)',
+                                        marginTop: 4,
+                                        whiteSpace: 'nowrap',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                      }}
+                                    >
+                                      {e.documents.length > 1
+                                        ? `Page ${didx + 1} · `
+                                        : ''}
+                                      {d.fileName}
+                                    </div>
+                                  </a>
+                                );
+                              })}
+                            </div>
+                          ) : null}
                           <ConsolidationBanner
                             entry={e}
                             onConsolidate={() => void doConsolidate(e.id)}

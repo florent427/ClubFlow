@@ -39,7 +39,7 @@ import {
   DELETE_ACCOUNTING_ENTRY_PERMANENT,
   VALIDATE_ACCOUNTING_ENTRY_LINE,
 } from '../../lib/documents/accounting';
-import { getAuthedImageSource } from '../../lib/media';
+import { getAuthedImageSource, rewriteToLanUrl } from '../../lib/media';
 import type { AccountingStackParamList } from '../../navigation/types';
 
 type EntryStatus =
@@ -598,11 +598,13 @@ export function EntryDetailScreen() {
   };
 
   /**
-   * Validation post-OCR :
-   *  1. Pour chaque ligne dont le code a été modifié → validateAccountingEntryLine
-   *  2. confirmAccountingExtraction (passe NEEDS_REVIEW → POSTED + corrige header)
+   * Soumet l'écriture au backend.
+   *  - mode='save'   → conserve NEEDS_REVIEW (Enregistrer brouillon).
+   *                    Permet de saisir progressivement.
+   *  - mode='validate' → passe en POSTED (Valider — IRRÉVERSIBLE,
+   *                    nécessite une contre-passation pour annuler).
    */
-  const onConfirmExtraction = async () => {
+  const onConfirmExtraction = async (mode: 'save' | 'validate' = 'validate') => {
     const amountCents = parseEurosToCents(editAmount);
     if (amountCents == null) {
       Alert.alert('Montant invalide', 'Saisis un montant en euros valide (ex. 42.50).');
@@ -637,11 +639,12 @@ export function EntryDetailScreen() {
           )
         : undefined;
 
-    // Antidoublon : si l'API a déjà flaggé l'entry comme doublon de
-    // quelqu'un, on demande confirmation à l'utilisateur avant de
-    // valider. Si confirmé → forceDuplicate=true bypass le check API.
+    // En mode "Valider" : 2 confirmations utilisateur peuvent s'enchaîner
+    //   1. Si doublon détecté côté serveur → "Valider quand même ?"
+    //   2. Toujours : "Action irréversible — êtes-vous sûr ?"
+    // En mode "Enregistrer" (brouillon) : pas de confirmation.
     let forceDuplicate = false;
-    if (entry.duplicateOfEntryId) {
+    if (mode === 'validate' && entry.duplicateOfEntryId) {
       const userConfirmed = await new Promise<boolean>((resolve) => {
         Alert.alert(
           '⚠️ Doublon détecté',
@@ -659,6 +662,24 @@ export function EntryDetailScreen() {
       });
       if (!userConfirmed) return;
       forceDuplicate = true;
+    }
+    if (mode === 'validate') {
+      const finalConfirm = await new Promise<boolean>((resolve) => {
+        Alert.alert(
+          'Valider définitivement ?',
+          "Une fois validée, l'écriture est comptabilisée et ne peut plus être modifiée. Pour la corriger, il faudra créer une contre-passation.\n\nSi tu veux juste sauvegarder ton avancement sans valider, utilise « Enregistrer ».",
+          [
+            { text: 'Retour', style: 'cancel', onPress: () => resolve(false) },
+            {
+              text: 'Valider',
+              style: 'destructive',
+              onPress: () => resolve(true),
+            },
+          ],
+          { cancelable: false },
+        );
+      });
+      if (!finalConfirm) return;
     }
     try {
       // 1. Mise à jour des comptes par ligne (si modifiés)
@@ -690,14 +711,23 @@ export function EntryDetailScreen() {
               : {}),
             invoiceNumber: editInvoiceNumber.trim() || null,
             ...(forceDuplicate ? { forceDuplicate: true } : {}),
+            validate: mode === 'validate',
           },
         },
       });
       await refetch();
-      Alert.alert('Écriture validée', "L'écriture a été passée en POSTED.");
+      Alert.alert(
+        mode === 'validate' ? 'Écriture validée' : 'Brouillon enregistré',
+        mode === 'validate'
+          ? "L'écriture est maintenant comptabilisée (POSTED)."
+          : "Tes modifications sont sauvegardées. L'écriture reste « À valider ».",
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erreur inconnue';
-      Alert.alert('Validation échouée', msg);
+      Alert.alert(
+        mode === 'validate' ? 'Validation échouée' : 'Enregistrement échoué',
+        msg,
+      );
     }
   };
 
@@ -766,14 +796,15 @@ export function EntryDetailScreen() {
               return (
                 <Pressable
                   key={doc.id}
-                  onPress={() =>
-                    void Linking.openURL(doc.publicUrl).catch(() => {
+                  onPress={() => {
+                    const url = rewriteToLanUrl(doc.publicUrl);
+                    void Linking.openURL(url).catch(() => {
                       Alert.alert(
                         'Ouverture impossible',
                         "Aucune application n'a pu ouvrir ce fichier.",
                       );
-                    })
-                  }
+                    });
+                  }}
                   style={({ pressed }) => [
                     styles.docThumbWrap,
                     pressed && { opacity: 0.7 },
@@ -786,7 +817,7 @@ export function EntryDetailScreen() {
                     </View>
                   ) : (
                     <Image
-                      source={{ uri: doc.publicUrl }}
+                      source={{ uri: rewriteToLanUrl(doc.publicUrl) }}
                       style={styles.docThumb}
                       resizeMode="cover"
                     />
@@ -971,9 +1002,16 @@ export function EntryDetailScreen() {
               <GradientButton
                 label="Valider en 1 clic"
                 icon="checkmark-circle"
-                onPress={() => void onConfirmExtraction()}
+                onPress={() => void onConfirmExtraction('validate')}
                 loading={confirming}
                 fullWidth
+              />
+              <Button
+                label="Enregistrer (brouillon)"
+                variant="ghost"
+                icon="save-outline"
+                onPress={() => void onConfirmExtraction('save')}
+                loading={confirming}
               />
               <Button
                 label="Modifier le montant / la date / le paiement…"
@@ -1093,13 +1131,24 @@ export function EntryDetailScreen() {
               </View>
 
               <View style={styles.actions}>
+                <Button
+                  label="Enregistrer (brouillon)"
+                  variant="ghost"
+                  icon="save-outline"
+                  onPress={() => void onConfirmExtraction('save')}
+                  loading={confirming}
+                />
                 <GradientButton
-                  label="Valider l'écriture"
+                  label="Valider définitivement"
                   icon="checkmark-circle-outline"
-                  onPress={() => void onConfirmExtraction()}
+                  onPress={() => void onConfirmExtraction('validate')}
                   loading={confirming}
                   fullWidth
                 />
+                <Text style={styles.validateHint}>
+                  ⚠️ La validation comptabilise l'écriture (irréversible).
+                  Pour sauvegarder en cours sans valider, utilise « Enregistrer ».
+                </Text>
               </View>
             </>
           )}
@@ -1318,6 +1367,19 @@ export function EntryDetailScreen() {
         style={{ marginHorizontal: spacing.lg, marginTop: spacing.lg }}
       >
         <View style={styles.actions}>
+          {/* Bouton Valider en plus dans la card Actions, AU-DESSUS
+              de "Annuler" — cohérent quand l'utilisateur a une review
+              en cours et veut valider rapidement sans scroller jusqu'au
+              haut. Désactivé si déjà POSTED/LOCKED/CANCELLED. */}
+          {isReview ? (
+            <GradientButton
+              label="Valider définitivement"
+              icon="checkmark-circle-outline"
+              onPress={() => void onConfirmExtraction('validate')}
+              loading={confirming}
+              fullWidth
+            />
+          ) : null}
           <Button
             label="Annuler l'écriture"
             variant="ghost"
@@ -1465,6 +1527,13 @@ const styles = StyleSheet.create({
     ...typography.small,
     color: palette.muted,
     fontSize: 11,
+  },
+  validateHint: {
+    ...typography.small,
+    color: palette.muted,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+    fontStyle: 'italic',
   },
   editForm: {
     gap: spacing.md,

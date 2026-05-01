@@ -649,6 +649,7 @@ export class AccountingResolver {
       financialAccountId: input.financialAccountId,
       invoiceNumber: input.invoiceNumber,
       forceDuplicate: input.forceDuplicate ?? false,
+      validate: input.validate ?? true,
       kind: 'EXPENSE' as const,
     });
     const entry = await this.accounting.getEntry(club.id, input.entryId);

@@ -25,6 +25,24 @@ export function getMediaUrl(mediaAssetId: string): string {
 }
 
 /**
+ * Réécrit une URL retournée par l'API (qui peut pointer vers
+ * `localhost:3000` côté serveur dev) en une URL accessible depuis le
+ * device mobile (sur le LAN, donc IP IPv4 de la machine dev).
+ *
+ * Sans cette réécriture, `Linking.openURL("http://localhost:3000/...")`
+ * sur le téléphone échoue silencieusement (écran blanc) : `localhost`
+ * sur le device = device, pas la machine dev.
+ */
+export function rewriteToLanUrl(serverUrl: string): string {
+  const apiBase = getApiBaseUrl(); // ex http://192.168.1.24:3000
+  // Match localhost/127.0.0.1 avec ou sans port
+  return serverUrl.replace(
+    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/,
+    apiBase,
+  );
+}
+
+/**
  * Construit la prop `source` d'un `<Image>` RN avec auth headers.
  * Utilisation :
  *   <Image source={await getAuthedImageSource(mediaAssetId)} />
