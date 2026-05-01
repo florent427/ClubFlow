@@ -2001,6 +2001,11 @@ const ACCOUNTING_ENTRY_FIELDS = `
   financialAccountLabel
   financialAccountCode
   consolidatedAt
+  paymentMethod
+  paymentReference
+  invoiceNumber
+  duplicateOfEntryId
+  aiProcessingStartedAt
   occurredAt
   createdAt
   lines {

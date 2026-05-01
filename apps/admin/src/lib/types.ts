@@ -1238,6 +1238,16 @@ export type AccountingEntry = {
   financialAccountCode: string | null;
   /** Date de consolidation des lignes. Null = écriture détaillée standard. */
   consolidatedAt: string | null;
+  /** Mode de paiement (CASH | CHECK | TRANSFER | CARD | DIRECT_DEBIT | OTHER). */
+  paymentMethod: string | null;
+  /** N° chèque, n° opération virement, etc. */
+  paymentReference: string | null;
+  /** N° facture (séparé du label, utilisé pour antidoublon). */
+  invoiceNumber: string | null;
+  /** Soft-link vers une entry doublon (n° + montant identiques). */
+  duplicateOfEntryId: string | null;
+  /** Pipeline IA OCR en cours (background). */
+  aiProcessingStartedAt: string | null;
   occurredAt: string;
   createdAt: string;
   lines: AccountingEntryLineRow[];

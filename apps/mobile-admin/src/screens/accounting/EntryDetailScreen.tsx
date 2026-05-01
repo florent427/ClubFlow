@@ -22,7 +22,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   CANCEL_ACCOUNTING_ENTRY,
+  CLUB_ACCOUNTING_ENTRIES,
   CLUB_ACCOUNTING_ENTRY,
+  CLUB_ACCOUNTING_SUMMARY,
   CLUB_FINANCIAL_ACCOUNTS,
   CONFIRM_ACCOUNTING_EXTRACTION,
   DELETE_ACCOUNTING_ENTRY_PERMANENT,
@@ -334,6 +336,15 @@ export function EntryDetailScreen() {
   );
   const [confirmExtraction, { loading: confirming }] = useMutation(
     CONFIRM_ACCOUNTING_EXTRACTION,
+    {
+      // Après validation d'une écriture, rafraîchit le registre + les
+      // KPIs Recettes/Dépenses/Solde pour qu'ils prennent en compte le
+      // nouveau POSTED. Strings = refetch TOUTES les versions actives
+      // de la query (avec leurs variables courantes — peu importe les
+      // dates from/to du summary, on refresh tout).
+      refetchQueries: ['ClubAccountingEntries', 'ClubAccountingSummary'],
+      awaitRefetchQueries: false,
+    },
   );
   const [validateLine] = useMutation(VALIDATE_ACCOUNTING_ENTRY_LINE);
 

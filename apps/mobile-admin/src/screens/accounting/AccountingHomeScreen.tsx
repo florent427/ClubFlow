@@ -13,7 +13,8 @@ import {
   type DataTableRow,
   type FilterChip,
 } from '@clubflow/mobile-shared';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useCallback } from 'react';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -140,6 +141,17 @@ export function AccountingHomeScreen() {
   );
 
   const summary = summaryData?.clubAccountingSummary;
+
+  // Refetch à chaque retour sur l'écran (post-validation OCR / post-back
+  // depuis EntryDetail). Sans ça, le KpiTile (Recettes/Dépenses/Solde)
+  // restait sur la valeur en cache et ne reflétait pas les nouvelles
+  // écritures POSTED tant qu'on ne faisait pas un pull-to-refresh.
+  useFocusEffect(
+    useCallback(() => {
+      void refetch();
+      void refetchSummary();
+    }, [refetch, refetchSummary]),
+  );
 
   const rows = useMemo<DataTableRow[]>(() => {
     const list = data?.clubAccountingEntries ?? [];

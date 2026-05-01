@@ -38,6 +38,7 @@ import { ConfirmModal, Drawer, EmptyState } from '../../components/ui';
 import { downloadCsv, toCsv } from '../../lib/csv-export';
 import { getClubId, getToken } from '../../lib/storage';
 import { AccountingReviewDrawer } from './AccountingReviewDrawer';
+import { EntryDetailsDrawer } from './EntryDetailsDrawer';
 
 type Period = 'ALL' | 'MONTH' | 'YEAR' | 'CUSTOM';
 
@@ -394,6 +395,12 @@ export function AccountingPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // Drawer de visualisation en LECTURE SEULE (POSTED/LOCKED/CANCELLED).
+  // Affiche tous les détails : lignes article, ligne contrepartie banque
+  // avec son code PCG, allocations analytiques, reasoning IA, documents.
+  const [viewingEntry, setViewingEntry] = useState<AccountingEntry | null>(
+    null,
+  );
   const [confirmEntry, setConfirmEntry] = useState<AccountingEntry | null>(
     null,
   );
@@ -1292,6 +1299,29 @@ export function AccountingPage() {
                       {fmtEuros(e.amountCents)}
                     </td>
                     <td>
+                      {/* Bouton "Détails" disponible pour TOUS les
+                          statuts hors NEEDS_REVIEW (qui a son propre
+                          drawer de review). Ouvre un drawer lecture
+                          seule avec lignes complètes + contrepartie
+                          banque + code PCG. */}
+                      {e.status !== 'NEEDS_REVIEW' ? (
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() => setViewingEntry(e)}
+                          title="Voir tous les détails (lignes, contrepartie, documents)"
+                          style={{ marginRight: 6 }}
+                        >
+                          <span
+                            className="material-symbols-outlined"
+                            aria-hidden
+                            style={{ fontSize: '1rem' }}
+                          >
+                            visibility
+                          </span>
+                          {' '}Détails
+                        </button>
+                      ) : null}
                       {e.status === 'CANCELLED' || e.status === 'LOCKED' ? (
                         <span className="cf-muted">—</span>
                       ) : e.status === 'NEEDS_REVIEW' ? (
@@ -2377,6 +2407,15 @@ export function AccountingPage() {
         onSaved={async () => {
           await Promise.all([refetchEntries(), refetchSummary()]);
         }}
+      />
+
+      {/* Drawer LECTURE SEULE pour les écritures déjà validées :
+          affiche les lignes complètes, la contrepartie banque + son
+          code PCG, les allocations analytiques, le reasoning IA, et
+          les documents attachés. */}
+      <EntryDetailsDrawer
+        entry={viewingEntry}
+        onClose={() => setViewingEntry(null)}
       />
 
     </div>
