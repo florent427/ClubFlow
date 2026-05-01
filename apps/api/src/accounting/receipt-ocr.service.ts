@@ -13,6 +13,27 @@ import sharp from 'sharp';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pdfParse: (buf: Buffer) => Promise<{ numpages: number; text: string }> =
   require('pdf-parse');
+
+// pdf-to-img v4 est ESM-only. Notre tsconfig est `"module": "commonjs"`,
+// ce qui transpile `await import('pdf-to-img')` en `require('pdf-to-img')`
+// → ERR_REQUIRE_ASYNC_MODULE au runtime. Pour forcer un VRAI dynamic
+// import qui survit à la transpilation, on passe par `new Function`
+// qui n'est pas réécrit par TS.
+type PdfToImgPdf = (
+  buf: Buffer,
+  opts?: { scale?: number },
+) => AsyncIterable<Buffer> & { length: number };
+let _pdfToImgPdfFn: PdfToImgPdf | null = null;
+async function loadPdfToImg(): Promise<PdfToImgPdf> {
+  if (_pdfToImgPdfFn) return _pdfToImgPdfFn;
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval
+  const dynImport = new Function('s', 'return import(s)') as (
+    s: string,
+  ) => Promise<{ pdf: PdfToImgPdf }>;
+  const mod = await dynImport('pdf-to-img');
+  _pdfToImgPdfFn = mod.pdf;
+  return _pdfToImgPdfFn;
+}
 import { AiBudgetService } from '../ai/ai-budget.service';
 import { AiSettingsService } from '../ai/ai-settings.service';
 import { OpenrouterService } from '../ai/openrouter.service';
@@ -524,30 +545,25 @@ export class ReceiptOcrService {
     }
 
     // Prétraitement + tuilage par asset.
-    // - Pour chaque page utilisateur, on applique sharp (rotate, normalise,
-    //   sharpen, resize 2500px max) sur les images.
-    // - Si l'image résultante est très haute (ratio > 2.5×), on la découpe
-    //   en tuiles verticales avec chevauchement pour fiabiliser l'OCR sans
-    //   perdre les lignes coupées.
-    // - Le pipeline IA peut donc recevoir N tuiles internes même si
-    //   l'utilisateur a uploadé M < N pages logiques. Le pageCount affiché
-    //   reste basé sur le nombre d'assets utilisateur.
-    // - Pour les PDFs : on extrait AUSSI le texte natif via pdf-parse et
-    //   on le passe au modèle en complément de l'image. Sur un PDF
-    //   généré (vs scanné), le texte natif est PARFAIT — bien meilleur
-    //   que l'OCR vision. Sur un PDF scanné, pdf-parse retourne vide
-    //   → fallback vision pure.
+    // - Pour les IMAGES : sharp (rotate EXIF, normalise, sharpen, resize
+    //   2500px) puis tuilage si très haute.
+    // - Pour les PDFs : rasterisation page par page via pdf-to-img (en
+    //   PNG) puis SAME pipeline image que les vraies images. On évite
+    //   d'envoyer le PDF tel quel à OpenRouter — beaucoup de modèles
+    //   vision plantent ou ignorent les image_url avec mime
+    //   application/pdf. En rastérant on a 100% de compat.
+    // - On extrait AUSSI le texte natif via pdf-parse en complément
+    //   (très précis sur PDF généré, retourne vide sur PDF scanné).
     const dataUrls: string[] = [];
     const pdfTextChunks: string[] = [];
     for (let i = 0; i < orderedAssets.length; i++) {
       const a = orderedAssets[i];
-      const pre = await this.preprocessImage(buffers[i], a.mimeType);
-      const tiles = await this.tileTallImage(pre.buffer, pre.mimeType);
-      for (const tile of tiles) {
-        dataUrls.push(this.bufferToDataUrl(tile.buffer, tile.mimeType));
-      }
-      // Pour les PDFs : tente une extraction texte native
+      let imageBuffers: Array<{ buffer: Buffer; mimeType: string }>;
       if (a.mimeType === 'application/pdf') {
+        // Rasterise en N pages PNG, puis applique le pipeline image
+        // standard sur chacune (preprocess + tile éventuel).
+        imageBuffers = await this.rasterizePdf(buffers[i]);
+        // Extraction texte natif en bonus (sur PDF généré uniquement)
         try {
           const parsed = await pdfParse(buffers[i]);
           const text = (parsed.text ?? '').trim();
@@ -555,7 +571,16 @@ export class ReceiptOcrService {
             pdfTextChunks.push(text.slice(0, 8000));
           }
         } catch {
-          // ignore — on a déjà l'image vision
+          // ignore
+        }
+      } else {
+        imageBuffers = [{ buffer: buffers[i], mimeType: a.mimeType }];
+      }
+      for (const img of imageBuffers) {
+        const pre = await this.preprocessImage(img.buffer, img.mimeType);
+        const tiles = await this.tileTallImage(pre.buffer, pre.mimeType);
+        for (const tile of tiles) {
+          dataUrls.push(this.bufferToDataUrl(tile.buffer, tile.mimeType));
         }
       }
     }
@@ -1744,6 +1769,40 @@ Règles :
 
   private bufferToDataUrl(buf: Buffer, mimeType: string): string {
     return `data:${mimeType};base64,${buf.toString('base64')}`;
+  }
+
+  /**
+   * Rasterise un PDF en images PNG (1 par page) via pdf-to-img.
+   * Pure-JS (utilise pdfjs-dist + un canvas mock). Limite à 10 pages
+   * pour éviter d'exploser les tokens vision. Si la rasterisation
+   * plante (PDF corrompu, lib pas dispo), on retombe sur l'envoi du
+   * PDF tel quel — comportement antérieur (le modèle vision peut
+   * peut-être le gérer).
+   */
+  private async rasterizePdf(
+    buf: Buffer,
+  ): Promise<Array<{ buffer: Buffer; mimeType: string }>> {
+    try {
+      // scale=2 ≈ 144 DPI — équilibre qualité OCR / taille tokens
+      const pdfFn = await loadPdfToImg();
+      const document = await pdfFn(buf, { scale: 2 });
+      const pages: Array<{ buffer: Buffer; mimeType: string }> = [];
+      let i = 0;
+      for await (const pageBuf of document) {
+        pages.push({ buffer: pageBuf, mimeType: 'image/png' });
+        i++;
+        if (i >= 10) break; // safety cap
+      }
+      this.logger.log(`[OCR] PDF rasterisé en ${pages.length} pages PNG`);
+      return pages;
+    } catch (err) {
+      this.logger.warn(
+        `[OCR] rasterizePdf échec, fallback PDF tel quel : ${this.errorMsg(err)}`,
+      );
+      // Fallback : on envoie le PDF tel quel au modèle vision (compat
+      // Claude 3+ et Gemini 2+ qui acceptent les PDFs en image_url)
+      return [{ buffer: buf, mimeType: 'application/pdf' }];
+    }
   }
 
   /**
