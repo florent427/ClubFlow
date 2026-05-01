@@ -57,15 +57,58 @@ type VoiceRecorderProps = {
 };
 
 export function VoiceRecorder({
+  onRecorded: _onRecorded,
+  onRecordingStateChange: _onRecordingStateChange,
+  color = palette.primary,
+}: VoiceRecorderProps) {
+  // **Vocal temporairement désactivé** : `useAudioRecorder` d'expo-audio
+  // crash sur Android Bridgeless en SDK 55 :
+  //   Error: The 1st argument cannot be cast to type
+  //   expo.modules.audio.AudioRecorder (received class java.lang.Integer)
+  //   → Caused by: Cannot use shared object that was already released
+  //
+  // Cause probable : React Strict Mode + Bridgeless cause un
+  // double-mount, le 1er recorder est release, le 2e pointe sur un
+  // handle natif invalide. Le hook ne supporte pas ce pattern.
+  //
+  // Solution v2 envisagée : passer en dev-build (au lieu d'Expo Go)
+  // OU remplacer expo-audio par une lib qui gère mieux le lifecycle
+  // (ex. react-native-audio-recorder-player), OU attendre un fix amont.
+  //
+  // En attendant, on affiche un mic désactivé qui informe l'utilisateur
+  // que le vocal n'est pas disponible. Le chat texte + pièces jointes
+  // continue de fonctionner normalement.
+  void _onRecorded;
+  void _onRecordingStateChange;
+  function showUnavailableAlert() {
+    Alert.alert(
+      'Messages vocaux indisponibles',
+      "Cette fonctionnalité sera disponible prochainement.\n\nEn attendant, vous pouvez envoyer des photos, vidéos et documents via le bouton +.",
+    );
+  }
+  return (
+    <Pressable
+      onPress={showUnavailableAlert}
+      accessibilityRole="button"
+      accessibilityLabel="Messages vocaux (indisponible)"
+      style={({ pressed }) => [
+        styles.micBtn,
+        pressed && { opacity: 0.6 },
+      ]}
+      hitSlop={6}
+    >
+      <Ionicons name="mic-off-outline" size={22} color={palette.muted} />
+    </Pressable>
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _VoiceRecorderImpl_Disabled({
   onRecorded,
   onRecordingStateChange,
   color = palette.primary,
 }: VoiceRecorderProps) {
-  // Si expo-audio n'est pas chargé (Expo Go incompatible), on n'affiche
-  // pas le bouton micro — pas de crash, juste de la fonctionnalité absente.
   if (!expoAudio) return null;
-  // Hook expo-audio chargé via le require défensif. ESLint ne sait pas
-  // que `expoAudio` est non-null ici (vérifié à la ligne précédente).
   const recorder = expoAudio.useAudioRecorder(
     expoAudio.RecordingPresets.HIGH_QUALITY,
   );
