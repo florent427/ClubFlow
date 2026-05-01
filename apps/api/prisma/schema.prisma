@@ -1767,6 +1767,15 @@ model AccountingEntry {
   /// d'autres factures). Le service le clear à la fin du pipeline.
   /// Le client affiche un badge "Analyse en cours" tant que c'est non null.
   aiProcessingStartedAt    DateTime?
+  /// Numéro de facture nettoyé (séparé du label). Indexé avec amountCents
+  /// pour la détection de doublons : 2 entries du même club avec même
+  /// invoiceNumber ET même amountCents = doublon hautement probable.
+  invoiceNumber            String?
+  /// Si non null, pointe vers une autre entry du club avec même
+  /// (invoiceNumber, amountCents) → doublon détecté. L'utilisateur peut
+  /// soit valider quand même (override) soit annuler. Ne crée PAS de
+  /// contrainte hard — laisse le choix.
+  duplicateOfEntryId       String?
   occurredAt               DateTime              @default(now())
   createdAt                DateTime              @default(now())
   updatedAt                DateTime              @default(now()) @updatedAt
@@ -1792,6 +1801,7 @@ model AccountingEntry {
   @@index([clubId, status])
   @@index([clubId, source])
   @@index([clubId, financialAccountId])
+  @@index([clubId, invoiceNumber, amountCents])
 }
 
 /// Cycle de vie complet d'une demande de subvention :

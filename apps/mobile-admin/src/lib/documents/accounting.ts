@@ -35,6 +35,8 @@ export const CLUB_ACCOUNTING_ENTRY = gql`
       paymentMethod
       paymentReference
       aiProcessingStartedAt
+      invoiceNumber
+      duplicateOfEntryId
       financialAccountId
       financialAccountLabel
       financialAccountCode

@@ -816,6 +816,24 @@ export class ReceiptOcrService {
     });
     const accountByCode = new Map(accounts.map((a) => [a.code, a]));
 
+    // Détection de doublon (n° facture + montant). Soft-warning : on
+    // persiste juste le lien, l'utilisateur arbitre côté UI.
+    const invoiceNumber = decision?.invoiceNumber?.trim() || null;
+    const duplicateOfEntryId =
+      invoiceNumber && totalCents > 0
+        ? await this.findPotentialDuplicate(
+            clubId,
+            invoiceNumber,
+            totalCents,
+            entryId,
+          )
+        : null;
+    if (duplicateOfEntryId) {
+      this.logger.warn(
+        `[BG OCR ${entryId}] doublon détecté (invoiceNumber=${invoiceNumber}, total=${totalCents}cts) → ${duplicateOfEntryId}`,
+      );
+    }
+
     await this.prisma.$transaction(async (tx) => {
       // 1. Update entry header
       await tx.accountingEntry.update({
@@ -825,6 +843,8 @@ export class ReceiptOcrService {
           amountCents: totalCents,
           occurredAt: date,
           extractionId,
+          invoiceNumber,
+          duplicateOfEntryId,
           paymentMethod: decision?.paymentMethod ?? null,
           paymentReference: decision?.paymentReference ?? null,
           aiProcessingStartedAt: null, // pipeline terminé
@@ -1724,6 +1744,37 @@ Règles :
 
   private bufferToDataUrl(buf: Buffer, mimeType: string): string {
     return `data:${mimeType};base64,${buf.toString('base64')}`;
+  }
+
+  /**
+   * Cherche un éventuel doublon dans les écritures du club basé sur le
+   * tuple (invoiceNumber, amountCents). Retourne l'id de la première
+   * entry trouvée avec match strict, ou null. On ignore les entries
+   * CANCELLED (annulées = pas un vrai doublon).
+   *
+   * @param excludeEntryId — exclut une entry de la recherche (utile
+   *   pour ne pas se matcher soi-même quand on re-vérifie après update).
+   */
+  async findPotentialDuplicate(
+    clubId: string,
+    invoiceNumber: string,
+    amountCents: number,
+    excludeEntryId?: string,
+  ): Promise<string | null> {
+    const cleanInvoice = invoiceNumber.trim();
+    if (!cleanInvoice) return null;
+    const dup = await this.prisma.accountingEntry.findFirst({
+      where: {
+        clubId,
+        invoiceNumber: cleanInvoice,
+        amountCents,
+        status: { not: 'CANCELLED' },
+        ...(excludeEntryId ? { id: { not: excludeEntryId } } : {}),
+      },
+      orderBy: { createdAt: 'asc' }, // la plus ancienne (= "originale")
+      select: { id: true },
+    });
+    return dup?.id ?? null;
   }
 
   /**

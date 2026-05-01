@@ -227,6 +227,18 @@ export class AccountingEntryGraph {
   @Field(() => Date, { nullable: true })
   aiProcessingStartedAt!: Date | null;
 
+  /** Numéro de facture (séparé du label, utilisé pour le check antidoublon). */
+  @Field(() => String, { nullable: true })
+  invoiceNumber!: string | null;
+
+  /**
+   * Si non null, cette écriture est en collision (n° facture + montant)
+   * avec l'entry pointée. L'UI affiche un bandeau d'avertissement avec
+   * lien vers l'entry "originale".
+   */
+  @Field(() => ID, { nullable: true })
+  duplicateOfEntryId!: string | null;
+
   @Field()
   occurredAt!: Date;
 

@@ -80,6 +80,17 @@ export interface ManualEntryInput {
   // l'interface (utilisé pour le mode manuel "encaissé sur caisse X").
   // En mode confirmExtraction, c'est ce même champ qui est repropagé
   // depuis ConfirmExtractionInput.
+
+  /**
+   * Numéro de facture (séparé du label). Utilisé pour le check
+   * antidoublon (n° + montant).
+   */
+  invoiceNumber?: string | null;
+  /**
+   * Si true, ignore le check antidoublon (utilisateur a confirmé
+   * qu'il veut valider malgré la collision détectée).
+   */
+  forceDuplicate?: boolean;
 }
 
 /**
@@ -1081,6 +1092,36 @@ export class AccountingService {
     await this.period.assertDateIsOpen(clubId, occurredAt);
 
     const newAmount = corrections.amountCents ?? entry.amountCents;
+
+    // Check antidoublon (n° facture + montant). On exclut l'entry
+    // courante de la recherche pour ne pas se matcher soi-même.
+    // Si l'utilisateur a explicitement confirmé "valider quand même"
+    // (forceDuplicate=true), on bypass le check.
+    const newInvoiceNumber =
+      corrections.invoiceNumber !== undefined
+        ? corrections.invoiceNumber?.trim() || null
+        : entry.invoiceNumber;
+    let detectedDuplicateOf: string | null = null;
+    if (newInvoiceNumber && newAmount > 0) {
+      const dup = await this.prisma.accountingEntry.findFirst({
+        where: {
+          clubId,
+          invoiceNumber: newInvoiceNumber,
+          amountCents: newAmount,
+          status: { not: AccountingEntryStatus.CANCELLED },
+          id: { not: entryId },
+        },
+        select: { id: true, label: true, status: true },
+      });
+      if (dup) {
+        detectedDuplicateOf = dup.id;
+        if (!corrections.forceDuplicate) {
+          throw new BadRequestException(
+            `Doublon détecté : facture "${newInvoiceNumber}" pour ${(newAmount / 100).toFixed(2)} € déjà saisie (${dup.label}). Annulez ou re-validez avec forceDuplicate=true.`,
+          );
+        }
+      }
+    }
     const needsAccountChange =
       corrections.accountCode && entry.lines.length > 0
         ? corrections.accountCode !== entry.lines[0].accountCode
@@ -1145,6 +1186,12 @@ export class AccountingService {
           ...(newFinancialAccount
             ? { financialAccountId: newFinancialAccount.id }
             : {}),
+          ...(corrections.invoiceNumber !== undefined && {
+            invoiceNumber: newInvoiceNumber,
+          }),
+          // Persiste le lien doublon (null si pas de doublon, ou si
+          // l'utilisateur a forcé : on garde la trace pour audit).
+          duplicateOfEntryId: detectedDuplicateOf,
           updatedAt: new Date(),
         },
       });

@@ -98,6 +98,25 @@ export class ConfirmExtractionInput {
   financialAccountId?: string | null;
 
   /**
+   * Numéro de facture (séparé du label). Utilisé pour la détection
+   * antidoublon (clubId, invoiceNumber, amountCents).
+   */
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  invoiceNumber?: string | null;
+
+  /**
+   * Si true, force la création même si un doublon (n° facture + montant)
+   * a été détecté. L'utilisateur a confirmé qu'il veut quand même
+   * valider après avoir vu le bandeau d'avertissement côté UI.
+   */
+  @Field(() => Boolean, { nullable: true })
+  @IsOptional()
+  forceDuplicate?: boolean;
+
+  /**
    * Montants par ligne (utilisé pour la propagation auto quand le
    * total change ET qu'il y a plusieurs lignes débit). Si fourni,
    * remplace les montants individuels des lignes correspondantes.

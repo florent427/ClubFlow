@@ -145,6 +145,9 @@ type Entry = {
   paymentReference: string | null;
   /** Présent = pipeline IA OCR en cours (entry stub en attente). */
   aiProcessingStartedAt: string | null;
+  invoiceNumber: string | null;
+  /** Si non null, cette écriture est en collision avec une autre. */
+  duplicateOfEntryId: string | null;
   financialAccountId: string | null;
   financialAccountLabel: string | null;
   financialAccountCode: string | null;
@@ -616,6 +619,30 @@ export function EntryDetailScreen() {
             ([lineId, amt]) => ({ lineId, amountCents: amt }),
           )
         : undefined;
+
+    // Antidoublon : si l'API a déjà flaggé l'entry comme doublon de
+    // quelqu'un, on demande confirmation à l'utilisateur avant de
+    // valider. Si confirmé → forceDuplicate=true bypass le check API.
+    let forceDuplicate = false;
+    if (entry.duplicateOfEntryId) {
+      const userConfirmed = await new Promise<boolean>((resolve) => {
+        Alert.alert(
+          '⚠️ Doublon détecté',
+          `Cette facture (n° ${editInvoiceNumber || '—'} · ${formatEuroCents(amountCents)}) correspond à une écriture déjà saisie. Valider quand même ?`,
+          [
+            { text: 'Annuler', style: 'cancel', onPress: () => resolve(false) },
+            {
+              text: 'Valider quand même',
+              style: 'destructive',
+              onPress: () => resolve(true),
+            },
+          ],
+          { cancelable: false },
+        );
+      });
+      if (!userConfirmed) return;
+      forceDuplicate = true;
+    }
     try {
       // 1. Mise à jour des comptes par ligne (si modifiés)
       for (const [lineId, code] of Object.entries(editLineCodes)) {
@@ -644,6 +671,8 @@ export function EntryDetailScreen() {
             ...(editFinancialAccountId
               ? { financialAccountId: editFinancialAccountId }
               : {}),
+            invoiceNumber: editInvoiceNumber.trim() || null,
+            ...(forceDuplicate ? { forceDuplicate: true } : {}),
           },
         },
       });
@@ -707,6 +736,42 @@ export function EntryDetailScreen() {
             style={styles.receiptImg}
             resizeMode="contain"
           />
+        </Card>
+      ) : null}
+
+      {/* Bandeau ANTIDOUBLON — si une autre entry du club a même
+          (n° facture, montant). Visible que ce soit en review ou
+          déjà POSTED (l'utilisateur peut découvrir le doublon après
+          coup). */}
+      {entry.duplicateOfEntryId ? (
+        <Card
+          style={{
+            marginHorizontal: spacing.lg,
+            marginTop: spacing.lg,
+            borderLeftWidth: 4,
+            borderLeftColor: palette.warningText,
+          }}
+        >
+          <View style={styles.duplicateBox}>
+            <Text style={styles.duplicateTitle}>
+              ⚠️ Doublon potentiel détecté
+            </Text>
+            <Text style={styles.duplicateBody}>
+              Cette facture (n° {entry.invoiceNumber ?? '—'} · {formatEuroCents(entry.amountCents)})
+              correspond à une écriture déjà saisie dans ce club. Vérifie
+              avant de valider.
+            </Text>
+            <Button
+              label="Voir l'écriture existante"
+              variant="ghost"
+              icon="open-outline"
+              onPress={() =>
+                navigation.push('EntryDetail', {
+                  entryId: entry.duplicateOfEntryId!,
+                })
+              }
+            />
+          </View>
         </Card>
       ) : null}
 
@@ -1442,6 +1507,18 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontStyle: 'italic',
     marginTop: 2,
+  },
+  duplicateBox: {
+    gap: spacing.sm,
+  },
+  duplicateTitle: {
+    ...typography.bodyStrong,
+    color: palette.warningText,
+  },
+  duplicateBody: {
+    ...typography.small,
+    color: palette.ink,
+    lineHeight: 18,
   },
   processingBox: {
     alignItems: 'center',
