@@ -80,6 +80,8 @@ export function roomLabel(r: ChatRoomRow): string {
 export type MessagingStackParamList = {
   MessagingHome: undefined;
   MessagingThread: { roomId: string };
+  /** Recherche d'adhérent pour démarrer un chat 1-on-1. */
+  NewChat: undefined;
 };
 
 export type LastMessageInfo = {

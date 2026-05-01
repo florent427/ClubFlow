@@ -109,6 +109,9 @@ export function MessagingHomeScreen() {
             }
           />
         )}
+        // Padding bottom élargi pour ne pas que la FAB cache le dernier
+        // élément (la FAB est positionnée en absolute en bas à droite).
+        contentContainerStyle={{ paddingBottom: 96 }}
         ListEmptyComponent={
           loading ? (
             <View style={styles.emptyWrap}>
@@ -121,12 +124,37 @@ export function MessagingHomeScreen() {
               <EmptyState
                 icon="chatbubbles-outline"
                 title="Aucun salon"
-                description="Le club créera des salons de discussion bientôt."
+                description="Le club créera des salons de discussion bientôt. En attendant, démarrez une conversation avec un autre membre."
               />
             </View>
           )
         }
       />
+
+      {/*
+        FAB "Nouvelle conversation" — gradient primary en bas à droite,
+        respecte l'inset bas (safe area + tab bar). Ouvre NewChatScreen
+        avec recherche unifiée par pseudo / prénom / nom.
+      */}
+      <Pressable
+        onPress={() => navigation.navigate('NewChat')}
+        accessibilityRole="button"
+        accessibilityLabel="Nouvelle conversation avec un membre"
+        style={({ pressed }) => [
+          styles.fab,
+          { bottom: insets.bottom + spacing.xl },
+          pressed && { opacity: 0.85 },
+        ]}
+      >
+        <LinearGradient
+          colors={[primary, palette.primaryDark ?? '#4338ca']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.fabInner}
+        >
+          <Ionicons name="create" size={22} color="#ffffff" />
+        </LinearGradient>
+      </Pressable>
 
       {/* Modal pseudo */}
       <Modal
@@ -305,6 +333,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.xxxl,
     gap: spacing.md,
+  },
+
+  // FAB "Nouvelle conversation" — positionné en absolute en bas à droite
+  // au-dessus de la tab bar (le `bottom` est calé via insets dans le JSX).
+  fab: {
+    position: 'absolute',
+    right: spacing.xl,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    overflow: 'hidden',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  fabInner: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   modalHeader: {

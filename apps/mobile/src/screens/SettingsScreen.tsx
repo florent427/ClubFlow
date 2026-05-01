@@ -110,7 +110,31 @@ export function SettingsScreen() {
     }
   }
 
-  async function onPickPhoto() {
+  /**
+   * Ouvre une feuille de choix : prendre une photo via l'appareil
+   * ou la sélectionner depuis la galerie. Demande la permission
+   * correspondante au moment voulu (lazy permissions).
+   */
+  function onPickPhoto() {
+    Alert.alert(
+      'Photo de profil',
+      'Comment souhaitez-vous ajouter votre photo ?',
+      [
+        {
+          text: 'Prendre une photo',
+          onPress: () => void capturePhotoFromCamera(),
+        },
+        {
+          text: 'Choisir depuis la galerie',
+          onPress: () => void pickPhotoFromLibrary(),
+        },
+        { text: 'Annuler', style: 'cancel' },
+      ],
+      { cancelable: true },
+    );
+  }
+
+  async function pickPhotoFromLibrary() {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
       Alert.alert(
@@ -126,8 +150,30 @@ export function SettingsScreen() {
       quality: 0.8,
     });
     if (result.canceled || result.assets.length === 0) return;
-    const asset = result.assets[0];
-    await uploadPhoto(asset);
+    await uploadPhoto(result.assets[0]);
+  }
+
+  async function capturePhotoFromCamera() {
+    // `requestCameraPermissionsAsync` déclenche le prompt OS la 1ère fois,
+    // puis renvoie le statut mémorisé ensuite. Sur Expo Go, la permission
+    // est gérée automatiquement via le manifest.
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert(
+        'Accès refusé',
+        "Autorisez l'accès à l'appareil photo dans les réglages.",
+      );
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+      cameraType: ImagePicker.CameraType.front, // selfie par défaut pour photo de profil
+    });
+    if (result.canceled || result.assets.length === 0) return;
+    await uploadPhoto(result.assets[0]);
   }
 
   async function uploadPhoto(asset: ImagePicker.ImagePickerAsset) {
@@ -223,9 +269,9 @@ export function SettingsScreen() {
               JPG ou PNG, carré recommandé (10 Mo max).
             </Text>
             <Button
-              label={uploadingPhoto ? 'Envoi…' : 'Choisir une photo'}
+              label={uploadingPhoto ? 'Envoi…' : 'Modifier la photo'}
               icon="camera-outline"
-              onPress={() => void onPickPhoto()}
+              onPress={onPickPhoto}
               loading={uploadingPhoto}
               variant="secondary"
               size="sm"

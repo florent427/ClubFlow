@@ -2,7 +2,14 @@ import { useQuery } from '@apollo/client/react';
 import { useNavigation } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -44,6 +51,7 @@ import {
   typography,
 } from '../lib/theme';
 import { useClubTheme } from '../lib/theme-context';
+import { absolutizeMediaUrl } from '../lib/absolutize-url';
 import type { MainTabParamList } from '../types/navigation';
 
 export function HomeDashboardScreen() {
@@ -122,7 +130,7 @@ export function HomeDashboardScreen() {
           <View style={[styles.circle, styles.circle2]} />
 
           <View style={styles.heroHead}>
-            <View>
+            <View style={{ flex: 1 }}>
               <Text style={styles.heroEyebrow}>
                 {clubName?.toUpperCase() ?? 'ESPACE MEMBRE'}
               </Text>
@@ -131,13 +139,34 @@ export function HomeDashboardScreen() {
                 {meLoading ? '…' : me?.firstName ?? 'membre'} 👋
               </Text>
             </View>
-            {adminSwitch?.canAccessClubBackOffice === true ? (
-              <MemberRoleToggle
-                canAccessClubBackOffice
-                adminWorkspaceClubId={adminSwitch.adminWorkspaceClubId}
-                variant="header"
-              />
-            ) : null}
+            {/*
+              Stack vertical à droite : logo club en haut + bouton admin
+              en dessous (si l'utilisateur a un accès back-office).
+              Le logo est lu depuis le ClubTheme (CLUB_BRANDING query).
+              `absolutizeMediaUrl` rewrite localhost → IP LAN pour que le
+              téléphone puisse charger l'image en dev.
+            */}
+            <View style={styles.heroTrailing}>
+              {clubTheme.clubLogoUrl ? (
+                <View style={styles.logoBubble}>
+                  <Image
+                    source={{
+                      uri: absolutizeMediaUrl(clubTheme.clubLogoUrl) ?? '',
+                    }}
+                    style={styles.logoImg}
+                    resizeMode="contain"
+                    accessibilityIgnoresInvertColors
+                  />
+                </View>
+              ) : null}
+              {adminSwitch?.canAccessClubBackOffice === true ? (
+                <MemberRoleToggle
+                  canAccessClubBackOffice
+                  adminWorkspaceClubId={adminSwitch.adminWorkspaceClubId}
+                  variant="header"
+                />
+              ) : null}
+            </View>
           </View>
 
           <MemberProfileSwitcher onDark />
@@ -510,6 +539,30 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: spacing.md,
     marginBottom: spacing.lg,
+  },
+  heroTrailing: {
+    alignItems: 'flex-end',
+    gap: spacing.sm,
+  },
+  logoBubble: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.5)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  logoImg: {
+    width: 32,
+    height: 32,
   },
   heroEyebrow: {
     ...typography.eyebrow,

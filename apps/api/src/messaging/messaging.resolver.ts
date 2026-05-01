@@ -27,6 +27,7 @@ import {
   ChatRoomMembershipScopeGql,
   ChatRoomWritePermissionGql,
 } from './models/chat-room-gql.model';
+import { MemberSearchResultGraph } from './models/member-search-result.model';
 import { MessagingGateway } from './messaging.gateway';
 import { MessagingService } from './messaging.service';
 
@@ -159,6 +160,34 @@ export class MessagingResolver {
     );
     return rows.map((m) =>
       this.toMessageGql(m as RawMessage, user.activeProfileMemberId!),
+    );
+  }
+
+  @Query(() => [MemberSearchResultGraph], {
+    name: 'viewerSearchClubMembers',
+    description:
+      "Recherche d'adhérents du club courant pour démarrer un chat 1-on-1. " +
+      'Match insensible à la casse sur pseudo, firstName, lastName. Retourne ' +
+      'au max 20 résultats par défaut, exclut le viewer lui-même.',
+  })
+  @RequireClubModule(ModuleCode.MESSAGING)
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @UseGuards(GqlThrottlerGuard)
+  async viewerSearchClubMembers(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('q') q: string,
+    @Args('limit', { type: () => Number, nullable: true })
+    limit?: number,
+  ): Promise<MemberSearchResultGraph[]> {
+    if (!user.activeProfileMemberId) {
+      throw new BadRequestException('Profil adhérent requis.');
+    }
+    return this.messaging.searchClubMembers(
+      club.id,
+      user.activeProfileMemberId,
+      q,
+      limit ?? 20,
     );
   }
 

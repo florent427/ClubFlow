@@ -256,6 +256,26 @@ export const CLUB = gql`
 `;
 
 /**
+ * Crée une session Stripe Checkout pour régler une facture du foyer
+ * viewer. Le `url` retourné est ouvert dans le navigateur via
+ * `Linking.openURL` — Stripe gère le tunnel paiement hors-app.
+ */
+export const VIEWER_CREATE_INVOICE_CHECKOUT_SESSION = gql`
+  mutation ViewerCreateInvoiceCheckoutSession(
+    $invoiceId: String!
+    $installmentsCount: Int
+  ) {
+    viewerCreateInvoiceCheckoutSession(
+      invoiceId: $invoiceId
+      installmentsCount: $installmentsCount
+    ) {
+      url
+      sessionId
+    }
+  }
+`;
+
+/**
  * Identité visuelle du club : couleurs (palette vitrine) + logo + nom +
  * tagline. Utilisée par le ThemeProvider mobile pour styliser
  * dynamiquement l'app aux couleurs du club courant.

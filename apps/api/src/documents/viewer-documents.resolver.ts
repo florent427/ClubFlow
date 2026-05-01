@@ -35,6 +35,26 @@ export class ViewerDocumentsResolver {
   ): Promise<ClubDocumentGraph[]> {
     const targetMemberId =
       memberId ?? user.activeProfileMemberId ?? null;
+
+    // **Restriction adulte** : la signature engage juridiquement et
+    // ne peut être accomplie que par un adulte responsable. Les profils
+    // mineurs (membres < 18 ans) renvoient une liste vide — le parent
+    // doit basculer sur SON profil pour signer pour lui-même, ou rester
+    // payeur du foyer pour les autorisations parentales (qu'il signe au
+    // nom des enfants depuis son propre profil).
+    //
+    // Si le profil actif n'a pas de date de naissance renseignée, on
+    // affiche par défaut (évite de cacher la fonctionnalité par erreur).
+    if (targetMemberId) {
+      const member = await this.prisma.member.findUnique({
+        where: { id: targetMemberId },
+        select: { birthDate: true },
+      });
+      if (member?.birthDate && isMinor(member.birthDate)) {
+        return [];
+      }
+    }
+
     const rows = await this.documents.listToSignForViewer(
       club.id,
       user.userId,
@@ -142,6 +162,20 @@ export class ViewerDocumentsResolver {
     );
     return signedDocumentToGraph(this.prisma, row);
   }
+}
+
+/**
+ * True si la personne est strictement mineure (< 18 ans à la date du
+ * jour, calcul UTC pour éviter les sauts de jour selon le fuseau).
+ */
+function isMinor(birthDate: Date): boolean {
+  const now = new Date();
+  let age = now.getUTCFullYear() - birthDate.getUTCFullYear();
+  const m = now.getUTCMonth() - birthDate.getUTCMonth();
+  if (m < 0 || (m === 0 && now.getUTCDate() < birthDate.getUTCDate())) {
+    age--;
+  }
+  return age < 18;
 }
 
 /**

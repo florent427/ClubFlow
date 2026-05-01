@@ -114,3 +114,30 @@ export const VIEWER_UPDATE_MY_PSEUDO = gql`
     }
   }
 `;
+
+/**
+ * Recherche d'adhérents pour démarrer un chat 1-on-1.
+ * Match insensible à la casse sur pseudo, firstName, lastName.
+ */
+export const VIEWER_SEARCH_CLUB_MEMBERS = gql`
+  query ViewerSearchClubMembers($q: String!, $limit: Float) {
+    viewerSearchClubMembers(q: $q, limit: $limit) {
+      id
+      firstName
+      lastName
+      pseudo
+      photoUrl
+    }
+  }
+`;
+
+/**
+ * Crée (ou récupère, idempotent) un salon DIRECT 1-on-1 avec un peer.
+ */
+export const VIEWER_GET_OR_CREATE_DIRECT_CHAT = gql`
+  mutation ViewerGetOrCreateDirectChat($peerMemberId: ID!) {
+    viewerGetOrCreateDirectChat(peerMemberId: $peerMemberId) {
+      ${ROOM_FIELDS}
+    }
+  }
+`;

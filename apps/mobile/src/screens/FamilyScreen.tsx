@@ -1,7 +1,10 @@
-import { useQuery } from '@apollo/client/react';
+import { useMutation, useQuery } from '@apollo/client/react';
 import { useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Image,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,13 +20,23 @@ import {
 } from '../components/ui';
 import { InviteFamilyMemberCta } from '../components/InviteFamilyMemberCta';
 import { JoinFamilyByPayerEmailCta } from '../components/JoinFamilyByPayerEmailCta';
-import { VIEWER_ALL_FAMILY_BILLING } from '../lib/viewer-documents';
+import {
+  VIEWER_ALL_FAMILY_BILLING,
+  VIEWER_CREATE_INVOICE_CHECKOUT_SESSION,
+} from '../lib/viewer-documents';
 import type {
   ViewerAllFamilyBillingData,
   ViewerFamilyBillingSummary,
 } from '../lib/viewer-types';
 import { formatEuroCents } from '../lib/format';
 import { palette, radius, shadow, spacing, typography } from '../lib/theme';
+
+type ViewerCreateInvoiceCheckoutSessionData = {
+  viewerCreateInvoiceCheckoutSession: {
+    url: string;
+    sessionId: string;
+  };
+};
 
 function statusLabel(status: string): string {
   switch (status) {
@@ -351,8 +364,89 @@ function InvoiceCard({
 }: {
   inv: ViewerFamilyBillingSummary['invoices'][number];
 }) {
+  // Une facture est payable si elle a un solde > 0 et n'est pas en
+  // brouillon / annulée. Pour le reste, le card reste affiché mais
+  // non-cliquable (juste de la lecture des paiements passés).
+  const payable = inv.balanceCents > 0 && inv.status !== 'DRAFT';
+
+  const [createCheckout, { loading: starting }] =
+    useMutation<ViewerCreateInvoiceCheckoutSessionData>(
+      VIEWER_CREATE_INVOICE_CHECKOUT_SESSION,
+    );
+
+  async function startPayment(installmentsCount?: number) {
+    try {
+      const { data } = await createCheckout({
+        variables: { invoiceId: inv.id, installmentsCount },
+      });
+      const url = data?.viewerCreateInvoiceCheckoutSession?.url;
+      if (!url) {
+        Alert.alert(
+          'Indisponible',
+          'Impossible d\'initier le paiement. Réessayez plus tard.',
+        );
+        return;
+      }
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) {
+        Alert.alert(
+          'Navigateur introuvable',
+          'Aucune application ne peut ouvrir le lien de paiement Stripe.',
+        );
+        return;
+      }
+      await Linking.openURL(url);
+    } catch (err) {
+      Alert.alert(
+        'Erreur',
+        err instanceof Error
+          ? err.message
+          : 'Impossible de lancer le paiement.',
+      );
+    }
+  }
+
+  function handlePress() {
+    if (!payable || starting) return;
+    // Sheet à 2 options : 1× ou 3× (Stripe peut refuser le 3× selon la
+    // config du compte du club — on laisse Stripe trancher côté serveur).
+    Alert.alert(
+      'Régler cette facture',
+      `Solde restant : ${formatEuroCents(inv.balanceCents)}\nChoisissez le mode de règlement.`,
+      [
+        {
+          text: 'Payer en 1 fois',
+          onPress: () => void startPayment(1),
+        },
+        {
+          text: 'Payer en 3 fois',
+          onPress: () => void startPayment(3),
+        },
+        { text: 'Annuler', style: 'cancel' },
+      ],
+      { cancelable: true },
+    );
+  }
+
+  // On enveloppe systématiquement dans un Pressable — il devient un
+  // container "non interactif" si la facture n'est pas payable, ce qui
+  // évite de devoir gérer 2 arbres JSX différents.
   return (
-    <View style={[styles.invCard, statusStyle(inv.status)]}>
+    <Pressable
+      onPress={handlePress}
+      disabled={!payable || starting}
+      accessibilityRole={payable ? 'button' : undefined}
+      accessibilityLabel={
+        payable
+          ? `Payer ${formatEuroCents(inv.balanceCents)} pour ${inv.label}`
+          : `Facture ${inv.label} ${statusLabel(inv.status)}`
+      }
+      style={({ pressed }) => [
+        styles.invCard,
+        statusStyle(inv.status),
+        payable && pressed && { opacity: 0.85 },
+      ]}
+    >
       <View style={styles.invHead}>
         <Text style={styles.invBadge}>{statusLabel(inv.status)}</Text>
         <Text style={styles.invAmount}>
@@ -380,7 +474,30 @@ function InvoiceCard({
           ))}
         </View>
       ) : null}
-    </View>
+      {payable ? (
+        <View style={styles.payCtaRow}>
+          {starting ? (
+            <ActivityIndicator size="small" color={palette.primary} />
+          ) : (
+            <>
+              <Ionicons
+                name="card-outline"
+                size={16}
+                color={palette.primary}
+              />
+              <Text style={styles.payCtaText}>
+                Toucher pour régler en ligne
+              </Text>
+              <Ionicons
+                name="chevron-forward"
+                size={16}
+                color={palette.primary}
+              />
+            </>
+          )}
+        </View>
+      ) : null}
+    </Pressable>
   );
 }
 
@@ -513,4 +630,18 @@ const styles = StyleSheet.create({
   invBalance: { ...typography.smallStrong, color: palette.danger },
   payList: { marginTop: spacing.sm, gap: 2 },
   payLine: { ...typography.small, color: palette.muted },
+  payCtaRow: {
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: palette.borderStrong,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
+  payCtaText: {
+    ...typography.smallStrong,
+    color: palette.primary,
+  },
 });

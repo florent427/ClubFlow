@@ -186,6 +186,61 @@ export class MessagingService {
     return { id: room.id };
   }
 
+  /**
+   * Recherche d'adhérents pour démarrer un chat 1-on-1 — utilisée par
+   * le mobile (NewChatScreen).
+   *
+   * Match sur `pseudo`, `firstName` et `lastName` (insensible à la
+   * casse, recherche partielle). Filtre :
+   *  - club courant (sécurité multi-tenant)
+   *  - membres ACTIFS uniquement (pas d'archivés)
+   *  - exclut le viewer lui-même (pas d'auto-recherche)
+   *  - limite (par défaut 20) pour éviter les listes interminables
+   *
+   * Si `q` est vide ou < 2 caractères, on retourne vide pour éviter
+   * de cracher la liste complète des adhérents.
+   */
+  async searchClubMembers(
+    clubId: string,
+    viewerMemberId: string,
+    q: string,
+    limit: number = 20,
+  ): Promise<
+    Array<{
+      id: string;
+      firstName: string;
+      lastName: string;
+      pseudo: string | null;
+      photoUrl: string | null;
+    }>
+  > {
+    const query = q.trim();
+    if (query.length < 2) return [];
+    const cap = Math.min(Math.max(limit, 1), 50);
+    const rows = await this.prisma.member.findMany({
+      where: {
+        clubId,
+        status: MemberStatus.ACTIVE,
+        id: { not: viewerMemberId },
+        OR: [
+          { pseudo: { contains: query, mode: 'insensitive' } },
+          { firstName: { contains: query, mode: 'insensitive' } },
+          { lastName: { contains: query, mode: 'insensitive' } },
+        ],
+      },
+      orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
+      take: cap,
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        pseudo: true,
+        photoUrl: true,
+      },
+    });
+    return rows;
+  }
+
   async listRoomsForMember(clubId: string, memberId: string) {
     await this.ensureCommunityRoom(clubId);
     return this.prisma.chatRoom.findMany({
