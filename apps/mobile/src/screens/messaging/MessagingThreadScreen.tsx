@@ -9,7 +9,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
+  Image,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -46,13 +48,30 @@ import { palette, radius, shadow, spacing, typography } from '../../lib/theme';
 import { useClubTheme } from '../../lib/theme-context';
 import { VIEWER_ME } from '../../lib/viewer-documents';
 import type { ViewerMeData } from '../../lib/viewer-types';
+import { absolutizeMediaUrl } from '../../lib/absolutize-url';
+import type { UploadedMediaAsset, MediaUploadKind } from '../../lib/media-upload';
+import { AttachmentPickerSheet } from './AttachmentPickerSheet';
+import { VoicePlayer, VoiceRecorder } from './VoiceComponents';
 import {
   QUICK_EMOJIS,
   roomLabel,
+  type ChatAttachmentKind,
+  type ChatMessageAttachment,
   type ChatMessageRow,
   type ChatRoomRow,
   type MessagingStackParamList,
 } from './types';
+
+/**
+ * État local d'une pièce jointe en attente d'envoi (après upload mais
+ * avant la mutation `viewerPostChatMessage`). Affichée comme chip dans
+ * le composer pour permettre la suppression avant envoi.
+ */
+type PendingAttachment = {
+  asset: UploadedMediaAsset;
+  kind: MediaUploadKind;
+  durationMs?: number;
+};
 
 function apiOrigin(): string {
   const u =
@@ -81,6 +100,13 @@ export function MessagingThreadScreen({ route }: Props) {
 
   const { roomId } = route.params;
   const [draft, setDraft] = useState('');
+  // Pièces jointes uploadées et en attente d'envoi (chips dans le
+  // composer). Vidé après chaque `viewerPostChatMessage` réussi.
+  const [pendingAttachments, setPendingAttachments] = useState<
+    PendingAttachment[]
+  >([]);
+  const [attachmentSheetOpen, setAttachmentSheetOpen] = useState(false);
+  const [voiceRecording, setVoiceRecording] = useState(false);
   const [openThreadId, setOpenThreadId] = useState<string | null>(null);
   const [threadDraft, setThreadDraft] = useState('');
   /** ID du message ciblé par le menu long-press (null = sheet fermé). */
@@ -221,14 +247,19 @@ export function MessagingThreadScreen({ route }: Props) {
   }, [items.length]);
 
   async function onSendRoot() {
-    if (!draft.trim()) return;
+    const trimmed = draft.trim();
+    const hasAttachments = pendingAttachments.length > 0;
+    // Un message doit avoir AU MOINS un texte ou des pièces jointes.
+    if (!trimmed && !hasAttachments) return;
     try {
       // Mode édition : on appelle viewerEditChatMessage au lieu de
       // postMessage et on ferme le mode édition après succès.
+      // NB : l'édition ne touche PAS aux attachments en v1 — pour
+      // changer les attachments l'utilisateur doit supprimer + repost.
       if (editingMessageId) {
         await editMessage({
           variables: {
-            input: { messageId: editingMessageId, body: draft.trim() },
+            input: { messageId: editingMessageId, body: trimmed },
           },
         });
         setEditingMessageId(null);
@@ -237,9 +268,19 @@ export function MessagingThreadScreen({ route }: Props) {
         return;
       }
       await postMessage({
-        variables: { input: { roomId, body: draft.trim() } },
+        variables: {
+          input: {
+            roomId,
+            body: trimmed || null,
+            attachmentMediaAssetIds:
+              pendingAttachments.length > 0
+                ? pendingAttachments.map((p) => p.asset.id)
+                : null,
+          },
+        },
       });
       setDraft('');
+      setPendingAttachments([]);
       void refetchMessages();
     } catch (err: unknown) {
       const msg =
@@ -261,12 +302,15 @@ export function MessagingThreadScreen({ route }: Props) {
         break;
       }
       case 'copy': {
-        await Clipboard.setStringAsync(target.body);
+        // body peut être null pour les messages 100% pièces jointes —
+        // on copie juste vide dans ce cas (l'action est exposée mais
+        // sans effet utile, le user verra l'alert clipboard).
+        await Clipboard.setStringAsync(target.body ?? '');
         break;
       }
       case 'forward': {
         try {
-          await Share.share({ message: target.body });
+          await Share.share({ message: target.body ?? '' });
         } catch {
           /* user cancelled */
         }
@@ -274,7 +318,7 @@ export function MessagingThreadScreen({ route }: Props) {
       }
       case 'edit': {
         setEditingMessageId(target.id);
-        setDraft(target.body);
+        setDraft(target.body ?? '');
         break;
       }
       case 'delete': {
@@ -502,6 +546,35 @@ export function MessagingThreadScreen({ route }: Props) {
             onSend={() => void onSendRoot()}
             primary={primary}
             placeholder={editingMessageId ? 'Modifier…' : 'Message…'}
+            pendingAttachments={pendingAttachments}
+            onRemoveAttachment={(id) =>
+              setPendingAttachments((prev) =>
+                prev.filter((p) => p.asset.id !== id),
+              )
+            }
+            onOpenAttachmentSheet={() => setAttachmentSheetOpen(true)}
+            onVoiceRecorded={(asset, durationMs) => {
+              // Auto-send : un vocal est posté immédiatement (pattern
+              // WhatsApp). On bypass le pending state et envoie via
+              // postMessage avec un attachmentMediaAssetIds dédié.
+              void postMessage({
+                variables: {
+                  input: {
+                    roomId,
+                    body: null,
+                    attachmentMediaAssetIds: [asset.id],
+                  },
+                },
+              })
+                .then(() => void refetchMessages())
+                .catch((err: unknown) => {
+                  Alert.alert(
+                    'Erreur',
+                    err instanceof Error ? err.message : 'Échec envoi vocal',
+                  );
+                });
+            }}
+            onVoiceRecordingChange={setVoiceRecording}
           />
         ) : (
           <View style={[styles.composer, { paddingBottom: insets.bottom || spacing.md }]}>
@@ -583,6 +656,13 @@ export function MessagingThreadScreen({ route }: Props) {
               onSend={() => void onSendReply()}
               primary={primary}
               placeholder="Répondre dans le fil…"
+              // Pas de pièces jointes en réponse en fil pour l'instant
+              // (UX simplification — restreint aux messages racine).
+              pendingAttachments={[]}
+              onRemoveAttachment={() => undefined}
+              onOpenAttachmentSheet={() => undefined}
+              onVoiceRecorded={() => undefined}
+              onVoiceRecordingChange={() => undefined}
             />
           ) : null}
         </KeyboardAvoidingView>
@@ -637,6 +717,20 @@ export function MessagingThreadScreen({ route }: Props) {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Sheet "Ajouter une pièce jointe" — caméra/galerie/vidéo/PDF.
+          Le rendu de l'asset uploadé est géré dans `pendingAttachments`
+          puis envoyé via `viewerPostChatMessage` au prochain Send. */}
+      <AttachmentPickerSheet
+        visible={attachmentSheetOpen}
+        onClose={() => setAttachmentSheetOpen(false)}
+        onUploaded={(asset, kind) => {
+          setPendingAttachments((prev) => [
+            ...prev,
+            { asset, kind },
+          ]);
+        }}
+      />
     </View>
   );
 }
@@ -735,7 +829,25 @@ function Bubble({
             </Text>
           ) : null}
 
-          <Text style={styles.bubbleBody}>{msg.body}</Text>
+          {/* Pièces jointes — affichées AVANT le body texte. Chaque
+              attachment a son viewer dédié (image inline, lecteur audio,
+              thumbnail vidéo + tap pour player, lien PDF). */}
+          {msg.attachments && msg.attachments.length > 0 ? (
+            <View style={styles.attachmentsCol}>
+              {msg.attachments.map((a) => (
+                <AttachmentView
+                  key={a.id}
+                  attachment={a}
+                  primary={primary}
+                  mine={mine}
+                />
+              ))}
+            </View>
+          ) : null}
+
+          {msg.body ? (
+            <Text style={styles.bubbleBody}>{msg.body}</Text>
+          ) : null}
           <View style={styles.bubbleFooter}>
             {msg.editedAt ? (
               <Text style={styles.bubbleEdited}>modifié</Text>
@@ -807,14 +919,26 @@ function Composer({
   onSend,
   primary,
   placeholder,
+  pendingAttachments,
+  onRemoveAttachment,
+  onOpenAttachmentSheet,
+  onVoiceRecorded,
+  onVoiceRecordingChange,
 }: {
   value: string;
   onChange: (v: string) => void;
   onSend: () => void;
   primary: string;
   placeholder?: string;
+  pendingAttachments: PendingAttachment[];
+  onRemoveAttachment: (assetId: string) => void;
+  onOpenAttachmentSheet: () => void;
+  onVoiceRecorded: (asset: UploadedMediaAsset, durationMs: number) => void;
+  onVoiceRecordingChange: (recording: boolean) => void;
 }) {
   const insets = useSafeAreaInsets();
+  const hasContent = value.trim().length > 0 || pendingAttachments.length > 0;
+
   return (
     <View
       style={[
@@ -822,13 +946,45 @@ function Composer({
         { paddingBottom: Math.max(insets.bottom, spacing.sm) + spacing.xs },
       ]}
     >
+      {/* Chips des pièces jointes en attente — au-dessus de la zone d'input */}
+      {pendingAttachments.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.attachChipsRow}
+          style={styles.attachChipsScroll}
+        >
+          {pendingAttachments.map((a) => (
+            <View key={a.asset.id} style={styles.attachChip}>
+              <Ionicons
+                name={iconForKind(a.kind)}
+                size={14}
+                color={palette.primary}
+              />
+              <Text style={styles.attachChipText} numberOfLines={1}>
+                {a.kind === 'audio' ? 'Vocal' : a.asset.fileName}
+              </Text>
+              <Pressable
+                onPress={() => onRemoveAttachment(a.asset.id)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Retirer cette pièce jointe"
+              >
+                <Ionicons name="close" size={14} color={palette.muted} />
+              </Pressable>
+            </View>
+          ))}
+        </ScrollView>
+      ) : null}
+
       <View style={styles.composerInputWrap}>
         <Pressable
           style={styles.composerIcon}
           accessibilityRole="button"
-          accessibilityLabel="Emoji"
+          accessibilityLabel="Joindre une pièce"
+          onPress={onOpenAttachmentSheet}
         >
-          <Ionicons name="happy-outline" size={22} color={palette.muted} />
+          <Ionicons name="add-circle-outline" size={26} color={primary} />
         </Pressable>
         <TextInput
           style={styles.composerInput}
@@ -838,40 +994,172 @@ function Composer({
           placeholderTextColor={palette.muted}
           multiline
         />
-        <Pressable
-          style={styles.composerIcon}
-          accessibilityRole="button"
-          accessibilityLabel="Joindre"
-        >
-          <Ionicons name="attach-outline" size={22} color={palette.muted} />
-        </Pressable>
       </View>
-      <AnimatedPressable
-        onPress={onSend}
-        haptic
-        accessibilityRole="button"
-        accessibilityLabel="Envoyer"
-        style={[
-          styles.sendBtn,
-          { opacity: value.trim() ? 1 : 0.6 },
-        ]}
-        disabled={!value.trim()}
-      >
-        <LinearGradient
-          colors={[primary, '#7c3aed']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.sendBtnInner}
+
+      {/*
+        Bouton droite :
+        - micro tant que pas de texte ET pas d'attachments → enregistre vocal
+        - bouton send dès qu'on a du texte ou des attachments
+      */}
+      {hasContent ? (
+        <AnimatedPressable
+          onPress={onSend}
+          haptic
+          accessibilityRole="button"
+          accessibilityLabel="Envoyer"
+          style={styles.sendBtn}
         >
-          <Ionicons
-            name={value.trim() ? 'send' : 'mic-outline'}
-            size={18}
-            color="#ffffff"
-          />
-        </LinearGradient>
-      </AnimatedPressable>
+          <LinearGradient
+            colors={[primary, '#7c3aed']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.sendBtnInner}
+          >
+            <Ionicons name="send" size={18} color="#ffffff" />
+          </LinearGradient>
+        </AnimatedPressable>
+      ) : (
+        <VoiceRecorder
+          color={primary}
+          onRecorded={onVoiceRecorded}
+          onRecordingStateChange={onVoiceRecordingChange}
+        />
+      )}
     </View>
   );
+}
+
+function iconForKind(kind: MediaUploadKind): keyof typeof Ionicons.glyphMap {
+  switch (kind) {
+    case 'image':
+      return 'image-outline';
+    case 'video':
+      return 'film-outline';
+    case 'audio':
+      return 'mic-outline';
+    case 'document':
+      return 'document-attach-outline';
+  }
+}
+
+/**
+ * Rendu d'une pièce jointe selon son `kind`. Image inline,
+ * lecteur audio, thumbnail vidéo (avec play overlay), lien PDF.
+ * Affichée dans la bulle de message, au-dessus du body texte.
+ */
+function AttachmentView({
+  attachment,
+  primary,
+  mine,
+}: {
+  attachment: ChatMessageAttachment;
+  primary: string;
+  mine: boolean;
+}) {
+  const url = absolutizeMediaUrl(attachment.mediaUrl) ?? attachment.mediaUrl;
+  const thumbUrl = attachment.thumbnailUrl
+    ? absolutizeMediaUrl(attachment.thumbnailUrl) ?? attachment.thumbnailUrl
+    : null;
+
+  switch (attachment.kind as ChatAttachmentKind) {
+    case 'IMAGE':
+      return (
+        <Pressable
+          onPress={() => {
+            // Tap → ouvre l'image en plein écran via le navigateur
+            // pour profiter du pinch-zoom natif. Une vraie lightbox
+            // serait l'étape v2.
+            void Linking.openURL(url).catch(() => undefined);
+          }}
+          accessibilityRole="image"
+          accessibilityLabel="Image"
+        >
+          <Image
+            source={{ uri: url }}
+            style={styles.attachmentImage}
+            resizeMode="cover"
+          />
+        </Pressable>
+      );
+
+    case 'AUDIO':
+      return (
+        <View style={styles.attachmentAudio}>
+          <VoicePlayer
+            url={url}
+            durationMs={attachment.durationMs}
+            color={mine ? '#075e54' : primary}
+          />
+        </View>
+      );
+
+    case 'VIDEO':
+      return (
+        <Pressable
+          onPress={() => {
+            void Linking.openURL(url).catch(() => undefined);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Lire la vidéo"
+          style={styles.attachmentVideo}
+        >
+          {thumbUrl ? (
+            <Image
+              source={{ uri: thumbUrl }}
+              style={styles.attachmentImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View
+              style={[styles.attachmentImage, styles.attachmentVideoPlaceholder]}
+            >
+              <Ionicons name="film" size={36} color={palette.muted} />
+            </View>
+          )}
+          <View style={styles.attachmentVideoOverlay}>
+            <Ionicons name="play-circle" size={48} color="#ffffff" />
+          </View>
+        </Pressable>
+      );
+
+    case 'DOCUMENT':
+      return (
+        <Pressable
+          onPress={() => {
+            void Linking.openURL(url).catch(() => undefined);
+          }}
+          accessibilityRole="link"
+          accessibilityLabel={`Ouvrir ${attachment.fileName}`}
+          style={({ pressed }) => [
+            styles.attachmentDoc,
+            pressed && { opacity: 0.85 },
+          ]}
+        >
+          <View style={styles.attachmentDocIcon}>
+            <Ionicons
+              name="document-text-outline"
+              size={24}
+              color={palette.primary}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.attachmentDocName} numberOfLines={1}>
+              {attachment.fileName}
+            </Text>
+            <Text style={styles.attachmentDocSize}>
+              {formatBytes(attachment.sizeBytes)} · PDF
+            </Text>
+          </View>
+          <Ionicons name="open-outline" size={18} color={palette.muted} />
+        </Pressable>
+      );
+  }
+}
+
+function formatBytes(b: number): string {
+  if (b < 1024) return `${b} o`;
+  if (b < 1024 * 1024) return `${Math.round(b / 1024)} ko`;
+  return `${(b / (1024 * 1024)).toFixed(1)} Mo`;
 }
 
 // --- Constants ---
@@ -1022,6 +1310,88 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     color: palette.ink,
     fontFamily: typography.body.fontFamily,
+  },
+
+  // ─── Attachments dans la bulle ───────────────────────────────
+  attachmentsCol: {
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  attachmentImage: {
+    width: 220,
+    height: 220,
+    borderRadius: radius.md,
+    backgroundColor: palette.bg,
+  },
+  attachmentVideo: {
+    position: 'relative',
+  },
+  attachmentVideoPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachmentVideoOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.15)',
+    borderRadius: radius.md,
+  },
+  attachmentAudio: {
+    backgroundColor: 'rgba(0,0,0,0.04)',
+    borderRadius: radius.md,
+    minWidth: 220,
+  },
+  attachmentDoc: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(0,0,0,0.04)',
+    minWidth: 220,
+  },
+  attachmentDocIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.sm,
+    backgroundColor: palette.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachmentDocName: {
+    ...typography.smallStrong,
+    color: palette.ink,
+  },
+  attachmentDocSize: {
+    ...typography.caption,
+    color: palette.muted,
+    marginTop: 2,
+  },
+
+  // Pending attachments dans le composer (chips au-dessus de l'input)
+  attachChipsScroll: {
+    marginBottom: spacing.xs,
+  },
+  attachChipsRow: {
+    gap: spacing.xs,
+    paddingRight: spacing.md,
+  },
+  attachChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    backgroundColor: palette.primaryLight,
+    borderWidth: 1,
+    borderColor: palette.primary,
+  },
+  attachChipText: {
+    ...typography.caption,
+    color: palette.primaryDark ?? palette.primary,
+    maxWidth: 120,
   },
   bubbleFooter: {
     flexDirection: 'row',

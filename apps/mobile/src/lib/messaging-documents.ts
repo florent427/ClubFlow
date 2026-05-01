@@ -39,11 +39,23 @@ const MESSAGE_FIELDS = `
     pseudo
     firstName
     lastName
+    photoUrl
   }
   reactions {
     emoji
     count
     reactedByViewer
+  }
+  attachments {
+    id
+    kind
+    mediaAssetId
+    mediaUrl
+    thumbnailUrl
+    fileName
+    mimeType
+    sizeBytes
+    durationMs
   }
 `;
 

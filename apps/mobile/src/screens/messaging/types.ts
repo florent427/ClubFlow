@@ -6,10 +6,25 @@ export type ReactionGroup = {
   reactedByViewer: boolean;
 };
 
+export type ChatAttachmentKind = 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT';
+
+export type ChatMessageAttachment = {
+  id: string;
+  kind: ChatAttachmentKind;
+  mediaAssetId: string;
+  mediaUrl: string;
+  thumbnailUrl: string | null;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  durationMs: number | null;
+};
+
 export type ChatMessageRow = {
   id: string;
   roomId: string;
-  body: string;
+  /** Désormais nullable : message peut être 100% pièces jointes. */
+  body: string | null;
   createdAt: string;
   editedAt: string | null;
   parentMessageId: string | null;
@@ -21,8 +36,10 @@ export type ChatMessageRow = {
     pseudo: string | null;
     firstName: string;
     lastName: string;
+    photoUrl?: string | null;
   };
   reactions: ReactionGroup[];
+  attachments: ChatMessageAttachment[];
 };
 
 export type ChatRoomRow = {
