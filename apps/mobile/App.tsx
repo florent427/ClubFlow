@@ -24,7 +24,9 @@ import { RootNavigator } from './src/navigation/RootNavigator';
 import type { RootStackParamList } from './src/types/navigation';
 
 export default function App() {
-  const [fontsLoaded] = useFonts({
+  // eslint-disable-next-line no-console
+  console.log('[App] boot');
+  const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
@@ -36,9 +38,24 @@ export default function App() {
     keyof RootStackParamList | null
   >(null);
 
+  // Logs d'avancement du boot — à supprimer une fois le diagnostic fait.
+  useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log(
+      '[App] fonts state',
+      JSON.stringify({ fontsLoaded, fontError: fontError?.message ?? null }),
+    );
+  }, [fontsLoaded, fontError]);
+  useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log('[App] initialRoute =', initialRoute);
+  }, [initialRoute]);
+
   useEffect(() => {
     void (async () => {
       try {
+        // eslint-disable-next-line no-console
+        console.log('[App] storage check…');
         // Si l'app est ouverte par un deep-link verify-email, on traite
         // le token AVANT de regarder la session existante. La logique
         // d'ouverture est gérée par le linking config + VerifyEmailScreen.
@@ -60,7 +77,9 @@ export default function App() {
           return;
         }
         setInitialRoute('Login');
-      } catch {
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[App] storage check failed', err);
         setInitialRoute('Login');
       }
     })();
@@ -87,7 +106,12 @@ export default function App() {
     [],
   );
 
-  if (initialRoute === null || !fontsLoaded) {
+  // **Fonts non-bloquantes** : si la CDN Google Fonts est inaccessible
+  // (réseau restreint, captive portal…), `useFonts` peut hanger
+  // indéfiniment. On ne bloque QUE sur `initialRoute === null` (storage
+  // check). Sans les fonts custom, RN tombe sur la system font — visuel
+  // dégradé mais l'app est utilisable.
+  if (initialRoute === null) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color={palette.primary} />
