@@ -46,6 +46,7 @@ import {
   AccountingDocumentGraph,
   AccountingEntryGraph,
   AccountingEntryLineGraph,
+  AccountingExtractionGraph,
 } from './models/accounting-entry.model';
 import { AccountingSuggestionGraph } from './models/accounting-suggestion.model';
 import { AccountingSummaryGraph } from './models/accounting-summary.model';
@@ -111,6 +112,19 @@ interface EntryRow {
     mediaAssetId: string;
     mediaAsset: { fileName: string; publicUrl: string; mimeType: string };
   }>;
+  extraction?: {
+    id: string;
+    extractedVendor: string | null;
+    extractedInvoiceNumber: string | null;
+    extractedTotalCents: number | null;
+    extractedVatCents: number | null;
+    extractedDate: Date | null;
+    extractedAccountCode: string | null;
+    confidencePerField: unknown;
+    categorizationJson: unknown;
+    model: string | null;
+    error: string | null;
+  } | null;
 }
 
 function toGraph(entry: EntryRow): AccountingEntryGraph {
@@ -177,6 +191,27 @@ function toGraph(entry: EntryRow): AccountingEntryGraph {
         mimeType: d.mediaAsset.mimeType,
       }),
     ),
+    extraction: entry.extraction
+      ? ({
+          id: entry.extraction.id,
+          extractedVendor: entry.extraction.extractedVendor,
+          extractedInvoiceNumber: entry.extraction.extractedInvoiceNumber,
+          extractedTotalCents: entry.extraction.extractedTotalCents,
+          extractedVatCents: entry.extraction.extractedVatCents,
+          extractedDate: entry.extraction.extractedDate,
+          extractedAccountCode: entry.extraction.extractedAccountCode,
+          confidencePerFieldJson:
+            entry.extraction.confidencePerField != null
+              ? JSON.stringify(entry.extraction.confidencePerField)
+              : null,
+          categorizationJson:
+            entry.extraction.categorizationJson != null
+              ? JSON.stringify(entry.extraction.categorizationJson)
+              : null,
+          model: entry.extraction.model,
+          error: entry.extraction.error,
+        } satisfies AccountingExtractionGraph)
+      : null,
   };
 }
 

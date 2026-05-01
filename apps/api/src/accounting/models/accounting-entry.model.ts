@@ -96,6 +96,48 @@ export class AccountingEntryLineGraph {
 }
 
 @ObjectType()
+export class AccountingExtractionGraph {
+  @Field(() => ID)
+  id!: string;
+
+  @Field(() => String, { nullable: true })
+  extractedVendor!: string | null;
+
+  @Field(() => String, { nullable: true })
+  extractedInvoiceNumber!: string | null;
+
+  @Field(() => Int, { nullable: true })
+  extractedTotalCents!: number | null;
+
+  @Field(() => Int, { nullable: true })
+  extractedVatCents!: number | null;
+
+  @Field(() => Date, { nullable: true })
+  extractedDate!: Date | null;
+
+  @Field(() => String, { nullable: true })
+  extractedAccountCode!: string | null;
+
+  /** JSON stringifié — `{ vendor: 0.95, ... }`. Le client parse. */
+  @Field(() => String, { nullable: true })
+  confidencePerFieldJson!: string | null;
+
+  /**
+   * JSON stringifié de la décision IA finale (sortie du comparateur) :
+   * `{ globalConfidencePct, globalReasoning, agreement, lines: [...] }`.
+   * Null si le pipeline a totalement échoué.
+   */
+  @Field(() => String, { nullable: true })
+  categorizationJson!: string | null;
+
+  @Field(() => String, { nullable: true })
+  model!: string | null;
+
+  @Field(() => String, { nullable: true })
+  error!: string | null;
+}
+
+@ObjectType()
 export class AccountingDocumentGraph {
   @Field(() => ID)
   id!: string;
@@ -175,4 +217,11 @@ export class AccountingEntryGraph {
 
   @Field(() => [AccountingDocumentGraph])
   documents!: AccountingDocumentGraph[];
+
+  /**
+   * Extraction IA associée (présente si l'écriture est issue de l'OCR
+   * receipt scanner). Null pour les écritures saisies manuellement.
+   */
+  @Field(() => AccountingExtractionGraph, { nullable: true })
+  extraction!: AccountingExtractionGraph | null;
 }

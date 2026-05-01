@@ -46,9 +46,9 @@ type EntryLine = {
   label: string | null;
   debitCents: number;
   creditCents: number;
-  sortOrder: number;
   validatedAt: string | null;
   iaSuggestedAccountCode: string | null;
+  iaReasoning: string | null;
   iaConfidencePct: number | null;
   mergedFromArticleLabels: string[];
 };
@@ -56,7 +56,6 @@ type EntryLine = {
 type EntryDocument = {
   id: string;
   mediaAssetId: string;
-  kind: string;
 };
 
 type EntryExtraction = {
@@ -67,10 +66,67 @@ type EntryExtraction = {
   extractedVatCents: number | null;
   extractedDate: string | null;
   extractedAccountCode: string | null;
-  confidencePerField: Record<string, number> | null;
+  /** JSON stringifié — `{ vendor: 0.95, ... }`. À parser. */
+  confidencePerFieldJson: string | null;
+  /** JSON stringifié de la décision IA finale (sortie du comparateur). */
+  categorizationJson: string | null;
   model: string | null;
   error: string | null;
 };
+
+/**
+ * Forme parsée de `categorizationJson`. Décision finale produite par le
+ * comparateur IA (ou par fallback expertise/OCR brut).
+ */
+type CategorizedDecision = {
+  vendor: string | null;
+  invoiceNumber: string | null;
+  totalTtcCents: number;
+  date: string | null;
+  globalReasoning: string;
+  globalConfidencePct: number;
+  agreement: {
+    vendor: boolean;
+    total: boolean;
+    date: boolean;
+    lines: boolean;
+  };
+  lines: Array<{
+    accountCode: string;
+    amountCents: number;
+    label: string;
+    reasoning: string;
+    confidencePct: number;
+    projectId: string | null;
+    sourceLabels: string[];
+  }>;
+};
+
+/** Seuil au-dessus duquel on bascule en "validation rapide" (1 clic). */
+const QUICK_VALIDATE_THRESHOLD = 85;
+
+function safeParseDecision(
+  raw: string | null | undefined,
+): CategorizedDecision | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as CategorizedDecision;
+  } catch {
+    return null;
+  }
+}
+
+function safeParseConfidence(
+  raw: string | null | undefined,
+): Record<string, number> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as Record<string, number>;
+    return typeof parsed === 'object' && parsed !== null ? parsed : {};
+  } catch {
+    return {};
+  }
+}
 
 type Entry = {
   id: string;
@@ -229,12 +285,39 @@ export function EntryDetailScreen() {
 
   const isReview = entry?.status === 'NEEDS_REVIEW';
   const firstReceipt = useMemo(
-    () => entry?.documents.find((d) => d.kind === 'RECEIPT') ?? null,
+    () => entry?.documents[0] ?? null,
     [entry?.documents],
   );
   const docImageSource = useAuthedImageSource(
     firstReceipt?.mediaAssetId ?? null,
   );
+
+  // Décision IA finale (issue du comparateur ou fallback). Présente si
+  // l'écriture a traversé le pipeline OCR — null si saisie manuelle.
+  const decision = useMemo(
+    () => safeParseDecision(entry?.extraction?.categorizationJson),
+    [entry?.extraction?.categorizationJson],
+  );
+  const conf = useMemo(
+    () => safeParseConfidence(entry?.extraction?.confidencePerFieldJson),
+    [entry?.extraction?.confidencePerFieldJson],
+  );
+
+  /**
+   * Si la décision IA a une confiance globale haute ET concorde sur les
+   * 3 dimensions clés, on bascule en mode "validation rapide" : un seul
+   * gros bouton vert. L'utilisateur peut toujours déplier l'édition.
+   */
+  const canQuickValidate =
+    isReview &&
+    decision != null &&
+    decision.globalConfidencePct >= QUICK_VALIDATE_THRESHOLD &&
+    decision.agreement.vendor &&
+    decision.agreement.total &&
+    decision.agreement.lines;
+
+  /** Mode édition forcé par l'utilisateur (sinon mode rapide par défaut). */
+  const [showFullEdit, setShowFullEdit] = useState(false);
 
   // Lignes hors banque (= articles) — celles qu'on peut requalifier.
   const articleLines = useMemo(
@@ -278,7 +361,6 @@ export function EntryDetailScreen() {
   const isConsolidated = entry.consolidatedAt != null;
   const sign =
     entry.kind === 'INCOME' ? '+' : entry.kind === 'EXPENSE' ? '−' : '';
-  const conf = entry.extraction?.confidencePerField ?? {};
 
   // ───────── Handlers ─────────
   const onConsolidate = async () => {
@@ -390,13 +472,45 @@ export function EntryDetailScreen() {
           title="Validation post-OCR"
           subtitle={
             entry.extraction?.error
-              ? `OCR en échec : ${entry.extraction.error}`
-              : entry.extraction?.model
-                ? `Extraction IA · ${entry.extraction.model}`
-                : 'Saisie manuelle requise'
+              ? `OCR partiel : ${entry.extraction.error.slice(0, 80)}`
+              : decision
+                ? `Pipeline IA · ${entry.extraction?.model ?? 'modèle'}`
+                : entry.extraction?.model
+                  ? `Extraction IA · ${entry.extraction.model}`
+                  : 'Saisie manuelle requise'
           }
           style={{ marginHorizontal: spacing.lg, marginTop: spacing.lg }}
         >
+          {/* Réflexion structurée IA — bandeau visible si décision présente */}
+          {decision ? (
+            <View style={styles.aiReasoningBox}>
+              <View style={styles.aiReasoningHeader}>
+                <Pill
+                  label={`Confiance ${decision.globalConfidencePct}%`}
+                  tone={
+                    decision.globalConfidencePct >= 85
+                      ? 'success'
+                      : decision.globalConfidencePct >= 50
+                        ? 'warning'
+                        : 'danger'
+                  }
+                />
+                {decision.agreement.vendor &&
+                decision.agreement.total &&
+                decision.agreement.lines ? (
+                  <Pill label="OCR + Expertise concordent" tone="success" />
+                ) : (
+                  <Pill label="Divergence OCR / Expertise" tone="warning" />
+                )}
+              </View>
+              {decision.globalReasoning ? (
+                <Text style={styles.aiReasoningText}>
+                  {decision.globalReasoning}
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
+
           {entry.extraction?.extractedInvoiceNumber ||
           entry.extraction?.extractedVendor ? (
             <View style={styles.metaList}>
@@ -423,38 +537,63 @@ export function EntryDetailScreen() {
             </View>
           ) : null}
 
-          <View style={styles.editForm}>
-            <TextField
-              label="Libellé de l'écriture"
-              value={editLabel}
-              onChangeText={setEditLabel}
-              placeholder="Ex. F-2026-001 — Decathlon"
-            />
-            <TextField
-              label="Montant TTC (€)"
-              value={editAmount}
-              onChangeText={setEditAmount}
-              keyboardType="decimal-pad"
-              placeholder="0.00"
-              hint="L'asso ne sépare pas la TVA — saisis le total TTC."
-            />
-            <TextField
-              label="Date (YYYY-MM-DD)"
-              value={editDate}
-              onChangeText={setEditDate}
-              placeholder="2026-05-01"
-            />
-          </View>
+          {/* Mode rapide vs édition complète */}
+          {canQuickValidate && !showFullEdit ? (
+            <View style={styles.quickActions}>
+              <Text style={styles.quickHint}>
+                Les deux IA sont d'accord à {decision?.globalConfidencePct}% —
+                tu peux valider tel quel.
+              </Text>
+              <GradientButton
+                label="Valider en 1 clic"
+                icon="checkmark-circle"
+                onPress={() => void onConfirmExtraction()}
+                loading={confirming}
+                fullWidth
+              />
+              <Button
+                label="Modifier en détail…"
+                variant="ghost"
+                icon="create-outline"
+                onPress={() => setShowFullEdit(true)}
+              />
+            </View>
+          ) : (
+            <>
+              <View style={styles.editForm}>
+                <TextField
+                  label="Libellé de l'écriture"
+                  value={editLabel}
+                  onChangeText={setEditLabel}
+                  placeholder="Ex. F-2026-001 — Decathlon"
+                />
+                <TextField
+                  label="Montant TTC (€)"
+                  value={editAmount}
+                  onChangeText={setEditAmount}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  hint="L'asso ne sépare pas la TVA — saisis le total TTC."
+                />
+                <TextField
+                  label="Date (YYYY-MM-DD)"
+                  value={editDate}
+                  onChangeText={setEditDate}
+                  placeholder="2026-05-01"
+                />
+              </View>
 
-          <View style={styles.actions}>
-            <GradientButton
-              label="Valider l'écriture"
-              icon="checkmark-circle-outline"
-              onPress={() => void onConfirmExtraction()}
-              loading={confirming}
-              fullWidth
-            />
-          </View>
+              <View style={styles.actions}>
+                <GradientButton
+                  label="Valider l'écriture"
+                  icon="checkmark-circle-outline"
+                  onPress={() => void onConfirmExtraction()}
+                  loading={confirming}
+                  fullWidth
+                />
+              </View>
+            </>
+          )}
         </Card>
       ) : null}
 
@@ -549,6 +688,12 @@ export function EntryDetailScreen() {
                           />
                         ) : null}
                       </View>
+                    ) : null}
+                    {/* Reasoning IA par ligne (italique sous le label) */}
+                    {!isBank && line.iaReasoning ? (
+                      <Text style={styles.lineReasoning} numberOfLines={3}>
+                        💭 {line.iaReasoning}
+                      </Text>
                     ) : null}
                   </View>
                   <View style={styles.lineAmounts}>
@@ -738,5 +883,37 @@ const styles = StyleSheet.create({
   actions: {
     gap: spacing.sm,
     marginTop: spacing.md,
+  },
+  aiReasoningBox: {
+    backgroundColor: palette.bgAlt,
+    borderRadius: 12,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  aiReasoningHeader: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  aiReasoningText: {
+    ...typography.small,
+    color: palette.ink,
+    fontStyle: 'italic',
+  },
+  quickActions: {
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  quickHint: {
+    ...typography.small,
+    color: palette.muted,
+    textAlign: 'center',
+  },
+  lineReasoning: {
+    ...typography.small,
+    color: palette.muted,
+    fontStyle: 'italic',
+    marginTop: 2,
   },
 });

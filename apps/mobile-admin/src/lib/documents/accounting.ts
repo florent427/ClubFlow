@@ -39,16 +39,15 @@ export const CLUB_ACCOUNTING_ENTRY = gql`
         label
         debitCents
         creditCents
-        sortOrder
         validatedAt
         iaSuggestedAccountCode
+        iaReasoning
         iaConfidencePct
         mergedFromArticleLabels
       }
       documents {
         id
         mediaAssetId
-        kind
       }
       extraction {
         id
@@ -58,7 +57,8 @@ export const CLUB_ACCOUNTING_ENTRY = gql`
         extractedVatCents
         extractedDate
         extractedAccountCode
-        confidencePerField
+        confidencePerFieldJson
+        categorizationJson
         model
         error
       }

@@ -16,53 +16,107 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AccountingAuditService } from './accounting-audit.service';
 import { AccountingMappingService } from './accounting-mapping.service';
 
-/**
- * Article extrait sur une facture (1 ligne du détail vendor).
- * - `description` : libellé brut (ex. "Tatamis 2x1m").
- * - `totalCents`  : montant TTC de l'article (TVA INCLUSE — l'asso ne
- *   sépare pas la TVA car non récupérable).
- * - `suggestedAccountCode` : compte PCG proposé par l'IA pour CET item
- *   spécifique. C'est ce qui permet la séparation auto en sous-lignes.
- */
-interface OcrItem {
-  description: string;
-  totalCents: number | null;
-  suggestedAccountCode: string | null;
-}
+// ─────────────────────────────────────────────────────────────────────────
+//  Types — pipeline en 3 appels IA
+// ─────────────────────────────────────────────────────────────────────────
 
-interface OcrExtracted {
+/** Appel 1 — OCR brut sur la photo (extraction littérale, sans contexte). */
+interface OcrRawExtraction {
   vendor: string | null;
   invoiceNumber: string | null;
   totalTtcCents: number | null;
-  /** Stocké pour info mais ignoré par défaut (asso = pas de récup TVA). */
+  /** Stocké pour info — l'asso ne sépare pas la TVA. */
   vatCents: number | null;
-  date: string | null; // ISO
-  items: OcrItem[];
-  /** Compte PCG global proposé pour TOUTE la facture (fallback si items vides). */
+  date: string | null;
+  items: Array<{
+    description: string;
+    totalCents: number | null;
+    suggestedAccountCode: string | null;
+  }>;
   pcgAccountCode: string | null;
   confidencePerField: Record<string, number>;
 }
 
 /**
- * Pipeline OCR / extraction IA pour les reçus et factures.
+ * Appel 2 — Expertise comptable (vision + contexte club). Le modèle voit
+ * la photo ET reçoit le plan comptable réel + les projets actifs. Il
+ * propose directement une ventilation finale.
+ */
+interface AccountingExpertise {
+  vendor: string | null;
+  invoiceNumber: string | null;
+  totalTtcCents: number | null;
+  date: string | null;
+  globalReasoning: string;
+  globalConfidencePct: number;
+  lines: Array<{
+    accountCode: string;
+    amountCents: number;
+    label: string;
+    reasoning: string;
+    confidencePct: number;
+    projectId: string | null;
+  }>;
+}
+
+/**
+ * Appel 3 — Comparateur. Reçoit les 2 résultats précédents et produit la
+ * décision finale. Indique les points d'accord/désaccord pour ajuster la
+ * confiance globale (si OCR et Expertise convergent → confiance haute).
+ */
+export interface CategorizedDecision {
+  vendor: string | null;
+  invoiceNumber: string | null;
+  totalTtcCents: number;
+  date: string | null;
+  globalReasoning: string;
+  globalConfidencePct: number;
+  /** Concordance entre OCR brut et Expertise sur chaque dimension clé. */
+  agreement: {
+    vendor: boolean;
+    total: boolean;
+    date: boolean;
+    lines: boolean;
+  };
+  lines: Array<{
+    accountCode: string;
+    amountCents: number;
+    label: string;
+    reasoning: string;
+    confidencePct: number;
+    projectId: string | null;
+    /** Items OCR d'origine fusionnés sur cette ligne (pour audit). */
+    sourceLabels: string[];
+  }>;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+//  Service
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Pipeline OCR / extraction IA pour les reçus et factures, en 3 étapes :
  *
- * Flow :
- *   1. Lire le MediaAsset (image ou PDF)
- *   2. Hash SHA-256 → check doublon (même fichier uploadé 2×)
- *   3. Appel OpenRouter vision avec prompt FR structuré
- *   4. Parse JSON strict (extraction enrichie : items détaillés + n° facture)
- *   5. Persiste AccountingExtraction + crée AccountingEntry NEEDS_REVIEW
+ *   1. **OCR brut** (vision) — lit littéralement la facture. Vendor,
+ *      n° facture, items, totaux, date.
+ *   2. **Expertise comptable** (vision + contexte club, en PARALLÈLE de #1)
+ *      — voit la photo ET reçoit le plan comptable + projets actifs du
+ *      club. Propose une ventilation finale (1 ou N lignes par compte).
+ *   3. **Comparateur** (texte seul, après #1+#2) — confronte les 2
+ *      résultats et produit la décision finale, avec un score d'accord
+ *      qui boost la confiance quand les 2 IA convergent.
  *
  * Spécificités association :
- * - **Pas de TVA** : on stocke `vatCents` pour info mais on ne crée PAS
- *   de ligne TVA séparée. Le montant débit = montant TTC complet.
- * - **Label auto** : `"{n°facture} — {vendor}"` (ou `vendor` seul si pas
- *   de n° de facture, ou `"Reçu à qualifier"` en dernier recours).
- * - **Séparation auto en sous-lignes** : si l'IA propose ≥ 2 codes
- *   comptables différents pour les items, on crée 1 ligne débit par
- *   compte (somme des items du même compte). Si tous les items partagent
- *   le même compte (ou s'il n'y a pas d'items détaillés), 1 seule ligne
- *   débit avec le total.
+ * - **Pas de TVA** : on stocke `vatCents` pour info, jamais de ligne TVA
+ *   séparée. Montant débit = TTC plein.
+ * - **Label auto** : `"{n°facture} — {vendor}"` (ou fallback).
+ * - **Séparation auto** : si la décision finale propose ≥ 2 comptes, N
+ *   lignes débit groupées par compte. Sinon 1 ligne unique sans détail.
+ *
+ * Robustesse :
+ * - Si appel #1 échoue mais #2 OK → on prend #2 directement.
+ * - Si #1+#2 OK mais #3 échoue → on prend #2 (plus structurée que #1).
+ * - Si tous échouent → entry stub vide pour saisie 100 % manuelle.
  */
 @Injectable()
 export class ReceiptOcrService {
@@ -87,9 +141,32 @@ export class ReceiptOcrService {
   }
 
   /**
-   * Lance l'extraction OCR sur un `MediaAsset` déjà uploadé. Retourne
-   * l'id de l'AccountingExtraction créée (et de l'AccountingEntry
-   * NEEDS_REVIEW associée si succès).
+   * Charge le contexte du club nécessaire à l'expertise + comparateur.
+   * 1 seule requête concurrente, mise en cache implicitement par appel.
+   */
+  private async loadClubContext(clubId: string): Promise<{
+    accounts: Array<{ code: string; label: string; kind: string }>;
+    projects: Array<{ id: string; title: string }>;
+  }> {
+    const [accounts, projects] = await Promise.all([
+      this.prisma.accountingAccount.findMany({
+        where: { clubId, isActive: true },
+        select: { code: true, label: true, kind: true },
+        orderBy: { code: 'asc' },
+      }),
+      this.prisma.clubProject.findMany({
+        where: { clubId, status: 'ACTIVE' },
+        select: { id: true, title: true },
+        orderBy: { title: 'asc' },
+        take: 20,
+      }),
+    ]);
+    return { accounts, projects };
+  }
+
+  /**
+   * Lance le pipeline complet. Retourne l'id de l'AccountingExtraction
+   * créée + de l'AccountingEntry NEEDS_REVIEW associée.
    */
   async extractFromMediaAsset(
     clubId: string,
@@ -125,15 +202,10 @@ export class ReceiptOcrService {
       });
     }
 
-    // 2. Dédup par hash : si une extraction existe déjà sur un fichier
-    //    avec même sha256, on renvoie l'entry existante (warning côté UI).
+    // 2. Dédup par hash
     if (sha256) {
       const dupAsset = await this.prisma.mediaAsset.findFirst({
-        where: {
-          clubId,
-          sha256,
-          id: { not: asset.id },
-        },
+        where: { clubId, sha256, id: { not: asset.id } },
       });
       if (dupAsset) {
         const dupDoc = await this.prisma.accountingDocument.findFirst({
@@ -151,20 +223,13 @@ export class ReceiptOcrService {
       }
     }
 
-    // 3. Check budget IA
+    // 3. Check budget IA (1 fois pour les 3 appels)
     const budget = await this.aiBudget.checkBudget(clubId);
     if (!budget.allowed) {
       this.logger.warn(
         `Club ${clubId} a dépassé son budget IA mensuel, OCR fallback manuel.`,
       );
-      // Crée quand même une entry NEEDS_REVIEW vide (sans extraction) pour
-      // que l'utilisateur puisse saisir à la main et conserver le doc.
-      const entry = await this.createStubEntry(
-        clubId,
-        userId,
-        mediaAssetId,
-        null,
-      );
+      const entry = await this.createStubEntry(clubId, userId, mediaAssetId, null, null);
       return {
         extractionId: '',
         entryId: entry.id,
@@ -173,7 +238,7 @@ export class ReceiptOcrService {
       };
     }
 
-    // 4. Appel IA (OpenRouter vision)
+    // 4. Setup commun
     const apiKey = await this.aiSettings.getDecryptedApiKey(clubId);
     const models = await this.aiSettings.getModels(clubId);
     if (!apiKey || !models.textModel) {
@@ -183,100 +248,141 @@ export class ReceiptOcrService {
     }
 
     const dataUrl = this.mediaAssetToDataUrl(asset);
-    const prompt = this.buildPrompt();
+    const ctx = await this.loadClubContext(clubId);
 
-    let result: Awaited<ReturnType<typeof this.openrouter.chatCompletion>>;
-    let extracted: OcrExtracted | null = null;
-    let errorMsg: string | null = null;
+    // 5. Appels 1 + 2 EN PARALLÈLE — extraction OCR brute & expertise
+    let totalCostCents = 0;
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+    let lastErrorMsg: string | null = null;
 
-    try {
-      result = await this.openrouter.chatCompletion({
-        apiKey,
-        model: models.textModel,
-        responseFormat: 'json_object',
-        messages: [
-          {
-            role: 'system',
-            content:
-              'Tu es un assistant comptable spécialisé dans les associations sportives françaises. Tu réponds uniquement en JSON strict.',
-          },
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: prompt },
-              { type: 'image_url', image_url: { url: dataUrl } },
-            ],
-          },
-        ],
-        temperature: 0.1,
-        maxTokens: 2500,
-      });
-      extracted = this.parseOcrJson(result.content);
-    } catch (err) {
-      errorMsg = err instanceof Error ? err.message : String(err);
-      this.logger.error(
-        `OCR échec pour asset ${mediaAssetId} : ${errorMsg}`,
-      );
-      result = {
-        content: '{}',
-        inputTokens: 0,
-        outputTokens: 0,
-        model: models.textModel,
-        costCents: 0,
-      };
+    const [ocrRes, expRes] = await Promise.allSettled([
+      this.runOcrRaw(apiKey, models.textModel, dataUrl),
+      this.runExpertise(apiKey, models.textModel, dataUrl, ctx),
+    ]);
+
+    let ocrRaw: OcrRawExtraction | null = null;
+    let expertise: AccountingExpertise | null = null;
+
+    if (ocrRes.status === 'fulfilled') {
+      ocrRaw = ocrRes.value.parsed;
+      totalCostCents += ocrRes.value.usage.costCents;
+      totalInputTokens += ocrRes.value.usage.inputTokens;
+      totalOutputTokens += ocrRes.value.usage.outputTokens;
+    } else {
+      lastErrorMsg = `OCR raw failed: ${this.errorMsg(ocrRes.reason)}`;
+      this.logger.warn(`[OCR ${mediaAssetId}] ${lastErrorMsg}`);
     }
 
-    // 5. Log usage
-    const costCents = result.costCents ?? 0;
+    if (expRes.status === 'fulfilled') {
+      expertise = expRes.value.parsed;
+      totalCostCents += expRes.value.usage.costCents;
+      totalInputTokens += expRes.value.usage.inputTokens;
+      totalOutputTokens += expRes.value.usage.outputTokens;
+    } else {
+      const m = `Expertise failed: ${this.errorMsg(expRes.reason)}`;
+      lastErrorMsg = lastErrorMsg ? `${lastErrorMsg} | ${m}` : m;
+      this.logger.warn(`[OCR ${mediaAssetId}] ${m}`);
+    }
+
+    // 6. Appel 3 — comparateur (uniquement si on a au moins 2 sources)
+    let decision: CategorizedDecision | null = null;
+    if (ocrRaw && expertise) {
+      try {
+        const cmpRes = await this.runComparator(
+          apiKey,
+          models.textModel,
+          ocrRaw,
+          expertise,
+          ctx,
+        );
+        decision = cmpRes.parsed;
+        totalCostCents += cmpRes.usage.costCents;
+        totalInputTokens += cmpRes.usage.inputTokens;
+        totalOutputTokens += cmpRes.usage.outputTokens;
+      } catch (err) {
+        const m = `Comparator failed: ${this.errorMsg(err)}`;
+        lastErrorMsg = lastErrorMsg ? `${lastErrorMsg} | ${m}` : m;
+        this.logger.warn(`[OCR ${mediaAssetId}] ${m}`);
+      }
+    }
+
+    // Fallbacks : si pas de décision comparateur, on synthétise depuis ce qu'on a.
+    if (!decision) {
+      if (expertise) {
+        decision = this.expertiseToDecision(expertise, ocrRaw);
+      } else if (ocrRaw) {
+        decision = this.ocrToDecision(ocrRaw, ctx);
+      }
+    }
+
+    // 7. Log usage IA cumulé
     await this.aiSettings.logUsage({
       clubId,
       userId,
       feature: AiUsageFeature.RECEIPT_OCR,
-      model: result.model,
-      inputTokens: result.inputTokens,
-      outputTokens: result.outputTokens,
+      model: models.textModel,
+      inputTokens: totalInputTokens,
+      outputTokens: totalOutputTokens,
       imagesGenerated: 0,
-      costCents,
+      costCents: totalCostCents,
     });
     await this.aiBudget.incrementUsage(
       clubId,
       AiUsageFeature.RECEIPT_OCR,
-      costCents,
-      result.inputTokens,
-      result.outputTokens,
+      totalCostCents,
+      totalInputTokens,
+      totalOutputTokens,
     );
 
-    // 6. Persiste AccountingExtraction
+    // 8. Persiste AccountingExtraction (OCR brut + décision finale)
     const extraction = await this.prisma.accountingExtraction.create({
       data: {
         clubId,
         mediaAssetId,
-        rawJson: (extracted
-          ? JSON.parse(JSON.stringify(extracted))
-          : { error: errorMsg ?? 'parse-failed' }) as object,
-        confidencePerField: (extracted?.confidencePerField ?? {}) as object,
-        extractedTotalCents: extracted?.totalTtcCents ?? null,
-        extractedVatCents: extracted?.vatCents ?? null,
-        extractedDate: extracted?.date ? new Date(extracted.date) : null,
-        extractedVendor: extracted?.vendor ?? null,
-        extractedInvoiceNumber: extracted?.invoiceNumber ?? null,
-        extractedAccountCode: extracted?.pcgAccountCode ?? null,
-        model: result.model,
-        inputTokens: result.inputTokens,
-        outputTokens: result.outputTokens,
-        costCents,
+        rawJson: (ocrRaw
+          ? JSON.parse(JSON.stringify(ocrRaw))
+          : { error: lastErrorMsg ?? 'no-result' }) as object,
+        confidencePerField: (ocrRaw?.confidencePerField ?? {}) as object,
+        extractedTotalCents:
+          decision?.totalTtcCents ?? ocrRaw?.totalTtcCents ?? null,
+        extractedVatCents: ocrRaw?.vatCents ?? null,
+        extractedDate:
+          decision?.date && !Number.isNaN(new Date(decision.date).getTime())
+            ? new Date(decision.date)
+            : ocrRaw?.date && !Number.isNaN(new Date(ocrRaw.date).getTime())
+              ? new Date(ocrRaw.date)
+              : null,
+        extractedVendor: decision?.vendor ?? ocrRaw?.vendor ?? null,
+        extractedInvoiceNumber:
+          decision?.invoiceNumber ?? ocrRaw?.invoiceNumber ?? null,
+        extractedAccountCode:
+          ocrRaw?.pcgAccountCode ??
+          decision?.lines[0]?.accountCode ??
+          null,
+        ...(decision
+          ? {
+              categorizationJson: JSON.parse(
+                JSON.stringify(decision),
+              ) as object,
+            }
+          : {}),
+        model: models.textModel,
+        inputTokens: totalInputTokens,
+        outputTokens: totalOutputTokens,
+        costCents: totalCostCents,
         pageCount: 1,
-        error: errorMsg,
+        error: lastErrorMsg,
       },
     });
 
-    // 7. Crée l'AccountingEntry NEEDS_REVIEW
+    // 9. Crée l'AccountingEntry NEEDS_REVIEW
     const entry = await this.createStubEntry(
       clubId,
       userId,
       mediaAssetId,
       extraction,
-      extracted,
+      decision,
     );
 
     await this.audit.log({
@@ -287,8 +393,14 @@ export class ReceiptOcrService {
       metadata: {
         source: 'OCR_AI',
         extractionId: extraction.id,
-        model: result.model,
-        costCents,
+        model: models.textModel,
+        costCents: totalCostCents,
+        pipeline: {
+          ocrRawOk: !!ocrRaw,
+          expertiseOk: !!expertise,
+          comparatorOk: !!decision && !!ocrRaw && !!expertise,
+          globalConfidence: decision?.globalConfidencePct ?? null,
+        },
       },
     });
 
@@ -300,115 +412,547 @@ export class ReceiptOcrService {
     };
   }
 
-  /**
-   * Construit le label automatique de l'écriture :
-   * - Si n° facture + vendor → `"{n°} — {vendor}"`
-   * - Si vendor seul → `"{vendor}"`
-   * - Sinon → `"Reçu à qualifier"`
-   */
-  private buildAutoLabel(extracted: OcrExtracted | null | undefined): string {
-    if (!extracted) return 'Reçu à qualifier';
-    const inv = extracted.invoiceNumber?.trim();
-    const ven = extracted.vendor?.trim();
+  // ─────────────────────────────────────────────────────────────────────
+  //  Appels IA
+  // ─────────────────────────────────────────────────────────────────────
+
+  /** Appel 1 — extraction OCR brute. */
+  private async runOcrRaw(
+    apiKey: string,
+    model: string,
+    dataUrl: string,
+  ): Promise<{
+    parsed: OcrRawExtraction | null;
+    usage: { costCents: number; inputTokens: number; outputTokens: number };
+  }> {
+    const result = await this.openrouter.chatCompletion({
+      apiKey,
+      model,
+      responseFormat: 'json_object',
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Tu es un OCR comptable spécialisé. Tu réponds UNIQUEMENT en JSON strict, sans markdown.',
+        },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: this.buildOcrPrompt() },
+            { type: 'image_url', image_url: { url: dataUrl } },
+          ],
+        },
+      ],
+      temperature: 0.1,
+      maxTokens: 2500,
+    });
+    const parsed = this.parseOcrJson(result.content);
+    return {
+      parsed,
+      usage: {
+        costCents: result.costCents ?? 0,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+      },
+    };
+  }
+
+  /** Appel 2 — expertise comptable (vision + contexte club). */
+  private async runExpertise(
+    apiKey: string,
+    model: string,
+    dataUrl: string,
+    ctx: { accounts: Array<{ code: string; label: string }>; projects: Array<{ id: string; title: string }> },
+  ): Promise<{
+    parsed: AccountingExpertise | null;
+    usage: { costCents: number; inputTokens: number; outputTokens: number };
+  }> {
+    const result = await this.openrouter.chatCompletion({
+      apiKey,
+      model,
+      responseFormat: 'json_object',
+      messages: [
+        {
+          role: 'system',
+          content:
+            "Tu es un expert-comptable senior pour associations sportives françaises. Tu analyses les factures et proposes une ventilation comptable précise. Tu réponds UNIQUEMENT en JSON strict, sans markdown.",
+        },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: this.buildExpertisePrompt(ctx) },
+            { type: 'image_url', image_url: { url: dataUrl } },
+          ],
+        },
+      ],
+      temperature: 0.2,
+      maxTokens: 2500,
+    });
+    const parsed = this.parseExpertiseJson(result.content);
+    return {
+      parsed,
+      usage: {
+        costCents: result.costCents ?? 0,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+      },
+    };
+  }
+
+  /** Appel 3 — comparateur. Synthétise la décision finale (texte seul). */
+  private async runComparator(
+    apiKey: string,
+    model: string,
+    ocrRaw: OcrRawExtraction,
+    expertise: AccountingExpertise,
+    ctx: { accounts: Array<{ code: string; label: string }>; projects: Array<{ id: string; title: string }> },
+  ): Promise<{
+    parsed: CategorizedDecision | null;
+    usage: { costCents: number; inputTokens: number; outputTokens: number };
+  }> {
+    const result = await this.openrouter.chatCompletion({
+      apiKey,
+      model,
+      responseFormat: 'json_object',
+      messages: [
+        {
+          role: 'system',
+          content:
+            "Tu es un auditeur comptable. Tu reçois 2 analyses indépendantes d'une même facture (un OCR brut + une expertise) et tu produis la décision finale. Tu réponds UNIQUEMENT en JSON strict.",
+        },
+        {
+          role: 'user',
+          content: this.buildComparatorPrompt(ocrRaw, expertise, ctx),
+        },
+      ],
+      temperature: 0.1,
+      maxTokens: 2500,
+    });
+    const parsed = this.parseDecisionJson(result.content);
+    return {
+      parsed,
+      usage: {
+        costCents: result.costCents ?? 0,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+      },
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  //  Prompts
+  // ─────────────────────────────────────────────────────────────────────
+
+  private buildOcrPrompt(): string {
+    return `Extrais les informations littérales de cette facture/reçu. Pas d'interprétation comptable, juste lecture.
+
+Réponds en JSON strict :
+{
+  "vendor": "nom commerçant ou null",
+  "invoiceNumber": "n° facture / ticket / reçu ou null",
+  "totalTtcCents": "total TTC en centimes (entier) ou null",
+  "vatCents": "TVA en centimes si visible ou null",
+  "date": "date émission YYYY-MM-DD ou null",
+  "items": [
+    {
+      "description": "libellé article",
+      "totalCents": "montant TTC ligne en centimes",
+      "suggestedAccountCode": "code PCG 6 chiffres si évident, sinon null"
+    }
+  ],
+  "pcgAccountCode": "compte PCG global proposé ou null",
+  "confidencePerField": {
+    "vendor": "0-1",
+    "invoiceNumber": "0-1",
+    "totalTtcCents": "0-1",
+    "date": "0-1"
+  }
+}
+
+Règles : montants en centimes (×100). Pas de récup TVA (asso). items[]=[] si pas de détail.`;
+  }
+
+  private buildExpertisePrompt(ctx: {
+    accounts: Array<{ code: string; label: string }>;
+    projects: Array<{ id: string; title: string }>;
+  }): string {
+    const accountsTxt =
+      ctx.accounts.length > 0
+        ? ctx.accounts.map((a) => `  - ${a.code} : ${a.label}`).join('\n')
+        : '  (plan comptable vide — utilise codes PCG associatif standard)';
+    const projectsTxt =
+      ctx.projects.length > 0
+        ? ctx.projects
+            .slice(0, 15)
+            .map((p) => `  - ${p.id} : ${p.title}`)
+            .join('\n')
+        : '  (aucun projet actif)';
+
+    return `Analyse cette facture en tant qu'expert-comptable d'une association sportive (régime non-assujetti TVA).
+
+Plan comptable RÉEL du club (utiliser UNIQUEMENT ces codes) :
+${accountsTxt}
+
+Projets actifs (associer une ligne à un projet si pertinent) :
+${projectsTxt}
+
+Produis une ventilation comptable directe en JSON strict :
+{
+  "vendor": "nom",
+  "invoiceNumber": "n° ou null",
+  "totalTtcCents": int,
+  "date": "YYYY-MM-DD",
+  "globalReasoning": "1 phrase synthèse",
+  "globalConfidencePct": int 0-100,
+  "lines": [
+    {
+      "accountCode": "code PCG (issu strictement du plan ci-dessus)",
+      "amountCents": int,
+      "label": "libellé court de la ligne",
+      "reasoning": "1 phrase justifiant le compte choisi",
+      "confidencePct": int 0-100,
+      "projectId": "uuid projet OU null"
+    }
+  ]
+}
+
+Règles :
+- Montants en centimes TTC (pas de séparation TVA).
+- Si tous les articles vont sur le MÊME compte → 1 seule ligne agrégée.
+- Si comptes différents → 1 ligne par compte (montants regroupés).
+- Somme des lines[].amountCents == totalTtcCents (tolérer ±2 centimes).
+- accountCode obligatoirement issu du plan comptable du club.
+- projectId optionnel — null si aucune correspondance évidente.
+- confidencePct = ta confiance dans le compte choisi (pas la lecture).`;
+  }
+
+  private buildComparatorPrompt(
+    ocrRaw: OcrRawExtraction,
+    expertise: AccountingExpertise,
+    ctx: {
+      accounts: Array<{ code: string; label: string }>;
+      projects: Array<{ id: string; title: string }>;
+    },
+  ): string {
+    const accountsTxt =
+      ctx.accounts.length > 0
+        ? ctx.accounts.map((a) => `  - ${a.code} : ${a.label}`).join('\n')
+        : '  (plan comptable vide)';
+
+    return `Tu es l'auditeur final. Voici 2 analyses indépendantes de la MÊME facture :
+
+=== Source 1 : OCR brut ===
+${JSON.stringify(ocrRaw, null, 2)}
+
+=== Source 2 : Expertise comptable ===
+${JSON.stringify(expertise, null, 2)}
+
+=== Plan comptable du club ===
+${accountsTxt}
+
+Produis la DÉCISION FINALE en JSON strict :
+{
+  "vendor": "nom retenu (concorder les 2 sources)",
+  "invoiceNumber": "n° retenu ou null",
+  "totalTtcCents": int (montant retenu),
+  "date": "YYYY-MM-DD ou null",
+  "globalReasoning": "synthèse en 1-2 phrases — explique les choix et mentionne les divergences éventuelles",
+  "globalConfidencePct": int 0-100 (HAUT si les 2 sources convergent, BAS si désaccord majeur),
+  "agreement": {
+    "vendor": bool,
+    "total": bool,
+    "date": bool,
+    "lines": bool (true si découpage des lignes cohérent)
+  },
+  "lines": [
+    {
+      "accountCode": "code du plan comptable",
+      "amountCents": int,
+      "label": "libellé court",
+      "reasoning": "1 phrase",
+      "confidencePct": int 0-100,
+      "projectId": "uuid ou null",
+      "sourceLabels": ["items OCR d'origine sur cette ligne"]
+    }
+  ]
+}
+
+Règles :
+- Privilégie la cohérence : si l'OCR voit 12.50€ et l'expertise 12.49€ → tu retiens la valeur la plus "ronde" et baisses légèrement la confiance.
+- Si désaccord MAJEUR sur un compte : choisis l'expertise (mieux contextualisée) MAIS ramène confidencePct à ≤ 60.
+- Somme(lines[].amountCents) == totalTtcCents (±2 centimes).
+- accountCode strictement issu du plan comptable.
+- agreement.* reflète la concordance OBJECTIVE entre les 2 sources, pas ta confiance.`;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  //  Parsers JSON robustes
+  // ─────────────────────────────────────────────────────────────────────
+
+  private cleanJson(s: string): string {
+    return s
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```\s*$/i, '')
+      .trim();
+  }
+
+  private parseOcrJson(content: string): OcrRawExtraction | null {
+    try {
+      const parsed = JSON.parse(this.cleanJson(content)) as Record<string, unknown>;
+      const rawItems = Array.isArray(parsed.items) ? parsed.items : [];
+      const items = rawItems
+        .filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null)
+        .map((x) => ({
+          description:
+            typeof x.description === 'string' && x.description.length > 0
+              ? x.description
+              : 'Article',
+          totalCents:
+            typeof x.totalCents === 'number' && Number.isFinite(x.totalCents)
+              ? Math.round(x.totalCents)
+              : null,
+          suggestedAccountCode:
+            typeof x.suggestedAccountCode === 'string' &&
+            x.suggestedAccountCode.length >= 4
+              ? x.suggestedAccountCode
+              : null,
+        }));
+      return {
+        vendor: typeof parsed.vendor === 'string' ? parsed.vendor : null,
+        invoiceNumber:
+          typeof parsed.invoiceNumber === 'string' ? parsed.invoiceNumber : null,
+        totalTtcCents:
+          typeof parsed.totalTtcCents === 'number'
+            ? Math.round(parsed.totalTtcCents)
+            : null,
+        vatCents:
+          typeof parsed.vatCents === 'number' ? Math.round(parsed.vatCents) : null,
+        date: typeof parsed.date === 'string' ? parsed.date : null,
+        items,
+        pcgAccountCode:
+          typeof parsed.pcgAccountCode === 'string' ? parsed.pcgAccountCode : null,
+        confidencePerField:
+          typeof parsed.confidencePerField === 'object' &&
+          parsed.confidencePerField !== null
+            ? (parsed.confidencePerField as Record<string, number>)
+            : {},
+      };
+    } catch (err) {
+      this.logger.warn(`[OCR raw] parse fail: ${this.errorMsg(err)}`);
+      return null;
+    }
+  }
+
+  private parseExpertiseJson(content: string): AccountingExpertise | null {
+    try {
+      const parsed = JSON.parse(this.cleanJson(content)) as Record<string, unknown>;
+      const rawLines = Array.isArray(parsed.lines) ? parsed.lines : [];
+      const lines = rawLines
+        .filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null)
+        .map((x) => ({
+          accountCode:
+            typeof x.accountCode === 'string' && x.accountCode.length >= 4
+              ? x.accountCode
+              : '',
+          amountCents:
+            typeof x.amountCents === 'number' && Number.isFinite(x.amountCents)
+              ? Math.round(x.amountCents)
+              : 0,
+          label: typeof x.label === 'string' ? x.label : '',
+          reasoning: typeof x.reasoning === 'string' ? x.reasoning : '',
+          confidencePct:
+            typeof x.confidencePct === 'number'
+              ? Math.max(0, Math.min(100, Math.round(x.confidencePct)))
+              : 0,
+          projectId: typeof x.projectId === 'string' ? x.projectId : null,
+        }))
+        .filter((l) => l.accountCode && l.amountCents > 0);
+      return {
+        vendor: typeof parsed.vendor === 'string' ? parsed.vendor : null,
+        invoiceNumber:
+          typeof parsed.invoiceNumber === 'string' ? parsed.invoiceNumber : null,
+        totalTtcCents:
+          typeof parsed.totalTtcCents === 'number'
+            ? Math.round(parsed.totalTtcCents)
+            : null,
+        date: typeof parsed.date === 'string' ? parsed.date : null,
+        globalReasoning:
+          typeof parsed.globalReasoning === 'string' ? parsed.globalReasoning : '',
+        globalConfidencePct:
+          typeof parsed.globalConfidencePct === 'number'
+            ? Math.max(0, Math.min(100, Math.round(parsed.globalConfidencePct)))
+            : 0,
+        lines,
+      };
+    } catch (err) {
+      this.logger.warn(`[Expertise] parse fail: ${this.errorMsg(err)}`);
+      return null;
+    }
+  }
+
+  private parseDecisionJson(content: string): CategorizedDecision | null {
+    try {
+      const parsed = JSON.parse(this.cleanJson(content)) as Record<string, unknown>;
+      const rawLines = Array.isArray(parsed.lines) ? parsed.lines : [];
+      const lines = rawLines
+        .filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null)
+        .map((x) => ({
+          accountCode:
+            typeof x.accountCode === 'string' && x.accountCode.length >= 4
+              ? x.accountCode
+              : '',
+          amountCents:
+            typeof x.amountCents === 'number' && Number.isFinite(x.amountCents)
+              ? Math.round(x.amountCents)
+              : 0,
+          label: typeof x.label === 'string' ? x.label : '',
+          reasoning: typeof x.reasoning === 'string' ? x.reasoning : '',
+          confidencePct:
+            typeof x.confidencePct === 'number'
+              ? Math.max(0, Math.min(100, Math.round(x.confidencePct)))
+              : 0,
+          projectId: typeof x.projectId === 'string' ? x.projectId : null,
+          sourceLabels: Array.isArray(x.sourceLabels)
+            ? (x.sourceLabels.filter((s) => typeof s === 'string') as string[])
+            : [],
+        }))
+        .filter((l) => l.accountCode && l.amountCents > 0);
+
+      const agreementRaw =
+        typeof parsed.agreement === 'object' && parsed.agreement !== null
+          ? (parsed.agreement as Record<string, unknown>)
+          : {};
+
+      return {
+        vendor: typeof parsed.vendor === 'string' ? parsed.vendor : null,
+        invoiceNumber:
+          typeof parsed.invoiceNumber === 'string' ? parsed.invoiceNumber : null,
+        totalTtcCents:
+          typeof parsed.totalTtcCents === 'number'
+            ? Math.round(parsed.totalTtcCents)
+            : 0,
+        date: typeof parsed.date === 'string' ? parsed.date : null,
+        globalReasoning:
+          typeof parsed.globalReasoning === 'string' ? parsed.globalReasoning : '',
+        globalConfidencePct:
+          typeof parsed.globalConfidencePct === 'number'
+            ? Math.max(0, Math.min(100, Math.round(parsed.globalConfidencePct)))
+            : 0,
+        agreement: {
+          vendor: agreementRaw.vendor === true,
+          total: agreementRaw.total === true,
+          date: agreementRaw.date === true,
+          lines: agreementRaw.lines === true,
+        },
+        lines,
+      };
+    } catch (err) {
+      this.logger.warn(`[Comparator] parse fail: ${this.errorMsg(err)}`);
+      return null;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  //  Fallbacks (si le pipeline n'a pas pu compléter)
+  // ─────────────────────────────────────────────────────────────────────
+
+  /** Si le comparateur a échoué : on prend l'expertise telle quelle. */
+  private expertiseToDecision(
+    exp: AccountingExpertise,
+    ocrRaw: OcrRawExtraction | null,
+  ): CategorizedDecision {
+    return {
+      vendor: exp.vendor ?? ocrRaw?.vendor ?? null,
+      invoiceNumber: exp.invoiceNumber ?? ocrRaw?.invoiceNumber ?? null,
+      totalTtcCents: exp.totalTtcCents ?? ocrRaw?.totalTtcCents ?? 0,
+      date: exp.date ?? ocrRaw?.date ?? null,
+      globalReasoning: exp.globalReasoning,
+      globalConfidencePct: Math.max(0, exp.globalConfidencePct - 10), // pénalité (pas de comparaison)
+      agreement: { vendor: false, total: false, date: false, lines: false },
+      lines: exp.lines.map((l) => ({
+        accountCode: l.accountCode,
+        amountCents: l.amountCents,
+        label: l.label,
+        reasoning: l.reasoning,
+        confidencePct: l.confidencePct,
+        projectId: l.projectId,
+        sourceLabels: [],
+      })),
+    };
+  }
+
+  /** Si l'expertise a échoué : on construit une décision depuis l'OCR brut. */
+  private ocrToDecision(
+    raw: OcrRawExtraction,
+    ctx: { accounts: Array<{ code: string }> },
+  ): CategorizedDecision {
+    const validCodes = new Set(ctx.accounts.map((a) => a.code));
+    const totalCents = raw.totalTtcCents ?? 0;
+
+    // Group items par compte (filtré sur plan comptable)
+    const groups = new Map<string, { amountCents: number; labels: string[] }>();
+    const validItems = raw.items.filter(
+      (it) => it.totalCents !== null && it.totalCents > 0,
+    );
+    for (const it of validItems) {
+      const code =
+        it.suggestedAccountCode && validCodes.has(it.suggestedAccountCode)
+          ? it.suggestedAccountCode
+          : raw.pcgAccountCode && validCodes.has(raw.pcgAccountCode)
+            ? raw.pcgAccountCode
+            : null;
+      if (!code) continue;
+      const g = groups.get(code) ?? { amountCents: 0, labels: [] };
+      g.amountCents += it.totalCents ?? 0;
+      g.labels.push(it.description);
+      groups.set(code, g);
+    }
+    if (groups.size === 0) {
+      const fallback =
+        raw.pcgAccountCode && validCodes.has(raw.pcgAccountCode)
+          ? raw.pcgAccountCode
+          : '606800';
+      groups.set(fallback, { amountCents: totalCents, labels: [] });
+    }
+    const lines = Array.from(groups.entries()).map(([code, g]) => ({
+      accountCode: code,
+      amountCents: g.amountCents,
+      label:
+        g.labels.length > 0
+          ? g.labels.slice(0, 3).join(' · ') +
+            (g.labels.length > 3 ? ` (+${g.labels.length - 3})` : '')
+          : 'Facture',
+      reasoning: 'OCR seul (expertise indisponible)',
+      confidencePct: 50,
+      projectId: null,
+      sourceLabels: g.labels,
+    }));
+
+    return {
+      vendor: raw.vendor,
+      invoiceNumber: raw.invoiceNumber,
+      totalTtcCents: totalCents,
+      date: raw.date,
+      globalReasoning:
+        'Catégorisation depuis OCR brut uniquement (expertise IA non disponible).',
+      globalConfidencePct: 40,
+      agreement: { vendor: false, total: false, date: false, lines: false },
+      lines,
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  //  Création de l'AccountingEntry NEEDS_REVIEW
+  // ─────────────────────────────────────────────────────────────────────
+
+  private buildAutoLabel(decision: CategorizedDecision | null): string {
+    if (!decision) return 'Reçu à qualifier';
+    const inv = decision.invoiceNumber?.trim();
+    const ven = decision.vendor?.trim();
     if (inv && ven) return `${inv} — ${ven}`;
     if (ven) return ven;
     if (inv) return `Facture ${inv}`;
     return 'Reçu à qualifier';
-  }
-
-  /**
-   * Calcule la ventilation des sous-lignes débit en fonction des items
-   * extraits. Retourne un tableau de groupes, chacun = 1 ligne débit
-   * future (avec compte PCG, montant total, libellés sources).
-   *
-   * Règles :
-   * - Items ayant un `suggestedAccountCode` non null sont groupés par code.
-   * - Items sans code (null) tombent dans le groupe `fallbackAccount`.
-   * - Si tous les items se retrouvent dans UN SEUL groupe (même compte),
-   *   on retourne 1 seul groupe avec le label "facture entière" (pas de
-   *   détail).
-   * - Si pas d'items du tout : 1 seul groupe avec `fallbackAccount` et
-   *   le total complet, sans labels d'items.
-   */
-  private buildLineGroups(
-    extracted: OcrExtracted | null | undefined,
-    fallbackAccount: string,
-    totalCents: number,
-  ): Array<{
-    accountCode: string;
-    amountCents: number;
-    sourceLabels: string[];
-  }> {
-    const items = extracted?.items ?? [];
-    const validItems = items.filter(
-      (it) => it && it.totalCents !== null && it.totalCents > 0,
-    );
-
-    // Pas d'items détaillés OU items sans montants → 1 seule ligne
-    if (validItems.length === 0) {
-      const code = extracted?.pcgAccountCode ?? fallbackAccount;
-      return [
-        {
-          accountCode: code,
-          amountCents: totalCents,
-          sourceLabels: [],
-        },
-      ];
-    }
-
-    // Group by accountCode (null → fallback)
-    const buckets = new Map<
-      string,
-      { amountCents: number; sourceLabels: string[] }
-    >();
-    for (const it of validItems) {
-      const code =
-        it.suggestedAccountCode ??
-        extracted?.pcgAccountCode ??
-        fallbackAccount;
-      const bucket = buckets.get(code) ?? {
-        amountCents: 0,
-        sourceLabels: [],
-      };
-      bucket.amountCents += it.totalCents ?? 0;
-      bucket.sourceLabels.push(it.description);
-      buckets.set(code, bucket);
-    }
-
-    // Réconcilie un éventuel écart de centimes vs total déclaré : on
-    // ajuste le PLUS GROS bucket (typique : arrondi sur la dernière ligne).
-    const sumItems = Array.from(buckets.values()).reduce(
-      (s, b) => s + b.amountCents,
-      0,
-    );
-    const diff = totalCents - sumItems;
-    if (diff !== 0 && buckets.size > 0) {
-      const biggest = Array.from(buckets.entries()).sort(
-        (a, b) => b[1].amountCents - a[1].amountCents,
-      )[0];
-      biggest[1].amountCents += diff;
-    }
-
-    // Si un seul bucket → on retourne 1 ligne SANS détail d'articles
-    // (cas "facture unique totale sans articles" demandé : pas la peine
-    // de polluer les libellés ligne par ligne).
-    if (buckets.size === 1) {
-      const [code, bucket] = Array.from(buckets.entries())[0];
-      return [
-        {
-          accountCode: code,
-          amountCents: bucket.amountCents,
-          sourceLabels: [],
-        },
-      ];
-    }
-
-    // Sinon ventilation par compte
-    return Array.from(buckets.entries()).map(([code, bucket]) => ({
-      accountCode: code,
-      amountCents: bucket.amountCents,
-      sourceLabels: bucket.sourceLabels,
-    }));
   }
 
   private async createStubEntry(
@@ -416,14 +960,14 @@ export class ReceiptOcrService {
     userId: string,
     mediaAssetId: string,
     extraction: { id: string } | null,
-    extracted?: OcrExtracted | null,
+    decision: CategorizedDecision | null,
   ) {
-    // Total = TTC déclaré sur la facture (asso = pas de séparation TVA).
-    // On ignore vatCents pour le calcul des lignes débit.
-    const totalCents = extracted?.totalTtcCents ?? 0;
-    const label = this.buildAutoLabel(extracted);
-    const date = extracted?.date ? new Date(extracted.date) : new Date();
+    const totalCents = decision?.totalTtcCents ?? 0;
+    const label = this.buildAutoLabel(decision);
+    const date = decision?.date ? new Date(decision.date) : new Date();
 
+    // Si la décision n'a aucune ligne (cas budget bloqué ou tout échec),
+    // on crée une ligne unique de fallback sur EXPENSE_GENERIC.
     const fallbackCode = await this.mapping.resolveAccountCode(
       clubId,
       'EXPENSE_GENERIC',
@@ -433,12 +977,24 @@ export class ReceiptOcrService {
       'BANK_ACCOUNT',
     );
 
-    // Construit la ventilation des lignes débit (1 ou N selon items).
-    const groups = this.buildLineGroups(extracted, fallbackCode, totalCents);
+    const decisionLines =
+      decision?.lines && decision.lines.length > 0
+        ? decision.lines
+        : [
+            {
+              accountCode: fallbackCode,
+              amountCents: totalCents,
+              label: 'À qualifier',
+              reasoning: '',
+              confidencePct: 0,
+              projectId: null,
+              sourceLabels: [],
+            },
+          ];
 
-    // Pré-charge les libellés des comptes utilisés (pour stocker accountLabel)
+    // Pré-charge tous les comptes (lignes + banque)
     const codes = Array.from(
-      new Set([...groups.map((g) => g.accountCode), bankCode]),
+      new Set([...decisionLines.map((l) => l.accountCode), bankCode]),
     );
     const accounts = await this.prisma.accountingAccount.findMany({
       where: { clubId, code: { in: codes } },
@@ -460,38 +1016,31 @@ export class ReceiptOcrService {
         },
       });
 
-      // Lignes débit (1 par compte distinct)
+      // Lignes débit (1 par groupe de la décision)
       let sortOrder = 0;
-      for (const group of groups) {
-        const account = accountByCode.get(group.accountCode);
+      for (const line of decisionLines) {
+        const account = accountByCode.get(line.accountCode);
         if (!account) {
           this.logger.warn(
-            `[Stub ${e.id}] Compte ${group.accountCode} introuvable, ligne ignorée`,
+            `[Stub ${e.id}] Compte ${line.accountCode} introuvable, ligne ignorée`,
           );
           continue;
         }
-        // Si on a regroupé plusieurs items dans cette ligne, on stocke
-        // leurs libellés dans `mergedFromArticleLabels` pour la traçabilité.
-        const lineLabel =
-          group.sourceLabels.length > 0
-            ? group.sourceLabels.slice(0, 3).join(' · ') +
-              (group.sourceLabels.length > 3
-                ? ` (+${group.sourceLabels.length - 3})`
-                : '')
-            : null;
         await tx.accountingEntryLine.create({
           data: {
             entryId: e.id,
             clubId,
             accountCode: account.code,
             accountLabel: account.label,
-            label: lineLabel,
+            label: line.label || null,
             side: AccountingLineSide.DEBIT,
-            debitCents: group.amountCents,
+            debitCents: line.amountCents,
             creditCents: 0,
             sortOrder: sortOrder++,
-            mergedFromArticleLabels: group.sourceLabels,
-            iaSuggestedAccountCode: group.accountCode,
+            mergedFromArticleLabels: line.sourceLabels,
+            iaSuggestedAccountCode: line.accountCode,
+            iaReasoning: line.reasoning?.slice(0, 300) || null,
+            iaConfidencePct: line.confidencePct,
           },
         });
       }
@@ -528,123 +1077,12 @@ export class ReceiptOcrService {
     return entry;
   }
 
-  private buildPrompt(): string {
-    return `Analyse l'image de ce reçu ou facture et extrais les informations en JSON strict.
+  // ─────────────────────────────────────────────────────────────────────
+  //  Helpers
+  // ─────────────────────────────────────────────────────────────────────
 
-CONTEXTE : Association sportive française. **Pas de récupération de TVA** (régime non-assujetti). Tous les montants sont en centimes d'euros (multiplier par 100). Les sous-lignes "items" doivent être en TTC (TVA comprise).
-
-Format JSON attendu :
-
-{
-  "vendor": "nom du fournisseur ou enseigne (string ou null)",
-  "invoiceNumber": "numéro de facture / ticket / reçu (string ou null si absent)",
-  "totalTtcCents": "montant total TTC en centimes (integer ou null)",
-  "vatCents": "montant TVA en centimes si visible (integer ou null) — informatif seulement",
-  "date": "date d'émission ISO 8601 (YYYY-MM-DD) ou null",
-  "items": [
-    {
-      "description": "libellé de l'article ou prestation",
-      "totalCents": "montant TTC de cette ligne en centimes (integer)",
-      "suggestedAccountCode": "code PCG le plus adapté à CET item parmi la liste ci-dessous, ou null si incertain"
-    }
-  ],
-  "pcgAccountCode": "code PCG global (fallback si items absents ou tous incertains)",
-  "confidencePerField": {
-    "vendor": "0 à 1",
-    "invoiceNumber": "0 à 1",
-    "totalTtcCents": "0 à 1",
-    "date": "0 à 1",
-    "pcgAccountCode": "0 à 1"
-  }
-}
-
-Plan comptable associatif (choisir le code le plus précis par item) :
-- 606100 Fournitures eau, énergie
-- 606300 Petit équipement / matériel sportif consommable
-- 606400 Fournitures administratives (papeterie, encre)
-- 606800 Autres fournitures
-- 613200 Locations immobilières (salle, gymnase)
-- 613500 Locations matériel sportif
-- 615000 Entretien et réparations
-- 618000 Cotisations fédérales / affiliations
-- 622600 Honoraires (intervenant, prestataire)
-- 624000 Déplacements, transports, hôtellerie
-- 625100 Frais de bénévoles (remboursements)
-- 626000 Téléphone, frais postaux
-- 627000 Frais bancaires
-- 628100 Cotisations diverses
-
-Règles strictes :
-- Retourne UNIQUEMENT un objet JSON valide, AUCUN texte avant/après.
-- Si un champ n'est pas lisible : null (pas 0, pas "").
-- "items" peut être [] si la facture n'a pas de détail (ex. ticket commerçant simple).
-- Pour CHAQUE item, propose le compte le plus pertinent. Exemple : sur une facture qui contient à la fois des tatamis (606300) et des fournitures bureau (606400), répartis correctement.
-- "totalCents" sur chaque item = TTC (TVA comprise), même si la facture affiche HT séparément.
-- La somme des "items[].totalCents" doit être proche de "totalTtcCents" (tolérer ±0.02 € pour arrondis).`;
-  }
-
-  private parseOcrJson(content: string): OcrExtracted | null {
-    try {
-      // Nettoie les fences markdown si présentes
-      const cleaned = content
-        .replace(/^```(?:json)?\s*/i, '')
-        .replace(/\s*```\s*$/i, '')
-        .trim();
-      const parsed = JSON.parse(cleaned) as Record<string, unknown>;
-      const itemsRaw = Array.isArray(parsed.items) ? parsed.items : [];
-      const items: OcrItem[] = itemsRaw
-        .filter((it): it is Record<string, unknown> => typeof it === 'object' && it !== null)
-        .map((it) => ({
-          description:
-            typeof it.description === 'string' && it.description.length > 0
-              ? it.description
-              : 'Article',
-          totalCents:
-            typeof it.totalCents === 'number' && Number.isFinite(it.totalCents)
-              ? Math.round(it.totalCents)
-              : null,
-          suggestedAccountCode:
-            typeof it.suggestedAccountCode === 'string' &&
-            it.suggestedAccountCode.length >= 4
-              ? it.suggestedAccountCode
-              : null,
-        }));
-      return {
-        vendor:
-          typeof parsed.vendor === 'string' && parsed.vendor.length > 0
-            ? parsed.vendor
-            : null,
-        invoiceNumber:
-          typeof parsed.invoiceNumber === 'string' &&
-          parsed.invoiceNumber.length > 0
-            ? parsed.invoiceNumber
-            : null,
-        totalTtcCents:
-          typeof parsed.totalTtcCents === 'number'
-            ? Math.round(parsed.totalTtcCents)
-            : null,
-        vatCents:
-          typeof parsed.vatCents === 'number'
-            ? Math.round(parsed.vatCents)
-            : null,
-        date: typeof parsed.date === 'string' ? parsed.date : null,
-        items,
-        pcgAccountCode:
-          typeof parsed.pcgAccountCode === 'string'
-            ? parsed.pcgAccountCode
-            : null,
-        confidencePerField:
-          typeof parsed.confidencePerField === 'object' &&
-          parsed.confidencePerField !== null
-            ? (parsed.confidencePerField as Record<string, number>)
-            : {},
-      };
-    } catch (err) {
-      this.logger.warn(
-        `Parse OCR JSON échec : ${err instanceof Error ? err.message : err}`,
-      );
-      return null;
-    }
+  private errorMsg(err: unknown): string {
+    return err instanceof Error ? err.message : String(err);
   }
 
   private mediaAssetToDataUrl(asset: {
@@ -656,8 +1094,6 @@ Règles strictes :
     }
     const buf = fs.readFileSync(asset.storagePath);
     const base64 = buf.toString('base64');
-    // Pour les PDF → on pourrait convertir en PNG via pdfjs-dist, mais
-    // v1 : on envoie tel quel, le modèle vision rejettera si non supporté.
     return `data:${asset.mimeType};base64,${base64}`;
   }
 }

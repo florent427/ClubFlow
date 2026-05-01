@@ -3301,6 +3301,13 @@ model AccountingExtraction {
   extractedInvoiceNumber String?
   /// Proposition de compte PCG par l'IA (à valider par l'humain).
   extractedAccountCode String?
+  /// Résultat du 2e appel IA "réflexion structurée" : ventilation
+  /// catégorisée par compte avec reasoning et confiance par ligne.
+  /// Format JSON : { globalConfidencePct: int, globalReasoning: string,
+  /// lines: [{ accountCode, amountCents, label, reasoning,
+  /// confidencePct, projectId? }] }. Null si l'étape a échoué ou si
+  /// l'écriture est en fallback (budget IA dépassé).
+  categorizationJson   Json?
   model                String
   inputTokens          Int       @default(0)
   outputTokens         Int       @default(0)
