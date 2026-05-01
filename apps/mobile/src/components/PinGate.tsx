@@ -63,11 +63,16 @@ export function clearAllPinUnlocks(): void {
 export function PinGate({ children }: { children: React.ReactNode }) {
   // eslint-disable-next-line no-console
   console.log('[PinGate] render');
+  // **`fetchPolicy: 'network-only'`** ici (vs 'cache-first' partout
+  // ailleurs) : sans ça, après un switch de profil, Apollo retourne
+  // les données CACHÉES du profil PRÉCÉDENT (payer) avant que le
+  // network ne refetch avec les données du nouveau profil (enfant).
+  // Pendant cette fenêtre stale, isPayer=true côté cache → gate
+  // déclenché à tort sur l'enfant. En forçant network-only on évite
+  // ce flash. Le coût est ~500ms de spinner après chaque switch, ce
+  // qui est acceptable pour la sécurité.
   const { data, loading, error } = useQuery<ViewerMeData>(VIEWER_ME, {
-    fetchPolicy: 'cache-first',
-    // `errorPolicy: 'all'` permet à `data` d'être renseigné même
-    // partiellement quand certains champs throw — on ne bloque pas
-    // l'UI sur une erreur GraphQL non-fatale.
+    fetchPolicy: 'network-only',
     errorPolicy: 'all',
   });
   const me = data?.viewerMe;

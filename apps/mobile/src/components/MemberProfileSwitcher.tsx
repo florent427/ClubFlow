@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@apollo/client/react';
+import { useApolloClient, useMutation, useQuery } from '@apollo/client/react';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useState } from 'react';
@@ -99,6 +99,7 @@ function avatarColor(seed: string): string {
 export function MemberProfileSwitcher({ onDark = false }: Props = {}) {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const apolloClient = useApolloClient();
   const rootNav =
     navigation.getParent<NativeStackNavigationProp<RootStackParamList>>() ??
     navigation;
@@ -148,6 +149,17 @@ export function MemberProfileSwitcher({ onDark = false }: Props = {}) {
       // (s'il a un PIN) DOIT redemander le code (cf. UX requirement
       // "active à chaque retour sur le profil protégé").
       clearAllPinUnlocks();
+      // **Reset Apollo cache** : sans ça, le PinGate du nouveau profil
+      // verrait brièvement les données CACHÉES de l'ancien profil
+      // (notamment `canManageMembershipCart` du payeur stale) et
+      // déclencherait le gate à tort sur un profil enfant. Le clearStore
+      // vide tout le cache, forçant chaque useQuery à re-fetcher avec
+      // le nouveau token + clubId.
+      try {
+        await apolloClient.clearStore();
+      } catch {
+        /* ignore — pire cas : un peu de stale au prochain mount */
+      }
       rootNav.dispatch(
         CommonActions.reset({ index: 0, routes: [{ name: 'Main' }] }),
       );
