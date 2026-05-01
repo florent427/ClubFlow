@@ -429,6 +429,28 @@ export function EntryDetailScreen() {
   /** Mode édition forcé par l'utilisateur (sinon mode rapide par défaut). */
   const [showFullEdit, setShowFullEdit] = useState(false);
 
+  /**
+   * Set des lignes dont le reasoning IA est déplié. Tap sur le bloc 💭
+   * d'une ligne → toggle l'id dans ce set → on retire la limite de
+   * lignes du Text. Permet de lire l'argumentation complète de l'IA
+   * (jusqu'à 1500 chars depuis serveur) sans encombrer la liste.
+   */
+  const [expandedReasoning, setExpandedReasoning] = useState<Set<string>>(
+    new Set(),
+  );
+  const toggleReasoning = (lineId: string) => {
+    setExpandedReasoning((prev) => {
+      const next = new Set(prev);
+      if (next.has(lineId)) next.delete(lineId);
+      else next.add(lineId);
+      return next;
+    });
+  };
+
+  /** Idem pour le globalReasoning (1 seul bloc, pas de map). */
+  const [globalReasoningExpanded, setGlobalReasoningExpanded] =
+    useState(false);
+
   // Lignes hors banque (= articles) — celles qu'on peut requalifier.
   const articleLines = useMemo(
     () => (entry?.lines ?? []).filter((l) => !BANK_CODES.has(l.accountCode)),
@@ -627,9 +649,26 @@ export function EntryDetailScreen() {
                 )}
               </View>
               {decision.globalReasoning ? (
-                <Text style={styles.aiReasoningText}>
-                  {decision.globalReasoning}
-                </Text>
+                <Pressable
+                  onPress={() =>
+                    setGlobalReasoningExpanded((v) => !v)
+                  }
+                  hitSlop={4}
+                >
+                  <Text
+                    style={styles.aiReasoningText}
+                    numberOfLines={
+                      globalReasoningExpanded ? undefined : 4
+                    }
+                  >
+                    {decision.globalReasoning}
+                  </Text>
+                  <Text style={styles.reasoningToggle}>
+                    {globalReasoningExpanded
+                      ? '▲ Réduire'
+                      : '▼ Lire le raisonnement complet'}
+                  </Text>
+                </Pressable>
               ) : null}
             </View>
           ) : null}
@@ -660,7 +699,33 @@ export function EntryDetailScreen() {
             </View>
           ) : null}
 
-          {/* Mode rapide vs édition complète */}
+          {/* N° facture + fournisseur — TOUJOURS éditables (même en
+              mode quick validate). Le libellé est calculé en direct. */}
+          <View style={styles.identityForm}>
+            <TextField
+              label="N° de facture"
+              value={editInvoiceNumber}
+              onChangeText={setEditInvoiceNumber}
+              placeholder="Ex. F-2026-001"
+              autoCapitalize="characters"
+            />
+            <TextField
+              label="Fournisseur"
+              value={editVendor}
+              onChangeText={setEditVendor}
+              placeholder="Ex. Decathlon"
+            />
+            <View style={styles.computedLabelBox}>
+              <Text style={styles.computedLabelLabel}>
+                Libellé écriture (auto)
+              </Text>
+              <Text style={styles.computedLabelValue} numberOfLines={2}>
+                {computedLabel}
+              </Text>
+            </View>
+          </View>
+
+          {/* Mode rapide vs édition complète (montant / date / paiement) */}
           {canQuickValidate && !showFullEdit ? (
             <View style={styles.quickActions}>
               <Text style={styles.quickHint}>
@@ -675,7 +740,7 @@ export function EntryDetailScreen() {
                 fullWidth
               />
               <Button
-                label="Modifier en détail…"
+                label="Modifier le montant / la date / le paiement…"
                 variant="ghost"
                 icon="create-outline"
                 onPress={() => setShowFullEdit(true)}
@@ -684,30 +749,6 @@ export function EntryDetailScreen() {
           ) : (
             <>
               <View style={styles.editForm}>
-                {/* N° facture + fournisseur séparés. Le libellé est
-                    calculé en direct depuis ces 2 champs. */}
-                <TextField
-                  label="N° de facture"
-                  value={editInvoiceNumber}
-                  onChangeText={setEditInvoiceNumber}
-                  placeholder="Ex. F-2026-001"
-                  autoCapitalize="characters"
-                />
-                <TextField
-                  label="Fournisseur"
-                  value={editVendor}
-                  onChangeText={setEditVendor}
-                  placeholder="Ex. Decathlon"
-                />
-                {/* Libellé readonly : reflet temps réel du calcul */}
-                <View style={styles.computedLabelBox}>
-                  <Text style={styles.computedLabelLabel}>
-                    Libellé écriture (auto)
-                  </Text>
-                  <Text style={styles.computedLabelValue} numberOfLines={2}>
-                    {computedLabel}
-                  </Text>
-                </View>
                 <TextField
                   label="Montant TTC (€)"
                   value={editAmount}
@@ -893,11 +934,27 @@ export function EntryDetailScreen() {
                         ) : null}
                       </View>
                     ) : null}
-                    {/* Reasoning IA par ligne (italique sous le label) */}
+                    {/* Reasoning IA par ligne — tap pour déplier.
+                        Indique la limite via "▼ Voir plus" / "▲ Réduire". */}
                     {!isBank && line.iaReasoning ? (
-                      <Text style={styles.lineReasoning} numberOfLines={3}>
-                        💭 {line.iaReasoning}
-                      </Text>
+                      <Pressable
+                        onPress={() => toggleReasoning(line.id)}
+                        hitSlop={4}
+                      >
+                        <Text
+                          style={styles.lineReasoning}
+                          numberOfLines={
+                            expandedReasoning.has(line.id) ? undefined : 3
+                          }
+                        >
+                          💭 {line.iaReasoning}
+                        </Text>
+                        <Text style={styles.reasoningToggle}>
+                          {expandedReasoning.has(line.id)
+                            ? '▲ Réduire'
+                            : '▼ Voir le raisonnement IA complet'}
+                        </Text>
+                      </Pressable>
                     ) : null}
                   </View>
                   <View style={styles.lineAmounts}>
@@ -1153,6 +1210,13 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginTop: 2,
   },
+  reasoningToggle: {
+    ...typography.small,
+    color: palette.primary,
+    fontWeight: '600',
+    marginTop: 4,
+    fontSize: 11,
+  },
   amountPlaceholder: {
     ...typography.smallStrong,
     color: palette.muted,
@@ -1191,6 +1255,10 @@ const styles = StyleSheet.create({
   paymentChipTextActive: {
     color: palette.bg,
     fontWeight: '700',
+  },
+  identityForm: {
+    gap: spacing.md,
+    marginBottom: spacing.md,
   },
   computedLabelBox: {
     backgroundColor: palette.bgAlt,

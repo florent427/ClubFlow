@@ -1368,7 +1368,11 @@ Règles :
             sortOrder: sortOrder++,
             mergedFromArticleLabels: line.sourceLabels,
             iaSuggestedAccountCode: line.accountCode,
-            iaReasoning: line.reasoning?.slice(0, 300) || null,
+            // 1500 chars permet de garder l'argumentation complète de l'IA
+            // (avec contexte du club, comparaison entre comptes, etc.)
+            // sans bloater la table — le client tronque visuellement avec
+            // un toggle "voir plus".
+            iaReasoning: line.reasoning?.slice(0, 1500) || null,
             iaConfidencePct: line.confidencePct,
           },
         });
