@@ -830,9 +830,38 @@ export class ReceiptOcrService {
       'BANK_ACCOUNT',
     );
 
-    const decisionLines =
+    // Filtre de cohérence : un compte article ne peut JAMAIS être un
+    // compte de trésorerie (51xxxx banques, 53xxxx caisses, 511xxxx
+    // transit Stripe). L'IA hallucine parfois en mettant le code de la
+    // caisse sur la ligne article (vu en prod : "Caisse principale
+    // 530000" sur des Fournitures alimentaires). On corrige en
+    // basculant ces lignes sur le fallback EXPENSE_GENERIC + on annote
+    // le reasoning pour traçabilité.
+    const isCashOrBankCode = (code: string): boolean =>
+      /^51\d{4}$/.test(code) || /^53\d{4}$/.test(code);
+    const correctedDecisionLines =
       decision?.lines && decision.lines.length > 0
-        ? decision.lines
+        ? decision.lines.map((l) => {
+            if (isCashOrBankCode(l.accountCode)) {
+              this.logger.warn(
+                `[Stub ${entryId}] IA a proposé compte trésorerie ${l.accountCode} pour ligne article — corrigé vers ${fallbackCode}`,
+              );
+              return {
+                ...l,
+                accountCode: fallbackCode,
+                reasoning:
+                  `[Corrigé auto : ${l.accountCode} était un compte trésorerie, ` +
+                  `basculé sur ${fallbackCode}] ` +
+                  (l.reasoning || ''),
+                confidencePct: Math.min(l.confidencePct, 50),
+              };
+            }
+            return l;
+          })
+        : null;
+    const decisionLines =
+      correctedDecisionLines && correctedDecisionLines.length > 0
+        ? correctedDecisionLines
         : [
             {
               accountCode: fallbackCode,
@@ -1223,6 +1252,7 @@ Règles :
 - Si comptes différents → 1 ligne par compte (montants regroupés).
 - Somme des lines[].amountCents == totalTtcCents (tolérer ±2 centimes).
 - accountCode obligatoirement issu du plan comptable du club.
+- **INTERDICTION ABSOLUE** : pour la liste lines[] (= ARTICLES), n'utilise JAMAIS un compte 51xxxx (banques) ou 53xxxx (caisses). Ces comptes sont RÉSERVÉS à la contrepartie (= où l'argent transite). Un article doit toujours être un compte de classe 6 (charges, ex. 606xxx, 613xxx, 622xxx) ou classe 2 (immobilisation pour > 500€ HT). La contrepartie banque/caisse est gérée AUTOMATIQUEMENT côté serveur, ne la mets PAS dans lines[].
 - projectId optionnel — null si aucune correspondance évidente.
 - confidencePct = ta confiance dans le compte choisi (pas la lecture).
 - paymentMethod : repère "Mode de règlement", "réglé par chèque", "VIR SEPA",
@@ -1289,6 +1319,7 @@ Règles :
 - Si désaccord MAJEUR sur un compte : choisis l'expertise (mieux contextualisée) MAIS ramène confidencePct à ≤ 60.
 - Somme(lines[].amountCents) == totalTtcCents (±2 centimes).
 - accountCode strictement issu du plan comptable.
+- **INTERDICTION ABSOLUE** : ne JAMAIS proposer un compte 51xxxx (banques) ou 53xxxx (caisses) pour une ligne ARTICLE. Ces comptes sont RÉSERVÉS à la contrepartie (où l'argent transite). Une ligne article doit toujours être un compte de classe 6 (charges) ou occasionnellement classe 2 (immobilisation pour > 500€). Si l'OCR ou l'expertise propose un compte trésorerie pour un article, REJETTE et choisis 606800 (autres fournitures) par défaut.
 - agreement.* reflète la concordance OBJECTIVE entre les 2 sources, pas ta confiance.
 - paymentMethod :
   * Si OCR et Expertise concordent → choisis cette valeur, paymentMethodNeedsManual = false
