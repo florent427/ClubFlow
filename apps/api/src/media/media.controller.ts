@@ -17,6 +17,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { memoryStorage } from 'multer';
+import sharp from 'sharp';
 import { MediaAssetsService } from './media-assets.service';
 
 /**
@@ -170,14 +171,60 @@ export class MediaController {
    * Aucun risque de fuite de données : les URLs sont UUID-based et
    * non-devinables, et l'endpoint ne renvoie que des binaires (pas de
    * cookies / headers d'auth).
+   *
+   * **Conversion à la volée** (`?format=png&w=N`) :
+   * Le composant React Native `<Image>` ne supporte **pas** SVG. Quand un
+   * client mobile demande `/media/<svg-uuid>?format=png`, on rasterise via
+   * sharp à la volée et on sert le PNG. Cache long (immutable + ETag) car
+   * le résultat est déterministe pour une même paire (assetId, w).
+   * Inutile d'ajouter d'autres formats pour l'instant — PNG suffit pour
+   * l'usage logo + galerie membre.
    */
   @Get(':id')
   @Throttle({ default: { limit: 1000, ttl: 60_000 } })
   async download(
     @Param('id') id: string,
+    @Query('format') format: string | undefined,
+    @Query('w') widthParam: string | undefined,
     @Res() res: Response,
   ): Promise<void> {
     const { row, stream } = await this.service.streamFor(id);
+
+    // ─── Branche conversion SVG → PNG ─────────────────────────────
+    if (format === 'png' && row.mimeType === 'image/svg+xml') {
+      const targetWidth = clampWidth(widthParam);
+      try {
+        // Buffer le SVG complet (les SVG sont petits, < 1Mo en pratique).
+        const chunks: Buffer[] = [];
+        for await (const chunk of stream) {
+          chunks.push(chunk as Buffer);
+        }
+        const svgBuf = Buffer.concat(chunks);
+        const pngBuf = await sharp(svgBuf, { density: 192 })
+          .resize({ width: targetWidth, withoutEnlargement: false })
+          .png()
+          .toBuffer();
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Content-Length', String(pngBuf.byteLength));
+        res.setHeader(
+          'Cache-Control',
+          'public, max-age=31536000, immutable',
+        );
+        res.setHeader(
+          'ETag',
+          `"${this.service.etag(row)}-png-${targetWidth}"`,
+        );
+        applyOpenCors(res);
+        res.end(pngBuf);
+        return;
+      } catch {
+        // Fallback : si sharp échoue (SVG mal formé, sécurité…), on sert
+        // le SVG brut — le client gérera (Image RN affichera blanc, mais
+        // ne plante pas).
+      }
+    }
+
+    // ─── Branche standard (binaire tel quel) ──────────────────────
     res.setHeader('Content-Type', row.mimeType);
     const encoded = encodeURIComponent(row.fileName);
     res.setHeader(
@@ -187,16 +234,7 @@ export class MediaController {
     res.setHeader('Content-Length', String(row.sizeBytes));
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     res.setHeader('ETag', `"${this.service.etag(row)}"`);
-    // CORS — voir docstring ci-dessus.
-    // NB : `*` + `Allow-Credentials: true` est rejeté par les navigateurs.
-    // On overrideheader le `Access-Control-Allow-Credentials: true` posé par
-    // le middleware global (`enableCors({credentials: true})` dans main.ts)
-    // en le supprimant ici, puisque cet endpoint n'utilise pas les cookies.
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Range, If-None-Match');
-    res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Type, ETag');
-    res.removeHeader('Access-Control-Allow-Credentials');
+    applyOpenCors(res);
     stream.on('error', () => {
       if (!res.headersSent) res.status(500);
       res.end();
@@ -214,4 +252,34 @@ export class MediaController {
     const deleted = await this.service.delete(clubId, id);
     return { deleted };
   }
+}
+
+/**
+ * Pose les en-têtes CORS ouverts utilisés par le endpoint public
+ * `/media/:id`. Voir docstring de la méthode `download()` pour la
+ * justification (WebView mobile sans origin).
+ */
+function applyOpenCors(res: Response): void {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Range, If-None-Match');
+  res.setHeader(
+    'Access-Control-Expose-Headers',
+    'Content-Length, Content-Type, ETag',
+  );
+  // `*` + credentials est rejeté par les navigateurs ; le middleware CORS
+  // global pose `Access-Control-Allow-Credentials: true`, on le retire ici.
+  res.removeHeader('Access-Control-Allow-Credentials');
+}
+
+/**
+ * Clamp la largeur du PNG résultat de la rasterisation SVG dans des
+ * bornes raisonnables. Évite qu'un client malicieux demande
+ * `?w=99999999` et explose la mémoire serveur. Défaut : 256 px (assez
+ * pour un logo retina dans un bubble 64 px).
+ */
+function clampWidth(raw: string | undefined): number {
+  const n = raw ? parseInt(raw, 10) : NaN;
+  if (!Number.isFinite(n) || n <= 0) return 256;
+  return Math.min(Math.max(n, 16), 1024);
 }

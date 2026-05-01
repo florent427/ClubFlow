@@ -64,7 +64,23 @@ export function ClubLogoBubble({
   // base64 invalide et ne fire pas toujours `onError`. On treat ces URLs
   // comme failed dès le départ pour fallback immédiat sur les initiales.
   const isLegacyDataUrl = rawUrl?.startsWith('data:') ?? false;
-  const url = isLegacyDataUrl ? null : absolutizeMediaUrl(rawUrl);
+  const baseUrl = isLegacyDataUrl ? null : absolutizeMediaUrl(rawUrl);
+  // **Conversion SVG → PNG côté serveur** : React Native `<Image>` ne
+  // supporte PAS SVG (ni RN core, ni expo-image actuel). Pour tous les
+  // assets servis par notre endpoint `/media/<uuid>`, on appose
+  // systématiquement `?format=png&w=<2×size>`. Le backend (cf.
+  // `media.controller.ts`) :
+  //  - rastérise via sharp si l'asset est SVG
+  //  - ignore le param et sert le binaire tel quel si l'asset est déjà
+  //    PNG/JPG/WebP
+  // Coût : un cache key différent par taille demandée, mais pour un logo
+  // c'est négligeable (chargé 1x par session).
+  const url = baseUrl
+    ? appendQueryParams(baseUrl, {
+        format: 'png',
+        w: String(Math.round(size * 2)),
+      })
+    : null;
   const showImage = url && !imageFailed;
 
   const initials = makeInitials(clubTheme.clubName);
@@ -172,6 +188,18 @@ export function ClubLogoBubble({
       )}
     </Pressable>
   );
+}
+
+/**
+ * Concatène des query params à une URL, en respectant la séparation
+ * `?` initial vs `&` suivants. Ne ré-encode pas les params existants.
+ */
+function appendQueryParams(url: string, params: Record<string, string>): string {
+  const sep = url.includes('?') ? '&' : '?';
+  const qs = Object.entries(params)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join('&');
+  return `${url}${sep}${qs}`;
 }
 
 /** Première lettre du premier mot + première lettre du dernier mot. */
