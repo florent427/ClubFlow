@@ -7,11 +7,11 @@ import {
   AiUsageFeature,
 } from '@prisma/client';
 import * as crypto from 'crypto';
-import * as fs from 'fs';
 import { AiBudgetService } from '../ai/ai-budget.service';
 import { AiSettingsService } from '../ai/ai-settings.service';
 import { OpenrouterService } from '../ai/openrouter.service';
 import { ModuleCode } from '../domain/module-registry/module-codes';
+import { MediaAssetsService } from '../media/media-assets.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AccountingAuditService } from './accounting-audit.service';
 import { AccountingMappingService } from './accounting-mapping.service';
@@ -129,6 +129,7 @@ export class ReceiptOcrService {
     private readonly openrouter: OpenrouterService,
     private readonly mapping: AccountingMappingService,
     private readonly audit: AccountingAuditService,
+    private readonly mediaAssets: MediaAssetsService,
   ) {}
 
   private async isAccountingEnabled(clubId: string): Promise<boolean> {
@@ -191,11 +192,25 @@ export class ReceiptOcrService {
       throw new BadRequestException('Document introuvable.');
     }
 
-    // 1. Hash du fichier pour déduplication
+    // 1. Lecture du buffer via le storage adapter (compatible disque
+    //    local OU S3/R2). On garde le buffer en mémoire pour l'utiliser
+    //    à la fois pour le hash de dédup et pour l'envoi vision IA.
+    let assetBuffer: Buffer;
+    try {
+      assetBuffer = await this.loadAssetBuffer(mediaAssetId);
+    } catch (err) {
+      this.logger.error(
+        `[OCR ${mediaAssetId}] Impossible de lire le fichier : ${this.errorMsg(err)}`,
+      );
+      throw new BadRequestException(
+        'Impossible de récupérer le fichier source du document.',
+      );
+    }
+
+    // 2. Hash du fichier pour déduplication
     let sha256 = asset.sha256;
-    if (!sha256 && fs.existsSync(asset.storagePath)) {
-      const buf = fs.readFileSync(asset.storagePath);
-      sha256 = crypto.createHash('sha256').update(buf).digest('hex');
+    if (!sha256) {
+      sha256 = crypto.createHash('sha256').update(assetBuffer).digest('hex');
       await this.prisma.mediaAsset.update({
         where: { id: asset.id },
         data: { sha256 },
@@ -247,7 +262,7 @@ export class ReceiptOcrService {
       );
     }
 
-    const dataUrl = this.mediaAssetToDataUrl(asset);
+    const dataUrl = this.bufferToDataUrl(assetBuffer, asset.mimeType);
     const ctx = await this.loadClubContext(clubId);
 
     // 5. Appels 1 + 2 EN PARALLÈLE — extraction OCR brute & expertise
@@ -1085,15 +1100,26 @@ Règles :
     return err instanceof Error ? err.message : String(err);
   }
 
-  private mediaAssetToDataUrl(asset: {
-    storagePath: string;
-    mimeType: string;
-  }): string {
-    if (!fs.existsSync(asset.storagePath)) {
-      throw new BadRequestException('Fichier source introuvable sur disque.');
+  /**
+   * Lit l'intégralité du fichier d'un asset via le storage adapter
+   * (compatible disque local OU S3/R2). Retourne un Buffer en RAM.
+   *
+   * IMPORTANT : on passe par `MediaAssetsService.streamFor()` plutôt
+   * que par `fs.readFileSync(asset.storagePath)` parce que `storagePath`
+   * est une CLÉ relative au storage abstrait, PAS un chemin filesystem
+   * (ça plantait avec "Fichier source introuvable sur disque" sur les
+   * adapters non-local ou avec un cwd inattendu).
+   */
+  private async loadAssetBuffer(assetId: string): Promise<Buffer> {
+    const { stream } = await this.mediaAssets.streamFor(assetId);
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array));
     }
-    const buf = fs.readFileSync(asset.storagePath);
-    const base64 = buf.toString('base64');
-    return `data:${asset.mimeType};base64,${base64}`;
+    return Buffer.concat(chunks);
+  }
+
+  private bufferToDataUrl(buf: Buffer, mimeType: string): string {
+    return `data:${mimeType};base64,${buf.toString('base64')}`;
   }
 }

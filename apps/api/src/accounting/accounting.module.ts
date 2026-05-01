@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.guard';
 import { AiModule } from '../ai/ai.module';
+import { MediaModule } from '../media/media.module';
 import { AccountingExportController } from './accounting-export.controller';
 import { AccountingResolver } from './accounting.resolver';
 import { AccountingService } from './accounting.service';
@@ -18,7 +19,7 @@ import { ClubPaymentRoutesService } from './club-payment-routes.service';
 import { ReceiptOcrService } from './receipt-ocr.service';
 
 @Module({
-  imports: [PrismaModule, AiModule],
+  imports: [PrismaModule, AiModule, MediaModule],
   controllers: [AccountingExportController],
   providers: [
     AccountingService,
