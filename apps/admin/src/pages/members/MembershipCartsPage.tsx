@@ -98,9 +98,14 @@ export function MembershipCartsPage() {
     0,
   );
   const validated = carts.filter((c) => c.status === 'VALIDATED').length;
+  // Total à facturer = sum des montants des FACTURES liées aux paniers
+  // validés. C'est le montant qui sera réellement payé par les payeurs
+  // (cohérent avec la page Facturation). On retombe sur `totalCents` du
+  // panier en fallback si la facture n'est pas encore matérialisée
+  // (cas dégradé peu probable pour un cart VALIDATED).
   const totalRevenue = carts
     .filter((c) => c.status === 'VALIDATED')
-    .reduce((sum, c) => sum + c.totalCents, 0);
+    .reduce((sum, c) => sum + (c.invoiceAmountCents ?? c.totalCents), 0);
 
   return (
     <>
@@ -165,15 +170,15 @@ export function MembershipCartsPage() {
             </span>
           </div>
           <div className="members-kpi">
-            <span className="members-kpi__label">Validés (total panier)</span>
+            <span className="members-kpi__label">À facturer</span>
             <span className="members-kpi__value">
               {formatEuros(totalRevenue)}
             </span>
             <span
               className="members-kpi__hint"
-              title="Somme des paniers VALIDATED — c'est la valeur des adhésions confirmées, PAS l'encaissement réel. Les factures peuvent avoir un montant différent (remises famille/groupe) et leur paiement effectif est suivi sur la page Facturation."
+              title="Total des montants de FACTURES émises pour les paniers validés (TTC après remises famille/groupe). Ce montant correspond à ce qui apparaît sur la page Facturation. L'encaissement réel (factures payées) est suivi sur la page Facturation."
             >
-              à facturer (≠ encaissement)
+              factures émises (≠ encaissement)
             </span>
           </div>
         </div>
@@ -289,7 +294,23 @@ export function MembershipCartsPage() {
                       <span className="cf-text-muted">—</span>
                     )}
                   </td>
-                  <td className="num">{formatEuros(c.totalCents)}</td>
+                  <td className="num">
+                    {/* Si la facture est émise on affiche le montant
+                        facturé (= ce qui sera vraiment payé). Sinon on
+                        retombe sur le total panier (estimation). */}
+                    {c.invoiceAmountCents != null ? (
+                      <span title="Montant facture (TTC après remises)">
+                        {formatEuros(c.invoiceAmountCents)}
+                      </span>
+                    ) : (
+                      <span
+                        className="cf-text-muted"
+                        title="Estimation panier (la facture finale peut différer après remises famille/groupe)"
+                      >
+                        {formatEuros(c.totalCents)}
+                      </span>
+                    )}
+                  </td>
                   <td>
                     <button
                       type="button"

@@ -13,6 +13,7 @@ export const MEMBERSHIP_CART_FIELDS = gql`
     invoiceId
     cancelledReason
     totalCents
+    invoiceAmountCents
     requiresManualAssignmentCount
     canValidate
     items {
@@ -164,6 +165,12 @@ export type AdminCart = {
   invoiceId: string | null;
   cancelledReason: string | null;
   totalCents: number;
+  /**
+   * Montant de la facture liée (TTC, après remises famille/groupe). Null
+   * si pas encore validé. C'est CE montant qui sera vraiment payé,
+   * cohérent avec la page Facturation.
+   */
+  invoiceAmountCents: number | null;
   requiresManualAssignmentCount: number;
   canValidate: boolean;
   items: AdminCartItem[];

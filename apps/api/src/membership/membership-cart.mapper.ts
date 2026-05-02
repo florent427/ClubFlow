@@ -150,6 +150,10 @@ export function toMembershipCartGraph(
     items,
     pendingItems,
     totalCents: preview.totalCents,
+    // Si le panier est validé et qu'une facture est liée, on expose son
+    // montant TTC réel — c'est ce qui sera vraiment payé. Null sinon
+    // (cart OPEN ou cart CANCELLED sans facture).
+    invoiceAmountCents: cart.invoice?.amountCents ?? null,
     requiresManualAssignmentCount: preview.requiresManualAssignmentCount,
     canValidate: preview.canValidate,
     createdAt: cart.createdAt,

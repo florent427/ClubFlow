@@ -254,8 +254,25 @@ export class MembershipCartGraph {
   @Field(() => [MembershipCartPendingItemGraph])
   pendingItems!: MembershipCartPendingItemGraph[];
 
+  /**
+   * Total estimé du panier (sum des items après pricing rules dynamiques).
+   * Avant validation : c'est l'estimation. Après validation : c'est ce qui
+   * a été calculé au moment du `validateCart`. Ne reflète PAS forcément ce
+   * qui sera vraiment encaissé — pour ça utiliser `invoiceAmountCents`.
+   */
   @Field(() => Int)
   totalCents!: number;
+
+  /**
+   * Montant TTC de la facture liée (si le panier a été validé). C'est LE
+   * montant qui sera réellement à payer = celui qui apparaît côté Facturation.
+   * Peut différer de `totalCents` à cause de remises famille/groupe
+   * appliquées au moment de l'émission de la facture, ou de frais one-time
+   * ajoutés au panier mais non répercutés sur la facture.
+   * Null tant que le panier n'a pas été validé / pas de facture liée.
+   */
+  @Field(() => Int, { nullable: true })
+  invoiceAmountCents!: number | null;
 
   @Field(() => Int)
   requiresManualAssignmentCount!: number;
