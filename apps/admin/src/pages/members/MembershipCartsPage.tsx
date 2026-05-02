@@ -165,11 +165,16 @@ export function MembershipCartsPage() {
             </span>
           </div>
           <div className="members-kpi">
-            <span className="members-kpi__label">Encaissé</span>
+            <span className="members-kpi__label">Validés (total panier)</span>
             <span className="members-kpi__value">
               {formatEuros(totalRevenue)}
             </span>
-            <span className="members-kpi__hint">projets validés</span>
+            <span
+              className="members-kpi__hint"
+              title="Somme des paniers VALIDATED — c'est la valeur des adhésions confirmées, PAS l'encaissement réel. Les factures peuvent avoir un montant différent (remises famille/groupe) et leur paiement effectif est suivi sur la page Facturation."
+            >
+              à facturer (≠ encaissement)
+            </span>
           </div>
         </div>
       ) : null}
