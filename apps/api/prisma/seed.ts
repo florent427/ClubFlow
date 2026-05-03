@@ -6,6 +6,7 @@ import {
   MemberClubRole,
   MemberCivility,
   MembershipRole,
+  SystemRole,
   type Prisma,
 } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
@@ -29,6 +30,7 @@ const MODULE_LABELS: Record<ModuleCode, string> = {
   [ModuleCode.CLUB_LIFE]: 'Vie du club',
   [ModuleCode.EVENTS]: 'Événements',
   [ModuleCode.BOOKING]: 'Réservations',
+  [ModuleCode.PROJECTS]: 'Événements / Projets',
 };
 
 async function seedModuleDefinitions(): Promise<void> {
@@ -102,11 +104,13 @@ async function main(): Promise<void> {
       passwordHash,
       emailVerifiedAt: new Date(),
       displayName: 'Admin démo',
+      systemRole: SystemRole.SUPER_ADMIN,
     },
     update: {
       passwordHash,
       emailVerifiedAt: new Date(),
       displayName: 'Admin démo',
+      systemRole: SystemRole.SUPER_ADMIN,
     },
   });
 
@@ -340,6 +344,37 @@ async function main(): Promise<void> {
       membershipFamilyAdjustmentValue: -500,
     },
   });
+
+  // Frais uniques démo : licence fédérale (LICENSE, autoApply) + cotisation club (MANDATORY, autoApply)
+  for (const fee of [
+    {
+      label: 'Licence fédérale 2025-2026',
+      amountCents: 42_00,
+      kind: 'LICENSE' as const,
+      autoApply: true,
+    },
+    {
+      label: 'Cotisation club',
+      amountCents: 15_00,
+      kind: 'MANDATORY' as const,
+      autoApply: true,
+    },
+  ]) {
+    const exists = await prisma.membershipOneTimeFee.findFirst({
+      where: { clubId: club.id, label: fee.label, archivedAt: null },
+    });
+    if (!exists) {
+      await prisma.membershipOneTimeFee.create({
+        data: {
+          clubId: club.id,
+          label: fee.label,
+          amountCents: fee.amountCents,
+          kind: fee.kind,
+          autoApply: fee.autoApply,
+        },
+      });
+    }
+  }
 
   const pwdHint =
     process.env.SEED_ADMIN_PASSWORD === undefined

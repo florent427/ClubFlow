@@ -14,10 +14,12 @@ import type {
 } from '../../lib/types';
 import { FamilyDetailDrawer } from './FamilyDetailDrawer';
 import { useMembersUi } from './members-ui-context';
+import { useToast } from '../../components/ToastProvider';
 
 export function FamiliesPage() {
   const { drawerFamilyId, setDrawerFamilyId } = useMembersUi();
   const [familySearch, setFamilySearch] = useState('');
+  const { showToast } = useToast();
 
   const { data: famData, refetch: refetchFamilies } =
     useQuery<FamiliesQueryData>(CLUB_FAMILIES);
@@ -25,30 +27,30 @@ export function FamiliesPage() {
   const { data: contactsData } = useQuery<ClubContactsQueryData>(CLUB_CONTACTS);
 
   const [deleteFamily] = useMutation(DELETE_CLUB_FAMILY, {
-    onCompleted: () => void refetchFamilies(),
+    onCompleted: () => {
+      void refetchFamilies();
+      showToast('Foyer supprimé.', 'success');
+    },
     onError: (e) => {
-      window.alert(e.message);
+      showToast(e.message, 'error');
     },
   });
 
   const members = membersData?.clubMembers ?? [];
   const families = famData?.clubFamilies ?? [];
 
-  const filteredFamilies = useMemo(() => {
-    const raw = familySearch.trim().toLowerCase();
-    if (!raw) return families;
-    return families.filter((f) => {
-      const labelLower = (f.label ?? '').trim().toLowerCase();
-      const fallback = 'foyer sans nom';
-      const haystack = labelLower || fallback;
-      return haystack.includes(raw);
-    });
-  }, [families, familySearch]);
-
   const memberNameById = useMemo(() => {
     const m = new Map<string, string>();
     for (const x of members) {
       m.set(x.id, `${x.firstName} ${x.lastName}`);
+    }
+    return m;
+  }, [members]);
+
+  const memberLastNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const x of members) {
+      m.set(x.id, x.lastName);
     }
     return m;
   }, [members]);
@@ -60,6 +62,42 @@ export function FamiliesPage() {
     }
     return m;
   }, [contactsData?.clubContacts]);
+
+  const contactLastNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of contactsData?.clubContacts ?? []) {
+      m.set(c.id, c.lastName);
+    }
+    return m;
+  }, [contactsData?.clubContacts]);
+
+  const deriveFamilyLabel = (
+    links: Array<{ memberId: string | null; contactId: string | null }>,
+  ): string | null => {
+    const lastNames = new Set<string>();
+    for (const l of links) {
+      const ln =
+        (l.contactId ? contactLastNameById.get(l.contactId) : null) ??
+        (l.memberId ? memberLastNameById.get(l.memberId) : null);
+      if (ln && ln.trim()) lastNames.add(ln.trim());
+    }
+    if (lastNames.size === 0) return null;
+    return `Famille ${Array.from(lastNames).sort().join('-')}`;
+  };
+
+  const filteredFamilies = useMemo(() => {
+    const raw = familySearch.trim().toLowerCase();
+    if (!raw) return families;
+    return families.filter((f) => {
+      const labelLower = (f.label ?? deriveFamilyLabel(f.links) ?? '')
+        .trim()
+        .toLowerCase();
+      const fallback = 'foyer sans nom';
+      const haystack = labelLower || fallback;
+      return haystack.includes(raw);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [families, familySearch, memberLastNameById, contactLastNameById]);
 
   function onDeleteFamily(familyId: string) {
     if (
@@ -74,6 +112,9 @@ export function FamiliesPage() {
     });
   }
 
+  const needsPayerCount = families.filter((f) => f.needsPayer).length;
+  const totalLinks = families.reduce((n, f) => n + f.links.length, 0);
+
   return (
     <>
       <header className="members-loom__hero members-loom__hero--nested">
@@ -82,18 +123,49 @@ export function FamiliesPage() {
             <p className="members-loom__eyebrow">Membres · Familles</p>
             <h1 className="members-loom__title">Foyers et payeur unique</h1>
             <p className="members-loom__lede">
-              Un seul payeur par famille. Les fiches membres doivent exister
+              Un seul payeur par foyer. Les fiches membres doivent exister
               avant le regroupement. Cliquez sur un foyer pour le modifier.
             </p>
           </div>
           <Link
             to="/members/families/new"
-            className="btn btn-primary members-hero__cta"
+            className="cf-btn cf-btn--primary members-hero__cta"
           >
+            <span className="material-symbols-outlined" aria-hidden>
+              group_add
+            </span>
             Nouveau foyer
           </Link>
         </div>
       </header>
+
+      {families.length > 0 ? (
+        <div className="members-kpis families-kpis">
+          <div className="members-kpi">
+            <span className="members-kpi__label">Foyers</span>
+            <span className="members-kpi__value">{families.length}</span>
+            <span className="members-kpi__hint">enregistrés</span>
+          </div>
+          <div className="members-kpi">
+            <span className="members-kpi__label">Personnes rattachées</span>
+            <span className="members-kpi__value">{totalLinks}</span>
+            <span className="members-kpi__hint">membres + contacts cumulés</span>
+          </div>
+          <div className="members-kpi">
+            <span className="members-kpi__label">Payeur manquant</span>
+            <span
+              className={`members-kpi__value${needsPayerCount > 0 ? ' members-kpi__value--alert' : ''}`}
+            >
+              {needsPayerCount}
+            </span>
+            <span className="members-kpi__hint">
+              {needsPayerCount > 0
+                ? 'à corriger avant facturation'
+                : 'tous les foyers sont OK'}
+            </span>
+          </div>
+        </div>
+      ) : null}
 
       <div className="members-loom__grid members-loom__grid--single">
         <section className="members-panel members-panel--table">
@@ -137,9 +209,15 @@ export function FamiliesPage() {
                       >
                         <div className="families-card__head">
                           <strong>
-                            {f.label ?? 'Foyer sans nom'}
+                            {f.label ?? deriveFamilyLabel(f.links) ?? 'Foyer sans nom'}
                             {f.needsPayer ? (
-                              <span className="families-needs-payer-badge">
+                              <span className="cf-badge cf-badge--danger">
+                                <span
+                                  className="material-symbols-outlined"
+                                  aria-hidden
+                                >
+                                  priority_high
+                                </span>
                                 Payeur manquant
                               </span>
                             ) : null}

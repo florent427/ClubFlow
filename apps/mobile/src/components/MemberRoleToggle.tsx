@@ -1,10 +1,13 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { openAdminInBrowser } from '../lib/admin-switch';
+import { palette, radius, spacing, typography } from '../lib/theme';
 
 type Props = {
   canAccessClubBackOffice: boolean;
   adminWorkspaceClubId?: string | null;
+  /** `header` = bouton compact dans un header (versions onDark via hero
+   * gradient adaptent les couleurs). */
   variant?: 'header' | 'segment';
 };
 
@@ -21,10 +24,11 @@ export function MemberRoleToggle({
       <Pressable
         style={({ pressed }) => [styles.headerBtn, pressed && styles.pressed]}
         onPress={() => openAdminInBrowser()}
-        accessibilityLabel="Ouvrir l’administration ClubFlow"
+        accessibilityRole="button"
+        accessibilityLabel="Ouvrir l'administration ClubFlow"
       >
-        <Ionicons name="settings-outline" size={18} color="#1565c0" />
-        <Text style={styles.headerBtnText}>Administration</Text>
+        <Ionicons name="settings-outline" size={16} color="#ffffff" />
+        <Text style={styles.headerBtnText}>Admin</Text>
       </Pressable>
     );
   }
@@ -48,41 +52,41 @@ const styles = StyleSheet.create({
   headerBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
     borderWidth: 1,
-    borderColor: '#1565c0',
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+    minHeight: 36,
   },
   headerBtnText: {
-    color: '#1565c0',
-    fontWeight: '600',
-    fontSize: 14,
+    ...typography.smallStrong,
+    color: '#ffffff',
   },
   pressed: { opacity: 0.7 },
   segment: {
     flexDirection: 'row',
-    borderRadius: 8,
+    borderRadius: radius.md,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: palette.borderStrong,
   },
   segBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: '#fff',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: palette.surface,
   },
   segBtnOn: {
-    backgroundColor: '#e3f2fd',
+    backgroundColor: palette.primaryLight,
   },
   segBtnText: {
-    fontSize: 14,
-    color: '#333',
+    ...typography.smallStrong,
+    color: palette.body,
   },
   segBtnTextOn: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1565c0',
+    ...typography.smallStrong,
+    color: palette.primary,
   },
 });

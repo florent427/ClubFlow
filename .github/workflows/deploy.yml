@@ -1,0 +1,64 @@
+name: Deploy to production
+
+on:
+  # 1. Push sur main → deploy immédiat (sans attendre la release)
+  # 2. Push d'un tag v* (créé par release-please) → deploy aussi
+  # 3. Trigger manuel (Actions tab → Run workflow)
+  push:
+    branches: [main]
+    tags: ['v*']
+    # Ignore les modifs purement docs/CI pour éviter de redéployer pour rien
+    paths-ignore:
+      - 'CLAUDE.md'
+      - 'CHANGELOG.md'
+      - 'README.md'
+      - 'docs/**'
+      - '.github/**'
+      - '**.md'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag/branch à déployer (ex v0.3.0 ou main)'
+        required: false
+        default: 'main'
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://clubflow.topdigital.re
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: 89.167.79.253
+          username: clubflow
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          # Timeout 10 min — npm ci + 4 builds peuvent prendre du temps
+          command_timeout: 10m
+          script_stop: true
+          script: |
+            sudo /usr/local/bin/clubflow-deploy.sh
+
+      - name: Smoke test from GitHub runner
+        run: |
+          set -e
+          for h in clubflow.topdigital.re portail.clubflow.topdigital.re sksr.re; do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' "https://$h/")
+            echo "$code  https://$h/"
+            [ "$code" = "200" ] || { echo "❌ $h returned $code"; exit 1; }
+          done
+          api_code=$(curl -sS -o /dev/null -w '%{http_code}' \
+            -X POST https://api.clubflow.topdigital.re/graphql \
+            -H 'Content-Type: application/json' \
+            -H 'Origin: https://clubflow.topdigital.re' \
+            -d '{"query":"{__typename}"}')
+          echo "$api_code  https://api.clubflow.topdigital.re/graphql"
+          [ "$api_code" = "200" ] || exit 1
+          echo "✅ All endpoints healthy"

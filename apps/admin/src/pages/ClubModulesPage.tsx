@@ -47,26 +47,43 @@ export function ClubModulesPage() {
         </p>
         {toggleError ? <p className="form-error">{toggleError}</p> : null}
         <ul className="cf-module-grid">
-          {rows.map((row) => (
-            <li key={row.code} className="cf-module-tile">
-              <div className="cf-module-tile__info">
-                <span className="cf-module-tile__name">{row.label}</span>
-                <span className="cf-module-tile__code">{row.code}</span>
-                {row.required ? (
-                  <span className="cf-module-tile__badge">Obligatoire</span>
-                ) : null}
-              </div>
-              <label className="toggle">
-                <input
-                  type="checkbox"
-                  checked={row.enabled}
-                  disabled={mutating || (row.required && row.enabled)}
-                  onChange={(e) => void onToggle(row.code, e.target.checked)}
-                />
-                <span className="toggle-ui" aria-hidden />
-              </label>
-            </li>
-          ))}
+          {rows.map((row) => {
+            const depLabels = (row.dependsOn ?? [])
+              .map(
+                (code) =>
+                  MODULE_CATALOG.find((m) => m.code === code)?.label ?? code,
+              )
+              .join(', ');
+            return (
+              <li key={row.code} className="cf-module-tile">
+                <div className="cf-module-tile__info">
+                  <span className="cf-module-tile__name">{row.label}</span>
+                  <span className="cf-module-tile__code">{row.code}</span>
+                  {row.required ? (
+                    <span className="cf-module-tile__badge">Obligatoire</span>
+                  ) : null}
+                  <p className="cf-module-tile__desc">{row.description}</p>
+                  {depLabels ? (
+                    <p className="cf-module-tile__deps">
+                      Dépend de : {depLabels}
+                    </p>
+                  ) : null}
+                </div>
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    aria-label={`Activer le module ${row.label}`}
+                    checked={row.enabled}
+                    disabled={mutating || (row.required && row.enabled)}
+                    onChange={(e) =>
+                      void onToggle(row.code, e.target.checked)
+                    }
+                  />
+                  <span className="toggle-ui" aria-hidden />
+                </label>
+              </li>
+            );
+          })}
         </ul>
       </section>
     </div>

@@ -29,13 +29,25 @@ export type HouseholdViewerInclusionContext = {
   candidateFamilyId: string;
   /** Foyers résidence où le visiteur est payeur (rôle PAYER membre ou contact). */
   viewerPayerFamilyIds: ReadonlySet<string>;
+  /**
+   * Foyers dans lesquels le visiteur a accepté une invitation (le visiteur
+   * est `FamilyInvite.consumedByUserId`, le foyer est `FamilyInvite.familyId`).
+   * Donne au visiteur la visibilité sur les mineurs de ces foyers — modèle
+   * d'invitation **unilatéral** : si Samantha invite Josette, Josette voit
+   * les enfants de Samantha ; Samantha ne voit pas les enfants de Josette
+   * tant que Josette ne l'a pas invitée en retour.
+   */
+  viewerInvitedFamilyIds?: ReadonlySet<string>;
 };
 
 /**
  * Profil sélectionnable pour un foyer étendu (hors chemin legacy « tous les membres »).
- * Par défaut : soi, mineurs du groupe ; pas les autres adultes d’une autre résidence.
- * Avec `householdGroupInclusion` : les adultes du **même** `familyId` que le payeur (même foyer club),
- * comme les mineurs ; exclusion inchangée pour un adulte uniquement dans un foyer séparé du groupe.
+ *
+ * Règles (modèle d'invitation unilatéral) :
+ * - Soi-même : toujours visible.
+ * - Foyer où je suis payeur : tous les membres visibles (adultes + mineurs).
+ * - Autre foyer : uniquement les mineurs dont le foyer m'a invité.
+ * - Pas de `householdGroupInclusion` : chemin legacy (foyer isolé) — mineurs visibles.
  */
 export function shouldIncludeMemberInHouseholdViewerProfiles(
   viewerUserId: string,
@@ -49,15 +61,30 @@ export function shouldIncludeMemberInHouseholdViewerProfiles(
   if (member.userId === viewerUserId) {
     return true;
   }
-  if (isStrictlyMinorProfile(member.birthDate, now)) {
-    return true;
+
+  if (householdGroupInclusion) {
+    // Contexte groupe foyer étendu : visibilité gouvernée par les liens
+    // invitation (unilatéraux), pas par le simple fait d'être mineur.
+    if (
+      householdGroupInclusion.viewerPayerFamilyIds.has(
+        householdGroupInclusion.candidateFamilyId,
+      )
+    ) {
+      return true;
+    }
+    if (
+      isStrictlyMinorProfile(member.birthDate, now) &&
+      householdGroupInclusion.viewerInvitedFamilyIds?.has(
+        householdGroupInclusion.candidateFamilyId,
+      )
+    ) {
+      return true;
+    }
+    return false;
   }
-  if (
-    householdGroupInclusion &&
-    householdGroupInclusion.viewerPayerFamilyIds.has(
-      householdGroupInclusion.candidateFamilyId,
-    )
-  ) {
+
+  // Chemin legacy (foyer sans groupe étendu) : mineurs visibles comme avant.
+  if (isStrictlyMinorProfile(member.birthDate, now)) {
     return true;
   }
   return false;

@@ -1,9 +1,43 @@
-import { useQuery } from '@apollo/client/react';
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useMutation, useQuery } from '@apollo/client/react';
+import { useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import {
+  Card,
+  EmptyState,
+  ScreenHero,
+  Skeleton,
+} from '../components/ui';
+import { InviteFamilyMemberCta } from '../components/InviteFamilyMemberCta';
 import { JoinFamilyByPayerEmailCta } from '../components/JoinFamilyByPayerEmailCta';
-import { VIEWER_FAMILY_BILLING } from '../lib/viewer-documents';
-import type { ViewerBillingData } from '../lib/viewer-types';
+import { absolutizeMediaUrl } from '../lib/absolutize-url';
+import {
+  VIEWER_ALL_FAMILY_BILLING,
+  VIEWER_CREATE_INVOICE_CHECKOUT_SESSION,
+} from '../lib/viewer-documents';
+import type {
+  ViewerAllFamilyBillingData,
+  ViewerFamilyBillingSummary,
+} from '../lib/viewer-types';
 import { formatEuroCents } from '../lib/format';
+import { palette, radius, shadow, spacing, typography } from '../lib/theme';
+
+type ViewerCreateInvoiceCheckoutSessionData = {
+  viewerCreateInvoiceCheckoutSession: {
+    url: string;
+    sessionId: string;
+  };
+};
 
 function statusLabel(status: string): string {
   switch (status) {
@@ -35,6 +69,19 @@ function statusStyle(status: string): object {
   }
 }
 
+function summaryKey(s: ViewerFamilyBillingSummary): string {
+  return s.householdGroupId ?? s.familyId ?? 'unknown';
+}
+
+function summaryTabLabel(
+  s: ViewerFamilyBillingSummary,
+  index: number,
+): string {
+  if (s.familyLabel?.trim()) return s.familyLabel.trim();
+  if (s.isHouseholdGroupSpace) return `Espace partagé ${index + 1}`;
+  return `Foyer ${index + 1}`;
+}
+
 function MemberChip({
   firstName,
   lastName,
@@ -45,10 +92,15 @@ function MemberChip({
   photoUrl: string | null;
 }) {
   const initials = `${firstName[0] ?? ''}${lastName[0] ?? ''}`;
+  // Réécrit `localhost`/`127.0.0.1` → IP LAN via EXPO_PUBLIC_API_BASE
+  // pour que le téléphone physique puisse charger l'image. Sans ce
+  // helper, les URLs `http://localhost:3000/media/<uuid>` retournées
+  // par le backend en dev étaient inaccessibles → fallback initiales.
+  const resolvedUrl = absolutizeMediaUrl(photoUrl);
   return (
     <View style={styles.chip}>
-      {photoUrl ? (
-        <Image source={{ uri: photoUrl }} style={styles.chipImg} />
+      {resolvedUrl ? (
+        <Image source={{ uri: resolvedUrl }} style={styles.chipImg} />
       ) : (
         <View style={styles.chipPh}>
           <Text style={styles.chipPhText}>{initials}</Text>
@@ -62,242 +114,540 @@ function MemberChip({
 }
 
 export function FamilyScreen() {
-  const { data, loading, error } = useQuery<ViewerBillingData>(
-    VIEWER_FAMILY_BILLING,
-    { errorPolicy: 'all' },
+  const { data, loading, error } = useQuery<ViewerAllFamilyBillingData>(
+    VIEWER_ALL_FAMILY_BILLING,
+    { errorPolicy: 'all', fetchPolicy: 'cache-and-network' },
   );
 
-  const summary = data?.viewerFamilyBillingSummary;
-  const shared = summary?.isHouseholdGroupSpace === true;
-  const linked = summary?.linkedHouseholdFamilies ?? [];
+  const summaries = useMemo(
+    () => data?.viewerAllFamilyBillingSummaries ?? [],
+    [data],
+  );
 
-  const pageTitle = shared ? 'Espace familial partagé' : 'Ma famille';
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+
+  const activeSummary = useMemo<ViewerFamilyBillingSummary | null>(() => {
+    if (summaries.length === 0) return null;
+    if (selectedKey) {
+      const found = summaries.find((s) => summaryKey(s) === selectedKey);
+      if (found) return found;
+    }
+    return summaries[0] ?? null;
+  }, [summaries, selectedKey]);
+
+  const multiFamily = summaries.length > 1;
+  const anyPayerView = summaries.some((s) => s.isPayerView);
+  const shared = activeSummary?.isHouseholdGroupSpace === true;
+
+  const pageTitle = multiFamily
+    ? 'Mes foyers'
+    : shared
+      ? 'Espace familial partagé'
+      : 'Ma famille';
+
+  // Regroupement des factures par familyId (pour espaces partagés où
+  // plusieurs foyers cohabitent dans une même liste de factures).
+  const invoicesByFamily = useMemo(() => {
+    type Invoices = ViewerFamilyBillingSummary['invoices'];
+    if (!activeSummary || !shared) return new Map<string, Invoices>();
+    const map = new Map<string, Invoices>();
+    for (const inv of activeSummary.invoices) {
+      const key = inv.familyId ?? 'shared';
+      const arr = map.get(key) ?? [];
+      arr.push(inv);
+      map.set(key, arr);
+    }
+    return map;
+  }, [activeSummary, shared]);
+
+  const heroSubtitle = multiFamily
+    ? `Vous êtes rattaché à ${summaries.length} foyers.`
+    : shared
+      ? 'Espace partagé entre plusieurs foyers, factures et enfants en commun.'
+      : 'Membres du foyer et factures visibles par les responsables.';
 
   return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.inner}>
-      <Text style={styles.title}>{pageTitle}</Text>
-
-      {shared ? (
-        <Text style={styles.lead}>
-          Votre club a relié plusieurs foyers dans un{' '}
-          <Text style={styles.strong}>espace partagé</Text>. Vous partagez les{' '}
-          <Text style={styles.strong}>mêmes factures</Text> et voyez les{' '}
-          <Text style={styles.strong}>mêmes enfants</Text>, mais chaque parent garde
-          son <Text style={styles.strong}>espace personnel privé</Text>.
-        </Text>
-      ) : (
-        <Text style={styles.leadTight}>
-          Membres du foyer et factures visibles par les adultes responsables de
-          la facturation.
-        </Text>
-      )}
-
+    <View style={styles.flex}>
+      <ScreenHero
+        eyebrow={multiFamily ? 'MES FOYERS' : 'MA FAMILLE'}
+        title={pageTitle}
+        subtitle={heroSubtitle}
+        gradient="hero"
+      />
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={styles.inner}
+        showsVerticalScrollIndicator={false}
+      >
       <JoinFamilyByPayerEmailCta variant="compact" />
 
+      {anyPayerView ? <InviteFamilyMemberCta /> : null}
+
+      {/* Onglets multi-foyer */}
+      {multiFamily ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabsRow}
+          style={styles.tabs}
+        >
+          {summaries.map((s, i) => {
+            const k = summaryKey(s);
+            const active = activeSummary && summaryKey(activeSummary) === k;
+            return (
+              <Pressable
+                key={k}
+                style={[styles.tab, active && styles.tabActive]}
+                onPress={() => setSelectedKey(k)}
+              >
+                <Ionicons
+                  name={
+                    s.isHouseholdGroupSpace ? 'people-circle-outline' : 'people-outline'
+                  }
+                  size={16}
+                  color={active ? '#1565c0' : '#475569'}
+                />
+                <Text style={[styles.tabText, active && styles.tabTextActive]}>
+                  {summaryTabLabel(s, i)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      ) : null}
+
       {error ? (
-        <Text style={styles.hint}>
-          Facturation indisponible (module ou droits).
-        </Text>
-      ) : loading ? (
-        <Text style={styles.hint}>Chargement…</Text>
-      ) : !summary ? (
-        <Text style={styles.hint}>Aucune donnée foyer.</Text>
-      ) : !summary.isPayerView ? (
-        <Text style={styles.hint}>
-          Réservé aux comptes adultes du foyer (mineurs : pas d&apos;accès
-          facturation).
-        </Text>
+        <EmptyState
+          icon="alert-circle-outline"
+          title="Facturation indisponible"
+          description="Module désactivé ou droits insuffisants."
+          variant="card"
+        />
+      ) : loading && !activeSummary ? (
+        <View style={{ gap: spacing.md }}>
+          <Skeleton height={120} borderRadius={radius.xl} />
+          <Skeleton height={88} borderRadius={radius.lg} />
+        </View>
+      ) : !activeSummary ? (
+        <EmptyState
+          icon="people-outline"
+          title="Aucune donnée foyer"
+          description="Votre club ne vous a pas encore rattaché à un foyer."
+          variant="card"
+        />
+      ) : !activeSummary.isPayerView ? (
+        <EmptyState
+          icon="lock-closed-outline"
+          title="Accès facturation restreint"
+          description="Réservé aux comptes adultes du foyer."
+          variant="card"
+        />
       ) : (
-        <>
-          {shared && linked.length > 0 ? (
-            <View style={styles.section}>
-              <Text style={styles.subtitle}>Foyers liés</Text>
-              <Text style={styles.hint}>
-                Chaque carte représente un foyer. Seuls les membres que vous
-                êtes autorisé à voir apparaissent.
+        <FamilySummaryView
+          summary={activeSummary}
+          shared={shared}
+          invoicesByFamily={invoicesByFamily}
+        />
+      )}
+      </ScrollView>
+    </View>
+  );
+}
+
+function FamilySummaryView({
+  summary,
+  shared,
+  invoicesByFamily,
+}: {
+  summary: ViewerFamilyBillingSummary;
+  shared: boolean;
+  invoicesByFamily: Map<string, ViewerFamilyBillingSummary['invoices']>;
+}) {
+  return (
+    <>
+      {shared && summary.linkedHouseholdFamilies.length > 0 ? (
+        <View style={styles.section}>
+          <Text style={styles.subtitle}>Foyers liés</Text>
+          <Text style={styles.hint}>
+            Chaque carte représente un foyer. Seuls les membres que vous
+            êtes autorisé à voir apparaissent.
+          </Text>
+          {summary.linkedHouseholdFamilies.map((hf) => (
+            <View key={hf.familyId} style={styles.linkedCard}>
+              <Text style={styles.linkedTitle}>
+                {hf.label?.trim() || 'Foyer sans nom'}
               </Text>
-              {linked.map((hf) => (
-                <View key={hf.familyId} style={styles.linkedCard}>
-                  <Text style={styles.linkedTitle}>
-                    {hf.label?.trim() || 'Foyer sans nom'}
-                  </Text>
-                  {hf.members.length === 0 ? (
-                    <Text style={styles.hint}>
-                      Aucun membre de ce foyer n&apos;est affiché pour votre
-                      compte.
-                    </Text>
-                  ) : (
-                    <View style={styles.chipWrap}>
-                      {hf.members.map((m) => (
-                        <MemberChip
-                          key={m.memberId}
-                          firstName={m.firstName}
-                          lastName={m.lastName}
-                          photoUrl={m.photoUrl}
-                        />
-                      ))}
-                    </View>
-                  )}
+              {hf.payers.length > 0 ? (
+                <Text style={styles.linkedRoleLine}>
+                  <Text style={styles.linkedRoleLabel}>Payeur(s) : </Text>
+                  {hf.payers.map((p) => `${p.firstName} ${p.lastName}`).join(', ')}
+                </Text>
+              ) : null}
+              {hf.observers.length > 0 ? (
+                <Text style={styles.linkedRoleLine}>
+                  <Text style={styles.linkedRoleLabel}>Observateur(s) : </Text>
+                  {hf.observers
+                    .map((o) => `${o.firstName} ${o.lastName}`)
+                    .join(', ')}
+                </Text>
+              ) : null}
+              {hf.members.length === 0 ? (
+                <Text style={styles.hint}>
+                  Aucun membre de ce foyer n&apos;est affiché pour votre compte.
+                </Text>
+              ) : (
+                <View style={styles.chipWrap}>
+                  {hf.members.map((m) => (
+                    <MemberChip
+                      key={m.memberId}
+                      firstName={m.firstName}
+                      lastName={m.lastName}
+                      photoUrl={m.photoUrl}
+                    />
+                  ))}
                 </View>
-              ))}
+              )}
             </View>
-          ) : null}
+          ))}
+        </View>
+      ) : null}
 
-          {shared ? (
-            <View style={styles.section}>
-              <Text style={styles.subtitle}>Documents & messages</Text>
-              <Text style={styles.hint}>
-                Documents partagés et messages familiaux — en conception.
-              </Text>
-            </View>
-          ) : null}
+      {!shared && summary.familyLabel ? (
+        <Text style={styles.familyLabel}>{summary.familyLabel}</Text>
+      ) : null}
 
-          {!shared && summary.familyLabel ? (
-            <Text style={styles.familyLabel}>{summary.familyLabel}</Text>
-          ) : null}
+      {summary.familyMembers.length > 0 ? (
+        <View style={styles.section}>
+          <Text style={styles.subtitle}>
+            {shared ? 'Tous les membres de l’espace' : 'Membres'}
+          </Text>
+          <View style={styles.chipWrap}>
+            {summary.familyMembers.map((m) => (
+              <MemberChip
+                key={m.memberId}
+                firstName={m.firstName}
+                lastName={m.lastName}
+                photoUrl={m.photoUrl}
+              />
+            ))}
+          </View>
+        </View>
+      ) : null}
 
-          {summary.familyMembers.length > 0 ? (
-            <View style={styles.section}>
-              <Text style={styles.subtitle}>
-                {shared ? 'Tous les membres de l’espace' : 'Membres'}
-              </Text>
-              <View style={styles.chipWrap}>
-                {summary.familyMembers.map((m) => (
-                  <MemberChip
-                    key={m.memberId}
-                    firstName={m.firstName}
-                    lastName={m.lastName}
-                    photoUrl={m.photoUrl}
-                  />
+      <View style={styles.section}>
+        <Text style={styles.subtitle}>
+          {shared ? 'Paiements & factures (espace partagé)' : 'Factures'}
+        </Text>
+        {summary.invoices.length === 0 ? (
+          <Text style={styles.hint}>Aucune facture.</Text>
+        ) : shared && invoicesByFamily.size > 1 ? (
+          // Espace partagé avec plusieurs foyers responsables : on
+          // groupe les factures par foyer pour clarifier qui doit quoi.
+          [...invoicesByFamily.entries()].map(([familyId, invoices]) => {
+            const firstInvoice = invoices[0];
+            const label =
+              firstInvoice?.familyLabel?.trim() ||
+              `Foyer ${familyId.slice(0, 6)}`;
+            return (
+              <View key={familyId} style={styles.invoiceGroup}>
+                <Text style={styles.invoiceGroupTitle}>{label}</Text>
+                {invoices.map((inv) => (
+                  <InvoiceCard key={inv.id} inv={inv} />
                 ))}
               </View>
-            </View>
-          ) : null}
+            );
+          })
+        ) : (
+          summary.invoices.map((inv) => <InvoiceCard key={inv.id} inv={inv} />)
+        )}
+      </View>
+    </>
+  );
+}
 
-          <View style={styles.section}>
-            <Text style={styles.subtitle}>
-              {shared ? 'Paiements & factures (espace partagé)' : 'Factures'}
+function InvoiceCard({
+  inv,
+}: {
+  inv: ViewerFamilyBillingSummary['invoices'][number];
+}) {
+  // Une facture est payable si elle a un solde > 0 et n'est pas en
+  // brouillon / annulée. Pour le reste, le card reste affiché mais
+  // non-cliquable (juste de la lecture des paiements passés).
+  const payable = inv.balanceCents > 0 && inv.status !== 'DRAFT';
+
+  const [createCheckout, { loading: starting }] =
+    useMutation<ViewerCreateInvoiceCheckoutSessionData>(
+      VIEWER_CREATE_INVOICE_CHECKOUT_SESSION,
+    );
+
+  async function startPayment(installmentsCount?: number) {
+    try {
+      const { data } = await createCheckout({
+        variables: { invoiceId: inv.id, installmentsCount },
+      });
+      const url = data?.viewerCreateInvoiceCheckoutSession?.url;
+      if (!url) {
+        Alert.alert(
+          'Indisponible',
+          'Impossible d\'initier le paiement. Réessayez plus tard.',
+        );
+        return;
+      }
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) {
+        Alert.alert(
+          'Navigateur introuvable',
+          'Aucune application ne peut ouvrir le lien de paiement Stripe.',
+        );
+        return;
+      }
+      await Linking.openURL(url);
+    } catch (err) {
+      Alert.alert(
+        'Erreur',
+        err instanceof Error
+          ? err.message
+          : 'Impossible de lancer le paiement.',
+      );
+    }
+  }
+
+  function handlePress() {
+    if (!payable || starting) return;
+    // Sheet à 2 options : 1× ou 3× (Stripe peut refuser le 3× selon la
+    // config du compte du club — on laisse Stripe trancher côté serveur).
+    Alert.alert(
+      'Régler cette facture',
+      `Solde restant : ${formatEuroCents(inv.balanceCents)}\nChoisissez le mode de règlement.`,
+      [
+        {
+          text: 'Payer en 1 fois',
+          onPress: () => void startPayment(1),
+        },
+        {
+          text: 'Payer en 3 fois',
+          onPress: () => void startPayment(3),
+        },
+        { text: 'Annuler', style: 'cancel' },
+      ],
+      { cancelable: true },
+    );
+  }
+
+  // On enveloppe systématiquement dans un Pressable — il devient un
+  // container "non interactif" si la facture n'est pas payable, ce qui
+  // évite de devoir gérer 2 arbres JSX différents.
+  return (
+    <Pressable
+      onPress={handlePress}
+      disabled={!payable || starting}
+      accessibilityRole={payable ? 'button' : undefined}
+      accessibilityLabel={
+        payable
+          ? `Payer ${formatEuroCents(inv.balanceCents)} pour ${inv.label}`
+          : `Facture ${inv.label} ${statusLabel(inv.status)}`
+      }
+      style={({ pressed }) => [
+        styles.invCard,
+        statusStyle(inv.status),
+        payable && pressed && { opacity: 0.85 },
+      ]}
+    >
+      <View style={styles.invHead}>
+        <Text style={styles.invBadge}>{statusLabel(inv.status)}</Text>
+        <Text style={styles.invAmount}>
+          {formatEuroCents(inv.amountCents)}
+        </Text>
+      </View>
+      <Text style={styles.invLabel}>{inv.label}</Text>
+      <View style={styles.invDetails}>
+        <Text style={styles.invDetailText}>
+          Payé : {formatEuroCents(inv.totalPaidCents)}
+        </Text>
+        <Text style={styles.invBalance}>
+          Solde : {formatEuroCents(inv.balanceCents)}
+        </Text>
+      </View>
+      {inv.payments?.length ? (
+        <View style={styles.payList}>
+          {inv.payments.map((p) => (
+            <Text key={p.id} style={styles.payLine}>
+              {formatEuroCents(p.amountCents)} —{' '}
+              {p.paidByFirstName || p.paidByLastName
+                ? `${p.paidByFirstName ?? ''} ${p.paidByLastName ?? ''}`.trim()
+                : 'Club'}
             </Text>
-            {summary.invoices.length === 0 ? (
-              <Text style={styles.hint}>Aucune facture.</Text>
-            ) : (
-              summary.invoices.map((inv) => (
-                <View
-                  key={inv.id}
-                  style={[styles.invCard, statusStyle(inv.status)]}
-                >
-                  <View style={styles.invHead}>
-                    <Text style={styles.invBadge}>{statusLabel(inv.status)}</Text>
-                    <Text style={styles.invAmount}>
-                      {formatEuroCents(inv.amountCents)}
-                    </Text>
-                  </View>
-                  <Text style={styles.invLabel}>{inv.label}</Text>
-                  <View style={styles.invDetails}>
-                    <Text style={styles.invDetailText}>
-                      Payé : {formatEuroCents(inv.totalPaidCents)}
-                    </Text>
-                    <Text style={styles.invBalance}>
-                      Solde : {formatEuroCents(inv.balanceCents)}
-                    </Text>
-                  </View>
-                  {inv.payments?.length ? (
-                    <View style={styles.payList}>
-                      {inv.payments.map((p) => (
-                        <Text key={p.id} style={styles.payLine}>
-                          {formatEuroCents(p.amountCents)} —{' '}
-                          {p.paidByFirstName || p.paidByLastName
-                            ? `${p.paidByFirstName ?? ''} ${p.paidByLastName ?? ''}`.trim()
-                            : 'Club'}
-                        </Text>
-                      ))}
-                    </View>
-                  ) : null}
-                </View>
-              ))
-            )}
-          </View>
-        </>
-      )}
-    </ScrollView>
+          ))}
+        </View>
+      ) : null}
+      {payable ? (
+        <View style={styles.payCtaRow}>
+          {starting ? (
+            <ActivityIndicator size="small" color={palette.primary} />
+          ) : (
+            <>
+              <Ionicons
+                name="card-outline"
+                size={16}
+                color={palette.primary}
+              />
+              <Text style={styles.payCtaText}>
+                Toucher pour régler en ligne
+              </Text>
+              <Ionicons
+                name="chevron-forward"
+                size={16}
+                color={palette.primary}
+              />
+            </>
+          )}
+        </View>
+      ) : null}
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#fff' },
-  inner: { padding: 16, paddingBottom: 32 },
-  title: { fontSize: 24, fontWeight: '700', marginBottom: 12, color: '#111' },
-  lead: { fontSize: 16, color: '#444', lineHeight: 24, marginBottom: 16 },
-  leadTight: { fontSize: 15, color: '#444', marginBottom: 16 },
-  strong: { fontWeight: '700' },
-  hint: { fontSize: 14, color: '#666', lineHeight: 20, marginBottom: 8 },
-  section: { marginBottom: 20 },
-  subtitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    marginBottom: 8,
-    color: '#111',
+  flex: { flex: 1, backgroundColor: palette.bg },
+  inner: {
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xxxl,
+    gap: spacing.lg,
   },
+  strong: { fontFamily: typography.bodyStrong.fontFamily },
+  hint: { ...typography.small, color: palette.muted, marginBottom: spacing.sm },
+  section: { gap: spacing.sm },
+  subtitle: { ...typography.h3, color: palette.ink, marginBottom: spacing.sm },
+
+  tabs: {
+    marginHorizontal: -spacing.xl,
+  },
+  tabsRow: {
+    paddingHorizontal: spacing.xl,
+    gap: spacing.sm,
+  },
+  tab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: palette.borderStrong,
+    backgroundColor: palette.surface,
+    minHeight: 36,
+  },
+  tabActive: { backgroundColor: palette.primaryLight, borderColor: palette.primary },
+  tabText: { ...typography.smallStrong, color: palette.body },
+  tabTextActive: { color: palette.primary },
+
   familyLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 12,
-    color: '#333',
+    ...typography.bodyStrong,
+    color: palette.body,
+    marginBottom: spacing.md,
   },
   linkedCard: {
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    backgroundColor: '#fafafa',
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    backgroundColor: palette.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: palette.border,
+    ...shadow.sm,
   },
-  linkedTitle: { fontSize: 16, fontWeight: '700', marginBottom: 8 },
-  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  linkedTitle: {
+    ...typography.bodyStrong,
+    color: palette.ink,
+    marginBottom: spacing.sm,
+  },
+  linkedRoleLine: { ...typography.small, color: palette.body, marginBottom: 2 },
+  linkedRoleLabel: {
+    fontFamily: typography.bodyStrong.fontFamily,
+    color: palette.ink,
+  },
+  chipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    backgroundColor: '#f5f5f5',
+    gap: spacing.xs,
+    paddingVertical: 4,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.pill,
+    backgroundColor: palette.bgAlt,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: palette.border,
   },
-  chipImg: { width: 32, height: 32, borderRadius: 16 },
+  chipImg: { width: 26, height: 26, borderRadius: 13 },
   chipPh: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#1565c0',
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: palette.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  chipPhText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  chipName: { fontSize: 14, color: '#333' },
-  invCard: {
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
+  chipPhText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontFamily: typography.smallStrong.fontFamily,
   },
-  invOpen: { backgroundColor: '#fff3e0', borderColor: '#ffcc80' },
-  invPaid: { backgroundColor: '#e8f5e9', borderColor: '#a5d6a7' },
-  invDraft: { backgroundColor: '#f5f5f5', borderColor: '#e0e0e0' },
-  invVoid: { backgroundColor: '#fce4ec', borderColor: '#f48fb1' },
+  chipName: { ...typography.small, color: palette.body },
+
+  invoiceGroup: { marginBottom: spacing.md, gap: spacing.sm },
+  invoiceGroupTitle: {
+    ...typography.eyebrow,
+    color: palette.muted,
+    marginBottom: spacing.xs,
+  },
+
+  invCard: {
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    ...shadow.sm,
+  },
+  invOpen: { backgroundColor: palette.warningBg, borderColor: palette.warningBorder },
+  invPaid: { backgroundColor: palette.successBg, borderColor: palette.successBorder },
+  invDraft: { backgroundColor: palette.bgAlt, borderColor: palette.border },
+  invVoid: { backgroundColor: palette.dangerBg, borderColor: palette.dangerBorder },
   invHead: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
-  invBadge: { fontSize: 13, fontWeight: '700', color: '#333' },
-  invAmount: { fontSize: 17, fontWeight: '700', color: '#111' },
-  invLabel: { fontSize: 15, fontWeight: '600', marginBottom: 8, color: '#222' },
-  invDetails: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  invDetailText: { fontSize: 14, color: '#555' },
-  invBalance: { fontSize: 14, fontWeight: '700', color: '#c62828' },
-  payList: { marginTop: 8 },
-  payLine: { fontSize: 13, color: '#666', marginBottom: 4 },
+  invBadge: { ...typography.smallStrong, color: palette.body },
+  invAmount: { ...typography.h3, color: palette.ink },
+  invLabel: {
+    ...typography.bodyStrong,
+    color: palette.ink,
+    marginBottom: spacing.sm,
+  },
+  invDetails: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  invDetailText: { ...typography.small, color: palette.body },
+  invBalance: { ...typography.smallStrong, color: palette.danger },
+  payList: { marginTop: spacing.sm, gap: 2 },
+  payLine: { ...typography.small, color: palette.muted },
+  payCtaRow: {
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: palette.borderStrong,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
+  payCtaText: {
+    ...typography.smallStrong,
+    color: palette.primary,
+  },
 });

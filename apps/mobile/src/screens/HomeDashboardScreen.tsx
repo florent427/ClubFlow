@@ -1,6 +1,7 @@
 import { useQuery } from '@apollo/client/react';
 import { useNavigation } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   Pressable,
   ScrollView,
@@ -9,6 +10,15 @@ import {
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  AnimatedPressable,
+  Card,
+  EmptyState,
+  Pill,
+  Skeleton,
+} from '../components/ui';
+import { ClubLogoBubble } from '../components/ClubLogoBubble';
 import { JoinFamilyByPayerEmailCta } from '../components/JoinFamilyByPayerEmailCta';
 import { MemberProfileSwitcher } from '../components/MemberProfileSwitcher';
 import { MemberRoleToggle } from '../components/MemberRoleToggle';
@@ -20,6 +30,10 @@ import {
   VIEWER_ME,
   VIEWER_UPCOMING_SLOTS,
 } from '../lib/viewer-documents';
+import {
+  VIEWER_DOCUMENTS_TO_SIGN,
+  type ViewerDocumentsToSignData,
+} from '../lib/documents-graphql';
 import type {
   ClubQueryData,
   ViewerAdminSwitchData,
@@ -28,16 +42,32 @@ import type {
   ViewerUpcomingData,
 } from '../lib/viewer-types';
 import { formatEuroCents, medicalCertState } from '../lib/format';
+import {
+  gradients as defaultGradients,
+  palette,
+  radius,
+  shadow,
+  spacing,
+  typography,
+} from '../lib/theme';
+import { useClubTheme } from '../lib/theme-context';
 import type { MainTabParamList } from '../types/navigation';
 
 export function HomeDashboardScreen() {
+  const insets = useSafeAreaInsets();
+  const clubTheme = useClubTheme();
+  const gradients = clubTheme.isClubBranded
+    ? clubTheme.gradients
+    : defaultGradients;
   const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList>>();
   const { data: adminSwitchData } = useQuery<ViewerAdminSwitchData>(
     VIEWER_ADMIN_SWITCH,
     { fetchPolicy: 'cache-and-network', nextFetchPolicy: 'cache-first' },
   );
-  const { data: meData, loading: meLoading, error: meError } =
-    useQuery<ViewerMeData>(VIEWER_ME, { errorPolicy: 'all' });
+  const { data: meData, loading: meLoading } = useQuery<ViewerMeData>(
+    VIEWER_ME,
+    { errorPolicy: 'all' },
+  );
   const { data: clubData } = useQuery<ClubQueryData>(CLUB);
 
   const hideMemberModules = meData?.viewerMe?.hideMemberModules === true;
@@ -49,6 +79,12 @@ export function HomeDashboardScreen() {
   const billQ = useQuery<ViewerBillingData>(VIEWER_FAMILY_BILLING, {
     errorPolicy: 'all',
   });
+  const docsToSignQ = useQuery<ViewerDocumentsToSignData>(
+    VIEWER_DOCUMENTS_TO_SIGN,
+    { errorPolicy: 'all', fetchPolicy: 'cache-and-network' },
+  );
+  const docsToSignCount =
+    docsToSignQ.data?.viewerDocumentsToSign?.length ?? 0;
 
   const me = meData?.viewerMe;
   const adminSwitch = adminSwitchData?.viewerAdminSwitch;
@@ -59,292 +95,662 @@ export function HomeDashboardScreen() {
   const isPayer = billing?.isPayerView ?? false;
   const openInvoices =
     billing?.invoices.filter((i) => i.balanceCents > 0) ?? [];
+  const totalBalance = openInvoices.reduce((s, i) => s + i.balanceCents, 0);
+  const totalPaid =
+    billing?.invoices.reduce((s, i) => s + i.totalPaidCents, 0) ?? 0;
+  const nowMs = Date.now();
+  const hasOverdue = openInvoices.some(
+    (i) => i.dueAt && new Date(i.dueAt).getTime() < nowMs,
+  );
 
   const cert = medicalCertState(me?.medicalCertExpiresAt ?? null);
 
+  const greeting = getGreeting();
+
   return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.pageInner}>
-      <View style={styles.heroHead}>
-        <Text style={styles.eyebrow}>
-          {clubName ? clubName : 'Espace membre'}
-        </Text>
-        {adminSwitch?.canAccessClubBackOffice === true ? (
-          <MemberRoleToggle
-            canAccessClubBackOffice
-            adminWorkspaceClubId={adminSwitch.adminWorkspaceClubId}
-            variant="header"
-          />
-        ) : null}
-      </View>
+    <View style={styles.flex}>
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingBottom: insets.bottom + spacing.xxxl },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* === HERO PREMIUM === */}
+        <LinearGradient
+          colors={gradients.hero.colors}
+          start={gradients.hero.start}
+          end={gradients.hero.end}
+          style={[styles.hero, { paddingTop: insets.top + spacing.xl }]}
+        >
+          {/* Cercles décoratifs */}
+          <View style={[styles.circle, styles.circle1]} />
+          <View style={[styles.circle, styles.circle2]} />
 
-      <MemberProfileSwitcher />
-
-      <Text style={styles.heroTitle}>
-        {meLoading
-          ? '…'
-          : me
-            ? `Content de te revoir, ${me.firstName}`
-            : meError
-              ? 'Espace membre'
-              : '…'}
-      </Text>
-
-      <View style={styles.badgesRow}>
-        {!hideMemberModules ? (
-          <>
-            <View
-              style={[
-                styles.pill,
-                !me?.gradeLevelLabel ? styles.pillMuted : null,
-              ]}
-            >
-              <Ionicons name="school-outline" size={16} color="#555" />
-              <Text style={styles.pillText}>
-                {me?.gradeLevelLabel ?? 'Grade non renseigné'}
+          <View style={styles.heroHead}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.heroEyebrow}>
+                {clubName?.toUpperCase() ?? 'ESPACE MEMBRE'}
+              </Text>
+              <Text style={styles.heroGreeting}>{greeting},</Text>
+              <Text style={styles.heroName}>
+                {meLoading ? '…' : me?.firstName ?? 'membre'} 👋
               </Text>
             </View>
-            <View
-              style={[styles.pill, cert.ok ? styles.pillOk : styles.pillWarn]}
-            >
-              <Ionicons
-                name="shield-checkmark-outline"
-                size={16}
-                color={cert.ok ? '#2e7d32' : '#f57c00'}
-              />
-              <Text style={styles.pillText}>{cert.label}</Text>
-            </View>
-            {me?.telegramLinked ? (
-              <View style={[styles.pill, styles.pillOk]}>
-                <Ionicons name="send-outline" size={16} color="#2e7d32" />
-                <Text style={styles.pillText}>Telegram relié</Text>
-              </View>
-            ) : (
-              <View style={[styles.pill, styles.pillMuted]}>
-                <Ionicons name="send-outline" size={16} color="#888" />
-                <Text style={styles.pillText}>Telegram non relié</Text>
-              </View>
-            )}
-          </>
-        ) : null}
-        {billing?.isHouseholdGroupSpace ? (
-          <Pressable
-            style={[styles.pill, styles.pillMuted]}
-            onPress={() => navigation.navigate('Famille')}
-          >
-            <Ionicons name="people-outline" size={16} color="#555" />
-            <Text style={styles.pillLink}>Espace familial partagé</Text>
-          </Pressable>
-        ) : null}
-      </View>
-
-      <JoinFamilyByPayerEmailCta variant="dashboard" />
-
-      {!hideMemberModules ? (
-        <>
-          <View style={styles.panel}>
-            <Text style={styles.panelTitle}>Mon programme</Text>
-            {me?.gradeLevelLabel ? (
-              <View style={styles.programBlock}>
-                <View style={styles.programRow}>
-                  <Ionicons name="school" size={22} color="#1565c0" />
-                  <View>
-                    <Text style={styles.programGrade}>{me.gradeLevelLabel}</Text>
-                    <Text style={styles.hint}>Votre grade actuel</Text>
-                  </View>
-                </View>
-                <Pressable onPress={() => navigation.navigate('Progression')}>
-                  <Text style={styles.link}>Voir ma progression complète</Text>
-                </Pressable>
-              </View>
-            ) : (
-              <View style={styles.emptySoft}>
-                <Ionicons name="book-outline" size={32} color="#999" />
-                <Text style={styles.emptyText}>
-                  Votre grade n&apos;est pas encore renseigné. Les contenus
-                  pédagogiques par grade seront disponibles ici.
-                </Text>
-              </View>
-            )}
-            <Pressable
-              style={styles.btnOutline}
-              onPress={() => navigation.navigate('Planning')}
-            >
-              <Text style={styles.btnOutlineText}>Consulter le planning</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.panel}>
-            <View style={styles.panelHead}>
-              <Text style={styles.panelTitle}>Prochains cours</Text>
-              {slots.length > 3 ? (
-                <Pressable onPress={() => navigation.navigate('Planning')}>
-                  <Text style={styles.link}>Voir tout</Text>
-                </Pressable>
+            {/*
+              Stack vertical à droite : logo club en haut + bouton admin
+              en dessous (si l'utilisateur a un accès back-office).
+              `<ClubLogoBubble>` gère le fallback automatique vers les
+              initiales du club si l'image ne charge pas (URL invalide,
+              404, hors-ligne…) — évite le cercle blanc vide.
+            */}
+            <View style={styles.heroTrailing}>
+              <ClubLogoBubble size={48} variant="light" />
+              {adminSwitch?.canAccessClubBackOffice === true ? (
+                <MemberRoleToggle
+                  canAccessClubBackOffice
+                  adminWorkspaceClubId={adminSwitch.adminWorkspaceClubId}
+                  variant="header"
+                />
               ) : null}
             </View>
-            {slotsQ.error ? (
-              <Text style={styles.hint}>
-                Planning indisponible (module ou droits).
-              </Text>
-            ) : dashSlots.length === 0 ? (
-              <Text style={styles.hint}>Aucun cours à venir pour l’instant.</Text>
-            ) : (
-              dashSlots.map((s) => <SlotCard key={s.id} slot={s} />)
-            )}
           </View>
-        </>
-      ) : null}
 
-      <View style={[styles.panel, styles.panelWide]}>
-        <Text style={styles.panelTitle}>Famille & paiements</Text>
-        {billQ.error ? (
-          <Text style={styles.hint}>
-            Facturation indisponible (module ou droits).
-          </Text>
-        ) : !billing ? (
-          <Text style={styles.hint}>Chargement…</Text>
-        ) : !isPayer ? (
-          <Text style={styles.hint}>
-            L’accès au détail des factures est réservé au payeur du foyer.
-          </Text>
-        ) : (
-          <>
-            {billing.familyLabel ? (
-              <Text style={styles.familyLabel}>{billing.familyLabel}</Text>
+          <MemberProfileSwitcher onDark />
+        </LinearGradient>
+
+        {/* === CONTENT (chevauche légèrement le hero) === */}
+        <View style={styles.content}>
+          {/* Pills statut */}
+          <View style={styles.pillsRow}>
+            {!hideMemberModules ? (
+              <>
+                <Pill
+                  icon="school-outline"
+                  tone={me?.gradeLevelLabel ? 'primary' : 'neutral'}
+                  label={me?.gradeLevelLabel ?? 'Grade non renseigné'}
+                />
+                {/*
+                  Le certificat médical n'est affiché que si :
+                   - le club l'a marqué comme requis dans son catalogue
+                     champs adhérent (cf. ClubMemberFieldCatalogSetting
+                     fieldKey=MEDICAL_CERT_EXPIRES_AT, required=true)
+                   - OU le membre a déjà saisi un certificat valide
+                     (auquel cas on garde la pill verte "à jour")
+                  Évite d'inquiéter inutilement les adhérents des clubs
+                  où le certif n'est pas une obligation.
+                */}
+                {(clubData?.club?.requiresMedicalCertificate || cert.ok) ? (
+                  <Pill
+                    icon="shield-checkmark-outline"
+                    tone={cert.ok ? 'success' : 'warning'}
+                    label={cert.label}
+                  />
+                ) : null}
+                {me?.telegramLinked ? (
+                  <Pill
+                    icon="send-outline"
+                    tone="success"
+                    label="Telegram relié"
+                  />
+                ) : null}
+              </>
             ) : null}
-            {openInvoices.length === 0 ? (
-              <Text style={styles.hint}>Aucun solde ouvert.</Text>
-            ) : (
-              openInvoices.slice(0, 3).map((inv) => (
-                <View key={inv.id} style={styles.invoiceLine}>
-                  <Text style={styles.invoiceLabel}>{inv.label}</Text>
-                  <Text style={styles.invoiceAmt}>
-                    {formatEuroCents(inv.balanceCents)}
-                  </Text>
+            {billing?.isHouseholdGroupSpace && isPayer ? (
+              <Pill
+                icon="people-outline"
+                tone="info"
+                label="Espace familial partagé"
+                onPress={() => navigation.navigate('Famille')}
+              />
+            ) : null}
+          </View>
+
+          {/* === BANNIÈRE DOCUMENTS À SIGNER === */}
+          {docsToSignCount > 0 ? (
+            <AnimatedPressable
+              onPress={() => navigation.navigate('Documents')}
+              accessibilityRole="button"
+              accessibilityLabel={`${docsToSignCount} document à signer`}
+              style={styles.docsBanner}
+            >
+              <View style={styles.docsBannerIcon}>
+                <Ionicons
+                  name="alert-circle"
+                  size={22}
+                  color={palette.warningText}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.docsBannerTitle}>
+                  {docsToSignCount} document
+                  {docsToSignCount > 1 ? 's' : ''} à signer
+                </Text>
+                <Text style={styles.docsBannerSub}>
+                  Signez maintenant pour finaliser votre adhésion.
+                </Text>
+              </View>
+              <View style={styles.docsBannerCta}>
+                <Text style={styles.docsBannerCtaText}>Signer</Text>
+                <Ionicons
+                  name="arrow-forward"
+                  size={14}
+                  color={palette.warningText}
+                />
+              </View>
+            </AnimatedPressable>
+          ) : null}
+
+          <JoinFamilyByPayerEmailCta variant="dashboard" />
+
+          {/* === KPIs FACTURES (payeur uniquement) === */}
+          {isPayer ? (
+            <View style={styles.kpiRow}>
+              {/*
+                Les 2 tiles sont cliquables → tab "Famille" qui regroupe
+                les factures + actions de paiement (Stripe checkout par
+                facture, géré dans FamilyScreen.tsx). Évite le frustration
+                "vignette d'apparence interactive mais sans tap".
+              */}
+              <KpiTile
+                icon="wallet-outline"
+                label="Reste à payer"
+                value={
+                  billQ.loading && !billing
+                    ? null
+                    : formatEuroCents(totalBalance)
+                }
+                gradient="warm"
+                emphasized={totalBalance > 0}
+                onPress={() => navigation.navigate('Famille')}
+                accessibilityLabel={`Reste à payer ${formatEuroCents(totalBalance)} — voir mes factures`}
+              />
+              <KpiTile
+                icon="checkmark-circle-outline"
+                label="Déjà réglé"
+                value={
+                  billQ.loading && !billing
+                    ? null
+                    : formatEuroCents(totalPaid)
+                }
+                gradient="cool"
+                onPress={() => navigation.navigate('Famille')}
+                accessibilityLabel={`Déjà réglé ${formatEuroCents(totalPaid)} — voir mes factures`}
+              />
+            </View>
+          ) : null}
+
+          {/* === MON PROGRAMME === */}
+          {!hideMemberModules ? (
+            <Card title="Mon programme">
+              {meLoading ? (
+                <View style={{ gap: spacing.sm }}>
+                  <Skeleton width="60%" height={20} />
+                  <Skeleton width="40%" height={14} />
                 </View>
-              ))
-            )}
-            <Pressable onPress={() => navigation.navigate('Famille')}>
-              <Text style={styles.link}>Ouvrir Ma famille</Text>
-            </Pressable>
-          </>
-        )}
-      </View>
-    </ScrollView>
+              ) : me?.gradeLevelLabel ? (
+                <View style={{ gap: spacing.md }}>
+                  <View style={styles.programRow}>
+                    <LinearGradient
+                      colors={gradients.primary.colors}
+                      start={gradients.primary.start}
+                      end={gradients.primary.end}
+                      style={styles.gradeIcon}
+                    >
+                      <Ionicons name="school" size={22} color="#ffffff" />
+                    </LinearGradient>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.programGrade}>
+                        {me.gradeLevelLabel}
+                      </Text>
+                      <Text style={styles.programGradeSub}>
+                        Votre grade actuel
+                      </Text>
+                    </View>
+                    <AnimatedPressable
+                      onPress={() => navigation.navigate('Progression')}
+                      accessibilityRole="link"
+                      accessibilityLabel="Voir ma progression"
+                      style={styles.linkChevron}
+                    >
+                      <Ionicons
+                        name="chevron-forward"
+                        size={20}
+                        color={palette.primary}
+                      />
+                    </AnimatedPressable>
+                  </View>
+                </View>
+              ) : (
+                <EmptyState
+                  icon="book-outline"
+                  title="Grade à compléter"
+                  description="Le club configurera votre grade prochainement."
+                />
+              )}
+            </Card>
+          ) : null}
+
+          {/* === PROCHAINS COURS === */}
+          {!hideMemberModules ? (
+            <Card
+              title="Prochains cours"
+              headerRight={
+                slots.length > 3 ? (
+                  <AnimatedPressable
+                    onPress={() => navigation.navigate('Planning')}
+                    accessibilityRole="link"
+                    accessibilityLabel="Voir tous les cours"
+                  >
+                    <Text style={styles.linkText}>Tout voir →</Text>
+                  </AnimatedPressable>
+                ) : null
+              }
+            >
+              {slotsQ.loading && dashSlots.length === 0 ? (
+                <View style={{ gap: spacing.md }}>
+                  <Skeleton height={64} borderRadius={radius.lg} />
+                  <Skeleton height={64} borderRadius={radius.lg} />
+                </View>
+              ) : slotsQ.error ? (
+                <EmptyState
+                  icon="alert-circle-outline"
+                  title="Planning indisponible"
+                  description="Module ou droits insuffisants."
+                />
+              ) : dashSlots.length === 0 ? (
+                <EmptyState
+                  icon="calendar-outline"
+                  title="Aucun cours à venir"
+                  description="Les prochains créneaux planifiés apparaîtront ici."
+                />
+              ) : (
+                <View style={{ gap: spacing.md }}>
+                  {dashSlots.map((s) => (
+                    <SlotCard key={s.id} slot={s} />
+                  ))}
+                </View>
+              )}
+            </Card>
+          ) : null}
+
+          {/* === FACTURES (uniquement payeurs) === */}
+          {isPayer ? (
+            <Card
+              title="Mes factures"
+              headerRight={
+                hasOverdue ? <Pill tone="danger" label="En retard" /> : null
+              }
+            >
+              {billQ.loading && !billing ? (
+                <View style={{ gap: spacing.sm }}>
+                  <Skeleton height={48} borderRadius={radius.md} />
+                  <Skeleton height={48} borderRadius={radius.md} />
+                </View>
+              ) : billQ.error ? (
+                <EmptyState
+                  icon="alert-circle-outline"
+                  title="Facturation indisponible"
+                  description="Module ou droits insuffisants."
+                />
+              ) : openInvoices.length === 0 ? (
+                <View style={styles.allClearRow}>
+                  <View style={styles.allClearIcon}>
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={24}
+                      color={palette.success}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.allClearTitle}>Tout est à jour</Text>
+                    <Text style={styles.allClearSub}>
+                      Aucun solde en attente.
+                    </Text>
+                  </View>
+                </View>
+              ) : (
+                <View style={{ gap: spacing.sm }}>
+                  {openInvoices.slice(0, 3).map((inv) => {
+                    const overdue =
+                      inv.dueAt && new Date(inv.dueAt).getTime() < nowMs;
+                    return (
+                      <View key={inv.id} style={styles.invoiceLine}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.invoiceLabel} numberOfLines={1}>
+                            {inv.label}
+                          </Text>
+                          {overdue ? (
+                            <Text style={styles.invoiceOverdue}>
+                              Échue
+                            </Text>
+                          ) : null}
+                        </View>
+                        <Text style={styles.invoiceAmt}>
+                          {formatEuroCents(inv.balanceCents)}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+              <AnimatedPressable
+                onPress={() => navigation.navigate('Famille')}
+                accessibilityRole="link"
+                accessibilityLabel="Voir toutes les factures"
+                style={styles.viewAllRow}
+              >
+                <View style={styles.viewAllInner}>
+                  <Text style={styles.linkText}>
+                    Voir toutes les factures
+                  </Text>
+                  <Ionicons
+                    name="arrow-forward"
+                    size={16}
+                    color={palette.primary}
+                  />
+                </View>
+              </AnimatedPressable>
+            </Card>
+          ) : null}
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 5) return 'Bonne nuit';
+  if (h < 12) return 'Bonjour';
+  if (h < 18) return 'Bon après-midi';
+  return 'Bonsoir';
+}
+
+function KpiTile({
+  icon,
+  label,
+  value,
+  gradient,
+  emphasized,
+  onPress,
+  accessibilityLabel,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string | null;
+  gradient: keyof typeof defaultGradients;
+  emphasized?: boolean;
+  /** Si fourni, la tile devient cliquable et navigue vers l'écran cible. */
+  onPress?: () => void;
+  accessibilityLabel?: string;
+}) {
+  const clubTheme = useClubTheme();
+  const grads = clubTheme.isClubBranded
+    ? clubTheme.gradients
+    : defaultGradients;
+  const grad = grads[gradient];
+
+  const content = (
+    <>
+      <LinearGradient
+        colors={grad.colors}
+        start={grad.start}
+        end={grad.end}
+        style={styles.kpiIconBubble}
+      >
+        <Ionicons name={icon} size={18} color="#ffffff" />
+      </LinearGradient>
+      <Text style={styles.kpiLabel}>{label}</Text>
+      {value === null ? (
+        <Skeleton width="60%" height={26} />
+      ) : (
+        <Text style={styles.kpiValue}>{value}</Text>
+      )}
+      {onPress ? (
+        <View style={styles.kpiChevron} pointerEvents="none">
+          <Ionicons
+            name="chevron-forward"
+            size={14}
+            color={palette.muted}
+          />
+        </View>
+      ) : null}
+    </>
+  );
+
+  // Si onPress, on wrap dans un Pressable pour la nav + feedback tactile.
+  if (onPress) {
+    return (
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel ?? label}
+        style={({ pressed }) => [
+          styles.kpi,
+          emphasized && shadow.md,
+          pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+        ]}
+      >
+        {content}
+      </Pressable>
+    );
+  }
+  return (
+    <View style={[styles.kpi, emphasized && shadow.md]}>
+      {content}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#fff' },
-  pageInner: { padding: 16, paddingBottom: 32 },
+  flex: { flex: 1, backgroundColor: palette.bg },
+  scroll: { paddingBottom: spacing.xxxl },
+
+  hero: {
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.huge,
+    overflow: 'hidden',
+  },
+  circle: { position: 'absolute', borderRadius: 1000 },
+  circle1: {
+    width: 220,
+    height: 220,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    top: -60,
+    right: -60,
+  },
+  circle2: {
+    width: 160,
+    height: 160,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    bottom: -40,
+    left: -50,
+  },
+
   heroHead: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 8,
-    gap: 8,
+    gap: spacing.md,
+    marginBottom: spacing.lg,
   },
-  eyebrow: {
-    fontSize: 12,
-    color: '#666',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+  heroTrailing: {
+    alignItems: 'flex-end',
+    gap: spacing.sm,
+  },
+  heroEyebrow: {
+    ...typography.eyebrow,
+    color: 'rgba(255,255,255,0.85)',
+    marginBottom: spacing.sm,
+  },
+  heroGreeting: {
+    ...typography.body,
+    color: 'rgba(255,255,255,0.85)',
+  },
+  heroName: {
+    ...typography.displayLg,
+    color: '#ffffff',
+    marginTop: spacing.xxs,
+  },
+
+  content: {
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xl,
+    gap: spacing.lg,
+    // Faible chevauchement (12dp dans le hero) — gardons l'effet card
+    // flottante sans noyer les premières pills dans le gradient.
+    marginTop: -spacing.md,
+  },
+
+  pillsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+
+  // === KPIs ===
+  kpiRow: { flexDirection: 'row', gap: spacing.md },
+  kpi: {
     flex: 1,
+    backgroundColor: palette.surface,
+    borderRadius: radius.xl,
+    padding: spacing.lg,
+    gap: spacing.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: palette.border,
+    position: 'relative',
+    ...shadow.sm,
   },
-  heroTitle: {
-    fontSize: 26,
-    fontWeight: '700',
-    marginBottom: 12,
-    color: '#111',
+  kpiIconBubble: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  badgesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  pill: {
+  kpiLabel: { ...typography.caption, color: palette.muted },
+  kpiValue: { ...typography.metric, color: palette.ink },
+  // Chevron discret en haut à droite des KPIs cliquables — signale
+  // l'interactivité sans surcharger.
+  kpiChevron: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.sm,
+  },
+
+  // === Programme ===
+  programRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    backgroundColor: '#f5f5f5',
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
+    gap: spacing.md,
   },
-  pillMuted: { opacity: 0.9 },
-  pillOk: {
-    backgroundColor: '#e8f5e9',
-    borderColor: '#c8e6c9',
+  gradeIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  pillWarn: {
-    backgroundColor: '#fff3e0',
-    borderColor: '#ffe0b2',
+  programGrade: { ...typography.h3, color: palette.ink },
+  programGradeSub: { ...typography.small, color: palette.muted },
+  linkChevron: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.md,
+    backgroundColor: palette.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  pillText: { fontSize: 13, color: '#333', maxWidth: 220 },
-  pillLink: { fontSize: 13, color: '#1565c0', fontWeight: '600' },
-  panel: {
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    backgroundColor: '#fafafa',
-  },
-  panelWide: {},
-  panelHead: {
+
+  // === Factures ===
+  allClearRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    gap: spacing.md,
+    backgroundColor: palette.successBg,
+    padding: spacing.md,
+    borderRadius: radius.md,
   },
-  panelTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 12,
-    color: '#111',
-  },
-  programBlock: { marginBottom: 12 },
-  programRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  programGrade: { fontSize: 17, fontWeight: '600' },
-  hint: { fontSize: 14, color: '#666', marginTop: 4 },
-  link: {
-    fontSize: 15,
-    color: '#1565c0',
-    fontWeight: '600',
-    marginTop: 8,
-  },
-  emptySoft: {
+  allClearIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
     alignItems: 'center',
-    paddingVertical: 16,
-    marginBottom: 8,
+    justifyContent: 'center',
   },
-  emptyText: {
-    textAlign: 'center',
-    color: '#666',
-    marginTop: 8,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  btnOutline: {
-    borderWidth: 1,
-    borderColor: '#1565c0',
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  btnOutlineText: { color: '#1565c0', fontWeight: '600', fontSize: 15 },
-  familyLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    marginBottom: 8,
-    color: '#333',
-  },
+  allClearTitle: { ...typography.bodyStrong, color: palette.successText },
+  allClearSub: { ...typography.small, color: palette.successText },
+
   invoiceLine: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 6,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#ddd',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    backgroundColor: palette.bgAlt,
+    borderRadius: radius.md,
   },
-  invoiceLabel: { flex: 1, fontSize: 14, color: '#333' },
-  invoiceAmt: { fontSize: 14, fontWeight: '700', color: '#111' },
+  invoiceLabel: { ...typography.bodyStrong, color: palette.ink },
+  invoiceOverdue: {
+    ...typography.caption,
+    color: palette.danger,
+    marginTop: 2,
+  },
+  invoiceAmt: { ...typography.bodyStrong, color: palette.ink },
+
+  viewAllRow: {
+    marginTop: spacing.sm,
+  },
+  viewAllInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+  },
+  linkText: { ...typography.bodyStrong, color: palette.primary },
+
+  // === Bannière documents à signer ===
+  docsBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    backgroundColor: palette.warningBg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: palette.warningBorder,
+  },
+  docsBannerIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(245, 158, 11, 0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  docsBannerTitle: {
+    ...typography.bodyStrong,
+    color: palette.warningText,
+  },
+  docsBannerSub: {
+    ...typography.small,
+    color: palette.warningText,
+    marginTop: 2,
+  },
+  docsBannerCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: palette.warningBorder,
+  },
+  docsBannerCtaText: {
+    ...typography.smallStrong,
+    color: palette.warningText,
+    fontSize: 12,
+  },
 });

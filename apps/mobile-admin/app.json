@@ -1,0 +1,52 @@
+{
+  "expo": {
+    "name": "ClubFlow Admin",
+    "slug": "clubflow-mobile-admin",
+    "version": "1.0.0",
+    "scheme": "clubflow-admin",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f172a"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.clubflow.mobileadmin",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Pour scanner vos reçus comptables et joindre des photos.",
+        "NSPhotoLibraryUsageDescription": "Pour ajouter des images aux articles et événements."
+      }
+    },
+    "android": {
+      "package": "com.clubflow.mobileadmin",
+      "usesCleartextTraffic": true,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0f172a"
+      },
+      "edgeToEdgeEnabled": true,
+      "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE"]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "ClubFlow Admin a besoin de l'appareil photo pour scanner vos reçus."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "ClubFlow Admin accède à votre galerie pour vos médias."
+        }
+      ]
+    ]
+  }
+}

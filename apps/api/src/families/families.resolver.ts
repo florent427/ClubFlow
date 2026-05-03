@@ -226,4 +226,27 @@ export class FamiliesResolver {
       contactId,
     );
   }
+
+  @Mutation(() => FamilyGraph, {
+    description:
+      'Rattache (admin) un contact à un foyer en tant que membre observateur (linkRole MEMBER).',
+  })
+  @UseGuards(
+    GqlJwtAuthGuard,
+    ClubContextGuard,
+    ClubAdminRoleGuard,
+    ClubModuleEnabledGuard,
+  )
+  @RequireClubModule(ModuleCode.FAMILIES)
+  attachClubContactToFamilyAsMember(
+    @CurrentClub() club: Club,
+    @Args('familyId', { type: () => ID }) familyId: string,
+    @Args('contactId', { type: () => ID }) contactId: string,
+  ): Promise<FamilyGraph> {
+    return this.families.adminAttachContactToFamilyAsMember(
+      club.id,
+      familyId,
+      contactId,
+    );
+  }
 }

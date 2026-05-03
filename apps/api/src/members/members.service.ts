@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  forwardRef,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -11,6 +13,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { FamiliesService } from '../families/families.service';
+import { MembershipCartService } from '../membership/membership-cart.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   assertMemberEmailAllowedInClub,
@@ -31,6 +34,7 @@ import {
   isCatalogFieldEmpty,
   normalizeCustomFieldValue,
 } from './member-field-helpers';
+import { MemberAccountActivationService } from './member-account-activation.service';
 import { MemberFieldConfigService } from './member-field-config.service';
 import { ClubRoleDefinitionGraph } from './models/club-role-definition.model';
 import { DynamicGroupGraph } from './models/dynamic-group.model';
@@ -40,6 +44,23 @@ import { ClubMemberEmailDuplicateInfoGraph } from './models/club-member-email-du
 import { MemberGraph } from './models/member.model';
 import { MemberPseudoService } from '../messaging/member-pseudo.service';
 
+type FamilyMemberWithNames = {
+  member: { lastName: string | null; firstName: string | null } | null;
+  contact: { lastName: string | null; firstName: string | null } | null;
+};
+
+function deriveFamilyLabelFromMembers(
+  familyMembers: FamilyMemberWithNames[],
+): string | null {
+  const lastNames = new Set<string>();
+  for (const fm of familyMembers) {
+    const ln = fm.contact?.lastName ?? fm.member?.lastName;
+    if (ln && ln.trim()) lastNames.add(ln.trim());
+  }
+  if (lastNames.size === 0) return null;
+  return `Famille ${Array.from(lastNames).sort().join('-')}`;
+}
+
 @Injectable()
 export class MembersService {
   constructor(
@@ -47,6 +68,9 @@ export class MembersService {
     private readonly fieldConfig: MemberFieldConfigService,
     private readonly families: FamiliesService,
     private readonly memberPseudo: MemberPseudoService,
+    @Inject(forwardRef(() => MembershipCartService))
+    private readonly membershipCart: MembershipCartService,
+    private readonly memberActivation: MemberAccountActivationService,
   ) {}
 
   private assertMemberIdentityComplete(
@@ -103,7 +127,22 @@ export class MembersService {
     gradeLevel: true,
     roleAssignments: true,
     customRoleAssignments: { include: { roleDefinition: true } },
-    familyMembers: { take: 1 as const, include: { family: true } },
+    user: { select: { systemRole: true } },
+    familyMembers: {
+      take: 1 as const,
+      include: {
+        family: {
+          include: {
+            familyMembers: {
+              include: {
+                member: { select: { lastName: true, firstName: true } },
+                contact: { select: { lastName: true, firstName: true } },
+              },
+            },
+          },
+        },
+      },
+    },
     customFieldValues: { include: { definition: true } },
     dynamicGroupAssignments: {
       include: {
@@ -118,7 +157,22 @@ export class MembersService {
         gradeLevel: true;
         roleAssignments: true;
         customRoleAssignments: { include: { roleDefinition: true } };
-        familyMembers: { take: 1; include: { family: true } };
+        user: { select: { systemRole: true } };
+        familyMembers: {
+          take: 1;
+          include: {
+            family: {
+              include: {
+                familyMembers: {
+                  include: {
+                    member: { select: { lastName: true; firstName: true } };
+                    contact: { select: { lastName: true; firstName: true } };
+                  };
+                };
+              };
+            };
+          };
+        };
         customFieldValues: { include: { definition: true } };
         dynamicGroupAssignments: {
           include: {
@@ -159,7 +213,10 @@ export class MembersService {
         this.toClubRoleGraph(a.roleDefinition),
       ),
       family: fm
-        ? { id: fm.family.id, label: fm.family.label }
+        ? {
+            id: fm.family.id,
+            label: fm.family.label ?? deriveFamilyLabelFromMembers(fm.family.familyMembers),
+          }
         : null,
       familyLink: fm
         ? { id: fm.id, linkRole: fm.linkRole }
@@ -174,6 +231,7 @@ export class MembersService {
         })),
       assignedDynamicGroups,
       telegramLinked: Boolean(row.telegramChatId),
+      systemRole: row.user?.systemRole ?? null,
     };
   }
 
@@ -624,6 +682,17 @@ export class MembersService {
       emailTrimmed,
     );
     await this.assertMemberMatchesFieldRules(clubId, row.id);
+    // Auto-ajout au projet d'adhésion actif (fire-and-forget).
+    // Les erreurs sont loggées sans interrompre la création du membre.
+    try {
+      await this.membershipCart.addMemberToActiveCart(clubId, row.id);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[members.createMember] auto-add membership cart failed',
+        (err as Error).message,
+      );
+    }
     return this.toMemberGraph(row);
   }
 
@@ -784,12 +853,32 @@ export class MembersService {
     }
     await this.families.syncContactUserPayerMemberLinksByEmail(clubId, email);
     await this.assertMemberMatchesFieldRules(clubId, input.id);
+
+    // Si l'admin a modifié l'e-mail, déclenche l'activation du
+    // compte enfant si applicable (création User + lien activation).
+    if (input.email !== undefined && email !== existing.email) {
+      try {
+        await this.memberActivation.maybeActivateMemberAccount({
+          clubId,
+          memberId: input.id,
+          previousEmail: existing.email ?? null,
+          newEmail: email,
+        });
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[members.updateMember] member activation failed:',
+          (e as Error).message,
+        );
+      }
+    }
     return this.getMember(clubId, input.id);
   }
 
   async deleteMember(clubId: string, id: string): Promise<void> {
     const existing = await this.prisma.member.findFirst({
       where: { id, clubId },
+      select: { id: true, userId: true },
     });
     if (!existing) {
       throw new NotFoundException('Membre introuvable');
@@ -802,10 +891,35 @@ export class MembersService {
         'Impossible de supprimer ce membre : il est encore professeur sur un ou plusieurs créneaux',
       );
     }
+    const memberLines = await this.prisma.invoiceLine.findMany({
+      where: { memberId: id },
+      select: { id: true, invoiceId: true, invoice: { select: { status: true } } },
+    });
+    const blockingLine = memberLines.find(
+      (l) => l.invoice.status !== 'DRAFT',
+    );
+    if (blockingLine) {
+      throw new BadRequestException(
+        'Impossible de supprimer ce membre : des factures émises ou payées le référencent.',
+      );
+    }
     const priorFamilyLink = await this.prisma.familyMember.findFirst({
       where: { memberId: id },
       select: { familyId: true },
     });
+    if (memberLines.length > 0) {
+      const invoiceIds = [...new Set(memberLines.map((l) => l.invoiceId))];
+      await this.prisma.invoiceLine.deleteMany({ where: { memberId: id } });
+      const emptyInvoices = await this.prisma.invoice.findMany({
+        where: { id: { in: invoiceIds }, lines: { none: {} } },
+        select: { id: true },
+      });
+      if (emptyInvoices.length > 0) {
+        await this.prisma.invoice.deleteMany({
+          where: { id: { in: emptyInvoices.map((i) => i.id) } },
+        });
+      }
+    }
     await this.prisma.member.delete({ where: { id } });
     if (priorFamilyLink) {
       await this.families.ensureSoleFamilyMemberIsPayer(
@@ -815,6 +929,40 @@ export class MembersService {
         clubId,
         priorFamilyLink.familyId,
       );
+    }
+    if (existing.userId) {
+      const [remainingMembers, staffMemberships, remainingContacts] =
+        await Promise.all([
+          this.prisma.member.count({ where: { userId: existing.userId } }),
+          this.prisma.clubMembership.count({
+            where: { userId: existing.userId },
+          }),
+          this.prisma.contact.count({ where: { userId: existing.userId } }),
+        ]);
+      if (
+        remainingMembers === 0 &&
+        staffMemberships === 0 &&
+        remainingContacts === 0
+      ) {
+        // Clean up auth artifacts d’abord (aucun cascade FK dans le schema)
+        // pour éviter d’échouer la suppression du User et de laisser un
+        // orphelin qui bloquerait toute ré-inscription par email.
+        await this.prisma.$transaction([
+          this.prisma.emailVerificationToken.deleteMany({
+            where: { userId: existing.userId },
+          }),
+          this.prisma.passwordResetToken.deleteMany({
+            where: { userId: existing.userId },
+          }),
+          this.prisma.refreshToken.deleteMany({
+            where: { userId: existing.userId },
+          }),
+          this.prisma.userIdentity.deleteMany({
+            where: { userId: existing.userId },
+          }),
+          this.prisma.user.delete({ where: { id: existing.userId } }),
+        ]);
+      }
     }
   }
 

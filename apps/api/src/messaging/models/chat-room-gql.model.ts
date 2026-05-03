@@ -1,5 +1,10 @@
-import { Field, ID, ObjectType } from '@nestjs/graphql';
-import { ChatRoomKind, ChatRoomMemberRole } from '@prisma/client';
+import { Field, GraphQLISODateTime, ID, ObjectType } from '@nestjs/graphql';
+import {
+  ChatRoomChannelMode,
+  ChatRoomKind,
+  ChatRoomMemberRole,
+  ChatRoomPermissionTarget,
+} from '@prisma/client';
 
 @ObjectType()
 export class ChatMemberSnippetGraph {
@@ -9,11 +14,19 @@ export class ChatMemberSnippetGraph {
   @Field(() => String, { nullable: true })
   pseudo!: string | null;
 
-  @Field()
+  @Field(() => String)
   firstName!: string;
 
-  @Field()
+  @Field(() => String)
   lastName!: string;
+
+  @Field(() => String, {
+    nullable: true,
+    description:
+      'URL de la photo de profil — affichée comme avatar dans la liste des ' +
+      'salons (notamment pour les chats DIRECT 1-on-1 où on veut voir le peer).',
+  })
+  photoUrl!: string | null;
 }
 
 @ObjectType()
@@ -29,6 +42,33 @@ export class ChatRoomMemberGql {
 }
 
 @ObjectType()
+export class ChatRoomWritePermissionGql {
+  @Field(() => ID)
+  id!: string;
+
+  @Field(() => ChatRoomPermissionTarget)
+  targetKind!: ChatRoomPermissionTarget;
+
+  @Field(() => String, { nullable: true })
+  targetValue!: string | null;
+}
+
+@ObjectType()
+export class ChatRoomMembershipScopeGql {
+  @Field(() => ID)
+  id!: string;
+
+  @Field(() => ChatRoomPermissionTarget)
+  targetKind!: ChatRoomPermissionTarget;
+
+  @Field(() => String, { nullable: true })
+  targetValue!: string | null;
+
+  @Field(() => ID, { nullable: true })
+  dynamicGroupId!: string | null;
+}
+
+@ObjectType()
 export class ChatRoomGql {
   @Field(() => ID)
   id!: string;
@@ -39,9 +79,46 @@ export class ChatRoomGql {
   @Field(() => String, { nullable: true })
   name!: string | null;
 
-  @Field()
+  @Field(() => String, { nullable: true })
+  description!: string | null;
+
+  @Field(() => String, { nullable: true })
+  coverImageUrl!: string | null;
+
+  @Field(() => ChatRoomChannelMode)
+  channelMode!: ChatRoomChannelMode;
+
+  @Field(() => Boolean)
+  isBroadcastChannel!: boolean;
+
+  @Field(() => GraphQLISODateTime, { nullable: true })
+  archivedAt!: Date | null;
+
+  @Field(() => GraphQLISODateTime)
   updatedAt!: Date;
 
   @Field(() => [ChatRoomMemberGql])
   members!: ChatRoomMemberGql[];
+
+  /** Permissions d'écriture (RESTRICTED). Vide => tous les membres du salon. */
+  @Field(() => [ChatRoomWritePermissionGql])
+  writePermissions!: ChatRoomWritePermissionGql[];
+
+  /** Scopes d'inscription auto. Vide => salon manuel. */
+  @Field(() => [ChatRoomMembershipScopeGql])
+  membershipScopes!: ChatRoomMembershipScopeGql[];
+
+  /**
+   * Vrai si le viewer (membre courant) peut poster un message racine dans
+   * ce salon. Calculé côté serveur via `canWrite`.
+   */
+  @Field(() => Boolean)
+  viewerCanPost!: boolean;
+
+  /**
+   * Vrai si le viewer peut au moins répondre en fil (toujours true pour
+   * un membre du salon, sauf si READ_ONLY).
+   */
+  @Field(() => Boolean)
+  viewerCanReply!: boolean;
 }

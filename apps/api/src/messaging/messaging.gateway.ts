@@ -97,16 +97,77 @@ export class MessagingGateway implements OnGatewayConnection {
     payload: {
       id: string;
       roomId: string;
-      body: string;
+      body: string | null;
       createdAt: Date;
+      parentMessageId: string | null;
       sender: {
         id: string;
         pseudo: string | null;
         firstName: string;
         lastName: string;
+        photoUrl?: string | null;
       };
+      attachments?: Array<{
+        id: string;
+        kind: string;
+        mediaUrl: string;
+        thumbnailUrl: string | null;
+        fileName: string;
+        mimeType: string;
+        sizeBytes: number;
+        durationMs: number | null;
+      }>;
     },
   ): void {
     this.server.to(roomChannel(roomId)).emit('chat:message', payload);
+  }
+
+  /**
+   * Notifie le salon qu'une réaction a été basculée. Le client met à jour
+   * localement les compteurs sans recharger toute la liste.
+   */
+  emitReactionUpdate(
+    roomId: string,
+    payload: {
+      messageId: string;
+      memberId: string;
+      emoji: string;
+      reacted: boolean;
+      count: number;
+    },
+  ): void {
+    this.server.to(roomChannel(roomId)).emit('chat:reaction', payload);
+  }
+
+  /**
+   * Notifie le salon qu'un thread a évolué (compteur replyCount).
+   */
+  emitThreadUpdate(
+    roomId: string,
+    payload: {
+      parentMessageId: string;
+      replyCount: number;
+      lastReplyAt: Date | null;
+    },
+  ): void {
+    this.server.to(roomChannel(roomId)).emit('chat:thread', payload);
+  }
+
+  /**
+   * Notifie le salon qu'un message a été édité (clients re-fetchent
+   * le contenu pour afficher la nouvelle version + le tag "modifié").
+   */
+  emitMessageEdited(
+    roomId: string,
+    payload: { id: string; body: string | null; editedAt: Date },
+  ): void {
+    this.server.to(roomChannel(roomId)).emit('chat:message:edit', payload);
+  }
+
+  /**
+   * Notifie le salon qu'un message a été supprimé (soft delete).
+   */
+  emitMessageDeleted(roomId: string, payload: { id: string }): void {
+    this.server.to(roomChannel(roomId)).emit('chat:message:delete', payload);
   }
 }

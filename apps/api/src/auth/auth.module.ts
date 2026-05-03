@@ -12,6 +12,7 @@ import { EmailVerificationService } from './email-verification.service';
 import { JwtStrategy } from './jwt.strategy';
 import { GoogleOAuthController } from './oauth/google-oauth.controller';
 import { GoogleOAuthService } from './oauth/google-oauth.service';
+import { PasswordResetService } from './password-reset.service';
 
 @Module({
   imports: [
@@ -31,9 +32,10 @@ import { GoogleOAuthService } from './oauth/google-oauth.service';
     JwtStrategy,
     ClubContextGuard,
     EmailVerificationService,
+    PasswordResetService,
     GoogleOAuthService,
     GqlThrottlerGuard,
   ],
-  exports: [AuthService, EmailVerificationService],
+  exports: [AuthService, EmailVerificationService, PasswordResetService],
 })
 export class AuthModule {}

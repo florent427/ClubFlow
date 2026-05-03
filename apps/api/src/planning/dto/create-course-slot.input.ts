@@ -1,10 +1,13 @@
-import { Field, ID, InputType } from '@nestjs/graphql';
+import { Field, ID, Int, InputType } from '@nestjs/graphql';
 import {
+  IsBoolean,
   IsISO8601,
+  IsInt,
   IsOptional,
   IsString,
   IsUUID,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 
@@ -36,4 +39,25 @@ export class CreateCourseSlotInput {
   @IsOptional()
   @IsUUID()
   dynamicGroupId?: string;
+
+  @Field({ nullable: true, defaultValue: false })
+  @IsOptional()
+  @IsBoolean()
+  bookingEnabled?: boolean;
+
+  @Field(() => Int, { nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  bookingCapacity?: number;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsISO8601()
+  bookingOpensAt?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsISO8601()
+  bookingClosesAt?: string;
 }

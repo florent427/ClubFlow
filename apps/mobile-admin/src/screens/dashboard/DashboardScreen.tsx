@@ -1,0 +1,419 @@
+import { useQuery } from '@apollo/client/react';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import {
+  AnimatedPressable,
+  Card,
+  KpiTile,
+  Pill,
+  ScreenContainer,
+  ScreenHero,
+  formatEuroCents,
+  palette,
+  spacing,
+  typography,
+  useClubTheme,
+} from '@clubflow/mobile-shared';
+import { useNavigation } from '@react-navigation/native';
+import type { NavigationProp } from '@react-navigation/native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ADMIN_DASHBOARD_SUMMARY } from '../../lib/documents/dashboard';
+import { storage } from '../../lib/storage';
+import { useViewer } from '../../lib/club-modules-context';
+import {
+  canAccessAccounting,
+  canAccessSystem,
+} from '../../lib/permissions';
+
+type DashboardData = {
+  adminDashboardSummary: {
+    activeMembersCount: number;
+    activeModulesCount: number;
+    upcomingSessionsCount: number;
+    outstandingPaymentsCount: number;
+    revenueCentsMonth: number;
+    newMembersThisMonthCount: number;
+    upcomingEventsCount: number;
+    recentAnnouncementsCount: number;
+    pendingShopOrdersCount: number;
+    openGrantApplicationsCount: number;
+    activeSponsorshipDealsCount: number;
+    accountingBalanceCents: number;
+  } | null;
+};
+
+export function DashboardScreen() {
+  const navigation = useNavigation<NavigationProp<Record<string, object | undefined>>>();
+  const { clubName, isClubBranded } = useClubTheme();
+  const { permissions } = useViewer();
+  const { data, loading, refetch } = useQuery<DashboardData>(
+    ADMIN_DASHBOARD_SUMMARY,
+    { errorPolicy: 'all' },
+  );
+
+  const summary = data?.adminDashboardSummary;
+
+  const onLogout = async () => {
+    await storage.clearAuth();
+    navigation.reset({ index: 0, routes: [{ name: 'Login' as never }] });
+  };
+
+  // Helper pour naviguer vers un nested screen sans complications de types.
+  const goNested = (parent: string, screen: string) => {
+    (navigation as unknown as { navigate: (n: string, p?: unknown) => void })
+      .navigate(parent, { screen });
+  };
+
+  return (
+    <ScreenContainer
+      scroll
+      padding={0}
+      onRefresh={() => void refetch()}
+      refreshing={loading}
+    >
+      <ScreenHero
+        eyebrow={isClubBranded ? 'ESPACE ADMIN' : 'CLUBFLOW ADMIN'}
+        title={clubName ?? 'Dashboard'}
+        subtitle="Pilotez votre club en mobilité"
+        trailing={
+          <AnimatedPressable
+            onPress={() => void onLogout()}
+            accessibilityRole="button"
+            accessibilityLabel="Déconnexion"
+            style={dashHeaderStyles.logoutBtn}
+          >
+            <Ionicons name="log-out-outline" size={22} color="#ffffff" />
+          </AnimatedPressable>
+        }
+      />
+
+      {/* Quick actions — toutes en style "highlight" pour cohérence
+          visuelle (avant seul "Encaisser" l'avait) */}
+      <View style={styles.quickActions}>
+        <QuickActionButton
+          icon="cash-outline"
+          label="Encaisser"
+          onPress={() => goNested('More', 'Invoices')}
+          highlight
+        />
+        <QuickActionButton
+          icon="receipt-outline"
+          label="Écritures"
+          onPress={() => goNested('More', 'AccountingHome')}
+          highlight
+        />
+        <QuickActionButton
+          icon="megaphone-outline"
+          label="Annonce"
+          onPress={() => goNested('More', 'NewAnnouncement')}
+          highlight
+        />
+        <QuickActionButton
+          icon="paper-plane-outline"
+          label="Message"
+          onPress={() => goNested('More', 'MessagingHub')}
+          highlight
+        />
+      </View>
+
+      {/* KPIs row 1 */}
+      <View style={styles.kpisRow}>
+        <KpiTile
+          icon="people"
+          label="Membres actifs"
+          value={String(summary?.activeMembersCount ?? '—')}
+          delta={
+            summary && summary.newMembersThisMonthCount > 0
+              ? {
+                  value: `+${summary.newMembersThisMonthCount} ce mois`,
+                  positive: true,
+                }
+              : null
+          }
+          onPress={() => goNested('Community', 'Directory')}
+        />
+        <KpiTile
+          icon="card-outline"
+          label="Factures impayées"
+          value={String(summary?.outstandingPaymentsCount ?? '—')}
+          tone="warm"
+          onPress={() => goNested('More', 'Invoices')}
+        />
+      </View>
+
+      <View style={styles.kpisRow}>
+        <KpiTile
+          icon="calendar-outline"
+          label="Événements à venir"
+          value={String(summary?.upcomingEventsCount ?? '—')}
+          tone="cool"
+          onPress={() => goNested('Activities', 'Events')}
+        />
+        <KpiTile
+          icon="time-outline"
+          label="Cours à venir"
+          value={String(summary?.upcomingSessionsCount ?? '—')}
+          tone="primary"
+          onPress={() => goNested('Activities', 'Planning')}
+        />
+      </View>
+
+      <View style={styles.kpisRow}>
+        <KpiTile
+          icon="megaphone-outline"
+          label="Annonces récentes"
+          value={String(summary?.recentAnnouncementsCount ?? '—')}
+          tone="primary"
+          onPress={() => goNested('More', 'Announcements')}
+        />
+        <KpiTile
+          icon="bag-handle-outline"
+          label="Commandes shop"
+          value={String(summary?.pendingShopOrdersCount ?? '—')}
+          tone="cool"
+          onPress={() => goNested('More', 'ShopOrders')}
+        />
+      </View>
+
+      {canAccessAccounting(permissions) ? (
+        <View style={styles.kpisRow}>
+          <KpiTile
+            icon="trending-up-outline"
+            label="CA du mois"
+            value={
+              summary ? formatEuroCents(summary.revenueCentsMonth) : '—'
+            }
+            tone="success"
+            onPress={() => goNested('More', 'AccountingHome')}
+          />
+          <KpiTile
+            icon="wallet-outline"
+            label="Solde compta"
+            value={
+              summary
+                ? formatEuroCents(summary.accountingBalanceCents)
+                : '—'
+            }
+            tone="admin"
+            onPress={() => goNested('More', 'AccountingHome')}
+          />
+        </View>
+      ) : null}
+
+      <View style={styles.kpisRow}>
+        <KpiTile
+          icon="gift-outline"
+          label="Subventions"
+          value={String(summary?.openGrantApplicationsCount ?? '—')}
+          tone="warm"
+          onPress={() => goNested('More', 'Subsidies')}
+        />
+        <KpiTile
+          icon="ribbon-outline"
+          label="Sponsors actifs"
+          value={String(summary?.activeSponsorshipDealsCount ?? '—')}
+          tone="success"
+          onPress={() => goNested('More', 'Sponsorships')}
+        />
+      </View>
+
+      {/* Activité récente */}
+      <Card style={{ marginTop: spacing.lg, marginHorizontal: spacing.lg }}>
+        <Text style={styles.sectionTitle}>Activité récente</Text>
+        <View style={styles.recentList}>
+          <RecentItem
+            icon="checkmark-circle-outline"
+            text="3 inscriptions validées sur «Stage de Pâques»"
+            tone="success"
+          />
+          <RecentItem
+            icon="card-outline"
+            text="2 paiements Stripe reçus aujourd'hui"
+            tone="info"
+          />
+          <RecentItem
+            icon="alert-circle-outline"
+            text="5 écritures comptables à catégoriser"
+            tone="warning"
+          />
+        </View>
+      </Card>
+
+      {/* Ouverture rapide */}
+      <Card style={{ margin: spacing.lg }}>
+        <Text style={styles.sectionTitle}>Ouverture rapide</Text>
+        <View style={styles.pillsRow}>
+          <Pill
+            icon="card-outline"
+            label="Facturation"
+            tone="primary"
+            onPress={() => goNested('More', 'Invoices')}
+          />
+          <Pill
+            icon="storefront-outline"
+            label="Boutique"
+            onPress={() => goNested('More', 'ShopProducts')}
+          />
+          <Pill
+            icon="globe-outline"
+            label="Vitrine"
+            onPress={() => goNested('More', 'VitrineHome')}
+          />
+          <Pill
+            icon="folder-open-outline"
+            label="Subventions"
+            onPress={() => goNested('More', 'Subsidies')}
+          />
+          {canAccessSystem(permissions) ? (
+            <Pill
+              icon="shield-checkmark-outline"
+              label="Système"
+              tone="primary"
+              onPress={() => goNested('More', 'SystemDashboard')}
+            />
+          ) : null}
+        </View>
+      </Card>
+    </ScreenContainer>
+  );
+}
+
+function QuickActionButton({
+  icon,
+  label,
+  onPress,
+  highlight,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+  highlight?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        quickStyles.btn,
+        pressed && { opacity: 0.85 },
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <View
+        style={[
+          quickStyles.iconBubble,
+          highlight && quickStyles.iconBubbleHighlight,
+        ]}
+      >
+        <Ionicons
+          name={icon}
+          size={22}
+          color={highlight ? palette.surface : palette.primary}
+        />
+      </View>
+      <Text
+        style={[
+          quickStyles.label,
+          highlight && { color: palette.primary, fontWeight: '700' },
+        ]}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function RecentItem({
+  icon,
+  text,
+  tone,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  text: string;
+  tone: 'success' | 'info' | 'warning';
+}) {
+  const color =
+    tone === 'success'
+      ? palette.successText
+      : tone === 'info'
+        ? palette.infoText
+        : palette.warningText;
+  return (
+    <View style={styles.recentItem}>
+      <Ionicons name={icon} size={18} color={color} />
+      <Text style={styles.recentText} numberOfLines={2}>
+        {text}
+      </Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  quickActions: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    gap: spacing.sm,
+  },
+  kpisRow: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    gap: spacing.sm,
+  },
+  sectionTitle: {
+    ...typography.h3,
+    color: palette.ink,
+    marginBottom: spacing.md,
+  },
+  recentList: { gap: spacing.sm },
+  recentItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  recentText: { ...typography.body, color: palette.body, flex: 1 },
+  pillsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+});
+
+const quickStyles = StyleSheet.create({
+  btn: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: spacing.sm,
+  },
+  iconBubble: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: palette.primaryTint,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconBubbleHighlight: {
+    backgroundColor: palette.success,
+    shadowColor: palette.success,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  label: {
+    ...typography.smallStrong,
+    color: palette.body,
+  },
+});
+
+const dashHeaderStyles = StyleSheet.create({
+  logoutBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});

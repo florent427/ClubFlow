@@ -14,6 +14,7 @@ import { useMembersUi } from '../members/members-ui-context';
 import { ContactDetailDrawer } from './ContactDetailDrawer';
 
 type VerifiedFilter = 'all' | 'yes' | 'no';
+type LinkFilter = 'unlinked' | 'linked' | 'all';
 type SortKey = 'lastName' | 'firstName' | 'email';
 
 export function ContactsPage() {
@@ -22,6 +23,10 @@ export function ContactsPage() {
   const [drawerContactId, setDrawerContactId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [verified, setVerified] = useState<VerifiedFilter>('all');
+  // Par défaut, on cache les Contacts déjà promus en Member (= la même
+  // personne est visible dans la page Membres). Évite la confusion
+  // « pourquoi adulte1 apparaît 2 fois ? ». Filtre exposé pour debug.
+  const [linkFilter, setLinkFilter] = useState<LinkFilter>('unlinked');
   const [sortKey, setSortKey] = useState<SortKey>('lastName');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
@@ -53,6 +58,11 @@ export function ContactsPage() {
     } else if (verified === 'no') {
       rows = rows.filter((c) => !c.emailVerified);
     }
+    if (linkFilter === 'unlinked') {
+      rows = rows.filter((c) => !c.linkedMemberId);
+    } else if (linkFilter === 'linked') {
+      rows = rows.filter((c) => c.linkedMemberId);
+    }
     const dir = sortDir === 'asc' ? 1 : -1;
     const sorted = [...rows].sort((a, b) => {
       const va = a[sortKey].toLowerCase();
@@ -60,7 +70,7 @@ export function ContactsPage() {
       return va.localeCompare(vb, 'fr') * dir;
     });
     return sorted;
-  }, [contacts, search, verified, sortKey, sortDir]);
+  }, [contacts, search, verified, linkFilter, sortKey, sortDir]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -106,6 +116,9 @@ export function ContactsPage() {
     }
   }
 
+  const verifiedCount = contacts.filter((c) => c.emailVerified).length;
+  const linkedCount = contacts.filter((c) => c.linkedMemberId).length;
+
   return (
     <>
       <header className="members-loom__hero members-loom__hero--nested">
@@ -123,11 +136,14 @@ export function ContactsPage() {
           <div className="contacts-hero-sync">
             <button
               type="button"
-              className="btn btn-ghost"
+              className="cf-btn cf-btn--ghost"
               disabled={syncLoading}
               title="Rattache les comptes (e-mail vérifié) aux fiches membre payeur ou adhérent seul lorsque l’e-mail est identique."
               onClick={() => void onSyncLinks()}
             >
+              <span className="material-symbols-outlined" aria-hidden>
+                sync
+              </span>
               {syncLoading ? 'Mise à jour…' : 'Mettre à jour les liaisons'}
             </button>
             {syncMessage ? (
@@ -144,6 +160,32 @@ export function ContactsPage() {
         </div>
       </header>
 
+      {contacts.length > 0 ? (
+        <div className="members-kpis">
+          <div className="members-kpi">
+            <span className="members-kpi__label">Contacts</span>
+            <span className="members-kpi__value">{contacts.length}</span>
+            <span className="members-kpi__hint">comptes portail du club</span>
+          </div>
+          <div className="members-kpi">
+            <span className="members-kpi__label">E-mail vérifié</span>
+            <span className="members-kpi__value">{verifiedCount}</span>
+            <span className="members-kpi__hint">
+              {contacts.length > 0
+                ? `${Math.round((verifiedCount / contacts.length) * 100)} % du total`
+                : ''}
+            </span>
+          </div>
+          <div className="members-kpi">
+            <span className="members-kpi__label">Rattachés membre</span>
+            <span className="members-kpi__value">{linkedCount}</span>
+            <span className="members-kpi__hint">
+              fiches membre associées
+            </span>
+          </div>
+        </div>
+      ) : null}
+
       <div className="members-loom__grid members-loom__grid--single">
         <section className="members-panel members-panel--table">
           <h2 className="members-panel__h">Liste des contacts</h2>
@@ -158,37 +200,62 @@ export function ContactsPage() {
                 autoComplete="off"
               />
             </label>
-            <div className="contacts-filter" role="group" aria-label="Filtre e-mail vérifié">
+            <div
+              className="cf-segmented"
+              role="group"
+              aria-label="Filtre e-mail vérifié"
+            >
               <button
                 type="button"
-                className={
-                  verified === 'all' ? 'btn btn-primary btn-tight' : 'btn btn-ghost btn-tight'
-                }
+                className={`cf-segmented__btn${verified === 'all' ? ' cf-segmented__btn--active' : ''}`}
                 onClick={() => setVerified('all')}
               >
                 Tous
               </button>
               <button
                 type="button"
-                className={
-                  verified === 'yes'
-                    ? 'btn btn-primary btn-tight'
-                    : 'btn btn-ghost btn-tight'
-                }
+                className={`cf-segmented__btn${verified === 'yes' ? ' cf-segmented__btn--active' : ''}`}
                 onClick={() => setVerified('yes')}
               >
-                E-mail vérifié
+                <span className="material-symbols-outlined" aria-hidden>
+                  verified
+                </span>
+                Vérifiés
               </button>
               <button
                 type="button"
-                className={
-                  verified === 'no'
-                    ? 'btn btn-primary btn-tight'
-                    : 'btn btn-ghost btn-tight'
-                }
+                className={`cf-segmented__btn${verified === 'no' ? ' cf-segmented__btn--active' : ''}`}
                 onClick={() => setVerified('no')}
               >
-                Non vérifié
+                Non vérifiés
+              </button>
+            </div>
+            <div
+              className="cf-segmented"
+              role="group"
+              aria-label="Filtre liaison membre"
+              title="Un Contact promu en Member est visible dans la page Membres ; on le cache ici par défaut pour éviter les doublons."
+            >
+              <button
+                type="button"
+                className={`cf-segmented__btn${linkFilter === 'unlinked' ? ' cf-segmented__btn--active' : ''}`}
+                onClick={() => setLinkFilter('unlinked')}
+              >
+                Sans fiche membre
+              </button>
+              <button
+                type="button"
+                className={`cf-segmented__btn${linkFilter === 'linked' ? ' cf-segmented__btn--active' : ''}`}
+                onClick={() => setLinkFilter('linked')}
+              >
+                Promus en membre
+              </button>
+              <button
+                type="button"
+                className={`cf-segmented__btn${linkFilter === 'all' ? ' cf-segmented__btn--active' : ''}`}
+                onClick={() => setLinkFilter('all')}
+              >
+                Tous
               </button>
             </div>
           </div>
@@ -228,21 +295,45 @@ export function ContactsPage() {
                         }
                       }}
                     >
-                      <td>{c.lastName}</td>
+                      <td>
+                        <span className="members-table__name">{c.lastName}</span>
+                      </td>
                       <td>{c.firstName}</td>
                       <td>{c.email}</td>
-                      <td>{c.emailVerified ? 'Oui' : 'Non'}</td>
+                      <td>
+                        {c.emailVerified ? (
+                          <span className="cf-badge cf-badge--success">
+                            <span
+                              className="material-symbols-outlined"
+                              aria-hidden
+                            >
+                              verified
+                            </span>
+                            Vérifié
+                          </span>
+                        ) : (
+                          <span className="cf-badge cf-badge--neutral">
+                            Non vérifié
+                          </span>
+                        )}
+                      </td>
                       <td onClick={(e) => e.stopPropagation()}>
                         {c.linkedMemberId ? (
                           <button
                             type="button"
-                            className="btn btn-ghost btn-tight"
+                            className="cf-btn cf-btn--sm cf-btn--ghost"
                             onClick={() => openLinkedMember(c)}
                           >
-                            Ouvrir la fiche membre
+                            <span
+                              className="material-symbols-outlined"
+                              aria-hidden
+                            >
+                              open_in_new
+                            </span>
+                            Fiche membre
                           </button>
                         ) : (
-                          <span className="muted">—</span>
+                          <span className="cf-text-muted">—</span>
                         )}
                       </td>
                     </tr>

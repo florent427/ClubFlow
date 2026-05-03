@@ -13,15 +13,88 @@ import { ViewerActiveProfileGuard } from '../common/guards/viewer-active-profile
 import type { RequestUser } from '../common/types/request-user';
 import { ModuleCode } from '../domain/module-registry/module-codes';
 import { CreateChatGroupInput } from './dto/create-chat-group.input';
+import { EditChatMessageInput } from './dto/edit-chat-message.input';
 import { PostChatMessageInput } from './dto/post-chat-message.input';
-import { ChatMessageGql } from './models/chat-message-gql.model';
+import { ToggleMessageReactionInput } from './dto/toggle-message-reaction.input';
+import {
+  ChatMessageAttachmentGql,
+  ChatMessageGql,
+  ChatMessageReactionGroupGql,
+} from './models/chat-message-gql.model';
+import { ChatMessageAttachmentKind as ChatMessageAttachmentKindEnum } from '@prisma/client';
 import {
   ChatMemberSnippetGraph,
   ChatRoomGql,
   ChatRoomMemberGql,
+  ChatRoomMembershipScopeGql,
+  ChatRoomWritePermissionGql,
 } from './models/chat-room-gql.model';
+import { MemberSearchResultGraph } from './models/member-search-result.model';
 import { MessagingGateway } from './messaging.gateway';
 import { MessagingService } from './messaging.service';
+
+type RawMessage = {
+  id: string;
+  roomId: string;
+  body: string | null;
+  createdAt: Date;
+  parentMessageId: string | null;
+  replyCount: number;
+  lastReplyAt: Date | null;
+  editedAt: Date | null;
+  postedAsAdminUserId: string | null;
+  sender: {
+    id: string;
+    pseudo: string | null;
+    firstName: string;
+    lastName: string;
+    photoUrl: string | null;
+  };
+  reactions: {
+    id: string;
+    memberId: string;
+    emoji: string;
+  }[];
+  attachments?: Array<{
+    id: string;
+    kind: ChatMessageAttachmentKindEnum;
+    mediaAssetId: string;
+    durationMs: number | null;
+    position: number;
+    mediaAsset: {
+      id: string;
+      fileName: string;
+      mimeType: string;
+      sizeBytes: number;
+      publicUrl: string;
+    };
+    thumbnailAsset: {
+      id: string;
+      publicUrl: string;
+    } | null;
+  }>;
+};
+
+function aggregateReactions(
+  reactions: { memberId: string; emoji: string }[],
+  viewerMemberId: string,
+): ChatMessageReactionGroupGql[] {
+  const map = new Map<
+    string,
+    { count: number; reactedByViewer: boolean }
+  >();
+  for (const r of reactions) {
+    const cur = map.get(r.emoji) ?? { count: 0, reactedByViewer: false };
+    cur.count += 1;
+    if (r.memberId === viewerMemberId) cur.reactedByViewer = true;
+    map.set(r.emoji, cur);
+  }
+  return [...map.entries()].map(([emoji, v]) => ({
+    emoji,
+    count: v.count,
+    reactedByViewer: v.reactedByViewer,
+  }));
+}
 
 @Resolver()
 @UseGuards(
@@ -49,7 +122,21 @@ export class MessagingResolver {
       club.id,
       user.activeProfileMemberId,
     );
-    return rows.map((r) => this.toRoomGql(r));
+    const out: ChatRoomGql[] = [];
+    for (const r of rows) {
+      const canPost = await this.messaging.canPostRootMessage(
+        club.id,
+        r.id,
+        user.activeProfileMemberId,
+      );
+      const canReply = await this.messaging.canReplyInThread(
+        club.id,
+        r.id,
+        user.activeProfileMemberId,
+      );
+      out.push(this.toRoomGql(r, canPost, canReply));
+    }
+    return out;
   }
 
   @Query(() => [ChatMessageGql], { name: 'viewerChatMessages' })
@@ -70,7 +157,59 @@ export class MessagingResolver {
       user.activeProfileMemberId,
       beforeMessageId,
     );
-    return rows.map((m) => this.toMessageGql(m));
+    return rows.map((m) =>
+      this.toMessageGql(m as RawMessage, user.activeProfileMemberId!),
+    );
+  }
+
+  @Query(() => [ChatMessageGql], { name: 'viewerChatThreadReplies' })
+  @RequireClubModule(ModuleCode.MESSAGING)
+  async viewerChatThreadReplies(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('roomId', { type: () => ID }) roomId: string,
+    @Args('parentMessageId', { type: () => ID }) parentMessageId: string,
+  ): Promise<ChatMessageGql[]> {
+    if (!user.activeProfileMemberId) {
+      throw new BadRequestException('Profil adhérent requis.');
+    }
+    const rows = await this.messaging.listThreadReplies(
+      club.id,
+      roomId,
+      user.activeProfileMemberId,
+      parentMessageId,
+    );
+    return rows.map((m) =>
+      this.toMessageGql(m as RawMessage, user.activeProfileMemberId!),
+    );
+  }
+
+  @Query(() => [MemberSearchResultGraph], {
+    name: 'viewerSearchClubMembers',
+    description:
+      "Recherche d'adhérents du club courant pour démarrer un chat 1-on-1. " +
+      'Match insensible à la casse sur pseudo, firstName, lastName. Retourne ' +
+      'au max 20 résultats par défaut, exclut le viewer lui-même.',
+  })
+  @RequireClubModule(ModuleCode.MESSAGING)
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @UseGuards(GqlThrottlerGuard)
+  async viewerSearchClubMembers(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('q') q: string,
+    @Args('limit', { type: () => Number, nullable: true })
+    limit?: number,
+  ): Promise<MemberSearchResultGraph[]> {
+    if (!user.activeProfileMemberId) {
+      throw new BadRequestException('Profil adhérent requis.');
+    }
+    return this.messaging.searchClubMembers(
+      club.id,
+      user.activeProfileMemberId,
+      q,
+      limit ?? 20,
+    );
   }
 
   @Mutation(() => ChatRoomGql, { name: 'viewerGetOrCreateDirectChat' })
@@ -96,7 +235,17 @@ export class MessagingResolver {
     if (!room) {
       throw new BadRequestException('Salon introuvable');
     }
-    return this.toRoomGql(room);
+    const canPost = await this.messaging.canPostRootMessage(
+      club.id,
+      id,
+      user.activeProfileMemberId,
+    );
+    const canReply = await this.messaging.canReplyInThread(
+      club.id,
+      id,
+      user.activeProfileMemberId,
+    );
+    return this.toRoomGql(room, canPost, canReply);
   }
 
   @Mutation(() => ChatRoomGql, { name: 'viewerCreateChatGroup' })
@@ -123,7 +272,17 @@ export class MessagingResolver {
     if (!room) {
       throw new BadRequestException('Salon introuvable');
     }
-    return this.toRoomGql(room);
+    const canPost = await this.messaging.canPostRootMessage(
+      club.id,
+      id,
+      user.activeProfileMemberId,
+    );
+    const canReply = await this.messaging.canReplyInThread(
+      club.id,
+      id,
+      user.activeProfileMemberId,
+    );
+    return this.toRoomGql(room, canPost, canReply);
   }
 
   @Mutation(() => ChatMessageGql, { name: 'viewerPostChatMessage' })
@@ -142,26 +301,142 @@ export class MessagingResolver {
       club.id,
       input.roomId,
       user.activeProfileMemberId,
-      input.body,
+      input.body ?? null,
+      {
+        parentMessageId: input.parentMessageId ?? null,
+        attachmentMediaAssetIds: input.attachmentMediaAssetIds ?? null,
+      },
     );
-    const gql = this.toMessageGql(msg);
+    const gql = this.toMessageGql(
+      msg as RawMessage,
+      user.activeProfileMemberId,
+    );
     this.gateway.emitChatMessage(input.roomId, {
       id: gql.id,
       roomId: gql.roomId,
       body: gql.body,
       createdAt: gql.createdAt,
+      parentMessageId: gql.parentMessageId,
       sender: gql.sender,
+      attachments: gql.attachments,
+    });
+    if (input.parentMessageId) {
+      const counters = await this.messaging.getMessageThreadCounters(
+        club.id,
+        input.parentMessageId,
+      );
+      if (counters) {
+        this.gateway.emitThreadUpdate(input.roomId, {
+          parentMessageId: input.parentMessageId,
+          replyCount: counters.replyCount,
+          lastReplyAt: counters.lastReplyAt,
+        });
+      }
+    }
+    return gql;
+  }
+
+  @Mutation(() => ChatMessageReactionGroupGql, {
+    name: 'viewerToggleChatMessageReaction',
+  })
+  @RequireClubModule(ModuleCode.MESSAGING)
+  @UseGuards(GqlThrottlerGuard)
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
+  async viewerToggleChatMessageReaction(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('input') input: ToggleMessageReactionInput,
+  ): Promise<ChatMessageReactionGroupGql> {
+    if (!user.activeProfileMemberId) {
+      throw new BadRequestException('Profil adhérent requis.');
+    }
+    const { reacted, count } = await this.messaging.toggleReaction(
+      club.id,
+      user.activeProfileMemberId,
+      input.messageId,
+      input.emoji,
+    );
+    const roomId = await this.messaging.getMessageRoomId(
+      club.id,
+      input.messageId,
+    );
+    if (roomId) {
+      this.gateway.emitReactionUpdate(roomId, {
+        messageId: input.messageId,
+        memberId: user.activeProfileMemberId,
+        emoji: input.emoji,
+        reacted,
+        count,
+      });
+    }
+    return { emoji: input.emoji, count, reactedByViewer: reacted };
+  }
+
+  @Mutation(() => ChatMessageGql, { name: 'viewerEditChatMessage' })
+  @RequireClubModule(ModuleCode.MESSAGING)
+  @UseGuards(GqlThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  async viewerEditChatMessage(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('input') input: EditChatMessageInput,
+  ): Promise<ChatMessageGql> {
+    if (!user.activeProfileMemberId) {
+      throw new BadRequestException('Profil adhérent requis.');
+    }
+    const msg = await this.messaging.editMessage(
+      club.id,
+      user.activeProfileMemberId,
+      input.messageId,
+      input.body,
+    );
+    const gql = this.toMessageGql(
+      msg as RawMessage,
+      user.activeProfileMemberId,
+    );
+    this.gateway.emitMessageEdited(msg.roomId, {
+      id: msg.id,
+      body: msg.body,
+      editedAt: msg.editedAt ?? new Date(),
     });
     return gql;
   }
 
+  @Mutation(() => Boolean, { name: 'viewerDeleteChatMessage' })
+  @RequireClubModule(ModuleCode.MESSAGING)
+  @UseGuards(GqlThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  async viewerDeleteChatMessage(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('messageId', { type: () => ID }) messageId: string,
+  ): Promise<boolean> {
+    if (!user.activeProfileMemberId) {
+      throw new BadRequestException('Profil adhérent requis.');
+    }
+    const { roomId } = await this.messaging.deleteMessage(
+      club.id,
+      user.activeProfileMemberId,
+      messageId,
+    );
+    this.gateway.emitMessageDeleted(roomId, { id: messageId });
+    return true;
+  }
+
   private toRoomGql(
     row: Awaited<ReturnType<MessagingService['listRoomsForMember']>>[0],
+    viewerCanPost: boolean,
+    viewerCanReply: boolean,
   ): ChatRoomGql {
     return {
       id: row.id,
       kind: row.kind,
       name: row.name,
+      description: row.description,
+      coverImageUrl: row.coverImageUrl,
+      channelMode: row.channelMode,
+      isBroadcastChannel: row.isBroadcastChannel,
+      archivedAt: row.archivedAt,
       updatedAt: row.updatedAt,
       members: row.members.map(
         (m): ChatRoomMemberGql => ({
@@ -172,36 +447,69 @@ export class MessagingResolver {
             pseudo: m.member.pseudo,
             firstName: m.member.firstName,
             lastName: m.member.lastName,
+            // photoUrl propagé pour permettre l'affichage de l'avatar
+            // du peer dans la liste des chats DIRECT côté mobile.
+            photoUrl: m.member.photoUrl ?? null,
           },
         }),
       ),
+      writePermissions: row.writePermissions.map(
+        (p): ChatRoomWritePermissionGql => ({
+          id: p.id,
+          targetKind: p.targetKind,
+          targetValue: p.targetValue,
+        }),
+      ),
+      membershipScopes: row.membershipScopes.map(
+        (s): ChatRoomMembershipScopeGql => ({
+          id: s.id,
+          targetKind: s.targetKind,
+          targetValue: s.targetValue,
+          dynamicGroupId: s.dynamicGroupId,
+        }),
+      ),
+      viewerCanPost,
+      viewerCanReply,
     };
   }
 
-  private toMessageGql(msg: {
-    id: string;
-    roomId: string;
-    body: string;
-    createdAt: Date;
-    sender: {
-      id: string;
-      pseudo: string | null;
-      firstName: string;
-      lastName: string;
-    };
-  }): ChatMessageGql {
+  private toMessageGql(
+    msg: RawMessage,
+    viewerMemberId: string,
+  ): ChatMessageGql {
     const sender: ChatMemberSnippetGraph = {
       id: msg.sender.id,
       pseudo: msg.sender.pseudo,
       firstName: msg.sender.firstName,
       lastName: msg.sender.lastName,
+      photoUrl: msg.sender.photoUrl,
     };
+    const attachments: ChatMessageAttachmentGql[] = (msg.attachments ?? []).map(
+      (a) => ({
+        id: a.id,
+        kind: a.kind,
+        mediaAssetId: a.mediaAssetId,
+        mediaUrl: a.mediaAsset.publicUrl,
+        thumbnailUrl: a.thumbnailAsset?.publicUrl ?? null,
+        fileName: a.mediaAsset.fileName,
+        mimeType: a.mediaAsset.mimeType,
+        sizeBytes: a.mediaAsset.sizeBytes,
+        durationMs: a.durationMs,
+      }),
+    );
     return {
       id: msg.id,
       roomId: msg.roomId,
       body: msg.body,
       createdAt: msg.createdAt,
       sender,
+      parentMessageId: msg.parentMessageId,
+      replyCount: msg.replyCount,
+      lastReplyAt: msg.lastReplyAt,
+      editedAt: msg.editedAt,
+      postedByAdmin: Boolean(msg.postedAsAdminUserId),
+      reactions: aggregateReactions(msg.reactions, viewerMemberId),
+      attachments,
     };
   }
 }

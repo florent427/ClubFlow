@@ -7,6 +7,8 @@ import { MemberOnly } from './components/MemberOnly';
 import { ToastProvider } from './components/ToastProvider';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { VerifyEmailPage } from './pages/VerifyEmailPage';
 import { OAuthCallbackPage } from './pages/OAuthCallbackPage';
 import { SelectProfilePage } from './pages/SelectProfilePage';
@@ -14,8 +16,28 @@ import { HomeEntry } from './components/HomeEntry';
 import { ProgressionPage } from './pages/ProgressionPage';
 import { PlanningPage } from './pages/PlanningPage';
 import { FamilyPage } from './pages/FamilyPage';
+import { BillingPage } from './pages/BillingPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { MessagingPage } from './pages/MessagingPage';
+import { NewsPage } from './pages/NewsPage';
+import { EventsPage } from './pages/EventsPage';
+import { BookingPage } from './pages/BookingPage';
+import { BlogListPage, BlogPostPage } from './pages/BlogPage';
+import { ShopPage } from './pages/ShopPage';
+import { AdhesionPage } from './pages/AdhesionPage';
+import { DocumentsToSignPage } from './pages/DocumentsToSignPage';
+import { MyProjectsPage } from './pages/MyProjectsPage';
+import { MyProjectUploadPage } from './pages/MyProjectUploadPage';
+import { JoinFamilyInvitePage } from './pages/JoinFamilyInvitePage';
+import { PublicSiteLayout } from './pages/public/PublicSiteLayout';
+import { PublicHomePage } from './pages/public/PublicHomePage';
+import { PublicNewsPage } from './pages/public/PublicNewsPage';
+import { PublicEventsPage } from './pages/public/PublicEventsPage';
+import {
+  PublicBlogListPage,
+  PublicBlogPostPage,
+} from './pages/public/PublicBlogPage';
+import { PublicShopPage } from './pages/public/PublicShopPage';
 
 function Protected() {
   if (!getToken()) {
@@ -35,8 +57,19 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
+            <Route path="/rejoindre" element={<JoinFamilyInvitePage />} />
+            <Route path="/site/:slug" element={<PublicSiteLayout />}>
+              <Route index element={<PublicHomePage />} />
+              <Route path="actus" element={<PublicNewsPage />} />
+              <Route path="evenements" element={<PublicEventsPage />} />
+              <Route path="blog" element={<PublicBlogListPage />} />
+              <Route path="blog/:postSlug" element={<PublicBlogPostPage />} />
+              <Route path="boutique" element={<PublicShopPage />} />
+            </Route>
             <Route path="/select-profile" element={<SelectProfilePage />} />
             <Route element={<Protected />}>
               <Route element={<MemberOrContactShell />}>
@@ -57,22 +90,14 @@ export default function App() {
                   </MemberOnly>
                 }
               />
+              <Route path="/famille" element={<FamilyPage />} />
+              <Route path="/adhesion" element={<AdhesionPage />} />
+              <Route path="/factures" element={<BillingPage />} />
               <Route
-                path="/famille"
-                element={
-                  <MemberOnly>
-                    <FamilyPage />
-                  </MemberOnly>
-                }
+                path="/documents-a-signer"
+                element={<DocumentsToSignPage />}
               />
-              <Route
-                path="/parametres"
-                element={
-                  <MemberOnly>
-                    <SettingsPage />
-                  </MemberOnly>
-                }
-              />
+              <Route path="/parametres" element={<SettingsPage />} />
               <Route
                 path="/messagerie"
                 element={
@@ -80,6 +105,17 @@ export default function App() {
                     <MessagingPage />
                   </MemberOnly>
                 }
+              />
+              <Route path="/actus" element={<NewsPage />} />
+              <Route path="/evenements" element={<EventsPage />} />
+              <Route path="/reservations" element={<BookingPage />} />
+              <Route path="/blog" element={<BlogListPage />} />
+              <Route path="/blog/:slug" element={<BlogPostPage />} />
+              <Route path="/boutique" element={<ShopPage />} />
+              <Route path="/mes-projets" element={<MyProjectsPage />} />
+              <Route
+                path="/mes-projets/:projectId"
+                element={<MyProjectUploadPage />}
               />
               </Route>
             </Route>

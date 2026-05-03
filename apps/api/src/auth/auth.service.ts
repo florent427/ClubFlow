@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -19,7 +20,9 @@ import { LoginInput } from './dto/login.input';
 import type { JwtPayload } from './jwt.strategy';
 import { LoginPayload } from './models/login-payload.model';
 import { RegisterContactResult } from './models/register-contact-result.model';
+import { RequestPasswordResetResult } from './models/request-password-reset-result.model';
 import { ResendVerificationResult } from './models/resend-verification-result.model';
+import { PasswordResetService } from './password-reset.service';
 
 @Injectable()
 export class AuthService {
@@ -28,6 +31,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly families: FamiliesService,
     private readonly emailVerification: EmailVerificationService,
+    private readonly passwordReset: PasswordResetService,
     private readonly mail: TransactionalMailService,
   ) {}
 
@@ -75,6 +79,13 @@ export class AuthService {
     return `${base}/verify-email?token=${encodeURIComponent(rawToken)}`;
   }
 
+  private buildResetUrl(rawToken: string): string {
+    const base = (
+      process.env.MEMBER_PORTAL_ORIGIN ?? 'http://localhost:5174'
+    ).replace(/\/$/, '');
+    return `${base}/reset-password?token=${encodeURIComponent(rawToken)}`;
+  }
+
   private async buildLoginPayload(
     userId: string,
     email: string,
@@ -88,7 +99,6 @@ export class AuthService {
     } else if (primary?.contactId) {
       jwtPayload.activeProfileContactId = primary.contactId;
     }
-    const accessToken = this.signAccessToken(jwtPayload);
     const clubEnv = process.env.CLUB_ID?.trim();
     let contactClubId: string | null = null;
     if (viewerProfiles.length === 0 && clubEnv) {
@@ -96,7 +106,11 @@ export class AuthService {
         where: { userId_clubId: { userId, clubId: clubEnv } },
       });
       contactClubId = c?.clubId ?? null;
+      if (c && !jwtPayload.activeProfileContactId) {
+        jwtPayload.activeProfileContactId = c.id;
+      }
     }
+    const accessToken = this.signAccessToken(jwtPayload);
     return { accessToken, viewerProfiles, contactClubId };
   }
 
@@ -129,7 +143,7 @@ export class AuthService {
 
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing?.emailVerifiedAt) {
-      return { ok: true };
+      throw new ConflictException('USER_ALREADY_EXISTS');
     }
 
     if (existing && !existing.emailVerifiedAt) {
@@ -220,6 +234,38 @@ export class AuthService {
       );
     }
     return { ok: true };
+  }
+
+  async requestPasswordReset(email: string): Promise<RequestPasswordResetResult> {
+    const norm = email.trim().toLowerCase();
+    const clubId = this.clubIdFromEnv();
+    const user = await this.prisma.user.findUnique({ where: { email: norm } });
+    if (user && user.emailVerifiedAt && user.passwordHash) {
+      const raw = await this.passwordReset.issueTokenForUser(user.id);
+      await this.mail.sendPasswordResetLink(
+        clubId,
+        norm,
+        this.buildResetUrl(raw),
+      );
+    }
+    return { ok: true };
+  }
+
+  async resetPassword(rawToken: string, newPassword: string): Promise<LoginPayload> {
+    const consumed = await this.passwordReset.consumeRawToken(rawToken);
+    if (!consumed) {
+      throw new BadRequestException('Lien invalide ou expiré.');
+    }
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await this.prisma.user.update({
+      where: { id: consumed.userId },
+      data: { passwordHash },
+    });
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: consumed.userId },
+    });
+    const viewerProfiles = await this.families.listViewerProfiles(user.id);
+    return this.buildLoginPayload(user.id, user.email, viewerProfiles);
   }
 
   async upsertUserFromGoogleOAuth(oauth: {

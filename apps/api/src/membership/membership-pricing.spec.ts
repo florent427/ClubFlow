@@ -40,6 +40,37 @@ describe('membership-pricing', () => {
       const late = new Date(Date.UTC(2027, 0, 1));
       expect(computeProrataFactorBp(late, start, end)).toBe(0);
     });
+
+    describe('avec fullPriceFirstMonths (seuil)', () => {
+      it('plein tarif les N premiers mois (N=3)', () => {
+        // Saison sept→août : septembre = mois 1, octobre = 2, novembre = 3
+        const sept = new Date(Date.UTC(2025, 8, 15));
+        const oct = new Date(Date.UTC(2025, 9, 15));
+        const nov = new Date(Date.UTC(2025, 10, 15));
+        expect(computeProrataFactorBp(sept, start, end, 3)).toBe(10000);
+        expect(computeProrataFactorBp(oct, start, end, 3)).toBe(10000);
+        expect(computeProrataFactorBp(nov, start, end, 3)).toBe(10000);
+      });
+
+      it('prorata classique à partir du mois N+1', () => {
+        // Décembre = mois 4, hors fenêtre → calcul classique
+        const dec = new Date(Date.UTC(2025, 11, 15));
+        const bpWithThreshold = computeProrataFactorBp(dec, start, end, 3);
+        const bpWithoutThreshold = computeProrataFactorBp(dec, start, end, 0);
+        expect(bpWithThreshold).toBe(bpWithoutThreshold);
+        expect(bpWithThreshold).toBeLessThan(10000);
+      });
+
+      it('seuil 0 = comportement legacy (pas de plein tarif initial)', () => {
+        const oct = new Date(Date.UTC(2025, 9, 15));
+        // Sans seuil : prorata classique
+        const bpNoThreshold = computeProrataFactorBp(oct, start, end, 0);
+        // Avec seuil 3 : plein tarif
+        const bpWithThreshold = computeProrataFactorBp(oct, start, end, 3);
+        expect(bpNoThreshold).toBeLessThan(10000);
+        expect(bpWithThreshold).toBe(10000);
+      });
+    });
   });
 
   describe('computeMembershipAdjustments', () => {
@@ -68,7 +99,12 @@ describe('membership-pricing', () => {
       expect(subtotalAfterBusinessCents).toBe(50_00);
     });
 
-    it('applies family when nth threshold reached', () => {
+    it('legacy FAMILY step is no-op (handled by PricingRulesEngine)', () => {
+      // La remise famille legacy a été retirée de
+      // `computeMembershipAdjustments` pour éviter le double-counting
+      // avec la règle FAMILY_PROGRESSIVE du moteur pricing-rules. Ces
+      // paramètres restent acceptés en input pour la rétrocompat des
+      // call-sites mais sont ignorés.
       const { adjustments, subtotalAfterBusinessCents } =
         computeMembershipAdjustments({
           ...base,
@@ -81,8 +117,8 @@ describe('membership-pricing', () => {
           priorFamilyMembershipCount: 1,
           prorataFactorBp: 10_000,
         });
-      expect(adjustments.some((a) => a.type === 'FAMILY')).toBe(true);
-      expect(subtotalAfterBusinessCents).toBe(90_00);
+      expect(adjustments.some((a) => a.type === 'FAMILY')).toBe(false);
+      expect(subtotalAfterBusinessCents).toBe(100_00);
     });
 
     it('caps exceptional discount', () => {
@@ -115,7 +151,9 @@ describe('membership-pricing', () => {
       expect(adjustments.some((a) => a.type === 'PRORATA_SEASON')).toBe(
         false,
       );
-      expect(adjustments.some((a) => a.type === 'FAMILY')).toBe(true);
+      // Plus de FAMILY legacy non plus — pricing-rules engine prend
+      // désormais en charge la remise par rang.
+      expect(adjustments.some((a) => a.type === 'FAMILY')).toBe(false);
     });
   });
 

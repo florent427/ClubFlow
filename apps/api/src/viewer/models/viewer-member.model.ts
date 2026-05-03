@@ -21,6 +21,12 @@ export class ViewerMemberGraph {
   @Field(() => String, { nullable: true })
   photoUrl!: string | null;
 
+  @Field(() => String, { nullable: true })
+  email!: string | null;
+
+  @Field(() => String, { nullable: true })
+  phone!: string | null;
+
   @Field(() => MemberCivility)
   civility!: MemberCivility;
 
@@ -66,4 +72,19 @@ export class ViewerMemberGraph {
       'True si la fiche membre a relié Telegram (chat_id enregistré côté serveur).',
   })
   telegramLinked!: boolean;
+
+  @Field(() => Boolean, {
+    description:
+      'True si le viewer est adulte (≥ 18 ans) et désigné payeur de son foyer (rôle PAYER). ' +
+      'Réservé à la gestion du projet d’adhésion.',
+    defaultValue: false,
+  })
+  canManageMembershipCart!: boolean;
+
+  @Field(() => Boolean, {
+    description:
+      "True si l'utilisateur a défini un code PIN à 4 chiffres pour protéger son espace payeur (/factures + /famille). False = accès libre dès qu'on est PAYER.",
+    defaultValue: false,
+  })
+  payerSpacePinSet!: boolean;
 }

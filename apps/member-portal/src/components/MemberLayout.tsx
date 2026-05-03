@@ -17,9 +17,15 @@ import type {
   ViewerProfilesQueryData,
 } from '../lib/auth-types';
 import { MemberRoleToggle } from './MemberRoleToggle';
-import { clearClubId, getClubId, setMemberSession } from '../lib/storage';
+import { clearAuth, clearClubId, getClubId, setMemberSession } from '../lib/storage';
 import { VIEWER_ADMIN_SWITCH, VIEWER_ME } from '../lib/viewer-documents';
 import type { ViewerAdminSwitchData, ViewerMeData } from '../lib/viewer-types';
+import { PendingFamilyInvitesBanner } from './PendingFamilyInvitesBanner';
+import { PinGate } from './PinGate';
+import {
+  VIEWER_ACTIVE_CART,
+  type ViewerActiveCartData,
+} from '../lib/cart-documents';
 
 function profileRowKey(p: ViewerProfile): string {
   if (p.memberId) return `m:${p.memberId}`;
@@ -38,8 +44,14 @@ function breadcrumbLabel(pathname: string): string {
   if (pathname.startsWith('/progression')) return 'Ma progression';
   if (pathname.startsWith('/planning')) return 'Planning';
   if (pathname.startsWith('/famille')) return 'Famille & espace partagé';
+  if (pathname.startsWith('/adhesion')) return 'Panier d\u2019adhésion';
   if (pathname.startsWith('/parametres')) return 'Paramètres';
   if (pathname.startsWith('/messagerie')) return 'Messagerie';
+  if (pathname.startsWith('/actus')) return 'Vie du club';
+  if (pathname.startsWith('/evenements')) return 'Événements';
+  if (pathname.startsWith('/blog')) return 'Blog du club';
+  if (pathname.startsWith('/boutique')) return 'Boutique';
+  if (pathname.startsWith('/reservations')) return 'Réservations';
   return 'Espace membre';
 }
 
@@ -50,13 +62,32 @@ export function MemberLayout() {
 
   const { data: profilesData } = useQuery<ViewerProfilesQueryData>(
     VIEWER_PROFILES,
-    { fetchPolicy: 'cache-first' },
+    { fetchPolicy: 'cache-and-network', nextFetchPolicy: 'cache-first' },
   );
 
   const { data: meData } = useQuery<ViewerMeData>(VIEWER_ME, {
     skip: !clubId,
     fetchPolicy: 'cache-first',
   });
+
+  // Compteur global "panier d'adhésion" affiché en topbar quand le viewer
+  // peut gérer un panier (payeur du foyer). On utilise cache-and-network
+  // pour rester à jour après ajout/suppression d'un membre depuis
+  // n'importe quelle page.
+  const canManageCart = meData?.viewerMe?.canManageMembershipCart === true;
+  const { data: activeCartData } = useQuery<ViewerActiveCartData>(
+    VIEWER_ACTIVE_CART,
+    {
+      skip: !clubId || !canManageCart,
+      fetchPolicy: 'cache-and-network',
+      nextFetchPolicy: 'cache-first',
+    },
+  );
+  const activeCart = activeCartData?.viewerActiveMembershipCart ?? null;
+  const cartItemCount =
+    activeCart && activeCart.status === 'OPEN'
+      ? activeCart.items.length + (activeCart.pendingItems?.length ?? 0)
+      : 0;
 
   const { data: adminSwitchData } = useQuery<ViewerAdminSwitchData>(
     VIEWER_ADMIN_SWITCH,
@@ -76,6 +107,8 @@ export function MemberLayout() {
   const profiles = profilesData?.viewerProfiles ?? [];
   const showSwitcher = profiles.length > 1;
   const hideMemberModules = meData?.viewerMe?.hideMemberModules === true;
+  const canManageMembershipCart =
+    meData?.viewerMe?.canManageMembershipCart === true;
   const adminSwitch = adminSwitchData?.viewerAdminSwitch;
   const canAccessClubBackOffice: boolean =
     adminSwitch?.canAccessClubBackOffice === true;
@@ -135,9 +168,70 @@ export function MemberLayout() {
               </NavLink>
             </>
           ) : null}
-          <NavLink to="/famille" className={navClass}>
-            <span className="mp-ico material-symbols-outlined">groups</span>
-            Famille &amp; partage
+          {canManageMembershipCart ? (
+            <NavLink to="/famille" className={navClass}>
+              <span className="mp-ico material-symbols-outlined">groups</span>
+              Famille &amp; partage
+            </NavLink>
+          ) : null}
+          {canManageMembershipCart ? (
+            <NavLink to="/adhesion" className={navClass}>
+              <span className="mp-ico material-symbols-outlined">
+                shopping_cart
+              </span>
+              Panier d&rsquo;adhésion
+              {cartItemCount > 0 ? (
+                <span
+                  aria-hidden="true"
+                  style={{
+                    marginLeft: 'auto',
+                    minWidth: 20,
+                    padding: '0 6px',
+                    borderRadius: 10,
+                    background: '#dc2626',
+                    color: 'white',
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    lineHeight: '18px',
+                    textAlign: 'center',
+                  }}
+                >
+                  {cartItemCount}
+                </span>
+              ) : null}
+            </NavLink>
+          ) : null}
+          {canManageMembershipCart ? (
+            <NavLink to="/factures" className={navClass}>
+              <span className="mp-ico material-symbols-outlined">
+                receipt_long
+              </span>
+              Factures
+            </NavLink>
+          ) : null}
+          <NavLink to="/actus" className={navClass}>
+            <span className="mp-ico material-symbols-outlined">campaign</span>
+            Vie du club
+          </NavLink>
+          <NavLink to="/evenements" className={navClass}>
+            <span className="mp-ico material-symbols-outlined">event</span>
+            Événements
+          </NavLink>
+          <NavLink to="/mes-projets" className={navClass}>
+            <span className="mp-ico material-symbols-outlined">rocket_launch</span>
+            Mes projets
+          </NavLink>
+          <NavLink to="/reservations" className={navClass}>
+            <span className="mp-ico material-symbols-outlined">event_available</span>
+            Réservations
+          </NavLink>
+          <NavLink to="/blog" className={navClass}>
+            <span className="mp-ico material-symbols-outlined">article</span>
+            Blog
+          </NavLink>
+          <NavLink to="/boutique" className={navClass}>
+            <span className="mp-ico material-symbols-outlined">storefront</span>
+            Boutique
           </NavLink>
           <NavLink to="/messagerie" className={navClass}>
             <span className="mp-ico material-symbols-outlined">chat</span>
@@ -148,13 +242,15 @@ export function MemberLayout() {
             Paramètres
           </NavLink>
         </nav>
-        <NavLink
-          to="/planning"
-          className="mp-cta-sidebar mp-cta-sidebar--active"
-          style={{ textDecoration: 'none', textAlign: 'center' }}
-        >
-          Voir le planning
-        </NavLink>
+        {!hideMemberModules ? (
+          <NavLink
+            to="/planning"
+            className="mp-cta-sidebar mp-cta-sidebar--active"
+            style={{ textDecoration: 'none', textAlign: 'center' }}
+          >
+            Voir le planning
+          </NavLink>
+        ) : null}
       </aside>
 
       <div className="mp-main-wrap">
@@ -197,17 +293,66 @@ export function MemberLayout() {
                 </button>
               </div>
             ) : null}
-            <button type="button" className="mp-icon-btn" aria-label="Recherche" disabled>
-              <span className="material-symbols-outlined">search</span>
-            </button>
-            <button type="button" className="mp-icon-btn" aria-label="Notifications" disabled>
-              <span className="material-symbols-outlined">notifications</span>
+            {canManageCart ? (
+              <NavLink
+                to="/adhesion"
+                className="mp-icon-btn mp-cart-icon"
+                aria-label={
+                  cartItemCount > 0
+                    ? `Panier d’adhésion (${cartItemCount} article${cartItemCount > 1 ? 's' : ''})`
+                    : 'Panier d’adhésion (vide)'
+                }
+                title="Panier d’adhésion"
+                style={{ position: 'relative' }}
+              >
+                <span className="material-symbols-outlined">
+                  shopping_cart
+                </span>
+                {cartItemCount > 0 ? (
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      position: 'absolute',
+                      top: -2,
+                      right: -2,
+                      minWidth: 18,
+                      height: 18,
+                      padding: '0 4px',
+                      borderRadius: 9,
+                      background: '#dc2626',
+                      color: 'white',
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      lineHeight: '18px',
+                      textAlign: 'center',
+                      boxShadow: '0 0 0 2px white',
+                    }}
+                  >
+                    {cartItemCount}
+                  </span>
+                ) : null}
+              </NavLink>
+            ) : null}
+            <button
+              type="button"
+              className="mp-icon-btn"
+              aria-label="Déconnexion"
+              title="Déconnexion"
+              onClick={() => {
+                clearAuth();
+                void navigate('/login', { replace: true });
+              }}
+            >
+              <span className="material-symbols-outlined">logout</span>
             </button>
           </div>
         </header>
 
         <main className="mp-content">
-          <Outlet />
+          <PendingFamilyInvitesBanner />
+          <PinGate>
+            <Outlet />
+          </PinGate>
         </main>
       </div>
 
@@ -228,10 +373,12 @@ export function MemberLayout() {
             </NavLink>
           </>
         ) : null}
-        <NavLink to="/famille" className={bottomClass}>
-          <span className="material-symbols-outlined">groups</span>
-          <span>Famille</span>
-        </NavLink>
+        {canManageMembershipCart ? (
+          <NavLink to="/famille" className={bottomClass}>
+            <span className="material-symbols-outlined">groups</span>
+            <span>Famille</span>
+          </NavLink>
+        ) : null}
         <NavLink to="/messagerie" className={bottomClass}>
           <span className="material-symbols-outlined">chat</span>
           <span>Chat</span>

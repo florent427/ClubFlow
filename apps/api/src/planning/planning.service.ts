@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  CourseSlotBookingStatus,
   Member,
   MemberClubRole,
   MemberStatus,
@@ -35,16 +36,27 @@ export class PlanningService {
     };
   }
 
-  private toSlot(row: {
-    id: string;
-    clubId: string;
-    venueId: string;
-    coachMemberId: string;
-    title: string;
-    startsAt: Date;
-    endsAt: Date;
-    dynamicGroupId: string | null;
-  }): CourseSlotGraph {
+  private toSlot(
+    row: {
+      id: string;
+      clubId: string;
+      venueId: string;
+      coachMemberId: string;
+      title: string;
+      startsAt: Date;
+      endsAt: Date;
+      dynamicGroupId: string | null;
+      bookingEnabled: boolean;
+      bookingCapacity: number | null;
+      bookingOpensAt: Date | null;
+      bookingClosesAt: Date | null;
+    },
+    extras?: {
+      bookedCount?: number;
+      waitlistCount?: number;
+      viewerBookingStatus?: string | null;
+    },
+  ): CourseSlotGraph {
     return {
       id: row.id,
       clubId: row.clubId,
@@ -54,7 +66,34 @@ export class PlanningService {
       startsAt: row.startsAt,
       endsAt: row.endsAt,
       dynamicGroupId: row.dynamicGroupId,
+      bookingEnabled: row.bookingEnabled,
+      bookingCapacity: row.bookingCapacity,
+      bookingOpensAt: row.bookingOpensAt,
+      bookingClosesAt: row.bookingClosesAt,
+      bookedCount: extras?.bookedCount ?? 0,
+      waitlistCount: extras?.waitlistCount ?? 0,
+      viewerBookingStatus: extras?.viewerBookingStatus ?? null,
     };
+  }
+
+  private bookingExtras(
+    bookings: Array<{ status: CourseSlotBookingStatus; memberId: string }>,
+    viewerMemberId?: string | null,
+  ) {
+    const bookedCount = bookings.filter(
+      (b) => b.status === CourseSlotBookingStatus.BOOKED,
+    ).length;
+    const waitlistCount = bookings.filter(
+      (b) => b.status === CourseSlotBookingStatus.WAITLISTED,
+    ).length;
+    let viewerBookingStatus: string | null = null;
+    if (viewerMemberId) {
+      const mine = bookings.find((b) => b.memberId === viewerMemberId);
+      if (mine && mine.status !== CourseSlotBookingStatus.CANCELLED) {
+        viewerBookingStatus = mine.status;
+      }
+    }
+    return { bookedCount, waitlistCount, viewerBookingStatus };
   }
 
   async listVenues(clubId: string): Promise<VenueGraph[]> {
@@ -145,8 +184,11 @@ export class PlanningService {
     const rows = await this.prisma.courseSlot.findMany({
       where: { clubId },
       orderBy: { startsAt: 'asc' },
+      include: {
+        bookings: { select: { status: true, memberId: true } },
+      },
     });
-    return rows.map((r) => this.toSlot(r));
+    return rows.map((r) => this.toSlot(r, this.bookingExtras(r.bookings)));
   }
 
   async createCourseSlot(
@@ -177,6 +219,14 @@ export class PlanningService {
         startsAt,
         endsAt,
         dynamicGroupId: input.dynamicGroupId ?? null,
+        bookingEnabled: input.bookingEnabled ?? false,
+        bookingCapacity: input.bookingCapacity ?? null,
+        bookingOpensAt: input.bookingOpensAt
+          ? new Date(input.bookingOpensAt)
+          : null,
+        bookingClosesAt: input.bookingClosesAt
+          ? new Date(input.bookingClosesAt)
+          : null,
       },
     });
     return this.toSlot(row);
@@ -232,6 +282,26 @@ export class PlanningService {
         startsAt,
         endsAt,
         dynamicGroupId,
+        ...(input.bookingEnabled !== undefined
+          ? { bookingEnabled: input.bookingEnabled }
+          : {}),
+        ...(input.bookingCapacity !== undefined
+          ? { bookingCapacity: input.bookingCapacity }
+          : {}),
+        ...(input.bookingOpensAt !== undefined
+          ? {
+              bookingOpensAt: input.bookingOpensAt
+                ? new Date(input.bookingOpensAt)
+                : null,
+            }
+          : {}),
+        ...(input.bookingClosesAt !== undefined
+          ? {
+              bookingClosesAt: input.bookingClosesAt
+                ? new Date(input.bookingClosesAt)
+                : null,
+            }
+          : {}),
       },
     });
     return this.toSlot(row);
@@ -265,20 +335,7 @@ export class PlanningService {
     clubId: string,
     memberId: string,
     now: Date = new Date(),
-  ): Promise<
-    Array<{
-      id: string;
-      clubId: string;
-      venueId: string;
-      coachMemberId: string;
-      title: string;
-      startsAt: Date;
-      endsAt: Date;
-      dynamicGroupId: string | null;
-      venue: Venue;
-      coachMember: Member;
-    }>
-  > {
+  ) {
     return this.prisma.courseSlot.findMany({
       where: {
         clubId,
@@ -298,7 +355,11 @@ export class PlanningService {
       include: {
         venue: true,
         coachMember: true,
+        bookings: { select: { status: true, memberId: true } },
       },
     });
   }
 }
+
+export type MemberVenue = Venue;
+export type MemberCoach = Member;

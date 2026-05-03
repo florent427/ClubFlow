@@ -45,7 +45,7 @@ describe('viewer-profile-rules', () => {
     ).toBe(true);
   });
 
-  it('shouldInclude : mineur sans compte (co-parent exclu)', () => {
+  it('shouldInclude : mineur visible hors groupe (chemin legacy)', () => {
     const birth = new Date(Date.UTC(2015, 0, 1));
     const now = new Date(Date.UTC(2026, 0, 1));
     expect(
@@ -58,6 +58,50 @@ describe('viewer-profile-rules', () => {
           status: MemberStatus.ACTIVE,
         },
         now,
+      ),
+    ).toBe(true);
+  });
+
+  it('shouldInclude : mineur d\'un foyer où on n\'a PAS été invité → exclu (unilatéral)', () => {
+    const birth = new Date(Date.UTC(2015, 0, 1));
+    const now = new Date(Date.UTC(2026, 0, 1));
+    expect(
+      shouldIncludeMemberInHouseholdViewerProfiles(
+        viewerUserId,
+        {
+          id: 'child-other-residence',
+          userId: null,
+          birthDate: birth,
+          status: MemberStatus.ACTIVE,
+        },
+        now,
+        {
+          candidateFamilyId: 'fam-b',
+          viewerPayerFamilyIds: new Set(['fam-a']),
+          viewerInvitedFamilyIds: new Set(),
+        },
+      ),
+    ).toBe(false);
+  });
+
+  it('shouldInclude : mineur d\'un foyer qui m\'a invité(e) → visible', () => {
+    const birth = new Date(Date.UTC(2015, 0, 1));
+    const now = new Date(Date.UTC(2026, 0, 1));
+    expect(
+      shouldIncludeMemberInHouseholdViewerProfiles(
+        viewerUserId,
+        {
+          id: 'child-from-inviter',
+          userId: null,
+          birthDate: birth,
+          status: MemberStatus.ACTIVE,
+        },
+        now,
+        {
+          candidateFamilyId: 'fam-b',
+          viewerPayerFamilyIds: new Set(['fam-a']),
+          viewerInvitedFamilyIds: new Set(['fam-b']),
+        },
       ),
     ).toBe(true);
   });

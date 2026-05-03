@@ -435,6 +435,7 @@ export class MembershipService {
       include: { family: true },
     });
     const familyId = fm?.familyId ?? null;
+    const householdGroupId = fm?.family.householdGroupId ?? null;
 
     const priorCount =
       familyId === null
@@ -638,6 +639,11 @@ export class MembershipService {
         data: {
           clubId,
           familyId,
+          // Si la famille appartient à un groupe foyer étendu (espace partagé),
+          // on rattache la facture au groupe pour qu'elle soit visible dans
+          // l'espace partagé côté portail, tout en gardant `familyId` sur le
+          // foyer responsable (permet d'afficher la facture sur sa ligne).
+          householdGroupId,
           clubSeasonId: season.id,
           label,
           baseAmountCents: invoiceBaseCents,
@@ -698,8 +704,15 @@ export class MembershipService {
         clubId_method: { clubId, method: lockedPaymentMethod },
       },
     });
+    // ⚠️ CRITIQUE : on applique la surcharge/remise par méthode de
+    // paiement sur le `amountCents` (NET après remises legacy +
+    // pricing-rules), pas sur `baseAmountCents` (gross catalogue).
+    // Sinon on écraserait toutes les remises déjà calculées par
+    // validateCart avec le montant brut, et le payeur paierait le
+    // tarif catalogue plein pot. Bug critique précédent : 267 € de
+    // panier devenaient 280 € sur la facture finale.
     const amountCents = applyPricing(
-      invoice.baseAmountCents,
+      invoice.amountCents,
       lockedPaymentMethod,
       rule,
     );

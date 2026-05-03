@@ -12,6 +12,15 @@ describe('modulesRequiredForPath', () => {
       'FAMILIES',
     ]);
   });
+  it('documents needs DOCUMENTS', () => {
+    expect(modulesRequiredForPath('/documents')).toEqual(['DOCUMENTS']);
+    expect(modulesRequiredForPath('/documents/abc/editor')).toEqual([
+      'DOCUMENTS',
+    ]);
+    expect(modulesRequiredForPath('/documents/abc/signatures')).toEqual([
+      'DOCUMENTS',
+    ]);
+  });
 });
 
 describe('pathAllowed', () => {
@@ -21,5 +30,9 @@ describe('pathAllowed', () => {
   });
   it('allows dashboard always', () => {
     expect(pathAllowed('/', () => false)).toBe(true);
+  });
+  it('denies documents when DOCUMENTS off', () => {
+    const isEnabled = (c: ModuleCodeStr) => c !== 'DOCUMENTS';
+    expect(pathAllowed('/documents', isEnabled)).toBe(false);
   });
 });

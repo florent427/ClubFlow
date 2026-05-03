@@ -1,3 +1,12 @@
+import { useQuery } from '@apollo/client/react';
+import { InviteFamilyMemberCta } from '../components/InviteFamilyMemberCta';
+import { JoinFamilyByPayerEmailCta } from '../components/JoinFamilyByPayerEmailCta';
+import { PromoteSelfToMemberCta } from '../components/PromoteSelfToMemberCta';
+import { RegisterChildMemberCta } from '../components/RegisterChildMemberCta';
+import { VIEWER_ME } from '../lib/viewer-documents';
+import type { ViewerMeData } from '../lib/viewer-types';
+import { DocumentsToSignBanner } from '../components/DocumentsToSignBanner';
+
 /**
  * Recommandation UX #5 — Glossaire UX / Onboarding contact
  * Écran d'onboarding enrichi après vérification de l'e-mail, qui explique
@@ -5,8 +14,14 @@
  * ce qui nécessite l'intervention du club.
  */
 export function ContactHomePage() {
+  const { data } = useQuery<ViewerMeData>(VIEWER_ME, {
+    fetchPolicy: 'cache-first',
+  });
+  const isPayerContact = data?.viewerMe?.hasClubFamily === true;
+
   return (
     <div className="mp-page">
+      <DocumentsToSignBanner />
       <section className="mp-hero">
         <div className="mp-hero-head">
           <p className="mp-eyebrow">Bienvenue</p>
@@ -17,6 +32,14 @@ export function ContactHomePage() {
           </p>
         </div>
       </section>
+
+      <JoinFamilyByPayerEmailCta variant="dashboard" />
+
+      <div className="mp-family-actions">
+        <PromoteSelfToMemberCta />
+        <RegisterChildMemberCta />
+        {isPayerContact ? <InviteFamilyMemberCta /> : null}
+      </div>
 
       <div className="mp-onboarding-grid">
         <div className="mp-onboarding-card mp-onboarding-card--ok">
@@ -46,9 +69,9 @@ export function ContactHomePage() {
           <div>
             <strong>Espace membre complet</strong>
             <p className="mp-hint">
-              Le planning, la progression et les réservations seront
-              disponibles lorsque le club aura créé votre fiche sportive.
-              Contactez le secrétariat si nécessaire.
+              Utilisez « M'inscrire comme membre » ou « Inscrire un enfant »
+              ci-dessus pour créer une fiche sportive. Le club finalise ensuite
+              la formule d'adhésion et la facturation.
             </p>
           </div>
         </div>

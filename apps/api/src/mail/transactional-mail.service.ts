@@ -131,6 +131,204 @@ export class TransactionalMailService {
     });
   }
 
+  async sendPasswordResetLink(
+    clubId: string,
+    to: string,
+    resetUrl: string,
+  ): Promise<void> {
+    const trimmed = to.trim();
+    if (!trimmed || !trimmed.includes('@')) {
+      throw new BadRequestException('Adresse e-mail invalide');
+    }
+    const profile = await this.domains.getVerifiedMailProfile(
+      clubId,
+      'transactional',
+    );
+    await this.transport.sendEmail({
+      clubId,
+      kind: 'transactional',
+      from: profile.from,
+      to: trimmed,
+      subject: 'ClubFlow — réinitialisation de votre mot de passe',
+      html: `<p>Bonjour,</p><p>Vous avez demandé à réinitialiser votre mot de passe. Ce lien est valable 1 heure :</p><p><a href="${resetUrl}">Réinitialiser mon mot de passe</a></p><p>Lien (copier-coller) : ${resetUrl}</p><p>Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail.</p>`,
+      text: `Réinitialisez votre mot de passe en ouvrant ce lien (valable 1 heure) : ${resetUrl}`,
+    });
+  }
+
+  /**
+   * Invitation à un Member (typiquement un enfant) à activer son
+   * propre espace adhérent. Envoyé quand son e-mail vient d'être
+   * renseigné (par lui-même ou son parent) avec une adresse personnelle
+   * qui n'est pas encore liée à un compte ClubFlow. Le lien permet de
+   * définir un mot de passe pour la première fois.
+   */
+  async sendMemberAccountActivationLink(
+    clubId: string,
+    to: string,
+    options: {
+      clubName: string;
+      memberFirstName: string;
+      activationUrl: string;
+    },
+  ): Promise<void> {
+    const trimmed = to.trim();
+    if (!trimmed || !trimmed.includes('@')) {
+      throw new BadRequestException('Adresse e-mail invalide');
+    }
+    const profile = await this.domains.getVerifiedMailProfile(
+      clubId,
+      'transactional',
+    );
+    const { clubName, memberFirstName, activationUrl } = options;
+    const safeClub = escapeHtml(clubName);
+    const safeFirst = escapeHtml(memberFirstName.trim() || 'Bonjour');
+    const safeUrl = escapeHtml(activationUrl);
+    const subject = `${clubName} — Active ton espace adhérent`;
+    const html = `
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
+<body style="margin:0;padding:0;background:#f4f6f8;font-family:Georgia,'Times New Roman',serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f6f8;padding:24px 12px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:520px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(15,23,42,0.08);">
+        <tr><td style="background:linear-gradient(135deg,#2563eb 0%,#1e40af 100%);padding:28px 24px;text-align:center;">
+          <p style="margin:0;font-size:13px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.85);">ClubFlow</p>
+          <h1 style="margin:8px 0 0;font-size:22px;line-height:1.25;color:#ffffff;font-weight:600;">${safeClub}</h1>
+        </td></tr>
+        <tr><td style="padding:28px 24px 8px;color:#1e293b;font-size:16px;line-height:1.6;">
+          <p style="margin:0 0 16px;">Bonjour ${safeFirst},</p>
+          <p style="margin:0 0 16px;">Ton espace personnel ClubFlow vient d'être activé sur cette adresse e-mail. Définis ton mot de passe pour pouvoir te connecter à ton espace adhérent.</p>
+        </td></tr>
+        <tr><td align="center" style="padding:8px 24px 28px;">
+          <a href="${activationUrl}" style="display:inline-block;padding:14px 28px;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;border-radius:999px;font-family:system-ui,-apple-system,sans-serif;">Définir mon mot de passe</a>
+        </td></tr>
+        <tr><td style="padding:0 24px 24px;color:#64748b;font-size:13px;line-height:1.5;border-top:1px solid #e2e8f0;">
+          <p style="margin:16px 0 8px;">Ce lien est valable 1 heure.</p>
+          <p style="margin:0;">Si le bouton ne fonctionne pas, copie ce lien dans ton navigateur :<br/><span style="word-break:break-all;color:#2563eb;">${safeUrl}</span></p>
+          <p style="margin:12px 0 0;">Si tu n'es pas à l'origine de cette activation, ignore cet e-mail.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`.trim();
+    const text = [
+      `Bonjour ${memberFirstName.trim() || ''},`,
+      '',
+      `Ton espace personnel ${clubName} vient d'être activé. Définis ton mot de passe en ouvrant ce lien (valable 1 heure) :`,
+      activationUrl,
+      '',
+      `Si tu n'es pas à l'origine de cette activation, ignore cet e-mail.`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+    await this.transport.sendEmail({
+      clubId,
+      kind: 'transactional',
+      from: profile.from,
+      to: trimmed,
+      subject,
+      html,
+      text,
+    });
+  }
+
+  /**
+   * Invitation à rejoindre un foyer familial (co-payeur ou observateur).
+   * Envoyée par un parent/payeur via le portail membre.
+   */
+  async sendFamilyInviteEmail(
+    clubId: string,
+    to: string,
+    options: {
+      clubName: string;
+      inviterName: string;
+      role: 'COPAYER' | 'VIEWER';
+      inviteUrl: string;
+      code: string;
+      expiresAt: Date;
+    },
+  ): Promise<void> {
+    const trimmed = to.trim();
+    if (!trimmed || !trimmed.includes('@')) {
+      throw new BadRequestException('Adresse e-mail invalide');
+    }
+    const profile = await this.domains.getVerifiedMailProfile(
+      clubId,
+      'transactional',
+    );
+    const { clubName, inviterName, role, inviteUrl, code, expiresAt } = options;
+    const safeClub = escapeHtml(clubName);
+    const safeInviter = escapeHtml(inviterName.trim() || 'Un parent');
+    const safeCode = escapeHtml(code);
+    const safeUrl = escapeHtml(inviteUrl);
+    const expiresFr = expiresAt.toLocaleString('fr-FR', {
+      dateStyle: 'long',
+      timeStyle: 'short',
+    });
+    const roleLabel = role === 'COPAYER' ? 'co-payeur' : 'observateur';
+    const roleHint =
+      role === 'COPAYER'
+        ? 'En tant que co-payeur, vous créerez un foyer relié au sien et partagerez les factures et les enfants.'
+        : 'En tant qu’observateur, vous rejoindrez directement son foyer en lecture seule.';
+    const subject = `${clubName} — ${safeInviter} vous invite à rejoindre son espace familial`;
+    const html = `
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
+<body style="margin:0;padding:0;background:#f4f6f8;font-family:Georgia,'Times New Roman',serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f6f8;padding:24px 12px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:520px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(15,23,42,0.08);">
+        <tr><td style="background:linear-gradient(135deg,#1a237e 0%,#303f9f 100%);padding:28px 24px;text-align:center;">
+          <p style="margin:0;font-size:13px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.85);">ClubFlow</p>
+          <h1 style="margin:8px 0 0;font-size:22px;line-height:1.25;color:#ffffff;font-weight:600;">${safeClub}</h1>
+        </td></tr>
+        <tr><td style="padding:28px 24px 8px;color:#1e293b;font-size:16px;line-height:1.6;">
+          <p style="margin:0 0 16px;">Bonjour,</p>
+          <p style="margin:0 0 16px;"><strong>${safeInviter}</strong> vous invite à rejoindre son espace familial sur ${safeClub} en tant que <strong>${roleLabel}</strong>.</p>
+          <p style="margin:0 0 16px;color:#475569;font-size:14px;">${roleHint}</p>
+        </td></tr>
+        <tr><td align="center" style="padding:8px 24px 20px;">
+          <a href="${safeUrl}" style="display:inline-block;padding:14px 28px;background:#1a237e;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;border-radius:999px;font-family:system-ui,-apple-system,sans-serif;">Accepter l'invitation</a>
+        </td></tr>
+        <tr><td style="padding:0 24px 20px;color:#475569;font-size:14px;line-height:1.5;text-align:center;">
+          <p style="margin:0 0 8px;">Ou utilisez ce code :</p>
+          <p style="margin:0;padding:10px 16px;background:#f1f5f9;border-radius:8px;display:inline-block;font-family:ui-monospace,monospace;font-size:18px;font-weight:700;letter-spacing:0.1em;color:#1e293b;">${safeCode}</p>
+        </td></tr>
+        <tr><td style="padding:0 24px 24px;color:#64748b;font-size:13px;line-height:1.5;border-top:1px solid #e2e8f0;">
+          <p style="margin:16px 0 8px;">Cette invitation expire le <strong>${escapeHtml(expiresFr)}</strong>.</p>
+          <p style="margin:0;">Si le bouton ne fonctionne pas, copiez ce lien :<br/><span style="word-break:break-all;color:#1a237e;">${safeUrl}</span></p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`.trim();
+    const text = [
+      `Bonjour,`,
+      '',
+      `${inviterName.trim() || 'Un parent'} vous invite à rejoindre son espace familial sur ${clubName} en tant que ${roleLabel}.`,
+      '',
+      roleHint,
+      '',
+      `Lien d'invitation : ${inviteUrl}`,
+      `Code : ${code}`,
+      '',
+      `Ce lien expire le ${expiresFr}.`,
+    ].join('\n');
+    await this.transport.sendEmail({
+      clubId,
+      kind: 'transactional',
+      from: profile.from,
+      to: trimmed,
+      subject,
+      html,
+      text,
+    });
+  }
+
   async sendTestEmail(clubId: string, to: string): Promise<void> {
     const trimmed = to.trim();
     if (!trimmed || !trimmed.includes('@')) {
