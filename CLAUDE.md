@@ -67,6 +67,7 @@ docs/
 | [`/add-pitfall`](.claude/skills/add-pitfall/SKILL.md) | Ajouter un piège à `memory/pitfalls/` | Après debug d'un bug non-évident |
 | [`/add-decision`](.claude/skills/add-decision/SKILL.md) | Ajouter un ADR à `memory/decisions/` | Après un choix techno tranché |
 | [`/learn`](.claude/skills/learn/SKILL.md) | Capitaliser tout ce qu'on a appris dans la session | Fin de session, gros fix, onboarding |
+| [`/dream`](.claude/skills/dream/SKILL.md) | Cycle de consolidation mémoire (gating auto si rien à apprendre) | Le soir avant de dormir |
 
 ---
 
@@ -180,6 +181,7 @@ Chaque fois qu'on découvre un truc non-évident, on le **capitalise** :
 2. **Choix techno tranché** → `/add-decision`
 3. **Nouveau parcours métier maîtrisé** → entrée dans `docs/memory/workflows/`
 4. **Fin de session productive** → `/learn` pour scanner et proposer
+5. **Le soir avant de dormir** → `/dream` (gating auto, log dans `dream-log.md`)
 
 Ces entrées sont **chercheables** par futur Claude :
 
