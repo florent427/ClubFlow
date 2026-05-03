@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.2.1](https://github.com/florent427/ClubFlow/compare/v0.2.0...v0.2.1) (2026-05-03)
+
+
+### 🐛 Bug Fixes
+
+* **ci:** release-please auto-merge step — passer JSON via env (bash quoting) ([#3](https://github.com/florent427/ClubFlow/issues/3)) ([7b95484](https://github.com/florent427/ClubFlow/commit/7b954843735b1915dd1c6ee19aef5e10ddb58b9a))
+
 ## [0.2.0](https://github.com/florent427/ClubFlow/compare/v0.1.0...v0.2.0) (2026-05-03)
 
 
