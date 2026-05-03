@@ -20,11 +20,16 @@ jobs:
 
       # AUTO-MERGE de la PR de release dès qu'elle est ouverte (squash, sans review).
       # → tag git + GitHub Release créés automatiquement → deploy.yml déclenché.
+      # Note : on passe le JSON via env pour éviter les soucis de quoting (la
+      # body de la PR contient des parenthèses, apostrophes, etc.)
       - name: Auto-merge release PR
-        if: ${{ steps.release.outputs.pr != '' }}
-        run: |
-          PR_NUMBER=$(echo '${{ steps.release.outputs.pr }}' | jq -r '.number')
-          echo "Auto-merging release PR #$PR_NUMBER"
-          gh pr merge "$PR_NUMBER" --squash --auto --delete-branch=false
+        if: ${{ steps.release.outputs.pr }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_JSON: ${{ steps.release.outputs.pr }}
+        run: |
+          PR_NUMBER=$(echo "$PR_JSON" | jq -r '.number')
+          echo "Auto-merging release PR #$PR_NUMBER"
+          # --merge direct : la PR est mergeable immédiatement (pas de checks bloquants)
+          gh api -X PUT "repos/${{ github.repository }}/pulls/$PR_NUMBER/merge" \
+            -F merge_method=squash
