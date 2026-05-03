@@ -49,6 +49,28 @@ export const RESEND_VERIFICATION = gql`
   }
 `;
 
+export const REQUEST_PASSWORD_RESET = gql`
+  mutation RequestPasswordReset($input: RequestPasswordResetInput!) {
+    requestPasswordReset(input: $input) {
+      ok
+    }
+  }
+`;
+
+export const RESET_PASSWORD = gql`
+  mutation ResetPassword($input: ResetPasswordInput!) {
+    resetPassword(input: $input) {
+      accessToken
+      contactClubId
+      viewerProfiles {
+        memberId
+        contactId
+        clubId
+      }
+    }
+  }
+`;
+
 export const VIEWER_PROFILES = gql`
   query MemberViewerProfiles {
     viewerProfiles {

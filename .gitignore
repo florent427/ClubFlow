@@ -14,3 +14,6 @@ design stich/
 .env
 .env.local
 *.log
+
+# Claude Code worktree metadata (contient login JWT, logs, etc.)
+.claude/

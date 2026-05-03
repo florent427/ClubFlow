@@ -60,3 +60,19 @@ export type VerifyEmailData = {
     }[];
   };
 };
+
+export type RequestPasswordResetData = {
+  requestPasswordReset: { ok: boolean };
+};
+
+export type ResetPasswordData = {
+  resetPassword: {
+    accessToken: string;
+    contactClubId?: string | null;
+    viewerProfiles: {
+      memberId: string | null;
+      contactId: string | null;
+      clubId: string;
+    }[];
+  };
+};

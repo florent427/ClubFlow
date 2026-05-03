@@ -1,6 +1,7 @@
 import { BadRequestException, UseGuards } from '@nestjs/common';
-import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import type { Club } from '@prisma/client';
+import { Args, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Throttle } from '@nestjs/throttler';
+import { ClubPaymentMethod, type Club } from '@prisma/client';
 import { CurrentClub } from '../common/decorators/current-club.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequireClubModule } from '../common/decorators/require-club-module.decorator';
@@ -10,13 +11,38 @@ import { GqlJwtAuthGuard } from '../common/guards/gql-jwt-auth.guard';
 import { ViewerActiveProfileGuard } from '../common/guards/viewer-active-profile.guard';
 import type { RequestUser } from '../common/types/request-user';
 import { ModuleCode } from '../domain/module-registry/module-codes';
+import { AcceptFamilyInviteInput } from '../families/dto/accept-family-invite.input';
+import { CreateFamilyInviteInput } from '../families/dto/create-family-invite.input';
+import { SendFamilyInviteByEmailInput } from '../families/dto/send-family-invite-by-email.input';
+import { FamilyInviteService } from '../families/family-invite.service';
+import { FamilyInviteCreateResultGraph } from '../families/models/family-invite-create-result.model';
+import { PendingFamilyInviteGraph } from '../families/models/pending-family-invite.model';
 import { ViewerJoinFamilyByPayerEmailInput } from './dto/viewer-join-family-by-payer-email.input';
+import { ViewerPromoteSelfToMemberInput } from './dto/viewer-promote-self-to-member.input';
+import { ViewerRegisterChildMemberInput } from './dto/viewer-register-child-member.input';
+import {
+  ViewerRegisterSelfAsMemberInput,
+  ViewerToggleCartItemLicenseInput,
+  ViewerUpdateCartItemInput,
+  ViewerUpdateCartPendingItemInput,
+} from './dto/viewer-membership-cart.input';
+import { ViewerUpdateMyProfileInput } from './dto/viewer-update-my-profile.input';
 import { ViewerUpdateMyPseudoInput } from './dto/viewer-update-my-pseudo.input';
 import { ViewerCourseSlotGraph } from './models/viewer-course-slot.model';
+import { ViewerCheckoutSessionGraph } from './models/viewer-checkout-session.model';
+import { ViewerInvoicePaymentChoiceGraph } from './models/viewer-invoice-payment-choice.model';
+import { ViewerCheckoutMembershipCartGraph } from './models/viewer-checkout-membership-cart.model';
+import { ViewerPayerSpacePinResultGraph } from './models/viewer-pin-result.model';
 import { ViewerFamilyBillingSummaryGraph } from './models/viewer-family-billing.model';
 import { ViewerFamilyJoinResultGraph } from './models/viewer-family-join-result.model';
 import { ViewerMemberGraph } from './models/viewer-member.model';
+import { ViewerMemberCreatedResultGraph } from './models/viewer-member-created-result.model';
+import { ViewerPendingRegistrationResultGraph } from './models/viewer-pending-registration-result.model';
+import { ViewerMembershipFormulaGraph } from './models/viewer-membership-formula.model';
 import { ViewerService } from './viewer.service';
+import { MembershipCartGraph } from '../membership/models/membership-cart.model';
+import { toMembershipCartGraph } from '../membership/membership-cart.mapper';
+import { MembershipCartService } from '../membership/membership-cart.service';
 
 @Resolver()
 @UseGuards(
@@ -26,7 +52,11 @@ import { ViewerService } from './viewer.service';
   ClubModuleEnabledGuard,
 )
 export class ViewerResolver {
-  constructor(private readonly viewer: ViewerService) {}
+  constructor(
+    private readonly viewer: ViewerService,
+    private readonly familyInvites: FamilyInviteService,
+    private readonly membershipCart: MembershipCartService,
+  ) {}
 
   @Query(() => ViewerMemberGraph, { name: 'viewerMe' })
   viewerMe(
@@ -90,10 +120,37 @@ export class ViewerResolver {
     throw new BadRequestException('Sélection de profil requise');
   }
 
+  @Query(() => [ViewerFamilyBillingSummaryGraph], {
+    name: 'viewerAllFamilyBillingSummaries',
+    description:
+      "Liste tous les foyers rattachés au profil actif où l'utilisateur est payeur (PAYER). Permet de gérer un même contact/membre rattaché à plusieurs foyers distincts (dédupliqués par groupe foyer étendu quand applicable).",
+  })
+  @RequireClubModule(ModuleCode.PAYMENT)
+  viewerAllFamilyBillingSummaries(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+  ): Promise<ViewerFamilyBillingSummaryGraph[]> {
+    if (user.activeProfileMemberId) {
+      return this.viewer.viewerAllFamilyBillingSummaries(
+        club.id,
+        user.activeProfileMemberId,
+        user.userId,
+      );
+    }
+    if (user.activeProfileContactId) {
+      return this.viewer.viewerAllFamilyBillingSummariesForContact(
+        club.id,
+        user.activeProfileContactId,
+        user.userId,
+      );
+    }
+    throw new BadRequestException('Sélection de profil requise');
+  }
+
   @Mutation(() => ViewerFamilyJoinResultGraph, {
     name: 'viewerJoinFamilyByPayerEmail',
     description:
-      'Rattache la fiche active à un foyer existant en saisissant l’e-mail du payeur (ou du membre seul du foyer).',
+      'Rattache le profil actif (fiche adhérent ou contact) à un foyer existant en saisissant l’e-mail du payeur (ou du membre seul du foyer).',
   })
   @RequireClubModule(ModuleCode.FAMILIES)
   viewerJoinFamilyByPayerEmail(
@@ -101,16 +158,267 @@ export class ViewerResolver {
     @CurrentClub() club: Club,
     @Args('input') input: ViewerJoinFamilyByPayerEmailInput,
   ): Promise<ViewerFamilyJoinResultGraph> {
-    if (!user.activeProfileMemberId) {
-      throw new BadRequestException(
-        'Cette action nécessite une fiche adhérent active.',
+    if (user.activeProfileMemberId) {
+      return this.viewer.viewerJoinFamilyByPayerEmail(
+        club.id,
+        user.activeProfileMemberId,
+        input.payerEmail,
       );
     }
-    return this.viewer.viewerJoinFamilyByPayerEmail(
+    if (user.activeProfileContactId) {
+      return this.viewer.contactJoinFamilyByPayerEmail(
+        club.id,
+        user.activeProfileContactId,
+        user.userId,
+        input.payerEmail,
+      );
+    }
+    throw new BadRequestException('Sélection de profil requise');
+  }
+
+  @Mutation(() => FamilyInviteCreateResultGraph, {
+    name: 'createFamilyInvite',
+    description:
+      'Génère un code et un lien d’invitation pour rattacher un proche au foyer du viewer (COPAYER ou VIEWER).',
+  })
+  @RequireClubModule(ModuleCode.FAMILIES)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  createFamilyInvite(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('input') input: CreateFamilyInviteInput,
+  ): Promise<FamilyInviteCreateResultGraph> {
+    return this.familyInvites.createInvite(
       club.id,
-      user.activeProfileMemberId,
-      input.payerEmail,
+      user.userId,
+      {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      input.role,
     );
+  }
+
+  @Query(() => [PendingFamilyInviteGraph], {
+    name: 'viewerPendingFamilyInvites',
+    description:
+      "Invitations familiales encore valides adressées à l'email du viewer. Permet d'afficher une notification in-app au login pour accepter en 1 clic sans passer par le mail.",
+  })
+  @RequireClubModule(ModuleCode.FAMILIES)
+  async viewerPendingFamilyInvites(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+  ): Promise<PendingFamilyInviteGraph[]> {
+    if (!user.email) return [];
+    return this.familyInvites.listPendingForEmail(club.id, user.email);
+  }
+
+  @Mutation(() => Boolean, {
+    name: 'sendFamilyInviteByEmail',
+    description:
+      "Envoie par email une invitation déjà générée à une adresse choisie. Le destinataire reçoit un mail avec bouton d'acceptation + code. Ne crée PAS de nouvelle invitation — utilise createFamilyInvite d'abord pour obtenir un code.",
+  })
+  @RequireClubModule(ModuleCode.FAMILIES)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  async sendFamilyInviteByEmail(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('input') input: SendFamilyInviteByEmailInput,
+  ): Promise<boolean> {
+    const res = await this.familyInvites.sendExistingInviteByEmail(
+      club.id,
+      user.userId,
+      input.code,
+      input.email,
+      input.inviteUrl,
+    );
+    return res.success;
+  }
+
+  @Mutation(() => ViewerFamilyJoinResultGraph, {
+    name: 'acceptFamilyInvite',
+    description:
+      'Accepte une invitation de rattachement à un foyer (code ou lien).',
+  })
+  @RequireClubModule(ModuleCode.FAMILIES)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  acceptFamilyInvite(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('input') input: AcceptFamilyInviteInput,
+  ): Promise<ViewerFamilyJoinResultGraph> {
+    return this.familyInvites.acceptInvite(input.code, club.id, user.userId, {
+      memberId: user.activeProfileMemberId ?? null,
+      contactId: user.activeProfileContactId ?? null,
+    });
+  }
+
+  @Mutation(() => ViewerMemberCreatedResultGraph, {
+    name: 'viewerPromoteSelfToMember',
+    description:
+      'Promeut le contact actif en fiche adhérent (civilité + date de naissance optionnelle). L’admin complète ensuite la formule d’adhésion et la facturation.',
+  })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  viewerPromoteSelfToMember(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('input') input: ViewerPromoteSelfToMemberInput,
+  ): Promise<ViewerMemberCreatedResultGraph> {
+    if (!user.activeProfileContactId) {
+      throw new BadRequestException(
+        'Cette action nécessite un profil contact actif.',
+      );
+    }
+    return this.viewer.viewerPromoteSelfToMember(
+      club.id,
+      user.activeProfileContactId,
+      user.userId,
+      {
+        civility: input.civility,
+        birthDate: input.birthDate ?? null,
+        membershipProductId: input.membershipProductId ?? null,
+        billingRhythm: input.billingRhythm ?? null,
+      },
+    );
+  }
+
+  // ----------------------------------------------------------------
+  // PIN à 4 chiffres pour protéger l'espace payeur (/factures + /famille)
+  // ----------------------------------------------------------------
+
+  @Mutation(() => ViewerPayerSpacePinResultGraph, {
+    name: 'viewerSetPayerSpacePin',
+    description:
+      "Définit ou modifie le PIN à 4 chiffres qui protège l'espace payeur. Si un PIN existe déjà, `currentPin` est requis.",
+  })
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  viewerSetPayerSpacePin(
+    @CurrentUser() user: RequestUser,
+    @Args('newPin', { type: () => String }) newPin: string,
+    @Args('currentPin', { type: () => String, nullable: true })
+    currentPin?: string,
+  ): Promise<ViewerPayerSpacePinResultGraph> {
+    return this.viewer.viewerSetPayerSpacePin(
+      user.userId,
+      newPin,
+      currentPin ?? null,
+    );
+  }
+
+  @Mutation(() => ViewerPayerSpacePinResultGraph, {
+    name: 'viewerClearPayerSpacePin',
+    description: 'Désactive le PIN après vérification du code actuel.',
+  })
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  viewerClearPayerSpacePin(
+    @CurrentUser() user: RequestUser,
+    @Args('currentPin', { type: () => String }) currentPin: string,
+  ): Promise<ViewerPayerSpacePinResultGraph> {
+    return this.viewer.viewerClearPayerSpacePin(user.userId, currentPin);
+  }
+
+  @Mutation(() => ViewerPayerSpacePinResultGraph, {
+    name: 'viewerVerifyPayerSpacePin',
+    description:
+      "Valide le PIN. Renvoie `ok: false` si incorrect (pas d'erreur HTTP pour ne pas fuiter l'info).",
+  })
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  viewerVerifyPayerSpacePin(
+    @CurrentUser() user: RequestUser,
+    @Args('pin', { type: () => String }) pin: string,
+  ): Promise<ViewerPayerSpacePinResultGraph> {
+    return this.viewer.viewerVerifyPayerSpacePin(user.userId, pin);
+  }
+
+  @Query(() => [ViewerMembershipFormulaGraph], {
+    name: 'viewerEligibleMembershipFormulas',
+    description:
+      'Formules d\u2019adh\u00e9sion du club compatibles avec la date de naissance donn\u00e9e (utilis\u00e9 par le portail avant cr\u00e9ation de la fiche adh\u00e9rent). Si `identityFirstName` + `identityLastName` sont fournis, chaque formule est annot\u00e9e d\u2019un flag `alreadyTakenInSeason` (Member existant + pending + invoice valid\u00e9e) pour gris\u00e9 c\u00f4t\u00e9 UI.',
+  })
+  @RequireClubModule(ModuleCode.PAYMENT)
+  viewerEligibleMembershipFormulas(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('birthDate', { type: () => String }) birthDate: string,
+    @Args('identityFirstName', { type: () => String, nullable: true })
+    identityFirstName?: string,
+    @Args('identityLastName', { type: () => String, nullable: true })
+    identityLastName?: string,
+    @Args('excludePendingItemId', { type: () => String, nullable: true })
+    excludePendingItemId?: string,
+  ): Promise<ViewerMembershipFormulaGraph[]> {
+    return this.viewer.viewerEligibleMembershipFormulas(
+      club.id,
+      birthDate,
+      {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      identityFirstName ?? null,
+      identityLastName ?? null,
+      excludePendingItemId ?? null,
+    );
+  }
+
+  @Mutation(() => ViewerPendingRegistrationResultGraph, {
+    name: 'viewerRegisterChildMember',
+    description:
+      "Inscrit un enfant comme PENDING dans le projet d'adhésion (la fiche `Member` est créée à la validation du cart, pas immédiatement). Multi-formules supporté.",
+  })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  viewerRegisterChildMember(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('input') input: ViewerRegisterChildMemberInput,
+  ): Promise<ViewerPendingRegistrationResultGraph> {
+    return this.viewer.viewerRegisterChildMember(
+      club.id,
+      user.userId,
+      {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      {
+        firstName: input.firstName,
+        lastName: input.lastName,
+        civility: input.civility,
+        birthDate: input.birthDate,
+        membershipProductIds: input.membershipProductIds,
+        billingRhythm: input.billingRhythm ?? null,
+      },
+    );
+  }
+
+  @Mutation(() => ViewerMemberGraph, { name: 'viewerUpdateMyProfile' })
+  viewerUpdateMyProfile(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('input') input: ViewerUpdateMyProfileInput,
+  ): Promise<ViewerMemberGraph> {
+    if (user.activeProfileMemberId) {
+      return this.viewer.updateMyProfile(
+        club.id,
+        user.activeProfileMemberId,
+        user.userId,
+        input,
+      );
+    }
+    if (user.activeProfileContactId) {
+      return this.viewer.updateMyProfileAsContact(
+        club.id,
+        user.activeProfileContactId,
+        user.userId,
+        {
+          firstName: input.firstName,
+          lastName: input.lastName,
+          phone: input.phone,
+          photoUrl: input.photoUrl,
+        },
+      );
+    }
+    throw new BadRequestException('Sélection de profil requise');
   }
 
   @Mutation(() => ViewerMemberGraph, { name: 'viewerUpdateMyPseudo' })
@@ -130,6 +438,314 @@ export class ViewerResolver {
       user.activeProfileMemberId,
       user.userId,
       input.pseudo,
+    );
+  }
+
+  @Mutation(() => ViewerCheckoutSessionGraph, {
+    name: 'viewerCreateInvoiceCheckoutSession',
+    description:
+      'Crée une session Stripe Checkout pour régler une facture du foyer viewer. Retourne l’URL hébergée Stripe. Si `installmentsCount=3`, l’option Stripe carte 3× est demandée (compatibilité dépend du compte Stripe du club).',
+  })
+  @RequireClubModule(ModuleCode.PAYMENT)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  viewerCreateInvoiceCheckoutSession(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('invoiceId') invoiceId: string,
+    @Args('installmentsCount', { type: () => Int, nullable: true })
+    installmentsCount?: number,
+  ): Promise<ViewerCheckoutSessionGraph> {
+    return this.viewer.viewerCreateInvoiceCheckoutSession({
+      clubId: club.id,
+      invoiceId,
+      activeProfile: {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      viewerUserId: user.userId,
+      installmentsCount: installmentsCount ?? undefined,
+    });
+  }
+
+  @Mutation(() => ViewerInvoicePaymentChoiceGraph, {
+    name: 'viewerLockInvoicePaymentChoice',
+    description:
+      'Verrouille un mode de règlement manuel (espèces / chèque / virement) sur une facture, avec échéancier 1× ou 3×. Retourne les instructions à afficher au payeur.',
+  })
+  @RequireClubModule(ModuleCode.PAYMENT)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  viewerLockInvoicePaymentChoice(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('invoiceId') invoiceId: string,
+    @Args('method', { type: () => ClubPaymentMethod }) method: ClubPaymentMethod,
+    @Args('installmentsCount', { type: () => Int, nullable: true })
+    installmentsCount?: number,
+  ): Promise<ViewerInvoicePaymentChoiceGraph> {
+    return this.viewer.viewerLockInvoicePaymentChoice({
+      clubId: club.id,
+      invoiceId,
+      activeProfile: {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      viewerUserId: user.userId,
+      method,
+      installmentsCount: installmentsCount ?? undefined,
+    });
+  }
+
+  // ------------------------------------------------------------------
+  // Projet d'adhésion (cart) — portail
+  // ------------------------------------------------------------------
+
+  @Query(() => [MembershipCartGraph], { name: 'viewerMembershipCarts' })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  async viewerMembershipCarts(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+  ): Promise<MembershipCartGraph[]> {
+    const carts = await this.viewer.viewerListMembershipCarts(club.id, {
+      memberId: user.activeProfileMemberId ?? null,
+      contactId: user.activeProfileContactId ?? null,
+    });
+    const result: MembershipCartGraph[] = [];
+    for (const c of carts) {
+      const { cart: full, preview, productsById } =
+        await this.membershipCart.getCartFullForGraph(club.id, c.id);
+      result.push(toMembershipCartGraph(full, preview, productsById));
+    }
+    return result;
+  }
+
+  @Query(() => MembershipCartGraph, {
+    name: 'viewerActiveMembershipCart',
+    nullable: true,
+  })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  async viewerActiveMembershipCart(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+  ): Promise<MembershipCartGraph | null> {
+    const cart = await this.viewer.viewerActiveMembershipCart(club.id, {
+      memberId: user.activeProfileMemberId ?? null,
+      contactId: user.activeProfileContactId ?? null,
+    });
+    if (!cart) return null;
+    const { cart: full, preview, productsById } =
+      await this.membershipCart.getCartFullForGraph(club.id, cart.id);
+    return toMembershipCartGraph(full, preview, productsById);
+  }
+
+  @Mutation(() => MembershipCartGraph, {
+    name: 'viewerOpenMembershipCart',
+    description:
+      'Ouvre ou récupère le projet d’adhésion actif du foyer pour la saison courante. Crée un nouveau cart OPEN si le précédent est VALIDATED (ajout mi-saison).',
+  })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  async viewerOpenMembershipCart(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+  ): Promise<MembershipCartGraph> {
+    const cart = await this.viewer.viewerEnsureOpenMembershipCart(club.id, {
+      memberId: user.activeProfileMemberId ?? null,
+      contactId: user.activeProfileContactId ?? null,
+    });
+    const { cart: full, preview, productsById } =
+      await this.membershipCart.getCartFullForGraph(club.id, cart.id);
+    return toMembershipCartGraph(full, preview, productsById);
+  }
+
+  @Mutation(() => MembershipCartGraph, { name: 'viewerUpdateCartItem' })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  async viewerUpdateCartItem(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('input') input: ViewerUpdateCartItemInput,
+  ): Promise<MembershipCartGraph> {
+    const item = await this.viewer.viewerUpdateMembershipCartItem(
+      club.id,
+      {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      input.itemId,
+      { billingRhythm: input.billingRhythm ?? null },
+    );
+    const { cart: full, preview, productsById } =
+      await this.membershipCart.getCartFullForGraph(club.id, item.cartId);
+    return toMembershipCartGraph(full, preview, productsById);
+  }
+
+  @Mutation(() => MembershipCartGraph, { name: 'viewerToggleCartItemLicense' })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  async viewerToggleCartItemLicense(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('input') input: ViewerToggleCartItemLicenseInput,
+  ): Promise<MembershipCartGraph> {
+    const item = await this.viewer.viewerToggleMembershipCartItemLicense(
+      club.id,
+      {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      input.itemId,
+      input.hasExistingLicense,
+      input.existingLicenseNumber ?? null,
+    );
+    const { cart: full, preview, productsById } =
+      await this.membershipCart.getCartFullForGraph(club.id, item.cartId);
+    return toMembershipCartGraph(full, preview, productsById);
+  }
+
+  @Mutation(() => MembershipCartGraph, { name: 'viewerRemoveCartItem' })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  async viewerRemoveCartItem(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('itemId') itemId: string,
+  ): Promise<MembershipCartGraph> {
+    const { cartId } = await this.viewer.viewerRemoveMembershipCartItem(
+      club.id,
+      {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      itemId,
+    );
+    const { cart: full, preview, productsById } =
+      await this.membershipCart.getCartFullForGraph(club.id, cartId);
+    return toMembershipCartGraph(full, preview, productsById);
+  }
+
+  @Mutation(() => MembershipCartGraph, {
+    name: 'viewerUpdateCartPendingItem',
+    description:
+      "Modifie une inscription en attente du panier : formules choisies + rythme de règlement. L'identité reste figée.",
+  })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  async viewerUpdateCartPendingItem(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('input') input: ViewerUpdateCartPendingItemInput,
+  ): Promise<MembershipCartGraph> {
+    const { cartId } = await this.viewer.viewerUpdateMembershipCartPendingItem(
+      club.id,
+      {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      {
+        pendingItemId: input.pendingItemId,
+        membershipProductIds: input.membershipProductIds,
+        billingRhythm: input.billingRhythm,
+      },
+    );
+    const { cart: full, preview, productsById } =
+      await this.membershipCart.getCartFullForGraph(club.id, cartId);
+    return toMembershipCartGraph(full, preview, productsById);
+  }
+
+  @Mutation(() => MembershipCartGraph, {
+    name: 'viewerRemoveCartPendingItem',
+    description:
+      "Retire une inscription en attente du panier d'adhésion. L'utilisateur supprime librement, aucune validation club requise.",
+  })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  async viewerRemoveCartPendingItem(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('pendingItemId') pendingItemId: string,
+  ): Promise<MembershipCartGraph> {
+    const { cartId } = await this.viewer.viewerRemoveMembershipCartPendingItem(
+      club.id,
+      {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      pendingItemId,
+    );
+    const { cart: full, preview, productsById } =
+      await this.membershipCart.getCartFullForGraph(club.id, cartId);
+    return toMembershipCartGraph(full, preview, productsById);
+  }
+
+  @Mutation(() => ViewerCheckoutMembershipCartGraph, {
+    name: 'viewerCheckoutMembershipCart',
+    description:
+      "Valide le panier d'adhésion ET verrouille le mode de règlement en une seule transaction. C'est cette mutation qui crée les Members + l'Invoice — pas avant. Ainsi, si l'utilisateur ferme la modale de paiement sans choisir, rien n'est créé en base.",
+  })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  viewerCheckoutMembershipCart(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('cartId') cartId: string,
+    @Args('method', { type: () => ClubPaymentMethod })
+    method: ClubPaymentMethod,
+    @Args('installmentsCount', { type: () => Int, nullable: true })
+    installmentsCount?: number,
+  ): Promise<ViewerCheckoutMembershipCartGraph> {
+    return this.viewer.viewerCheckoutMembershipCart({
+      clubId: club.id,
+      userId: user.userId,
+      activeProfile: {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      cartId,
+      method,
+      installmentsCount: installmentsCount ?? undefined,
+    });
+  }
+
+  @Mutation(() => MembershipCartGraph, { name: 'viewerValidateMembershipCart' })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  async viewerValidateMembershipCart(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('cartId') cartId: string,
+  ): Promise<MembershipCartGraph> {
+    const cart = await this.viewer.viewerValidateMembershipCart(
+      club.id,
+      user.userId,
+      {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      cartId,
+    );
+    const { preview, productsById } =
+      await this.membershipCart.getCartFullForGraph(club.id, cart.id);
+    return toMembershipCartGraph(cart, preview, productsById);
+  }
+
+  @Mutation(() => ViewerPendingRegistrationResultGraph, {
+    name: 'viewerRegisterSelfAsMember',
+    description:
+      "Ajoute le contact viewer comme inscription EN ATTENTE dans le projet d'adhésion actif. La fiche `Member` est créée uniquement à la validation du cart (évite les Members fantômes en cas d'abandon).",
+  })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  viewerRegisterSelfAsMember(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('input') input: ViewerRegisterSelfAsMemberInput,
+  ): Promise<ViewerPendingRegistrationResultGraph> {
+    return this.viewer.viewerRegisterSelfAsMember(
+      club.id,
+      user.userId,
+      {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      {
+        civility: input.civility,
+        birthDate: input.birthDate,
+        membershipProductIds: input.membershipProductIds,
+        billingRhythm: input.billingRhythm ?? undefined,
+      },
     );
   }
 }

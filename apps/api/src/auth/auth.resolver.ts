@@ -12,10 +12,13 @@ import { ViewerProfileGraph } from '../families/models/viewer-profile.model';
 import { AuthService } from './auth.service';
 import { LoginInput } from './dto/login.input';
 import { RegisterContactInput } from './dto/register-contact.input';
+import { RequestPasswordResetInput } from './dto/request-password-reset.input';
 import { ResendVerificationInput } from './dto/resend-verification.input';
+import { ResetPasswordInput } from './dto/reset-password.input';
 import { VerifyEmailInput } from './dto/verify-email.input';
 import { LoginPayload } from './models/login-payload.model';
 import { RegisterContactResult } from './models/register-contact-result.model';
+import { RequestPasswordResetResult } from './models/request-password-reset-result.model';
 import { ResendVerificationResult } from './models/resend-verification-result.model';
 import { ViewerAdminSwitchGraph } from './models/viewer-admin-switch.model';
 
@@ -50,6 +53,22 @@ export class AuthResolver {
     @Args('input') input: ResendVerificationInput,
   ): Promise<ResendVerificationResult> {
     return this.auth.resendVerificationEmail(input.email);
+  }
+
+  @Mutation(() => RequestPasswordResetResult)
+  @Throttle({ default: { limit: 6, ttl: 60000 } })
+  requestPasswordReset(
+    @Args('input') input: RequestPasswordResetInput,
+  ): Promise<RequestPasswordResetResult> {
+    return this.auth.requestPasswordReset(input.email);
+  }
+
+  @Mutation(() => LoginPayload)
+  @Throttle({ default: { limit: 12, ttl: 60000 } })
+  resetPassword(
+    @Args('input') input: ResetPasswordInput,
+  ): Promise<LoginPayload> {
+    return this.auth.resetPassword(input.token, input.newPassword);
   }
 
   @Query(() => [ViewerProfileGraph])

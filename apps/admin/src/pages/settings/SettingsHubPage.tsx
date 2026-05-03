@@ -1,6 +1,9 @@
+import { useQuery } from '@apollo/client/react';
 import { Link } from 'react-router-dom';
 import { useClubModules } from '../../lib/club-modules-context';
 import type { ModuleCodeStr } from '../../lib/module-catalog';
+import { VIEWER_SYSTEM_ROLE } from '../../lib/documents';
+import type { ViewerSystemRoleQueryData } from '../../lib/types';
 
 function SettingsHubCard({
   to,
@@ -36,6 +39,11 @@ function SettingsHubCard({
 }
 
 export function SettingsHubPage() {
+  const { data: viewerRoleData } = useQuery<ViewerSystemRoleQueryData>(
+    VIEWER_SYSTEM_ROLE,
+    { fetchPolicy: 'cache-and-network' },
+  );
+  const isSystemAdmin = viewerRoleData?.viewerSystemRole != null;
   return (
     <>
       <header className="members-loom__hero members-loom__hero--nested">
@@ -69,12 +77,68 @@ export function SettingsHubPage() {
             </li>
             <li>
               <SettingsHubCard
+                to="/settings/pricing-rules"
+                modules={['PAYMENT']}
+                title="Tarification par moyen de paiement"
+                desc="Remises et majorations automatiques selon le mode de paiement (CB, chèque, virement, espèces)."
+              />
+            </li>
+            <li>
+              <SettingsHubCard
                 to="/settings/mail-domain"
                 modules={['COMMUNICATION']}
                 title="E-mail (domaine)"
                 desc="SMTP, domaine d’expédition — requis pour les campagnes e-mail."
               />
             </li>
+            <li>
+              <SettingsHubCard
+                to="/settings/branding"
+                modules={[]}
+                title="Identité du club"
+                desc="Logo, SIRET, adresse et mentions légales imprimés sur les factures et avoirs PDF."
+              />
+            </li>
+            <li>
+              <SettingsHubCard
+                to="/settings/ai"
+                modules={[]}
+                title="Intégration IA"
+                desc="Clé OpenRouter + modèles texte/image pour la génération d'articles SEO et d'illustrations."
+              />
+            </li>
+            <li>
+              <SettingsHubCard
+                to="/settings/accounting"
+                modules={['ACCOUNTING']}
+                title="Comptabilité"
+                desc="Comptes bancaires, caisses, transit Stripe & routage automatique des paiements."
+              />
+            </li>
+            <li>
+              <SettingsHubCard
+                to="/settings/adhesion-pricing-rules"
+                modules={['MEMBERS', 'PAYMENT']}
+                title="Remises automatiques"
+                desc="Remise famille progressive, combinaison de produits, tranche d'âge — règles appliquées automatiquement aux factures d'adhésion."
+              />
+            </li>
+            {isSystemAdmin ? (
+              <li>
+                <Link
+                  to="/settings/administrateurs"
+                  className="settings-hub-card"
+                >
+                  <span className="settings-hub-card__title">
+                    Administrateurs système
+                  </span>
+                  <span className="settings-hub-card__desc">
+                    Gérer les rôles SUPER_ADMIN / ADMIN globaux. Réservé
+                    aux administrateurs système.
+                  </span>
+                </Link>
+              </li>
+            ) : null}
           </ul>
         </section>
       </div>

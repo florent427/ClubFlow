@@ -1,16 +1,34 @@
-import { type FormEvent, useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { type FormEvent, useEffect, useState } from 'react';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { useMutation } from '@apollo/client/react';
 import { REGISTER_CONTACT } from '../lib/documents';
 import type { RegisterContactData } from '../lib/auth-types';
 import { hasMemberSession } from '../lib/storage';
+import {
+  consumeReturnTo,
+  peekReturnTo,
+  rememberReturnTo,
+  safeReturnTo,
+} from '../lib/return-to';
 
 export function RegisterPage() {
+  const [params] = useSearchParams();
+  const urlReturnTo = safeReturnTo(params.get('returnTo'));
+  // Mémorise returnTo pour qu'il survive à l'étape email-verification.
+  useEffect(() => {
+    if (urlReturnTo) rememberReturnTo(urlReturnTo);
+  }, [urlReturnTo]);
+  const returnTo = urlReturnTo ?? peekReturnTo();
+  const loginLink = returnTo
+    ? `/login?returnTo=${encodeURIComponent(returnTo)}`
+    : '/login';
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [alreadyExists, setAlreadyExists] = useState(false);
   const [done, setDone] = useState(false);
 
   const [register, { loading }] = useMutation<RegisterContactData>(
@@ -18,12 +36,13 @@ export function RegisterPage() {
   );
 
   if (hasMemberSession()) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={consumeReturnTo() ?? '/'} replace />;
   }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    setAlreadyExists(false);
     try {
       await register({
         variables: {
@@ -37,9 +56,12 @@ export function RegisterPage() {
       });
       setDone(true);
     } catch (err: unknown) {
-      setError(
-        err instanceof Error ? err.message : 'Inscription impossible.',
-      );
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.includes('USER_ALREADY_EXISTS')) {
+        setAlreadyExists(true);
+        return;
+      }
+      setError(err instanceof Error ? err.message : 'Inscription impossible.');
     }
   }
 
@@ -57,8 +79,34 @@ export function RegisterPage() {
             </p>
           </header>
           <p className="auth-footer">
-            <Link to="/login" className="auth-link">
+            <Link to={loginLink} className="auth-link">
               Retour à la connexion
+            </Link>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (alreadyExists) {
+    return (
+      <div className="auth-page">
+        <div className="auth-card">
+          <header className="auth-header">
+            <p className="auth-eyebrow">ClubFlow</p>
+            <h1>Compte déjà existant</h1>
+            <p className="auth-sub">
+              Un compte existe déjà pour <strong>{email.trim()}</strong>.
+              Connectez-vous, ou réinitialisez votre mot de passe si
+              nécessaire.
+            </p>
+          </header>
+          <p className="auth-footer auth-footer-stack">
+            <Link to={loginLink} className="auth-btn">
+              Se connecter
+            </Link>
+            <Link to="/forgot-password" className="auth-link">
+              Mot de passe oublié ?
             </Link>
           </p>
         </div>
@@ -123,7 +171,7 @@ export function RegisterPage() {
           </button>
         </form>
         <p className="auth-footer">
-          <Link to="/login" className="auth-link">
+          <Link to={loginLink} className="auth-link">
             Déjà un compte ? Connexion
           </Link>
         </p>

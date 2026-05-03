@@ -1,6 +1,16 @@
 import { StyleSheet, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import type { ViewerSlot } from '../lib/viewer-types';
 import { formatRangeHours, slotCalendarBits } from '../lib/format';
+import {
+  gradients,
+  palette,
+  radius,
+  shadow,
+  spacing,
+  typography,
+} from '../lib/theme';
 
 type Props = { slot: ViewerSlot; large?: boolean };
 
@@ -11,16 +21,39 @@ export function SlotCard({ slot, large }: Props) {
     .join(' ');
   return (
     <View style={[styles.row, large && styles.rowLg]}>
-      <View style={styles.cal}>
+      <LinearGradient
+        colors={gradients.primary.colors}
+        start={gradients.primary.start}
+        end={gradients.primary.end}
+        style={styles.cal}
+      >
         <Text style={styles.dow}>{weekday}</Text>
         <Text style={styles.dayNum}>{dayNum}</Text>
-      </View>
+      </LinearGradient>
       <View style={styles.body}>
-        <Text style={large ? styles.titleLg : styles.title}>{slot.title}</Text>
-        <Text style={styles.meta}>
-          {formatRangeHours(slot.startsAt, slot.endsAt)} · {slot.venueName}
-          {coach ? ` · ${large ? `Coach : ${coach}` : coach}` : ''}
+        <Text style={large ? styles.titleLg : styles.title} numberOfLines={1}>
+          {slot.title}
         </Text>
+        <View style={styles.metaRow}>
+          <Ionicons name="time-outline" size={13} color={palette.muted} />
+          <Text style={styles.meta}>
+            {formatRangeHours(slot.startsAt, slot.endsAt)}
+          </Text>
+        </View>
+        <View style={styles.metaRow}>
+          <Ionicons name="location-outline" size={13} color={palette.muted} />
+          <Text style={styles.meta} numberOfLines={1}>
+            {slot.venueName}
+          </Text>
+        </View>
+        {coach ? (
+          <View style={styles.metaRow}>
+            <Ionicons name="person-outline" size={13} color={palette.muted} />
+            <Text style={styles.meta} numberOfLines={1}>
+              {coach}
+            </Text>
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -29,32 +62,46 @@ export function SlotCard({ slot, large }: Props) {
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-    marginBottom: 8,
-    backgroundColor: '#fafafa',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: palette.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: palette.border,
+    ...shadow.sm,
   },
   rowLg: {
-    padding: 14,
+    padding: spacing.lg,
   },
   cal: {
-    width: 48,
+    width: 56,
+    height: 64,
+    borderRadius: radius.md,
     alignItems: 'center',
-    marginRight: 12,
+    justifyContent: 'center',
+    gap: 2,
   },
   dow: {
-    fontSize: 11,
-    color: '#666',
-    textTransform: 'capitalize',
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.85)',
+    textTransform: 'uppercase',
+    fontFamily: typography.smallStrong.fontFamily,
+    letterSpacing: 0.5,
   },
   dayNum: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: 24,
+    color: '#ffffff',
+    fontFamily: typography.h1.fontFamily,
+    letterSpacing: -0.5,
   },
-  body: { flex: 1 },
-  title: { fontSize: 16, fontWeight: '600', marginBottom: 4 },
-  titleLg: { fontSize: 18, fontWeight: '600', marginBottom: 4 },
-  meta: { fontSize: 14, color: '#555' },
+  body: { flex: 1, gap: 2 },
+  title: { ...typography.bodyStrong, color: palette.ink, marginBottom: 4 },
+  titleLg: { ...typography.h3, color: palette.ink, marginBottom: 4 },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  meta: { ...typography.small, color: palette.muted },
 });

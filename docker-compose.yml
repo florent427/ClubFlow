@@ -25,6 +25,26 @@ services:
     networks:
       - clubflow
 
+  # Serveur SMTP de développement : capture les emails sortants et les
+  # affiche dans une UI web sur http://localhost:8025 (ne les envoie
+  # JAMAIS réellement). C'est ce que `apps/api/.env:SMTP_HOST=127.0.0.1
+  # SMTP_PORT=1025` cible par défaut.
+  #
+  # Utile pour : inscription contact, notifications validation cart,
+  # invitations foyer, factures, etc. — sans risquer de spammer en dev.
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1025:1025" # SMTP (consommé par l'API)
+      - "127.0.0.1:8025:8025" # UI web (visualisation des mails capturés)
+    environment:
+      MP_MAX_MESSAGES: 5000
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    networks:
+      - clubflow
+
 networks:
   clubflow:
     driver: bridge

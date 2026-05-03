@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { TransactionalMailService } from '../mail/transactional-mail.service';
+import { resolveMemberMailRecipients } from '../members/member-mail-recipients';
 import { PrismaService } from '../prisma/prisma.service';
 
 const LINK_TTL_MS = 24 * 60 * 60 * 1000;
@@ -49,21 +50,32 @@ export class TelegramLinkService {
     if (member.telegramChatId) {
       throw new BadRequestException('Ce membre a déjà relié Telegram.');
     }
-    const emailTo = member.email?.trim() ?? '';
-    if (!emailTo || !emailTo.includes('@')) {
+    // Destinataires du mail Telegram : le member lui-même + les
+    // payeurs de son foyer. Permet aux parents de toujours recevoir
+    // l'info même si l'enfant a une adresse perso.
+    const recipients = await resolveMemberMailRecipients(
+      this.prisma,
+      memberId,
+    );
+    if (recipients.length === 0) {
       throw new BadRequestException(
-        'Adresse e-mail du membre requise pour envoyer l’invitation Telegram.',
+        'Aucune adresse e-mail valide (ni sur le membre, ni sur les payeurs du foyer) pour envoyer l’invitation Telegram.',
       );
     }
-    const norm = emailTo.toLowerCase();
-    const suppressed = await this.prisma.emailSuppression.findFirst({
-      where: { clubId, emailNormalized: norm },
+    // Filtre les adresses en liste de suppression (un payeur peut
+    // l'être individuellement sans bloquer les autres).
+    const suppressedRows = await this.prisma.emailSuppression.findMany({
+      where: { clubId, emailNormalized: { in: recipients } },
+      select: { emailNormalized: true },
     });
-    if (suppressed) {
+    const suppressed = new Set(suppressedRows.map((r) => r.emailNormalized));
+    const allowed = recipients.filter((r) => !suppressed.has(r));
+    if (allowed.length === 0) {
       throw new BadRequestException(
-        'Envoi refusé : adresse en liste de suppression.',
+        'Toutes les adresses sont en liste de suppression — envoi refusé.',
       );
     }
+    const emailTo = allowed.join(', ');
     const token = randomBytes(16).toString('hex');
     const expiresAt = new Date(Date.now() + LINK_TTL_MS);
     await this.prisma.telegramLinkToken.create({

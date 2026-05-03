@@ -1,0 +1,53 @@
+.manifesto {
+  text-align: center;
+  position: relative;
+  max-width: 880px;
+  margin: 0 auto;
+}
+
+.kanji {
+  font-family: var(--jp);
+  font-size: clamp(72px, 10vw, 140px);
+  color: var(--accent);
+  margin-bottom: 32px;
+  line-height: 1;
+}
+
+.title {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(30px, 4.5vw, 56px);
+  line-height: 1.15;
+  margin-bottom: 28px;
+}
+
+.paragraph {
+  font-family: var(--serif);
+  font-size: clamp(16px, 2vw, 22px);
+  font-style: italic;
+  line-height: 1.7;
+  color: var(--muted);
+  margin-bottom: 20px;
+}
+
+.quote {
+  margin-top: 48px;
+  padding: 32px 40px;
+  border-left: 3px solid var(--accent);
+  text-align: left;
+}
+.quote p {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 22px;
+  color: var(--fg);
+  margin-bottom: 12px;
+}
+.quote cite {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-style: normal;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--accent);
+}

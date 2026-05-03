@@ -14,37 +14,296 @@ model Club {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships   ClubMembership[]
-  modules       ClubModule[]
+  /// URL (ou chemin statique relatif /uploads/...) du logo imprimé sur les factures.
+  logoUrl       String?
+  /// SIRET du club (facultatif, affiché en pied de facture PDF).
+  siret         String?
+  /// Adresse complète postale, multi-ligne séparées par `\n`.
+  address       String?
+  /// Mentions légales en pied de facture (TVA non applicable, association loi 1901…).
+  legalMentions String?
+  /// Téléphone de contact du club affiché sur l'en-tête de facture.
+  contactPhone  String?
+  /// E-mail de contact du club affiché sur l'en-tête de facture.
+  contactEmail  String?
+
+  memberships     ClubMembership[]
+  modules         ClubModule[]
   gradeLevels     GradeLevel[]
   roleDefinitions ClubRoleDefinition[]
   members         Member[]
-  dynamicGroups DynamicGroup[]
-  families      Family[]
+  dynamicGroups   DynamicGroup[]
+  families        Family[]
   householdGroups HouseholdGroup[]
-  venues        Venue[]
-  courseSlots   CourseSlot[]
+  venues          Venue[]
+  courseSlots     CourseSlot[]
 
-  pricingRules        ClubPricingRule[]
-  invoices            Invoice[]
-  payments            Payment[]
-  messageCampaigns    MessageCampaign[]
-  accountingEntries   AccountingEntry[]
-  grantApplications   GrantApplication[]
-  sponsorshipDeals    SponsorshipDeal[]
-  memberFieldCatalogSettings    ClubMemberFieldCatalogSetting[]
-  memberCustomFieldDefinitions  MemberCustomFieldDefinition[]
-  clubSeasons                   ClubSeason[]
-  membershipProducts            MembershipProduct[]
-  membershipOneTimeFees         MembershipOneTimeFee[]
-  sendingDomains                ClubSendingDomain[]
-  emailSuppressions             EmailSuppression[]
-  contacts                      Contact[]
-  chatRooms                     ChatRoom[]
+  pricingRules                    ClubPricingRule[]
+  invoices                        Invoice[]
+  payments                        Payment[]
+  messageCampaigns                MessageCampaign[]
+  accountingEntries               AccountingEntry[]
+  grantApplications               GrantApplication[]
+  sponsorshipDeals                SponsorshipDeal[]
+  memberFieldCatalogSettings      ClubMemberFieldCatalogSetting[]
+  memberCustomFieldDefinitions    MemberCustomFieldDefinition[]
+  clubSeasons                     ClubSeason[]
+  membershipProducts              MembershipProduct[]
+  membershipOneTimeFees           MembershipOneTimeFee[]
+  membershipPricingRules          MembershipPricingRule[]
+  sendingDomains                  ClubSendingDomain[]
+  emailSuppressions               EmailSuppression[]
+  contacts                        Contact[]
+  chatRooms                       ChatRoom[]
+  membershipCarts                 MembershipCart[]
   /// À partir du n-ième bulletin d’adhésion (OPEN/PAID) pour le foyer sur la saison — null = désactivé
   membershipFamilyDiscountFromNth Int?
-  membershipFamilyAdjustmentType   PricingAdjustmentType @default(NONE)
-  membershipFamilyAdjustmentValue  Int                   @default(0)
+  membershipFamilyAdjustmentType  PricingAdjustmentType           @default(NONE)
+  membershipFamilyAdjustmentValue Int                             @default(0)
+
+  /// Nombre de mois de **plein tarif** au début de la saison avant que
+  /// le prorata ne commence à s'appliquer. Les inscriptions arrivant
+  /// pendant cette fenêtre paient le tarif annuel complet (pas de
+  /// remise prorata). À partir du mois N+1, le prorata classique
+  /// s'applique. Default = 3 (les 3 premiers mois plein tarif).
+  /// 0 = prorata dès le 1er mois (ancien comportement).
+  membershipFullPriceFirstMonths  Int                             @default(3)
+
+  /// Domaine personnalisé pour le site vitrine public (ex. www.mondojo.fr).
+  /// CNAME à poser vers le serveur Next.js ; HTTPS géré par le reverse-proxy.
+  customDomain     String? @unique
+  /// Flag « site vitrine publié ». Quand false, le site renvoie 404 publique
+  /// (seuls les aperçus admin restent accessibles).
+  vitrinePublished Boolean @default(false)
+
+  /// Tagline affichée sous le nom du club dans la nav et le footer.
+  /// Ex. "空手道 · Sud Réunion" pour un dojo.
+  vitrineKanjiTagline String?
+
+  /// JSON sérialisé du contenu de footer (colonnes, contact, social, bottom).
+  /// Si null, fallback hard-codé côté vitrine pour ne jamais casser le rendu.
+  vitrineFooterJson Json?
+
+  /// Palette couleurs personnalisée du site vitrine (JSON).
+  /// Schéma : { ink, ink2, paper, accent, goldBright, vermillion, line, muted }
+  /// Si null → palette SKSR par défaut côté vitrine.
+  vitrinePaletteJson Json?
+
+  /// Typographies personnalisées du site vitrine (JSON).
+  /// Schéma : { serif, sans, jp }  — chaque clé est le nom d'une police Google Fonts.
+  /// Si null → fonts SKSR par défaut (Cormorant/Inter/Shippori Mincho).
+  vitrineFontsJson Json?
+
+  vitrinePages         VitrinePage[]
+  vitrineArticles      VitrineArticle[]
+  vitrineAnnouncements VitrineAnnouncement[]
+  vitrineGalleryPhotos VitrineGalleryPhoto[]
+  vitrineCategories    VitrineCategory[]
+  mediaAssets          MediaAsset[]
+  clubProjects         ClubProject[]
+  distributionLists    DistributionList[]
+
+  /// Clé API OpenRouter (chiffrée AES-256-GCM, base64).
+  /// null = fonctionnalités IA désactivées pour ce club.
+  aiOpenrouterApiKeyEnc String?
+
+  /// Modèle texte (ex. anthropic/claude-sonnet-4-5).
+  aiTextModel String?
+
+  /// Modèle texte de fallback (utilisé si le primaire échoue 3× sur un tool
+  /// call ou renvoie une erreur 5xx/timeout). Null = pas de fallback.
+  aiTextFallbackModel String?
+
+  /// Modèle image (ex. google/gemini-2.5-flash-image-preview).
+  aiImageModel String?
+
+  /// Compteurs cumulés de consommation IA.
+  aiTokensInputUsed  BigInt @default(0)
+  aiTokensOutputUsed BigInt @default(0)
+  aiImagesGenerated  Int    @default(0)
+
+  /// Budget IA mensuel maximum en centimes d'euros. Null = illimité (l'usage
+  /// est tracé mais non bloqué). Soft cap déclenché à 80 %, hard cap à 100 %
+  /// (OCR tombe en saisie manuelle).
+  aiMonthlyBudgetCents         Int?
+  /// Override temporaire du cap — permet au trésorier de débloquer l'IA en
+  /// fin de mois pour une saisie critique. Null = pas d'override actif.
+  aiMonthlyBudgetOverrideCents Int?
+
+  aiUsageLogs     AiUsageLog[]
+  aiMonthlyUsages AiMonthlyUsage[]
+
+  /// Feature flag : agent conversationnel activé pour ce club.
+  /// Même si true, peut être désactivé globalement via env AGENT_GLOBAL_KILLED=true.
+  agentEnabled Boolean @default(true)
+
+  agentConversations  AgentConversation[]
+  agentPendingActions AgentPendingAction[]
+
+  /// Mode TVA du club pour la comptabilité. NONE = assoc non assujettie (cas
+  /// le plus courant), MIXED = assujettissement partiel (buvette, évén.),
+  /// FULL = totalement assujettie.
+  vatMode VatMode @default(NONE)
+
+  accountingAccounts         AccountingAccount[]
+  accountingCohorts          AccountingCohort[]
+  accountingPeriodLocks      AccountingPeriodLock[]
+  accountingFiscalYearCloses AccountingFiscalYearClose[]
+  accountingAuditLogs        AccountingAuditLog[]
+  financialAccounts          ClubFinancialAccount[]
+  paymentRoutes              ClubPaymentRoute[]
+
+  documents       ClubDocument[]
+  signedDocuments ClubSignedDocument[]
+}
+
+enum AiUsageFeature {
+  ARTICLE_GENERATION
+  IMAGE_GENERATION
+  AGENT_CHAT
+  /// Modération IA des items live uploadés par les contributeurs projet
+  /// (vision pertinence + qualité).
+  PROJECT_MODERATION
+  /// Génération de comptes-rendus projet (3 presets : COMPETITIF, FESTIF,
+  /// BILAN) via le module Projets.
+  PROJECT_REPORT
+  /// OCR de reçus / factures pour la comptabilité analytique via OpenRouter vision.
+  RECEIPT_OCR
+  OTHER
+}
+
+enum AgentMessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+  TOOL
+}
+
+enum AgentToolCallStatus {
+  PENDING_CONFIRMATION
+  EXECUTED
+  REFUSED
+  FAILED
+  BLOCKED_BY_LIMITS
+  BLOCKED_BY_SCOPE
+}
+
+enum AgentRiskLevel {
+  SAFE
+  GUARDED
+  DESTRUCTIVE
+  FORBIDDEN
+}
+
+/// Conversation ouverte par un utilisateur avec l'agent.
+model AgentConversation {
+  id        String   @id @default(uuid())
+  clubId    String
+  userId    String
+  /// Scope projet : si non null, la conversation est cantonnée au projet X,
+  /// seuls les outils `scope = 'PROJECT'` seront exposés à l'agent + le
+  /// system prompt est enrichi du contexte projet (titre, contributeurs,
+  /// items live récents). Null = agent club classique (portée historique).
+  projectId String?
+  title     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  archived  Boolean  @default(false)
+
+  club     Club           @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  project  ClubProject?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  messages AgentMessage[]
+
+  @@index([clubId, userId, updatedAt])
+  @@index([projectId])
+}
+
+/// Message individuel dans une conversation (user, assistant, tool result).
+model AgentMessage {
+  id              String           @id @default(uuid())
+  conversationId  String
+  role            AgentMessageRole
+  /// Texte pour role=USER|ASSISTANT|SYSTEM. Pour role=TOOL, JSON résultat.
+  content         String
+  /// Résumé token usage quand role=ASSISTANT.
+  inputTokens     Int?
+  outputTokens    Int?
+  model           String?
+  /// Pièces jointes du message (images, PDF, docs). JSON array :
+  /// [{ mediaAssetId, kind: 'IMAGE'|'DOCUMENT', mimeType, fileName, publicUrl, extractedText? }]
+  /// Seuls les USER messages en utilisent.
+  attachmentsJson Json?
+  createdAt       DateTime         @default(now())
+
+  conversation AgentConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  toolCalls    AgentToolCall[]
+
+  @@index([conversationId, createdAt])
+}
+
+/// Un appel de tool requested par le LLM, avec son résultat ou son état.
+model AgentToolCall {
+  id              String              @id @default(uuid())
+  messageId       String
+  toolName        String
+  argsJson        Json
+  riskLevel       AgentRiskLevel
+  status          AgentToolCallStatus
+  /// JSON du résultat d'exécution (seulement si status=EXECUTED).
+  resultJson      Json?
+  errorMessage    String?
+  /// Si pending confirmation, lien vers le PendingAction.
+  pendingActionId String?
+  createdAt       DateTime            @default(now())
+  executedAt      DateTime?
+
+  message AgentMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId, createdAt])
+}
+
+/// Action en attente de confirmation humaine (destructive/guarded).
+/// Signée anti-replay, expire en 5 min.
+model AgentPendingAction {
+  id             String              @id @default(uuid())
+  clubId         String
+  userId         String
+  conversationId String
+  toolName       String
+  argsJson       Json
+  riskLevel      AgentRiskLevel
+  /// Preview en français de l'action (affichée à l'utilisateur).
+  previewText    String
+  /// Signature HMAC pour anti-replay.
+  signature      String
+  status         AgentToolCallStatus @default(PENDING_CONFIRMATION)
+  createdAt      DateTime            @default(now())
+  expiresAt      DateTime
+  resolvedAt     DateTime?
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@index([clubId, userId, status])
+  @@index([expiresAt])
+}
+
+/// Historique des appels IA (un par mutation).
+model AiUsageLog {
+  id              String         @id @default(uuid())
+  clubId          String
+  feature         AiUsageFeature
+  model           String
+  inputTokens     Int            @default(0)
+  outputTokens    Int            @default(0)
+  imagesGenerated Int            @default(0)
+  /// Coût en cents (si disponible dans la réponse OpenRouter).
+  costCents       Int?
+  userId          String?
+  createdAt       DateTime       @default(now())
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@index([clubId, createdAt])
 }
 
 enum MembershipRole {
@@ -54,6 +313,29 @@ enum MembershipRole {
   TREASURER
   SECRETARY
   STAFF
+  /// Responsable communication — accès délégué à l'éditorial du site
+  /// vitrine (pages, articles, annonces, galerie, médias) sans les droits
+  /// financiers/administratifs complets.
+  COMM_MANAGER
+  /// Chef de projet — peut créer, administrer et archiver des ClubProject
+  /// sans avoir tous les droits CLUB_ADMIN. Ne donne PAS accès aux autres
+  /// modules (compta, membres hors projet, paramètres club).
+  PROJECT_MANAGER
+}
+
+/// Rôle système (transverse aux clubs). Distinct des rôles `MembershipRole`
+/// qui sont scopés à un club.
+///
+/// - SUPER_ADMIN : seul rôle pouvant retirer / dégrader / supprimer un
+///   autre administrateur système. Compte « racine » du SaaS — typiquement
+///   `admin@clubflow.local`.
+/// - ADMIN       : peut tout faire au niveau système (gérer les clubs,
+///   les utilisateurs, etc.) sauf toucher à un autre administrateur.
+///
+/// Null sur `User.systemRole` = utilisateur lambda (membre ou contact).
+enum SystemRole {
+  ADMIN
+  SUPER_ADMIN
 }
 
 model User {
@@ -62,8 +344,16 @@ model User {
   passwordHash    String?
   emailVerifiedAt DateTime?
   displayName     String
+  /// Rôle système global (cf enum SystemRole). Null = pas de droits
+  /// d'administration globale.
+  systemRole      SystemRole?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+
+  /// PIN à 4 chiffres (hashé bcrypt) qui protège l'accès aux pages
+  /// /factures + /famille du portail (espace payeur). Optionnel ; si
+  /// null, l'accès est libre dès qu'on est PAYER.
+  payerSpacePinHash String?
 
   memberships             ClubMembership[]
   tokens                  RefreshToken[]
@@ -71,6 +361,7 @@ model User {
   contacts                Contact[]
   userIdentities          UserIdentity[]
   emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens     PasswordResetToken[]
 }
 
 enum OAuthProvider {
@@ -86,14 +377,20 @@ model Contact {
   userId    String
   firstName String
   lastName  String
+  phone     String?
+  photoUrl  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  club                 Club            @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  user                 User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  club                   Club                        @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user                   User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// Liens `FamilyMember` où ce contact est désigné payeur (`linkRole = PAYER`).
-  familyMemberPayerLinks FamilyMember[] @relation("FamilyMemberPayerContact")
-  paymentsAsPaidBy       Payment[]      @relation("PaymentPaidByContact")
+  familyMemberPayerLinks FamilyMember[]              @relation("FamilyMemberPayerContact")
+  paymentsAsPaidBy       Payment[]                   @relation("PaymentPaidByContact")
+  membershipCartsAsPayer MembershipCart[]            @relation("CartPayerContact")
+  pendingMembershipItems MembershipCartPendingItem[] @relation("PendingItemContact")
+  projectContributions   ProjectContributor[]
+  sponsorshipDeals       SponsorshipDeal[]
 
   @@unique([userId, clubId])
 }
@@ -121,6 +418,19 @@ model EmailVerificationToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+model PasswordResetToken {
+  id         String    @id @default(uuid())
+  userId     String
+  tokenHash  String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
 model ClubMembership {
   id        String         @id @default(uuid())
   userId    String
@@ -135,9 +445,9 @@ model ClubMembership {
 }
 
 model ModuleDefinition {
-  code        String   @id
+  code        String       @id
   label       String
-  isRequired  Boolean  @default(false)
+  isRequired  Boolean      @default(false)
   description String?
   clubModules ClubModule[]
 }
@@ -177,6 +487,16 @@ enum MemberClubRole {
   STUDENT
   COACH
   BOARD
+}
+
+/// Genre déclaratif du membre, utilisé pour l'analytique comptable (ventilation
+/// cotisations par sexe) et les statistiques licenciés. UNSPECIFIED = non
+/// renseigné / préfère ne pas dire.
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  UNSPECIFIED
 }
 
 enum MemberCivility {
@@ -222,18 +542,18 @@ model ClubMemberFieldCatalogSetting {
 }
 
 model MemberCustomFieldDefinition {
-  id              String                 @id @default(uuid())
+  id              String                @id @default(uuid())
   clubId          String
   code            String
   label           String
   type            MemberCustomFieldType
-  required        Boolean                @default(false)
-  sortOrder       Int                    @default(0)
-  visibleToMember Boolean                @default(false)
+  required        Boolean               @default(false)
+  sortOrder       Int                   @default(0)
+  visibleToMember Boolean               @default(false)
   optionsJson     String?
   archivedAt      DateTime?
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
 
   club   Club                     @relation(fields: [clubId], references: [id], onDelete: Cascade)
   values MemberCustomFieldValue[]
@@ -266,54 +586,68 @@ model GradeLevel {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  club                  Club                     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  members               Member[]
-  dynamicGroupGradeLevels DynamicGroupGradeLevel[]
+  club                         Club                          @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  members                      Member[]
+  dynamicGroupGradeLevels      DynamicGroupGradeLevel[]
   membershipProductGradeLevels MembershipProductGradeLevel[]
 
   @@index([clubId])
 }
 
 model Member {
-  id                     String        @id @default(uuid())
-  clubId                 String
-  userId                 String?
-  firstName              String
-  lastName               String
+  id                   String         @id @default(uuid())
+  clubId               String
+  userId               String?
+  firstName            String
+  lastName             String
   /// Pseudo messagerie ; unique par club ; [a-z0-9_]
-  pseudo                 String   @db.VarChar(64)
-  civility               MemberCivility
-  email                  String
-  phone                  String?
-  addressLine            String?
-  postalCode             String?
-  city                   String?
-  birthDate              DateTime?
-  photoUrl               String?
-  medicalCertExpiresAt   DateTime?
-  status                 MemberStatus  @default(ACTIVE)
-  gradeLevelId           String?
-  createdAt              DateTime      @default(now())
-  updatedAt              DateTime      @updatedAt
+  pseudo               String         @db.VarChar(64)
+  civility             MemberCivility
+  /// Genre déclaratif utilisé pour l'analytique comptable (ventilation
+  /// cotisations M/F). UNSPECIFIED par défaut (backfill sûr).
+  gender               Gender         @default(UNSPECIFIED)
+  email                String
+  phone                String?
+  addressLine          String?
+  postalCode           String?
+  city                 String?
+  birthDate            DateTime?
+  photoUrl             String?
+  medicalCertExpiresAt DateTime?
+  status               MemberStatus   @default(ACTIVE)
+  gradeLevelId         String?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
 
-  club             Club                    @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  user             User?                   @relation(fields: [userId], references: [id], onDelete: SetNull)
-  gradeLevel       GradeLevel?             @relation(fields: [gradeLevelId], references: [id], onDelete: SetNull)
-  roleAssignments         MemberRoleAssignment[]
-  customRoleAssignments   MemberCustomRoleAssignment[]
-  familyMembers           FamilyMember[]
-  courseSlotsAsCoach CourseSlot[] @relation("CourseSlotCoach")
+  club                      Club                         @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user                      User?                        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  gradeLevel                GradeLevel?                  @relation(fields: [gradeLevelId], references: [id], onDelete: SetNull)
+  roleAssignments           MemberRoleAssignment[]
+  customRoleAssignments     MemberCustomRoleAssignment[]
+  familyMembers             FamilyMember[]
+  courseSlotsAsCoach        CourseSlot[]                 @relation("CourseSlotCoach")
+  courseSlotBookings        CourseSlotBooking[]          @relation("CourseSlotBookingMember")
   messageCampaignRecipients MessageCampaignRecipient[]
-  customFieldValues          MemberCustomFieldValue[]
-  dynamicGroupAssignments    MemberDynamicGroup[]
-  invoiceLines               InvoiceLine[]
-  paymentsAsPaidBy           Payment[] @relation("PaymentPaidByMember")
-  telegramChatId             String?   @map("telegram_chat_id")
-  telegramLinkedAt           DateTime? @map("telegram_linked_at")
-  telegramLinkTokens         TelegramLinkToken[]
-  chatRoomMemberships        ChatRoomMember[]
-  chatMessagesSent           ChatMessage[]    @relation("ChatMessageSender")
-  chatRoomsCreated           ChatRoom[]       @relation("MemberChatRoomsCreated")
+  customFieldValues         MemberCustomFieldValue[]
+  dynamicGroupAssignments   MemberDynamicGroup[]
+  invoiceLines              InvoiceLine[]
+  paymentsAsPaidBy          Payment[]                    @relation("PaymentPaidByMember")
+  telegramChatId            String?                      @map("telegram_chat_id")
+  telegramLinkedAt          DateTime?                    @map("telegram_linked_at")
+  telegramLinkTokens        TelegramLinkToken[]
+  chatRoomMemberships       ChatRoomMember[]
+  chatMessagesSent          ChatMessage[]                @relation("ChatMessageSender")
+  chatRoomsCreated          ChatRoom[]                   @relation("MemberChatRoomsCreated")
+  chatMessageReactions      ChatMessageReaction[]
+
+  /// Numéro de licence fédérale validé (saisi une fois via « J'ai déjà une licence »).
+  licenseNumber             String?
+  membershipCartItems       MembershipCartItem[]
+  membershipCartsAsPayer    MembershipCart[]            @relation("CartPayerMember")
+  /// Snapshot d'une inscription pending convertie en ce Member réel.
+  convertedFromPendingItems MembershipCartPendingItem[] @relation("PendingItemConvertedMember")
+  projectContributions      ProjectContributor[]
+  accountingAllocations     AccountingAllocation[]
 
   @@unique([clubId, userId])
   @@unique([clubId, pseudo])
@@ -332,30 +666,68 @@ enum ChatRoomMemberRole {
   ADMIN
 }
 
-model ChatRoom {
-  id                 String         @id @default(uuid())
-  clubId             String
-  kind               ChatRoomKind
-  name               String?
-  directPairKey      String?        @unique
-  createdByMemberId  String?
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
+/// Mode d'écriture d'un salon (groupe administré).
+/// OPEN     = tous les membres du salon peuvent poster un message racine.
+/// RESTRICTED = seuls les rôles autorisés (ChatRoomWritePermission) peuvent
+///              poster un message racine. Les autres peuvent seulement
+///              répondre en fil (thread) à un message existant.
+/// READ_ONLY = personne ne peut poster ni répondre, sauf un admin via
+///              "poster comme membre" (broadcast pur). Réactions toujours OK.
+enum ChatRoomChannelMode {
+  OPEN
+  RESTRICTED
+  READ_ONLY
+}
 
-  club    Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  creator Member?          @relation("MemberChatRoomsCreated", fields: [createdByMemberId], references: [id], onDelete: SetNull)
-  members ChatRoomMember[]
+/// Référentiel pour les permissions d'écriture d'un salon.
+/// SYSTEM_ROLE = rôle système Membership (CLUB_ADMIN, BOARD, COACH, ...)
+/// MEMBER_ROLE = rôle adhérent (STUDENT, COACH, BOARD)
+/// CUSTOM_ROLE = ClubRoleDefinition (rôle libellé créé par le club)
+/// CONTACT     = personne avec un lien Contact (parent payeur sans Member)
+enum ChatRoomPermissionTarget {
+  SYSTEM_ROLE
+  MEMBER_ROLE
+  CUSTOM_ROLE
+  CONTACT
+}
+
+model ChatRoom {
+  id                  String              @id @default(uuid())
+  clubId              String
+  kind                ChatRoomKind
+  name                String?
+  description         String?             @db.Text
+  /// Image de couverture du salon (groupe administré).
+  coverImageUrl       String?
+  /// Mode d'écriture pour les groupes administrés.
+  channelMode         ChatRoomChannelMode @default(OPEN)
+  /// Si true, le salon apparaît comme canal de diffusion dans
+  /// l'interface "Communication" admin (à côté de email/telegram/push).
+  isBroadcastChannel  Boolean             @default(false)
+  /// Salon archivé : reste lisible mais en lecture seule, masqué par défaut.
+  archivedAt          DateTime?
+  directPairKey       String?             @unique
+  createdByMemberId   String?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  club     Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  creator  Member?          @relation("MemberChatRoomsCreated", fields: [createdByMemberId], references: [id], onDelete: SetNull)
+  members  ChatRoomMember[]
   messages ChatMessage[]
+  writePermissions ChatRoomWritePermission[]
+  membershipScopes ChatRoomMembershipScope[]
 
   @@index([clubId, kind])
+  @@index([clubId, isBroadcastChannel])
 }
 
 model ChatRoomMember {
-  id        String             @id @default(uuid())
-  roomId    String
-  memberId  String
-  role      ChatRoomMemberRole @default(MEMBER)
-  joinedAt  DateTime           @default(now())
+  id       String             @id @default(uuid())
+  roomId   String
+  memberId String
+  role     ChatRoomMemberRole @default(MEMBER)
+  joinedAt DateTime           @default(now())
 
   room   ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
   member Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
@@ -364,19 +736,137 @@ model ChatRoomMember {
   @@index([memberId])
 }
 
-model ChatMessage {
-  id             String    @id @default(uuid())
-  roomId         String
-  senderMemberId String
-  body           String    @db.Text
-  createdAt      DateTime  @default(now())
-  editedAt       DateTime?
-  deletedAt      DateTime?
+/// Permission d'écriture (poster un message racine) pour un salon RESTRICTED.
+/// Vide => tous les membres du salon peuvent poster. Sinon, l'union des
+/// rôles ciblés détermine qui peut écrire.
+model ChatRoomWritePermission {
+  id          String                   @id @default(uuid())
+  roomId      String
+  clubId      String
+  targetKind  ChatRoomPermissionTarget
+  /// Valeur dépendant de targetKind : enum stringifié pour SYSTEM_ROLE /
+  /// MEMBER_ROLE, ID de ClubRoleDefinition pour CUSTOM_ROLE, null pour CONTACT.
+  targetValue String?
+  createdAt   DateTime                 @default(now())
 
-  room   ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  sender Member   @relation("ChatMessageSender", fields: [senderMemberId], references: [id], onDelete: Cascade)
+  room ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, targetKind, targetValue])
+  @@index([clubId, roomId])
+}
+
+/// Définit la portée d'un salon administré : qui est inscrit dedans.
+/// Vide => le salon est manuel (création explicite des ChatRoomMember).
+/// Sinon : l'union des scopes calcule la liste des Member, recomputée à la
+/// volée par le service quand un membre est ajouté/retiré ou que les rôles
+/// changent.
+model ChatRoomMembershipScope {
+  id              String                   @id @default(uuid())
+  roomId          String
+  clubId          String
+  targetKind      ChatRoomPermissionTarget
+  /// Valeur dépendant de targetKind (cf ChatRoomWritePermission).
+  /// Pour DynamicGroup, on utilise un targetKind dédié dans une future itération.
+  targetValue     String?
+  /// ID de DynamicGroup si scope = groupe dynamique. Mutuellement exclusif
+  /// avec targetKind/targetValue sur cette ligne.
+  dynamicGroupId  String?
+  createdAt       DateTime @default(now())
+
+  room          ChatRoom      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  dynamicGroup  DynamicGroup? @relation(fields: [dynamicGroupId], references: [id], onDelete: Cascade)
+
+  @@index([clubId, roomId])
+  @@index([dynamicGroupId])
+}
+
+model ChatMessage {
+  id                  String    @id @default(uuid())
+  roomId              String
+  senderMemberId      String
+  /// Corps texte du message — désormais nullable car un message peut
+  /// être 100 % pièces jointes (vocal, photo) sans texte. Le service
+  /// vérifie qu'au moins l'un de `body` ou `attachments` est présent.
+  body                String?   @db.Text
+  /// Si non null, ce message est une réponse en fil au message désigné.
+  /// Les réponses ne sont pas affichées dans le flux principal du salon
+  /// (récupérées via thread expand uniquement).
+  parentMessageId     String?
+  /// Compteur dénormalisé du nombre de réponses au message racine
+  /// (mis à jour quand une réponse est postée).
+  replyCount          Int       @default(0)
+  /// Date de la dernière réponse (pour ordonner / afficher "X réponses").
+  lastReplyAt         DateTime?
+  /// Si non null : un admin a posté ce message en se faisant passer pour
+  /// le membre senderMemberId. Stocké pour audit.
+  postedAsAdminUserId String?
+  createdAt           DateTime  @default(now())
+  editedAt            DateTime?
+  deletedAt           DateTime?
+
+  room        ChatRoom                  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  sender      Member                    @relation("ChatMessageSender", fields: [senderMemberId], references: [id], onDelete: Cascade)
+  parent      ChatMessage?              @relation("ChatMessageThread", fields: [parentMessageId], references: [id], onDelete: Cascade)
+  replies     ChatMessage[]             @relation("ChatMessageThread")
+  reactions   ChatMessageReaction[]
+  attachments ChatMessageAttachment[]
 
   @@index([roomId, createdAt])
+  @@index([parentMessageId, createdAt])
+}
+
+/// Pièce jointe d'un ChatMessage (image, vidéo, audio/vocal, document).
+/// Pointe sur un `MediaAsset` créé via le pipeline upload sécurisé
+/// (`POST /media/upload?kind=...`). Plusieurs attachments par message
+/// possible (galerie photo, multi-pdf…).
+model ChatMessageAttachment {
+  id            String                    @id @default(uuid())
+  messageId     String
+  mediaAssetId  String
+  kind          ChatMessageAttachmentKind
+  /// Pour AUDIO/VIDEO : durée en millisecondes (renseignée par le client
+  /// au moment de l'upload, ou extraite côté serveur si ffprobe dispo).
+  durationMs    Int?
+  /// Optionnel : asset image utilisé comme thumbnail pour les vidéos
+  /// (généré via ffmpeg `-frames:v 1` au moment du transcode).
+  thumbnailAssetId String?
+  /// Ordre d'affichage dans la bulle (0..N). Permet une "galerie" avec
+  /// plusieurs photos dans un seul message.
+  position      Int                       @default(0)
+  createdAt     DateTime                  @default(now())
+
+  message       ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  mediaAsset    MediaAsset  @relation("ChatAttachmentAsset", fields: [mediaAssetId], references: [id], onDelete: Restrict)
+  thumbnailAsset MediaAsset? @relation("ChatAttachmentThumbnail", fields: [thumbnailAssetId], references: [id], onDelete: SetNull)
+
+  @@index([messageId])
+  @@index([mediaAssetId])
+}
+
+/// Réaction emoji sur un message — **1 SEULE réaction par membre par
+/// message**. La contrainte unique sur [messageId, memberId] garantit
+/// qu'un user ne peut pas avoir deux emojis sur le même message en
+/// même temps (le service `toggleReaction` fait UPDATE quand un autre
+/// emoji est cliqué, ou DELETE quand le même emoji est re-cliqué).
+///
+/// Avant : la contrainte était `[messageId, memberId, emoji]` qui
+/// permettait d'empiler plusieurs emojis sur un message — comportement
+/// retiré sur demande UX (cf. design-critique : "1 emoji par user").
+model ChatMessageReaction {
+  id        String   @id @default(uuid())
+  messageId String
+  memberId  String
+  clubId    String
+  /// Emoji court (Unicode), ex: "👍", "❤️", "😂". Limité à 16 caractères.
+  emoji     String   @db.VarChar(16)
+  createdAt DateTime @default(now())
+
+  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  member  Member      @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, memberId])
+  @@index([messageId])
+  @@index([clubId, memberId])
 }
 
 /// Jeton ponctuel pour `t.me/Bot?start=TOKEN` — lie le chat Telegram au membre.
@@ -416,8 +906,8 @@ model ClubRoleDefinition {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  club         Club                       @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  assignments  MemberCustomRoleAssignment[]
+  club        Club                         @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  assignments MemberCustomRoleAssignment[]
 
   @@index([clubId])
 }
@@ -444,12 +934,13 @@ model DynamicGroup {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  club         Club                     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  gradeFilters DynamicGroupGradeLevel[]
-  courseSlots        CourseSlot[]
-  messageCampaigns   MessageCampaign[]
-  memberAssignments  MemberDynamicGroup[]
-  invoiceLines       InvoiceLine[]
+  club              Club                     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  gradeFilters      DynamicGroupGradeLevel[]
+  courseSlots       CourseSlot[]
+  messageCampaigns  MessageCampaign[]
+  memberAssignments MemberDynamicGroup[]
+  invoiceLines      InvoiceLine[]
+  chatRoomScopes    ChatRoomMembershipScope[]
 
   @@index([clubId])
 }
@@ -472,32 +963,67 @@ enum FamilyMemberLinkRole {
 }
 
 model Family {
-  id        String   @id @default(uuid())
-  clubId    String
-  label     String?
+  id               String   @id @default(uuid())
+  clubId           String
+  label            String?
   householdGroupId String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  club           Club            @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  householdGroup HouseholdGroup? @relation("FamilyInHouseholdGroup", fields: [householdGroupId], references: [id], onDelete: SetNull)
-  carrierForHouseholdGroup HouseholdGroup? @relation("HouseholdGroupCarrier")
-  familyMembers  FamilyMember[]
-  invoices       Invoice[]
+  club                     Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  householdGroup           HouseholdGroup?  @relation("FamilyInHouseholdGroup", fields: [householdGroupId], references: [id], onDelete: SetNull)
+  carrierForHouseholdGroup HouseholdGroup?  @relation("HouseholdGroupCarrier")
+  familyMembers            FamilyMember[]
+  invoices                 Invoice[]
+  invites                  FamilyInvite[]
+  membershipCarts          MembershipCart[]
 
   @@index([clubId])
   @@index([householdGroupId])
 }
 
+/// Rôle proposé par le payeur à l'invité dans une invitation FamilyInvite.
+enum FamilyInviteRole {
+  COPAYER
+  VIEWER
+}
+
+/// Invitation nominative envoyée par un payeur à un proche pour rejoindre son foyer (spec 2026-04-19).
+model FamilyInvite {
+  id               String           @id @default(uuid())
+  clubId           String
+  familyId         String
+  createdByUserId  String
+  role             FamilyInviteRole
+  code             String           @unique @db.VarChar(16)
+  tokenHash        String
+  expiresAt        DateTime
+  consumedAt       DateTime?
+  consumedByUserId String?
+  createdAt        DateTime         @default(now())
+
+  /// Email du destinataire si l'invitation a été envoyée par mail.
+  /// Permet au destinataire de voir ses invitations en attente dès qu'il
+  /// se connecte (pas besoin de passer par le mail reçu). Normalisé en
+  /// lowercase + trim avant insertion.
+  recipientEmail String?
+
+  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@index([clubId])
+  @@index([familyId])
+  @@index([recipientEmail])
+}
+
 /// Foyer étendu : plusieurs `Family` (résidences) partagent facturation et enfants (spec 2026-03-31).
 model HouseholdGroup {
-  id        String   @id @default(uuid())
-  clubId    String
-  label     String?
+  id              String   @id @default(uuid())
+  clubId          String
+  label           String?
   /// Foyer porteur transitoire pour factures encore rattachées à `Invoice.familyId` (spec §6.1).
-  carrierFamilyId String? @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  carrierFamilyId String?  @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   club          Club      @relation(fields: [clubId], references: [id], onDelete: Cascade)
   families      Family[]  @relation("FamilyInHouseholdGroup")
@@ -541,24 +1067,54 @@ model Venue {
 }
 
 model CourseSlot {
-  id             String   @id @default(uuid())
-  clubId         String
-  venueId        String
-  coachMemberId  String
-  title          String
-  startsAt       DateTime
-  endsAt         DateTime
-  dynamicGroupId String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id              String    @id @default(uuid())
+  clubId          String
+  venueId         String
+  coachMemberId   String
+  title           String
+  startsAt        DateTime
+  endsAt          DateTime
+  dynamicGroupId  String?
+  bookingEnabled  Boolean   @default(false)
+  bookingCapacity Int?
+  bookingOpensAt  DateTime?
+  bookingClosesAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  club         Club          @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  venue        Venue         @relation(fields: [venueId], references: [id], onDelete: Restrict)
-  coachMember  Member        @relation("CourseSlotCoach", fields: [coachMemberId], references: [id], onDelete: Restrict)
-  dynamicGroup DynamicGroup? @relation(fields: [dynamicGroupId], references: [id], onDelete: SetNull)
+  club         Club                @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  venue        Venue               @relation(fields: [venueId], references: [id], onDelete: Restrict)
+  coachMember  Member              @relation("CourseSlotCoach", fields: [coachMemberId], references: [id], onDelete: Restrict)
+  dynamicGroup DynamicGroup?       @relation(fields: [dynamicGroupId], references: [id], onDelete: SetNull)
+  bookings     CourseSlotBooking[]
 
   @@index([clubId, coachMemberId])
   @@index([clubId, startsAt])
+}
+
+enum CourseSlotBookingStatus {
+  BOOKED
+  WAITLISTED
+  CANCELLED
+}
+
+model CourseSlotBooking {
+  id           String                  @id @default(uuid())
+  courseSlotId String
+  memberId     String
+  status       CourseSlotBookingStatus @default(BOOKED)
+  bookedAt     DateTime                @default(now())
+  cancelledAt  DateTime?
+  note         String?                 @db.VarChar(500)
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @updatedAt
+
+  courseSlot CourseSlot @relation(fields: [courseSlotId], references: [id], onDelete: Cascade)
+  member     Member     @relation("CourseSlotBookingMember", fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([courseSlotId, memberId])
+  @@index([courseSlotId])
+  @@index([memberId])
 }
 
 // --- Adhésion : saisons, groupes persistés, formules, lignes de facture ---
@@ -573,8 +1129,9 @@ model ClubSeason {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  club     Club      @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  invoices Invoice[]
+  club            Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  invoices        Invoice[]
+  membershipCarts MembershipCart[]
 
   @@index([clubId])
 }
@@ -607,12 +1164,16 @@ model MembershipProduct {
   allowExceptional        Boolean   @default(true)
   exceptionalCapPercentBp Int?
   archivedAt              DateTime?
+  /// Code discipline libre (ex. "karate", "judo", "yoga") utilisé pour la
+  /// ventilation analytique comptable. Convention slug minuscule.
+  disciplineCode          String?
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
-  club          Club                         @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  gradeFilters  MembershipProductGradeLevel[]
-  invoiceLines  InvoiceLine[]
+  club         Club                          @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  gradeFilters MembershipProductGradeLevel[]
+  invoiceLines InvoiceLine[]
+  cartItems    MembershipCartItem[]
 
   @@index([clubId])
 }
@@ -627,14 +1188,27 @@ model MembershipProductGradeLevel {
   @@id([membershipProductId, gradeLevelId])
 }
 
+enum MembershipOneTimeFeeKind {
+  /// Licence fédérale. Skipée automatiquement si le membre coche « j'ai déjà une licence ».
+  LICENSE
+  /// Frais obligatoire (cotisation club, kit équipement...). Toujours ajouté.
+  MANDATORY
+  /// Frais optionnel. Ajouté uniquement si sélectionné manuellement.
+  OPTIONAL
+}
+
 model MembershipOneTimeFee {
-  id           String    @id @default(uuid())
-  clubId       String
-  label        String
-  amountCents  Int
-  archivedAt   DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id          String                   @id @default(uuid())
+  clubId      String
+  label       String
+  amountCents Int
+  /// Classification fonctionnelle ; pilote l'auto-ajout au panier d'adhésion.
+  kind        MembershipOneTimeFeeKind @default(OPTIONAL)
+  /// Ajouté automatiquement à chaque item du panier d'adhésion créé.
+  autoApply   Boolean                  @default(false)
+  archivedAt  DateTime?
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
 
   club         Club          @relation(fields: [clubId], references: [id], onDelete: Cascade)
   invoiceLines InvoiceLine[]
@@ -660,23 +1234,23 @@ enum InvoiceLineAdjustmentType {
 }
 
 model InvoiceLine {
-  id                       String                     @id @default(uuid())
-  invoiceId                String
-  kind                     InvoiceLineKind            @default(MEMBERSHIP_SUBSCRIPTION)
-  memberId                 String
-  membershipProductId      String?
-  membershipOneTimeFeeId   String?
+  id                        String                     @id @default(uuid())
+  invoiceId                 String
+  kind                      InvoiceLineKind            @default(MEMBERSHIP_SUBSCRIPTION)
+  memberId                  String
+  membershipProductId       String?
+  membershipOneTimeFeeId    String?
   subscriptionBillingRhythm SubscriptionBillingRhythm?
-  dynamicGroupId           String?
-  baseAmountCents          Int
-  sortOrder                Int                        @default(0)
+  dynamicGroupId            String?
+  baseAmountCents           Int
+  sortOrder                 Int                        @default(0)
 
-  invoice            Invoice               @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  member             Member                @relation(fields: [memberId], references: [id], onDelete: Restrict)
-  membershipProduct  MembershipProduct?    @relation(fields: [membershipProductId], references: [id], onDelete: SetNull)
-  membershipOneTimeFee MembershipOneTimeFee? @relation(fields: [membershipOneTimeFeeId], references: [id], onDelete: SetNull)
-  dynamicGroup       DynamicGroup?         @relation(fields: [dynamicGroupId], references: [id], onDelete: SetNull)
-  adjustments        InvoiceLineAdjustment[]
+  invoice              Invoice                 @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  member               Member                  @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  membershipProduct    MembershipProduct?      @relation(fields: [membershipProductId], references: [id], onDelete: SetNull)
+  membershipOneTimeFee MembershipOneTimeFee?   @relation(fields: [membershipOneTimeFeeId], references: [id], onDelete: SetNull)
+  dynamicGroup         DynamicGroup?           @relation(fields: [dynamicGroupId], references: [id], onDelete: SetNull)
+  adjustments          InvoiceLineAdjustment[]
 
   @@index([invoiceId])
   @@index([memberId])
@@ -714,10 +1288,168 @@ enum ClubPaymentMethod {
   MANUAL_TRANSFER
 }
 
+/// Type d'un compte financier club. Permet de regrouper banques, caisses,
+/// comptes de transit (Stripe, HelloAsso, Lydia) sous un même modèle, tout
+/// en gardant la sémantique métier explicite pour l'UI et le routage.
+///
+/// Mapping conventionnel vers le PCG :
+/// - BANK             → 512xxx (Crédit Agricole, BRED, etc.)
+/// - CASH             → 53xxxx (caisse dojo, caisse buvette)
+/// - STRIPE_TRANSIT   → 512xxx (compte Stripe distinct de la banque réelle)
+/// - OTHER_TRANSIT    → 511xxx ou 512xxx (HelloAsso, Lydia, PayPal, …)
+enum ClubFinancialAccountKind {
+  BANK
+  CASH
+  STRIPE_TRANSIT
+  OTHER_TRANSIT
+}
+
+/// Compte financier réel d'un club (banque, caisse, transit Stripe…).
+/// Lié à un AccountingAccount du plan comptable (FK forte). Permet :
+/// - Suivi des soldes par compte
+/// - Routage automatique des paiements selon `ClubPaymentMethod`
+/// - Sélection "Encaissé sur" lors d'une saisie d'écriture
+///
+/// Toujours créé via `ClubFinancialAccountsService` qui valide la
+/// cohérence kind ↔ code PCG (BANK doit pointer sur 51x, CASH sur 53x).
+model ClubFinancialAccount {
+  id                  String                   @id @default(uuid())
+  clubId              String
+  kind                ClubFinancialAccountKind
+  /// Libellé lisible utilisateur (ex : "Crédit Agricole pro").
+  label               String
+  /// FK forte vers AccountingAccount = source de vérité pour code/label
+  /// PCG. On évite le snapshot pour ne pas dériver si l'admin renomme.
+  accountingAccountId String
+  /// Optionnels : utiles pour rapprochement bancaire v2 et identification.
+  iban                String?
+  bic                 String?
+  /// `acct_xxx` Stripe pour kind=STRIPE_TRANSIT. Informatif en v1
+  /// (pas de discriminator multi-Stripe).
+  stripeAccountId     String?
+  /// 1 default max par (clubId, kind) — appliqué côté service.
+  isDefault           Boolean                  @default(false)
+  isActive            Boolean                  @default(true)
+  sortOrder           Int                      @default(0)
+  /// Notes libres (ex : "Caisse événementielle Coupe SKSR 2026").
+  notes               String?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+
+  club              Club              @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  accountingAccount AccountingAccount @relation(fields: [accountingAccountId], references: [id], onDelete: Restrict)
+
+  paymentRoutes ClubPaymentRoute[]
+  entries       AccountingEntry[]
+  payments      Payment[]
+
+  /// Empêche 2 comptes financiers liés au même compte PCG (un compte PCG
+  /// ne peut représenter qu'un compte réel).
+  @@unique([clubId, accountingAccountId])
+  @@index([clubId, kind, isActive])
+}
+
+/// Routage `ClubPaymentMethod → ClubFinancialAccount`. Permet à l'admin
+/// de configurer "tous les paiements Stripe atterrissent sur le compte
+/// transit Stripe", "tous les espèces vont à la caisse principale", etc.
+///
+/// 1 route par (clubId, method) en v1 (pas de discriminator multi-Stripe).
+model ClubPaymentRoute {
+  id                 String            @id @default(uuid())
+  clubId             String
+  method             ClubPaymentMethod
+  financialAccountId String
+  isDefault          Boolean           @default(true)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  club             Club                 @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  financialAccount ClubFinancialAccount @relation(fields: [financialAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, method])
+  @@index([clubId, method])
+}
+
 enum PricingAdjustmentType {
   NONE
   PERCENT_BP
   FIXED_CENTS
+}
+
+/// Type de pattern de règle de remise. Chaque pattern a un schéma de
+/// `configJson` distinct, validé par Zod côté service.
+///
+/// - FAMILY_PROGRESSIVE : grille de remises progressives selon le rang du
+///   membre dans le foyer (2e, 3e, 4e+). Appliqué uniquement aux
+///   cotisations (pas aux frais de licence/dossier).
+/// - PRODUCT_BUNDLE : si plusieurs produits sont présents ensemble dans
+///   le cart, remise sur l'un d'eux (ex Karaté + Cross Training = -20€
+///   sur Cross Training).
+/// - AGE_RANGE_DISCOUNT : remise sur les membres dans une tranche d'âge
+///   (ex moins de 12 ans = -15%).
+/// - NEW_MEMBER_DISCOUNT : remise sur les nouveaux adhérents (jamais
+///   inscrits avant cette saison).
+/// - LOYALTY_DISCOUNT : remise fidélité (X années consécutives).
+enum MembershipPricingRulePattern {
+  FAMILY_PROGRESSIVE
+  PRODUCT_BUNDLE
+  AGE_RANGE_DISCOUNT
+  NEW_MEMBER_DISCOUNT
+  LOYALTY_DISCOUNT
+}
+
+/// Règle de remise configurable par l'admin. La structure de `configJson`
+/// dépend de `pattern` ; chaque pattern a son schéma Zod côté service
+/// avec validation stricte à la création/update + au runtime
+/// (fallback safe si configJson devient incompatible suite à un
+/// changement de schéma — la règle est désactivée et loggée plutôt que
+/// crasher la facturation).
+///
+/// Exemples :
+///
+/// FAMILY_PROGRESSIVE :
+/// ```
+/// {
+///   "tiers": [
+///     { "rank": 2, "type": "PERCENT_BP", "value": -1000 },
+///     { "rank": 3, "type": "PERCENT_BP", "value": -2000 },
+///     { "rank": 4, "type": "PERCENT_BP", "value": -3000 }
+///   ],
+///   "appliesTo": ["SUBSCRIPTION"],
+///   "sortBy": "AMOUNT_DESC"
+/// }
+/// ```
+///
+/// PRODUCT_BUNDLE :
+/// ```
+/// {
+///   "requiredProductIds": ["uuid-karate", "uuid-crosstraining"],
+///   "discountAppliesToProductId": "uuid-crosstraining",
+///   "discountType": "FIXED_CENTS",
+///   "discountValue": -2000
+/// }
+/// ```
+model MembershipPricingRule {
+  id          String                       @id @default(uuid())
+  clubId      String
+  pattern     MembershipPricingRulePattern
+  /// Libellé lisible (ex "Remise famille progressive"). Affiché dans
+  /// l'UI Settings et dans le détail facture.
+  label       String
+  isActive    Boolean                      @default(true)
+  /// Ordre d'évaluation. Les règles avec priority bas sont évaluées
+  /// d'abord. Permet de chaîner plusieurs remises de manière
+  /// déterministe.
+  priority    Int                          @default(0)
+  /// Configuration spécifique au pattern. Schéma validé par Zod.
+  configJson  Json
+  createdAt   DateTime                     @default(now())
+  updatedAt   DateTime                     @updatedAt
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@index([clubId, isActive, priority])
+  @@index([clubId, pattern])
 }
 
 model ClubPricingRule {
@@ -736,7 +1468,7 @@ model ClubPricingRule {
 }
 
 model Invoice {
-  id                    String        @id @default(uuid())
+  id                    String             @id @default(uuid())
   clubId                String
   familyId              String?
   householdGroupId      String?
@@ -744,48 +1476,76 @@ model Invoice {
   label                 String
   baseAmountCents       Int
   amountCents           Int
-  status                InvoiceStatus @default(OPEN)
+  status                InvoiceStatus      @default(OPEN)
   lockedPaymentMethod   ClubPaymentMethod?
+  /// Nombre de versements demandés par le payeur. 1 = paiement complet,
+  /// 3 = échelonnement en 3 versements (option exposée pour les
+  /// cotisations annuelles uniquement). Le club peut suivre l'échéancier
+  /// dans son back-office (paiements partiels reçus).
+  installmentsCount     Int                @default(1)
   dueAt                 DateTime?
-  stripePaymentIntentId String?       @unique
-  createdAt             DateTime      @default(now())
-  updatedAt             DateTime      @updatedAt
+  stripePaymentIntentId String?            @unique
+  /// Dernière date d'envoi d'un e-mail de relance pour cette facture.
+  lastRemindedAt        DateTime?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
 
-  club       Club        @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  family     Family?     @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  /// true si ce document est un AVOIR (contre-facture) — montant cents reste positif côté modèle,
+  /// inversé à l'affichage et en comptabilité.
+  isCreditNote     Boolean @default(false)
+  /// Pour un avoir : id de la facture source (qui est remboursée/annulée partiellement).
+  parentInvoiceId  String?
+  /// Motif textuel affiché sur l'avoir (« erreur de saisie », « remboursement cotisation »…)
+  creditNoteReason String?
+
+  club           Club            @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  family         Family?         @relation(fields: [familyId], references: [id], onDelete: SetNull)
   householdGroup HouseholdGroup? @relation(fields: [householdGroupId], references: [id], onDelete: SetNull)
-  clubSeason ClubSeason? @relation(fields: [clubSeasonId], references: [id], onDelete: SetNull)
-  lines      InvoiceLine[]
-  payments   Payment[]
+  clubSeason     ClubSeason?     @relation(fields: [clubSeasonId], references: [id], onDelete: SetNull)
+  lines          InvoiceLine[]
+  payments       Payment[]
+  membershipCart MembershipCart?
+
+  parentInvoice Invoice?  @relation("InvoiceCreditNotes", fields: [parentInvoiceId], references: [id], onDelete: SetNull)
+  creditNotes   Invoice[] @relation("InvoiceCreditNotes")
 
   @@index([clubId, status])
   @@index([clubId, householdGroupId, status])
   @@index([clubSeasonId])
+  @@index([parentInvoiceId])
 }
 
 model Payment {
-  id          String            @id @default(uuid())
-  clubId      String
-  invoiceId   String
-  amountCents Int
-  method      ClubPaymentMethod
-  externalRef String?
+  id                 String            @id @default(uuid())
+  clubId             String
+  invoiceId          String
+  amountCents        Int
+  method             ClubPaymentMethod
+  externalRef        String?
   /// Payeur réel (portail / traçabilité). Null = encaissement club catalogué sans fiche membre payeur.
-  paidByMemberId String?
+  paidByMemberId     String?
   /// Payeur contact (sans fiche `Member`). Au plus un de `paidByMemberId` / `paidByContactId` (appli).
-  paidByContactId String?
-  createdAt   DateTime          @default(now())
+  paidByContactId    String?
+  /// Compte financier où l'argent est tombé (snapshot au moment du paiement).
+  /// Null = legacy ou paiement créé avant configuration multi-comptes.
+  /// Résolu via `ClubFinancialAccountsService.resolveForPayment(clubId, method)`.
+  financialAccountId String?
+  createdAt          DateTime          @default(now())
 
-  club    Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
-  paidByMember Member? @relation("PaymentPaidByMember", fields: [paidByMemberId], references: [id], onDelete: SetNull)
-  paidByContact Contact? @relation("PaymentPaidByContact", fields: [paidByContactId], references: [id], onDelete: SetNull)
-  accountingEntries AccountingEntry[]
+  club                    Club                     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  invoice                 Invoice                  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  paidByMember            Member?                  @relation("PaymentPaidByMember", fields: [paidByMemberId], references: [id], onDelete: SetNull)
+  paidByContact           Contact?                 @relation("PaymentPaidByContact", fields: [paidByContactId], references: [id], onDelete: SetNull)
+  financialAccount        ClubFinancialAccount?    @relation(fields: [financialAccountId], references: [id], onDelete: SetNull)
+  accountingEntries       AccountingEntry[]
+  grantInstallments       GrantInstallment[]
+  sponsorshipInstallments SponsorshipInstallment[]
 
   @@index([clubId, createdAt])
   @@index([invoiceId])
   @@index([paidByMemberId])
   @@index([paidByContactId])
+  @@index([clubId, financialAccountId])
 }
 
 model StripeWebhookEvent {
@@ -799,6 +1559,10 @@ enum CommunicationChannel {
   EMAIL
   TELEGRAM
   PUSH
+  /// Diffusion via la messagerie interne : la campagne poste un message
+  /// dans tous les salons cibles (typiquement les ChatRoom marqués
+  /// `isBroadcastChannel = true`).
+  MESSAGING
 }
 
 enum MessageCampaignStatus {
@@ -807,22 +1571,42 @@ enum MessageCampaignStatus {
 }
 
 model MessageCampaign {
-  id             String                  @id @default(uuid())
+  id             String                @id @default(uuid())
   clubId         String
   title          String
   body           String
+  /// LEGACY (single channel). Conservé pour rétrocompat des anciennes
+  /// campagnes — les nouvelles utilisent `channels[]` (multi). Au create,
+  /// si le client envoie `channel` seul on remplit `channels=[channel]`.
   channel        CommunicationChannel
+  /// Multi-canal : la campagne est délivrée via tous ces canaux.
+  /// Default array vide = on retombe sur `channel` (legacy).
+  channels       CommunicationChannel[] @default([])
+  /// LEGACY (cible unique = un groupe dynamique). Toujours utilisé si
+  /// `audienceFilterJson` est null.
   dynamicGroupId String?
-  status         MessageCampaignStatus     @default(DRAFT)
+  /// NOUVELLE audience riche (multi-critère). JSON sérialisé de la
+  /// forme :
+  /// { dynamicGroupIds?: string[], membershipRoles?: string[],
+  ///   clubMemberRoles?: string[], ageFilter?: 'ALL'|'ADULTS'|'MINORS',
+  ///   memberIds?: string[], includeAllMembers?: boolean }
+  /// Si null, fallback sur `dynamicGroupId` legacy.
+  audienceFilterJson Json?
+  /// Rattachement optionnel à un ClubProject (pour le futur module
+  /// Communications scopé projet + traçabilité analytique).
+  projectId      String?
+  status         MessageCampaignStatus @default(DRAFT)
   sentAt         DateTime?
-  createdAt      DateTime                  @default(now())
-  updatedAt      DateTime                  @updatedAt
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
 
-  club           Club           @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  dynamicGroup   DynamicGroup? @relation(fields: [dynamicGroupId], references: [id], onDelete: SetNull)
-  recipients     MessageCampaignRecipient[]
+  club         Club                       @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  dynamicGroup DynamicGroup?              @relation(fields: [dynamicGroupId], references: [id], onDelete: SetNull)
+  project      ClubProject?               @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  recipients   MessageCampaignRecipient[]
 
   @@index([clubId])
+  @@index([projectId])
 }
 
 model MessageCampaignRecipient {
@@ -832,7 +1616,7 @@ model MessageCampaignRecipient {
   createdAt  DateTime @default(now())
 
   campaign MessageCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  member   Member        @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  member   Member          @relation(fields: [memberId], references: [id], onDelete: Cascade)
 
   @@unique([campaignId, memberId])
   @@index([memberId])
@@ -888,61 +1672,1888 @@ model EmailSuppression {
 enum AccountingEntryKind {
   INCOME
   EXPENSE
+  /// Contributions volontaires en nature (PCG 870/871). Neutre au résultat
+  /// mais comptabilisé séparément pour audit / bilan moral.
+  IN_KIND
+  /// Virement interne (ex. banque → caisse), non impactant P&L.
+  TRANSFER
+}
+
+/// Statut d'une écriture comptable dans le cycle de vie partie double.
+/// DRAFT = brouillon utilisateur, NEEDS_REVIEW = post-OCR en attente validation,
+/// POSTED = validée et comptabilisée, LOCKED = mois clôturé (immutable),
+/// CANCELLED = annulée via contre-passation.
+enum AccountingEntryStatus {
+  DRAFT
+  NEEDS_REVIEW
+  POSTED
+  LOCKED
+  CANCELLED
+}
+
+/// Origine d'une écriture — trace d'où elle vient pour audit et UX.
+enum AccountingEntrySource {
+  /// Saisie manuelle au formulaire par un trésorier / admin.
+  MANUAL
+  /// Générée via pipeline OCR + IA (OpenRouter vision).
+  OCR_AI
+  /// Hook automatique sur encaissement de cotisation (Invoice PAID).
+  AUTO_MEMBER_PAYMENT
+  /// Hook automatique sur versement de subvention (GrantInstallment).
+  AUTO_SUBSIDY
+  /// Hook automatique sur versement de sponsoring (SponsorshipInstallment).
+  AUTO_SPONSORSHIP
+  /// Hook automatique sur vente boutique (ShopOrder payée).
+  AUTO_SHOP
+  /// Contre-passation automatique sur credit note Invoice.
+  AUTO_REFUND
+  /// Split frais Stripe (512 net / 627 frais / 411 contrepartie).
+  AUTO_STRIPE_FEES
+}
+
+/// Côté comptable d'une ligne d'écriture. AUTO = dérivé à la création
+/// depuis (accountKind, entryKind). DEBIT/CREDIT = forcé manuellement
+/// (cas tordus : contre-passation, immobilisations, écritures d'ajustement).
+enum AccountingLineSide {
+  AUTO
+  DEBIT
+  CREDIT
 }
 
 model AccountingEntry {
-  id          String              @id @default(uuid())
-  clubId      String
-  kind        AccountingEntryKind
-  label       String
-  amountCents Int
-  paymentId   String?
-  occurredAt  DateTime            @default(now())
-  createdAt   DateTime            @default(now())
+  id                       String                @id @default(uuid())
+  clubId                   String
+  kind                     AccountingEntryKind
+  /// Statut dans le workflow partie double. Backfill = POSTED.
+  status                   AccountingEntryStatus @default(POSTED)
+  /// Origine de l'écriture. Backfill : AUTO_MEMBER_PAYMENT si paymentId
+  /// non null, sinon MANUAL.
+  source                   AccountingEntrySource @default(MANUAL)
+  label                    String
+  /// Montant TTC dénormalisé = somme des débits OU crédits (selon side).
+  /// Conservé pour le listing rapide sans jointure lines.
+  amountCents              Int
+  /// Somme TVA sur l'écriture (si `Club.vatMode != NONE`, sinon null).
+  vatTotalCents            Int?
+  paymentId                String?
+  /// Rattachement analytique optionnel à un ClubProject. Null = écriture
+  /// générale club. Permet de projeter un P&L par projet une fois le
+  /// module compta activé.
+  projectId                String?
+  /// Si `source = AUTO_SUBSIDY`, lien vers la subvention concernée.
+  subsidyId                String?
+  /// Si `source = AUTO_SPONSORSHIP`, lien vers le deal concerné.
+  sponsorshipDealId        String?
+  /// Si `source = OCR_AI`, trace l'extraction IA qui a généré cette entry.
+  extractionId             String?
+  /// Contre-passation : si cette entry est une contre-passation, pointe vers
+  /// l'entry originale. Si cette entry a été contre-passée, la relation inverse
+  /// `contraEntryOf` liste les contre-passations qui la visent.
+  contraEntryId            String?
+  /// Timestamp de verrouillage (mois clôturé). Écriture immutable sauf
+  /// création d'une contre-passation datée d'un mois ouvert.
+  lockedAt                 DateTime?
+  /// Soft cancel : si cancelledAt non null, l'écriture est annulée (via
+  /// contre-passation typiquement). Jamais purgée (rétention 10 ans).
+  cancelledAt              DateTime?
+  cancelledByUserId        String?
+  createdByUserId          String?
+  /// Compte financier de contrepartie (banque/caisse/transit). Null pour
+  /// les entries legacy créées avant la migration multi-comptes — le code
+  /// tolère null en fallback sur la banque par défaut du club.
+  financialAccountId       String?
+  /// Marqueur "écriture consolidée" : indique que des lignes ont été
+  /// fusionnées par compte (cas note de resto où 6 articles → 1 ligne
+  /// 625700 Réceptions). Null = écriture détaillée standard.
+  consolidatedAt           DateTime?
+  /// Snapshot JSON des lignes/allocations pré-consolidation. Permet
+  /// `unconsolidate` pour restaurer la granularité d'origine.
+  preConsolidationSnapshot Json?
+  /// Mode de paiement (compta analytique). Valeurs : "CASH", "CHECK",
+  /// "TRANSFER", "CARD", "DIRECT_DEBIT", "OTHER", null. Détecté par
+  /// l'IA OCR (mots-clés "Mode de règlement", "CHQ", "VIR"…) ou saisi
+  /// manuellement. Permet la traçabilité par moyen de paiement.
+  paymentMethod            String?
+  /// Référence textuelle (n° de chèque, n° d'opération virement, etc.).
+  /// Optionnel — utile uniquement pour CHECK / TRANSFER.
+  paymentReference         String?
+  /// Timestamp de démarrage du pipeline IA OCR. Présent = pipeline en
+  /// cours (l'utilisateur peut quitter l'écran et continuer à scanner
+  /// d'autres factures). Le service le clear à la fin du pipeline.
+  /// Le client affiche un badge "Analyse en cours" tant que c'est non null.
+  aiProcessingStartedAt    DateTime?
+  /// Numéro de facture nettoyé (séparé du label). Indexé avec amountCents
+  /// pour la détection de doublons : 2 entries du même club avec même
+  /// invoiceNumber ET même amountCents = doublon hautement probable.
+  invoiceNumber            String?
+  /// Si non null, pointe vers une autre entry du club avec même
+  /// (invoiceNumber, amountCents) → doublon détecté. L'utilisateur peut
+  /// soit valider quand même (override) soit annuler. Ne crée PAS de
+  /// contrainte hard — laisse le choix.
+  duplicateOfEntryId       String?
+  occurredAt               DateTime              @default(now())
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @default(now()) @updatedAt
 
-  club    Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  payment Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  club             Club                  @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  payment          Payment?              @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  project          ClubProject?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  subsidy          GrantApplication?     @relation(fields: [subsidyId], references: [id], onDelete: SetNull)
+  sponsorship      SponsorshipDeal?      @relation(fields: [sponsorshipDealId], references: [id], onDelete: SetNull)
+  extraction       AccountingExtraction? @relation(fields: [extractionId], references: [id], onDelete: SetNull)
+  contraEntry      AccountingEntry?      @relation("AccountingEntryContra", fields: [contraEntryId], references: [id], onDelete: SetNull)
+  contraEntryOf    AccountingEntry[]     @relation("AccountingEntryContra")
+  financialAccount ClubFinancialAccount? @relation(fields: [financialAccountId], references: [id], onDelete: SetNull)
+
+  lines                   AccountingEntryLine[]
+  documents               AccountingDocument[]
+  auditLogs               AccountingAuditLog[]
+  grantInstallments       GrantInstallment[]
+  sponsorshipInstallments SponsorshipInstallment[]
 
   @@index([clubId, occurredAt])
+  @@index([clubId, projectId])
+  @@index([clubId, status])
+  @@index([clubId, source])
+  @@index([clubId, financialAccountId])
+  @@index([clubId, invoiceNumber, amountCents])
 }
 
+/// Cycle de vie complet d'une demande de subvention :
+/// DRAFT → REQUESTED (envoyée) → GRANTED (accordée) → PARTIALLY_PAID
+/// (au moins 1 tranche reçue) → PAID (toutes tranches reçues) → REPORTED
+/// (rapport de justification soumis) → SETTLED (dossier soldé).
+/// Branches terminales : REJECTED, ARCHIVED.
 enum GrantApplicationStatus {
   DRAFT
-  SUBMITTED
+  REQUESTED
+  GRANTED
+  PARTIALLY_PAID
+  PAID
+  REPORTED
+  SETTLED
+  REJECTED
   ARCHIVED
 }
 
+enum GrantDocumentKind {
+  APPLICATION
+  DECISION
+  INVOICE
+  REPORT
+  OTHER
+}
+
 model GrantApplication {
-  id          String                 @id @default(uuid())
-  clubId      String
-  title       String
-  status      GrantApplicationStatus @default(DRAFT)
-  amountCents Int?
-  notes       String?
-  createdAt   DateTime               @default(now())
-  updatedAt   DateTime               @updatedAt
+  id                   String                 @id @default(uuid())
+  clubId               String
+  title                String
+  /// Organisme financeur (libre). Ex : "Mairie de Saint-Denis", "FDVA",
+  /// "CNDS", "Conseil Départemental 93".
+  fundingBody          String?
+  status               GrantApplicationStatus @default(DRAFT)
+  /// Montant demandé initial (avant décision).
+  requestedAmountCents Int?
+  /// Montant effectivement accordé après décision.
+  grantedAmountCents   Int?
+  /// Conservé pour backward compat (ancien champ `amountCents`). Alias
+  /// fonctionnel de `grantedAmountCents` pour les dossiers legacy.
+  amountCents          Int?
+  projectId            String?
+  startsAt             DateTime?
+  endsAt               DateTime?
+  /// Date limite de dépôt du rapport / justification d'emploi des fonds.
+  reportDueAt          DateTime?
+  /// Date effective de soumission du rapport.
+  reportSubmittedAt    DateTime?
+  notes                String?
+  createdByUserId      String?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
 
-  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  club         Club               @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  project      ClubProject?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  installments GrantInstallment[]
+  documents    GrantDocument[]
+  entries      AccountingEntry[]
 
+  @@index([clubId])
+  @@index([clubId, status])
+  @@index([clubId, reportDueAt])
+}
+
+model GrantInstallment {
+  id                  String    @id @default(uuid())
+  grantId             String
+  clubId              String
+  expectedAmountCents Int
+  receivedAmountCents Int?
+  expectedAt          DateTime?
+  receivedAt          DateTime?
+  paymentId           String?
+  accountingEntryId   String?
+  notes               String?
+  createdAt           DateTime  @default(now())
+
+  grant   GrantApplication @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  payment Payment?         @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  entry   AccountingEntry? @relation(fields: [accountingEntryId], references: [id], onDelete: SetNull)
+
+  @@index([grantId])
   @@index([clubId])
 }
 
+model GrantDocument {
+  id           String            @id @default(uuid())
+  grantId      String
+  clubId       String
+  mediaAssetId String
+  kind         GrantDocumentKind @default(OTHER)
+  createdAt    DateTime          @default(now())
+
+  grant      GrantApplication @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  mediaAsset MediaAsset       @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+
+  @@unique([grantId, mediaAssetId])
+  @@index([clubId])
+}
+
+/// Statut d'un deal de sponsoring. DRAFT = préparé, ACTIVE = signé / en
+/// cours, CLOSED = échu / soldé, CANCELLED = annulé.
 enum SponsorshipDealStatus {
+  DRAFT
   ACTIVE
   CLOSED
+  CANCELLED
+}
+
+/// Type de sponsoring : CASH (versements en monnaie) ou IN_KIND
+/// (contributions en nature : matériel, prestations, locaux).
+/// IN_KIND génère des écritures sur les comptes PCG 870/871.
+enum SponsorshipKind {
+  CASH
+  IN_KIND
+}
+
+enum SponsorshipDocumentKind {
+  CONTRACT
+  INVOICE
+  RECEIPT
+  OTHER
 }
 
 model SponsorshipDeal {
-  id          String                @id @default(uuid())
+  id                String                @id @default(uuid())
+  clubId            String
+  sponsorName       String
+  kind              SponsorshipKind       @default(CASH)
+  /// Valeur totale attendue (cash) OU valorisation estimée (nature).
+  valueCents        Int?
+  /// Conservé pour backward compat (ancien champ `amountCents`). Alias de
+  /// `valueCents` pour les deals legacy.
+  amountCents       Int?
+  /// Description lisible des apports nature (ex : "20 T-shirts + 5 cartons
+  /// de gourdes isothermes"). Requis si kind = IN_KIND.
+  inKindDescription String?
+  status            SponsorshipDealStatus @default(DRAFT)
+  projectId         String?
+  /// Sponsor persisté comme Contact du club (optionnel).
+  contactId         String?
+  startsAt          DateTime?
+  endsAt            DateTime?
+  notes             String?
+  createdByUserId   String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  club         Club                     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  project      ClubProject?             @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  contact      Contact?                 @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  installments SponsorshipInstallment[]
+  documents    SponsorshipDocument[]
+  entries      AccountingEntry[]
+
+  @@index([clubId])
+  @@index([clubId, status])
+}
+
+model SponsorshipInstallment {
+  id                  String    @id @default(uuid())
+  dealId              String
+  clubId              String
+  expectedAmountCents Int
+  receivedAmountCents Int?
+  expectedAt          DateTime?
+  receivedAt          DateTime?
+  paymentId           String?
+  accountingEntryId   String?
+  createdAt           DateTime  @default(now())
+
+  deal    SponsorshipDeal  @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  payment Payment?         @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  entry   AccountingEntry? @relation(fields: [accountingEntryId], references: [id], onDelete: SetNull)
+
+  @@index([dealId])
+  @@index([clubId])
+}
+
+model SponsorshipDocument {
+  id           String                  @id @default(uuid())
+  dealId       String
+  clubId       String
+  mediaAssetId String
+  kind         SponsorshipDocumentKind @default(OTHER)
+  createdAt    DateTime                @default(now())
+
+  deal       SponsorshipDeal @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  mediaAsset MediaAsset      @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+
+  @@unique([dealId, mediaAssetId])
+  @@index([clubId])
+}
+
+enum ClubSurveyStatus {
+  DRAFT
+  OPEN
+  CLOSED
+}
+
+model ClubAnnouncement {
+  id           String    @id @default(uuid())
+  clubId       String
+  authorUserId String
+  title        String
+  body         String
+  pinned       Boolean   @default(false)
+  publishedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([clubId, publishedAt])
+  @@index([clubId, pinned])
+}
+
+model ClubSurvey {
+  id             String           @id @default(uuid())
+  clubId         String
+  authorUserId   String
+  title          String
+  description    String?
+  status         ClubSurveyStatus @default(DRAFT)
+  multipleChoice Boolean          @default(false)
+  allowAnonymous Boolean          @default(false)
+  publishedAt    DateTime?
+  closesAt       DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  options   ClubSurveyOption[]
+  responses ClubSurveyResponse[]
+
+  @@index([clubId, status])
+}
+
+model ClubSurveyOption {
+  id        String   @id @default(uuid())
+  surveyId  String
+  label     String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  survey    ClubSurvey           @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  responses ClubSurveyResponse[]
+
+  @@index([surveyId])
+}
+
+model ClubSurveyResponse {
+  id        String   @id @default(uuid())
+  surveyId  String
+  optionId  String
+  memberId  String?
+  contactId String?
+  createdAt DateTime @default(now())
+
+  survey ClubSurvey       @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  option ClubSurveyOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+
+  @@unique([surveyId, memberId, optionId])
+  @@unique([surveyId, contactId, optionId])
+  @@index([surveyId])
+}
+
+enum ClubEventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+}
+
+enum ClubEventRegistrationStatus {
+  REGISTERED
+  WAITLISTED
+  CANCELLED
+}
+
+model ClubEvent {
+  id                       String          @id @default(uuid())
+  clubId                   String
+  /// Rattachement optionnel à un ClubProject (un projet peut regrouper N
+  /// events datés — ex. « Gala 2026 » a une soirée + une répétition
+  /// rattachées). Null = event autonome (cours hebdo, stage simple).
+  projectId                String?
+  title                    String
+  description              String?
+  location                 String?
+  startsAt                 DateTime
+  endsAt                   DateTime
+  capacity                 Int?
+  registrationOpensAt      DateTime?
+  registrationClosesAt     DateTime?
+  priceCents               Int?
+  status                   ClubEventStatus @default(DRAFT)
+  publishedAt              DateTime?
+  allowContactRegistration Boolean         @default(false)
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+
+  project       ClubProject?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  registrations ClubEventRegistration[]
+  attachments   ClubEventAttachment[]
+
+  @@index([clubId, startsAt])
+  @@index([clubId, status])
+  @@index([projectId])
+}
+
+model ClubEventRegistration {
+  id           String                      @id @default(uuid())
+  eventId      String
+  memberId     String?
+  contactId    String?
+  status       ClubEventRegistrationStatus @default(REGISTERED)
+  registeredAt DateTime                    @default(now())
+  cancelledAt  DateTime?
+  note         String?
+
+  event ClubEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, memberId])
+  @@unique([eventId, contactId])
+  @@index([eventId, status])
+}
+
+/// Pièces jointes d'un événement (PDF, images…). Fichier stocké sur disque, métadonnées en base.
+model ClubEventAttachment {
+  id          String   @id @default(uuid())
+  eventId     String
+  fileName    String
+  mimeType    String
+  sizeBytes   Int
+  storagePath String // chemin absolu sur disque — géré par EventAttachmentsService
+  createdAt   DateTime @default(now())
+
+  event ClubEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, createdAt])
+}
+
+enum BlogPostStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ShopOrderStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+model ShopProduct {
+  id          String   @id @default(uuid())
   clubId      String
-  sponsorName String
-  amountCents Int?
-  status      SponsorshipDealStatus @default(ACTIVE)
-  notes       String?
-  createdAt   DateTime              @default(now())
-  updatedAt   DateTime              @updatedAt
+  sku         String?
+  name        String
+  description String?
+  imageUrl    String?
+  priceCents  Int
+  stock       Int?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  orderLines ShopOrderLine[]
+
+  @@index([clubId, active])
+}
+
+model ShopOrder {
+  id         String          @id @default(uuid())
+  clubId     String
+  memberId   String?
+  contactId  String?
+  status     ShopOrderStatus @default(PENDING)
+  totalCents Int
+  note       String?         @db.VarChar(500)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  paidAt     DateTime?
+
+  lines ShopOrderLine[]
+
+  @@index([clubId, status])
+  @@index([memberId])
+  @@index([contactId])
+}
+
+model ShopOrderLine {
+  id             String @id @default(uuid())
+  orderId        String
+  productId      String
+  quantity       Int
+  unitPriceCents Int
+  label          String
+
+  order   ShopOrder   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product ShopProduct @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+}
+
+model BlogPost {
+  id            String         @id @default(uuid())
+  clubId        String
+  authorUserId  String
+  slug          String
+  title         String
+  excerpt       String?        @db.VarChar(500)
+  body          String
+  coverImageUrl String?
+  status        BlogPostStatus @default(DRAFT)
+  publishedAt   DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@unique([clubId, slug])
+  @@index([clubId, status, publishedAt])
+}
+
+// --- Phase H : Projet d'adhésion (panier famille × saison) ---
+
+enum MembershipCartStatus {
+  /// Panier ouvert, modifiable librement. Un seul OPEN par (familyId, clubSeasonId).
+  OPEN
+  /// Panier validé → facture émise + email payeur envoyé. Immuable.
+  VALIDATED
+  /// Panier abandonné par le payeur (ou annulé par l'admin). Aucune facture générée.
+  CANCELLED
+}
+
+/// Panier/projet d'adhésion d'une famille pour une saison. Accumule les items (membres + produit + licence + rythme + remises)
+/// avant d'émettre la facture à la validation. Pas d'impact comptable tant que status != VALIDATED.
+model MembershipCart {
+  id              String               @id @default(uuid())
+  clubId          String
+  familyId        String
+  clubSeasonId    String
+  payerContactId  String?
+  payerMemberId   String?
+  status          MembershipCartStatus @default(OPEN)
+  validatedAt     DateTime?
+  invoiceId       String?              @unique
+  cancelledReason String?
+  notes           String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  club         Club                        @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  family       Family                      @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  clubSeason   ClubSeason                  @relation(fields: [clubSeasonId], references: [id], onDelete: Cascade)
+  payerContact Contact?                    @relation("CartPayerContact", fields: [payerContactId], references: [id], onDelete: SetNull)
+  payerMember  Member?                     @relation("CartPayerMember", fields: [payerMemberId], references: [id], onDelete: SetNull)
+  invoice      Invoice?                    @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  items        MembershipCartItem[]
+  pendingItems MembershipCartPendingItem[]
+
+  @@index([clubId, status])
+  @@index([familyId, clubSeasonId, status])
+}
+
+/// Item du panier = adhésion individuelle d'un membre pour la saison courante du cart.
+/// Une ligne par membre, produit auto-sélectionné par âge (ou null si aucun produit ne matche).
+model MembershipCartItem {
+  id                        String                    @id @default(uuid())
+  cartId                    String
+  memberId                  String
+  membershipProductId       String?
+  billingRhythm             SubscriptionBillingRhythm @default(ANNUAL)
+  hasExistingLicense        Boolean                   @default(false)
+  existingLicenseNumber     String?
+  exceptionalDiscountCents  Int                       @default(0)
+  exceptionalDiscountReason String?
+  /// true si aucun produit n'a matché l'âge du membre — admin doit assigner manuellement.
+  requiresManualAssignment  Boolean                   @default(false)
+  /// CSV des IDs de MembershipOneTimeFee forcés (override des autoApply défaut).
+  /// Convention : si null → utiliser la liste des fees `autoApply=true` du club.
+  /// Si présent → utiliser exactement cette liste.
+  oneTimeFeeOverrideIdsCsv  String?
+  createdAt                 DateTime                  @default(now())
+  updatedAt                 DateTime                  @updatedAt
+
+  cart    MembershipCart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  member  Member             @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  product MembershipProduct? @relation(fields: [membershipProductId], references: [id], onDelete: SetNull)
+
+  /// Permet plusieurs formules pour un même membre (ex Karaté + Cross
+  /// Training). L'unicité est sur le triplet (cart, member, produit) —
+  /// on évite seulement les doublons exacts. Les anciens code-paths qui
+  /// supposaient "1 ligne par membre" doivent agréger via `findFirst`
+  /// ou `findMany` au lieu de `findUnique`.
+  @@unique([cartId, memberId, membershipProductId])
+  @@index([cartId])
+  @@index([memberId])
+}
+
+/// Inscription "en attente" dans un cart — une personne (Contact ou enfant
+/// à créer) qui veut adhérer mais dont la fiche `Member` n'est PAS encore
+/// créée. Évite les Members fantômes si le payeur abandonne le projet
+/// d'adhésion.
+///
+/// Stratégie : snapshot complet des données identitaires + array des
+/// formules choisies. À la validation du cart, chaque PendingItem est
+/// transformé en Member réel + autant de `MembershipCartItem` que de
+/// formules sélectionnées. `convertedToMemberId` trace la conversion
+/// pour l'audit (NULL = abandon).
+///
+/// Multi-formules : `membershipProductIds` est un array — Samantha peut
+/// s'inscrire à Karaté Adultes ET Cross Training en une seule action.
+model MembershipCartPendingItem {
+  id                   String                    @id @default(uuid())
+  cartId               String
+  /// Snapshot identité (au moment de la sélection)
+  firstName            String
+  lastName             String
+  civility             MemberCivility
+  birthDate            DateTime
+  /// Email snapshot (du Contact payeur, hérité). Sert au check unicité
+  /// au moment de la finalisation.
+  email                String
+  /// Si la personne est déjà un Contact du club (cas auto-inscription
+  /// adulte). Null pour un enfant ajouté par le payeur (pas de Contact
+  /// préalable).
+  contactId            String?
+  /// IDs de MembershipProduct sélectionnés. Toujours ≥ 1.
+  membershipProductIds String[]
+  billingRhythm        SubscriptionBillingRhythm @default(ANNUAL)
+  /// FK forte vers le Member créé à la validation. Null = pas encore
+  /// converti (cart pas encore validé OU abandon).
+  convertedToMemberId  String?
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+
+  cart            MembershipCart @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  contact         Contact?       @relation("PendingItemContact", fields: [contactId], references: [id], onDelete: SetNull)
+  convertedMember Member?        @relation("PendingItemConvertedMember", fields: [convertedToMemberId], references: [id], onDelete: SetNull)
+
+  @@unique([cartId, email, firstName, lastName])
+  @@index([cartId])
+  @@index([contactId])
+}
+
+// ============================================================================
+// Vitrine publique (apps/vitrine) — pages, articles, annonces, galerie, médias
+// ============================================================================
+
+enum VitrinePageStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum VitrineArticleStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+/// Canal de publication d'un VitrineArticle : « actualités » (brèves du
+/// quotidien affichées sur /actualites) ou « blog » (articles de fond sur
+/// /blog). Les deux canaux partagent la même structure (SEO, catégories,
+/// commentaires, IA), ils sont juste filtrés sur le site public et
+/// regroupés dans deux onglets côté admin.
+enum VitrineArticleChannel {
+  NEWS
+  BLOG
+}
+
+enum MediaAssetKind {
+  IMAGE
+  DOCUMENT
+  /// Vidéo (mp4, mov…) — séparé de OTHER pour permettre une whitelist
+  /// claire et un viewer dédié côté mobile (lecteur expo-av).
+  VIDEO
+  /// Audio (vocal m4a/mp3/ogg) — utilisé pour les messages vocaux du
+  /// chat. Lecteur dédié côté mobile (play/pause + durée).
+  AUDIO
+  OTHER
+}
+
+/// Type de pièce jointe attachée à un ChatMessage. Sert au mobile pour
+/// choisir le bon viewer (lecteur audio vs preview image vs lien PDF).
+enum ChatMessageAttachmentKind {
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+}
+
+/// Page vitrine — un enregistrement par (clubId, slug).
+/// `sectionsJson` = tableau ordonné [{ id, type, props }] rendu par
+/// `VitrinePageRenderer` côté Next.js. Permet une migration future vers
+/// GrapeJS sans changer le schéma (même format JSON).
+model VitrinePage {
+  id             String            @id @default(uuid())
+  clubId         String
+  slug           String
+  templateKey    String            @default("sksr-v1")
+  status         VitrinePageStatus @default(PUBLISHED)
+  seoTitle       String?
+  seoDescription String?
+  seoOgImageId   String?
+  sectionsJson   Json
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  club       Club                  @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  seoOgImage MediaAsset?           @relation("VitrinePageOgImage", fields: [seoOgImageId], references: [id], onDelete: SetNull)
+  revisions  VitrinePageRevision[]
+
+  @@unique([clubId, slug])
+  @@index([clubId, status])
+}
+
+/// Révision historique dune `VitrinePage` — permet undo/redo côté admin.
+/// Plafonnée à ~50 rangées par page (nettoyage programmatique côté service).
+model VitrinePageRevision {
+  id             String   @id @default(uuid())
+  pageId         String
+  sectionsJson   Json
+  seoTitle       String?
+  seoDescription String?
+  authorUserId   String?
+  createdAt      DateTime @default(now())
+
+  page VitrinePage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@index([pageId, createdAt])
+}
+
+/// État de génération IA d'un article vitrine.
+/// - NONE : article créé manuellement (pas de génération)
+/// - PENDING : génération IA en cours en arrière-plan
+/// - DONE : génération terminée avec succès
+/// - FAILED : génération échouée (voir generationError)
+enum VitrineArticleGenerationStatus {
+  NONE
+  PENDING
+  DONE
+  FAILED
+}
+
+/// Statut d'un commentaire sur un article vitrine après modération.
+/// - PENDING : vient d'être soumis, modération IA en cours
+/// - APPROVED : IA a jugé OK → visible sur la vitrine publique
+/// - NEEDS_REVIEW : IA a flagué pour relecture humaine (admin doit trancher)
+/// - REJECTED : IA ou admin a rejeté (non visible public)
+/// - SPAM : spam détecté (non visible public + bloqué futur)
+enum VitrineCommentStatus {
+  PENDING
+  APPROVED
+  NEEDS_REVIEW
+  REJECTED
+  SPAM
+}
+
+/// Catégorie d'article vitrine (type WordPress). Un article peut avoir
+/// plusieurs catégories via la table de jointure implicite Prisma.
+model VitrineCategory {
+  id          String   @id @default(uuid())
+  clubId      String
+  slug        String
+  name        String
+  description String?
+  /// Couleur hex pour le badge visuel (#RRGGBB). Si null → couleur par défaut.
+  color       String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  club     Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  articles VitrineArticle[] @relation("VitrineArticleCategories")
+
+  @@unique([clubId, slug])
+  @@index([clubId, sortOrder])
+}
+
+/// Commentaire sur un article vitrine (public, soumis par un visiteur).
+/// Modéré automatiquement par IA avant affichage.
+model VitrineComment {
+  id               String               @id @default(uuid())
+  articleId        String
+  authorName       String
+  authorEmail      String
+  body             String
+  ipAddress        String?
+  userAgent        String?
+  status           VitrineCommentStatus @default(PENDING)
+  /// Score IA 0.0 (rejeté) → 1.0 (parfait). Null = pas encore modéré.
+  aiScore          Float?
+  /// Catégorie attribuée par l'IA (constructive, off-topic, offensive, spam, insulting, other).
+  aiCategory       String?
+  /// Raison lisible de la décision IA (affichée à l'admin).
+  aiReason         String?
+  /// Id user admin qui a review manuellement (si applicable).
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+
+  /// Réponse de l'admin (ou générée par IA, validée par admin avant publication).
+  /// Null = pas de réponse publiée.
+  adminReplyBody       String?
+  /// Nom à afficher pour la réponse (ex. "Sensei Tanaka", "L'équipe SKSR", "Direction").
+  adminReplyAuthorName String?
+  adminReplyAt         DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  article VitrineArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([articleId, status, createdAt])
+  @@index([status, createdAt])
+}
+
+/// Article vitrine — distinct du BlogPost (lui réservé aux membres connectés).
+///
+/// `bodyJson` = `{ format: 'html', html: '...' }` (WYSIWYG Tiptap) OU
+/// `['para1', 'para2']` (ancien format paragraphes, rétrocompatible lecture).
+model VitrineArticle {
+  id           String                @id @default(uuid())
+  clubId       String
+  slug         String
+  title        String
+  excerpt      String?
+  bodyJson     Json
+  coverImageId String?
+  status       VitrineArticleStatus  @default(DRAFT)
+  /// Canal : actualité courte (NEWS) ou article de fond (BLOG). Filtre
+  /// les deux listes publiques /actualites et /blog, et groupe les deux
+  /// onglets dans l'admin — création, SEO, catégories, commentaires,
+  /// génération IA et tampon acquitté identiques quelle que soit la valeur.
+  channel      VitrineArticleChannel @default(BLOG)
+  publishedAt  DateTime?
+  authorUserId String?
+  /// Épinglé en tête de la liste de son canal (/actualites ou /blog).
+  pinned       Boolean               @default(false)
+  /// Ordre manuel (drag-and-drop admin). Plus petit = plus haut. Les
+  /// articles épinglés sont triés entre eux par sortOrder avant les non
+  /// épinglés (eux-mêmes triés par publishedAt desc).
+  sortOrder    Int                   @default(0)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  // --- SEO ---
+  seoTitle        String? // <title> balise, ≤ 60 chars recommandé
+  seoDescription  String? // <meta name="description">, 150-160 chars
+  seoKeywords     String[] @default([]) // LSI / mots-clés cibles
+  seoH1           String? // H1 de l'article (si différent du titre)
+  seoFaqJson      Json? // [{question, answer}] pour schema.org FAQPage
+  seoCanonicalUrl String? // URL canonical si dupliquée ailleurs
+  seoNoindex      Boolean  @default(false)
+  seoOgImageId    String? // Image Open Graph (partage sociaux). Si null → coverImageId.
+  coverImageAlt   String? // alt de l'image de couverture
+
+  // --- Génération IA en arrière-plan ---
+  generationStatus    VitrineArticleGenerationStatus @default(NONE)
+  generationProgress  String? // libellé courant (ex. "Génération du texte…", "Images 2/4")
+  generationError     String? // message d'erreur si FAILED
+  generationWarnings  String[]                       @default([]) // avertissements non-bloquants (ex. image gen failed)
+  generationStartedAt DateTime?
+  generationEndedAt   DateTime?
+
+  club       Club              @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  coverImage MediaAsset?       @relation("VitrineArticleCover", fields: [coverImageId], references: [id], onDelete: SetNull)
+  seoOgImage MediaAsset?       @relation("VitrineArticleOgImage", fields: [seoOgImageId], references: [id], onDelete: SetNull)
+  categories VitrineCategory[] @relation("VitrineArticleCategories")
+  comments   VitrineComment[]
+
+  @@unique([clubId, slug])
+  @@index([clubId, status, publishedAt])
+  @@index([clubId, channel, status, publishedAt])
+  @@index([clubId, generationStatus])
+}
+
+/// Annonce courte affichée sur la vitrine (≠ ClubAnnouncement membre).
+model VitrineAnnouncement {
+  id          String    @id @default(uuid())
+  clubId      String
+  title       String
+  body        String
+  pinned      Boolean   @default(false)
+  /// Ordre manuel (drag-and-drop admin). Plus petit = plus haut. Les
+  /// annonces épinglées sont triées entre elles par sortOrder avant les non
+  /// épinglées.
+  sortOrder   Int       @default(0)
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
 
+  @@index([clubId, publishedAt])
+}
+
+/// Photo de galerie publique — pointée vers un MediaAsset.
+model VitrineGalleryPhoto {
+  id           String   @id @default(uuid())
+  clubId       String
+  mediaAssetId String
+  caption      String?
+  category     String?
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  club       Club       @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  mediaAsset MediaAsset @relation("VitrineGalleryPhotoAsset", fields: [mediaAssetId], references: [id], onDelete: Cascade)
+
+  @@index([clubId, category, sortOrder])
+}
+
+/// Actif média générique (image, document) — scope par club, propriétaire
+/// polymorphe (`ownerKind` + `ownerId`). Remplace progressivement
+/// `ClubEventAttachment` en Phase 2.
+model MediaAsset {
+  id               String         @id @default(uuid())
+  clubId           String
+  kind             MediaAssetKind @default(IMAGE)
+  ownerKind        String?
+  ownerId          String?
+  fileName         String
+  mimeType         String
+  sizeBytes        Int
+  storagePath      String
+  publicUrl        String
+  widthPx          Int?
+  heightPx         Int?
+  /// SHA-256 hexadécimal du fichier stocké. Utilisé pour la déduplication
+  /// des reçus comptables et la détection de doublons cross-modules.
+  /// Nullable pour permettre un backfill progressif des assets existants.
+  sha256           String?
+  uploadedByUserId String?
+  createdAt        DateTime       @default(now())
+
+  club                  Club                   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  galleryPhotos         VitrineGalleryPhoto[]  @relation("VitrineGalleryPhotoAsset")
+  articleCovers         VitrineArticle[]       @relation("VitrineArticleCover")
+  articleOgImages       VitrineArticle[]       @relation("VitrineArticleOgImage")
+  ogPages               VitrinePage[]          @relation("VitrinePageOgImage")
+  projectPosters        ClubProject[]          @relation("ProjectPoster")
+  projectCovers         ClubProject[]          @relation("ProjectCover")
+  projectLiveItems      ProjectLiveItem[]      @relation("ProjectLiveItemMedia")
+  accountingExtractions AccountingExtraction[]
+  accountingDocuments   AccountingDocument[]
+  grantDocuments        GrantDocument[]
+  sponsorshipDocuments  SponsorshipDocument[]
+  clubDocumentSources   ClubDocument[]         @relation("ClubDocumentSource")
+  clubSignedDocuments   ClubSignedDocument[]   @relation("ClubSignedDocumentRendered")
+  chatAttachments       ChatMessageAttachment[] @relation("ChatAttachmentAsset")
+  chatThumbnails        ChatMessageAttachment[] @relation("ChatAttachmentThumbnail")
+
+  @@index([clubId, ownerKind, ownerId])
+  @@index([clubId, sha256])
+}
+
+// ============================================================================
+// Module PROJETS  (v1 — cf. plan glowing-bubbling-llama.md)
+// ----------------------------------------------------------------------------
+// ClubProject + sections built-in (Bénévolat/Admin/Com/Live + Accounting r-o),
+// phases LIVE multiples, contributeurs polymorphes, items (photos/vidéos)
+// modérés IA puis humain, comptes-rendus IA, listes de diffusion RGPD.
+// ============================================================================
+
+enum ProjectStatus {
+  PLANNED
+  ACTIVE
+  CLOSED
+  ARCHIVED
+}
+
+enum ProjectLivePhaseState {
+  UPCOMING
+  LIVE
+  CLOSED
+}
+
+enum ProjectSectionKind {
+  VOLUNTEERS
+  ADMIN
+  COMMUNICATION
+  LIVE
+  ACCOUNTING
+  CUSTOM
+}
+
+enum ProjectContributorRole {
+  CONTRIBUTOR
+}
+
+enum ProjectLiveItemKind {
+  PHOTO
+  VIDEO
+  /// Soumission texte libre (témoignage, caption, anecdote). `textContent`
+  /// est renseigné, `mediaAssetId` reste null. Utilisé pour enrichir les
+  /// comptes-rendus sans nécessiter une photo ou une vidéo.
+  TEXT
+}
+
+enum ProjectLiveItemAiDecision {
+  PENDING
+  APPROVED
+  REJECTED
+  ERROR
+}
+
+enum ProjectLiveItemHumanDecision {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ProjectLiveItemPublication {
+  NONE
+  VITRINE_NEWS
+  VITRINE_BLOG
+  MEMBER_ANNOUNCEMENT
+}
+
+enum ProjectReportTemplate {
+  COMPETITIF
+  FESTIF
+  BILAN
+  /// Génération avec prompt personnalisé fourni par l'admin (ex. « fais un
+  /// compte-rendu des performances de nos athlètes »). Le champ `customPrompt`
+  /// de `ProjectReport` est alors renseigné et remplace le preset de ton.
+  CUSTOM
+}
+
+enum ProjectReportStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum DistributionMailStatus {
+  DRAFT
+  SENT
+  FAILED
+  UNSUBSCRIBED
+}
+
+/// Événement / Projet long-terme (au-delà d'un ClubEvent simple).
+/// Créé avec 4 sections built-in (VOLUNTEERS, ADMIN, COMMUNICATION, LIVE),
+/// et une 5e section ACCOUNTING en lecture seule si le module compta est
+/// actif. Rename + reorder des sections possibles dès v1.
+model ClubProject {
+  id                 String        @id @default(uuid())
+  clubId             String
+  slug               String
+  title              String
+  summary            String?
+  description        String?
+  status             ProjectStatus @default(PLANNED)
+  startsAt           DateTime?
+  endsAt             DateTime?
+  posterAssetId      String?
+  coverImageId       String?
+  budgetPlannedCents Int?
+
+  /// Quotas par contributeur par phase LIVE — configurables par projet.
+  maxPhotosPerContributorPerPhase Int     @default(10)
+  maxVideosPerContributorPerPhase Int     @default(3)
+  maxTextsPerContributorPerPhase  Int     @default(20)
+  /// Toggle admin : afficher la liste des contributeurs en bas d'un
+  /// compte-rendu publié (respect des contributeurs anonymes).
+  showContributorCredits          Boolean @default(true)
+
+  createdByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  club                  Club                   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  posterAsset           MediaAsset?            @relation("ProjectPoster", fields: [posterAssetId], references: [id], onDelete: SetNull)
+  coverImage            MediaAsset?            @relation("ProjectCover", fields: [coverImageId], references: [id], onDelete: SetNull)
+  sections              ProjectSection[]
+  livePhases            ProjectLivePhase[]
+  contributors          ProjectContributor[]
+  liveItems             ProjectLiveItem[]
+  reports               ProjectReport[]
+  distributions         ProjectDistribution[]
+  events                ClubEvent[]
+  accountingEntries     AccountingEntry[]
+  accountingAllocations AccountingAllocation[]
+  grantApplications     GrantApplication[]
+  sponsorshipDeals      SponsorshipDeal[]
+  messageCampaigns      MessageCampaign[]
+  agentConversations    AgentConversation[]
+
+  @@unique([clubId, slug])
+  @@index([clubId, status])
+}
+
+/// Section structurée d'un projet (wiki rich-text + documents joints via
+/// MediaAsset.ownerKind='PROJECT_SECTION'). V1 : 4 kinds built-in + ACCOUNTING
+/// lecture seule conditionnelle. Renommable, réordonnable.
+model ProjectSection {
+  id        String             @id @default(uuid())
+  projectId String
+  kind      ProjectSectionKind
+  label     String
+  sortOrder Int                @default(0)
+  /// Wiki Tiptap JSON — contenu longue forme édité depuis l'admin.
+  bodyJson  Json?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  project ClubProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, sortOrder])
+}
+
+/// Phase LIVE d'un projet — un projet peut avoir N phases (ex. stage 3 jours).
+/// Chaque phase a son cycle `UPCOMING → LIVE → CLOSED` et ses propres quotas
+/// contributeurs (les quotas sont comptés sur `phaseId` + `contributorId`).
+model ProjectLivePhase {
+  id        String                @id @default(uuid())
+  projectId String
+  label     String
+  startsAt  DateTime
+  endsAt    DateTime
+  state     ProjectLivePhaseState @default(UPCOMING)
+  openedAt  DateTime?
+  closedAt  DateTime?
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+
+  project   ClubProject       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  liveItems ProjectLiveItem[]
+
+  @@index([projectId, startsAt])
+}
+
+/// Contributeur d'un projet — polymorphe Member OU Contact (exactement un).
+/// Portée par projet, rôle unique `CONTRIBUTOR` en v1, révocation manuelle
+/// via `revokedAt` + raison, désactivation auto via hook Member.status.
+model ProjectContributor {
+  id            String                 @id @default(uuid())
+  projectId     String
+  memberId      String?
+  contactId     String?
+  role          ProjectContributorRole @default(CONTRIBUTOR)
+  addedByUserId String
+  addedAt       DateTime               @default(now())
+  revokedAt     DateTime?
+  revokedReason String?
+
+  project   ClubProject       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  member    Member?           @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  contact   Contact?          @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  liveItems ProjectLiveItem[]
+
+  @@index([projectId, revokedAt])
+  @@index([memberId])
+  @@index([contactId])
+}
+
+/// Item uploadé pendant la phase LIVE (photo ou vidéo). Pipeline :
+///   PENDING (IA) → APPROVED/REJECTED/ERROR (aiDecision)
+///   PENDING (humain) → APPROVED/REJECTED (humanDecision, override possible)
+///   publishedTo : NONE par défaut, VITRINE_NEWS / VITRINE_BLOG /
+///     MEMBER_ANNOUNCEMENT selon ce que l'admin publie.
+model ProjectLiveItem {
+  id                  String              @id @default(uuid())
+  projectId           String
+  phaseId             String?
+  contributorId       String
+  kind                ProjectLiveItemKind
+  /// Nullable pour permettre les items de kind=TEXT (le textContent est
+  /// alors renseigné à la place). Requis pour PHOTO et VIDEO — validation
+  /// applicative dans `project-live-item.service.ts::submit()`.
+  mediaAssetId        String?
+  /// Contenu texte brut (max 4000 chars), pour kind=TEXT uniquement.
+  /// Stocké tel quel, la modération IA texte peut le parcourir ensuite.
+  textContent         String?
+  submittedAt         DateTime            @default(now())
+  /// False si l'upload a eu lieu après ProjectLivePhase.state=CLOSED.
+  /// L'UI affiche alors un badge « ajout tardif ».
+  submittedDuringLive Boolean             @default(true)
+
+  aiDecision  ProjectLiveItemAiDecision @default(PENDING)
+  aiReason    String?
+  aiScore     Float?
+  aiCheckedAt DateTime?
+
+  humanDecision  ProjectLiveItemHumanDecision @default(PENDING)
+  humanDecidedBy String?
+  humanDecidedAt DateTime?
+
+  publishedTo    ProjectLiveItemPublication @default(NONE)
+  publishedRefId String?
+
+  project     ClubProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  phase       ProjectLivePhase?  @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+  contributor ProjectContributor @relation(fields: [contributorId], references: [id], onDelete: Cascade)
+  mediaAsset  MediaAsset?        @relation("ProjectLiveItemMedia", fields: [mediaAssetId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, submittedAt])
+  @@index([projectId, aiDecision, humanDecision])
+  @@index([contributorId, phaseId, kind])
+}
+
+/// Compte-rendu IA d'un projet. 3 templates (COMPETITIF / FESTIF / BILAN),
+/// draft édité en Tiptap par l'admin puis publié comme VitrineArticle.
+/// Stocke les contributeurs crédités pour l'attribution en bas d'article.
+model ProjectReport {
+  id                             String                     @id @default(uuid())
+  projectId                      String
+  template                       ProjectReportTemplate
+  status                         ProjectReportStatus        @default(DRAFT)
+  title                          String
+  /// Prompt libre saisi par l'admin. Renseigné uniquement pour
+  /// template=CUSTOM, null pour les 3 presets prédéfinis. Max 2000 chars.
+  customPrompt                   String?
+  bodyJson                       Json
+  /// IDs des ProjectLiveItem effectivement utilisés par le générateur IA.
+  sourceLiveItemIds              String[]                   @default([])
+  /// IDs Member cités / crédités (union Member + Contact via deux colonnes
+  /// parallèles — pattern FamilyMember).
+  sourceContributorMemberIds     String[]                   @default([])
+  sourceContributorContactIds    String[]                   @default([])
+  publishedTo                    ProjectLiveItemPublication @default(NONE)
+  publishedRefId                 String?
+  generatedByAgentConversationId String?
+  createdByUserId                String
+  createdAt                      DateTime                   @default(now())
+  publishedAt                    DateTime?
+  updatedAt                      DateTime                   @updatedAt
+
+  project ClubProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, status])
+}
+
+/// Liste de diffusion club-level (réutilisable entre projets). Ex. « Mairie »,
+/// « Partenaires », « Presse locale ». V2 — anticipé en v1 pour le schéma.
+model DistributionList {
+  id          String   @id @default(uuid())
+  clubId      String
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  club          Club                  @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  contacts      DistributionContact[]
+  distributions ProjectDistribution[]
+
+  @@unique([clubId, name])
+}
+
+/// Contact d'une liste de diffusion — RGPD : consentement daté + source
+/// obligatoires, unsubscribe trace via `consentRevokedAt`.
+model DistributionContact {
+  id               String    @id @default(uuid())
+  listId           String
+  firstName        String?
+  lastName         String?
+  organization     String?
+  email            String
+  phone            String?
+  consentGivenAt   DateTime
+  consentSource    String
+  consentRevokedAt DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  list  DistributionList   @relation(fields: [listId], references: [id], onDelete: Cascade)
+  sends DistributionSend[]
+
+  @@unique([listId, email])
+  @@index([email])
+}
+
+/// Envoi d'un mail projet → liste de diffusion (v2). Draft IA éditable puis
+/// envoi via ClubSendingDomain + SPF/DKIM. Un `DistributionSend` par destinataire
+/// avec token unsubscribe unique.
+model ProjectDistribution {
+  id                    String    @id @default(uuid())
+  projectId             String
+  listId                String
+  subject               String
+  bodyHtml              String
+  bodyText              String?
+  attachedMediaAssetIds String[]  @default([])
+  aiDraftedAt           DateTime?
+  createdByUserId       String
+  createdAt             DateTime  @default(now())
+  sentAt                DateTime?
+
+  project ClubProject        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  list    DistributionList   @relation(fields: [listId], references: [id], onDelete: Cascade)
+  sends   DistributionSend[]
+
+  @@index([projectId])
+  @@index([listId])
+}
+
+/// Log immuable d'envoi pour audit RGPD — un send par (distribution, contact).
+/// Seule la colonne `openedAt` est updatable (pixel tracking optionnel).
+model DistributionSend {
+  id               String                 @id @default(uuid())
+  distributionId   String
+  contactId        String
+  /// Copie figée de l'email au moment de l'envoi (audit RGPD, évite de
+  /// perdre la trace si le contact est modifié/supprimé après).
+  email            String
+  status           DistributionMailStatus @default(DRAFT)
+  /// Token unique pour le lien unsubscribe dans le mail.
+  unsubscribeToken String                 @unique
+  sentAt           DateTime?
+  deliveredAt      DateTime?
+  openedAt         DateTime?
+  errorMessage     String?
+
+  distribution ProjectDistribution @relation(fields: [distributionId], references: [id], onDelete: Cascade)
+  contact      DistributionContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([distributionId, status])
+}
+
+// ============================================================================
+// Module COMPTABILITÉ ANALYTIQUE IA (v1 — cf. plan glowing-bubbling-llama.md)
+// ----------------------------------------------------------------------------
+// Partie double pragmatique + OCR IA + analytique (projet, cohorte, gender,
+// discipline, groupes dynamiques snapshot). Subventions workflow complet,
+// sponsoring cash + nature (comptes 870/871). Verrouillage mensuel +
+// clôture annuelle. Audit immuable. Budget IA mensuel.
+// ============================================================================
+
+/// Mode TVA du club. Impacte la saisie : NONE cache les champs HT/TVA,
+/// MIXED/FULL les expose et applique les calculs PCG standards.
+enum VatMode {
+  NONE
+  MIXED
+  FULL
+}
+
+/// Nature comptable d'un compte du plan curated. Dicte la dérivation
+/// automatique débit/crédit et le positionnement dans le bilan /
+/// compte de résultat.
+enum AccountingAccountKind {
+  INCOME
+  EXPENSE
+  ASSET
+  LIABILITY
+  /// Comptes 870/871 "contributions volontaires en nature" — neutres au
+  /// résultat mais tracés séparément pour bilan moral.
+  NEUTRAL_IN_KIND
+}
+
+/// Type de document joint à une écriture comptable.
+enum AccountingDocumentKind {
+  RECEIPT
+  INVOICE
+  QUOTE
+  CONTRACT
+  REPORT
+  OTHER
+}
+
+/// Actions tracées dans le journal d'audit immuable.
+enum AccountingAuditAction {
+  CREATE
+  UPDATE
+  LOCK
+  UNLOCK
+  CANCEL
+  CONTRAPASS
+  EXPORT
+  FISCAL_YEAR_CLOSE
+}
+
+/// Plan comptable curated par club (~30 comptes PCG associatif seedés à
+/// l'activation du module, extensibles par le trésorier).
+model AccountingAccount {
+  id        String                @id @default(uuid())
+  clubId    String
+  /// Code PCG (ex "606400" pour "Achats non stockés fournitures"). Unique
+  /// par club.
+  code      String
+  /// Libellé lisible (snapshot copié sur chaque ligne d'écriture à la
+  /// création pour persistance même si le compte est renommé).
+  label     String
+  kind      AccountingAccountKind
+  /// True si le compte fait partie du sous-ensemble seedé par défaut.
+  /// Permet de distinguer les comptes standards des ajouts custom.
+  isDefault Boolean               @default(false)
+  isActive  Boolean               @default(true)
+  sortOrder Int                   @default(0)
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+
+  club              Club                       @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  mappings          AccountingAccountMapping[]
+  financialAccounts ClubFinancialAccount[]
+
+  @@unique([clubId, code])
+  @@index([clubId, kind])
+  @@index([clubId, isActive])
+}
+
+/// Mapping d'une source (produit d'adhésion, frais one-time, vente shop,
+/// subvention, sponsoring) vers un compte du plan comptable. Utilisé par
+/// l'analytique auto pour savoir sur quel compte PCG imputer une
+/// encaissement automatique.
+model AccountingAccountMapping {
+  id          String   @id @default(uuid())
+  clubId      String
+  /// Type de source. Convention string libre :
+  /// MEMBERSHIP_PRODUCT | MEMBERSHIP_ONE_TIME_FEE | SHOP_PRODUCT |
+  /// SUBSIDY | SPONSORSHIP_CASH | SPONSORSHIP_IN_KIND | STRIPE_FEE |
+  /// BANK_ACCOUNT.
+  sourceType  String
+  /// ID de la source spécifique. Null = mapping par défaut pour ce
+  /// `sourceType` (fallback).
+  sourceId    String?
+  accountId   String
+  /// Dénormalisé pour lookup rapide sans jointure.
+  accountCode String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  account AccountingAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, sourceType, sourceId])
+  @@index([clubId, sourceType])
+}
+
+/// Cohortes analytiques (tranches d'âge) configurables par club. 5 defaults
+/// seedés : BABY 0-5, ENFANT 6-11, ADO 12-17, ADULTE 18-59, SENIOR 60+.
+/// Custom codes préfixés "CUSTOM_".
+model AccountingCohort {
+  id        String   @id @default(uuid())
+  clubId    String
+  code      String
+  label     String
+  /// Inclusif. Null = pas de borne basse.
+  minAge    Int?
+  /// Inclusif. Null = pas de borne haute.
+  maxAge    Int?
+  sortOrder Int      @default(0)
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  club        Club                   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  allocations AccountingAllocation[]
+
+  @@unique([clubId, code])
   @@index([clubId])
+}
+
+/// Ligne comptable d'une écriture (partie double). Chaque entry a au moins
+/// 2 lignes dont la somme des débits = somme des crédits.
+model AccountingEntryLine {
+  id               String             @id @default(uuid())
+  entryId          String
+  /// Dénormalisé multi-tenant safety.
+  clubId           String
+  /// Code PCG ex "606400".
+  accountCode      String
+  /// Snapshot du label compte à la création (persiste même si renommage).
+  accountLabel     String
+  /// Libellé libre de la ligne (optionnel).
+  label            String?
+  /// AUTO = dérivé à la création depuis (accountKind, entryKind).
+  /// DEBIT/CREDIT = forcé (contre-passations, ajustements).
+  side             AccountingLineSide @default(AUTO)
+  /// Matérialisé pour FEC-readiness : exactement une des deux colonnes > 0.
+  debitCents       Int                @default(0)
+  creditCents      Int                @default(0)
+  vatRate          Decimal?           @db.Decimal(5, 2)
+  vatAmountCents   Int?
+  sortOrder        Int                @default(0)
+  /// Marqueur de rapprochement bancaire (anticipation v2+). Non utilisé
+  /// en v1 mais schéma posé pour éviter une migration future.
+  bankReconciledAt DateTime?
+  createdAt        DateTime           @default(now())
+
+  // --- Validation par ligne (flow NEEDS_REVIEW → POSTED granulaire) ---
+  /// Timestamp de validation humaine de la ligne. Null = en attente de
+  /// revue. Quand toutes les lignes "article" (hors contrepartie banque)
+  /// sont validées, l'entry parente passe automatiquement en POSTED.
+  validatedAt       DateTime?
+  validatedByUserId String?
+
+  // --- Traçabilité suggestion IA (pour affichage dans la review UI) ---
+  /// Compte PCG proposé par l'IA. Gardé même si l'user change le compte
+  /// final (pour audit et comparaison).
+  iaSuggestedAccountCode  String?
+  /// Phrase d'explication IA du choix (max 300 chars).
+  iaReasoning             String?
+  /// Score de confiance IA sur le compte (0-100).
+  iaConfidencePct         Int?
+  /// Si la ligne résulte d'une consolidation, contient les labels des
+  /// articles d'origine fusionnés. Vide = ligne non consolidée. Permet
+  /// d'afficher en tooltip "Cette ligne regroupe : Entrée, Plat, Dessert".
+  mergedFromArticleLabels String[] @default([])
+
+  entry       AccountingEntry        @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  allocations AccountingAllocation[]
+
+  @@index([entryId])
+  @@index([clubId, accountCode])
+}
+
+/// Ventilation analytique d'une ligne comptable. N allocations par ligne,
+/// sommant exactement le montant de la ligne. Portent les dimensions :
+/// projet, cohorte, gender, discipline, membre, groupes dynamiques
+/// (snapshot + table normalisée), tags libres.
+model AccountingAllocation {
+  id                         String   @id @default(uuid())
+  lineId                     String
+  /// Dénormalisé multi-tenant safety.
+  clubId                     String
+  amountCents                Int
+  projectId                  String?
+  /// Code cohorte (FK composite vers AccountingCohort).
+  cohortCode                 String?
+  gender                     Gender?
+  /// Code discipline snapshot (ex "karate", "judo"). Libre, minuscule.
+  disciplineCode             String?
+  memberId                   String?
+  /// Flag RGPD : si true, memberId a été anonymisé (droit à l'oubli) et
+  /// les dynamicGroupLabelsSnapshot/disciplineCode restent pour garder
+  /// les totaux justes sans l'identité.
+  memberIdAnonymized         Boolean  @default(false)
+  // NOTE : field `gender Gender?` (pas AccountingAllocationGender — on
+  // réutilise l'enum Member pour cohérence). Déclaré juste avant memberId.
+  /// Snapshot IDs des groupes dynamiques au moment du paiement. Array
+  /// pour affichage rapide. Les requêtes analytiques passent par la
+  /// table normalisée AccountingAllocationGroupTag.
+  dynamicGroupIdsSnapshot    String[] @default([])
+  /// Snapshot des labels groupes (persiste même si le groupe est
+  /// renommé ou supprimé).
+  dynamicGroupLabelsSnapshot String[] @default([])
+  /// Tags libres ajoutés manuellement par le saisisseur.
+  freeformTags               String[] @default([])
+  createdAt                  DateTime @default(now())
+
+  line      AccountingEntryLine            @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  project   ClubProject?                   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  member    Member?                        @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  cohort    AccountingCohort?              @relation(fields: [clubId, cohortCode], references: [clubId, code])
+  groupTags AccountingAllocationGroupTag[]
+
+  @@index([clubId, projectId])
+  @@index([clubId, cohortCode])
+  @@index([clubId, disciplineCode])
+  @@index([memberId])
+  @@index([lineId])
+}
+
+/// Table normalisée pour les queries analytiques sur les groupes
+/// dynamiques. En complément du snapshot array sur l'allocation.
+model AccountingAllocationGroupTag {
+  id           String   @id @default(uuid())
+  allocationId String
+  clubId       String
+  groupId      String
+  /// Snapshot label (persiste si le groupe est supprimé ultérieurement).
+  groupLabel   String
+  createdAt    DateTime @default(now())
+
+  allocation AccountingAllocation @relation(fields: [allocationId], references: [id], onDelete: Cascade)
+
+  @@unique([allocationId, groupId])
+  @@index([clubId, groupId])
+}
+
+/// Verrou mensuel de la compta. Une fois posé par le trésorier, les
+/// entries du mois deviennent immutables (sauf création de contre-passation
+/// datée d'un mois ouvert).
+model AccountingPeriodLock {
+  id             String   @id @default(uuid())
+  clubId         String
+  /// Format "YYYY-MM".
+  month          String
+  lockedAt       DateTime @default(now())
+  lockedByUserId String
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, month])
+  @@index([clubId])
+}
+
+/// Clôture annuelle. Verrouille tous les mois de l'année + snapshot des
+/// totaux pour audit. Une fois fermée, aucune manipulation possible.
+model AccountingFiscalYearClose {
+  id             String   @id @default(uuid())
+  clubId         String
+  year           Int
+  closedAt       DateTime @default(now())
+  closedByUserId String
+  /// Snapshot JSON des totaux à la clôture : { revenues, expenses,
+  /// result, byAccount: {...}, byProject: {...} }.
+  snapshotJson   Json?
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, year])
+  @@index([clubId])
+}
+
+/// Résultat brut d'une extraction IA (OCR reçu/facture). Persistée pour
+/// audit et reprise (l'user peut corriger plusieurs fois avant validation
+/// finale, la base reste stable).
+model AccountingExtraction {
+  id                   String    @id @default(uuid())
+  clubId               String
+  mediaAssetId         String
+  /// Output brut JSON du modèle vision (pour rejouer si besoin).
+  rawJson              Json
+  /// Score de confiance par champ extrait : { total: 0.9, date: 0.7, ... }.
+  confidencePerField   Json
+  extractedTotalCents  Int?
+  extractedVatCents    Int?
+  extractedDate        DateTime?
+  extractedVendor      String?
+  /// Numéro de facture extrait (si présent sur le document).
+  extractedInvoiceNumber String?
+  /// Proposition de compte PCG par l'IA (à valider par l'humain).
+  extractedAccountCode String?
+  /// Résultat du 2e appel IA "réflexion structurée" : ventilation
+  /// catégorisée par compte avec reasoning et confiance par ligne.
+  /// Format JSON : { globalConfidencePct: int, globalReasoning: string,
+  /// lines: [{ accountCode, amountCents, label, reasoning,
+  /// confidencePct, projectId? }] }. Null si l'étape a échoué ou si
+  /// l'écriture est en fallback (budget IA dépassé).
+  categorizationJson   Json?
+  model                String
+  inputTokens          Int       @default(0)
+  outputTokens         Int       @default(0)
+  costCents            Int       @default(0)
+  /// Nombre de pages traitées (PDF multi-pages).
+  pageCount            Int       @default(1)
+  /// Si non null, l'extraction a échoué (OpenRouter timeout, JSON invalide,
+  /// budget IA épuisé). L'user saisit manuellement.
+  error                String?
+  createdAt            DateTime  @default(now())
+
+  mediaAsset MediaAsset        @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+  entries    AccountingEntry[]
+
+  @@index([clubId, createdAt])
+}
+
+/// Log d'audit immuable (append-only). Toute création / modification /
+/// annulation / clôture génère une entrée ici.
+model AccountingAuditLog {
+  id        String                @id @default(uuid())
+  clubId    String
+  /// Null pour actions globales (ex: clôture d'exercice).
+  entryId   String?
+  userId    String
+  action    AccountingAuditAction
+  /// Diff before/after des champs modifiés (pour UPDATE).
+  diffJson  Json?
+  /// Contexte additionnel (motif de contre-passation, raison d'annulation,
+  /// filtres d'export CSV, etc.).
+  metadata  Json?
+  createdAt DateTime              @default(now())
+
+  club  Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  entry AccountingEntry? @relation(fields: [entryId], references: [id], onDelete: SetNull)
+
+  @@index([clubId, createdAt])
+  @@index([entryId])
+}
+
+/// Jointure entry ↔ mediaAsset pour attacher N documents à une écriture.
+/// Unique par paire pour éviter les doublons.
+model AccountingDocument {
+  id           String                 @id @default(uuid())
+  clubId       String
+  entryId      String
+  mediaAssetId String
+  kind         AccountingDocumentKind @default(RECEIPT)
+  createdAt    DateTime               @default(now())
+
+  entry      AccountingEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  mediaAsset MediaAsset      @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+
+  @@unique([entryId, mediaAssetId])
+  @@index([clubId])
+}
+
+/// Agrégation mensuelle de l'usage IA par club. Incrémentée à chaque
+/// appel via AiBudgetService. Remplace les scalaires sur Club pour offrir
+/// un historique mensuel exploitable (trend graphs, budgets par mois).
+model AiMonthlyUsage {
+  id               String   @id @default(uuid())
+  clubId           String
+  /// Format "YYYY-MM".
+  yearMonth        String
+  totalCostCents   Int      @default(0)
+  inputTokens      BigInt   @default(0)
+  outputTokens     BigInt   @default(0)
+  imagesGenerated  Int      @default(0)
+  /// Breakdown par feature : { RECEIPT_OCR: 1200, ARTICLE_GENERATION: 300 }.
+  featureBreakdown Json     @default("{}")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, yearMonth])
+  @@index([clubId])
+}
+
+/// Document à signer par les membres (règlement intérieur, droit à l'image,
+/// autorisation parentale, etc.). Chaque mise à jour crée une nouvelle
+/// version qui invalide les signatures précédentes.
+enum ClubDocumentCategory {
+  REGLEMENT_INTERIEUR
+  AUTORISATION_PARENTALE
+  DROIT_IMAGE
+  REGLEMENT_FEDERAL
+  AUTRE
+}
+
+enum ClubDocumentFieldType {
+  SIGNATURE
+  TEXT
+  DATE
+  CHECKBOX
+}
+
+model ClubDocument {
+  id           String               @id @default(uuid())
+  clubId       String
+  /// Catégorie sémantique (utile pour filtrer + savoir si autorisation
+  /// parentale demandée uniquement aux mineurs).
+  category     ClubDocumentCategory @default(AUTRE)
+  name         String
+  description  String?
+  /// MediaAsset du PDF source (kind=DOCUMENT).
+  mediaAssetId String
+  /// Numéro de version. Incrémenté à chaque mise à jour de fichier.
+  /// Une nouvelle version invalide les anciennes ClubSignedDocument.
+  version      Int                  @default(1)
+  /// SHA-256 du fichier (intégrité + détection de doublons).
+  fileSha256   String
+  /// Si true, doit être signé pour accéder à l'espace membre / inscriptions.
+  isRequired   Boolean              @default(true)
+  /// Désactivé = ne s'affiche plus aux membres (mais signatures conservées).
+  isActive     Boolean              @default(true)
+  /// Bornes de validité (saison sportive). validTo = null = sans expiration.
+  validFrom    DateTime
+  validTo      DateTime?
+  /// Si true, demandé uniquement aux mineurs (selon Member.birthDate).
+  minorsOnly   Boolean              @default(false)
+  /// Ciblage par rôles système (MembershipRole). Vide = tous rôles
+  /// éligibles. Si non vide, le doc n'est demandé qu'aux membres ayant
+  /// au moins l'un de ces rôles dans le club.
+  /// Exemples : ['COACH'] = charte des coachs ; ['CLUB_ADMIN','BOARD']
+  /// = engagement de confidentialité du bureau.
+  targetSystemRoles MembershipRole[] @default([])
+  /// Ciblage par rôles personnalisés du club (ClubRoleDefinition.id).
+  /// Vide = pas de filtre par rôle custom. Combiné en OR avec
+  /// targetSystemRoles : un membre est éligible s'il a un rôle système
+  /// matché OU un rôle custom matché.
+  targetCustomRoleIds String[]      @default([])
+  /// Si true, le cron annuel (1er septembre 06:00 UTC) bump la version +
+  /// invalide toutes les signatures existantes pour forcer une re-signature
+  /// à chaque saison sportive (typique pour un règlement intérieur).
+  resetAnnually Boolean             @default(false)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  club             Club                  @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  mediaAsset       MediaAsset            @relation("ClubDocumentSource", fields: [mediaAssetId], references: [id], onDelete: Restrict)
+  fields           ClubDocumentField[]
+  signedDocuments  ClubSignedDocument[]
+
+  @@index([clubId, isActive, isRequired])
+  @@index([clubId, category])
+}
+
+/// Zone positionnée sur le PDF (signature, texte, date, case à cocher).
+/// Coordonnées toujours en % du format de la page (0..1).
+model ClubDocumentField {
+  id         String                @id @default(uuid())
+  documentId String
+  page       Int
+  x          Float
+  y          Float
+  width      Float
+  height     Float
+  fieldType  ClubDocumentFieldType
+  required   Boolean               @default(true)
+  /// Libellé interne (ex: "Signature parent", "Date du jour"). Optionnel.
+  label      String?
+  sortOrder  Int                   @default(0)
+
+  document ClubDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+}
+
+/// Snapshot d'une signature : PDF signé + audit trail. Lié à un user
+/// (compte connecté) plutôt qu'à un member, pour les autorisations
+/// parentales où le payer-contact signe pour son enfant.
+model ClubSignedDocument {
+  id              String   @id @default(uuid())
+  clubId          String
+  documentId      String
+  /// Version signée (snapshot du document au moment de la signature).
+  version         Int
+  /// User ayant signé (peut être un payer-contact pour autorisation
+  /// parentale d'un enfant).
+  userId          String
+  /// Member visé par la signature (pour autorisations parentales).
+  memberId        String?
+  /// MediaAsset du PDF signé (rendu final avec overlay).
+  signedAssetId   String
+  /// SHA-256 du fichier signé pour intégrité.
+  signedSha256    String
+  /// SHA-256 du document SOURCE au moment de la signature (anti-falsification).
+  sourceSha256    String
+  /// Adresse IP au moment de la signature (audit trail).
+  ipAddress       String?
+  /// User-Agent du device qui a signé (audit trail).
+  userAgent       String?
+  /// JSON des valeurs saisies dans les champs (signatures + texte + cases).
+  /// Format : { fieldId: { type, valuePngBase64? | text? | bool? } }
+  fieldValuesJson Json
+  signedAt        DateTime @default(now())
+  /// Invalidée si l'admin a publié une nouvelle version après cette signature.
+  /// Recalculé à la lecture (pas de migration nécessaire pour MAJ).
+  invalidatedAt   DateTime?
+
+  club        Club         @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  document    ClubDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  signedAsset MediaAsset   @relation("ClubSignedDocumentRendered", fields: [signedAssetId], references: [id], onDelete: Restrict)
+
+  @@unique([documentId, version, userId, memberId])
+  @@index([clubId, signedAt])
+  @@index([userId])
+  @@index([memberId])
 }

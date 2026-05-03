@@ -1,12 +1,21 @@
 import { registerEnumType } from '@nestjs/graphql';
 import {
+  AccountingAccountKind,
+  AccountingAuditAction,
+  AccountingDocumentKind,
   AccountingEntryKind,
+  AccountingEntrySource,
+  AccountingEntryStatus,
+  AccountingLineSide,
   ClubPaymentMethod,
   ClubSendingDomainPurpose,
   ClubSendingDomainVerificationStatus,
   CommunicationChannel,
+  FamilyInviteRole,
   FamilyMemberLinkRole,
+  Gender,
   GrantApplicationStatus,
+  GrantDocumentKind,
   InvoiceLineAdjustmentType,
   InvoiceLineKind,
   InvoiceStatus,
@@ -19,9 +28,21 @@ import {
   MessageCampaignStatus,
   PricingAdjustmentType,
   SponsorshipDealStatus,
+  SponsorshipDocumentKind,
+  SponsorshipKind,
   SubscriptionBillingRhythm,
+  VatMode,
   ChatRoomKind,
   ChatRoomMemberRole,
+  ChatRoomChannelMode,
+  ChatRoomPermissionTarget,
+  SystemRole,
+  ClubSurveyStatus,
+  ClubEventStatus,
+  ClubEventRegistrationStatus,
+  CourseSlotBookingStatus,
+  BlogPostStatus,
+  ShopOrderStatus,
 } from '@prisma/client';
 import { ModuleCode } from '../domain/module-registry/module-codes';
 import { QuickMessageRecipientType } from '../comms/enums/quick-message-recipient.enum';
@@ -38,6 +59,7 @@ registerEnumType(MemberCustomFieldType, {
   name: 'MemberCustomFieldType',
 });
 registerEnumType(FamilyMemberLinkRole, { name: 'FamilyMemberLinkRole' });
+registerEnumType(FamilyInviteRole, { name: 'FamilyInviteRole' });
 registerEnumType(InvoiceStatus, { name: 'InvoiceStatus' });
 registerEnumType(InvoiceLineKind, { name: 'InvoiceLineKind' });
 registerEnumType(SubscriptionBillingRhythm, {
@@ -64,11 +86,47 @@ registerEnumType(QuickMessageRecipientType, {
   name: 'QuickMessageRecipientType',
 });
 registerEnumType(AccountingEntryKind, { name: 'AccountingEntryKind' });
+registerEnumType(AccountingEntryStatus, {
+  name: 'AccountingEntryStatus',
+});
+registerEnumType(AccountingEntrySource, {
+  name: 'AccountingEntrySource',
+});
+registerEnumType(AccountingAccountKind, { name: 'AccountingAccountKind' });
+registerEnumType(AccountingLineSide, { name: 'AccountingLineSide' });
+registerEnumType(AccountingAuditAction, {
+  name: 'AccountingAuditAction',
+});
+registerEnumType(AccountingDocumentKind, {
+  name: 'AccountingDocumentKind',
+});
+registerEnumType(Gender, { name: 'Gender' });
+registerEnumType(VatMode, { name: 'VatMode' });
 registerEnumType(GrantApplicationStatus, {
   name: 'GrantApplicationStatus',
 });
+registerEnumType(GrantDocumentKind, { name: 'GrantDocumentKind' });
 registerEnumType(SponsorshipDealStatus, {
   name: 'SponsorshipDealStatus',
 });
+registerEnumType(SponsorshipKind, { name: 'SponsorshipKind' });
+registerEnumType(SponsorshipDocumentKind, {
+  name: 'SponsorshipDocumentKind',
+});
 registerEnumType(ChatRoomKind, { name: 'ChatRoomKind' });
 registerEnumType(ChatRoomMemberRole, { name: 'ChatRoomMemberRole' });
+registerEnumType(ChatRoomChannelMode, { name: 'ChatRoomChannelMode' });
+registerEnumType(ChatRoomPermissionTarget, {
+  name: 'ChatRoomPermissionTarget',
+});
+registerEnumType(SystemRole, { name: 'SystemRole' });
+registerEnumType(ClubSurveyStatus, { name: 'ClubSurveyStatus' });
+registerEnumType(ClubEventStatus, { name: 'ClubEventStatus' });
+registerEnumType(ClubEventRegistrationStatus, {
+  name: 'ClubEventRegistrationStatus',
+});
+registerEnumType(CourseSlotBookingStatus, {
+  name: 'CourseSlotBookingStatus',
+});
+registerEnumType(BlogPostStatus, { name: 'BlogPostStatus' });
+registerEnumType(ShopOrderStatus, { name: 'ShopOrderStatus' });

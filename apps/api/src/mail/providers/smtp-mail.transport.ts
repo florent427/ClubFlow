@@ -146,6 +146,37 @@ export class SmtpMailTransport implements MailTransport {
           : `smtp-${Date.now()}`;
       return { providerMessageId: mid };
     } catch (e) {
+      // En DEV (NODE_ENV != production), si le SMTP local est down
+      // (ECONNREFUSED, ETIMEDOUT, ECONNRESET), on dégrade gracieusement
+      // en console.log au lieu de bloquer le flow utilisateur. Évite
+      // qu'un dev sans Mailpit ne puisse pas s'inscrire ou tester
+      // les notifications.
+      const isConnError =
+        e instanceof Error &&
+        /ECONNREFUSED|ETIMEDOUT|ECONNRESET|ENOTFOUND/.test(e.message);
+      const isProd = process.env.NODE_ENV === 'production';
+      if (isConnError && !isProd) {
+        this.log.warn(
+          `[DEV] SMTP local injoignable — email loggé uniquement : ${
+            (e as Error).message
+          }`,
+        );
+        // eslint-disable-next-line no-console
+        console.log(
+          [
+            '\n========================================================================',
+            '📧 EMAIL SIMULÉ (SMTP local indisponible — démarrer Mailpit pour le voir)',
+            `   from    : ${params.from}`,
+            `   to      : ${params.to}`,
+            `   subject : ${params.subject}`,
+            `   replyTo : ${params.replyTo ?? '—'}`,
+            `   --- text ---`,
+            params.text ?? '(html only)',
+            '========================================================================\n',
+          ].join('\n'),
+        );
+        return { providerMessageId: `dev-fallback-${Date.now()}` };
+      }
       this.log.warn(`SMTP sendMail: ${e}`);
       throw new Error(
         `Envoi SMTP impossible : ${e instanceof Error ? e.message : String(e)}`,

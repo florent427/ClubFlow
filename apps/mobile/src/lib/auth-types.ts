@@ -7,6 +7,8 @@ export type ViewerProfile = {
   isPrimaryProfile: boolean;
   familyId: string | null;
   householdGroupId?: string | null;
+  /** URL photo de la fiche Member ou Contact (optionnel). */
+  photoUrl?: string | null;
 };
 
 export type LoginWithProfilesData = {
@@ -43,4 +45,24 @@ export type SelectContactProfileData = {
       clubId: string;
     }[];
   };
+};
+
+export type RegisterContactData = {
+  registerContact: { ok: boolean };
+};
+
+export type VerifyEmailData = {
+  verifyEmail: {
+    accessToken: string;
+    contactClubId?: string | null;
+    viewerProfiles: {
+      memberId: string | null;
+      contactId: string | null;
+      clubId: string;
+    }[];
+  };
+};
+
+export type ResendVerificationData = {
+  resendVerificationEmail: { ok: boolean };
 };

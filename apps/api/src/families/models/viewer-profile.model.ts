@@ -39,4 +39,13 @@ export class ViewerProfileGraph {
     description: 'Groupe foyer étendu lorsque le profil en dépend.',
   })
   householdGroupId!: string | null;
+
+  @Field(() => String, {
+    nullable: true,
+    description:
+      'URL de la photo de profil (Member.photoUrl ou Contact.photoUrl). ' +
+      'Utilisé par le sélecteur de profil mobile pour afficher un avatar ' +
+      'au lieu d\'une simple chip avec initiales.',
+  })
+  photoUrl!: string | null;
 }

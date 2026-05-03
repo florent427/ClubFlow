@@ -13,6 +13,7 @@ import type {
   DynamicGroupsQueryData,
 } from '../lib/types';
 import { getToken } from '../lib/storage';
+import { DashboardTrendsPanel } from './DashboardTrendsPanel';
 
 function decodeJwtEmail(token: string): string | null {
   try {
@@ -148,6 +149,64 @@ export function DashboardPage() {
       ? (summary.revenueCentsMonth / 100).toFixed(2)
       : '0,00';
   const openInvoices = summary?.outstandingPaymentsCount ?? 0;
+  const balanceEuro =
+    summary?.accountingBalanceCents != null
+      ? (summary.accountingBalanceCents / 100).toFixed(2)
+      : '0,00';
+  const miniTiles: {
+    icon: string;
+    label: string;
+    value: string | number;
+    to: string;
+    tone?: 'positive' | 'negative' | 'neutral';
+  }[] = summary
+    ? [
+        {
+          icon: 'person_add',
+          label: 'Nouveaux membres (mois)',
+          value: summary.newMembersThisMonthCount,
+          to: '/members',
+        },
+        {
+          icon: 'event',
+          label: 'Événements à venir',
+          value: summary.upcomingEventsCount,
+          to: '/evenements',
+        },
+        {
+          icon: 'campaign',
+          label: 'Annonces récentes',
+          value: summary.recentAnnouncementsCount,
+          to: '/vie-du-club',
+        },
+        {
+          icon: 'shopping_bag',
+          label: 'Commandes boutique',
+          value: summary.pendingShopOrdersCount,
+          to: '/boutique',
+        },
+        {
+          icon: 'volunteer_activism',
+          label: 'Dossiers subvention',
+          value: summary.openGrantApplicationsCount,
+          to: '/subventions',
+        },
+        {
+          icon: 'handshake',
+          label: 'Sponsors actifs',
+          value: summary.activeSponsorshipDealsCount,
+          to: '/sponsoring',
+        },
+        {
+          icon: 'account_balance',
+          label: 'Solde comptable',
+          value: `${balanceEuro} €`,
+          to: '/comptabilite',
+          tone:
+            (summary.accountingBalanceCents ?? 0) >= 0 ? 'positive' : 'negative',
+        },
+      ]
+    : [];
 
   return (
     <div className="cf-dash">
@@ -225,8 +284,7 @@ export function DashboardPage() {
           <button
             type="button"
             className="cf-shortcut"
-            disabled
-            title="Bientôt"
+            onClick={() => navigate('/communication')}
           >
             <span className="material-symbols-outlined" aria-hidden>
               send
@@ -236,8 +294,7 @@ export function DashboardPage() {
           <button
             type="button"
             className="cf-shortcut"
-            disabled
-            title="Bientôt"
+            onClick={() => navigate('/billing')}
           >
             <span className="material-symbols-outlined" aria-hidden>
               payments
@@ -246,6 +303,8 @@ export function DashboardPage() {
           </button>
         </div>
       </section>
+
+      <DashboardTrendsPanel />
 
       <section className="cf-dash__kpi">
         <div className="cf-kpi-card">
@@ -325,6 +384,26 @@ export function DashboardPage() {
         </div>
       </section>
 
+      {miniTiles.length > 0 ? (
+        <section className="cf-dash__mini">
+          {miniTiles.map((t) => (
+            <Link
+              key={t.label}
+              to={t.to}
+              className={`cf-mini-tile${
+                t.tone === 'negative' ? ' cf-mini-tile--danger' : ''
+              }${t.tone === 'positive' ? ' cf-mini-tile--ok' : ''}`}
+            >
+              <span className="material-symbols-outlined cf-mini-tile__ico" aria-hidden>
+                {t.icon}
+              </span>
+              <span className="cf-mini-tile__value">{t.value}</span>
+              <span className="cf-mini-tile__label">{t.label}</span>
+            </Link>
+          ))}
+        </section>
+      ) : null}
+
       <section className="cf-dash__bento">
         <div className="cf-bento-card cf-bento-card--pie">
           <div className="cf-bento-head">
@@ -365,42 +444,39 @@ export function DashboardPage() {
         <div className="cf-bento-card cf-bento-card--wide">
           <div className="cf-bento-head">
             <div>
-              <h3 className="cf-bento-title">Encaissements récents</h3>
-              <p className="cf-bento-sub">Agrégation multi-mois — MVP</p>
+              <h3 className="cf-bento-title">Synthèse financière</h3>
+              <p className="cf-bento-sub">Exercice en cours</p>
             </div>
-            <div className="cf-bento-legend">
-              <span>
-                <span className="cf-legend-dot" style={{ background: '#000666' }} />
-                CB
-              </span>
-              <span>
-                <span className="cf-legend-dot" style={{ background: '#0056c5' }} />
-                Virement
-              </span>
-              <span>
-                <span className="cf-legend-dot" style={{ background: '#fb6b00' }} />
-                Autres
+            <Link to="/comptabilite" className="cf-bento-link">
+              Comptabilité →
+            </Link>
+          </div>
+          <div className="cf-finance-grid">
+            <div className="cf-finance-cell cf-finance-cell--primary">
+              <span className="cf-finance-cell__label">CA du mois</span>
+              <span className="cf-finance-cell__value">{revenueEuro} €</span>
+            </div>
+            <div
+              className={`cf-finance-cell ${
+                (summary?.accountingBalanceCents ?? 0) >= 0
+                  ? 'cf-finance-cell--ok'
+                  : 'cf-finance-cell--danger'
+              }`}
+            >
+              <span className="cf-finance-cell__label">Solde comptable</span>
+              <span className="cf-finance-cell__value">{balanceEuro} €</span>
+            </div>
+            <div className="cf-finance-cell">
+              <span className="cf-finance-cell__label">Factures ouvertes</span>
+              <span className="cf-finance-cell__value">{openInvoices}</span>
+            </div>
+            <div className="cf-finance-cell">
+              <span className="cf-finance-cell__label">Commandes boutique en attente</span>
+              <span className="cf-finance-cell__value">
+                {summary?.pendingShopOrdersCount ?? 0}
               </span>
             </div>
           </div>
-          <div className="cf-chart-placeholder">
-            <div className="cf-chart-grid" aria-hidden />
-            <div className="cf-chart-bars">
-              {['OCT', 'NOV', 'DEC', 'JAN', 'FEV', 'MAR'].map((m, i) => (
-                <div key={m} className="cf-chart-col">
-                  <div className="cf-chart-stack">
-                    <span className="cf-chart-seg cf-chart-seg--a" style={{ height: `${45 + i * 5}%` }} />
-                    <span className="cf-chart-seg cf-chart-seg--b" style={{ height: `${20 - i}%` }} />
-                    <span className="cf-chart-seg cf-chart-seg--c" style={{ height: `${10 + (i % 3) * 2}%` }} />
-                  </div>
-                  <span className="cf-chart-x">{m}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <p className="cf-chart-footnote muted">
-            Le détail par moyen de paiement sera relié aux rapports comptables.
-          </p>
         </div>
       </section>
 
@@ -439,54 +515,15 @@ export function DashboardPage() {
         </div>
 
         <div className="cf-list-block">
-          <h3 className="cf-list-block__title cf-list-block__title--plain">
-            Événements à venir
-          </h3>
-          <div className="cf-event-card">
-            <div className="cf-event-card__visual">
-              <span className="cf-event-card__badge">À venir</span>
-            </div>
-            <div className="cf-event-card__body">
-              <h4 className="cf-event-card__h">Stages &amp; compétitions</h4>
-              <p className="muted cf-event-card__p">
-                Module contenu public / événements — prochaine livraison
-                (Phase H).
-              </p>
-              <button type="button" className="cf-event-card__btn" disabled>
-                Gérer les inscriptions
-              </button>
-            </div>
+          <div className="cf-list-block__head">
+            <h3 className="cf-list-block__title">Événements à venir</h3>
+            <Link to="/evenements" className="cf-list-block__link">
+              Voir tout
+            </Link>
           </div>
-        </div>
-
-        <div className="cf-list-block">
-          <h3 className="cf-list-block__title cf-list-block__title--plain">
-            Flux d’activité
-          </h3>
-          <div className="cf-activity">
-            <div className="cf-activity-row">
-              <span className="cf-activity-dot cf-activity-dot--blue" />
-              <div>
-                <p className="cf-activity-title">
-                  Données temps réel à connecter
-                </p>
-                <p className="cf-activity-meta">
-                  Inscriptions, paiements Stripe et campagnes apparaîtront ici.
-                </p>
-              </div>
-            </div>
-            <div className="cf-activity-row">
-              <span className="cf-activity-dot cf-activity-dot--muted" />
-              <div>
-                <p className="cf-activity-title">
-                  Webhooks &amp; journaux admin
-                </p>
-                <p className="cf-activity-meta">
-                  Côté API : module communication et règles métier à étendre.
-                </p>
-              </div>
-            </div>
-          </div>
+          <p className="muted cf-list-empty">
+            {summary?.upcomingEventsCount ?? 0} événement(s) publié(s) à venir.
+          </p>
         </div>
       </section>
     </div>

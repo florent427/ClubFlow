@@ -2,6 +2,7 @@ import { useMutation, useQuery } from '@apollo/client/react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { QuickMessageModal } from '../../components/QuickMessageModal';
+import { useToast } from '../../components/ToastProvider';
 import { useClubCommunicationEnabled } from '../../lib/useClubCommunicationEnabled';
 import {
   CLUB_FAMILIES,
@@ -18,6 +19,7 @@ import {
   SET_CLUB_FAMILY_PAYER,
   TRANSFER_CLUB_MEMBER_TO_FAMILY,
   UPDATE_CLUB_MEMBER,
+  VIEWER_SYSTEM_ROLE,
 } from '../../lib/documents';
 import { MEMBER_CATALOG_FIELD_LABELS } from '../../lib/member-field-labels';
 import type {
@@ -31,7 +33,9 @@ import type {
   SetClubFamilyPayerMutationData,
   TransferMemberFamilyMutationData,
   UpdateMemberMutationData,
+  ViewerSystemRoleQueryData,
 } from '../../lib/types';
+import { SYSTEM_SET_MEMBER_ADMIN_ROLE } from '../../lib/documents';
 import { BUILTIN_ROLE_OPTIONS } from './members-constants';
 import { MemberAdhesionPanels } from './MemberAdhesionPanels';
 import { MemberPhotoField } from './MemberPhotoField';
@@ -165,6 +169,7 @@ export function MemberDetailDrawer({
   const [builtinRoles, setBuiltinRoles] = useState<string[]>(['STUDENT']);
   const [customRoleIds, setCustomRoleIds] = useState<string[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
+  const { showToast } = useToast();
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
   const [memberFormHydrated, setMemberFormHydrated] = useState(false);
 
@@ -459,14 +464,37 @@ export function MemberDetailDrawer({
     onError: (e) => setFormError(e.message),
   });
 
+  // Rôle système global (transverse aux clubs).
+  const { data: viewerSystemRoleData } =
+    useQuery<ViewerSystemRoleQueryData>(VIEWER_SYSTEM_ROLE, {
+      fetchPolicy: 'cache-first',
+    });
+  const viewerSystemRole = viewerSystemRoleData?.viewerSystemRole ?? null;
+  const viewerIsSystemAdmin = viewerSystemRole !== null;
+  const viewerIsSuperAdmin = viewerSystemRole === 'SUPER_ADMIN';
+  const [setSystemRole, { loading: settingSystemRole }] = useMutation(
+    SYSTEM_SET_MEMBER_ADMIN_ROLE,
+    {
+      onCompleted: () => {
+        showToast('Rôle système mis à jour.', 'success');
+        void refetch();
+      },
+      onError: (e) => showToast(e.message, 'error'),
+    },
+  );
+
   const [deleteMember, { loading: deleting }] = useMutation<
     DeleteMemberMutationData
   >(DELETE_CLUB_MEMBER, {
     onCompleted: () => {
+      showToast('Fiche supprimée.', 'success');
       refetchAll();
       onClose();
     },
-    onError: (e) => setFormError(e.message),
+    onError: (e) => {
+      setFormError(e.message);
+      showToast(e.message, 'error');
+    },
   });
 
   const [removeFromFamily, { loading: removingFamily }] = useMutation(
@@ -789,18 +817,63 @@ export function MemberDetailDrawer({
       </>
     ) : (
       <>
-        <header className="family-drawer__head">
-          <div>
-            <p className="members-loom__eyebrow">Fiche membre</p>
-            <h2 className="family-drawer__title" id="member-drawer-title">
-              {member.firstName} {member.lastName}
-            </h2>
+        <header className="family-drawer__head member-drawer__head">
+          <div className="member-drawer__hero">
+            {member.photoUrl ? (
+              <img
+                src={member.photoUrl}
+                alt=""
+                className="member-drawer__avatar"
+                draggable={false}
+              />
+            ) : (
+              <span
+                className="member-drawer__avatar member-drawer__avatar--empty"
+                aria-hidden
+              >
+                {(member.firstName?.[0] ?? '') + (member.lastName?.[0] ?? '')}
+              </span>
+            )}
+            <div className="member-drawer__hero-text">
+              <p className="members-loom__eyebrow">Fiche membre</p>
+              <h2 className="family-drawer__title" id="member-drawer-title">
+                {member.firstName} {member.lastName}
+              </h2>
+              <div className="member-drawer__badges">
+                <span
+                  className={`cf-badge cf-badge--${member.status === 'ACTIVE' ? 'success' : 'neutral'}`}
+                >
+                  {member.status === 'ACTIVE' ? 'Actif' : 'Inactif'}
+                </span>
+                {member.gradeLevel?.label ? (
+                  <span className="cf-badge cf-badge--info">
+                    <span
+                      className="material-symbols-outlined"
+                      aria-hidden
+                    >
+                      military_tech
+                    </span>
+                    {member.gradeLevel.label}
+                  </span>
+                ) : null}
+                {member.roles.slice(0, 2).map((r) => (
+                  <span key={r} className="cf-badge cf-badge--muted">
+                    {r}
+                  </span>
+                ))}
+                {member.roles.length > 2 ? (
+                  <span className="cf-badge cf-badge--muted">
+                    +{member.roles.length - 2}
+                  </span>
+                ) : null}
+              </div>
+            </div>
           </div>
           <div className="family-drawer__head-actions">
             {commEnabled ? (
               <button
                 type="button"
-                className="btn btn-ghost btn-tight"
+                className="member-drawer__icon-btn"
                 title="Envoyer un message"
                 onClick={() => setQuickMsgOpen(true)}
                 aria-label="Envoyer un message"
@@ -812,10 +885,14 @@ export function MemberDetailDrawer({
             ) : null}
             <button
               type="button"
-              className="btn btn-ghost btn-tight"
+              className="member-drawer__icon-btn member-drawer__icon-btn--close"
               onClick={requestClose}
+              title="Fermer la fiche"
+              aria-label="Fermer la fiche"
             >
-              Fermer
+              <span className="material-symbols-outlined" aria-hidden>
+                close
+              </span>
             </button>
           </div>
         </header>
@@ -867,7 +944,12 @@ export function MemberDetailDrawer({
           className="family-drawer__section members-form"
           onSubmit={(e) => void onEditSubmit(e)}
         >
-          <h3 className="family-drawer__h">Identité & rôles métier</h3>
+          <h3 className="family-drawer__h">
+            <span className="material-symbols-outlined" aria-hidden>
+              badge
+            </span>
+            Identité &amp; rôles métier
+          </h3>
           <MemberPhotoField
             key={memberId}
             idPrefix="drawer-member-photo"
@@ -1211,6 +1293,91 @@ export function MemberDetailDrawer({
             </div>
           ) : null}
 
+          {viewerIsSystemAdmin ? (
+            <div className="members-form__fieldset">
+              <span className="members-form__legend">Rôle système global</span>
+              <p className="muted members-form__hint">
+                Accès au back-office <strong>tous clubs confondus</strong>.
+                Réservé à l'équipe ClubFlow.
+              </p>
+              {member.systemRole === 'SUPER_ADMIN' ? (
+                <p className="muted">
+                  Super administrateur — compte protégé.
+                </p>
+              ) : member.systemRole === 'ADMIN' ? (
+                <div>
+                  <p>
+                    <strong>Administrateur système actif.</strong>{' '}
+                    {viewerIsSuperAdmin
+                      ? 'Vous pouvez retirer ce rôle.'
+                      : 'Seul le super administrateur peut retirer ce rôle.'}
+                  </p>
+                  {viewerIsSuperAdmin ? (
+                    <button
+                      type="button"
+                      className="btn btn-ghost members-table__danger"
+                      disabled={settingSystemRole}
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            `Retirer le rôle administrateur système à ${member.firstName} ${member.lastName} ?`,
+                          )
+                        ) {
+                          void setSystemRole({
+                            variables: {
+                              memberId: member.id,
+                              role: null,
+                            },
+                          });
+                        }
+                      }}
+                    >
+                      {settingSystemRole
+                        ? 'En cours…'
+                        : 'Retirer le rôle administrateur'}
+                    </button>
+                  ) : null}
+                </div>
+              ) : (
+                <div>
+                  <p className="muted members-form__hint">
+                    Aucun rôle système.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={settingSystemRole}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `Promouvoir ${member.firstName} ${member.lastName} en administrateur système ? Ce rôle donne accès au back-office tous clubs confondus.`,
+                        )
+                      ) {
+                        void setSystemRole({
+                          variables: {
+                            memberId: member.id,
+                            role: 'ADMIN',
+                          },
+                        });
+                      }
+                    }}
+                  >
+                    {settingSystemRole
+                      ? 'En cours…'
+                      : 'Promouvoir administrateur système'}
+                  </button>
+                  <p
+                    className="muted members-form__hint"
+                    style={{ fontSize: '0.78rem', marginTop: '0.4rem' }}
+                  >
+                    Le membre doit avoir un compte (e-mail validé) pour
+                    être promu. Sinon, l'API renverra une erreur explicite.
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : null}
+
           <div className="members-form__actions-row">
             <button
               type="submit"
@@ -1243,7 +1410,12 @@ export function MemberDetailDrawer({
 
         {activeTab === 'family' ? (
         <div className="family-drawer__section">
-          <h3 className="family-drawer__h">Foyer</h3>
+          <h3 className="family-drawer__h">
+            <span className="material-symbols-outlined" aria-hidden>
+              groups
+            </span>
+            Foyer
+          </h3>
           {familyFormError ? (
             <p className="form-error">{familyFormError}</p>
           ) : null}

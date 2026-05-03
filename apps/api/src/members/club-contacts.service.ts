@@ -3,7 +3,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { MemberCivility, MemberStatus, Prisma } from '@prisma/client';
+import {
+  FamilyMemberLinkRole,
+  MemberCivility,
+  MemberStatus,
+  Prisma,
+} from '@prisma/client';
 import { FamiliesService } from '../families/families.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MemberPseudoService } from '../messaging/member-pseudo.service';
@@ -145,11 +150,76 @@ export class ClubContactsService {
     await this.prisma.contact.delete({
       where: { id: contactId },
     });
+    await this.cleanupOrphanUser(row.userId);
+  }
+
+  /**
+   * Supprime le User et ses artefacts d’authentification lorsqu’aucune fiche
+   * Contact / Member / ClubMembership ne le référence plus (tous clubs confondus).
+   *
+   * Sans ce nettoyage, un User orphelin bloquerait toute future inscription
+   * portail avec la même adresse e-mail (erreur USER_ALREADY_EXISTS côté
+   * AuthService), alors même qu’aucun profil métier n’existe plus.
+   */
+  private async cleanupOrphanUser(userId: string): Promise<void> {
+    const [remainingContact, remainingMember, remainingMembership] =
+      await Promise.all([
+        this.prisma.contact.count({ where: { userId } }),
+        this.prisma.member.count({ where: { userId } }),
+        this.prisma.clubMembership.count({ where: { userId } }),
+      ]);
+    if (
+      remainingContact > 0 ||
+      remainingMember > 0 ||
+      remainingMembership > 0
+    ) {
+      return;
+    }
+    await this.prisma.$transaction([
+      this.prisma.emailVerificationToken.deleteMany({ where: { userId } }),
+      this.prisma.passwordResetToken.deleteMany({ where: { userId } }),
+      this.prisma.refreshToken.deleteMany({ where: { userId } }),
+      this.prisma.userIdentity.deleteMany({ where: { userId } }),
+      this.prisma.user.delete({ where: { id: userId } }),
+    ]);
+  }
+
+  /**
+   * Retourne l'ID du foyer du club où ce User est déjà PAYER (en tant que
+   * contact, via un de ses Contact rattachés). Renvoie :
+   *  - `string` si exactement 1 foyer matche → la promotion va le
+   *    rattacher à ce foyer (donc la règle email "même foyer" s'applique)
+   *  - `null` si aucun ou plusieurs (cas ambigu : on garde la sémantique
+   *    "membre sans foyer" et le check email peut rejeter)
+   */
+  private async findPayerFamilyIdForUser(
+    clubId: string,
+    userId: string,
+  ): Promise<string | null> {
+    const contacts = await this.prisma.contact.findMany({
+      where: { clubId, userId },
+      select: { id: true },
+    });
+    if (contacts.length === 0) return null;
+    const payerLinks = await this.prisma.familyMember.findMany({
+      where: {
+        contactId: { in: contacts.map((c) => c.id) },
+        linkRole: FamilyMemberLinkRole.PAYER,
+        family: { clubId },
+      },
+      select: { familyId: true },
+    });
+    const familyIds = Array.from(new Set(payerLinks.map((p) => p.familyId)));
+    return familyIds.length === 1 ? familyIds[0] : null;
   }
 
   async promoteContactToMember(
     clubId: string,
     contactId: string,
+    overrides?: {
+      civility?: MemberCivility;
+      birthDate?: Date | null;
+    },
   ): Promise<{ memberId: string }> {
     const row = await this.prisma.contact.findFirst({
       where: { id: contactId, clubId },
@@ -170,8 +240,23 @@ export class ClubContactsService {
         'Ce contact est déjà associé à une fiche membre pour ce club.',
       );
     }
+    // Pré-calcule le foyer cible : si ce User est déjà PAYER (contact)
+    // sur un foyer du club (ex : parent payeur de ses enfants), la fiche
+    // Member créée sera rattachée à ce foyer via
+    // `migrateContactPayerLinksToMember` après création. On passe ce
+    // `familyId` au check email pour que la règle "doublons autorisés
+    // dans le même foyer" s'applique.
+    //
+    // Sans ça : l'email du parent (utilisée aussi par les enfants Members
+    // dans le même foyer) déclencherait à tort le rejet "déjà utilisée
+    // par un autre adhérent".
+    const presumedFamilyId = await this.findPayerFamilyIdForUser(
+      clubId,
+      user.id,
+    );
     await assertMemberEmailAllowedInClub(this.prisma, clubId, user.email, {
       memberId: null,
+      assumeMemberFamilyId: presumedFamilyId,
     });
     const pseudo = await this.memberPseudo.pickAvailablePseudo(
       this.prisma,
@@ -187,8 +272,9 @@ export class ClubContactsService {
         firstName: row.firstName,
         lastName: row.lastName,
         pseudo,
-        civility: PROMOTE_CONTACT_DEFAULT_CIVILITY,
+        civility: overrides?.civility ?? PROMOTE_CONTACT_DEFAULT_CIVILITY,
         email: user.email,
+        birthDate: overrides?.birthDate ?? null,
         status: MemberStatus.ACTIVE,
       },
       select: { id: true },

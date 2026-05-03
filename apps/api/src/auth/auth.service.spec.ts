@@ -4,6 +4,7 @@ import { FamiliesService } from '../families/families.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AUTH_LOGIN_REJECT_MESSAGE } from './constants';
 import { EmailVerificationService } from './email-verification.service';
+import { PasswordResetService } from './password-reset.service';
 import { AuthService } from './auth.service';
 
 describe('AuthService', () => {
@@ -29,6 +30,7 @@ describe('AuthService', () => {
       listViewerProfiles: jest.fn().mockResolvedValue([]),
     } as unknown as FamiliesService;
     const emailV = {} as unknown as EmailVerificationService;
+    const passwordReset = {} as unknown as PasswordResetService;
     const mail = {
       sendEmailVerificationLink: jest.fn(),
     } as unknown as import('../mail/transactional-mail.service').TransactionalMailService;
@@ -37,6 +39,7 @@ describe('AuthService', () => {
       jwt,
       families,
       emailV,
+      passwordReset,
       mail,
     );
     await expect(
@@ -58,8 +61,9 @@ describe('AuthService', () => {
     const jwt = { sign: jest.fn() } as unknown as JwtService;
     const families = { listViewerProfiles: jest.fn() } as unknown as FamiliesService;
     const emailV = {} as unknown as EmailVerificationService;
+    const passwordReset = {} as unknown as PasswordResetService;
     const mail = {} as unknown as import('../mail/transactional-mail.service').TransactionalMailService;
-    const svc = new AuthService(prisma, jwt, families, emailV, mail);
+    const svc = new AuthService(prisma, jwt, families, emailV, passwordReset, mail);
     await expect(svc.login({ email: 'a@b.c', password: 'good' })).rejects.toThrow(
       AUTH_LOGIN_REJECT_MESSAGE,
     );
@@ -81,8 +85,9 @@ describe('AuthService', () => {
       listViewerProfiles: jest.fn(),
     } as unknown as FamiliesService;
     const emailV = {} as unknown as EmailVerificationService;
+    const passwordReset = {} as unknown as PasswordResetService;
     const mail = {} as unknown as import('../mail/transactional-mail.service').TransactionalMailService;
-    const svc = new AuthService(prisma, jwt, families, emailV, mail);
+    const svc = new AuthService(prisma, jwt, families, emailV, passwordReset, mail);
     await expect(
       svc.login({ email: 'a@b.c', password: 'anything' }),
     ).rejects.toThrow(AUTH_LOGIN_REJECT_MESSAGE);

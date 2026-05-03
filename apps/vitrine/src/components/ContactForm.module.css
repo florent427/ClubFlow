@@ -1,0 +1,67 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 28px 28px 32px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field > span {
+  font-size: 11px;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.field input,
+.field textarea {
+  font-family: var(--sans);
+  background: var(--ink);
+  border: 1px solid var(--line);
+  color: var(--fg);
+  padding: 12px 14px;
+  font-size: 15px;
+  transition: border-color 0.2s ease;
+}
+.field input:focus,
+.field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.honeypot {
+  position: absolute;
+  left: -9999px;
+  opacity: 0;
+  pointer-events: none;
+  height: 0;
+  width: 0;
+}
+
+.success {
+  color: var(--accent);
+  font-family: var(--sans);
+  font-size: 14px;
+}
+.error {
+  color: var(--vermillion);
+  font-family: var(--sans);
+  font-size: 14px;
+}
+
+@media (max-width: 600px) {
+  .row {
+    grid-template-columns: 1fr;
+  }
+}

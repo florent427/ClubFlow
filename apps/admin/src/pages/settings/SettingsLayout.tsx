@@ -37,6 +37,16 @@ export function SettingsLayout() {
           Adhésion
         </ModuleGatedNavLink>
         <ModuleGatedNavLink
+          to="/settings/pricing-rules"
+          modules={['PAYMENT']}
+          disabledClassName="members-subnav__link--disabled"
+          className={({ isActive }) =>
+            `members-subnav__link${isActive ? ' members-subnav__link--active' : ''}`
+          }
+        >
+          Frais paiement
+        </ModuleGatedNavLink>
+        <ModuleGatedNavLink
           to="/settings/mail-domain"
           modules={['COMMUNICATION']}
           disabledClassName="members-subnav__link--disabled"
@@ -45,6 +55,16 @@ export function SettingsLayout() {
           }
         >
           E-mail
+        </ModuleGatedNavLink>
+        <ModuleGatedNavLink
+          to="/settings/branding"
+          modules={[]}
+          disabledClassName="members-subnav__link--disabled"
+          className={({ isActive }) =>
+            `members-subnav__link${isActive ? ' members-subnav__link--active' : ''}`
+          }
+        >
+          Identité
         </ModuleGatedNavLink>
       </nav>
       <Outlet />

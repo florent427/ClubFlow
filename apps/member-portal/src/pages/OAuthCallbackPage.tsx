@@ -6,6 +6,7 @@ import {
   setMemberContactSession,
   setToken,
 } from '../lib/storage';
+import { consumeReturnTo } from '../lib/return-to';
 
 /** Fragment #access_token=…&contact_club_id=… renvoyé par l’API après Google OAuth. */
 export function OAuthCallbackPage() {
@@ -14,7 +15,7 @@ export function OAuthCallbackPage() {
 
   useEffect(() => {
     if (hasMemberSession()) {
-      void navigate('/', { replace: true });
+      void navigate(consumeReturnTo() ?? '/', { replace: true });
       return;
     }
     const h = window.location.hash.replace(/^#/, '');
@@ -36,6 +37,13 @@ export function OAuthCallbackPage() {
       clearClubId();
     }
 
+    // Priorité au returnTo mémorisé (ex. /rejoindre?code=XXX venant d'une
+    // invitation familiale acceptée par Google).
+    const returnTo = consumeReturnTo();
+    if (returnTo) {
+      void navigate(returnTo, { replace: true });
+      return;
+    }
     void navigate(
       contactClubId?.trim() ? '/' : '/select-profile',
       { replace: true },

@@ -21,6 +21,7 @@ import {
   medicalCertState,
   slotCalendarBits,
 } from '../lib/format';
+import { DocumentsToSignBanner } from '../components/DocumentsToSignBanner';
 import { JoinFamilyByPayerEmailCta } from '../components/JoinFamilyByPayerEmailCta';
 import { MemberRoleToggle } from '../components/MemberRoleToggle';
 
@@ -79,6 +80,7 @@ export function DashboardPage() {
 
   return (
     <div className="mp-page">
+      <DocumentsToSignBanner />
       <section className="mp-hero">
         <div className="mp-hero-head">
           <p className="mp-eyebrow">
@@ -135,7 +137,7 @@ export function DashboardPage() {
               )}
             </>
           ) : null}
-          {billing?.isHouseholdGroupSpace ? (
+          {billing?.isHouseholdGroupSpace && isPayer ? (
             <Link
               to="/famille"
               className="mp-pill mp-pill-muted mp-pill-link"
@@ -215,43 +217,41 @@ export function DashboardPage() {
           </>
         ) : null}
 
-        <section className="mp-panel mp-panel-wide">
-          <h2 className="mp-panel-title">Famille &amp; paiements</h2>
-          {billQ.error ? (
-            <p className="mp-hint">
-              Facturation indisponible (module ou droits).
-            </p>
-          ) : !billing ? (
-            <p className="mp-hint">Chargement…</p>
-          ) : !isPayer ? (
-            <p className="mp-hint">
-              L’accès au détail des factures est réservé au payeur du foyer.
-            </p>
-          ) : (
-            <>
-              {billing.familyLabel ? (
-                <p className="mp-family-label">{billing.familyLabel}</p>
-              ) : null}
-              {openInvoices.length === 0 ? (
-                <p className="mp-hint">Aucun solde ouvert.</p>
-              ) : (
-                <ul className="mp-invoice-mini">
-                  {openInvoices.slice(0, 3).map((inv) => (
-                    <li key={inv.id} className="mp-invoice-line">
-                      <span>{inv.label}</span>
-                      <strong>
-                        {formatEuroCents(inv.balanceCents)}
-                      </strong>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <Link to="/famille" className="mp-link">
-                Ouvrir Ma famille
-              </Link>
-            </>
-          )}
-        </section>
+        {isPayer ? (
+          <section className="mp-panel mp-panel-wide">
+            <h2 className="mp-panel-title">Famille &amp; paiements</h2>
+            {billQ.error ? (
+              <p className="mp-hint">
+                Facturation indisponible (module ou droits).
+              </p>
+            ) : !billing ? (
+              <p className="mp-hint">Chargement…</p>
+            ) : (
+              <>
+                {billing.familyLabel ? (
+                  <p className="mp-family-label">{billing.familyLabel}</p>
+                ) : null}
+                {openInvoices.length === 0 ? (
+                  <p className="mp-hint">Aucun solde ouvert.</p>
+                ) : (
+                  <ul className="mp-invoice-mini">
+                    {openInvoices.slice(0, 3).map((inv) => (
+                      <li key={inv.id} className="mp-invoice-line">
+                        <span>{inv.label}</span>
+                        <strong>
+                          {formatEuroCents(inv.balanceCents)}
+                        </strong>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <Link to="/famille" className="mp-link">
+                  Ouvrir Ma famille
+                </Link>
+              </>
+            )}
+          </section>
+        ) : null}
       </div>
     </div>
   );

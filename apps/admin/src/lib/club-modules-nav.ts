@@ -20,6 +20,7 @@ export function modulesRequiredForPath(pathname: string): ModuleCodeStr[] {
     return ['COMMUNICATION'];
   }
   if (pathname.startsWith('/settings/member-fields')) return ['MEMBERS'];
+  if (pathname.startsWith('/documents')) return ['DOCUMENTS'];
   return [];
 }
 

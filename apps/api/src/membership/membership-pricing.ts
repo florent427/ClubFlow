@@ -25,12 +25,27 @@ export function inclusiveCalendarDays(a: Date, b: Date): number {
 
 /**
  * Part de saison restant à payer en points de base (10_000 = 100 %).
- * Date d’effet bornée à [startsOn, endsOn].
+ *
+ * Granularité au mois plein : la date d'effet est ramenée au 1er du mois,
+ * la fin de saison au dernier jour de son mois. Date d'effet bornée à
+ * [startsOn, endsOn].
+ *
+ * **Seuil "X premiers mois plein tarif"** (`fullPriceFirstMonths`,
+ * default 0 pour rétrocompat) : si la date d'effet tombe dans les N
+ * premiers mois de la saison, on retourne 10_000 (100 %, pas de
+ * prorata). À partir du mois N+1, le prorata classique s'applique.
+ *
+ * Exemple : saison sept→août (12 mois), `fullPriceFirstMonths = 3` :
+ *  - Inscription en septembre/octobre/novembre → 100 % (plein tarif)
+ *  - Inscription en décembre → calcul classique (9/12 = 75 %)
+ *  - Inscription en janvier → 8/12 = 67 %
+ *  - …
  */
 export function computeProrataFactorBp(
   effectiveDate: Date,
   seasonStart: Date,
   seasonEnd: Date,
+  fullPriceFirstMonths: number = 0,
 ): number {
   const start = stripTime(seasonStart);
   const end = stripTime(seasonEnd);
@@ -41,59 +56,58 @@ export function computeProrataFactorBp(
   if (eff > end) {
     return 0;
   }
-  const totalDays = inclusiveCalendarDays(start, end);
-  if (totalDays < 1) {
+  // Seuil : nombre de mois écoulés depuis le début de la saison.
+  // Si on est dans les N premiers mois → 100 %.
+  if (fullPriceFirstMonths > 0) {
+    const monthsSinceStart = inclusiveCalendarMonths(
+      new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1)),
+      new Date(Date.UTC(eff.getUTCFullYear(), eff.getUTCMonth(), 1)),
+    );
+    // monthsSinceStart = 1 si même mois, 2 le mois suivant, etc.
+    // Le seuil est inclusif : N=3 → mois 1, 2, 3 plein tarif.
+    if (monthsSinceStart <= fullPriceFirstMonths) {
+      return 10_000;
+    }
+  }
+  const totalMonths = inclusiveCalendarMonths(start, end);
+  if (totalMonths < 1) {
     return 10_000;
   }
-  const remainingDays = inclusiveCalendarDays(eff, end);
+  const effMonthStart = new Date(
+    Date.UTC(eff.getUTCFullYear(), eff.getUTCMonth(), 1),
+  );
+  const remainingMonths = inclusiveCalendarMonths(effMonthStart, end);
   return Math.min(
     10_000,
-    Math.max(0, Math.round((remainingDays * 10_000) / totalDays)),
+    Math.max(0, Math.round((remainingMonths * 10_000) / totalMonths)),
   );
+}
+
+/** Nombre de mois calendaires couverts entre a et b (inclus), min 0. */
+export function inclusiveCalendarMonths(a: Date, b: Date): number {
+  const ay = a.getUTCFullYear();
+  const am = a.getUTCMonth();
+  const by = b.getUTCFullYear();
+  const bm = b.getUTCMonth();
+  const diff = (by - ay) * 12 + (bm - am) + 1;
+  return diff < 0 ? 0 : diff;
 }
 
 function stripTime(d: Date): Date {
   return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
 }
 
-function applyClubAdjustmentToSubtotal(
-  subtotalCents: number,
-  adjustmentType: PricingAdjustmentType,
-  adjustmentValue: number,
-): number {
-  if (subtotalCents < 0) {
-    return 0;
-  }
-  switch (adjustmentType) {
-    case 'NONE':
-      return subtotalCents;
-    case 'PERCENT_BP': {
-      const factor = 1 + adjustmentValue / 10_000;
-      return Math.max(0, Math.round(subtotalCents * factor));
-    }
-    case 'FIXED_CENTS':
-      return Math.max(0, subtotalCents + adjustmentValue);
-    default:
-      return subtotalCents;
-  }
-}
+// (Helper `applyClubAdjustmentToSubtotal` supprimé en même temps que
+// l'étape FAMILY legacy. La logique de remise par rang est maintenant
+// portée par PricingRulesEngineService.)
 
 export type MembershipPricingInput = {
   baseAmountCents: number;
   allowProrata: boolean;
-  allowFamily: boolean;
   allowPublicAid: boolean;
   allowExceptional: boolean;
   exceptionalCapPercentBp: number | null;
   prorataFactorBp: number;
-  /** Règle club pour remise famille ; null = pas de remise */
-  familyRule: {
-    fromNth: number;
-    adjustmentType: PricingAdjustmentType;
-    adjustmentValue: number;
-  } | null;
-  /** Nombre de lignes d’adhésion déjà facturées (OPEN/PAID) pour ce foyer sur la saison, hors facture courante. */
-  priorFamilyMembershipCount: number;
   publicAid?: {
     amountCents: number;
     metadata: Record<string, unknown>;
@@ -102,11 +116,33 @@ export type MembershipPricingInput = {
     amountCents: number;
     reason: string;
   } | null;
+  /**
+   * @deprecated Conservé pour rétrocompat des call-sites — la remise
+   * famille est désormais gérée exclusivement par
+   * `PricingRulesEngineService` (pattern `FAMILY_PROGRESSIVE`). Les
+   * champs `allowFamily`, `familyRule`, `priorFamilyMembershipCount`
+   * sont ignorés ici pour éviter le double-count.
+   */
+  allowFamily?: boolean;
+  familyRule?: {
+    fromNth: number;
+    adjustmentType: PricingAdjustmentType;
+    adjustmentValue: number;
+  } | null;
+  priorFamilyMembershipCount?: number;
 };
 
 /**
- * Construit les ajustements dans l’ordre : prorata → famille → aide publique → exceptionnelle.
- * Les montants d’ajustement sont des deltas (négatifs = réduction du brut) sauf prorata (peut être négatif vs base).
+ * Construit les ajustements legacy dans l'ordre : prorata → aide
+ * publique → exceptionnelle. La remise famille est désormais gérée
+ * exclusivement par `PricingRulesEngineService` (pattern
+ * `FAMILY_PROGRESSIVE`) afin d'éviter le double-counting que provoquait
+ * la coexistence des deux systèmes (`Club.membershipFamilyAdjustment*`
+ * + règle pricing-rule). Les facturés voyaient deux remises famille
+ * cumulées sans le savoir.
+ *
+ * Les montants d'ajustement sont des deltas (négatifs = réduction du
+ * brut) sauf prorata (qui peut être négatif vs base).
  */
 export function computeMembershipAdjustments(
   input: MembershipPricingInput,
@@ -128,25 +164,12 @@ export function computeMembershipAdjustments(
     running = after;
   }
 
-  if (
-    input.allowFamily &&
-    input.familyRule &&
-    input.priorFamilyMembershipCount >= input.familyRule.fromNth - 1
-  ) {
-    const before = running;
-    const afterFam = applyClubAdjustmentToSubtotal(
-      running,
-      input.familyRule.adjustmentType,
-      input.familyRule.adjustmentValue,
-    );
-    const delta = afterFam - before;
-    adjustments.push({
-      stepOrder: step++,
-      type: 'FAMILY',
-      amountCents: delta,
-    });
-    running = afterFam;
-  }
+  // ⚠️ Étape FAMILY supprimée : la logique de remise par rang famille
+  // est désormais 100 % gérée par PricingRulesEngine (pattern
+  // FAMILY_PROGRESSIVE configuré via Settings → Adhésion → Remises
+  // automatiques). Les champs Club.membershipFamily* sont conservés
+  // dans le schéma Prisma pour rétrocompat lecture seule mais n'ont
+  // plus d'effet sur le calcul.
 
   if (input.allowPublicAid && input.publicAid && input.publicAid.amountCents !== 0) {
     const amt = input.publicAid.amountCents;

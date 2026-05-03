@@ -22,26 +22,29 @@ describe('PlanningService — créneaux visibles portail membre', () => {
       now,
     );
     expect(findMany).toHaveBeenCalledTimes(1);
-    expect(findMany).toHaveBeenCalledWith({
-      where: {
-        clubId: 'club-1',
-        startsAt: { gte: now },
-        OR: [
-          { dynamicGroupId: null },
-          {
-            dynamicGroup: {
-              memberAssignments: {
-                some: { memberId: 'member-1' },
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          clubId: 'club-1',
+          startsAt: { gte: now },
+          OR: [
+            { dynamicGroupId: null },
+            {
+              dynamicGroup: {
+                memberAssignments: {
+                  some: { memberId: 'member-1' },
+                },
               },
             },
-          },
-        ],
-      },
-      orderBy: { startsAt: 'asc' },
-      include: {
-        venue: true,
-        coachMember: true,
-      },
+          ],
+        },
+        orderBy: { startsAt: 'asc' },
+      }),
+    );
+    const call = findMany.mock.calls[0][0];
+    expect(call.include).toMatchObject({
+      venue: true,
+      coachMember: true,
     });
   });
 

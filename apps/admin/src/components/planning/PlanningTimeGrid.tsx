@@ -43,6 +43,11 @@ type PlanningTimeGridProps = {
   onDayHeaderClick?: (d: Date) => void;
   /** Double-clic sur un bloc créneau (fiche détail). */
   onSlotOpen?: (slotId: string) => void;
+  /**
+   * Double-clic sur une zone vide d'une colonne jour : ouvre la création
+   * d'un créneau pré-rempli sur ce jour à l'heure calculée.
+   */
+  onCellClick?: (day: Date, hour: number, minute: number) => void;
 };
 
 const grid = {
@@ -58,10 +63,16 @@ function dayKey(d: Date): string {
 function DayColumn({
   day,
   totalHeightPx,
+  pixelsPerHour,
+  minHour,
+  onCellClick,
   children,
 }: {
   day: Date;
   totalHeightPx: number;
+  pixelsPerHour: number;
+  minHour: number;
+  onCellClick?: (day: Date, hour: number, minute: number) => void;
   children: React.ReactNode;
 }) {
   const id = `day-${dayKey(day)}`;
@@ -77,7 +88,22 @@ function DayColumn({
         background: isOver
           ? 'rgba(0, 86, 197, 0.06)'
           : 'rgba(243, 244, 245, 0.6)',
+        cursor: onCellClick ? 'copy' : undefined,
       }}
+      onDoubleClick={(e) => {
+        if (!onCellClick) return;
+        // Si le double-clic a bullé depuis un slot (qui fait stopPropagation),
+        // on ne l'atteindra jamais. Ici on est donc sur la zone vide.
+        const rect = e.currentTarget.getBoundingClientRect();
+        const y = e.clientY - rect.top;
+        const hoursFromMin = Math.max(0, y / pixelsPerHour);
+        const totalMinutes = Math.floor(hoursFromMin * 60);
+        const snapped = Math.floor(totalMinutes / 15) * 15;
+        const hour = minHour + Math.floor(snapped / 60);
+        const minute = snapped % 60;
+        onCellClick(day, hour, minute);
+      }}
+      title={onCellClick ? 'Double-clic : créer un créneau ici' : undefined}
     >
       {children}
     </div>
@@ -155,6 +181,7 @@ export function PlanningTimeGrid({
   onSlotTimeChange,
   onDayHeaderClick,
   onSlotOpen,
+  onCellClick,
 }: PlanningTimeGridProps) {
   const totalHeightPx =
     (grid.maxHour - grid.minHour) * grid.pixelsPerHour;
@@ -287,13 +314,22 @@ export function PlanningTimeGrid({
           }}
         >
           <div aria-hidden className="planning-time-grid__corner" />
-          {days.map((d) => (
-            <div key={dayKey(d)} className="planning-time-grid__head">
+          {days.map((d) => {
+            const today =
+              d.getFullYear() === new Date().getFullYear() &&
+              d.getMonth() === new Date().getMonth() &&
+              d.getDate() === new Date().getDate();
+            return (
+            <div
+              key={dayKey(d)}
+              className={`planning-time-grid__head${today ? ' planning-time-grid__head--today' : ''}`}
+            >
               {onDayHeaderClick ? (
                 <button
                   type="button"
-                  className="planning-time-grid__head-btn"
+                  className={`planning-time-grid__head-btn${today ? ' planning-time-grid__head-btn--today' : ''}`}
                   onClick={() => onDayHeaderClick(d)}
+                  aria-current={today ? 'date' : undefined}
                 >
                   <span className="planning-time-grid__dow">
                     {d
@@ -325,7 +361,8 @@ export function PlanningTimeGrid({
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
 
           <div
             className="planning-time-grid__hours"
@@ -343,7 +380,14 @@ export function PlanningTimeGrid({
           </div>
 
           {days.map((day) => (
-            <DayColumn key={dayKey(day)} day={day} totalHeightPx={totalHeightPx}>
+            <DayColumn
+              key={dayKey(day)}
+              day={day}
+              totalHeightPx={totalHeightPx}
+              pixelsPerHour={grid.pixelsPerHour}
+              minHour={grid.minHour}
+              onCellClick={onCellClick}
+            >
               {Array.from({ length: quarterLineCount }, (_, i) => {
                 const isHourMark = i % 4 === 0;
                 return (

@@ -29,6 +29,44 @@ export const DASHBOARD_SUMMARY = gql`
       upcomingSessionsCount
       outstandingPaymentsCount
       revenueCentsMonth
+      newMembersThisMonthCount
+      upcomingEventsCount
+      recentAnnouncementsCount
+      pendingShopOrdersCount
+      openGrantApplicationsCount
+      activeSponsorshipDealsCount
+      accountingBalanceCents
+    }
+  }
+`;
+
+export const DASHBOARD_TRENDS = gql`
+  query AdminDashboardTrends {
+    adminDashboardTrends {
+      revenueLast30Cents
+      revenuePrev30Cents
+      revenueTrendPct
+      newMembersLast30
+      newMembersPrev30
+      memberGrowthPct
+      overdueInvoicesCount
+      overdueBalanceCents
+      paidOnTimeRate
+      vitrinePublishedPagesCount
+      vitrinePublishedArticlesCount
+      vitrineContactsLast30Count
+    }
+  }
+`;
+
+export const CLUB_SEARCH = gql`
+  query ClubSearch($q: String!) {
+    clubSearch(q: $q) {
+      members { id firstName lastName email }
+      contacts { id firstName lastName email }
+      events { id title startsAt }
+      blogPosts { id title slug }
+      announcements { id title }
     }
   }
 `;
@@ -106,6 +144,7 @@ export const CLUB_MEMBERS = gql`
         name
       }
       telegramLinked
+      systemRole
     }
   }
 `;
@@ -629,6 +668,9 @@ export const CLUB_INVOICES = gql`
       id
       clubId
       familyId
+      familyLabel
+      householdGroupId
+      householdGroupLabel
       clubSeasonId
       label
       baseAmountCents
@@ -638,6 +680,10 @@ export const CLUB_INVOICES = gql`
       dueAt
       totalPaidCents
       balanceCents
+      creditNotesAppliedCents
+      isCreditNote
+      parentInvoiceId
+      creditNoteReason
     }
   }
 `;
@@ -658,6 +704,92 @@ export const RECORD_CLUB_MANUAL_PAYMENT = gql`
 export const CLUB_PRICING_RULES = gql`
   query ClubPricingRules {
     clubPricingRules {
+      id
+      method
+      adjustmentType
+      adjustmentValue
+    }
+  }
+`;
+
+export const CLUB_INVOICE_DETAIL = gql`
+  query ClubInvoice($id: String!) {
+    clubInvoice(id: $id) {
+      id
+      clubId
+      familyId
+      familyLabel
+      clubSeasonId
+      clubSeasonLabel
+      label
+      baseAmountCents
+      amountCents
+      totalPaidCents
+      balanceCents
+      creditNotesAppliedCents
+      status
+      lockedPaymentMethod
+      dueAt
+      createdAt
+      isCreditNote
+      parentInvoiceId
+      creditNoteReason
+      lines {
+        id
+        kind
+        memberId
+        memberFirstName
+        memberLastName
+        membershipProductId
+        membershipProductLabel
+        membershipOneTimeFeeId
+        membershipOneTimeFeeLabel
+        subscriptionBillingRhythm
+        baseAmountCents
+        adjustments {
+          id
+          stepOrder
+          type
+          amountCents
+          percentAppliedBp
+          reason
+        }
+      }
+      payments {
+        id
+        amountCents
+        method
+        externalRef
+        paidByFirstName
+        paidByLastName
+        createdAt
+      }
+    }
+  }
+`;
+
+export const ISSUE_CLUB_INVOICE = gql`
+  mutation IssueClubInvoice($id: String!) {
+    issueClubInvoice(id: $id) {
+      id
+      status
+    }
+  }
+`;
+
+export const VOID_CLUB_INVOICE = gql`
+  mutation VoidClubInvoice($id: String!, $reason: String) {
+    voidClubInvoice(id: $id, reason: $reason) {
+      id
+      status
+      label
+    }
+  }
+`;
+
+export const UPSERT_CLUB_PRICING_RULE = gql`
+  mutation UpsertClubPricingRule($input: UpsertClubPricingRuleInput!) {
+    upsertClubPricingRule(input: $input) {
       id
       method
       adjustmentType
@@ -800,6 +932,26 @@ export const CLUB_COURSE_SLOTS = gql`
       startsAt
       endsAt
       dynamicGroupId
+      bookingEnabled
+      bookingCapacity
+      bookingOpensAt
+      bookingClosesAt
+      bookedCount
+      waitlistCount
+    }
+  }
+`;
+
+export const CLUB_COURSE_SLOT_BOOKINGS = gql`
+  query ClubCourseSlotBookings($slotId: ID!) {
+    clubCourseSlotBookings(slotId: $slotId) {
+      id
+      memberId
+      status
+      bookedAt
+      cancelledAt
+      note
+      displayName
     }
   }
 `;
@@ -831,6 +983,10 @@ export const UPDATE_CLUB_COURSE_SLOT = gql`
       startsAt
       endsAt
       dynamicGroupId
+      bookingEnabled
+      bookingCapacity
+      bookingOpensAt
+      bookingClosesAt
     }
   }
 `;
@@ -1000,6 +1156,28 @@ export const REMOVE_CLUB_FAMILY_LINK = gql`
   }
 `;
 
+export const ATTACH_CLUB_CONTACT_TO_FAMILY_AS_MEMBER = gql`
+  mutation AttachClubContactToFamilyAsMember(
+    $familyId: ID!
+    $contactId: ID!
+  ) {
+    attachClubContactToFamilyAsMember(
+      familyId: $familyId
+      contactId: $contactId
+    ) {
+      id
+      label
+      needsPayer
+      links {
+        id
+        memberId
+        contactId
+        linkRole
+      }
+    }
+  }
+`;
+
 export const CLUB_HOSTED_MAIL_OFFER = gql`
   query ClubHostedMailOffer {
     clubHostedMailOffer {
@@ -1094,7 +1272,9 @@ export const CLUB_MESSAGE_CAMPAIGNS = gql`
       title
       body
       channel
+      channels
       dynamicGroupId
+      audienceFilterJson
       status
       sentAt
       recipientCount
@@ -1107,7 +1287,14 @@ export const CREATE_CLUB_MESSAGE_CAMPAIGN = gql`
     createClubMessageCampaign(input: $input) {
       id
       title
+      body
+      channel
+      channels
+      dynamicGroupId
+      audienceFilterJson
       status
+      sentAt
+      recipientCount
     }
   }
 `;
@@ -1130,10 +1317,25 @@ export const UPDATE_CLUB_MESSAGE_CAMPAIGN = gql`
       title
       body
       channel
+      channels
       dynamicGroupId
+      audienceFilterJson
       status
       sentAt
       recipientCount
+    }
+  }
+`;
+
+/**
+ * Aperçu live de l'audience d'une campagne en cours d'édition.
+ * Le client appelle (debounced) à chaque changement du filtre.
+ */
+export const PREVIEW_CLUB_CAMPAIGN_AUDIENCE = gql`
+  query PreviewClubCampaignAudience($audience: AudienceFilterInput) {
+    previewClubCampaignAudience(audience: $audience) {
+      count
+      sampleNames
     }
   }
 `;
@@ -1149,5 +1351,1398 @@ export const SEND_CLUB_QUICK_MESSAGE = gql`
     sendClubQuickMessage(input: $input) {
       success
     }
+  }
+`;
+
+// =====================================================
+// Messagerie : administration des salons (groupes admin)
+// =====================================================
+
+export const CLUB_CHAT_ROOMS_ADMIN = gql`
+  query ClubChatRoomsAdmin {
+    clubChatRoomsAdmin {
+      id
+      kind
+      name
+      description
+      coverImageUrl
+      channelMode
+      isBroadcastChannel
+      archivedAt
+      updatedAt
+      members {
+        memberId
+        role
+        member {
+          id
+          firstName
+          lastName
+          pseudo
+        }
+      }
+      writePermissions {
+        id
+        targetKind
+        targetValue
+      }
+      membershipScopes {
+        id
+        targetKind
+        targetValue
+        dynamicGroupId
+      }
+    }
+  }
+`;
+
+export const ADMIN_CREATE_CHAT_GROUP = gql`
+  mutation AdminCreateChatGroup($input: CreateAdminChatGroupInput!) {
+    adminCreateChatGroup(input: $input) {
+      id
+      name
+      channelMode
+      isBroadcastChannel
+    }
+  }
+`;
+
+export const ADMIN_UPDATE_CHAT_GROUP = gql`
+  mutation AdminUpdateChatGroup($input: UpdateAdminChatGroupInput!) {
+    adminUpdateChatGroup(input: $input) {
+      id
+      name
+      channelMode
+      isBroadcastChannel
+      archivedAt
+    }
+  }
+`;
+
+export const ADMIN_ARCHIVE_CHAT_GROUP = gql`
+  mutation AdminArchiveChatGroup($roomId: ID!) {
+    adminArchiveChatGroup(roomId: $roomId)
+  }
+`;
+
+// =====================================================
+// Administration système (SUPER_ADMIN / ADMIN)
+// =====================================================
+
+export const VIEWER_SYSTEM_ROLE = gql`
+  query ViewerSystemRole {
+    viewerSystemRole
+  }
+`;
+
+export const SYSTEM_ADMINS = gql`
+  query SystemAdmins {
+    systemAdmins {
+      id
+      email
+      displayName
+      systemRole
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const SYSTEM_PROMOTE_TO_ADMIN = gql`
+  mutation SystemPromoteToAdmin($userId: ID!) {
+    systemPromoteToAdmin(userId: $userId) {
+      id
+      email
+      displayName
+      systemRole
+    }
+  }
+`;
+
+export const SYSTEM_DEMOTE_ADMIN = gql`
+  mutation SystemDemoteAdmin($userId: ID!) {
+    systemDemoteAdmin(userId: $userId) {
+      id
+      email
+      displayName
+      systemRole
+    }
+  }
+`;
+
+export const SYSTEM_DELETE_USER = gql`
+  mutation SystemDeleteUser($userId: ID!) {
+    systemDeleteUser(userId: $userId)
+  }
+`;
+
+export const SYSTEM_SET_MEMBER_ADMIN_ROLE = gql`
+  mutation SystemSetMemberAdminRole($memberId: ID!, $role: SystemRole) {
+    systemSetMemberAdminRole(memberId: $memberId, role: $role)
+  }
+`;
+
+export const ADMIN_POST_CHAT_MESSAGE = gql`
+  mutation AdminPostChatMessage($input: AdminPostChatMessageInput!) {
+    adminPostChatMessage(input: $input) {
+      id
+      body
+      createdAt
+      parentMessageId
+      replyCount
+      lastReplyAt
+      postedByAdmin
+      sender {
+        id
+        firstName
+        lastName
+        pseudo
+      }
+    }
+  }
+`;
+
+const ADMIN_MESSAGE_FIELDS = `
+  id
+  roomId
+  body
+  createdAt
+  parentMessageId
+  replyCount
+  lastReplyAt
+  postedByAdmin
+  sender {
+    id
+    firstName
+    lastName
+    pseudo
+  }
+  reactions {
+    emoji
+    count
+    reactedByViewer
+  }
+`;
+
+export const CLUB_CHAT_ROOM_MESSAGES_ADMIN = gql`
+  query ClubChatRoomMessagesAdmin($roomId: ID!, $beforeMessageId: ID) {
+    clubChatRoomMessagesAdmin(
+      roomId: $roomId
+      beforeMessageId: $beforeMessageId
+    ) {
+      ${ADMIN_MESSAGE_FIELDS}
+    }
+  }
+`;
+
+export const CLUB_CHAT_THREAD_REPLIES_ADMIN = gql`
+  query ClubChatThreadRepliesAdmin($roomId: ID!, $parentMessageId: ID!) {
+    clubChatThreadRepliesAdmin(
+      roomId: $roomId
+      parentMessageId: $parentMessageId
+    ) {
+      ${ADMIN_MESSAGE_FIELDS}
+    }
+  }
+`;
+
+export const CLUB_ANNOUNCEMENTS = gql`
+  query ClubAnnouncements {
+    clubAnnouncements {
+      id
+      title
+      body
+      pinned
+      publishedAt
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const CREATE_CLUB_ANNOUNCEMENT = gql`
+  mutation CreateClubAnnouncement($input: CreateAnnouncementInput!) {
+    createClubAnnouncement(input: $input) {
+      id
+      title
+      body
+      pinned
+      publishedAt
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const UPDATE_CLUB_ANNOUNCEMENT = gql`
+  mutation UpdateClubAnnouncement($input: UpdateAnnouncementInput!) {
+    updateClubAnnouncement(input: $input) {
+      id
+      title
+      body
+      pinned
+      publishedAt
+      createdAt
+      updatedAt
+    }
+  }
+`;
+
+export const PUBLISH_CLUB_ANNOUNCEMENT = gql`
+  mutation PublishClubAnnouncement($id: ID!) {
+    publishClubAnnouncement(id: $id) {
+      id
+      publishedAt
+    }
+  }
+`;
+
+export const DELETE_CLUB_ANNOUNCEMENT = gql`
+  mutation DeleteClubAnnouncement($id: ID!) {
+    deleteClubAnnouncement(id: $id)
+  }
+`;
+
+const SURVEY_FIELDS = `
+  id
+  title
+  description
+  status
+  multipleChoice
+  allowAnonymous
+  publishedAt
+  closesAt
+  createdAt
+  updatedAt
+  totalResponses
+  viewerSelectedOptionIds
+  options {
+    id
+    label
+    sortOrder
+    responseCount
+  }
+`;
+
+export const CLUB_SURVEYS = gql`
+  query ClubSurveys {
+    clubSurveys {
+      ${SURVEY_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_CLUB_SURVEY = gql`
+  mutation CreateClubSurvey($input: CreateSurveyInput!) {
+    createClubSurvey(input: $input) {
+      ${SURVEY_FIELDS}
+    }
+  }
+`;
+
+export const OPEN_CLUB_SURVEY = gql`
+  mutation OpenClubSurvey($id: ID!) {
+    openClubSurvey(id: $id) {
+      ${SURVEY_FIELDS}
+    }
+  }
+`;
+
+export const CLOSE_CLUB_SURVEY = gql`
+  mutation CloseClubSurvey($id: ID!) {
+    closeClubSurvey(id: $id) {
+      ${SURVEY_FIELDS}
+    }
+  }
+`;
+
+export const DELETE_CLUB_SURVEY = gql`
+  mutation DeleteClubSurvey($id: ID!) {
+    deleteClubSurvey(id: $id)
+  }
+`;
+
+const EVENT_FIELDS = `
+  id
+  title
+  description
+  location
+  startsAt
+  endsAt
+  capacity
+  registrationOpensAt
+  registrationClosesAt
+  priceCents
+  status
+  publishedAt
+  allowContactRegistration
+  createdAt
+  updatedAt
+  registeredCount
+  waitlistCount
+  viewerRegistrationStatus
+  registrations {
+    id
+    memberId
+    contactId
+    status
+    registeredAt
+    cancelledAt
+    note
+    displayName
+  }
+  attachments {
+    id
+    eventId
+    fileName
+    mimeType
+    sizeBytes
+    createdAt
+  }
+`;
+
+export const CLUB_EVENTS = gql`
+  query ClubEvents {
+    clubEvents {
+      ${EVENT_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_CLUB_EVENT = gql`
+  mutation CreateClubEvent($input: CreateEventInput!) {
+    createClubEvent(input: $input) {
+      ${EVENT_FIELDS}
+    }
+  }
+`;
+
+export const UPDATE_CLUB_EVENT = gql`
+  mutation UpdateClubEvent($input: UpdateEventInput!) {
+    updateClubEvent(input: $input) {
+      ${EVENT_FIELDS}
+    }
+  }
+`;
+
+export const PUBLISH_CLUB_EVENT = gql`
+  mutation PublishClubEvent($id: ID!) {
+    publishClubEvent(id: $id) {
+      ${EVENT_FIELDS}
+    }
+  }
+`;
+
+export const CANCEL_CLUB_EVENT = gql`
+  mutation CancelClubEvent($id: ID!) {
+    cancelClubEvent(id: $id) {
+      ${EVENT_FIELDS}
+    }
+  }
+`;
+
+export const DELETE_CLUB_EVENT = gql`
+  mutation DeleteClubEvent($id: ID!) {
+    deleteClubEvent(id: $id)
+  }
+`;
+
+export const ADMIN_REGISTER_MEMBER_TO_EVENT = gql`
+  mutation AdminRegisterMemberToEvent(
+    $eventId: ID!
+    $memberId: ID!
+    $note: String
+  ) {
+    adminRegisterMemberToEvent(
+      eventId: $eventId
+      memberId: $memberId
+      note: $note
+    ) {
+      ${EVENT_FIELDS}
+    }
+  }
+`;
+
+export const ADMIN_CANCEL_EVENT_REGISTRATION = gql`
+  mutation AdminCancelEventRegistration($registrationId: ID!) {
+    adminCancelEventRegistration(registrationId: $registrationId) {
+      ${EVENT_FIELDS}
+    }
+  }
+`;
+
+export const SEND_CLUB_EVENT_CONVOCATION = gql`
+  mutation SendClubEventConvocation($input: SendEventConvocationInput!) {
+    sendClubEventConvocation(input: $input) {
+      totalTargets
+      sent
+      skipped
+      suppressed
+      failed
+    }
+  }
+`;
+
+const BLOG_POST_FIELDS = `
+  id
+  clubId
+  authorUserId
+  slug
+  title
+  excerpt
+  body
+  coverImageUrl
+  status
+  publishedAt
+  createdAt
+  updatedAt
+`;
+
+export const CLUB_BLOG_POSTS = gql`
+  query ClubBlogPosts {
+    clubBlogPosts {
+      ${BLOG_POST_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_CLUB_BLOG_POST = gql`
+  mutation CreateClubBlogPost($input: CreateBlogPostInput!) {
+    createClubBlogPost(input: $input) {
+      ${BLOG_POST_FIELDS}
+    }
+  }
+`;
+
+export const UPDATE_CLUB_BLOG_POST = gql`
+  mutation UpdateClubBlogPost($input: UpdateBlogPostInput!) {
+    updateClubBlogPost(input: $input) {
+      ${BLOG_POST_FIELDS}
+    }
+  }
+`;
+
+export const PUBLISH_CLUB_BLOG_POST = gql`
+  mutation PublishClubBlogPost($id: ID!) {
+    publishClubBlogPost(id: $id) {
+      ${BLOG_POST_FIELDS}
+    }
+  }
+`;
+
+export const ARCHIVE_CLUB_BLOG_POST = gql`
+  mutation ArchiveClubBlogPost($id: ID!) {
+    archiveClubBlogPost(id: $id) {
+      ${BLOG_POST_FIELDS}
+    }
+  }
+`;
+
+export const DELETE_CLUB_BLOG_POST = gql`
+  mutation DeleteClubBlogPost($id: ID!) {
+    deleteClubBlogPost(id: $id)
+  }
+`;
+
+const SHOP_PRODUCT_FIELDS = `
+  id
+  clubId
+  sku
+  name
+  description
+  imageUrl
+  priceCents
+  stock
+  active
+  createdAt
+  updatedAt
+`;
+
+const SHOP_ORDER_FIELDS = `
+  id
+  clubId
+  memberId
+  contactId
+  status
+  totalCents
+  note
+  createdAt
+  updatedAt
+  paidAt
+  buyerFirstName
+  buyerLastName
+  lines {
+    id
+    orderId
+    productId
+    quantity
+    unitPriceCents
+    label
+  }
+`;
+
+export const SHOP_PRODUCTS = gql`
+  query ShopProducts {
+    shopProducts {
+      ${SHOP_PRODUCT_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_SHOP_PRODUCT = gql`
+  mutation CreateShopProduct($input: CreateShopProductInput!) {
+    createShopProduct(input: $input) {
+      ${SHOP_PRODUCT_FIELDS}
+    }
+  }
+`;
+
+export const UPDATE_SHOP_PRODUCT = gql`
+  mutation UpdateShopProduct($input: UpdateShopProductInput!) {
+    updateShopProduct(input: $input) {
+      ${SHOP_PRODUCT_FIELDS}
+    }
+  }
+`;
+
+export const DELETE_SHOP_PRODUCT = gql`
+  mutation DeleteShopProduct($id: ID!) {
+    deleteShopProduct(id: $id)
+  }
+`;
+
+export const SHOP_ORDERS = gql`
+  query ShopOrders {
+    shopOrders {
+      ${SHOP_ORDER_FIELDS}
+    }
+  }
+`;
+
+export const MARK_SHOP_ORDER_PAID = gql`
+  mutation MarkShopOrderPaid($id: ID!) {
+    markShopOrderPaid(id: $id) {
+      ${SHOP_ORDER_FIELDS}
+    }
+  }
+`;
+
+export const CANCEL_SHOP_ORDER = gql`
+  mutation CancelShopOrder($id: ID!) {
+    cancelShopOrder(id: $id) {
+      ${SHOP_ORDER_FIELDS}
+    }
+  }
+`;
+
+const SPONSORSHIP_FIELDS = `
+  id
+  sponsorName
+  kind
+  status
+  valueCents
+  amountCents
+  inKindDescription
+  projectId
+  projectTitle
+  contactId
+  contactName
+  startsAt
+  endsAt
+  notes
+  installments {
+    id
+    expectedAmountCents
+    receivedAmountCents
+    expectedAt
+    receivedAt
+    paymentId
+    accountingEntryId
+    createdAt
+  }
+  documents {
+    id
+    mediaAssetId
+    kind
+    fileName
+    publicUrl
+    mimeType
+  }
+  createdAt
+  updatedAt
+`;
+
+const GRANT_FIELDS = `
+  id
+  title
+  fundingBody
+  status
+  requestedAmountCents
+  grantedAmountCents
+  amountCents
+  projectId
+  projectTitle
+  startsAt
+  endsAt
+  reportDueAt
+  reportSubmittedAt
+  notes
+  installments {
+    id
+    expectedAmountCents
+    receivedAmountCents
+    expectedAt
+    receivedAt
+    paymentId
+    accountingEntryId
+    notes
+    createdAt
+  }
+  documents {
+    id
+    mediaAssetId
+    kind
+    fileName
+    publicUrl
+    mimeType
+  }
+  createdAt
+  updatedAt
+`;
+
+const ACCOUNTING_ENTRY_FIELDS = `
+  id
+  clubId
+  kind
+  status
+  source
+  label
+  amountCents
+  vatTotalCents
+  paymentId
+  projectId
+  contraEntryId
+  financialAccountId
+  financialAccountLabel
+  financialAccountCode
+  consolidatedAt
+  paymentMethod
+  paymentReference
+  invoiceNumber
+  duplicateOfEntryId
+  aiProcessingStartedAt
+  occurredAt
+  createdAt
+  lines {
+    id
+    accountCode
+    accountLabel
+    label
+    side
+    debitCents
+    creditCents
+    vatRate
+    vatAmountCents
+    validatedAt
+    iaSuggestedAccountCode
+    iaReasoning
+    iaConfidencePct
+    mergedFromArticleLabels
+    allocations {
+      id
+      amountCents
+      projectId
+      projectTitle
+      cohortCode
+      gender
+      disciplineCode
+      memberId
+      memberName
+      dynamicGroupLabels
+      freeformTags
+    }
+  }
+  documents {
+    id
+    mediaAssetId
+    fileName
+    publicUrl
+    mimeType
+  }
+`;
+
+export const CLUB_SPONSORSHIP_DEALS = gql`
+  query ClubSponsorshipDeals {
+    clubSponsorshipDeals {
+      ${SPONSORSHIP_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_CLUB_SPONSORSHIP_DEAL = gql`
+  mutation CreateClubSponsorshipDeal($input: CreateSponsorshipDealInput!) {
+    createClubSponsorshipDeal(input: $input) {
+      ${SPONSORSHIP_FIELDS}
+    }
+  }
+`;
+
+export const UPDATE_CLUB_SPONSORSHIP_DEAL = gql`
+  mutation UpdateClubSponsorshipDeal($input: UpdateSponsorshipDealInput!) {
+    updateClubSponsorshipDeal(input: $input) {
+      ${SPONSORSHIP_FIELDS}
+    }
+  }
+`;
+
+export const ACTIVATE_CLUB_SPONSORSHIP_DEAL = gql`
+  mutation ActivateClubSponsorshipDeal($id: ID!) {
+    activateClubSponsorshipDeal(id: $id) {
+      ${SPONSORSHIP_FIELDS}
+    }
+  }
+`;
+
+export const CLOSE_CLUB_SPONSORSHIP_DEAL = gql`
+  mutation CloseClubSponsorshipDeal($id: ID!) {
+    closeClubSponsorshipDeal(id: $id) {
+      ${SPONSORSHIP_FIELDS}
+    }
+  }
+`;
+
+export const CANCEL_CLUB_SPONSORSHIP_DEAL = gql`
+  mutation CancelClubSponsorshipDeal($id: ID!) {
+    cancelClubSponsorshipDeal(id: $id) {
+      ${SPONSORSHIP_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_CLUB_SPONSORSHIP_INSTALLMENT = gql`
+  mutation CreateClubSponsorshipInstallment(
+    $input: CreateSponsorshipInstallmentInput!
+  ) {
+    createClubSponsorshipInstallment(input: $input) {
+      id
+    }
+  }
+`;
+
+export const MARK_CLUB_SPONSORSHIP_INSTALLMENT_RECEIVED = gql`
+  mutation MarkClubSponsorshipInstallmentReceived(
+    $input: MarkSponsorshipInstallmentReceivedInput!
+  ) {
+    markClubSponsorshipInstallmentReceived(input: $input) {
+      id
+      receivedAt
+      receivedAmountCents
+    }
+  }
+`;
+
+export const DELETE_CLUB_SPONSORSHIP_INSTALLMENT = gql`
+  mutation DeleteClubSponsorshipInstallment($id: ID!) {
+    deleteClubSponsorshipInstallment(id: $id)
+  }
+`;
+
+export const ATTACH_CLUB_SPONSORSHIP_DOCUMENT = gql`
+  mutation AttachClubSponsorshipDocument(
+    $dealId: ID!
+    $mediaAssetId: ID!
+    $kind: SponsorshipDocumentKind
+  ) {
+    attachClubSponsorshipDocument(
+      dealId: $dealId
+      mediaAssetId: $mediaAssetId
+      kind: $kind
+    )
+  }
+`;
+
+export const DETACH_CLUB_SPONSORSHIP_DOCUMENT = gql`
+  mutation DetachClubSponsorshipDocument($documentId: ID!) {
+    detachClubSponsorshipDocument(documentId: $documentId)
+  }
+`;
+
+export const DELETE_CLUB_SPONSORSHIP_DEAL = gql`
+  mutation DeleteClubSponsorshipDeal($id: ID!) {
+    deleteClubSponsorshipDeal(id: $id)
+  }
+`;
+
+export const CLUB_GRANT_APPLICATIONS = gql`
+  query ClubGrantApplications {
+    clubGrantApplications {
+      ${GRANT_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_CLUB_GRANT_APPLICATION = gql`
+  mutation CreateClubGrantApplication($input: CreateGrantApplicationInput!) {
+    createClubGrantApplication(input: $input) {
+      ${GRANT_FIELDS}
+    }
+  }
+`;
+
+export const UPDATE_CLUB_GRANT_APPLICATION = gql`
+  mutation UpdateClubGrantApplication($input: UpdateGrantApplicationInput!) {
+    updateClubGrantApplication(input: $input) {
+      ${GRANT_FIELDS}
+    }
+  }
+`;
+
+export const SUBMIT_CLUB_GRANT_APPLICATION = gql`
+  mutation SubmitClubGrantApplication($id: ID!) {
+    submitClubGrantApplication(id: $id) {
+      ${GRANT_FIELDS}
+    }
+  }
+`;
+
+export const ARCHIVE_CLUB_GRANT_APPLICATION = gql`
+  mutation ArchiveClubGrantApplication($id: ID!) {
+    archiveClubGrantApplication(id: $id) {
+      ${GRANT_FIELDS}
+    }
+  }
+`;
+
+export const MARK_CLUB_GRANT_GRANTED = gql`
+  mutation MarkClubGrantGranted($input: MarkGrantGrantedInput!) {
+    markClubGrantGranted(input: $input) {
+      ${GRANT_FIELDS}
+    }
+  }
+`;
+
+export const REJECT_CLUB_GRANT_APPLICATION = gql`
+  mutation RejectClubGrantApplication($id: ID!) {
+    rejectClubGrantApplication(id: $id) {
+      ${GRANT_FIELDS}
+    }
+  }
+`;
+
+export const MARK_CLUB_GRANT_REPORTED = gql`
+  mutation MarkClubGrantReported($id: ID!) {
+    markClubGrantReported(id: $id) {
+      ${GRANT_FIELDS}
+    }
+  }
+`;
+
+export const SETTLE_CLUB_GRANT_APPLICATION = gql`
+  mutation SettleClubGrantApplication($id: ID!) {
+    settleClubGrantApplication(id: $id) {
+      ${GRANT_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_CLUB_GRANT_INSTALLMENT = gql`
+  mutation CreateClubGrantInstallment($input: CreateGrantInstallmentInput!) {
+    createClubGrantInstallment(input: $input) {
+      id
+    }
+  }
+`;
+
+export const MARK_CLUB_GRANT_INSTALLMENT_RECEIVED = gql`
+  mutation MarkClubGrantInstallmentReceived(
+    $input: MarkGrantInstallmentReceivedInput!
+  ) {
+    markClubGrantInstallmentReceived(input: $input) {
+      id
+      receivedAt
+      receivedAmountCents
+    }
+  }
+`;
+
+export const DELETE_CLUB_GRANT_INSTALLMENT = gql`
+  mutation DeleteClubGrantInstallment($id: ID!) {
+    deleteClubGrantInstallment(id: $id)
+  }
+`;
+
+export const ATTACH_CLUB_GRANT_DOCUMENT = gql`
+  mutation AttachClubGrantDocument(
+    $grantId: ID!
+    $mediaAssetId: ID!
+    $kind: GrantDocumentKind
+  ) {
+    attachClubGrantDocument(
+      grantId: $grantId
+      mediaAssetId: $mediaAssetId
+      kind: $kind
+    )
+  }
+`;
+
+export const DETACH_CLUB_GRANT_DOCUMENT = gql`
+  mutation DetachClubGrantDocument($documentId: ID!) {
+    detachClubGrantDocument(documentId: $documentId)
+  }
+`;
+
+export const DELETE_CLUB_GRANT_APPLICATION = gql`
+  mutation DeleteClubGrantApplication($id: ID!) {
+    deleteClubGrantApplication(id: $id)
+  }
+`;
+
+export const CLUB_ACCOUNTING_ENTRIES = gql`
+  query ClubAccountingEntries($from: DateTime, $to: DateTime) {
+    clubAccountingEntries(from: $from, to: $to) {
+      ${ACCOUNTING_ENTRY_FIELDS}
+    }
+  }
+`;
+
+export const CLUB_ACCOUNTING_SUMMARY = gql`
+  query ClubAccountingSummary($from: DateTime, $to: DateTime) {
+    clubAccountingSummary(from: $from, to: $to) {
+      incomeCents
+      expenseCents
+      balanceCents
+      inKindCents
+      needsReviewCount
+    }
+  }
+`;
+
+export const CLUB_ACCOUNTING_REVIEW_QUEUE = gql`
+  query ClubAccountingReviewQueue {
+    clubAccountingReviewQueue {
+      ${ACCOUNTING_ENTRY_FIELDS}
+    }
+  }
+`;
+
+export const CLUB_ACCOUNTING_ACCOUNTS = gql`
+  query ClubAccountingAccounts {
+    clubAccountingAccounts {
+      id
+      code
+      label
+      kind
+      isDefault
+      isActive
+      sortOrder
+    }
+  }
+`;
+
+export const CLUB_ACCOUNTING_COHORTS = gql`
+  query ClubAccountingCohorts {
+    clubAccountingCohorts {
+      id
+      code
+      label
+      minAge
+      maxAge
+      sortOrder
+      isDefault
+    }
+  }
+`;
+
+export const CANCEL_CLUB_ACCOUNTING_ENTRY = gql`
+  mutation CancelClubAccountingEntry($input: CancelAccountingEntryInput!) {
+    cancelClubAccountingEntry(input: $input) {
+      ${ACCOUNTING_ENTRY_FIELDS}
+    }
+  }
+`;
+
+export const SUBMIT_RECEIPT_FOR_OCR = gql`
+  mutation SubmitReceiptForOcr($mediaAssetId: ID!) {
+    submitReceiptForOcr(mediaAssetId: $mediaAssetId) {
+      extractionId
+      entryId
+      duplicateOfEntryId
+      budgetBlocked
+    }
+  }
+`;
+
+export const CREATE_CLUB_ACCOUNTING_ENTRY_QUICK = gql`
+  mutation CreateClubAccountingEntryQuick(
+    $input: CreateQuickAccountingEntryInput!
+  ) {
+    createClubAccountingEntryQuick(input: $input) {
+      id
+      pendingCategorization
+    }
+  }
+`;
+
+export const SUGGEST_ACCOUNTING_CATEGORIZATION = gql`
+  mutation SuggestAccountingCategorization(
+    $input: SuggestAccountingCategorizationInput!
+  ) {
+    suggestAccountingCategorization(input: $input) {
+      accountCode
+      accountLabel
+      cohortCode
+      projectId
+      projectTitle
+      disciplineCode
+      confidenceAccount
+      confidenceCohort
+      confidenceProject
+      confidenceDiscipline
+      reasoning
+      budgetBlocked
+      errorMessage
+    }
+  }
+`;
+
+export const INIT_CLUB_ACCOUNTING_PLAN = gql`
+  mutation InitClubAccountingPlan {
+    initClubAccountingPlan
+  }
+`;
+
+export const VALIDATE_ACCOUNTING_ENTRY_LINE = gql`
+  mutation ValidateAccountingEntryLine(
+    $lineId: ID!
+    $accountCode: String
+  ) {
+    validateAccountingEntryLine(lineId: $lineId, accountCode: $accountCode)
+  }
+`;
+
+export const UNVALIDATE_ACCOUNTING_ENTRY_LINE = gql`
+  mutation UnvalidateAccountingEntryLine($lineId: ID!) {
+    unvalidateAccountingEntryLine(lineId: $lineId)
+  }
+`;
+
+export const RERUN_ACCOUNTING_AI_FOR_LINE = gql`
+  mutation RerunAccountingAiForLine($lineId: ID!) {
+    rerunAccountingAiForLine(lineId: $lineId) {
+      accountCode
+      confidenceAccount
+      reasoning
+      errorMessage
+    }
+  }
+`;
+
+export const UPDATE_ACCOUNTING_LINE_ALLOCATION = gql`
+  mutation UpdateAccountingLineAllocation(
+    $lineId: ID!
+    $projectId: ID
+    $cohortCode: String
+    $disciplineCode: String
+  ) {
+    updateAccountingLineAllocation(
+      lineId: $lineId
+      projectId: $projectId
+      cohortCode: $cohortCode
+      disciplineCode: $disciplineCode
+    )
+  }
+`;
+
+export const DELETE_CLUB_ACCOUNTING_ENTRY_PERMANENT = gql`
+  mutation DeleteClubAccountingEntryPermanent($id: ID!) {
+    deleteClubAccountingEntryPermanent(id: $id)
+  }
+`;
+
+export const CONFIRM_ACCOUNTING_EXTRACTION = gql`
+  mutation ConfirmAccountingExtraction($input: ConfirmExtractionInput!) {
+    confirmAccountingExtraction(input: $input) {
+      ${ACCOUNTING_ENTRY_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_CLUB_ACCOUNTING_CONTRA_ENTRY = gql`
+  mutation CreateClubAccountingContraEntry($input: CancelAccountingEntryInput!) {
+    createClubAccountingContraEntry(input: $input) {
+      ${ACCOUNTING_ENTRY_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_CLUB_ACCOUNTING_ENTRY = gql`
+  mutation CreateClubAccountingEntry($input: CreateAccountingEntryInput!) {
+    createClubAccountingEntry(input: $input) {
+      ${ACCOUNTING_ENTRY_FIELDS}
+    }
+  }
+`;
+
+export const DELETE_CLUB_ACCOUNTING_ENTRY = gql`
+  mutation DeleteClubAccountingEntry($id: ID!) {
+    deleteClubAccountingEntry(id: $id)
+  }
+`;
+
+export const CREATE_CLUB_CREDIT_NOTE = gql`
+  mutation CreateClubCreditNote(
+    $parentInvoiceId: String!
+    $reason: String!
+    $amountCents: Float
+  ) {
+    createClubCreditNote(
+      parentInvoiceId: $parentInvoiceId
+      reason: $reason
+      amountCents: $amountCents
+    ) {
+      id
+      clubId
+      familyId
+      familyLabel
+      householdGroupId
+      householdGroupLabel
+      clubSeasonId
+      label
+      baseAmountCents
+      amountCents
+      status
+      lockedPaymentMethod
+      dueAt
+      totalPaidCents
+      balanceCents
+      isCreditNote
+      parentInvoiceId
+      creditNoteReason
+    }
+  }
+`;
+
+export const CLUB_BRANDING = gql`
+  query ClubBranding {
+    club {
+      id
+      name
+      slug
+      logoUrl
+      siret
+      address
+      legalMentions
+      contactPhone
+      contactEmail
+    }
+  }
+`;
+
+// ============================================================================
+// Règles de remise pattern-based (Membership pricing rules)
+// ============================================================================
+
+const MEMBERSHIP_PRICING_RULE_FIELDS = `
+  id
+  pattern
+  label
+  isActive
+  priority
+  configJson
+  createdAt
+  updatedAt
+`;
+
+export const CLUB_MEMBERSHIP_PRICING_RULES = gql`
+  query ClubMembershipPricingRules {
+    clubMembershipPricingRules {
+      ${MEMBERSHIP_PRICING_RULE_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_CLUB_MEMBERSHIP_PRICING_RULE = gql`
+  mutation CreateClubMembershipPricingRule(
+    $input: CreateMembershipPricingRuleInput!
+  ) {
+    createClubMembershipPricingRule(input: $input) {
+      ${MEMBERSHIP_PRICING_RULE_FIELDS}
+    }
+  }
+`;
+
+export const UPDATE_CLUB_MEMBERSHIP_PRICING_RULE = gql`
+  mutation UpdateClubMembershipPricingRule(
+    $input: UpdateMembershipPricingRuleInput!
+  ) {
+    updateClubMembershipPricingRule(input: $input) {
+      ${MEMBERSHIP_PRICING_RULE_FIELDS}
+    }
+  }
+`;
+
+export const DELETE_CLUB_MEMBERSHIP_PRICING_RULE = gql`
+  mutation DeleteClubMembershipPricingRule($id: ID!) {
+    deleteClubMembershipPricingRule(id: $id)
+  }
+`;
+
+export const CLUB_MEMBERSHIP_SETTINGS = gql`
+  query ClubMembershipSettings {
+    clubMembershipSettings {
+      fullPriceFirstMonths
+    }
+  }
+`;
+
+export const UPDATE_CLUB_MEMBERSHIP_SETTINGS = gql`
+  mutation UpdateClubMembershipSettings($fullPriceFirstMonths: Int!) {
+    updateClubMembershipSettings(
+      fullPriceFirstMonths: $fullPriceFirstMonths
+    ) {
+      fullPriceFirstMonths
+    }
+  }
+`;
+
+export const UPDATE_CLUB_BRANDING = gql`
+  mutation UpdateClubBranding($input: UpdateClubBrandingInput!) {
+    updateClubBranding(input: $input) {
+      id
+      name
+      slug
+      logoUrl
+      siret
+      address
+      legalMentions
+      contactPhone
+      contactEmail
+    }
+  }
+`;
+
+// ============================================================================
+// Comptes financiers (banques, caisses, transit Stripe)
+// ============================================================================
+
+const FINANCIAL_ACCOUNT_FIELDS = `
+  id
+  kind
+  label
+  accountingAccountId
+  accountingAccountCode
+  accountingAccountLabel
+  iban
+  bic
+  stripeAccountId
+  isDefault
+  isActive
+  sortOrder
+  notes
+`;
+
+export const CLUB_FINANCIAL_ACCOUNTS = gql`
+  query ClubFinancialAccounts {
+    clubFinancialAccounts {
+      ${FINANCIAL_ACCOUNT_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_CLUB_FINANCIAL_ACCOUNT = gql`
+  mutation CreateClubFinancialAccount($input: CreateClubFinancialAccountInput!) {
+    createClubFinancialAccount(input: $input) {
+      ${FINANCIAL_ACCOUNT_FIELDS}
+    }
+  }
+`;
+
+export const UPDATE_CLUB_FINANCIAL_ACCOUNT = gql`
+  mutation UpdateClubFinancialAccount($input: UpdateClubFinancialAccountInput!) {
+    updateClubFinancialAccount(input: $input) {
+      ${FINANCIAL_ACCOUNT_FIELDS}
+    }
+  }
+`;
+
+export const ARCHIVE_CLUB_FINANCIAL_ACCOUNT = gql`
+  mutation ArchiveClubFinancialAccount($id: ID!) {
+    archiveClubFinancialAccount(id: $id)
+  }
+`;
+
+// ============================================================================
+// Routes de paiement (mapping ClubPaymentMethod → ClubFinancialAccount)
+// ============================================================================
+
+export const CLUB_PAYMENT_ROUTES = gql`
+  query ClubPaymentRoutes {
+    clubPaymentRoutes {
+      id
+      method
+      financialAccountId
+      financialAccountLabel
+      financialAccountCode
+    }
+  }
+`;
+
+export const UPSERT_CLUB_PAYMENT_ROUTE = gql`
+  mutation UpsertClubPaymentRoute($input: UpsertClubPaymentRouteInput!) {
+    upsertClubPaymentRoute(input: $input) {
+      id
+      method
+      financialAccountId
+      financialAccountLabel
+      financialAccountCode
+    }
+  }
+`;
+
+export const DELETE_CLUB_PAYMENT_ROUTE = gql`
+  mutation DeleteClubPaymentRoute($id: ID!) {
+    deleteClubPaymentRoute(id: $id)
+  }
+`;
+
+// ============================================================================
+// Consolidation opt-in des lignes d'écriture
+// ============================================================================
+
+export const ACCOUNTING_ENTRY_CONSOLIDATION_PREVIEW = gql`
+  query AccountingEntryConsolidationPreview($entryId: ID!) {
+    accountingEntryConsolidationPreview(entryId: $entryId) {
+      eligible
+      reason
+      groups {
+        accountCode
+        accountLabel
+        lineCount
+        totalCents
+      }
+    }
+  }
+`;
+
+export const CONSOLIDATE_ACCOUNTING_ENTRY = gql`
+  mutation ConsolidateAccountingEntry($entryId: ID!) {
+    consolidateAccountingEntry(entryId: $entryId)
+  }
+`;
+
+export const UNCONSOLIDATE_ACCOUNTING_ENTRY = gql`
+  mutation UnconsolidateAccountingEntry($entryId: ID!) {
+    unconsolidateAccountingEntry(entryId: $entryId)
+  }
+`;
+
+export const UPDATE_ACCOUNTING_ENTRY_FINANCIAL_ACCOUNT = gql`
+  mutation UpdateAccountingEntryFinancialAccount(
+    $entryId: ID!
+    $financialAccountId: ID!
+  ) {
+    updateAccountingEntryFinancialAccount(
+      entryId: $entryId
+      financialAccountId: $financialAccountId
+    )
   }
 `;
