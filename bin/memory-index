@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# bin/memory-index — Auto-rebuilds docs/memory/INDEX.md from filesystem.
+#
+# Usage:
+#   bin/memory-index           # Rewrites docs/memory/INDEX.md
+#   bin/memory-index --check   # Exit 1 if INDEX.md doesn't match (CI mode)
+#
+# Output structure :
+#   - Liste de pitfalls/decisions/workflows
+#   - Tableau récap par catégorie
+#   - Date de génération en footer
+#
+# Convention : la 1re ligne H1 (`# ...`) du fichier est utilisée comme titre.
+# Si absente, fallback sur le nom du fichier sans extension.
+
+set -e
+
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+MEMORY_DIR="$ROOT_DIR/docs/memory"
+INDEX_FILE="$MEMORY_DIR/INDEX.md"
+
+if [ ! -d "$MEMORY_DIR" ]; then
+  echo "❌ $MEMORY_DIR n'existe pas"
+  exit 1
+fi
+
+# Extract H1 title from a markdown file (1st line starting with `# `)
+get_title() {
+  local file="$1"
+  local title
+  title=$(grep -m 1 '^# ' "$file" 2>/dev/null | sed 's/^# //')
+  if [ -z "$title" ]; then
+    title="$(basename "$file" .md)"
+  fi
+  echo "$title"
+}
+
+# Build a section listing files in a subdir
+build_section() {
+  local label="$1"
+  local subdir="$2"
+  local emoji="$3"
+
+  if [ ! -d "$MEMORY_DIR/$subdir" ]; then
+    return
+  fi
+
+  local files
+  files=$(find "$MEMORY_DIR/$subdir" -maxdepth 1 -name '*.md' | sort)
+
+  if [ -z "$files" ]; then
+    echo ""
+    echo "## $emoji $label"
+    echo ""
+    echo "_Aucun fichier pour le moment._"
+    return
+  fi
+
+  echo ""
+  echo "## $emoji $label"
+  echo ""
+  echo "| Fichier | Sujet |"
+  echo "|---|---|"
+
+  while IFS= read -r file; do
+    local fname
+    fname=$(basename "$file")
+    local title
+    title=$(get_title "$file")
+    echo "| [\`$fname\`]($subdir/$fname) | $title |"
+  done <<< "$files"
+}
+
+# Build the full INDEX
+build_index() {
+  cat <<HEADER
+# 📚 Memory INDEX — ClubFlow
+
+> ⚠️ **Fichier auto-généré** par \`bin/memory-index\`. Ne pas éditer à la main.
+> Pour ajouter une entrée : créer le fichier dans le sous-dossier approprié,
+> puis lancer \`bin/memory-index\` (ou commit, le hook le fait).
+
+## Comment chercher
+
+| Tu veux... | Va voir... |
+|---|---|
+| Comprendre un choix tranché ("pourquoi PG 16 ?") | \`decisions/\` |
+| Éviter de retomber dans un piège connu | \`pitfalls/\` |
+| Suivre un parcours complet (du début à la fin) | \`workflows/\` |
+| Procédure opérationnelle (deploy, rollback, etc.) | \`../runbooks/\` |
+| Connaissance statique du projet (stack, conventions) | \`../knowledge/\` |
+HEADER
+
+  build_section "Pièges connus (pitfalls)" "pitfalls" "🪤"
+  build_section "Décisions architecturales (ADR)" "decisions" "🏛️"
+  build_section "Workflows métier" "workflows" "🔄"
+
+  cat <<FOOTER
+
+---
+
+_Index généré le $(date -u +"%Y-%m-%d %H:%M UTC") par \`bin/memory-index\`._
+
+Pour rebuild : \`bin/memory-index\`
+Pour vérifier en CI : \`bin/memory-index --check\`
+FOOTER
+}
+
+NEW_INDEX=$(build_index)
+
+if [ "${1:-}" = "--check" ]; then
+  if [ ! -f "$INDEX_FILE" ]; then
+    echo "❌ $INDEX_FILE n'existe pas. Lance: bin/memory-index"
+    exit 1
+  fi
+  CURRENT=$(cat "$INDEX_FILE")
+  # Compare en ignorant la ligne "généré le" (timestamp variable)
+  if diff <(echo "$NEW_INDEX" | grep -v "^_Index généré le") \
+          <(echo "$CURRENT" | grep -v "^_Index généré le") > /dev/null; then
+    echo "✅ INDEX.md est à jour"
+    exit 0
+  else
+    echo "❌ INDEX.md n'est pas à jour. Lance: bin/memory-index"
+    diff <(echo "$NEW_INDEX" | grep -v "^_Index généré le") \
+         <(echo "$CURRENT" | grep -v "^_Index généré le")
+    exit 1
+  fi
+fi
+
+echo "$NEW_INDEX" > "$INDEX_FILE"
+echo "✅ $INDEX_FILE régénéré ($(echo "$NEW_INDEX" | wc -l) lignes)"
