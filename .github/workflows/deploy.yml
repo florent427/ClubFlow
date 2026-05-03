@@ -1,10 +1,20 @@
 name: Deploy to production
 
 on:
-  # Déclenché auto par release-please quand un tag v* est créé
+  # 1. Push sur main → deploy immédiat (sans attendre la release)
+  # 2. Push d'un tag v* (créé par release-please) → deploy aussi
+  # 3. Trigger manuel (Actions tab → Run workflow)
   push:
+    branches: [main]
     tags: ['v*']
-  # Permet aussi un trigger manuel (Actions tab → Run workflow)
+    # Ignore les modifs purement docs/CI pour éviter de redéployer pour rien
+    paths-ignore:
+      - 'CLAUDE.md'
+      - 'CHANGELOG.md'
+      - 'README.md'
+      - 'docs/**'
+      - '.github/**'
+      - '**.md'
   workflow_dispatch:
     inputs:
       tag:

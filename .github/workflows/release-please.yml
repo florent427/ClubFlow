@@ -18,9 +18,13 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-      # Déclenche le deploy uniquement quand un nouveau tag est créé
-      - name: Trigger deploy on release
-        if: ${{ steps.release.outputs.release_created == 'true' }}
-        run: gh workflow run deploy.yml -f tag=${{ steps.release.outputs.tag_name }}
+      # AUTO-MERGE de la PR de release dès qu'elle est ouverte (squash, sans review).
+      # → tag git + GitHub Release créés automatiquement → deploy.yml déclenché.
+      - name: Auto-merge release PR
+        if: ${{ steps.release.outputs.pr != '' }}
+        run: |
+          PR_NUMBER=$(echo '${{ steps.release.outputs.pr }}' | jq -r '.number')
+          echo "Auto-merging release PR #$PR_NUMBER"
+          gh pr merge "$PR_NUMBER" --squash --auto --delete-branch=false
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
