@@ -8,9 +8,11 @@ import { ClubContextGuard } from '../common/guards/club-context.guard';
 import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.guard';
 import { GqlJwtAuthGuard } from '../common/guards/gql-jwt-auth.guard';
 import { ModuleCode } from '../domain/module-registry/module-codes';
+import { AudienceFilterInput } from './dto/audience-filter.input';
 import { CreateMessageCampaignInput } from './dto/create-message-campaign.input';
 import { SendQuickMessageInput } from './dto/send-quick-message.input';
 import { UpdateMessageCampaignInput } from './dto/update-message-campaign.input';
+import { AudiencePreviewGraph } from './models/audience-preview.model';
 import { MessageCampaignGraph } from './models/message-campaign.model';
 import { SendQuickMessageResult } from './models/send-quick-message-result.model';
 import { CommsService } from './comms.service';
@@ -33,13 +35,26 @@ export class CommsResolver {
     return this.comms.listCampaigns(club.id);
   }
 
+  /**
+   * Preview live de l'audience d'une campagne en cours d'édition côté UI.
+   * Le client appelle cette query à chaque changement du filtre (debounce
+   * recommandé) pour afficher « 152 destinataires (Léa, Théo, +149) ».
+   */
+  @Query(() => AudiencePreviewGraph, { name: 'previewClubCampaignAudience' })
+  async previewClubCampaignAudience(
+    @CurrentClub() club: Club,
+    @Args('audience', { type: () => AudienceFilterInput, nullable: true })
+    audience: AudienceFilterInput | null,
+  ): Promise<AudiencePreviewGraph> {
+    return this.comms.previewAudience(club.id, audience);
+  }
+
   @Mutation(() => MessageCampaignGraph)
   async createClubMessageCampaign(
     @CurrentClub() club: Club,
     @Args('input') input: CreateMessageCampaignInput,
   ): Promise<MessageCampaignGraph> {
-    const c = await this.comms.createDraft(club.id, input);
-    return { ...c, recipientCount: 0 };
+    return this.comms.createDraft(club.id, input);
   }
 
   @Mutation(() => MessageCampaignGraph)

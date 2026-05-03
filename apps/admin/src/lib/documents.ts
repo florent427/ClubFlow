@@ -1272,7 +1272,9 @@ export const CLUB_MESSAGE_CAMPAIGNS = gql`
       title
       body
       channel
+      channels
       dynamicGroupId
+      audienceFilterJson
       status
       sentAt
       recipientCount
@@ -1285,7 +1287,14 @@ export const CREATE_CLUB_MESSAGE_CAMPAIGN = gql`
     createClubMessageCampaign(input: $input) {
       id
       title
+      body
+      channel
+      channels
+      dynamicGroupId
+      audienceFilterJson
       status
+      sentAt
+      recipientCount
     }
   }
 `;
@@ -1308,10 +1317,25 @@ export const UPDATE_CLUB_MESSAGE_CAMPAIGN = gql`
       title
       body
       channel
+      channels
       dynamicGroupId
+      audienceFilterJson
       status
       sentAt
       recipientCount
+    }
+  }
+`;
+
+/**
+ * Aperçu live de l'audience d'une campagne en cours d'édition.
+ * Le client appelle (debounced) à chaque changement du filtre.
+ */
+export const PREVIEW_CLUB_CAMPAIGN_AUDIENCE = gql`
+  query PreviewClubCampaignAudience($audience: AudienceFilterInput) {
+    previewClubCampaignAudience(audience: $audience) {
+      count
+      sampleNames
     }
   }
 `;

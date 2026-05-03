@@ -1575,8 +1575,23 @@ model MessageCampaign {
   clubId         String
   title          String
   body           String
+  /// LEGACY (single channel). Conservé pour rétrocompat des anciennes
+  /// campagnes — les nouvelles utilisent `channels[]` (multi). Au create,
+  /// si le client envoie `channel` seul on remplit `channels=[channel]`.
   channel        CommunicationChannel
+  /// Multi-canal : la campagne est délivrée via tous ces canaux.
+  /// Default array vide = on retombe sur `channel` (legacy).
+  channels       CommunicationChannel[] @default([])
+  /// LEGACY (cible unique = un groupe dynamique). Toujours utilisé si
+  /// `audienceFilterJson` est null.
   dynamicGroupId String?
+  /// NOUVELLE audience riche (multi-critère). JSON sérialisé de la
+  /// forme :
+  /// { dynamicGroupIds?: string[], membershipRoles?: string[],
+  ///   clubMemberRoles?: string[], ageFilter?: 'ALL'|'ADULTS'|'MINORS',
+  ///   memberIds?: string[], includeAllMembers?: boolean }
+  /// Si null, fallback sur `dynamicGroupId` legacy.
+  audienceFilterJson Json?
   /// Rattachement optionnel à un ClubProject (pour le futur module
   /// Communications scopé projet + traçabilité analytique).
   projectId      String?

@@ -703,13 +703,56 @@ export type ClubChatRoomsAdminQueryData = {
   clubChatRoomsAdmin: AdminChatRoomRow[];
 };
 
+/** Rôles d'accès admin (cohérent avec Prisma `MembershipRole`). */
+export type MembershipRoleStr =
+  | 'CLUB_ADMIN'
+  | 'BOARD'
+  | 'COACH'
+  | 'TREASURER'
+  | 'SECRETARY'
+  | 'STAFF'
+  | 'COMM_MANAGER'
+  | 'PROJECT_MANAGER';
+
+/** Rôles "club" portés par le membre lui-même (cohérent avec `MemberClubRole`). */
+export type MemberClubRoleStr = 'STUDENT' | 'COACH' | 'BOARD';
+
+/** Filtre d'âge pour l'audience d'une campagne. */
+export type AudienceAgeFilterStr = 'ALL' | 'ADULTS' | 'MINORS';
+
+/**
+ * Forme du filtre d'audience d'une campagne (POST côté API et GET via
+ * `previewClubCampaignAudience`). Tous les critères sont combinés en
+ * UNION ; `ageFilter` est appliqué en INTERSECTION.
+ */
+export type AudienceFilterInputData = {
+  includeAllMembers?: boolean | null;
+  dynamicGroupIds?: string[] | null;
+  membershipRoles?: MembershipRoleStr[] | null;
+  clubMemberRoles?: MemberClubRoleStr[] | null;
+  ageFilter?: AudienceAgeFilterStr | null;
+  memberIds?: string[] | null;
+};
+
+export type PreviewCampaignAudienceQueryData = {
+  previewClubCampaignAudience: {
+    count: number;
+    sampleNames: string[];
+  };
+};
+
 export type MessageCampaignsQueryData = {
   clubMessageCampaigns: {
     id: string;
     title: string;
     body: string;
+    /** LEGACY single-channel — toujours populé (= channels[0] pour les nouveaux). */
     channel: CommunicationChannelStr;
+    /** Multi-canal. Vide pour les anciennes campagnes (utiliser `channel`). */
+    channels: CommunicationChannelStr[];
     dynamicGroupId: string | null;
+    /** Audience riche sérialisée. JSON.parse pour récupérer `AudienceFilterInputData`. */
+    audienceFilterJson: string | null;
     status: MessageCampaignStatusStr;
     sentAt: string | null;
     recipientCount: number;
@@ -720,7 +763,14 @@ export type CreateMessageCampaignMutationData = {
   createClubMessageCampaign: {
     id: string;
     title: string;
+    body: string;
+    channel: CommunicationChannelStr;
+    channels: CommunicationChannelStr[];
+    dynamicGroupId: string | null;
+    audienceFilterJson: string | null;
     status: MessageCampaignStatusStr;
+    sentAt: string | null;
+    recipientCount: number;
   };
 };
 
@@ -739,7 +789,9 @@ export type UpdateMessageCampaignMutationData = {
     title: string;
     body: string;
     channel: CommunicationChannelStr;
+    channels: CommunicationChannelStr[];
     dynamicGroupId: string | null;
+    audienceFilterJson: string | null;
     status: MessageCampaignStatusStr;
     sentAt: string | null;
     recipientCount: number;
