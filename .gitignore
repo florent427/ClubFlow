@@ -16,4 +16,6 @@ design stich/
 *.log
 
 # Claude Code worktree metadata (contient login JWT, logs, etc.)
-.claude/
+.claude/*
+# ... mais on versionne les skills custom partagés (équipe + multi-machine)
+!.claude/skills/

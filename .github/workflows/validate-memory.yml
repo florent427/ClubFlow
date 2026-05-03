@@ -1,0 +1,97 @@
+name: validate-memory
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/memory/**'
+      - 'docs/knowledge/**'
+      - 'docs/runbooks/**'
+      - 'bin/memory-index'
+      - '.github/workflows/validate-memory.yml'
+  pull_request:
+    paths:
+      - 'docs/memory/**'
+      - 'docs/knowledge/**'
+      - 'docs/runbooks/**'
+      - 'bin/memory-index'
+
+jobs:
+  validate:
+    name: Validate memory structure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check INDEX.md is up-to-date
+        run: |
+          chmod +x bin/memory-index
+          bin/memory-index --check
+
+      - name: Check pitfalls/ have required H1
+        run: |
+          missing=0
+          for f in docs/memory/pitfalls/*.md; do
+            if ! head -5 "$f" | grep -q '^# '; then
+              echo "::error file=$f::Missing H1 title"
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - name: Check decisions/ have ADR-NNNN format
+        run: |
+          missing=0
+          for f in docs/memory/decisions/*.md; do
+            base=$(basename "$f" .md)
+            if ! [[ "$base" =~ ^[0-9]{4}- ]]; then
+              echo "::error file=$f::ADR filename must start with NNNN-"
+              missing=1
+            fi
+            if ! head -5 "$f" | grep -q '^# ADR-'; then
+              echo "::error file=$f::Missing 'ADR-NNNN — title' H1"
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - name: Check no broken relative links
+        run: |
+          # Look for all md links inside docs/ and verify the target file exists
+          broken=0
+          while IFS= read -r line; do
+            file=$(echo "$line" | cut -d: -f1)
+            target=$(echo "$line" | grep -oP '\]\(\K[^)]+' | head -1)
+            # Only relative paths (not http://, not anchors-only)
+            if [[ "$target" =~ ^https?:// ]] || [[ "$target" =~ ^# ]]; then
+              continue
+            fi
+            # Resolve relative to file dir
+            file_dir=$(dirname "$file")
+            target_path=$(echo "$target" | sed 's/#.*//')  # strip anchor
+            if [[ "$target_path" =~ ^/ ]]; then
+              full_path="$target_path"
+            else
+              full_path="$file_dir/$target_path"
+            fi
+            # Normalize
+            full_path=$(realpath -m --relative-to=. "$full_path")
+            if [ ! -f "$full_path" ] && [ ! -d "$full_path" ]; then
+              echo "::warning file=$file::Broken link → $target_path (resolved: $full_path)"
+              broken=$((broken + 1))
+            fi
+          done < <(grep -rEn '\[.*\]\([^)]+\)' docs/ --include='*.md' || true)
+          if [ "$broken" -gt 0 ]; then
+            echo "::warning::Found $broken broken relative links in docs/"
+            # Don't fail (warnings only). Set to 'exit 1' to be strict.
+          fi
+
+      - name: Summary
+        run: |
+          echo "## Memory validation summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- 🪤 Pitfalls: $(ls docs/memory/pitfalls/*.md 2>/dev/null | wc -l)" >> $GITHUB_STEP_SUMMARY
+          echo "- 🏛️ ADR: $(ls docs/memory/decisions/*.md 2>/dev/null | wc -l)" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔄 Workflows: $(ls docs/memory/workflows/*.md 2>/dev/null | wc -l)" >> $GITHUB_STEP_SUMMARY
+          echo "- 📚 Knowledge: $(ls docs/knowledge/*.md 2>/dev/null | wc -l)" >> $GITHUB_STEP_SUMMARY
+          echo "- 📖 Runbooks: $(ls docs/runbooks/*.md 2>/dev/null | wc -l)" >> $GITHUB_STEP_SUMMARY
