@@ -27,6 +27,7 @@
 | [`env-production-perdus-reset-hard.md`](pitfalls/env-production-perdus-reset-hard.md) | Piège — `.env.production` perdus après `git reset --hard` |
 | [`gh-pr-create-no-commits.md`](pitfalls/gh-pr-create-no-commits.md) | Piège — `gh pr create` "No commits between" après squash merge |
 | [`gha-pr-permission.md`](pitfalls/gha-pr-permission.md) | Piège — GitHub Actions ne peut pas créer ou approuver de PRs |
+| [`gitignore-claude-trailing-slash-blocks-negation.md`](pitfalls/gitignore-claude-trailing-slash-blocks-negation.md) | Piège — `.gitignore` `.claude/` (trailing slash) bloque la négation `!.claude/skills/` |
 | [`nextjs-isr-cache-stale.md`](pitfalls/nextjs-isr-cache-stale.md) | Piège — Next.js ISR cache stale après insert DB |
 | [`ovh-a-parasite-185-158.md`](pitfalls/ovh-a-parasite-185-158.md) | Piège — Record A parasite OVH `185.158.133.1` (welcome page) |
 | [`pdf-parse-v2-conflict.md`](pitfalls/pdf-parse-v2-conflict.md) | Piège — `pdf-parse v2` casse à cause de conflit `pdfjs-dist` avec `pdf-to-img` |
@@ -55,7 +56,7 @@
 
 ---
 
-_Index généré le 2026-05-03 17:53 UTC par `bin/memory-index`._
+_Index généré le 2026-05-03 18:36 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`

@@ -17,17 +17,32 @@
 Calculer un **score d'activité** sur les dernières 24h. Si trop bas → exit
 court ("rien d'intéressant ce soir, dors bien"). Si suffisant → on continue.
 
+⚠️ **Filtrer les commits non-significatifs** AVANT scoring :
+- `chore(main): release` (auto release-please)
+- `Merge branch ...`, `Merge pull request ...` (merges automatiques)
+- Commits avec `[skip ci]` ou `[ci skip]`
+
 ```bash
-# Commits dans les dernières 24h
-COMMITS_24H=$(git log --since="24 hours ago" --oneline | wc -l)
+# Filtre commun pour exclure le bruit
+SIGNIFICANT_COMMITS=$(git log --since="24 hours ago" --pretty=format:'%h %s' | \
+  grep -vE '^[a-f0-9]+ chore\(main\): release|^[a-f0-9]+ Merge ' | \
+  grep -vE '\[skip ci\]|\[ci skip\]')
+COMMITS_24H=$(echo "$SIGNIFICANT_COMMITS" | grep -c . || echo 0)
 
-# Mots-clés "à pitfall" dans les messages de commit
-KEYWORDS=$(git log --since="24 hours ago" --pretty=format:'%s' | \
-  grep -iE 'fix|bug|workaround|hack|tricky|gotcha|piège' | wc -l)
+# Mots-clés "à pitfall" dans les messages de commit (pondération forte)
+KEYWORDS=$(echo "$SIGNIFICANT_COMMITS" | grep -ciE 'fix|bug|workaround|hack|tricky|gotcha|piège' || echo 0)
 
-# Fichiers modifiés dans les apps (vrai code, pas juste docs)
-CODE_FILES=$(git log --since="24 hours ago" --name-only --pretty=format: | \
+# Commits feat/fix (vraie valeur produit), pondération moyenne
+PRODUCT_COMMITS=$(echo "$SIGNIFICANT_COMMITS" | grep -cE '^[a-f0-9]+ (feat|fix|perf|refactor)' || echo 0)
+
+# Commits chore/docs (méta, pondération faible)
+META_COMMITS=$(echo "$SIGNIFICANT_COMMITS" | grep -cE '^[a-f0-9]+ (chore|docs|style|test)' || echo 0)
+
+# Fichiers modifiés dans les apps (vrai code) — PLAFONNÉ à 50 pour éviter
+# qu'une mega release fausse le score
+RAW_CODE_FILES=$(git log --since="24 hours ago" --name-only --pretty=format: | \
   grep -E '^apps/' | sort -u | wc -l)
+CODE_FILES=$(( RAW_CODE_FILES > 50 ? 50 : RAW_CODE_FILES ))
 
 # Pitfalls/ADR ajoutés depuis 7 jours (si 0 longtemps → memory frozen)
 RECENT_MEMORY=$(git log --since="7 days ago" --name-only --pretty=format: | \
@@ -36,17 +51,23 @@ RECENT_MEMORY=$(git log --since="7 days ago" --name-only --pretty=format: | \
 
 **Score** :
 ```
-score = COMMITS_24H × 1
-      + KEYWORDS × 3
-      + CODE_FILES × 1
-      + (RECENT_MEMORY == 0 ? 2 : 0)   # bonus si memory stale
+score = PRODUCT_COMMITS × 3       # feat/fix/perf/refactor = signal fort
+      + KEYWORDS × 3              # mots-clés bug/fix amplifient
+      + (CODE_FILES / 5)          # code réel modifié, plafonné
+      + META_COMMITS × 1          # chore/docs = signal faible
+      + (RECENT_MEMORY == 0 ? 2 : 0)   # bonus si memory frozen depuis 7j
 ```
 
 **Seuils** :
-- `< 4` → exit silencieux : "🌙 0/X commits aujourd'hui sur du code, pas de
-  signal de pitfall. Bonne nuit."
-- `4-9` → analyse rapide (commits seulement, pas de scan conversation)
-- `≥ 10` → analyse complète (commits + grep doublons + scan context)
+- `< 3` → exit silencieux : "🌙 Pas assez de signal de pitfall ce soir.
+  Bonne nuit."
+- `3-7` → analyse rapide (commits seulement, pas de scan conversation)
+- `≥ 8` → analyse complète (commits + grep doublons + scan context)
+
+**Note honnêteté** : si le score est gonflé par 1 mega release commit
+(>500 fichiers), **mentionner explicitement** dans le report que la
+plupart vient d'un bulk merge et pas du "vrai code du jour". Ne pas
+laisser le user croire à un signal fort artificiel.
 
 ### Phase 1 — Collect (si score suffisant)
 
