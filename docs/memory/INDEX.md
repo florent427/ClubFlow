@@ -18,6 +18,7 @@
 
 | Fichier | Sujet |
 |---|---|
+| [`apollo-server-csrf-cross-origin.md`](pitfalls/apollo-server-csrf-cross-origin.md) | Piège — Apollo Server v5 bloque les POST cross-origin sans header non-simple |
 | [`auto-merge-clean-status.md`](pitfalls/auto-merge-clean-status.md) | Piège — `gh pr merge --auto` échoue "Pull request not in a clean status" |
 | [`bash-quoting-json-pr.md`](pitfalls/bash-quoting-json-pr.md) | Piège — Interpolation `${{ outputs.pr }}` casse le shell sur parenthèses |
 | [`bracketed-paste-corrupts-tokens.md`](pitfalls/bracketed-paste-corrupts-tokens.md) | Piège — Bracketed paste corrompt les tokens collés via `read -s` |
@@ -29,6 +30,7 @@
 | [`caddyfile-log-block-inline-vs-multiline.md`](pitfalls/caddyfile-log-block-inline-vs-multiline.md) | Piège — `caddy validate` rejette `log { output file ... { ... } }` inline |
 | [`cloudflare-proxy-breaks-letsencrypt.md`](pitfalls/cloudflare-proxy-breaks-letsencrypt.md) | Piège — Cloudflare proxy ON casse le challenge Let's Encrypt |
 | [`cloudflare-zone-id-vs-account-id.md`](pitfalls/cloudflare-zone-id-vs-account-id.md) | Piège — Confondre Cloudflare **Zone ID** et **Account ID** |
+| [`cors-admin-web-origin-missing-domain.md`](pitfalls/cors-admin-web-origin-missing-domain.md) | Piège — Login admin "Failed to fetch" : nouveau sous-domaine pas dans ADMIN_WEB_ORIGIN |
 | [`cors-no-origin-prod.md`](pitfalls/cors-no-origin-prod.md) | Piège — CORS API en `NODE_ENV=production` bloque les appels SSR |
 | [`env-production-perdus-reset-hard.md`](pitfalls/env-production-perdus-reset-hard.md) | Piège — `.env.production` perdus après `git reset --hard` |
 | [`gh-pr-create-no-commits.md`](pitfalls/gh-pr-create-no-commits.md) | Piège — `gh pr create` "No commits between" après squash merge |
@@ -45,6 +47,7 @@
 | [`rclone-config-root-vs-user.md`](pitfalls/rclone-config-root-vs-user.md) | Piège — `rclone` config absente côté root → backups script v2 fail |
 | [`release-please-no-trigger.md`](pitfalls/release-please-no-trigger.md) | Piège — release-please ne se déclenche pas (pas de `workflow_dispatch`) |
 | [`safety-blocks-shared-infra-mcp.md`](pitfalls/safety-blocks-shared-infra-mcp.md) | Piège — Safety bloque les modifs d'infra partagée via Chrome MCP |
+| [`signup-unverified-email-blocks-login.md`](pitfalls/signup-unverified-email-blocks-login.md) | Piège — Signup self-service : compte créé mais bloqué au login (email pas vérifié) |
 | [`ssh-passphrase-non-tty.md`](pitfalls/ssh-passphrase-non-tty.md) | Piège — SSH `Permission denied` quand la clé a une passphrase |
 | [`windows-scp-crlf-bash-script.md`](pitfalls/windows-scp-crlf-bash-script.md) | Piège — `scp` Windows transfère les `.sh` avec line endings CRLF |
 
@@ -71,7 +74,7 @@
 
 ---
 
-_Index généré le 2026-05-04 09:00 UTC par `bin/memory-index`._
+_Index généré le 2026-05-04 09:38 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`

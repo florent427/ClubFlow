@@ -161,6 +161,10 @@ export class ClubsService {
       data: {
         name: input.name,
         slug: input.slug,
+        // Vitrine activée par défaut pour qu'au signup le subdomain
+        // <slug>.clubflow.topdigital.re affiche immédiatement les pages
+        // seedées (sinon le user voit du 404 jusqu'à toggle manuel).
+        vitrinePublished: true,
         modules: {
           create: DEFAULT_MODULES_AT_SIGNUP.map((moduleCode) => ({
             moduleCode,
@@ -171,7 +175,155 @@ export class ClubsService {
       },
       select: { id: true, slug: true },
     });
+    // Seed pages vitrine par défaut (Accueil, Club, Cours, Contact). Le user
+    // peut éditer chaque section via le mode édition en mode admin. Best-effort :
+    // si le seed échoue, on log mais on n'échoue pas la création du club.
+    try {
+      await this.seedDefaultVitrinePages(club.id, input.name);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[createClubWithDefaults] seed vitrine pages failed for club ${club.id} : ${(err as Error).message}`,
+      );
+    }
     return club;
+  }
+
+  /**
+   * Crée 4 pages vitrine par défaut pour qu'un nouveau club ait du contenu
+   * affichable immédiatement après signup. Idempotent : skip une page si
+   * elle existe déjà (clé unique [clubId, slug]).
+   *
+   * Les sections utilisent des blocs génériques (hero, manifesto, ctaBand,
+   * pageHero, richText, cardsGrid, contact) qui rendent du texte placeholder
+   * personnalisable via le mode édition admin.
+   */
+  async seedDefaultVitrinePages(
+    clubId: string,
+    clubName: string,
+  ): Promise<void> {
+    const pages = [
+      {
+        slug: 'accueil',
+        seoTitle: clubName,
+        seoDescription: `Bienvenue sur le site officiel de ${clubName}.`,
+        sections: [
+          {
+            id: 'hero-1',
+            type: 'hero',
+            props: {
+              eyebrow: 'Bienvenue',
+              title: clubName,
+              subtitle: 'Notre club vous accueille pour partager une passion commune.',
+              ctaPrimary: { label: 'Découvrir le club', href: '/club' },
+              ctaSecondary: { label: 'Nos cours', href: '/cours' },
+            },
+          },
+          {
+            id: 'manifesto-1',
+            type: 'manifesto',
+            props: {
+              title: 'Notre engagement',
+              paragraphs: [
+                `Chez ${clubName}, nous croyons en la pratique régulière, le respect mutuel et le plaisir de progresser ensemble.`,
+                'Que vous soyez débutant ou confirmé, vous trouverez votre place et votre rythme.',
+              ],
+            },
+          },
+          {
+            id: 'cta-1',
+            type: 'ctaBand',
+            props: {
+              title: 'Rejoignez-nous',
+              subtitle: 'Premiers cours gratuits — venez découvrir.',
+              primary: { label: 'Nous contacter', href: '/contact' },
+            },
+          },
+        ],
+      },
+      {
+        slug: 'club',
+        seoTitle: `Le club — ${clubName}`,
+        seoDescription: `Découvrez l'histoire, les valeurs et l'équipe de ${clubName}.`,
+        sections: [
+          {
+            id: 'pagehero-1',
+            type: 'pageHero',
+            props: { label: 'Le club', title: clubName, subtitle: 'Notre histoire, nos valeurs.' },
+          },
+          {
+            id: 'richtext-1',
+            type: 'richText',
+            props: {
+              title: 'Notre histoire',
+              paragraphs: [
+                `${clubName} a été fondé pour rassembler des passionnés autour d'une même pratique.`,
+                'Cette page sera personnalisée par le club avec son histoire détaillée.',
+              ],
+            },
+          },
+        ],
+      },
+      {
+        slug: 'cours',
+        seoTitle: `Nos cours — ${clubName}`,
+        seoDescription: 'Découvrez les créneaux, niveaux et tarifs.',
+        sections: [
+          {
+            id: 'pagehero-2',
+            type: 'pageHero',
+            props: { label: 'Cours', title: 'Nos cours', subtitle: 'Découvrez notre planning hebdomadaire.' },
+          },
+          {
+            id: 'richtext-2',
+            type: 'richText',
+            props: {
+              title: 'Planning à venir',
+              paragraphs: [
+                "Le planning des cours sera affiché ici dès que l'admin du club l'aura configuré.",
+              ],
+            },
+          },
+        ],
+      },
+      {
+        slug: 'contact',
+        seoTitle: `Contact — ${clubName}`,
+        seoDescription: `Contactez ${clubName}.`,
+        sections: [
+          {
+            id: 'pagehero-3',
+            type: 'pageHero',
+            props: { label: 'Contact', title: 'Nous contacter' },
+          },
+          {
+            id: 'richtext-3',
+            type: 'richText',
+            props: {
+              title: 'Adresse, téléphone, email',
+              paragraphs: [
+                'Les coordonnées du club seront affichées ici dès configuration depuis l\'admin (Paramètres → Coordonnées).',
+              ],
+            },
+          },
+        ],
+      },
+    ];
+    for (const p of pages) {
+      await this.prisma.vitrinePage.upsert({
+        where: { clubId_slug: { clubId, slug: p.slug } },
+        create: {
+          clubId,
+          slug: p.slug,
+          templateKey: 'sksr-v1',
+          status: 'PUBLISHED',
+          seoTitle: p.seoTitle,
+          seoDescription: p.seoDescription,
+          sectionsJson: p.sections as never,
+        },
+        update: {}, // idempotent : ne touche pas aux pages existantes
+      });
+    }
   }
 
   // ============================================================
