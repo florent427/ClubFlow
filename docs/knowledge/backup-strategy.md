@@ -44,13 +44,34 @@
 
 Cf. `runbooks/restore-db.md` pour la procédure complète.
 
-## Ce qui N'EST PAS backupé (à régulariser)
+## Ce qui est backupé (script v2)
 
-- ❌ `apps/api/uploads/` (médias OCR, photos articles, logos)
-  → à ajouter dans le script (rclone copy /home/clubflow/clubflow/apps/api/uploads
-  vers hetzner-sb:uploads/)
-- ❌ Configs serveur (`/etc/caddy/`, `/etc/postgresql/`, `/etc/systemd/system/clubflow-*`)
+Le script `bin/clubflow-backup.sh` v2 backup :
+1. **PostgreSQL** : pg_dump custom format → gzip → `hetzner-sb:postgres/` (rotation locale 7j, distant 30j)
+2. **Uploads médias** : `apps/api/uploads/` → rclone sync vers `hetzner-sb:uploads/` (incrémental)
+3. **Caddy autosave** : `/var/lib/caddy/.config/caddy/autosave.json` → `hetzner-sb:caddy/` (rotation locale 14j, distant 30j)
+   - Permet de restaurer la liste des vhosts dynamiques (clubs custom domain) en cas de crash Caddy
+   - Cf. ADR-0007 §"Backup autosave.json"
+
+### Mise à jour du script en prod
+
+```bash
+# Sur le laptop (depuis le worktree à jour)
+"/c/Windows/System32/OpenSSH/scp.exe" bin/clubflow-backup.sh \
+  clubflow@89.167.79.253:/tmp/clubflow-backup.sh.new
+
+# Sur le serveur
+ssh-into-prod 'sudo cp /usr/local/bin/clubflow-backup.sh /usr/local/bin/clubflow-backup.sh.bak && \
+  sudo mv /tmp/clubflow-backup.sh.new /usr/local/bin/clubflow-backup.sh && \
+  sudo chmod +x /usr/local/bin/clubflow-backup.sh && \
+  sudo /usr/local/bin/clubflow-backup.sh'  # test manuel
+```
+
+## Ce qui N'EST PAS encore backupé
+
+- ❌ Configs serveur (`/etc/caddy/Caddyfile`, `/etc/postgresql/`, `/etc/systemd/system/clubflow-*`)
   → à backuper occasionnellement à la main ou via Ansible
+- ❌ Logs systemd (peuvent être recompilés depuis journald si besoin)
 
 ## Point de récupération (RPO)
 
