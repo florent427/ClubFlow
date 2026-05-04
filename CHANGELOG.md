@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.5.0](https://github.com/florent427/ClubFlow/compare/v0.4.0...v0.5.0) (2026-05-04)
+
+
+### ✨ Features
+
+* **api,admin:** Phase 3 — config domaine vitrine self-service via Caddy API ([#10](https://github.com/florent427/ClubFlow/issues/10)) ([b3045cb](https://github.com/florent427/ClubFlow/commit/b3045cb03aa4d2e8d56410fb359f1e4a25e2fa4b))
+
 ## [0.4.0](https://github.com/florent427/ClubFlow/compare/v0.3.0...v0.4.0) (2026-05-04)
 
 
