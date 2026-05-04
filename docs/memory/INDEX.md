@@ -35,6 +35,7 @@
 | [`pdf-parse-v2-conflict.md`](pitfalls/pdf-parse-v2-conflict.md) | Piège — `pdf-parse v2` casse à cause de conflit `pdfjs-dist` avec `pdf-to-img` |
 | [`prisma-generate-eperm-windows.md`](pitfalls/prisma-generate-eperm-windows.md) | Piège — `prisma generate` fail EPERM sur Windows (DLL lockée) |
 | [`prisma-migration-order-broken.md`](pitfalls/prisma-migration-order-broken.md) | Piège — Migrations Prisma dans le mauvais ordre |
+| [`rclone-config-root-vs-user.md`](pitfalls/rclone-config-root-vs-user.md) | Piège — `rclone` config absente côté root → backups script v2 fail |
 | [`release-please-no-trigger.md`](pitfalls/release-please-no-trigger.md) | Piège — release-please ne se déclenche pas (pas de `workflow_dispatch`) |
 | [`ssh-passphrase-non-tty.md`](pitfalls/ssh-passphrase-non-tty.md) | Piège — SSH `Permission denied` quand la clé a une passphrase |
 
@@ -61,7 +62,7 @@
 
 ---
 
-_Index généré le 2026-05-04 05:23 UTC par `bin/memory-index`._
+_Index généré le 2026-05-04 06:04 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`
