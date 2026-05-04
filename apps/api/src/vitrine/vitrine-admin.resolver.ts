@@ -842,11 +842,24 @@ export class VitrineAdminResolver {
     @CurrentUser() user: RequestUser,
   ): Promise<VitrineEditTokenGraph> {
     const token = await this.settings.issueEditToken(club.id, user.userId);
+    // URL dynamique du club courant : customDomain si ACTIVE, sinon
+    // subdomain fallback. VITRINE_PUBLIC_URL conservé en fallback dev.
+    const vitrineBase = (
+      process.env.VITRINE_PUBLIC_BASE_DOMAIN ?? 'clubflow.topdigital.re'
+    ).replace(/^https?:\/\//, '').replace(/\/$/, '');
+    let vitrineBaseUrl: string;
+    if (club.customDomain && club.customDomainStatus === 'ACTIVE') {
+      vitrineBaseUrl = `https://${club.customDomain}`;
+    } else if (club.slug) {
+      vitrineBaseUrl = `https://${club.slug}.${vitrineBase}`;
+    } else {
+      vitrineBaseUrl =
+        process.env.VITRINE_PUBLIC_URL ?? 'http://localhost:5175';
+    }
     return {
       token,
       expiresInSeconds: 30 * 60,
-      vitrineBaseUrl:
-        process.env.VITRINE_PUBLIC_URL ?? 'http://localhost:5175',
+      vitrineBaseUrl,
     };
   }
 

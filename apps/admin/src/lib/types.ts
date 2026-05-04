@@ -28,6 +28,10 @@ export type MyAdminClub = {
   slug: string;
   name: string;
   logoUrl: string | null;
+  /** Domaine custom (ex: 'sksr.re'), null si seulement subdomain fallback. */
+  customDomain: string | null;
+  /** URL publique calculée : https://<customDomain> ou https://<slug>.<base>. */
+  vitrinePublicUrl: string;
   /** 'SUPER_ADMIN' (vue globale) ou MembershipRole (CLUB_ADMIN/STAFF/...). */
   role: string;
   viaSuperAdmin: boolean;
