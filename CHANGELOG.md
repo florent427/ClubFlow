@@ -9,6 +9,34 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.15.0](https://github.com/florent427/ClubFlow/compare/v0.14.0...v0.15.0) (2026-05-04)
+
+
+### ✨ Features
+
+* **mobile:** EAS Build setup staging Android (APK installable) ([#56](https://github.com/florent427/ClubFlow/issues/56)) ([dc2846e](https://github.com/florent427/ClubFlow/commit/dc2846efd897a1dc7d08ea82a97b5b5dde4660da))
+
+## [0.14.0](https://github.com/florent427/ClubFlow/compare/v0.13.2...v0.14.0) (2026-05-04)
+
+
+### ✨ Features
+
+* **staging:** environnement staging dédié sur 2e VPS Hetzner ([#53](https://github.com/florent427/ClubFlow/issues/53)) ([d1489f3](https://github.com/florent427/ClubFlow/commit/d1489f3a2ed3fc98222ed5bc5aa7068a2744c132))
+
+## [0.13.2](https://github.com/florent427/ClubFlow/compare/v0.13.1...v0.13.2) (2026-05-04)
+
+
+### 🐛 Bug Fixes
+
+* **vitrine:** /api/edit/enter redirect via x-forwarded-host ([#51](https://github.com/florent427/ClubFlow/issues/51)) ([8cb7155](https://github.com/florent427/ClubFlow/commit/8cb7155f39657ecbdc037159391789a261ac0c48))
+
+## [0.13.1](https://github.com/florent427/ClubFlow/compare/v0.13.0...v0.13.1) (2026-05-04)
+
+
+### 🐛 Bug Fixes
+
+* **admin:** URL vitrine dynamique par club (boutons Ouvrir/Éditer) ([#49](https://github.com/florent427/ClubFlow/issues/49)) ([e4d392d](https://github.com/florent427/ClubFlow/commit/e4d392de9415b5c7bd0215f907efc9507091ff61))
+
 ## [0.13.0](https://github.com/florent427/ClubFlow/compare/v0.12.0...v0.13.0) (2026-05-04)
 
 

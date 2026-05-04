@@ -8,7 +8,11 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "build:android:staging": "eas build --profile preview --platform android",
+    "build:android:production": "eas build --profile production --platform android",
+    "build:ios:staging": "eas build --profile preview --platform ios",
+    "build:ios:production": "eas build --profile production --platform ios"
   },
   "dependencies": {
     "@apollo/client": "^4.1.6",
