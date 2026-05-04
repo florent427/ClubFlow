@@ -32,6 +32,7 @@
 | [`nextjs-isr-cache-stale.md`](pitfalls/nextjs-isr-cache-stale.md) | Piège — Next.js ISR cache stale après insert DB |
 | [`ovh-a-parasite-185-158.md`](pitfalls/ovh-a-parasite-185-158.md) | Piège — Record A parasite OVH `185.158.133.1` (welcome page) |
 | [`pdf-parse-v2-conflict.md`](pitfalls/pdf-parse-v2-conflict.md) | Piège — `pdf-parse v2` casse à cause de conflit `pdfjs-dist` avec `pdf-to-img` |
+| [`prisma-generate-eperm-windows.md`](pitfalls/prisma-generate-eperm-windows.md) | Piège — `prisma generate` fail EPERM sur Windows (DLL lockée) |
 | [`prisma-migration-order-broken.md`](pitfalls/prisma-migration-order-broken.md) | Piège — Migrations Prisma dans le mauvais ordre |
 | [`release-please-no-trigger.md`](pitfalls/release-please-no-trigger.md) | Piège — release-please ne se déclenche pas (pas de `workflow_dispatch`) |
 | [`ssh-passphrase-non-tty.md`](pitfalls/ssh-passphrase-non-tty.md) | Piège — SSH `Permission denied` quand la clé a une passphrase |
@@ -59,7 +60,7 @@
 
 ---
 
-_Index généré le 2026-05-04 04:10 UTC par `bin/memory-index`._
+_Index généré le 2026-05-04 04:49 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`

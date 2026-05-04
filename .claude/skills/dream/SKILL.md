@@ -21,12 +21,28 @@ court ("rien d'intéressant ce soir, dors bien"). Si suffisant → on continue.
 - `chore(main): release` (auto release-please)
 - `Merge branch ...`, `Merge pull request ...` (merges automatiques)
 - Commits avec `[skip ci]` ou `[ci skip]`
+- **Commits déjà loggés dans `docs/memory/dream-log.md`** (v3) — évite de
+  re-scorer ce qui a déjà été dreamé. Le log contient les SHA en regex
+  `[a-f0-9]{7,40}` ; on les extrait et on les exclut.
 
 ```bash
-# Filtre commun pour exclure le bruit
+# Étape 1 : commits déjà dreamés (extraction depuis le log)
+DREAMED_SHAS=$(grep -oE '\b[a-f0-9]{7,40}\b' docs/memory/dream-log.md 2>/dev/null | sort -u)
+
+# Étape 2 : filtre commun pour exclure le bruit
 SIGNIFICANT_COMMITS=$(git log --since="24 hours ago" --pretty=format:'%h %s' | \
   grep -vE '^[a-f0-9]+ chore\(main\): release|^[a-f0-9]+ Merge ' | \
   grep -vE '\[skip ci\]|\[ci skip\]')
+
+# Étape 3 (v3) : exclure les commits déjà dreamés
+if [ -n "$DREAMED_SHAS" ]; then
+  # Construire un pattern grep avec les SHA courts (7+ chars) déjà loggés
+  EXCLUDE_PATTERN=$(echo "$DREAMED_SHAS" | head -200 | tr '\n' '|' | sed 's/|$//')
+  if [ -n "$EXCLUDE_PATTERN" ]; then
+    SIGNIFICANT_COMMITS=$(echo "$SIGNIFICANT_COMMITS" | grep -vE "^($EXCLUDE_PATTERN)" || echo "")
+  fi
+fi
+
 COMMITS_24H=$(echo "$SIGNIFICANT_COMMITS" | grep -c . || echo 0)
 
 # Mots-clés "à pitfall" dans les messages de commit (pondération forte)
@@ -180,11 +196,13 @@ Pour chaque entrée approuvée :
 bin/memory-index
 
 # Log la session dans dream-log.md
+# IMPORTANT (v3) : inclure la liste des SHA scannés (pas juste les créés)
+# pour que les futures sessions puissent les exclure de leur scoring.
 cat >> docs/memory/dream-log.md <<EOF
 
 ## $(date '+%Y-%m-%d %H:%M')
 - Score : N/X
-- Commits scannés : N
+- Commits scannés (SHA, pour exclusion future) : abc1234, def5678, ...
 - Créés : <liste des fichiers créés>
 - Refusés : <liste des candidats refusés>
 - Note : <ce que l'utilisateur a dit, optionnel>
