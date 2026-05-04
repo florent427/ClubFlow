@@ -35,12 +35,24 @@ export class CaddyApiService {
   }
 
   /**
+   * Headers communs pour toutes les requêtes vers Caddy admin API.
+   * Caddy admin filtre par Origin (anti-DNS-rebinding) ; quand on a
+   * configuré `admin localhost:2019 { origins ... }` dans le Caddyfile,
+   * Node fetch envoie `Origin: ''` par défaut → Caddy rejette en 403.
+   * On force donc explicitement Origin = adminBase pour matcher la whitelist.
+   */
+  private get adminHeaders(): Record<string, string> {
+    return { Origin: this.adminBase };
+  }
+
+  /**
    * Vérifie que l'API admin Caddy répond. À appeler au démarrage / health check.
    */
   async ping(): Promise<boolean> {
     try {
       const res = await fetch(`${this.adminBase}/config/`, {
         method: 'GET',
+        headers: this.adminHeaders,
         signal: AbortSignal.timeout(5000),
       });
       return res.ok;
@@ -57,6 +69,7 @@ export class CaddyApiService {
   async listVhosts(): Promise<string[]> {
     const res = await fetch(`${this.adminBase}/config/apps/http/servers/`, {
       method: 'GET',
+      headers: this.adminHeaders,
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) {
@@ -114,7 +127,7 @@ export class CaddyApiService {
       `${this.adminBase}/config/apps/http/servers/srv0/routes`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...this.adminHeaders, 'Content-Type': 'application/json' },
         body: JSON.stringify(route),
         signal: AbortSignal.timeout(10_000),
       },
@@ -138,6 +151,7 @@ export class CaddyApiService {
     const safe = this.assertDomainShape(domain);
     const res = await fetch(`${this.adminBase}/config/apps/http/servers/srv0/routes`, {
       method: 'GET',
+      headers: this.adminHeaders,
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) {
@@ -153,7 +167,7 @@ export class CaddyApiService {
     }
     const del = await fetch(
       `${this.adminBase}/config/apps/http/servers/srv0/routes/${idx}`,
-      { method: 'DELETE', signal: AbortSignal.timeout(10_000) },
+      { method: 'DELETE', headers: this.adminHeaders, signal: AbortSignal.timeout(10_000) },
     );
     if (!del.ok) {
       throw new Error(`Caddy DELETE route ${safe} : HTTP ${del.status}`);
