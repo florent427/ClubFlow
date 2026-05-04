@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.8.1](https://github.com/florent427/ClubFlow/compare/v0.8.0...v0.8.1) (2026-05-04)
+
+
+### 🐛 Bug Fixes
+
+* **admin:** TS strict — 16 erreurs corrigées, npm run build sans bypass ([#24](https://github.com/florent427/ClubFlow/issues/24)) ([a391262](https://github.com/florent427/ClubFlow/commit/a391262d211d6a13f4eb5fb0c7f660c62c2923b5))
+
 ## [0.8.0](https://github.com/florent427/ClubFlow/compare/v0.7.0...v0.8.0) (2026-05-04)
 
 
