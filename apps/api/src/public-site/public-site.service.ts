@@ -15,6 +15,17 @@ export class PublicSiteService {
     return club;
   }
 
+  /**
+   * Lookup d'un club par son `customDomain` (ex: "sksr.re", "monclub.fr").
+   * Renvoie `null` si aucun club n'a ce domaine — la vitrine bascule alors
+   * sur son fallback (env legacy ou 404 propre).
+   */
+  async getClubByDomain(domain: string) {
+    const cleaned = domain.trim().toLowerCase();
+    if (!cleaned) return null;
+    return this.prisma.club.findUnique({ where: { customDomain: cleaned } });
+  }
+
   async listAnnouncements(clubSlug: string, limit = 10) {
     const club = await this.getClubBySlug(clubSlug);
     return this.prisma.clubAnnouncement.findMany({

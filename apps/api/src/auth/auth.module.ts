@@ -5,6 +5,7 @@ import { ClubContextGuard } from '../common/guards/club-context.guard';
 import { GqlThrottlerGuard } from '../common/guards/gql-throttler.guard';
 import { ClubsModule } from '../clubs/clubs.module';
 import { FamiliesModule } from '../families/families.module';
+import { InfraModule } from '../infra/infra.module';
 import { MailModule } from '../mail/mail.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthResolver } from './auth.resolver';
@@ -20,6 +21,7 @@ import { PasswordResetService } from './password-reset.service';
     PrismaModule,
     ClubsModule,
     FamiliesModule,
+    InfraModule,
     MailModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
