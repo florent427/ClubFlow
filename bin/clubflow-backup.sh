@@ -25,6 +25,10 @@ DATE_TAG=$(date +%Y%m%d_%H%M%S)
 BACKUP_DIR=/var/backups/clubflow
 RCLONE_REMOTE=hetzner-sb
 
+# Si lancé via cron en root (legacy), force la config rclone du user `clubflow`
+# (cf. pitfall rclone-config-root-vs-user.md). Si déjà clubflow, c'est no-op.
+export RCLONE_CONFIG="${RCLONE_CONFIG:-/home/clubflow/.config/rclone/rclone.conf}"
+
 mkdir -p "$BACKUP_DIR"
 
 logger -t clubflow-backup "🚀 Backup started ($DATE_TAG)"
