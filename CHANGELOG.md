@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.11.1](https://github.com/florent427/ClubFlow/compare/v0.11.0...v0.11.1) (2026-05-04)
+
+
+### 🐛 Bug Fixes
+
+* **api:** MyAdminClubGraph — types explicites pour @Field ([#41](https://github.com/florent427/ClubFlow/issues/41)) ([34af35e](https://github.com/florent427/ClubFlow/commit/34af35eb5a1b1c33acd46ab4a2a8af0cc3d06a9c))
+
 ## [0.11.0](https://github.com/florent427/ClubFlow/compare/v0.10.3...v0.11.0) (2026-05-04)
 
 
