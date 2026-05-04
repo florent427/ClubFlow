@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.13.2](https://github.com/florent427/ClubFlow/compare/v0.13.1...v0.13.2) (2026-05-04)
+
+
+### 🐛 Bug Fixes
+
+* **vitrine:** /api/edit/enter redirect via x-forwarded-host ([#51](https://github.com/florent427/ClubFlow/issues/51)) ([8cb7155](https://github.com/florent427/ClubFlow/commit/8cb7155f39657ecbdc037159391789a261ac0c48))
+
 ## [0.13.1](https://github.com/florent427/ClubFlow/compare/v0.13.0...v0.13.1) (2026-05-04)
 
 
