@@ -23,7 +23,16 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
   const cookieName =
     process.env.VITRINE_EDIT_COOKIE_NAME ?? 'clubflow_vitrine_edit';
-  const res = NextResponse.redirect(new URL(redirect, req.url));
+  // Next.js derrière Caddy reverse_proxy : req.url contient l'URL interne
+  // (localhost:5175), pas le host public (sksr.re). On reconstruit la base
+  // URL depuis x-forwarded-host (set par Caddy) avec fallback sur host.
+  const fwdHost = req.headers.get('x-forwarded-host');
+  const fwdProto = req.headers.get('x-forwarded-proto');
+  const host = fwdHost ?? req.headers.get('host') ?? url.host;
+  const proto =
+    fwdProto ?? (process.env.NODE_ENV === 'production' ? 'https' : url.protocol.replace(':', ''));
+  const baseUrl = `${proto}://${host}`;
+  const res = NextResponse.redirect(new URL(redirect, baseUrl));
   res.cookies.set(cookieName, token, {
     path: '/',
     maxAge: 60 * 30, // 30 min
