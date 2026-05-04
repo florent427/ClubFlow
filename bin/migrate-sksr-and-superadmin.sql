@@ -77,12 +77,12 @@ BEGIN
   END IF;
 
   -- Garantir membership CLUB_ADMIN sur SKSR (dogfooding)
+  -- Note: ClubMembership n'a pas de updatedAt dans le schema (cf. schema.prisma)
   IF sksr_id IS NOT NULL THEN
-    INSERT INTO "ClubMembership" (id, "userId", "clubId", role, "createdAt", "updatedAt")
-    VALUES (gen_random_uuid()::text, florent_id, sksr_id, 'CLUB_ADMIN', NOW(), NOW())
+    INSERT INTO "ClubMembership" (id, "userId", "clubId", role, "createdAt")
+    VALUES (gen_random_uuid()::text, florent_id, sksr_id, 'CLUB_ADMIN', NOW())
     ON CONFLICT ("userId", "clubId") DO UPDATE
-      SET role = 'CLUB_ADMIN',
-          "updatedAt" = NOW();
+      SET role = 'CLUB_ADMIN';
     RAISE NOTICE '✅ Florent ClubMembership(SKSR, CLUB_ADMIN) garanti';
   END IF;
 END $$;
