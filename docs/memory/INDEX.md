@@ -22,6 +22,9 @@
 | [`bash-quoting-json-pr.md`](pitfalls/bash-quoting-json-pr.md) | Piège — Interpolation `${{ outputs.pr }}` casse le shell sur parenthèses |
 | [`bracketed-paste-corrupts-tokens.md`](pitfalls/bracketed-paste-corrupts-tokens.md) | Piège — Bracketed paste corrompt les tokens collés via `read -s` |
 | [`build-admin-strict-ts.md`](pitfalls/build-admin-strict-ts.md) | Piège — Build `apps/admin` échoue en strict TS |
+| [`caddy-admin-api-origin-empty.md`](pitfalls/caddy-admin-api-origin-empty.md) | Piège — Caddy admin API rejette Node fetch (Origin: '' vide) |
+| [`caddy-log-files-perms-on-create.md`](pitfalls/caddy-log-files-perms-on-create.md) | Piège — Caddy refuse le reload si log file pas writable par user `caddy` |
+| [`caddy-on-demand-tls-v2-options-removed.md`](pitfalls/caddy-on-demand-tls-v2-options-removed.md) | Piège — Caddy v2.10+ supprime `interval` et `burst` de `on_demand_tls` |
 | [`caddy-perms-home-clubflow.md`](pitfalls/caddy-perms-home-clubflow.md) | Piège — Caddy 403 sur file_server depuis `/home/clubflow/` |
 | [`caddyfile-log-block-inline-vs-multiline.md`](pitfalls/caddyfile-log-block-inline-vs-multiline.md) | Piège — `caddy validate` rejette `log { output file ... { ... } }` inline |
 | [`cloudflare-proxy-breaks-letsencrypt.md`](pitfalls/cloudflare-proxy-breaks-letsencrypt.md) | Piège — Cloudflare proxy ON casse le challenge Let's Encrypt |
@@ -33,14 +36,17 @@
 | [`gitignore-claude-trailing-slash-blocks-negation.md`](pitfalls/gitignore-claude-trailing-slash-blocks-negation.md) | Piège — `.gitignore` `.claude/` (trailing slash) bloque la négation `!.claude/skills/` |
 | [`nestjs-graphql-nullable-needs-explicit-type.md`](pitfalls/nestjs-graphql-nullable-needs-explicit-type.md) | Piège — `@Field({ nullable: true })` GraphQL crash sans type explicite |
 | [`nextjs-isr-cache-stale.md`](pitfalls/nextjs-isr-cache-stale.md) | Piège — Next.js ISR cache stale après insert DB |
+| [`nextjs-public-env-vars-not-bundled.md`](pitfalls/nextjs-public-env-vars-not-bundled.md) | Piège — Next.js : `process.env.X` côté client n'a QUE les `NEXT_PUBLIC_*` |
 | [`ovh-a-parasite-185-158.md`](pitfalls/ovh-a-parasite-185-158.md) | Piège — Record A parasite OVH `185.158.133.1` (welcome page) |
 | [`pdf-parse-v2-conflict.md`](pitfalls/pdf-parse-v2-conflict.md) | Piège — `pdf-parse v2` casse à cause de conflit `pdfjs-dist` avec `pdf-to-img` |
+| [`prisma-clubmembership-no-updatedat.md`](pitfalls/prisma-clubmembership-no-updatedat.md) | Piège — `ClubMembership` n'a PAS de `updatedAt` (contrairement aux autres modèles) |
 | [`prisma-generate-eperm-windows.md`](pitfalls/prisma-generate-eperm-windows.md) | Piège — `prisma generate` fail EPERM sur Windows (DLL lockée) |
 | [`prisma-migration-order-broken.md`](pitfalls/prisma-migration-order-broken.md) | Piège — Migrations Prisma dans le mauvais ordre |
 | [`rclone-config-root-vs-user.md`](pitfalls/rclone-config-root-vs-user.md) | Piège — `rclone` config absente côté root → backups script v2 fail |
 | [`release-please-no-trigger.md`](pitfalls/release-please-no-trigger.md) | Piège — release-please ne se déclenche pas (pas de `workflow_dispatch`) |
 | [`safety-blocks-shared-infra-mcp.md`](pitfalls/safety-blocks-shared-infra-mcp.md) | Piège — Safety bloque les modifs d'infra partagée via Chrome MCP |
 | [`ssh-passphrase-non-tty.md`](pitfalls/ssh-passphrase-non-tty.md) | Piège — SSH `Permission denied` quand la clé a une passphrase |
+| [`windows-scp-crlf-bash-script.md`](pitfalls/windows-scp-crlf-bash-script.md) | Piège — `scp` Windows transfère les `.sh` avec line endings CRLF |
 
 ## 🏛️ Décisions architecturales (ADR)
 
@@ -65,7 +71,7 @@
 
 ---
 
-_Index généré le 2026-05-04 07:05 UTC par `bin/memory-index`._
+_Index généré le 2026-05-04 09:00 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`
