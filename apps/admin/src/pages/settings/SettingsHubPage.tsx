@@ -93,6 +93,14 @@ export function SettingsHubPage() {
             </li>
             <li>
               <SettingsHubCard
+                to="/settings/vitrine-domain"
+                modules={[]}
+                title="Domaine vitrine"
+                desc="Configurez votre propre domaine (ex. monclub.fr) pour la vitrine publique. HTTPS auto."
+              />
+            </li>
+            <li>
+              <SettingsHubCard
                 to="/settings/branding"
                 modules={[]}
                 title="Identité du club"
