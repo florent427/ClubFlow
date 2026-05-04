@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.12.0](https://github.com/florent427/ClubFlow/compare/v0.11.1...v0.12.0) (2026-05-04)
+
+
+### ✨ Features
+
+* **signup:** seed 4 pages vitrine + vitrinePublished=true par défaut ([#44](https://github.com/florent427/ClubFlow/issues/44)) ([b99ed0b](https://github.com/florent427/ClubFlow/commit/b99ed0bde44e5bdc84f1d43edca468176e59d7f0))
+
 ## [0.11.1](https://github.com/florent427/ClubFlow/compare/v0.11.0...v0.11.1) (2026-05-04)
 
 
