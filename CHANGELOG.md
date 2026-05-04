@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.3.0](https://github.com/florent427/ClubFlow/compare/v0.2.1...v0.3.0) (2026-05-04)
+
+
+### ✨ Features
+
+* **landing,api:** Phase 1 multi-tenant — apps/landing + ADR + URLs cible ([#6](https://github.com/florent427/ClubFlow/issues/6)) ([fe42fad](https://github.com/florent427/ClubFlow/commit/fe42fad1e50954a6a16517d39e7b4c2f93e60cc4))
+
 ## [0.2.1](https://github.com/florent427/ClubFlow/compare/v0.2.0...v0.2.1) (2026-05-03)
 
 
