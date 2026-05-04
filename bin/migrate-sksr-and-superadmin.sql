@@ -55,8 +55,8 @@ END $$;
 -- =============================================================
 DO $$
 DECLARE
-  florent_id UUID;
-  sksr_id UUID;
+  florent_id TEXT;
+  sksr_id TEXT;
 BEGIN
   SELECT id INTO florent_id FROM "User" WHERE email = 'florent.morel427@gmail.com';
   SELECT id INTO sksr_id FROM "Club" WHERE slug = 'sksr';
@@ -64,7 +64,7 @@ BEGIN
   IF florent_id IS NULL THEN
     RAISE NOTICE 'User florent.morel427@gmail.com n''existe pas — création SUPER_ADMIN sans password (login OAuth/magic link uniquement).';
     INSERT INTO "User" (id, email, "displayName", "systemRole", "createdAt", "updatedAt", "emailVerifiedAt")
-    VALUES (gen_random_uuid(), 'florent.morel427@gmail.com', 'Florent Morel', 'SUPER_ADMIN', NOW(), NOW(), NOW())
+    VALUES (gen_random_uuid()::text, 'florent.morel427@gmail.com', 'Florent Morel', 'SUPER_ADMIN', NOW(), NOW(), NOW())
     RETURNING id INTO florent_id;
     RAISE NOTICE '✅ User Florent créé (id=%)', florent_id;
   ELSE
@@ -79,7 +79,7 @@ BEGIN
   -- Garantir membership CLUB_ADMIN sur SKSR (dogfooding)
   IF sksr_id IS NOT NULL THEN
     INSERT INTO "ClubMembership" (id, "userId", "clubId", role, "createdAt", "updatedAt")
-    VALUES (gen_random_uuid(), florent_id, sksr_id, 'CLUB_ADMIN', NOW(), NOW())
+    VALUES (gen_random_uuid()::text, florent_id, sksr_id, 'CLUB_ADMIN', NOW(), NOW())
     ON CONFLICT ("userId", "clubId") DO UPDATE
       SET role = 'CLUB_ADMIN',
           "updatedAt" = NOW();
