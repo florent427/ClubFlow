@@ -17,7 +17,9 @@
       "channel": "staging",
       "env": {
         "EXPO_ENV": "staging",
-        "EXPO_PUBLIC_API_BASE": "https://staging.api.clubflow.topdigital.re"
+        "EXPO_PUBLIC_API_BASE": "https://staging.api.clubflow.topdigital.re",
+        "EXPO_PUBLIC_GRAPHQL_HTTP": "https://staging.api.clubflow.topdigital.re/graphql",
+        "EXPO_PUBLIC_ADMIN_APP_URL": "https://staging.app.clubflow.topdigital.re"
       },
       "android": {
         "buildType": "apk"
@@ -32,7 +34,9 @@
       "autoIncrement": true,
       "env": {
         "EXPO_ENV": "production",
-        "EXPO_PUBLIC_API_BASE": "https://api.clubflow.topdigital.re"
+        "EXPO_PUBLIC_API_BASE": "https://api.clubflow.topdigital.re",
+        "EXPO_PUBLIC_GRAPHQL_HTTP": "https://api.clubflow.topdigital.re/graphql",
+        "EXPO_PUBLIC_ADMIN_APP_URL": "https://app.clubflow.topdigital.re"
       },
       "android": {
         "buildType": "app-bundle"
