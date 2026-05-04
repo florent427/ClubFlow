@@ -42,3 +42,11 @@
 - Refusés : aucun (1 seul candidat proposé, validé)
 - Bonus : ajustement formule du score `/dream` (filtre release-please, plafond CODE_FILES, pondération feat/fix vs chore)
 - Note : première utilisation du skill `/dream` — formule v1 trop sensible aux mega merges, v2 plus robuste
+
+## 2026-05-04 11:32 (5e session — post Phase 1 multi-tenant + ClubSwitcher)
+- Score : 69 (formule v3 — déduplication via dream-log SHA fonctionne)
+- Commits scannés (SHA) : c44c02d, d7ced6d, e391ecf, b0f33a1, 4791c8e, 1d16efd, ced0910, 19597e2, 91629c2, 565dab7, a391262, be7d0cd, fd52987, 43c187c, 2156110, 3a98789, ae02758, 35ec445
+- Créés : `pitfalls/apollo-server-csrf-cross-origin.md`, `pitfalls/cors-admin-web-origin-missing-domain.md`, `pitfalls/signup-unverified-email-blocks-login.md`
+- Refusés : workflow "onboarder club via signup self-service" (peut être créé manuellement plus tard, code parle de lui-même)
+- Doublons exclus : NestJS GraphQL nullable (déjà créé dream #4), bracketed paste / CF Zone ID / Caddy log perms / NextJS NEXT_PUBLIC_ / Caddy v2.10 on_demand / ClubMembership pas updatedAt / Windows scp CRLF (mergés dans PR #38 + PR #31 cette session)
+- Note : grosse session multi-tenant Phase 1 + ClubSwitcher. 3 pitfalls retenus = bloqueurs runtime (CSRF Apollo, CORS missing origin, signup verify email). Workflow + ADR jugés non critiques.
