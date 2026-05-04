@@ -1,0 +1,78 @@
+# Caddyfile staging — environnement de pré-prod ClubFlow
+#
+# Domaines : staging.* + *.staging.* (vitrines subdomain) sur le même VPS staging.
+# Ports internes (différents de la prod pour éviter conflit si jamais collocated) :
+#   - api      : 3100
+#   - admin    : SPA statique (file_server)
+#   - vitrine  : 5275  (Next.js)
+#   - landing  : 5276  (Next.js)
+#   - portal   : SPA statique (file_server)
+
+{
+    email florent.morel427@gmail.com
+    admin localhost:2019 {
+        origins localhost 127.0.0.1 localhost:2019 127.0.0.1:2019 \
+                http://localhost http://127.0.0.1 \
+                http://localhost:2019 http://127.0.0.1:2019
+    }
+    on_demand_tls {
+        ask http://localhost:3100/v1/vitrine/check-domain
+    }
+}
+
+# === Landing publique staging ===
+staging.clubflow.topdigital.re {
+    encode zstd gzip
+    log {
+        output file /var/log/caddy/staging-landing.log
+    }
+    reverse_proxy localhost:5276
+}
+
+# === Admin staging (SPA) ===
+staging.app.clubflow.topdigital.re {
+    encode zstd gzip
+    log {
+        output file /var/log/caddy/staging-admin.log
+    }
+    root * /home/clubflow/clubflow/apps/admin/dist
+    file_server
+    try_files {path} /index.html
+}
+
+# === API staging ===
+staging.api.clubflow.topdigital.re {
+    encode zstd gzip
+    log {
+        output file /var/log/caddy/staging-api.log
+    }
+    @websocket {
+        header Connection *Upgrade*
+        header Upgrade websocket
+    }
+    reverse_proxy @websocket localhost:3100
+    reverse_proxy localhost:3100
+}
+
+# === Portail membre staging ===
+staging.portail.clubflow.topdigital.re {
+    encode zstd gzip
+    log {
+        output file /var/log/caddy/staging-portail.log
+    }
+    root * /home/clubflow/clubflow/apps/member-portal/dist
+    file_server
+    try_files {path} /index.html
+}
+
+# === Vitrine wildcard subdomain (*.staging.X) ===
+*.staging.clubflow.topdigital.re {
+    tls {
+        on_demand
+    }
+    encode zstd gzip
+    log {
+        output file /var/log/caddy/staging-wildcard-vitrine.log
+    }
+    reverse_proxy localhost:5275
+}

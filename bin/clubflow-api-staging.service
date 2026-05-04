@@ -1,0 +1,20 @@
+[Unit]
+Description=ClubFlow API STAGING (NestJS)
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=clubflow
+Group=clubflow
+WorkingDirectory=/home/clubflow/clubflow/apps/api
+EnvironmentFile=-/home/clubflow/clubflow/apps/api/.env
+Environment=NODE_ENV=staging
+Environment=PORT=3100
+ExecStart=/usr/bin/node dist/main.js
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/var/log/clubflow-api-staging.log
+StandardError=append:/var/log/clubflow-api-staging.log
+
+[Install]
+WantedBy=multi-user.target
