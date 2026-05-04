@@ -1630,3 +1630,34 @@ export type DeleteClubDocumentMutationData = {
 export type UpsertClubDocumentFieldsMutationData = {
   upsertClubDocumentFields: ClubDocumentField[];
 };
+
+// =====================================================================
+// Vitrine custom domain (Phase 3 multi-tenant)
+// =====================================================================
+
+export type VitrineDomainStatus = 'PENDING_DNS' | 'VERIFIED' | 'ACTIVE' | 'ERROR';
+
+export type VitrineDomainState = {
+  customDomain: string | null;
+  status: VitrineDomainStatus;
+  checkedAt: string | null;
+  errorMessage: string | null;
+  expectedIpv4: string;
+  expectedIpv6: string;
+};
+
+export type VitrineDomainStateQueryData = {
+  vitrineDomainState: VitrineDomainState;
+};
+
+export type RequestVitrineDomainMutationData = {
+  requestVitrineDomain: VitrineDomainState;
+};
+
+export type VerifyVitrineDomainMutationData = {
+  verifyVitrineDomain: VitrineDomainState;
+};
+
+export type RemoveVitrineDomainMutationData = {
+  removeVitrineDomain: VitrineDomainState;
+};

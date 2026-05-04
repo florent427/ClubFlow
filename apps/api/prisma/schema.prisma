@@ -72,6 +72,16 @@ model Club {
   /// Domaine personnalisé pour le site vitrine public (ex. www.mondojo.fr).
   /// CNAME à poser vers le serveur Next.js ; HTTPS géré par le reverse-proxy.
   customDomain     String? @unique
+  /// État de propagation/vérification du `customDomain` (cf. ADR-0007 Caddy admin API).
+  /// PENDING_DNS = config en cours côté club, on attend la propagation DNS.
+  /// VERIFIED    = DNS pointe sur l'IP serveur, vhost Caddy déployé, cert TLS auto en cours.
+  /// ACTIVE      = vhost Caddy + cert TLS OK, vitrine répond en HTTPS sur ce domaine.
+  /// ERROR       = échec persistant (DNS mauvais, cert TLS bloqué, etc.)
+  customDomainStatus       VitrineDomainStatus @default(PENDING_DNS)
+  /// Dernière tentative de vérification DNS (job périodique toutes les 10 min).
+  customDomainCheckedAt    DateTime?
+  /// Message d'erreur de la dernière tentative (DNS pas propagé, cert fail, etc.).
+  customDomainErrorMessage String?
   /// Flag « site vitrine publié ». Quand false, le site renvoie 404 publique
   /// (seuls les aperçus admin restent accessibles).
   vitrinePublished Boolean @default(false)
@@ -3556,4 +3566,16 @@ model ClubSignedDocument {
   @@index([clubId, signedAt])
   @@index([userId])
   @@index([memberId])
+}
+
+/// État du domaine custom vitrine d'un club (cf. Club.customDomainStatus, ADR-0007).
+enum VitrineDomainStatus {
+  /// Config en cours côté club, on attend la propagation DNS pour vérifier.
+  PENDING_DNS
+  /// DNS pointe bien sur l'IP serveur ; vhost Caddy déployé ; cert TLS auto en cours.
+  VERIFIED
+  /// Vhost Caddy + cert TLS OK ; vitrine répond en HTTPS sur ce domaine.
+  ACTIVE
+  /// Échec persistant (DNS mauvais, cert bloqué, etc.). Voir customDomainErrorMessage.
+  ERROR
 }

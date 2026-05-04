@@ -2746,3 +2746,59 @@ export const UPDATE_ACCOUNTING_ENTRY_FINANCIAL_ACCOUNT = gql`
     )
   }
 `;
+
+// =====================================================================
+// Vitrine custom domain (Phase 3 multi-tenant)
+// =====================================================================
+
+export const VITRINE_DOMAIN_STATE = gql`
+  query VitrineDomainState {
+    vitrineDomainState {
+      customDomain
+      status
+      checkedAt
+      errorMessage
+      expectedIpv4
+      expectedIpv6
+    }
+  }
+`;
+
+export const REQUEST_VITRINE_DOMAIN = gql`
+  mutation RequestVitrineDomain($input: SetVitrineDomainInput!) {
+    requestVitrineDomain(input: $input) {
+      customDomain
+      status
+      checkedAt
+      errorMessage
+      expectedIpv4
+      expectedIpv6
+    }
+  }
+`;
+
+export const VERIFY_VITRINE_DOMAIN = gql`
+  mutation VerifyVitrineDomain {
+    verifyVitrineDomain {
+      customDomain
+      status
+      checkedAt
+      errorMessage
+      expectedIpv4
+      expectedIpv6
+    }
+  }
+`;
+
+export const REMOVE_VITRINE_DOMAIN = gql`
+  mutation RemoveVitrineDomain {
+    removeVitrineDomain {
+      customDomain
+      status
+      checkedAt
+      errorMessage
+      expectedIpv4
+      expectedIpv6
+    }
+  }
+`;

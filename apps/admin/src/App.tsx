@@ -36,6 +36,7 @@ import { SystemAdminsPage } from './pages/settings/SystemAdminsPage';
 import { AdhesionSettingsPage } from './pages/settings/AdhesionSettingsPage';
 import { PricingRulesPage } from './pages/settings/PricingRulesPage';
 import { MailDomainSettingsPage } from './pages/settings/MailDomainSettingsPage';
+import { VitrineDomainSettingsPage } from './pages/settings/VitrineDomainSettingsPage';
 import { ClubBrandingSettingsPage } from './pages/settings/ClubBrandingSettingsPage';
 import { AiSettingsPage } from './pages/settings/AiSettingsPage';
 import AccountingSettingsPage from './pages/settings/AccountingSettingsPage';
@@ -158,6 +159,7 @@ export default function App() {
               <Route path="adhesion" element={<AdhesionSettingsPage />} />
               <Route path="pricing-rules" element={<PricingRulesPage />} />
               <Route path="mail-domain" element={<MailDomainSettingsPage />} />
+              <Route path="vitrine-domain" element={<VitrineDomainSettingsPage />} />
               <Route path="branding" element={<ClubBrandingSettingsPage />} />
               <Route path="ai" element={<AiSettingsPage />} />
               <Route path="accounting" element={<AccountingSettingsPage />} />
