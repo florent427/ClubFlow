@@ -1,20 +1,34 @@
 # Réseau, DNS, vhosts ClubFlow
 
-## Architecture domaines
+## Architecture domaines (cible Phase 1+)
 
 ```
 ClubFlow product (sur topdigital.re via DNS Cloudflare)
-├─ clubflow.topdigital.re            → admin web (Vite static)
+├─ clubflow.topdigital.re            → landing marketing publique (Next.js)
+├─ app.clubflow.topdigital.re        → admin multi-tenant (Vite static)
+│                                       URL pattern : /<club-slug>/...  (cf. ADR-0006)
 ├─ api.clubflow.topdigital.re        → NestJS API + WS /chat
-└─ portail.clubflow.topdigital.re    → portail membre (Vite static)
+├─ portail.clubflow.topdigital.re    → portail membre (Vite static)
+└─ *.clubflow.topdigital.re          → vitrine fallback (Phase 2 — wildcard cert)
+                                       <club-slug>.clubflow.topdigital.re
 
-Club SKSR (sur sksr.re via DNS OVH)
-├─ sksr.re                           → vitrine publique du club SKSR
-└─ www.sksr.re                       → 301 redirect → sksr.re
+Clubs (chacun a son domaine vitrine custom optionnel)
+├─ sksr.re                           → vitrine club SKSR (custom domain)
+├─ www.sksr.re                       → 301 redirect → sksr.re
+└─ <futur-club>.fr                   → vitrine futur club (config self-service Phase 3)
 
 → Tous pointent vers 89.167.79.253 (IPv4) + 2a01:4f9:c010:99d3::1 (IPv6)
-→ TLS auto Let's Encrypt via Caddy
+→ TLS auto Let's Encrypt via Caddy (HTTP-01 challenge, DNS-01 pour wildcard Phase 2)
 ```
+
+## État actuel vs cible
+
+| Domaine | Statut | Phase |
+|---|---|---|
+| `clubflow.topdigital.re` (landing) | ⚠️ aujourd'hui = admin, à migrer | Phase 1 |
+| `app.clubflow.topdigital.re` | 🆕 à créer | Phase 1 |
+| `*.clubflow.topdigital.re` (wildcard) | 🆕 à créer | Phase 2 |
+| Domaines custom self-service | 🆕 via Caddy API (cf. ADR-0007) | Phase 3 |
 
 ## Où sont gérés les DNS ?
 
@@ -28,20 +42,24 @@ Club SKSR (sur sksr.re via DNS OVH)
 ⚠️ **NE PAS toucher les NS du domaine `topdigital.re`** : ils sont chez Cloudflare,
 pas OVH. Toute modif DNS pour `*.topdigital.re` doit se faire **côté Cloudflare**.
 
-## Records actifs
+## Records actifs (à mettre à jour Phase 1)
 
-**Cloudflare → topdigital.re** (6 records ClubFlow + records existants OVH mail) :
+**Cloudflare → topdigital.re** (records ClubFlow actuels + à ajouter) :
 
-| Type | Name | Content | Proxy |
-|---|---|---|---|
-| A | clubflow | 89.167.79.253 | ⚠️ **DNS only** (gris) |
-| AAAA | clubflow | 2a01:4f9:c010:99d3::1 | DNS only |
-| A | api.clubflow | 89.167.79.253 | DNS only |
-| AAAA | api.clubflow | 2a01:4f9:c010:99d3::1 | DNS only |
-| A | portail.clubflow | 89.167.79.253 | DNS only |
-| AAAA | portail.clubflow | 2a01:4f9:c010:99d3::1 | DNS only |
+| Type | Name | Content | Proxy | Statut |
+|---|---|---|---|---|
+| A | clubflow | 89.167.79.253 | DNS only | ✅ existant (devient landing après Phase 1) |
+| AAAA | clubflow | 2a01:4f9:c010:99d3::1 | DNS only | ✅ existant |
+| A | api.clubflow | 89.167.79.253 | DNS only | ✅ existant |
+| AAAA | api.clubflow | 2a01:4f9:c010:99d3::1 | DNS only | ✅ existant |
+| A | portail.clubflow | 89.167.79.253 | DNS only | ✅ existant |
+| AAAA | portail.clubflow | 2a01:4f9:c010:99d3::1 | DNS only | ✅ existant |
+| **A** | **app.clubflow** | **89.167.79.253** | **DNS only** | 🆕 **Phase 1** |
+| **AAAA** | **app.clubflow** | **2a01:4f9:c010:99d3::1** | **DNS only** | 🆕 **Phase 1** |
+| **A** | **\*.clubflow** | **89.167.79.253** | **DNS only** | 🆕 **Phase 2 (wildcard)** |
+| **AAAA** | **\*.clubflow** | **2a01:4f9:c010:99d3::1** | **DNS only** | 🆕 **Phase 2 (wildcard)** |
 
-**OVH → sksr.re** (4 records ClubFlow + records mail OVH existants) :
+**OVH → sksr.re** (inchangé) :
 
 | Type | Name | Content |
 |---|---|---|
@@ -60,7 +78,7 @@ Cf. les pitfalls indexés :
 ## Vérifier la résolution DNS
 
 ```bash
-for h in clubflow.topdigital.re api.clubflow.topdigital.re portail.clubflow.topdigital.re sksr.re www.sksr.re; do
+for h in clubflow.topdigital.re app.clubflow.topdigital.re api.clubflow.topdigital.re portail.clubflow.topdigital.re sksr.re www.sksr.re; do
   echo "--- $h ---"
   dig +short A $h @1.1.1.1
   dig +short AAAA $h @1.1.1.1
@@ -73,14 +91,26 @@ Toutes les lignes doivent renvoyer **uniquement** :
 
 Si une autre IP apparaît → A parasite OVH à supprimer (voir pitfall).
 
-## Caddyfile actuel
+## Caddyfile cible (Phase 1)
 
-`/etc/caddy/Caddyfile` — voir `runbooks/deploy.md` pour la config courante.
+`/etc/caddy/Caddyfile` — voir `runbooks/deploy.md` pour la procédure de modif.
 
 ```caddy
-{ email florent.morel427@gmail.com }
+{
+    email florent.morel427@gmail.com
+    # Phase 3 : activer admin API pour vhosts dynamiques (cf. ADR-0007)
+    # admin localhost:2019
+}
 
+# Landing marketing — était l'admin, devient marketing en Phase 1
 clubflow.topdigital.re {
+    encode zstd gzip
+    reverse_proxy localhost:5176
+    log { output file /var/log/caddy/clubflow-landing.log { roll_size 10mb roll_keep 5 } }
+}
+
+# Admin multi-tenant — nouveau en Phase 1
+app.clubflow.topdigital.re {
     encode zstd gzip
     root * /home/clubflow/clubflow/apps/admin/dist
     try_files {path} /index.html
@@ -88,6 +118,7 @@ clubflow.topdigital.re {
     log { output file /var/log/caddy/clubflow-admin.log { roll_size 10mb roll_keep 5 } }
 }
 
+# Portail membre — inchangé
 portail.clubflow.topdigital.re {
     encode zstd gzip
     root * /home/clubflow/clubflow/apps/member-portal/dist
@@ -96,6 +127,7 @@ portail.clubflow.topdigital.re {
     log { output file /var/log/caddy/clubflow-portail.log { roll_size 10mb roll_keep 5 } }
 }
 
+# API NestJS — inchangé
 api.clubflow.topdigital.re {
     encode zstd gzip
     @websocket {
@@ -107,6 +139,7 @@ api.clubflow.topdigital.re {
     log { output file /var/log/caddy/clubflow-api.log { roll_size 10mb roll_keep 5 } }
 }
 
+# Vitrine SKSR (domaine custom) — inchangé
 sksr.re {
     encode zstd gzip
     reverse_proxy localhost:5175
@@ -116,6 +149,15 @@ sksr.re {
 www.sksr.re {
     redir https://sksr.re{uri} permanent
 }
+
+# Phase 2 : wildcard subdomain vitrine fallback (demande cert wildcard via DNS-01)
+# *.clubflow.topdigital.re {
+#     tls {
+#         dns cloudflare {env.CF_API_TOKEN}
+#     }
+#     reverse_proxy localhost:5175
+#     log { output file /var/log/caddy/clubflow-vitrine-wildcard.log { roll_size 10mb roll_keep 5 } }
+# }
 ```
 
 ⚠️ Si tu modifies le Caddyfile :
@@ -132,6 +174,8 @@ sudo chown caddy:caddy /var/log/caddy/<nom>.log
 ```
 Sinon le reload échoue avec "permission denied" et reste bloqué.
 
-## Ajouter un nouveau club (futur)
+## Ajouter un nouveau club
 
-Cf. `runbooks/add-new-club.md` (procédure complète DNS + Caddy + DB).
+- **Phase 1-2** (manuel) : cf. `runbooks/add-new-club.md`
+- **Phase 3+** (self-service) : le club configure son domaine depuis l'admin
+  → API NestJS appelle Caddy admin API → vhost ajouté à chaud (cf. ADR-0007)

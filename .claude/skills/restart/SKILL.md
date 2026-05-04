@@ -1,6 +1,6 @@
 ---
 name: restart
-description: Redémarre tous les serveurs de dev de ClubFlow (API NestJS sur 3000, admin web sur 5173, member-portal sur 5174, Metro Expo sur 8081, Mailpit sur 1025/8025 si installé). À utiliser quand l'utilisateur demande "redémarre les serveurs", "restart all", "/restart", ou quand un changement nécessite un redémarrage propre de la stack dev.
+description: Redémarre tous les serveurs de dev de ClubFlow (API NestJS sur 3000, admin web sur 5173, member-portal sur 5174, vitrine Next.js sur 5175, landing Next.js sur 5176, Metro Expo sur 8081, Mailpit sur 1025/8025 si installé). À utiliser quand l'utilisateur demande "redémarre les serveurs", "restart all", "/restart", ou quand un changement nécessite un redémarrage propre de la stack dev.
 ---
 
 # /restart — Redémarrage propre de la stack dev ClubFlow
@@ -18,6 +18,8 @@ d'env vars, ou un état corrompu de Metro / NestJS hot-reload).
 | **API NestJS** | 3000 | `cd apps/api && npm run start:dev` |
 | **Admin web (Vite)** | 5173 | `cd apps/admin && npm run dev` |
 | **Member portal (Vite)** | 5174 | `cd apps/member-portal && npm run dev` |
+| **Vitrine (Next.js)** | 5175 | `cd apps/vitrine && npm run dev` |
+| **Landing (Next.js)** | 5176 | `cd apps/landing && npm run dev` |
 | **Metro Expo (mobile)** | 8081 | `cd apps/mobile && npx expo start --clear` |
 
 **À NE PAS toucher** :
@@ -38,7 +40,7 @@ Sur Windows / PowerShell, identifier les processus listening sur les
 ports dev puis les killer :
 
 ```powershell
-$ports = @(3000, 5173, 5174, 8081)
+$ports = @(3000, 5173, 5174, 5175, 5176, 8081)
 foreach ($port in $ports) {
   $conns = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
   foreach ($conn in $conns) {
@@ -55,7 +57,7 @@ foreach ($port in $ports) {
 Ou en Bash via `netstat` + `taskkill` :
 
 ```bash
-for port in 3000 5173 5174 8081; do
+for port in 3000 5173 5174 5175 5176 8081; do
   pid=$(netstat -ano | grep "LISTENING" | grep ":$port " | awk '{print $NF}' | head -1)
   if [ -n "$pid" ]; then
     taskkill //F //PID $pid 2>&1 | head -1

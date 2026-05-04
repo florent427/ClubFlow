@@ -17,6 +17,7 @@
 | **Admin web (Vite)** | 5173 | `cd apps/admin && npm run dev` |
 | **Member portal (Vite)** | 5174 | `cd apps/member-portal && npm run dev` |
 | **Vitrine Next.js** | 5175 | `cd apps/vitrine && npm run dev` |
+| **Landing Next.js** | 5176 | `cd apps/landing && npm run dev` |
 | **Metro Expo (mobile)** | 8081 | `cd apps/mobile && npx expo start --clear` |
 | **Mailpit** | 1025 (SMTP) + 8025 (web UI) | `mailpit` (si installé) |
 
@@ -28,7 +29,7 @@ le gère manuellement).
 ### 1. Tuer les processus existants
 
 ```bash
-for port in 3000 5173 5174 5175 8081 1025 8025; do
+for port in 3000 5173 5174 5175 5176 8081 1025 8025; do
   pid=$(netstat -ano | grep "LISTENING" | grep ":$port " | awk '{print $NF}' | head -1)
   if [ -n "$pid" ]; then
     taskkill //F //PID $pid 2>&1 | head -1
