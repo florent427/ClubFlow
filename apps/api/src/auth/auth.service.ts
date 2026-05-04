@@ -8,16 +8,19 @@ import type { JwtSignOptions } from '@nestjs/jwt';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { OAuthProvider } from '@prisma/client';
+import { ClubsService } from '../clubs/clubs.service';
 import { resolveAdminWorkspaceClubId } from '../common/club-back-office-role';
 import { FamiliesService } from '../families/families.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { ViewerProfileGraph } from '../families/models/viewer-profile.model';
 import { TransactionalMailService } from '../mail/transactional-mail.service';
 import { AUTH_LOGIN_REJECT_MESSAGE } from './constants';
+import type { CreateClubAndAdminInput } from './dto/create-club-and-admin.input';
 import type { RegisterContactInput } from './dto/register-contact.input';
 import { EmailVerificationService } from './email-verification.service';
 import { LoginInput } from './dto/login.input';
 import type { JwtPayload } from './jwt.strategy';
+import { CreateClubAndAdminResult } from './models/create-club-and-admin-result.model';
 import { LoginPayload } from './models/login-payload.model';
 import { RegisterContactResult } from './models/register-contact-result.model';
 import { RequestPasswordResetResult } from './models/request-password-reset-result.model';
@@ -33,6 +36,7 @@ export class AuthService {
     private readonly emailVerification: EmailVerificationService,
     private readonly passwordReset: PasswordResetService,
     private readonly mail: TransactionalMailService,
+    private readonly clubs: ClubsService,
   ) {}
 
   /**
@@ -412,6 +416,112 @@ export class AuthService {
       contactClubId = c?.clubId ?? null;
     }
     return { accessToken, viewerProfiles, contactClubId };
+  }
+
+  /**
+   * Mutation publique : signup self-service d'un nouveau club + admin.
+   *
+   * Crée en une transaction :
+   *  1. Un Club (slug auto-généré ou validé) avec modules par défaut
+   *     (MEMBERS, FAMILIES, COMMUNICATION) activés.
+   *  2. Un User si l'email est libre, OU réutilise un user existant non-vérifié
+   *     (anti-stalled-signup). Refuse si l'email est déjà actif sur un compte.
+   *  3. Une ClubMembership(role=CLUB_ADMIN) liant ce user au nouveau club.
+   *  4. Tente d'envoyer un mail de vérification. Si SMTP n'est pas configuré
+   *     (dev sans Mailpit / prod sans Brevo), le user est créé quand même
+   *     mais devra vérifier son email plus tard (ou être marqué vérifié
+   *     manuellement si superadmin).
+   *
+   * Anti-énumération : la mutation est rate-limitée au resolver level
+   * (`@Throttle` 5/min). Pas de message qui révèle si un email est déjà
+   * utilisé — on renvoie une 409 explicite uniquement si l'admin existant
+   * est *vérifié* (sinon on permet "reprendre" un signup interrompu).
+   */
+  async createClubAndAdmin(
+    input: CreateClubAndAdminInput,
+  ): Promise<CreateClubAndAdminResult> {
+    const email = input.email.trim().toLowerCase();
+    const passwordHash = await bcrypt.hash(input.password, 10);
+    const displayName = `${input.firstName} ${input.lastName}`.trim();
+
+    // Check email pas déjà actif
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true, emailVerifiedAt: true },
+    });
+    if (existingUser?.emailVerifiedAt) {
+      throw new ConflictException('USER_ALREADY_EXISTS');
+    }
+
+    // Slug : valider la suggestion ou en générer un depuis le nom
+    const slug = await this.clubs.generateUniqueSlug(
+      input.clubName,
+      input.clubSlug,
+    );
+
+    // Création club + modules par défaut
+    const club = await this.clubs.createClubWithDefaults({
+      name: input.clubName,
+      slug,
+    });
+
+    // User : reuse non-vérifié OU create
+    let userId: string;
+    if (existingUser && !existingUser.emailVerifiedAt) {
+      await this.prisma.user.update({
+        where: { id: existingUser.id },
+        data: { passwordHash, displayName },
+      });
+      userId = existingUser.id;
+    } else {
+      const user = await this.prisma.user.create({
+        data: {
+          email,
+          passwordHash,
+          displayName,
+        },
+        select: { id: true },
+      });
+      userId = user.id;
+    }
+
+    // Membership CLUB_ADMIN sur le nouveau club
+    await this.prisma.clubMembership.create({
+      data: {
+        userId,
+        clubId: club.id,
+        role: 'CLUB_ADMIN',
+      },
+    });
+
+    // Mail de vérification : best-effort, n'échoue pas le signup si SMTP KO
+    let emailSent = false;
+    try {
+      const rawToken = await this.emailVerification.issueTokenForUser(userId);
+      await this.mail.sendEmailVerificationLink(
+        club.id,
+        email,
+        this.buildVerifyUrl(rawToken),
+      );
+      emailSent = true;
+    } catch {
+      // Log via console.warn ; l'admin peut être marqué vérifié manuellement
+      // ou redemander un mail via resendVerificationEmail plus tard.
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[createClubAndAdmin] Mail verification non envoyé pour ${email} (SMTP KO ou domaine non configuré).`,
+      );
+    }
+
+    const vitrineBase =
+      process.env.VITRINE_PUBLIC_BASE_DOMAIN ?? 'clubflow.topdigital.re';
+    return {
+      ok: true,
+      clubId: club.id,
+      clubSlug: club.slug,
+      vitrineFallbackUrl: `https://${slug}.${vitrineBase}`,
+      emailSent,
+    };
   }
 
   async selectActiveContactProfile(

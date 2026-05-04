@@ -10,12 +10,14 @@ import { GqlThrottlerGuard } from '../common/guards/gql-throttler.guard';
 import type { RequestUser } from '../common/types/request-user';
 import { ViewerProfileGraph } from '../families/models/viewer-profile.model';
 import { AuthService } from './auth.service';
+import { CreateClubAndAdminInput } from './dto/create-club-and-admin.input';
 import { LoginInput } from './dto/login.input';
 import { RegisterContactInput } from './dto/register-contact.input';
 import { RequestPasswordResetInput } from './dto/request-password-reset.input';
 import { ResendVerificationInput } from './dto/resend-verification.input';
 import { ResetPasswordInput } from './dto/reset-password.input';
 import { VerifyEmailInput } from './dto/verify-email.input';
+import { CreateClubAndAdminResult } from './models/create-club-and-admin-result.model';
 import { LoginPayload } from './models/login-payload.model';
 import { RegisterContactResult } from './models/register-contact-result.model';
 import { RequestPasswordResetResult } from './models/request-password-reset-result.model';
@@ -39,6 +41,19 @@ export class AuthResolver {
     @Args('input') input: RegisterContactInput,
   ): Promise<RegisterContactResult> {
     return this.auth.registerContact(input);
+  }
+
+  /**
+   * Mutation publique de signup self-service : crée un nouveau club + admin.
+   * Rate-limit serré (5/min/IP) pour limiter les bots.
+   * Pas de @UseGuards : la mutation est anonyme par design.
+   */
+  @Mutation(() => CreateClubAndAdminResult)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  createClubAndAdmin(
+    @Args('input') input: CreateClubAndAdminInput,
+  ): Promise<CreateClubAndAdminResult> {
+    return this.auth.createClubAndAdmin(input);
   }
 
   @Mutation(() => LoginPayload)
