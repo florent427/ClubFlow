@@ -3408,6 +3408,36 @@ code {
   line-height: 1.45;
 }
 
+.cf-onboarding-checklist {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.cf-onboarding-checklist li a {
+  display: block;
+  padding: 0.4rem 0.6rem;
+  background: var(--cf-bg-soft, #f4f4f5);
+  border-radius: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--cf-text);
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+
+.cf-onboarding-checklist li a:hover {
+  background: var(--cf-bg-hover, #e4e4e7);
+  text-decoration: none;
+}
+
+.cf-onboarding-banner__hint {
+  margin-top: 0.5rem !important;
+  font-size: 0.75rem !important;
+  font-style: italic;
+}
+
 .cf-onboarding-banner__dismiss {
   margin-left: auto;
   border: none;
