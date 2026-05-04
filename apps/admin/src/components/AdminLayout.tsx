@@ -4,12 +4,13 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { ModuleGatedNavLink } from './ModuleGatedNavLink';
 import { ModuleRouteGuard } from './ModuleRouteGuard';
 import { GlobalSearchBar } from './GlobalSearchBar';
+import { ClubSwitcher } from './ClubSwitcher';
 import { AikoChatWidget } from './agent/AikoChatWidget';
 import { VIEWER_PROFILES } from '../lib/documents';
 import { apolloClient } from '../lib/apollo';
 import { navigateToMemberPortal } from '../lib/member-portal-switch';
 import type { ViewerProfilesQueryData } from '../lib/types';
-import { clearSession, getClubId, getToken, isLoggedIn } from '../lib/storage';
+import { clearSession, getClubId, getToken, hasActiveClub } from '../lib/storage';
 import {
   ADMIN_FOOTER_ITEMS,
   NAV_SECTIONS,
@@ -208,7 +209,7 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
   const location = useLocation();
   const token = getToken();
   const clubId = getClubId();
-  const loggedIn = isLoggedIn();
+  const loggedIn = hasActiveClub();
   const emailHint = token ? decodeJwtEmail(token) : null;
   const displayName = displayNameFromEmail(emailHint);
 
@@ -422,6 +423,7 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
       <header className="cf-topbar">
         <GlobalSearchBar />
         <div className="cf-topbar__actions">
+          <ClubSwitcher />
           <div className="cf-role-toggle" role="group" aria-label="Vue">
             <button
               type="button"

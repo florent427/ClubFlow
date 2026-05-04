@@ -21,6 +21,19 @@ export const VIEWER_PROFILES = gql`
   }
 `;
 
+export const MY_ADMIN_CLUBS = gql`
+  query MyAdminClubs {
+    myAdminClubs {
+      id
+      slug
+      name
+      logoUrl
+      role
+      viaSuperAdmin
+    }
+  }
+`;
+
 export const DASHBOARD_SUMMARY = gql`
   query AdminDashboardSummary {
     adminDashboardSummary {

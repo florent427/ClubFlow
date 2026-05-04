@@ -1,32 +1,37 @@
 import { type FormEvent, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { useMutation } from '@apollo/client/react';
-import { LOGIN } from '../lib/documents';
-import type { LoginMutationData } from '../lib/types';
-import { isLoggedIn, setSession } from '../lib/storage';
+import { useMutation, useApolloClient } from '@apollo/client/react';
+import { LOGIN, MY_ADMIN_CLUBS } from '../lib/documents';
+import type { LoginMutationData, MyAdminClubsQueryData } from '../lib/types';
+import { hasActiveClub, setActiveClub, setToken } from '../lib/storage';
 
-const defaultClubId = import.meta.env.VITE_DEV_CLUB_ID ?? '';
-
+/**
+ * Login admin — Phase 2 (post multi-tenant).
+ *
+ * Plus de champ "Identifiant club" : on demande seulement email + password.
+ * Après auth réussie :
+ *  - 0 club accessible → message d'erreur (compte sans accès)
+ *  - 1 club → setActiveClub + redirect /
+ *  - N clubs → redirect /select-club
+ */
 export function LoginPage() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState('admin@clubflow.local');
-  const [password, setPassword] = useState('ChangeMe!');
-  const [clubId, setClubId] = useState(defaultClubId);
+  const apollo = useApolloClient();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
-  const [login, { loading }] = useMutation<LoginMutationData>(LOGIN);
+  const [login] = useMutation<LoginMutationData>(LOGIN);
 
-  if (isLoggedIn()) {
+  if (hasActiveClub()) {
     return <Navigate to="/" replace />;
   }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!clubId.trim()) {
-      setError('Indiquez l’identifiant du club (UUID), affiché après npm run db:seed.');
-      return;
-    }
+    setPending(true);
     try {
       const { data } = await login({
         variables: { input: { email: email.trim(), password } },
@@ -36,12 +41,38 @@ export function LoginPage() {
         setError('Réponse inattendue du serveur.');
         return;
       }
-      setSession(token, clubId.trim());
-      void navigate('/', { replace: true });
+      // 1) Stocker le token (sans clubId encore)
+      setToken(token);
+
+      // 2) Charger la liste des clubs accessibles
+      const result = await apollo.query<MyAdminClubsQueryData>({
+        query: MY_ADMIN_CLUBS,
+        fetchPolicy: 'network-only',
+      });
+      const clubs = result.data?.myAdminClubs ?? [];
+
+      if (clubs.length === 0) {
+        setError(
+          "Votre compte n'a accès à aucun club. Vérifiez votre email de confirmation ou contactez l'administrateur.",
+        );
+        return;
+      }
+
+      if (clubs.length === 1) {
+        const c = clubs[0];
+        setActiveClub(c.id, c.slug);
+        void navigate('/', { replace: true });
+        return;
+      }
+
+      // N clubs → page de sélection
+      void navigate('/select-club', { replace: true });
     } catch (err: unknown) {
       const msg =
         err instanceof Error ? err.message : 'Connexion impossible.';
       setError(msg);
+    } finally {
+      setPending(false);
     }
   }
 
@@ -50,10 +81,10 @@ export function LoginPage() {
       <div className="login-card">
         <header className="login-header">
           <p className="login-eyebrow">ClubFlow</p>
-          <h1>Back-office</h1>
+          <h1>Connexion</h1>
           <p className="login-sub">
-            Connexion réservée aux administrateurs du club (tête de section 3.1
-            — conception).
+            Espace administrateur de club. Pas de compte ?{' '}
+            <a href="https://clubflow.topdigital.re/signup">Créer mon club</a>
           </p>
         </header>
         <form onSubmit={(e) => void onSubmit(e)} className="login-form">
@@ -65,6 +96,7 @@ export function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              autoFocus
             />
           </label>
           <label className="field">
@@ -77,25 +109,11 @@ export function LoginPage() {
               required
             />
           </label>
-          <label className="field">
-            <span>Identifiant club (X-Club-Id)</span>
-            <input
-              type="text"
-              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-              value={clubId}
-              onChange={(e) => setClubId(e.target.value)}
-              required
-            />
-          </label>
           {error ? <p className="form-error">{error}</p> : null}
-          <button type="submit" className="btn btn-primary" disabled={loading}>
-            {loading ? 'Connexion…' : 'Se connecter'}
+          <button type="submit" className="btn btn-primary" disabled={pending}>
+            {pending ? 'Connexion…' : 'Se connecter'}
           </button>
         </form>
-        <p className="login-hint">
-          Astuce : enchaînez <code>npm run db:seed</code> dans{' '}
-          <code>apps/api</code> pour afficher l’UUID du club démo.
-        </p>
       </div>
     </div>
   );

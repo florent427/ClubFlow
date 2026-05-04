@@ -2,9 +2,10 @@ import type { ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { ApolloProvider } from '@apollo/client/react';
 import { apolloClient } from './lib/apollo';
-import { isLoggedIn } from './lib/storage';
+import { hasActiveClub, isLoggedIn } from './lib/storage';
 import { AdminLayout } from './components/AdminLayout';
 import { LoginPage } from './pages/LoginPage';
+import { SelectClubPage } from './pages/SelectClubPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ClubModulesPage } from './pages/ClubModulesPage';
 import { MembersLayout } from './pages/members/MembersLayout';
@@ -68,6 +69,9 @@ function Protected({ children }: { children: ReactNode }) {
   if (!isLoggedIn()) {
     return <Navigate to="/login" replace />;
   }
+  if (!hasActiveClub()) {
+    return <Navigate to="/select-club" replace />;
+  }
   return <>{children}</>;
 }
 
@@ -78,6 +82,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/select-club" element={<SelectClubPage />} />
           <Route
             element={
               <Protected>
