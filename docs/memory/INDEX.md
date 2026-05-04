@@ -36,6 +36,7 @@
 | [`gitignore-claude-trailing-slash-blocks-negation.md`](pitfalls/gitignore-claude-trailing-slash-blocks-negation.md) | Piège — `.gitignore` `.claude/` (trailing slash) bloque la négation `!.claude/skills/` |
 | [`nestjs-graphql-nullable-needs-explicit-type.md`](pitfalls/nestjs-graphql-nullable-needs-explicit-type.md) | Piège — `@Field({ nullable: true })` GraphQL crash sans type explicite |
 | [`nextjs-isr-cache-stale.md`](pitfalls/nextjs-isr-cache-stale.md) | Piège — Next.js ISR cache stale après insert DB |
+| [`nextjs-public-env-vars-not-bundled.md`](pitfalls/nextjs-public-env-vars-not-bundled.md) | Piège — Next.js : `process.env.X` côté client n'a QUE les `NEXT_PUBLIC_*` |
 | [`ovh-a-parasite-185-158.md`](pitfalls/ovh-a-parasite-185-158.md) | Piège — Record A parasite OVH `185.158.133.1` (welcome page) |
 | [`pdf-parse-v2-conflict.md`](pitfalls/pdf-parse-v2-conflict.md) | Piège — `pdf-parse v2` casse à cause de conflit `pdfjs-dist` avec `pdf-to-img` |
 | [`prisma-clubmembership-no-updatedat.md`](pitfalls/prisma-clubmembership-no-updatedat.md) | Piège — `ClubMembership` n'a PAS de `updatedAt` (contrairement aux autres modèles) |
@@ -70,7 +71,7 @@
 
 ---
 
-_Index généré le 2026-05-04 08:53 UTC par `bin/memory-index`._
+_Index généré le 2026-05-04 09:00 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`
