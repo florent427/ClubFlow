@@ -19,6 +19,19 @@ export class PublicSiteResolver {
     return this.service.getClubBySlug(slug) as Promise<PublicClubGraph>;
   }
 
+  /**
+   * Lookup d'un club par son `customDomain` configuré.
+   * Utilisé par la vitrine SSR pour résoudre `sksr.re` → club SKSR.
+   * Retourne `null` si aucun club ne possède ce domaine (vitrine fallback).
+   */
+  @Query(() => PublicClubGraph, { name: 'publicClubByDomain', nullable: true })
+  async publicClubByDomain(
+    @Args('domain') domain: string,
+  ): Promise<PublicClubGraph | null> {
+    const club = await this.service.getClubByDomain(domain);
+    return club as PublicClubGraph | null;
+  }
+
   @Query(() => [PublicAnnouncementGraph], { name: 'publicClubAnnouncements' })
   publicClubAnnouncements(
     @Args('clubSlug') clubSlug: string,

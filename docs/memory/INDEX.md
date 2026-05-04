@@ -61,7 +61,7 @@
 
 ---
 
-_Index généré le 2026-05-04 05:12 UTC par `bin/memory-index`._
+_Index généré le 2026-05-04 05:23 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`
