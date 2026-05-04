@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.13.0](https://github.com/florent427/ClubFlow/compare/v0.12.0...v0.13.0) (2026-05-04)
+
+
+### ✨ Features
+
+* **admin:** mot de passe oublié end-to-end + toggle show password ([#46](https://github.com/florent427/ClubFlow/issues/46)) ([c1c531b](https://github.com/florent427/ClubFlow/commit/c1c531b706e30213b3422af65fec4f7112da469c))
+
 ## [0.12.0](https://github.com/florent427/ClubFlow/compare/v0.11.1...v0.12.0) (2026-05-04)
 
 
