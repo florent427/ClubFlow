@@ -14,6 +14,7 @@ import {
 } from './models/club-branding.model';
 import { ClubGraphModel } from './models/club.model';
 import { ClubMembershipGraphModel } from './models/club-membership.model';
+import { MyAdminClubGraph } from './models/my-admin-club.model';
 import { UpdateClubBrandingInput } from './dto/update-club-branding.input';
 
 /**
@@ -133,6 +134,66 @@ export class ClubsResolver {
         'vitrinePaletteJson' in row ? row.vitrinePaletteJson : null,
       ),
     };
+  }
+
+  /**
+   * Liste les clubs où l'utilisateur connecté a accès admin.
+   *
+   * - SUPER_ADMIN : retourne TOUS les clubs (vue globale, role='SUPER_ADMIN').
+   * - User normal : retourne ses ClubMembership (role réel).
+   *
+   * Utilisé par le frontend admin pour :
+   * - Décider après login : 1 club → redirect direct, N → page select-club
+   * - Le ClubSwitcher dans le header (changer de club)
+   *
+   * Note : pas de ClubContextGuard ici (la query existe AVANT que le user
+   * ait choisi un club). Seul JWT requis.
+   */
+  @Query(() => [MyAdminClubGraph])
+  @UseGuards(GqlJwtAuthGuard)
+  async myAdminClubs(
+    @CurrentUser() user: RequestUser | undefined,
+  ): Promise<MyAdminClubGraph[]> {
+    if (!user?.userId) return [];
+
+    const u = await this.prisma.user.findUnique({
+      where: { id: user.userId },
+      select: { systemRole: true },
+    });
+
+    if (u?.systemRole === 'SUPER_ADMIN') {
+      const clubs = await this.prisma.club.findMany({
+        orderBy: { name: 'asc' },
+        select: { id: true, slug: true, name: true, logoUrl: true },
+      });
+      return clubs.map((c) => ({
+        id: c.id,
+        slug: c.slug,
+        name: c.name,
+        logoUrl: c.logoUrl ?? null,
+        role: 'SUPER_ADMIN',
+        viaSuperAdmin: true,
+      }));
+    }
+
+    const memberships = await this.prisma.clubMembership.findMany({
+      where: { userId: user.userId },
+      select: {
+        role: true,
+        club: {
+          select: { id: true, slug: true, name: true, logoUrl: true },
+        },
+      },
+      orderBy: { club: { name: 'asc' } },
+    });
+    return memberships.map((m) => ({
+      id: m.club.id,
+      slug: m.club.slug,
+      name: m.club.name,
+      logoUrl: m.club.logoUrl ?? null,
+      role: m.role,
+      viaSuperAdmin: false,
+    }));
   }
 
   @Query(() => ClubMembershipGraphModel, { nullable: true })
