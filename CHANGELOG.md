@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.11.0](https://github.com/florent427/ClubFlow/compare/v0.10.3...v0.11.0) (2026-05-04)
+
+
+### ✨ Features
+
+* **admin:** club switcher + login sans clubId + page /select-club + 403 handling ([#39](https://github.com/florent427/ClubFlow/issues/39)) ([d7ced6d](https://github.com/florent427/ClubFlow/commit/d7ced6d8ef1fc439add96f5aa0f96fb63596297d))
+
 ## [0.10.3](https://github.com/florent427/ClubFlow/compare/v0.10.2...v0.10.3) (2026-05-04)
 
 
