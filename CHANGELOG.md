@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.13.1](https://github.com/florent427/ClubFlow/compare/v0.13.0...v0.13.1) (2026-05-04)
+
+
+### 🐛 Bug Fixes
+
+* **admin:** URL vitrine dynamique par club (boutons Ouvrir/Éditer) ([#49](https://github.com/florent427/ClubFlow/issues/49)) ([e4d392d](https://github.com/florent427/ClubFlow/commit/e4d392de9415b5c7bd0215f907efc9507091ff61))
+
 ## [0.13.0](https://github.com/florent427/ClubFlow/compare/v0.12.0...v0.13.0) (2026-05-04)
 
 
