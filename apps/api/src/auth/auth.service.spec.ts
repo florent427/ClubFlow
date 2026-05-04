@@ -36,6 +36,7 @@ describe('AuthService', () => {
     } as unknown as import('../mail/transactional-mail.service').TransactionalMailService;
     const clubs = {} as unknown as import('../clubs/clubs.service').ClubsService;
     const caddy = {} as unknown as import('../infra/caddy.service').CaddyApiService;
+    const captcha = {} as unknown as import('./captcha-verify.service').CaptchaVerifyService;
     const svc = new AuthService(
       prisma,
       jwt,
@@ -45,6 +46,7 @@ describe('AuthService', () => {
       mail,
       clubs,
       caddy,
+      captcha,
     );
     await expect(
       svc.login({ email: 'a@b.c', password: 'bad' }),
@@ -69,7 +71,8 @@ describe('AuthService', () => {
     const mail = {} as unknown as import('../mail/transactional-mail.service').TransactionalMailService;
     const clubs = {} as unknown as import('../clubs/clubs.service').ClubsService;
     const caddy = {} as unknown as import('../infra/caddy.service').CaddyApiService;
-    const svc = new AuthService(prisma, jwt, families, emailV, passwordReset, mail, clubs, caddy);
+    const captcha = {} as unknown as import('./captcha-verify.service').CaptchaVerifyService;
+    const svc = new AuthService(prisma, jwt, families, emailV, passwordReset, mail, clubs, caddy, captcha);
     await expect(svc.login({ email: 'a@b.c', password: 'good' })).rejects.toThrow(
       AUTH_LOGIN_REJECT_MESSAGE,
     );
@@ -95,7 +98,8 @@ describe('AuthService', () => {
     const mail = {} as unknown as import('../mail/transactional-mail.service').TransactionalMailService;
     const clubs = {} as unknown as import('../clubs/clubs.service').ClubsService;
     const caddy = {} as unknown as import('../infra/caddy.service').CaddyApiService;
-    const svc = new AuthService(prisma, jwt, families, emailV, passwordReset, mail, clubs, caddy);
+    const captcha = {} as unknown as import('./captcha-verify.service').CaptchaVerifyService;
+    const svc = new AuthService(prisma, jwt, families, emailV, passwordReset, mail, clubs, caddy, captcha);
     await expect(
       svc.login({ email: 'a@b.c', password: 'anything' }),
     ).rejects.toThrow(AUTH_LOGIN_REJECT_MESSAGE);

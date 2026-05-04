@@ -49,6 +49,8 @@ export type CreateClubAndAdminInput = {
   password: string;
   firstName: string;
   lastName: string;
+  /** Token hCaptcha — requis si HCAPTCHA_SECRET configuré côté API. */
+  captchaToken?: string;
 };
 
 export type CreateClubAndAdminResult = {
