@@ -34,6 +34,7 @@ describe('AuthService', () => {
     const mail = {
       sendEmailVerificationLink: jest.fn(),
     } as unknown as import('../mail/transactional-mail.service').TransactionalMailService;
+    const clubs = {} as unknown as import('../clubs/clubs.service').ClubsService;
     const svc = new AuthService(
       prisma,
       jwt,
@@ -41,6 +42,7 @@ describe('AuthService', () => {
       emailV,
       passwordReset,
       mail,
+      clubs,
     );
     await expect(
       svc.login({ email: 'a@b.c', password: 'bad' }),
@@ -63,7 +65,8 @@ describe('AuthService', () => {
     const emailV = {} as unknown as EmailVerificationService;
     const passwordReset = {} as unknown as PasswordResetService;
     const mail = {} as unknown as import('../mail/transactional-mail.service').TransactionalMailService;
-    const svc = new AuthService(prisma, jwt, families, emailV, passwordReset, mail);
+    const clubs = {} as unknown as import('../clubs/clubs.service').ClubsService;
+    const svc = new AuthService(prisma, jwt, families, emailV, passwordReset, mail, clubs);
     await expect(svc.login({ email: 'a@b.c', password: 'good' })).rejects.toThrow(
       AUTH_LOGIN_REJECT_MESSAGE,
     );
@@ -87,7 +90,8 @@ describe('AuthService', () => {
     const emailV = {} as unknown as EmailVerificationService;
     const passwordReset = {} as unknown as PasswordResetService;
     const mail = {} as unknown as import('../mail/transactional-mail.service').TransactionalMailService;
-    const svc = new AuthService(prisma, jwt, families, emailV, passwordReset, mail);
+    const clubs = {} as unknown as import('../clubs/clubs.service').ClubsService;
+    const svc = new AuthService(prisma, jwt, families, emailV, passwordReset, mail, clubs);
     await expect(
       svc.login({ email: 'a@b.c', password: 'anything' }),
     ).rejects.toThrow(AUTH_LOGIN_REJECT_MESSAGE);

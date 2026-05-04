@@ -1,5 +1,5 @@
-import Link from 'next/link';
 import type { Metadata } from 'next';
+import { SignupForm } from './SignupForm';
 
 export const metadata: Metadata = {
   title: 'Créer votre club',
@@ -12,33 +12,17 @@ export default function SignupPage() {
     <section className="signup container">
       <div className="signup-card">
         <h1>Créer votre club</h1>
-        <p className="muted">
-          Inscription auto-service en moins de 2 minutes — sans CB, sans engagement.
+        <p className="muted lede">
+          Inscription auto-service en moins de 2 minutes — sans CB, sans
+          engagement.
         </p>
-
-        <div className="placeholder">
-          <p>
-            🚧 <strong>Inscription self-service en cours de finalisation.</strong>
-          </p>
-          <p>
-            Pour démarrer dès aujourd'hui, contactez-nous à{' '}
-            <a href="mailto:florent.morel427@gmail.com">
-              florent.morel427@gmail.com
-            </a>
-            {' '}— votre club sera créé manuellement sous 24h.
-          </p>
-          <p>
-            <Link href="/" className="btn btn-secondary" style={{ marginTop: '1rem' }}>
-              Retour à l'accueil
-            </Link>
-          </p>
-        </div>
+        <SignupForm />
       </div>
 
       <style>{`
         .signup {
           padding: var(--space-16) var(--space-6);
-          max-width: 560px;
+          max-width: 640px;
         }
         .signup-card {
           background: var(--color-bg-elevated);
@@ -48,21 +32,10 @@ export default function SignupPage() {
         }
         .signup-card h1 {
           font-size: 2rem;
-          margin-bottom: var(--space-3);
+          margin-bottom: var(--space-2);
         }
-        .placeholder {
-          margin-top: var(--space-8);
-          padding: var(--space-6);
-          background: var(--color-bg);
-          border-radius: var(--radius);
-          border-left: 3px solid var(--color-primary);
-        }
-        .placeholder p {
-          color: var(--color-text);
-          margin-bottom: var(--space-3);
-        }
-        .placeholder p:last-child {
-          margin-bottom: 0;
+        .signup .lede {
+          margin-bottom: var(--space-8);
         }
       `}</style>
     </section>
