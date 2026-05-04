@@ -1,0 +1,20 @@
+[Unit]
+Description=ClubFlow Landing STAGING (Next.js)
+After=network.target
+
+[Service]
+Type=simple
+User=clubflow
+Group=clubflow
+WorkingDirectory=/home/clubflow/clubflow/apps/landing
+EnvironmentFile=-/home/clubflow/clubflow/apps/landing/.env.production
+Environment=NODE_ENV=production
+Environment=PORT=5276
+ExecStart=/usr/bin/npm run start
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/var/log/clubflow-landing-staging.log
+StandardError=append:/var/log/clubflow-landing-staging.log
+
+[Install]
+WantedBy=multi-user.target
