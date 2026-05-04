@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.10.1](https://github.com/florent427/ClubFlow/compare/v0.10.0...v0.10.1) (2026-05-04)
+
+
+### 🐛 Bug Fixes
+
+* **bootstrap:** Caddy v2.10 on_demand_tls + SQL UUID→TEXT ([#32](https://github.com/florent427/ClubFlow/issues/32)) ([1d16efd](https://github.com/florent427/ClubFlow/commit/1d16efd283511fad7c408167804f16b114841c86))
+
 ## [0.10.0](https://github.com/florent427/ClubFlow/compare/v0.9.0...v0.10.0) (2026-05-04)
 
 
