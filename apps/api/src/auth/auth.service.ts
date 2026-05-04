@@ -11,6 +11,7 @@ import { OAuthProvider } from '@prisma/client';
 import { ClubsService } from '../clubs/clubs.service';
 import { resolveAdminWorkspaceClubId } from '../common/club-back-office-role';
 import { FamiliesService } from '../families/families.service';
+import { CaddyApiService } from '../infra/caddy.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { ViewerProfileGraph } from '../families/models/viewer-profile.model';
 import { TransactionalMailService } from '../mail/transactional-mail.service';
@@ -37,6 +38,7 @@ export class AuthService {
     private readonly passwordReset: PasswordResetService,
     private readonly mail: TransactionalMailService,
     private readonly clubs: ClubsService,
+    private readonly caddy: CaddyApiService,
   ) {}
 
   /**
@@ -515,11 +517,32 @@ export class AuthService {
 
     const vitrineBase =
       process.env.VITRINE_PUBLIC_BASE_DOMAIN ?? 'clubflow.topdigital.re';
+    const fallbackHost = `${slug}.${vitrineBase}`;
+
+    // Auto-provisioning du vhost vitrine fallback via Caddy admin API.
+    // Best-effort : si Caddy KO, on log mais on n'échoue pas le signup
+    // (le club est créé, l'admin peut configurer un domaine custom plus tard
+    // via Settings → Domaine vitrine, et le cron VitrineDomainCron rattrapera).
+    // ⚠️ Le DNS wildcard *.clubflow.topdigital.re doit pointer sur le serveur
+    // pour que Caddy obtienne le cert HTTP-01. Cf. runbooks/wildcard-vitrine-subdomain.md.
+    try {
+      await this.caddy.addVitrineVhost(fallbackHost);
+      // eslint-disable-next-line no-console
+      console.log(
+        `[createClubAndAdmin] Vhost vitrine fallback ${fallbackHost} provisioné via Caddy API.`,
+      );
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[createClubAndAdmin] Caddy addVitrineVhost ${fallbackHost} a échoué : ${(err as Error).message}. Club créé quand même, vitrine fallback inactive jusqu'à intervention manuelle.`,
+      );
+    }
+
     return {
       ok: true,
       clubId: club.id,
       clubSlug: club.slug,
-      vitrineFallbackUrl: `https://${slug}.${vitrineBase}`,
+      vitrineFallbackUrl: `https://${fallbackHost}`,
       emailSent,
     };
   }
