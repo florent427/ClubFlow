@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.10.2](https://github.com/florent427/ClubFlow/compare/v0.10.1...v0.10.2) (2026-05-04)
+
+
+### 🐛 Bug Fixes
+
+* **check-domain:** autoriser tous les sous-domaines de clubflow.topdigital.re ([#34](https://github.com/florent427/ClubFlow/issues/34)) ([4791c8e](https://github.com/florent427/ClubFlow/commit/4791c8e2fff6c470acc8bc7327910a3b96a6a2db))
+
 ## [0.10.1](https://github.com/florent427/ClubFlow/compare/v0.10.0...v0.10.1) (2026-05-04)
 
 
