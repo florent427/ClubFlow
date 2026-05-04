@@ -13,22 +13,22 @@ export class MyAdminClubGraph {
   @Field(() => ID)
   id!: string;
 
-  @Field()
+  @Field(() => String)
   slug!: string;
 
-  @Field()
+  @Field(() => String)
   name!: string;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   logoUrl!: string | null;
 
-  @Field({
+  @Field(() => String, {
     description:
       "Rôle effectif : 'SUPER_ADMIN' (vue globale système) ou valeur de MembershipRole (CLUB_ADMIN/STAFF/...).",
   })
   role!: string;
 
-  @Field({
+  @Field(() => Boolean, {
     description:
       "true si listé via systemRole=SUPER_ADMIN (vue globale), false si via membership réel.",
   })
