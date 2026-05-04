@@ -216,10 +216,34 @@ export function DashboardPage() {
           <div className="cf-onboarding-banner__content">
             <strong>Bienvenue sur ClubFlow !</strong>
             <p>
-              Commencez par activer les modules dont vous avez besoin (
-              <Link to="/club-modules">page Modules du club</Link>
-              ), puis créez vos premiers membres dans l'annuaire. Le planning et la
-              facturation se débloqueront automatiquement.
+              Voici les 4 étapes recommandées pour démarrer :
+            </p>
+            <ul className="cf-onboarding-checklist">
+              <li>
+                <Link to="/settings/branding">
+                  🎨 Charger le logo et la charte de votre club
+                </Link>
+              </li>
+              <li>
+                <Link to="/settings/vitrine-domain">
+                  🌐 Configurer votre domaine vitrine (optionnel)
+                </Link>
+              </li>
+              <li>
+                <Link to="/club-modules">
+                  🧩 Activer les modules dont vous avez besoin
+                </Link>
+              </li>
+              <li>
+                <Link to="/members/new">
+                  👥 Créer votre premier membre
+                </Link>
+              </li>
+            </ul>
+            <p className="cf-onboarding-banner__hint">
+              Le planning et la facturation se débloqueront automatiquement
+              une fois les modules activés. Vous pouvez ignorer cette bannière
+              et y revenir plus tard depuis Paramètres.
             </p>
           </div>
           <button
