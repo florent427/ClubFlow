@@ -112,17 +112,26 @@ app gère son `package.json`.
 hostname `clubflow-prod`. User SSH : `clubflow`. Détails →
 [infra-prod.md](docs/knowledge/infra-prod.md).
 
-**Domaines live (cible Phase 1)** :
-- https://clubflow.topdigital.re — landing marketing publique (Next.js, port 5176) — *avant Phase 1 = admin*
-- https://app.clubflow.topdigital.re — admin multi-tenant (URL pattern `/<slug>/...`, cf. [ADR-0006](docs/memory/decisions/0006-path-based-multi-tenant.md))
+**Domaines live PROD (branche `main`)** :
+- https://clubflow.topdigital.re — landing marketing publique (Next.js)
+- https://app.clubflow.topdigital.re — admin multi-tenant ([ADR-0006](docs/memory/decisions/0006-path-based-multi-tenant.md))
 - https://api.clubflow.topdigital.re — API + WS `/chat`
 - https://portail.clubflow.topdigital.re — portail membre
 - https://sksr.re — vitrine club SKSR (custom domain)
-- *(Phase 2)* https://*.clubflow.topdigital.re — vitrine fallback wildcard
+- https://*.clubflow.topdigital.re — vitrine fallback wildcard
+
+**Domaines live STAGING (branche `staging`)** : VPS dédié `46.62.197.93` (Hetzner cx23 Helsinki, ~4€/mo)
+- https://staging.clubflow.topdigital.re — landing
+- https://staging.app.clubflow.topdigital.re — admin
+- https://staging.api.clubflow.topdigital.re — API
+- https://staging.portail.clubflow.topdigital.re — portail
+- https://*.staging.clubflow.topdigital.re — vitrine fallback
+- DB `clubflow_staging` séparée + SMTP/captcha sandbox keys distincts
 
 **Pipeline** : push sur main → deploy.yml + release-please.yml en
-parallèle. Auto-merge PR de release via API REST. Détails →
-[runbooks/release.md](docs/runbooks/release.md) et
+parallèle. Auto-merge PR de release via API REST. Push sur staging →
+deploy-staging.yml. Détails → [runbooks/release.md](docs/runbooks/release.md),
+[runbooks/staging-vps-bootstrap.md](docs/runbooks/staging-vps-bootstrap.md),
 [ADR-0005](docs/memory/decisions/0005-release-please-auto-merge.md).
 
 ---
