@@ -6,6 +6,8 @@ import { hasActiveClub, isLoggedIn } from './lib/storage';
 import { AdminLayout } from './components/AdminLayout';
 import { LoginPage } from './pages/LoginPage';
 import { SelectClubPage } from './pages/SelectClubPage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ClubModulesPage } from './pages/ClubModulesPage';
 import { MembersLayout } from './pages/members/MembersLayout';
@@ -82,6 +84,8 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/select-club" element={<SelectClubPage />} />
           <Route
             element={

@@ -1,9 +1,10 @@
 import { type FormEvent, useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useMutation, useApolloClient } from '@apollo/client/react';
 import { LOGIN, MY_ADMIN_CLUBS } from '../lib/documents';
 import type { LoginMutationData, MyAdminClubsQueryData } from '../lib/types';
 import { hasActiveClub, setActiveClub, setToken } from '../lib/storage';
+import { PasswordInput } from '../components/PasswordInput';
 
 /**
  * Login admin — Phase 2 (post multi-tenant).
@@ -101,11 +102,10 @@ export function LoginPage() {
           </label>
           <label className="field">
             <span>Mot de passe</span>
-            <input
-              type="password"
-              autoComplete="current-password"
+            <PasswordInput
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={setPassword}
+              autoComplete="current-password"
               required
             />
           </label>
@@ -113,6 +113,9 @@ export function LoginPage() {
           <button type="submit" className="btn btn-primary" disabled={pending}>
             {pending ? 'Connexion…' : 'Se connecter'}
           </button>
+          <p className="login-hint">
+            <Link to="/forgot-password">Mot de passe oublié ?</Link>
+          </p>
         </form>
       </div>
     </div>
