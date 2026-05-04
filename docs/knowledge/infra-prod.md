@@ -32,17 +32,24 @@ Coût         : 3,20 €/mois HT
 |---|---|---|---|
 | `clubflow-api.service` | 3000 | `/home/clubflow/clubflow/apps/api/dist/main.js` | `/var/log/clubflow-api.log` |
 | `clubflow-vitrine.service` | 5175 | `cd apps/vitrine && npm run start` | `/var/log/clubflow-vitrine.log` |
+| `clubflow-landing.service` 🆕 Phase 1 | 5176 | `cd apps/landing && npm run start` | `/var/log/clubflow-landing.log` |
 
 ```bash
 # Status / restart
-sudo systemctl status clubflow-api clubflow-vitrine
+sudo systemctl status clubflow-api clubflow-vitrine clubflow-landing
 sudo systemctl restart clubflow-api
 sudo systemctl restart clubflow-vitrine
+sudo systemctl restart clubflow-landing
 
 # Logs en live
 sudo tail -f /var/log/clubflow-api.log
 sudo tail -f /var/log/clubflow-vitrine.log
+sudo tail -f /var/log/clubflow-landing.log
 ```
+
+L'admin et le portail membre sont servis en static par Caddy depuis
+`/home/clubflow/clubflow/apps/{admin,member-portal}/dist/` (pas de service
+systemd dédié, c'est Caddy qui sert les fichiers).
 
 ## Services système
 
@@ -72,16 +79,22 @@ wal_buffers = 16MB
 - **Email** : `admin@clubflow.local`
 - **Password** : `ClubFlowAdmin2026!` (à changer après 1er login)
 - **CLUB_ID header** : `a8a1041c-ec1e-4e4d-a1cc-cd58247cf982`
-- **URL admin** : https://clubflow.topdigital.re
+- **URL admin** : https://app.clubflow.topdigital.re *(Phase 1 — était `clubflow.topdigital.re`)*
 
-## URLs publiques
+## URLs publiques (cible Phase 1+)
 
 ```
-https://clubflow.topdigital.re          → admin web
-https://api.clubflow.topdigital.re      → API + WS /chat
-https://portail.clubflow.topdigital.re  → portail membre
-https://sksr.re                         → vitrine SKSR (+ www → 301)
+https://clubflow.topdigital.re          → landing marketing (Next.js, port 5176)
+https://app.clubflow.topdigital.re      → admin multi-tenant (Vite static)
+                                          URL pattern : /<club-slug>/... (cf. ADR-0006)
+https://api.clubflow.topdigital.re      → API + WS /chat (port 3000)
+https://portail.clubflow.topdigital.re  → portail membre (Vite static)
+https://*.clubflow.topdigital.re        → vitrine fallback Phase 2 (wildcard)
+https://sksr.re                         → vitrine SKSR (+ www → 301, custom domain)
 ```
+
+⚠️ Avant Phase 1 : `https://clubflow.topdigital.re` = admin (à migrer vers `app.`).
+Voir CLAUDE.md → Map de la mémoire pour les ADR concernées.
 
 ## Stockage médias
 

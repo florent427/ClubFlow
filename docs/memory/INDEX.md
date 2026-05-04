@@ -44,6 +44,8 @@
 | [`0003-prisma-db-push.md`](decisions/0003-prisma-db-push.md) | ADR-0003 — Utiliser `prisma db push` au lieu de `migrate deploy` (temporaire) |
 | [`0004-no-monorepo-workspaces.md`](decisions/0004-no-monorepo-workspaces.md) | ADR-0004 — Pas de monorepo npm workspaces (chaque app a son `package.json`) |
 | [`0005-release-please-auto-merge.md`](decisions/0005-release-please-auto-merge.md) | ADR-0005 — Auto-merge des PR release-please via API REST |
+| [`0006-path-based-multi-tenant.md`](decisions/0006-path-based-multi-tenant.md) | ADR-0006 — Multi-tenant admin via path (`app.clubflow.topdigital.re/<slug>/...`) |
+| [`0007-caddy-admin-api-vs-caddyfile.md`](decisions/0007-caddy-admin-api-vs-caddyfile.md) | ADR-0007 — Caddy Admin API (port 2019) pour vhosts dynamiques |
 
 ## 🔄 Workflows métier
 
@@ -56,7 +58,7 @@
 
 ---
 
-_Index généré le 2026-05-03 18:36 UTC par `bin/memory-index`._
+_Index généré le 2026-05-04 03:39 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`

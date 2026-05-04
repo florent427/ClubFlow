@@ -14,6 +14,13 @@ async function bootstrap() {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
+  /** Origine de la landing marketing (POST /signup vers l'API). Distincte de l'admin pour
+   * pouvoir héberger marketing et admin sur des sous-domaines différents (ex. clubflow.topdigital.re vs app.clubflow.topdigital.re). */
+  const landingOrigins = (process.env.LANDING_ORIGIN ?? 'http://localhost:5176')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const allOrigins = [...adminOrigins, ...landingOrigins];
   const isProd = process.env.NODE_ENV === 'production';
   const allowNoOrigin =
     process.env.CORS_ALLOW_NO_ORIGIN === 'true' || !isProd;
@@ -32,7 +39,7 @@ async function bootstrap() {
       const localhostOk =
         /^http:\/\/127\.0\.0\.1:\d+$/.test(origin) ||
         /^http:\/\/localhost:\d+$/.test(origin);
-      const allowed = adminOrigins.includes(origin) || (!isProd && localhostOk);
+      const allowed = allOrigins.includes(origin) || (!isProd && localhostOk);
       return callback(null, allowed);
     },
     credentials: true,
