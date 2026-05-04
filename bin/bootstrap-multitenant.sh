@@ -147,8 +147,6 @@ else
       print
       print "    on_demand_tls {"
       print "        ask http://localhost:3000/v1/vitrine/check-domain"
-      print "        interval 2m"
-      print "        burst 5"
       print "    }"
       added=1
       next
