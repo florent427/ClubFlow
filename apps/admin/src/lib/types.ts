@@ -15,6 +15,20 @@ export type ViewerProfilesQueryData = {
   }>;
 };
 
+export type MyAdminClub = {
+  id: string;
+  slug: string;
+  name: string;
+  logoUrl: string | null;
+  /** 'SUPER_ADMIN' (vue globale) ou MembershipRole (CLUB_ADMIN/STAFF/...). */
+  role: string;
+  viaSuperAdmin: boolean;
+};
+
+export type MyAdminClubsQueryData = {
+  myAdminClubs: MyAdminClub[];
+};
+
 export type DashboardQueryData = {
   adminDashboardSummary: {
     activeMembersCount: number;
