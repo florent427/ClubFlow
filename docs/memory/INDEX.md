@@ -22,6 +22,8 @@
 | [`auto-merge-clean-status.md`](pitfalls/auto-merge-clean-status.md) | Piège — `gh pr merge --auto` échoue "Pull request not in a clean status" |
 | [`bash-quoting-json-pr.md`](pitfalls/bash-quoting-json-pr.md) | Piège — Interpolation `${{ outputs.pr }}` casse le shell sur parenthèses |
 | [`bracketed-paste-corrupts-tokens.md`](pitfalls/bracketed-paste-corrupts-tokens.md) | Piège — Bracketed paste corrompt les tokens collés via `read -s` |
+| [`brevo-sender-domain-must-be-authenticated.md`](pitfalls/brevo-sender-domain-must-be-authenticated.md) | Piège — Brevo rejette les mails si le sender domain n'est PAS authentifié (DB VERIFIED ne suffit pas) |
+| [`brevo-smtp-user-is-not-account-email.md`](pitfalls/brevo-smtp-user-is-not-account-email.md) | Piège — Brevo SMTP : `SMTP_USER` n'est PAS l'email du compte |
 | [`build-admin-strict-ts.md`](pitfalls/build-admin-strict-ts.md) | Piège — Build `apps/admin` échoue en strict TS |
 | [`caddy-admin-api-origin-empty.md`](pitfalls/caddy-admin-api-origin-empty.md) | Piège — Caddy admin API rejette Node fetch (Origin: '' vide) |
 | [`caddy-log-files-perms-on-create.md`](pitfalls/caddy-log-files-perms-on-create.md) | Piège — Caddy refuse le reload si log file pas writable par user `caddy` |
@@ -41,6 +43,7 @@
 | [`nextjs-public-env-vars-not-bundled.md`](pitfalls/nextjs-public-env-vars-not-bundled.md) | Piège — Next.js : `process.env.X` côté client n'a QUE les `NEXT_PUBLIC_*` |
 | [`ovh-a-parasite-185-158.md`](pitfalls/ovh-a-parasite-185-158.md) | Piège — Record A parasite OVH `185.158.133.1` (welcome page) |
 | [`pdf-parse-v2-conflict.md`](pitfalls/pdf-parse-v2-conflict.md) | Piège — `pdf-parse v2` casse à cause de conflit `pdfjs-dist` avec `pdf-to-img` |
+| [`powershell-auto-converts-urls-to-markdown.md`](pitfalls/powershell-auto-converts-urls-to-markdown.md) | Piège — PowerShell terminal convertit auto les URLs en markdown littéral |
 | [`prisma-clubmembership-no-updatedat.md`](pitfalls/prisma-clubmembership-no-updatedat.md) | Piège — `ClubMembership` n'a PAS de `updatedAt` (contrairement aux autres modèles) |
 | [`prisma-generate-eperm-windows.md`](pitfalls/prisma-generate-eperm-windows.md) | Piège — `prisma generate` fail EPERM sur Windows (DLL lockée) |
 | [`prisma-migration-order-broken.md`](pitfalls/prisma-migration-order-broken.md) | Piège — Migrations Prisma dans le mauvais ordre |
@@ -74,7 +77,7 @@
 
 ---
 
-_Index généré le 2026-05-04 09:38 UTC par `bin/memory-index`._
+_Index généré le 2026-05-04 11:23 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`
