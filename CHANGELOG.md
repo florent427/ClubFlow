@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.10.3](https://github.com/florent427/ClubFlow/compare/v0.10.2...v0.10.3) (2026-05-04)
+
+
+### 🐛 Bug Fixes
+
+* **caddy:** force Origin header sur fetch admin API (403 fix) ([#36](https://github.com/florent427/ClubFlow/issues/36)) ([b0f33a1](https://github.com/florent427/ClubFlow/commit/b0f33a1ccf95659814a6888be4c9c52e45a21746))
+
 ## [0.10.2](https://github.com/florent427/ClubFlow/compare/v0.10.1...v0.10.2) (2026-05-04)
 
 
