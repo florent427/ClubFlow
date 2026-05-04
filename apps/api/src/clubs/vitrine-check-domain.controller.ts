@@ -36,15 +36,11 @@ export class VitrineCheckDomainController {
       return res.status(HttpStatus.BAD_REQUEST).send('domain query missing');
     }
 
-    // Wildcard subdomain : *.clubflow.topdigital.re
-    // (mais pas exactement clubflow.topdigital.re, ça c'est la landing)
-    if (
-      host.endsWith(`.${this.publicBase}`) &&
-      host !== this.publicBase &&
-      host !== `app.${this.publicBase}` &&
-      host !== `api.${this.publicBase}` &&
-      host !== `portail.${this.publicBase}`
-    ) {
+    // Tout sous-domaine de clubflow.topdigital.re (sauf le domaine racine = landing).
+    // Inclut app/api/portail : ces vhosts ont leur propre cert via vhost spécifique
+    // mais Caddy peut consulter cet endpoint via le wildcard match. On autorise pour
+    // ne pas casser leur TLS handshake — Caddy réutilise leur cert existant de toute façon.
+    if (host.endsWith(`.${this.publicBase}`) && host !== this.publicBase) {
       return res.status(HttpStatus.OK).send('ok-wildcard');
     }
 
