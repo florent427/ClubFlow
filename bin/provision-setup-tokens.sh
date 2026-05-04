@@ -63,15 +63,24 @@ prompt_token() {
     sed -i "/^${var_name}=/d" "$SECRETS_FILE"
   fi
 
+  # Désactive temporairement le bracketed paste mode du terminal pour
+  # éviter que le terminal injecte ESC[200~ ... ESC[201~ autour du paste
+  # (qui corrompt silencieusement les tokens API).
+  printf '\e[?2004l' > /dev/tty 2>/dev/null || true
   read -r -s -p "Coller le token (saisie masquée, Enter pour skip) : " token
+  printf '\e[?2004h' > /dev/tty 2>/dev/null || true
   echo ""
   if [ -z "$token" ]; then
     echo "  → Skip $var_name"
     return
   fi
 
+  # Strip défensif : si bracketed paste a quand même réussi à passer,
+  # ou ESC, ou retours chariot Windows, ou espaces de bord.
+  token=$(printf '%s' "$token" | tr -d '\r\t' | sed -E $'s/\e\\[200~//g; s/\e\\[201~//g; s/^\\[200~//; s/\\[201~$//; s/^[[:space:]]+//; s/[[:space:]]+$//')
+
   echo "${var_name}=${token}" >> "$SECRETS_FILE"
-  echo "  → ✅ Stocké dans $SECRETS_FILE"
+  echo "  → ✅ Stocké dans $SECRETS_FILE (longueur ${#token} chars)"
   echo ""
 }
 
