@@ -44,6 +44,8 @@ export const MY_ADMIN_CLUBS = gql`
       slug
       name
       logoUrl
+      customDomain
+      vitrinePublicUrl
       role
       viaSuperAdmin
     }

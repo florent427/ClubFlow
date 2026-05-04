@@ -161,16 +161,39 @@ export class ClubsResolver {
       select: { systemRole: true },
     });
 
+    const vitrineBase = (
+      process.env.VITRINE_PUBLIC_BASE_DOMAIN ?? 'clubflow.topdigital.re'
+    ).replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const computeVitrineUrl = (c: {
+      slug: string;
+      customDomain: string | null;
+      customDomainStatus: string | null;
+    }): string => {
+      if (c.customDomain && c.customDomainStatus === 'ACTIVE') {
+        return `https://${c.customDomain}`;
+      }
+      return `https://${c.slug}.${vitrineBase}`;
+    };
+
     if (u?.systemRole === 'SUPER_ADMIN') {
       const clubs = await this.prisma.club.findMany({
         orderBy: { name: 'asc' },
-        select: { id: true, slug: true, name: true, logoUrl: true },
+        select: {
+          id: true,
+          slug: true,
+          name: true,
+          logoUrl: true,
+          customDomain: true,
+          customDomainStatus: true,
+        },
       });
       return clubs.map((c) => ({
         id: c.id,
         slug: c.slug,
         name: c.name,
         logoUrl: c.logoUrl ?? null,
+        customDomain: c.customDomain ?? null,
+        vitrinePublicUrl: computeVitrineUrl(c),
         role: 'SUPER_ADMIN',
         viaSuperAdmin: true,
       }));
@@ -181,7 +204,14 @@ export class ClubsResolver {
       select: {
         role: true,
         club: {
-          select: { id: true, slug: true, name: true, logoUrl: true },
+          select: {
+            id: true,
+            slug: true,
+            name: true,
+            logoUrl: true,
+            customDomain: true,
+            customDomainStatus: true,
+          },
         },
       },
       orderBy: { club: { name: 'asc' } },
@@ -191,6 +221,8 @@ export class ClubsResolver {
       slug: m.club.slug,
       name: m.club.name,
       logoUrl: m.club.logoUrl ?? null,
+      customDomain: m.club.customDomain ?? null,
+      vitrinePublicUrl: computeVitrineUrl(m.club),
       role: m.role,
       viaSuperAdmin: false,
     }));
