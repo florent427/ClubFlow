@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.10.0](https://github.com/florent427/ClubFlow/compare/v0.9.0...v0.10.0) (2026-05-04)
+
+
+### ✨ Features
+
+* **provision:** script setup interactif tokens API + skill clarifié ([#29](https://github.com/florent427/ClubFlow/issues/29)) ([19597e2](https://github.com/florent427/ClubFlow/commit/19597e22b90fc8ca01358bd261db36a52d244ba4))
+
 ## [0.9.0](https://github.com/florent427/ClubFlow/compare/v0.8.1...v0.9.0) (2026-05-04)
 
 
