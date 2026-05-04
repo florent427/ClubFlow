@@ -61,4 +61,18 @@ export class CreateClubAndAdminInput {
   @MinLength(1)
   @MaxLength(80)
   lastName!: string;
+
+  /**
+   * Token hCaptcha (anti-bot) — REQUIS si HCAPTCHA_SECRET défini côté API.
+   * Si HCAPTCHA_SECRET n'est pas défini (dev local), ce champ peut être
+   * absent ou vide. Cf. CaptchaVerifyService.
+   */
+  @Field({
+    nullable: true,
+    description: 'Token hCaptcha — requis si HCAPTCHA_SECRET configuré côté serveur.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  captchaToken?: string;
 }

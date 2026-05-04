@@ -12,6 +12,7 @@ import { ClubsService } from '../clubs/clubs.service';
 import { resolveAdminWorkspaceClubId } from '../common/club-back-office-role';
 import { FamiliesService } from '../families/families.service';
 import { CaddyApiService } from '../infra/caddy.service';
+import { CaptchaVerifyService } from './captcha-verify.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { ViewerProfileGraph } from '../families/models/viewer-profile.model';
 import { TransactionalMailService } from '../mail/transactional-mail.service';
@@ -39,6 +40,7 @@ export class AuthService {
     private readonly mail: TransactionalMailService,
     private readonly clubs: ClubsService,
     private readonly caddy: CaddyApiService,
+    private readonly captcha: CaptchaVerifyService,
   ) {}
 
   /**
@@ -442,6 +444,12 @@ export class AuthService {
   async createClubAndAdmin(
     input: CreateClubAndAdminInput,
   ): Promise<CreateClubAndAdminResult> {
+    // Captcha gate (rejette les bots avant tout traitement)
+    const captchaOk = await this.captcha.verify(input.captchaToken);
+    if (!captchaOk) {
+      throw new BadRequestException('CAPTCHA_FAILED');
+    }
+
     const email = input.email.trim().toLowerCase();
     const passwordHash = await bcrypt.hash(input.password, 10);
     const displayName = `${input.firstName} ${input.lastName}`.trim();
