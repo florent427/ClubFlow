@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useCallback, useState, useTransition } from 'react';
 import {
   CREATE_CLUB_AND_ADMIN_MUTATION,
   gqlRequest,
   type CreateClubAndAdminResult,
 } from '@/lib/graphql';
 import { slugify } from '@/lib/slugify';
+import { HCaptchaWidget } from './HCaptchaWidget';
 
 type FormState = {
   clubName: string;
@@ -32,6 +33,14 @@ export function SignupForm() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<CreateClubAndAdminResult | null>(null);
   const [pending, startTransition] = useTransition();
+  /**
+   * captchaToken : null = en attente, '' = captcha désactivé (no env site key),
+   * sinon = token validé par hCaptcha. Le submit nécessite token != null.
+   */
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const handleCaptchaToken = useCallback((token: string) => {
+    setCaptchaToken(token);
+  }, []);
 
   const adminUrl =
     process.env.NEXT_PUBLIC_LANDING_ADMIN_URL ??
@@ -69,6 +78,7 @@ export function SignupForm() {
           password: form.password,
           firstName: form.firstName,
           lastName: form.lastName,
+          captchaToken: captchaToken || undefined,
         },
       });
       if (errors?.length) {
@@ -79,6 +89,9 @@ export function SignupForm() {
           setError(
             `Le slug "${form.clubSlug}" est réservé. Choisissez une autre adresse.`,
           );
+        } else if (/CAPTCHA_FAILED/i.test(errors[0].message)) {
+          setError('Vérification anti-bot échouée. Réessayer le captcha.');
+          setCaptchaToken(null);
         } else {
           setError(errors[0].message);
         }
@@ -222,14 +235,21 @@ export function SignupForm() {
         </label>
       </fieldset>
 
+      <HCaptchaWidget onToken={handleCaptchaToken} />
+
       {error && <p className="form-error" role="alert">{error}</p>}
 
       <button
         type="submit"
         className="btn btn-primary btn-lg btn-block"
-        disabled={pending}
+        disabled={pending || captchaToken === null}
+        title={captchaToken === null ? 'Validez le captcha avant de soumettre' : undefined}
       >
-        {pending ? 'Création…' : 'Créer mon club gratuitement'}
+        {pending
+          ? 'Création…'
+          : captchaToken === null
+            ? 'Validez le captcha…'
+            : 'Créer mon club gratuitement'}
       </button>
       <p className="muted disclaimer">
         En créant votre club, vous acceptez nos{' '}

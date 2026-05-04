@@ -10,6 +10,7 @@ import { MailModule } from '../mail/mail.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthResolver } from './auth.resolver';
 import { AuthService } from './auth.service';
+import { CaptchaVerifyService } from './captcha-verify.service';
 import { EmailVerificationService } from './email-verification.service';
 import { JwtStrategy } from './jwt.strategy';
 import { GoogleOAuthController } from './oauth/google-oauth.controller';
@@ -35,6 +36,7 @@ import { PasswordResetService } from './password-reset.service';
     AuthResolver,
     JwtStrategy,
     ClubContextGuard,
+    CaptchaVerifyService,
     EmailVerificationService,
     PasswordResetService,
     GoogleOAuthService,
