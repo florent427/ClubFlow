@@ -23,6 +23,19 @@ export class MyAdminClubGraph {
   logoUrl!: string | null;
 
   @Field(() => String, {
+    nullable: true,
+    description:
+      "Domaine custom de la vitrine (ex: 'sksr.re') — null si club n'utilise que le subdomain fallback.",
+  })
+  customDomain!: string | null;
+
+  @Field(() => String, {
+    description:
+      "URL publique calculée de la vitrine : https://<customDomain> si défini ET status ACTIVE, sinon https://<slug>.<VITRINE_PUBLIC_BASE_DOMAIN>.",
+  })
+  vitrinePublicUrl!: string;
+
+  @Field(() => String, {
     description:
       "Rôle effectif : 'SUPER_ADMIN' (vue globale système) ou valeur de MembershipRole (CLUB_ADMIN/STAFF/...).",
   })

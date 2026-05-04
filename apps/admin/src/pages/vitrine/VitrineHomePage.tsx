@@ -6,6 +6,7 @@ import {
   type ClubVitrinePagesData,
 } from '../../lib/vitrine-documents';
 import { useToast } from '../../components/ToastProvider';
+import { useCurrentClub } from '../../lib/use-current-club';
 import { OpenEditModeButton } from './OpenEditModeButton';
 
 const PAGE_LABELS: Record<string, string> = {
@@ -45,9 +46,14 @@ export function VitrineHomePage() {
     },
   );
 
+  // URL dynamique du club courant (priorité customDomain ACTIVE, sinon
+  // subdomain fallback). Calculée côté API. Cf. useCurrentClub.
+  const { club: currentClub } = useCurrentClub();
   const vitrineUrl =
+    currentClub?.vitrinePublicUrl ??
     (import.meta.env as Record<string, string | undefined>)
-      .VITE_VITRINE_URL ?? 'http://localhost:5175';
+      .VITE_VITRINE_URL ??
+    'http://localhost:5175';
 
   async function toggleStatus(
     pageId: string,
