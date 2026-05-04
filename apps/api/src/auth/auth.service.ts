@@ -88,9 +88,18 @@ export class AuthService {
   }
 
   private buildResetUrl(rawToken: string): string {
-    const base = (
+    // Priorité ADMIN_WEB_ORIGIN_PRIMARY (admin) : la majorité des comptes
+    // qui demandent un reset sont des admins de club. Si non défini, fallback
+    // vers le portail membre.
+    const adminBase = (
+      process.env.ADMIN_WEB_ORIGIN_PRIMARY ??
+      (process.env.ADMIN_WEB_ORIGIN ?? '').split(',')[0]?.trim() ??
+      ''
+    ).replace(/\/$/, '');
+    const portalBase = (
       process.env.MEMBER_PORTAL_ORIGIN ?? 'http://localhost:5174'
     ).replace(/\/$/, '');
+    const base = adminBase || portalBase;
     return `${base}/reset-password?token=${encodeURIComponent(rawToken)}`;
   }
 

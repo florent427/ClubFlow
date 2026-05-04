@@ -8,6 +8,22 @@ export const LOGIN = gql`
   }
 `;
 
+export const REQUEST_PASSWORD_RESET = gql`
+  mutation RequestPasswordReset($input: RequestPasswordResetInput!) {
+    requestPasswordReset(input: $input) {
+      ok
+    }
+  }
+`;
+
+export const RESET_PASSWORD = gql`
+  mutation ResetPassword($input: ResetPasswordInput!) {
+    resetPassword(input: $input) {
+      accessToken
+    }
+  }
+`;
+
 export const VIEWER_PROFILES = gql`
   query AdminViewerProfiles {
     viewerProfiles {

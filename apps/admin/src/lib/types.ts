@@ -4,6 +4,14 @@ export type LoginMutationData = {
   login: { accessToken: string; viewerProfiles?: unknown[] };
 };
 
+export type RequestPasswordResetData = {
+  requestPasswordReset: { ok: boolean };
+};
+
+export type ResetPasswordData = {
+  resetPassword: { accessToken: string };
+};
+
 export type ViewerProfilesQueryData = {
   viewerProfiles: Array<{
     memberId: string;
