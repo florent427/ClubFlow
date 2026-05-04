@@ -37,6 +37,7 @@
 | [`prisma-migration-order-broken.md`](pitfalls/prisma-migration-order-broken.md) | Piège — Migrations Prisma dans le mauvais ordre |
 | [`rclone-config-root-vs-user.md`](pitfalls/rclone-config-root-vs-user.md) | Piège — `rclone` config absente côté root → backups script v2 fail |
 | [`release-please-no-trigger.md`](pitfalls/release-please-no-trigger.md) | Piège — release-please ne se déclenche pas (pas de `workflow_dispatch`) |
+| [`safety-blocks-shared-infra-mcp.md`](pitfalls/safety-blocks-shared-infra-mcp.md) | Piège — Safety bloque les modifs d'infra partagée via Chrome MCP |
 | [`ssh-passphrase-non-tty.md`](pitfalls/ssh-passphrase-non-tty.md) | Piège — SSH `Permission denied` quand la clé a une passphrase |
 
 ## 🏛️ Décisions architecturales (ADR)
@@ -62,7 +63,7 @@
 
 ---
 
-_Index généré le 2026-05-04 06:04 UTC par `bin/memory-index`._
+_Index généré le 2026-05-04 06:15 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`

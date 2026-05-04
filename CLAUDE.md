@@ -68,6 +68,7 @@ docs/
 | [`/add-decision`](.claude/skills/add-decision/SKILL.md) | Ajouter un ADR à `memory/decisions/` | Après un choix techno tranché |
 | [`/learn`](.claude/skills/learn/SKILL.md) | Capitaliser tout ce qu'on a appris dans la session | Fin de session, gros fix, onboarding |
 | [`/dream`](.claude/skills/dream/SKILL.md) | Cycle de consolidation mémoire (gating auto si rien à apprendre) | Le soir avant de dormir |
+| [`/provision`](.claude/skills/provision/SKILL.md) | Provision DNS/hCaptcha/Brevo/Hetzner via API SSH (contourne safety Chrome MCP) | Toute action sur infra 3rd-party |
 
 ---
 
