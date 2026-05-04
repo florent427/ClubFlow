@@ -1,5 +1,11 @@
 # Piège — Build `apps/admin` échoue en strict TS
 
+## Statut : ✅ RÉSOLU 2026-05-04
+
+Les 16 erreurs TS strict ont été corrigées (PR fix/admin-strict-ts).
+`npm run build` (= `tsc -b && vite build`) passe maintenant sans bypass.
+Cette page est conservée comme référence si la dette se reforme.
+
 ## Symptôme
 
 ```

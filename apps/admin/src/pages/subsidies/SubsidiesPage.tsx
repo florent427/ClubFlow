@@ -445,10 +445,10 @@ export function SubsidiesPage() {
               (s, i) => s + (i.receivedAmountCents ?? 0),
               0,
             );
-            const expectedTotal = a.installments.reduce(
-              (s, i) => s + i.expectedAmountCents,
-              0,
-            );
+            // expectedTotal calculé pour usage futur (affichage % réalisation),
+            // gardé en commentaire pour préserver la logique :
+            // const expectedTotal = a.installments.reduce(
+            //   (s, i) => s + i.expectedAmountCents, 0);
             return (
               <article
                 key={a.id}
