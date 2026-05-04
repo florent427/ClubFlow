@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.7.0](https://github.com/florent427/ClubFlow/compare/v0.6.0...v0.7.0) (2026-05-04)
+
+
+### ✨ Features
+
+* **admin:** onboarding banner enrichi (Phase 2.2 — Sprint 2) ([#17](https://github.com/florent427/ClubFlow/issues/17)) ([2156110](https://github.com/florent427/ClubFlow/commit/215611096563fb7a41ca27b5c692f024337cebac))
+* **api,landing:** captcha hCaptcha sur /signup (anti-bot) ([#19](https://github.com/florent427/ClubFlow/issues/19)) ([43c187c](https://github.com/florent427/ClubFlow/commit/43c187c687a0c570790c5049f94f2fc738327201))
+
 ## [0.6.0](https://github.com/florent427/ClubFlow/compare/v0.5.1...v0.6.0) (2026-05-04)
 
 
