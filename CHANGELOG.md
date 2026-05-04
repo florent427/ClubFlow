@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.14.0](https://github.com/florent427/ClubFlow/compare/v0.13.2...v0.14.0) (2026-05-04)
+
+
+### ✨ Features
+
+* **staging:** environnement staging dédié sur 2e VPS Hetzner ([#53](https://github.com/florent427/ClubFlow/issues/53)) ([d1489f3](https://github.com/florent427/ClubFlow/commit/d1489f3a2ed3fc98222ed5bc5aa7068a2744c132))
+
 ## [0.13.2](https://github.com/florent427/ClubFlow/compare/v0.13.1...v0.13.2) (2026-05-04)
 
 
