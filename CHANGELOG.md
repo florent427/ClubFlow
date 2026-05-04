@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.8.0](https://github.com/florent427/ClubFlow/compare/v0.7.0...v0.8.0) (2026-05-04)
+
+
+### ✨ Features
+
+* **api:** cron AbandonedClubsCron — détection clubs abandonnés (signup spam) ([#21](https://github.com/florent427/ClubFlow/issues/21)) ([fd52987](https://github.com/florent427/ClubFlow/commit/fd5298738c1fa079118cdbb620743990c7f0be7c))
+
 ## [0.7.0](https://github.com/florent427/ClubFlow/compare/v0.6.0...v0.7.0) (2026-05-04)
 
 
