@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ClubContextGuard } from '../common/guards/club-context.guard';
 import { GqlThrottlerGuard } from '../common/guards/gql-throttler.guard';
+import { ClubsModule } from '../clubs/clubs.module';
 import { FamiliesModule } from '../families/families.module';
 import { MailModule } from '../mail/mail.module';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -17,6 +18,7 @@ import { PasswordResetService } from './password-reset.service';
 @Module({
   imports: [
     PrismaModule,
+    ClubsModule,
     FamiliesModule,
     MailModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
