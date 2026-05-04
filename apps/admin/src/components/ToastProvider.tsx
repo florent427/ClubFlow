@@ -7,7 +7,7 @@ import type { ReactNode } from 'react';
  * composants de l'espace admin.
  */
 
-type ToastType = 'success' | 'error' | 'info';
+type ToastType = 'success' | 'error' | 'info' | 'warning';
 
 interface Toast {
   id: number;

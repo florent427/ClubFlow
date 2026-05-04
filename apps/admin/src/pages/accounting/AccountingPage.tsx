@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
   ACCOUNTING_ENTRY_CONSOLIDATION_PREVIEW,
@@ -104,20 +104,6 @@ function sourceLabel(source: string): string {
     default:
       return source;
   }
-}
-
-function formatConfidence(score: number | null | undefined): string {
-  if (score === null || score === undefined) return '';
-  return `${Math.round(score * 100)}%`;
-}
-
-function confidenceLevel(
-  score: number | null | undefined,
-): 'high' | 'medium' | 'low' {
-  if (score === null || score === undefined) return 'medium';
-  if (score >= 0.85) return 'high';
-  if (score >= 0.5) return 'medium';
-  return 'low';
 }
 
 function statusLabel(status: string): string {
@@ -521,7 +507,9 @@ export function AccountingPage() {
   // perçue par l'utilisateur en immobilisation comptable (ex : tatamis
   // 750 € → compte 215400). Sans ça, le compte proposé par l'IA
   // disparaîtrait de la dropdown.
-  const availableAccounts = useMemo(() => {
+  // Préfixe _ : référence gardée pour réactivation future de la dropdown filtrée
+  // par kind, mais pas utilisée actuellement (le drawer Review fait son propre filtre).
+  const _availableAccounts = useMemo(() => {
     if (kind === 'INCOME')
       return accounts.filter((a) => a.kind === 'INCOME' && a.isActive);
     if (kind === 'EXPENSE')
@@ -535,6 +523,7 @@ export function AccountingPage() {
       );
     return accounts;
   }, [accounts, kind]);
+  void _availableAccounts;
 
   function parseEuros(s: string): number | null {
     const cleaned = s.trim().replace(/\s/g, '').replace(',', '.');
@@ -2077,7 +2066,8 @@ export function AccountingPage() {
               value={kind}
               onChange={(e) => {
                 setKind(e.target.value as 'INCOME' | 'EXPENSE' | 'IN_KIND');
-                setAccountCode(''); // reset compte quand type change
+                // Note: state accountCode supprimé du composant — le drawer Review
+                // gère son propre filtre de comptes selon kind.
               }}
             >
               <option value="EXPENSE">Dépense</option>
