@@ -111,11 +111,13 @@ app gère son `package.json`.
 hostname `clubflow-prod`. User SSH : `clubflow`. Détails →
 [infra-prod.md](docs/knowledge/infra-prod.md).
 
-**Domaines live** :
-- https://clubflow.topdigital.re — admin web
+**Domaines live (cible Phase 1)** :
+- https://clubflow.topdigital.re — landing marketing publique (Next.js, port 5176) — *avant Phase 1 = admin*
+- https://app.clubflow.topdigital.re — admin multi-tenant (URL pattern `/<slug>/...`, cf. [ADR-0006](docs/memory/decisions/0006-path-based-multi-tenant.md))
 - https://api.clubflow.topdigital.re — API + WS `/chat`
 - https://portail.clubflow.topdigital.re — portail membre
-- https://sksr.re — vitrine club SKSR
+- https://sksr.re — vitrine club SKSR (custom domain)
+- *(Phase 2)* https://*.clubflow.topdigital.re — vitrine fallback wildcard
 
 **Pipeline** : push sur main → deploy.yml + release-please.yml en
 parallèle. Auto-merge PR de release via API REST. Détails →
