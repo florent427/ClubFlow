@@ -20,10 +20,12 @@
 |---|---|
 | [`auto-merge-clean-status.md`](pitfalls/auto-merge-clean-status.md) | Piège — `gh pr merge --auto` échoue "Pull request not in a clean status" |
 | [`bash-quoting-json-pr.md`](pitfalls/bash-quoting-json-pr.md) | Piège — Interpolation `${{ outputs.pr }}` casse le shell sur parenthèses |
+| [`bracketed-paste-corrupts-tokens.md`](pitfalls/bracketed-paste-corrupts-tokens.md) | Piège — Bracketed paste corrompt les tokens collés via `read -s` |
 | [`build-admin-strict-ts.md`](pitfalls/build-admin-strict-ts.md) | Piège — Build `apps/admin` échoue en strict TS |
 | [`caddy-perms-home-clubflow.md`](pitfalls/caddy-perms-home-clubflow.md) | Piège — Caddy 403 sur file_server depuis `/home/clubflow/` |
 | [`caddyfile-log-block-inline-vs-multiline.md`](pitfalls/caddyfile-log-block-inline-vs-multiline.md) | Piège — `caddy validate` rejette `log { output file ... { ... } }` inline |
 | [`cloudflare-proxy-breaks-letsencrypt.md`](pitfalls/cloudflare-proxy-breaks-letsencrypt.md) | Piège — Cloudflare proxy ON casse le challenge Let's Encrypt |
+| [`cloudflare-zone-id-vs-account-id.md`](pitfalls/cloudflare-zone-id-vs-account-id.md) | Piège — Confondre Cloudflare **Zone ID** et **Account ID** |
 | [`cors-no-origin-prod.md`](pitfalls/cors-no-origin-prod.md) | Piège — CORS API en `NODE_ENV=production` bloque les appels SSR |
 | [`env-production-perdus-reset-hard.md`](pitfalls/env-production-perdus-reset-hard.md) | Piège — `.env.production` perdus après `git reset --hard` |
 | [`gh-pr-create-no-commits.md`](pitfalls/gh-pr-create-no-commits.md) | Piège — `gh pr create` "No commits between" après squash merge |
@@ -63,7 +65,7 @@
 
 ---
 
-_Index généré le 2026-05-04 06:15 UTC par `bin/memory-index`._
+_Index généré le 2026-05-04 07:05 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`

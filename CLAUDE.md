@@ -143,6 +143,8 @@ parallèle. Auto-merge PR de release via API REST. Détails →
 | Domaine renvoie 2 IPs (round-robin) | A parasite OVH | [pitfall](docs/memory/pitfalls/ovh-a-parasite-185-158.md) |
 | release-please pas de PR | manque `workflow_dispatch` ou perms PR | [pitfall](docs/memory/pitfalls/gha-pr-permission.md) |
 | Régression en prod | rollback | [rollback.md](docs/runbooks/rollback.md) |
+| Bootstrap multi-tenant Phase 1 (vhost app/wildcard, landing systemd, SKSR rename) | une seule passe | [phase1-bootstrap-multi-tenant.md](docs/runbooks/phase1-bootstrap-multi-tenant.md) |
+| `<slug>.clubflow.topdigital.re` cert TLS fail | endpoint check-domain KO | vérifier `curl -s "http://localhost:3000/v1/vitrine/check-domain?domain=<host>"` retourne 200 |
 
 Pour tout autre symptôme : grep dans `docs/memory/pitfalls/` ou demander
 à `/learn`.
