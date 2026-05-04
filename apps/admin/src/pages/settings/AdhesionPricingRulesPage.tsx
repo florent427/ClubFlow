@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import React, { useMemo, useState } from 'react';
+import { useState } from 'react';
 import type { FormEvent } from 'react';
 import {
   CLUB_MEMBERSHIP_PRICING_RULES,

@@ -123,11 +123,11 @@ export function AccountingReviewDrawer({
   // existant si vendor/n° ne sont pas fournis directement par l'API)
   useEffect(() => {
     if (!entry) return;
-    const ext = entry.extraction;
-    setVendor(ext?.extractedVendor ?? '');
-    setInvoiceNumber(
-      entry.invoiceNumber ?? ext?.extractedInvoiceNumber ?? '',
-    );
+    // Note : type AccountingEntry n'expose pas `extraction` (champ supprimé du
+    // schema GraphQL public). Le vendor pré-rempli est laissé vide ; le user
+    // pourra le saisir si l'OCR ne l'a pas détecté.
+    setVendor('');
+    setInvoiceNumber(entry.invoiceNumber ?? '');
     setAmountEuros(
       (entry.amountCents / 100).toFixed(2).replace('.', ','),
     );
