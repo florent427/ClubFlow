@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.5.1](https://github.com/florent427/ClubFlow/compare/v0.5.0...v0.5.1) (2026-05-04)
+
+
+### 🐛 Bug Fixes
+
+* **api:** VitrineDomainStateGql nullable fields need explicit @Field type ([#13](https://github.com/florent427/ClubFlow/issues/13)) ([e7dfba5](https://github.com/florent427/ClubFlow/commit/e7dfba543e3a12a2af62c40a66358bb71f870ffa))
+
 ## [0.5.0](https://github.com/florent427/ClubFlow/compare/v0.4.0...v0.5.0) (2026-05-04)
 
 
