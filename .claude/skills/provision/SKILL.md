@@ -81,12 +81,25 @@ seule étape, plus jamais besoin de toucher au dashboard.
 - Token API CF dans `/etc/clubflow/secrets.env` : `CF_API_TOKEN=...`
 - Scope minimum : Zone:DNS:Edit pour `topdigital.re`
 
+### IDs à connaître
+
+- **Zone ID `topdigital.re`** : `159db89b3f066ba9ea329bc08f3d3f1c` ← utiliser CECI
+- ⚠️ **Pas l'Account ID** `414b39a309ac266f34111f8b1973df80` — c'est ce qui apparaît
+  dans l'URL dashboard mais l'API `zones/*` rejette avec "Authentication error"
+  si on lui passe l'Account ID. Cf. [pitfall](../../../docs/memory/pitfalls/cloudflare-zone-id-vs-account-id.md).
+- Pour récupérer le Zone ID si jamais perdu :
+  ```bash
+  ssh-into-prod 'source /etc/clubflow/secrets.env && \
+    curl -s -H "Authorization: Bearer $CF_API_TOKEN" \
+    "https://api.cloudflare.com/client/v4/zones" | jq ".result[] | {id, name}"'
+  ```
+
 ### Lister les records existants
 
 ```bash
 ssh-into-prod 'source /etc/clubflow/secrets.env && \
   curl -s -H "Authorization: Bearer $CF_API_TOKEN" \
-  "https://api.cloudflare.com/client/v4/zones/414b39a309ac266f34111f8b1973df80/dns_records?per_page=50" \
+  "https://api.cloudflare.com/client/v4/zones/159db89b3f066ba9ea329bc08f3d3f1c/dns_records?per_page=50" \
   | jq ".result[] | {type, name, content, proxied}"'
 ```
 
@@ -96,7 +109,7 @@ ssh-into-prod 'source /etc/clubflow/secrets.env && \
 ssh-into-prod 'source /etc/clubflow/secrets.env && \
   curl -s -X POST -H "Authorization: Bearer $CF_API_TOKEN" \
   -H "Content-Type: application/json" \
-  "https://api.cloudflare.com/client/v4/zones/414b39a309ac266f34111f8b1973df80/dns_records" \
+  "https://api.cloudflare.com/client/v4/zones/159db89b3f066ba9ea329bc08f3d3f1c/dns_records" \
   -d "{\"type\":\"A\",\"name\":\"$NAME\",\"content\":\"$IPV4\",\"proxied\":false,\"ttl\":1}" \
   | jq ".success, .errors"'
 ```
@@ -111,7 +124,7 @@ ssh-into-prod 'source /etc/clubflow/secrets.env && \
                 "{\"type\":\"AAAA\",\"name\":\"X\",\"content\":\"2a01:4f9:c010:99d3::1\",\"proxied\":false}"; do
     curl -s -X POST -H "Authorization: Bearer $CF_API_TOKEN" \
       -H "Content-Type: application/json" \
-      "https://api.cloudflare.com/client/v4/zones/414b39a309ac266f34111f8b1973df80/dns_records" \
+      "https://api.cloudflare.com/client/v4/zones/159db89b3f066ba9ea329bc08f3d3f1c/dns_records" \
       -d "$record" | jq ".success"
   done'
 ```
@@ -184,6 +197,56 @@ ssh-into-prod 'source /etc/clubflow/secrets.env && \
   | jq ".domains[] | {domain, authenticated, verified}"'
 ```
 
+### Workflow end-to-end validé (clubflow.topdigital.re)
+
+Procédure complète exécutée le 2026-05-04 pour provisionner
+`clubflow.topdigital.re` comme sender domain Brevo. **Toutes les étapes
+ont fonctionné via SSH+API**, zéro clic dashboard.
+
+```bash
+# 1. Créer le sender domain côté Brevo (récupère les records DNS à créer)
+ssh-into-prod 'source /etc/clubflow/secrets.env && \
+  curl -s -X POST "https://api.brevo.com/v3/senders/domains" \
+  -H "api-key: $BREVO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"clubflow.topdigital.re\"}" \
+  | jq "."'
+
+# Brevo retourne :
+# - id (string, ex 69f8410ed5eb982a25003083) à stocker dans contacts-ids.md
+# - dns_records.dkim_record   → CNAME à ajouter
+# - dns_records.brevo_code    → TXT pour vérifier ownership
+# - dns_records.dmarc_record  → TXT DMARC
+
+# 2. Ajouter les 4 records DNS via Cloudflare API (Zone ID topdigital.re)
+ZONE_ID=159db89b3f066ba9ea329bc08f3d3f1c
+ssh-into-prod 'source /etc/clubflow/secrets.env && \
+  for record in \
+    "{\"type\":\"CNAME\",\"name\":\"mail._domainkey.clubflow\",\"content\":\"<dkim-target>.brevodns.com\",\"proxied\":false,\"ttl\":1}" \
+    "{\"type\":\"TXT\",\"name\":\"clubflow\",\"content\":\"brevo-code:<code>\",\"proxied\":false,\"ttl\":1}" \
+    "{\"type\":\"TXT\",\"name\":\"_dmarc.clubflow\",\"content\":\"v=DMARC1; p=none; rua=mailto:dmarc@clubflow.topdigital.re\",\"proxied\":false,\"ttl\":1}"; do
+    curl -s -X POST -H "Authorization: Bearer $CF_API_TOKEN" \
+      -H "Content-Type: application/json" \
+      "https://api.cloudflare.com/client/v4/zones/'$ZONE_ID'/dns_records" \
+      -d "$record" | jq ".success"
+  done'
+
+# 3. Attendre propagation DNS (~30s suffit pour Cloudflare)
+sleep 30
+
+# 4. Demander à Brevo de vérifier les records
+ssh-into-prod 'source /etc/clubflow/secrets.env && \
+  curl -s -X PUT "https://api.brevo.com/v3/senders/domains/clubflow.topdigital.re/authenticate" \
+  -H "api-key: $BREVO_API_KEY" \
+  | jq "."'
+
+# Réponse attendue :
+# { "message": "Domain has been authenticated successfully" }
+```
+
+→ **Total : ~2 min de SSH, 0 clic dashboard.** Le sender domain est ensuite
+utilisable depuis l'API ClubFlow via `ClubSendingDomainService`.
+
 ## Hetzner Cloud / Storage Box — Provisionning
 
 ### Pré-requis
@@ -253,4 +316,6 @@ Si Brevo verify échoue → propagation DNS pas finie (attendre 24h DKIM).
 - [docs/runbooks/provision-third-party-secrets.md](../../../docs/runbooks/provision-third-party-secrets.md) — one-time setup tokens
 - [docs/memory/pitfalls/safety-blocks-shared-infra-mcp.md](../../../docs/memory/pitfalls/safety-blocks-shared-infra-mcp.md)
 - [docs/memory/pitfalls/cloudflare-proxy-breaks-letsencrypt.md](../../../docs/memory/pitfalls/cloudflare-proxy-breaks-letsencrypt.md)
-- [knowledge/contacts-ids.md](../../../docs/knowledge/contacts-ids.md) — IDs Hetzner/Cloudflare
+- [docs/memory/pitfalls/cloudflare-zone-id-vs-account-id.md](../../../docs/memory/pitfalls/cloudflare-zone-id-vs-account-id.md) — utiliser le Zone ID, pas l'Account ID
+- [docs/memory/pitfalls/bracketed-paste-corrupts-tokens.md](../../../docs/memory/pitfalls/bracketed-paste-corrupts-tokens.md) — séquences `[200~/[201~` qui corrompent les paste
+- [knowledge/contacts-ids.md](../../../docs/knowledge/contacts-ids.md) — IDs Hetzner/Cloudflare/Brevo

@@ -1,0 +1,68 @@
+# Caddyfile snippet — Phase 1 multi-tenant ClubFlow
+#
+# À fusionner dans /etc/caddy/Caddyfile sur le serveur prod (manuellement
+# pour la 1re fois, puis le bloc admin permet à l'API de gérer les vhosts à
+# chaud via CADDY_ADMIN_URL=http://localhost:2019).
+#
+# Pré-requis DNS (à ajouter via API /provision si pas déjà fait) :
+#  - app.clubflow.topdigital.re   A 89.167.79.253
+#  - *.clubflow.topdigital.re     A 89.167.79.253 (déjà en place 2026-05-04)
+#  - *.clubflow.topdigital.re     AAAA 2a01:4f9:c010:99d3::1 (déjà en place 2026-05-04)
+#
+# ⚠️ Pour le wildcard cert TLS de *.clubflow.topdigital.re, Caddy a besoin
+# du DNS-01 challenge (HTTP-01 ne marche pas pour wildcard). Soit :
+#  - chaque sous-domaine concret est servi par on_demand TLS (HTTP-01 par sous-domaine)
+#  - soit installer plugin caddy-dns/cloudflare + token CF dans /etc/caddy/.env
+#
+# Pour le MVP, on choisit on_demand TLS (pas besoin du plugin DNS) — Caddy
+# génère un cert HTTP-01 à la première requête vers `<slug>.clubflow.topdigital.re`.
+
+# === BLOC GLOBAL (dans le {} en tête de Caddyfile) ===
+#
+# {
+#     email florent.morel427@gmail.com
+#     admin localhost:2019            # ← active l'API admin local-only
+#     on_demand_tls {
+#         ask http://localhost:3000/v1/vitrine/check-domain
+#         interval 2m
+#         burst 5
+#     }
+# }
+
+# === Vhost admin multi-tenant ===
+app.clubflow.topdigital.re {
+    encode gzip zstd
+    log {
+        output file /var/log/caddy/app.clubflow.topdigital.re.log
+    }
+    # Admin web statique (build Vite)
+    root * /home/clubflow/clubflow/apps/admin/dist
+    file_server
+    # SPA fallback : toutes les routes non-fichiers → index.html
+    try_files {path} /index.html
+}
+
+# === Vhost wildcard vitrine fallback (subdomain par club) ===
+# Servi par Next.js vitrine (port 5175) qui résout le club via Host header.
+# TLS via on_demand (Let's Encrypt HTTP-01 par sous-domaine, à la 1re requête).
+*.clubflow.topdigital.re {
+    tls {
+        on_demand
+    }
+    encode gzip zstd
+    log {
+        output file /var/log/caddy/wildcard-clubflow.log
+    }
+    reverse_proxy localhost:5175
+}
+
+# === Vhost landing marketing (clubflow.topdigital.re actuel devient landing) ===
+# ⚠️ ATTENTION : avant de switcher, s'assurer que `app.clubflow.topdigital.re`
+# est UP et que tous les bookmarks admin ont migré.
+clubflow.topdigital.re {
+    encode gzip zstd
+    log {
+        output file /var/log/caddy/clubflow.topdigital.re.log
+    }
+    reverse_proxy localhost:5176   # service systemd clubflow-landing.service
+}

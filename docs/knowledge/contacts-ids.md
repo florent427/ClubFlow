@@ -14,8 +14,19 @@
 ## Cloudflare
 
 - **Account ID** : `414b39a309ac266f34111f8b1973df80`
-- **Zone gérée** : `topdigital.re` (DNS only mode — proxy OFF)
+- **Zone ID `topdigital.re`** : `159db89b3f066ba9ea329bc08f3d3f1c`
+  (DNS only mode — proxy OFF, cf. [pitfall](../memory/pitfalls/cloudflare-zone-id-vs-account-id.md))
 - Console : https://dash.cloudflare.com/414b39a309ac266f34111f8b1973df80/topdigital.re
+
+⚠️ Pour les API calls `zones/*`, utiliser le **Zone ID** (pas l'Account ID).
+L'URL dashboard contient l'Account ID — c'est trompeur.
+
+## Brevo (sender domains)
+
+- **Domain ID `clubflow.topdigital.re`** : `69f8410ed5eb982a25003083` (authenticated)
+- Records DKIM/SPF/DMARC : déjà ajoutés via CF API + vérifiés
+- Sender mutualisé pour signup : `noreply@mail.clubflow.topdigital.re`
+  (à activer dans `apps/api/.env` comme `CLUBFLOW_SENDER_EMAIL`)
 
 ## OVH
 
