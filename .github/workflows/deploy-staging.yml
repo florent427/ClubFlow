@@ -1,0 +1,61 @@
+name: Deploy to staging
+
+on:
+  # Push sur la branche `staging` → deploy immédiat sur le VPS staging
+  push:
+    branches: [staging]
+    paths-ignore:
+      - 'CLAUDE.md'
+      - 'CHANGELOG.md'
+      - 'README.md'
+      - 'docs/**'
+      - '.github/**'
+      - '**.md'
+  # Trigger manuel : choisir une branche/tag arbitraire à déployer
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Tag/branch à déployer en staging (ex feat/X ou staging)'
+        required: false
+        default: 'staging'
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://staging.clubflow.topdigital.re
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: clubflow
+          key: ${{ secrets.SSH_PRIVATE_KEY_STAGING }}
+          port: 22
+          command_timeout: 10m
+          script_stop: true
+          script: |
+            sudo /usr/local/bin/clubflow-deploy-staging.sh
+
+      - name: Smoke test from GitHub runner
+        run: |
+          set -e
+          for h in staging.clubflow.topdigital.re staging.app.clubflow.topdigital.re staging.portail.clubflow.topdigital.re; do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' "https://$h/" || echo 000)
+            echo "$code  https://$h/"
+            [ "$code" = "200" ] || { echo "❌ $h returned $code"; exit 1; }
+          done
+          api_code=$(curl -sS -o /dev/null -w '%{http_code}' \
+            -X POST https://staging.api.clubflow.topdigital.re/graphql \
+            -H 'Content-Type: application/json' \
+            -H 'apollo-require-preflight: true' \
+            -H 'Origin: https://staging.app.clubflow.topdigital.re' \
+            -d '{"query":"{__typename}"}')
+          echo "$api_code  https://staging.api.clubflow.topdigital.re/graphql"
+          [ "$api_code" = "200" ] || exit 1
+          echo "✅ All staging endpoints healthy"
