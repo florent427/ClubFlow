@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.4.0](https://github.com/florent427/ClubFlow/compare/v0.3.0...v0.4.0) (2026-05-04)
+
+
+### ✨ Features
+
+* **api,landing:** Phase 2.1 — signup self-service createClubAndAdmin ([#8](https://github.com/florent427/ClubFlow/issues/8)) ([0a0002f](https://github.com/florent427/ClubFlow/commit/0a0002fbb127974600624ae049b7731b2db425c5))
+
 ## [0.3.0](https://github.com/florent427/ClubFlow/compare/v0.2.1...v0.3.0) (2026-05-04)
 
 
