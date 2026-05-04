@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.9.0](https://github.com/florent427/ClubFlow/compare/v0.8.1...v0.9.0) (2026-05-04)
+
+
+### ✨ Features
+
+* **skill,docs:** /provision + runbook + pitfall safety MCP ([#27](https://github.com/florent427/ClubFlow/issues/27)) ([91629c2](https://github.com/florent427/ClubFlow/commit/91629c2b552bdc89498c73fb0f446a0924f592a3))
+
 ## [0.8.1](https://github.com/florent427/ClubFlow/compare/v0.8.0...v0.8.1) (2026-05-04)
 
 
