@@ -31,6 +31,7 @@ export const MEMBERSHIP_CART_FIELDS = gql`
       subscriptionBaseCents
       subscriptionAdjustedCents
       oneTimeFeesCents
+      oneTimeFeeOverrideIds
       pricingRulePreviews {
         ruleLabel
         deltaAmountCents
@@ -48,6 +49,9 @@ export const MEMBERSHIP_CART_FIELDS = gql`
       estimatedTotalCents
       subscriptionAdjustedCents
       oneTimeFeesCents
+      hasExistingLicense
+      existingLicenseNumber
+      oneTimeFeeOverrideIds
       billingRhythm
       perProduct {
         productId
@@ -62,6 +66,15 @@ export const MEMBERSHIP_CART_FIELDS = gql`
         reason
       }
       createdAt
+    }
+    clubOneTimeFees {
+      id
+      label
+      amountCents
+      kind
+      autoApply
+      licenseNumberPattern
+      licenseNumberFormatHint
     }
   }
 `;
@@ -142,6 +155,22 @@ export const VIEWER_UPDATE_CART_PENDING_ITEM = gql`
   ${MEMBERSHIP_CART_FIELDS}
 `;
 
+/**
+ * Toggle license existante sur INSCRIPTION EN ATTENTE (pending). Permet
+ * au payeur de déclarer la licence AVANT validation du panier.
+ * Validation regex serveur identique à celle des items.
+ */
+export const VIEWER_TOGGLE_PENDING_LICENSE = gql`
+  mutation ViewerToggleCartPendingItemLicense(
+    $input: ViewerToggleCartPendingItemLicenseInput!
+  ) {
+    viewerToggleCartPendingItemLicense(input: $input) {
+      ...MembershipCartFields
+    }
+  }
+  ${MEMBERSHIP_CART_FIELDS}
+`;
+
 export const VIEWER_VALIDATE_CART = gql`
   mutation ViewerValidateMembershipCart($cartId: String!) {
     viewerValidateMembershipCart(cartId: $cartId) {
@@ -173,6 +202,18 @@ export const VIEWER_REGISTER_CHILD_FOR_CART = gql`
   }
 `;
 
+export type OneTimeFeeKind = 'LICENSE' | 'MANDATORY' | 'OPTIONAL';
+
+export type ClubOneTimeFee = {
+  id: string;
+  label: string;
+  amountCents: number;
+  kind: OneTimeFeeKind;
+  autoApply: boolean;
+  licenseNumberPattern: string | null;
+  licenseNumberFormatHint: string | null;
+};
+
 export type CartItem = {
   id: string;
   memberId: string;
@@ -189,6 +230,7 @@ export type CartItem = {
   subscriptionBaseCents: number;
   subscriptionAdjustedCents: number;
   oneTimeFeesCents: number;
+  oneTimeFeeOverrideIds: string[] | null;
   /** Aperçu des remises pricing-rule (cf admin Settings) */
   pricingRulePreviews: Array<{
     ruleLabel: string;
@@ -215,6 +257,11 @@ export type CartPendingItem = {
   subscriptionAdjustedCents: number;
   /** Frais auto-applicables (licence, etc.). */
   oneTimeFeesCents: number;
+  /** Le payeur a déclaré une licence existante pour cette inscription. */
+  hasExistingLicense: boolean;
+  existingLicenseNumber: string | null;
+  /** OPTIONAL fees explicitement sélectionnés (null = autoApply normal). */
+  oneTimeFeeOverrideIds: string[] | null;
   /** Détail par formule sélectionnée. */
   perProduct: Array<{
     productId: string;
@@ -248,6 +295,8 @@ export type Cart = {
   canValidate: boolean;
   items: CartItem[];
   pendingItems: CartPendingItem[];
+  /** Catalogue complet des fees actifs du club (LICENSE/MANDATORY/OPTIONAL). */
+  clubOneTimeFees: ClubOneTimeFee[];
 };
 
 export type ViewerActiveCartData = {
