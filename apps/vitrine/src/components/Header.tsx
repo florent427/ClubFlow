@@ -52,6 +52,9 @@ export function Header({
   const registerUrl = clubSlug
     ? `${PORTAL_URL}/register?club=${encodeURIComponent(clubSlug)}`
     : `${PORTAL_URL}/register`;
+  const loginUrl = clubSlug
+    ? `${PORTAL_URL}/login?club=${encodeURIComponent(clubSlug)}`
+    : `${PORTAL_URL}/login`;
   const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
@@ -129,9 +132,16 @@ export function Header({
             {link.label}
           </Link>
         ))}
-        {/* CTA "S'inscrire" — externe vers portail membre, pré-rempli
-            avec le slug du club courant. Visible en permanence dans la
-            nav pour rendre l'auto-inscription publique discoverable. */}
+        {/* "Connexion" + "S'inscrire" — externes vers portail membre,
+            pré-remplis avec le slug du club courant. Visibles en
+            permanence dans la nav pour discoverability. */}
+        <a
+          href={loginUrl}
+          onClick={close}
+          rel="noopener"
+        >
+          Connexion
+        </a>
         <a
           href={registerUrl}
           className="nav__cta"
