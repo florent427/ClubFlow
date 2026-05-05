@@ -109,7 +109,10 @@ export function SelectProfileScreen({ navigation }: Props) {
       });
       const newTok = sel?.selectActiveViewerContactProfile?.accessToken;
       if (!newTok) return;
-      await storage.setMemberSession(newTok, p.clubId);
+      // Profile Contact PAYER → flag CONTACT_ONLY pour que MainScreen
+      // route vers HomeContactScreen (avec CTAs Inscrire enfant / moi-même)
+      // au lieu de HomeDashboardScreen (vue Member).
+      await storage.setMemberContactSession(newTok, p.clubId);
     } else {
       return;
     }
