@@ -104,6 +104,20 @@ export type CartPreview = {
   canValidate: boolean;
 };
 
+/**
+ * Calcule l'âge en années au moment `now` à partir d'une date de
+ * naissance. Renvoie null si birthDate est invalide. Utilisé pour la
+ * safety guard "un mineur ne peut pas être PAYER" lors de la
+ * matérialisation des pending items.
+ */
+function computeAgeYears(birthDate: Date | null, now: Date): number | null {
+  if (!birthDate || Number.isNaN(birthDate.getTime())) return null;
+  let age = now.getFullYear() - birthDate.getFullYear();
+  const m = now.getMonth() - birthDate.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < birthDate.getDate())) age--;
+  return age;
+}
+
 @Injectable()
 export class MembershipCartService {
   constructor(
@@ -2220,11 +2234,30 @@ export class MembershipCartService {
       if (p.contactId) {
         const contact = await this.prisma.contact.findFirst({
           where: { id: p.contactId, clubId },
-          select: { userId: true },
+          select: { userId: true, firstName: true, lastName: true },
         });
         if (contact?.userId) {
           userId = contact.userId;
           payerLinkToMigrate = p.contactId;
+        }
+        // SAFETY GUARD : ne migre PAYER vers ce Member QUE si le pending
+        // matche bien l'identité du Contact + n'est pas un mineur. Sinon
+        // c'est un enfant ajouté par le Contact (cf. viewerRegisterChildMember
+        // qui devrait passer contactId=null mais on défend contre toute
+        // race future ou bug). Le Contact PAYER originel reste intact.
+        const ageYears = computeAgeYears(p.birthDate, new Date());
+        const isMinor = ageYears !== null && ageYears < 18;
+        const sameIdentity =
+          (contact?.firstName ?? '').trim().toLowerCase() ===
+            p.firstName.trim().toLowerCase() &&
+          (contact?.lastName ?? '').trim().toLowerCase() ===
+            p.lastName.trim().toLowerCase();
+        if (isMinor || !sameIdentity) {
+          payerLinkToMigrate = null;
+          // userId aussi reset si pas même identité — sinon le Member
+          // créé hériterait du userId du parent, ce qui ferait que le
+          // parent loggué verrait la fiche enfant en login.
+          if (!sameIdentity) userId = null;
         }
       }
 
