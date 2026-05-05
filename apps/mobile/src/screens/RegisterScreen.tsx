@@ -2,7 +2,7 @@ import { useMutation } from '@apollo/client/react';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -20,6 +20,7 @@ import {
   TextField,
 } from '../components/ui';
 import { REGISTER_CONTACT } from '../lib/documents';
+import * as storage from '../lib/storage';
 import {
   gradients,
   palette,
@@ -44,6 +45,19 @@ export function RegisterScreen() {
   const [done, setDone] = useState(false);
   const [alreadyExists, setAlreadyExists] = useState(false);
 
+  // Multi-tenant : on récupère le club choisi sur SelectClubScreen pour
+  // le passer explicitement à `registerContact` (sinon backend tombe
+  // sur `CLUB_ID` env = SKSR par défaut, indépendamment du selectedClub).
+  const [selectedClubSlug, setSelectedClubSlug] = useState<string | null>(
+    null,
+  );
+  useEffect(() => {
+    void (async () => {
+      const sel = await storage.getSelectedClub();
+      setSelectedClubSlug(sel?.slug ?? null);
+    })();
+  }, []);
+
   const [register, { loading }] = useMutation<RegisterContactData>(
     REGISTER_CONTACT,
   );
@@ -66,6 +80,9 @@ export function RegisterScreen() {
             lastName: lastName.trim(),
             email: e,
             password,
+            // Sans clubSlug le backend tombe sur CLUB_ID env (compat
+            // mono-tenant SKSR). Avec, on bind explicitement.
+            clubSlug: selectedClubSlug ?? undefined,
           },
         },
       });

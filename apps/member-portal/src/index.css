@@ -59,6 +59,113 @@ body {
   margin: 0;
 }
 
+/* === Sélecteur public de club (RegisterPage sans ?club=) === */
+.club-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 16px 0;
+}
+.club-picker__title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+.club-picker__hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+.club-picker__search {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  background: #f8fafc;
+}
+.club-picker__search:focus {
+  outline: none;
+  border-color: #1565c0;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(21, 101, 192, 0.12);
+}
+.club-picker__empty {
+  margin: 8px 0 0;
+  padding: 14px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: #64748b;
+  text-align: center;
+}
+.club-picker__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+.club-picker__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.club-picker__item:hover {
+  border-color: #1565c0;
+  background: #eff6ff;
+}
+.club-picker__logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #f8fafc;
+  flex-shrink: 0;
+}
+.club-picker__logo--initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #1565c0;
+  border: 1px solid rgba(21, 101, 192, 0.2);
+}
+.club-picker__name {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.club-picker__name strong {
+  font-size: 0.9rem;
+  color: #0f172a;
+}
+.club-picker__name small {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+.club-picker__chevron {
+  color: #94a3b8;
+  font-size: 20px !important;
+}
+
 /* Banner club affiché sur RegisterPage si ?club=<slug> est présent.
    Permet à l'utilisateur de voir clairement à quel club il s'inscrit. */
 .auth-club-banner {
