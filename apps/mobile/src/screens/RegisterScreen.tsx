@@ -43,6 +43,9 @@ export function RegisterScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  // Cas multi-tenant : User déjà vérifié ailleurs, Contact créé direct
+  // sans email. Affiche un autre écran "Inscription terminée → Login".
+  const [doneSkipMail, setDoneSkipMail] = useState(false);
   const [alreadyExists, setAlreadyExists] = useState(false);
 
   // Multi-tenant : on récupère le club choisi sur SelectClubScreen pour
@@ -73,7 +76,7 @@ export function RegisterScreen() {
       return;
     }
     try {
-      await register({
+      const { data } = await register({
         variables: {
           input: {
             firstName: firstName.trim(),
@@ -86,7 +89,11 @@ export function RegisterScreen() {
           },
         },
       });
-      setDone(true);
+      if (data?.registerContact.requiresEmailVerification === false) {
+        setDoneSkipMail(true);
+      } else {
+        setDone(true);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '';
       if (msg.includes('USER_ALREADY_EXISTS')) {
@@ -95,6 +102,33 @@ export function RegisterScreen() {
       }
       setError(err instanceof Error ? err.message : 'Inscription impossible.');
     }
+  }
+
+  if (doneSkipMail) {
+    return (
+      <View style={styles.feedbackContainer}>
+        <LinearGradient
+          colors={gradients.hero.colors}
+          start={gradients.hero.start}
+          end={gradients.hero.end}
+          style={styles.feedbackIcon}
+        >
+          <Ionicons name="checkmark-circle" size={56} color="#ffffff" />
+        </LinearGradient>
+        <Text style={styles.feedbackTitle}>Inscription terminée</Text>
+        <Text style={styles.feedbackLead}>
+          Votre compte <Text style={styles.strong}>{email.trim()}</Text>{'\n'}
+          est déjà vérifié — connectez-vous pour accéder à votre espace.
+        </Text>
+        <GradientButton
+          label="Se connecter"
+          icon="log-in-outline"
+          onPress={() => navigation.navigate('Login')}
+          fullWidth
+          size="lg"
+        />
+      </View>
+    );
   }
 
   if (done) {

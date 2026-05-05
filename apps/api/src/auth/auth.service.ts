@@ -176,8 +176,31 @@ export class AuthService {
     const displayName = `${input.firstName} ${input.lastName}`.trim();
 
     const existing = await this.prisma.user.findUnique({ where: { email } });
+
+    // Cas multi-tenant : User existe + email déjà vérifié sur un autre
+    // club. Soit il a déjà un Contact ici (vrai doublon → reject), soit
+    // il s'inscrit sur un nouveau club (création directe sans re-vérif
+    // d'email — l'identité est déjà prouvée par la vérification
+    // initiale).
     if (existing?.emailVerifiedAt) {
-      throw new ConflictException('USER_ALREADY_EXISTS');
+      const existingContact = await this.prisma.contact.findUnique({
+        where: { userId_clubId: { userId: existing.id, clubId } },
+      });
+      if (existingContact) {
+        throw new ConflictException('USER_ALREADY_EXISTS');
+      }
+      // Création directe du Contact sur ce nouveau club. Pas d'email
+      // de vérification (identité déjà prouvée). Le user peut se
+      // logger immédiatement.
+      await this.prisma.contact.create({
+        data: {
+          userId: existing.id,
+          clubId,
+          firstName: input.firstName,
+          lastName: input.lastName,
+        },
+      });
+      return { ok: true, requiresEmailVerification: false };
     }
 
     if (existing && !existing.emailVerifiedAt) {
@@ -206,7 +229,7 @@ export class AuthService {
         email,
         this.buildVerifyUrl(raw),
       );
-      return { ok: true };
+      return { ok: true, requiresEmailVerification: true };
     }
 
     const user = await this.prisma.user.create({
@@ -229,7 +252,7 @@ export class AuthService {
       email,
       this.buildVerifyUrl(raw),
     );
-    return { ok: true };
+    return { ok: true, requiresEmailVerification: true };
   }
 
   async verifyEmail(rawToken: string): Promise<LoginPayload> {
