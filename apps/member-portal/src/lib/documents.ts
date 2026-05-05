@@ -45,6 +45,23 @@ export const CLUB_BY_SLUG = gql`
   }
 `;
 
+/**
+ * Recherche publique de clubs — utilisée sur RegisterPage et LoginPage
+ * pour proposer un sélecteur quand l'URL n'a pas de `?club=<slug>`.
+ * Pas d'auth requise. Backend filtre name OR slug, max 20 résultats.
+ */
+export const SEARCH_PUBLIC_CLUBS = gql`
+  query SearchPublicClubs($query: String!) {
+    searchPublicClubs(query: $query) {
+      id
+      slug
+      name
+      logoUrl
+      tagline
+    }
+  }
+`;
+
 export const VERIFY_EMAIL = gql`
   mutation VerifyEmail($input: VerifyEmailInput!) {
     verifyEmail(input: $input) {

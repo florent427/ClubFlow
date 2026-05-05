@@ -1,7 +1,13 @@
 import { type FormEvent, useEffect, useState } from 'react';
-import { Link, Navigate, useSearchParams } from 'react-router-dom';
+import {
+  Link,
+  Navigate,
+  useNavigate,
+  useSearchParams,
+} from 'react-router-dom';
 import { useMutation, useQuery } from '@apollo/client/react';
 import { CLUB_BY_SLUG, REGISTER_CONTACT } from '../lib/documents';
+import { ClubPicker } from '../components/auth/ClubPicker';
 import type { RegisterContactData } from '../lib/auth-types';
 import { hasMemberSession } from '../lib/storage';
 import {
@@ -24,6 +30,7 @@ type ClubBySlugData = {
 
 export function RegisterPage() {
   const [params] = useSearchParams();
+  const navigate = useNavigate();
   const urlReturnTo = safeReturnTo(params.get('returnTo'));
   // Mémorise returnTo pour qu'il survive à l'étape email-verification.
   useEffect(() => {
@@ -165,6 +172,46 @@ export function RegisterPage() {
               club, ou demandez-lui de vous renvoyer une invitation.
             </p>
           </header>
+          <p className="auth-footer">
+            <Link
+              to={returnTo ? `/register?returnTo=${encodeURIComponent(returnTo)}` : '/register'}
+              className="auth-link"
+            >
+              Choisir un autre club
+            </Link>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Pas de slug dans l'URL → on demande à l'utilisateur de choisir son
+  // club avant de remplir le formulaire. Une fois sélectionné, on
+  // redirige vers /register?club=<slug> qui affichera le banner +
+  // form. Préserve `returnTo` à travers la nav.
+  if (!clubSlug) {
+    return (
+      <div className="auth-page">
+        <div className="auth-card">
+          <header className="auth-header">
+            <p className="auth-eyebrow">ClubFlow</p>
+            <h1>Créer un compte</h1>
+          </header>
+          <ClubPicker
+            title="Quel est votre club ?"
+            hint="Tapez le nom de votre club pour démarrer l'inscription."
+            onSelect={(c) => {
+              const qs = new URLSearchParams();
+              qs.set('club', c.slug);
+              if (returnTo) qs.set('returnTo', returnTo);
+              navigate(`/register?${qs.toString()}`);
+            }}
+          />
+          <p className="auth-footer">
+            <Link to={loginLink} className="auth-link">
+              Déjà un compte ? Connexion
+            </Link>
+          </p>
         </div>
       </div>
     );
