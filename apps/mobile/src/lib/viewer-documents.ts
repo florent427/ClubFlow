@@ -434,3 +434,23 @@ export const VIEWER_CANCEL_COURSE_SLOT_BOOKING = gql`
     viewerCancelCourseSlotBooking(slotId: $slotId)
   }
 `;
+
+export const VIEWER_ELIGIBLE_MEMBERSHIP_FORMULAS = gql`
+  query ViewerEligibleMembershipFormulas(
+    $birthDate: String!
+    $identityFirstName: String
+    $identityLastName: String
+  ) {
+    viewerEligibleMembershipFormulas(
+      birthDate: $birthDate
+      identityFirstName: $identityFirstName
+      identityLastName: $identityLastName
+    ) {
+      id
+      label
+      annualAmountCents
+      monthlyAmountCents
+      alreadyTakenInSeason
+    }
+  }
+`;
