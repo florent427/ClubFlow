@@ -266,11 +266,29 @@ export class MembershipService {
     clubId: string,
     input: CreateMembershipOneTimeFeeInput,
   ) {
+    const kind = input.kind ?? 'OPTIONAL';
+    // Pour MANDATORY/LICENSE on force autoApply=true (sinon le frais ne
+    // serait jamais appliqué — incohérence pédagogique). L'admin peut
+    // explicitement passer false si vraiment voulu, mais c'est un cas
+    // anormal qu'on n'autorise pas pour éviter les pieds dans le tapis.
+    const autoApply =
+      kind === 'OPTIONAL' ? (input.autoApply ?? false) : true;
+    // Validation regex : si LICENSE et pattern fourni, vérifie qu'il
+    // compile (échouer ici plutôt qu'à la première saisie de licence).
+    if (kind === 'LICENSE' && input.licenseNumberPattern) {
+      this.assertValidRegex(input.licenseNumberPattern);
+    }
     return this.prisma.membershipOneTimeFee.create({
       data: {
         clubId,
         label: input.label,
         amountCents: input.amountCents,
+        kind,
+        autoApply,
+        licenseNumberPattern:
+          kind === 'LICENSE' ? (input.licenseNumberPattern ?? null) : null,
+        licenseNumberFormatHint:
+          kind === 'LICENSE' ? (input.licenseNumberFormatHint ?? null) : null,
       },
     });
   }
@@ -285,6 +303,15 @@ export class MembershipService {
     if (!row) {
       throw new NotFoundException('Frais unique introuvable');
     }
+    const newKind = input.kind ?? row.kind;
+    // Recalcule autoApply selon kind effectif (cf. createMembership).
+    let newAutoApply = row.autoApply;
+    if (input.autoApply !== undefined) newAutoApply = input.autoApply;
+    if (newKind !== 'OPTIONAL') newAutoApply = true;
+
+    if (newKind === 'LICENSE' && input.licenseNumberPattern) {
+      this.assertValidRegex(input.licenseNumberPattern);
+    }
     return this.prisma.membershipOneTimeFee.update({
       where: { id: input.id },
       data: {
@@ -292,8 +319,42 @@ export class MembershipService {
         ...(input.amountCents !== undefined
           ? { amountCents: input.amountCents }
           : {}),
+        ...(input.kind !== undefined ? { kind: newKind } : {}),
+        ...(input.autoApply !== undefined || input.kind !== undefined
+          ? { autoApply: newAutoApply }
+          : {}),
+        // Pattern et hint ne sont stockés que pour LICENSE. Si le kind
+        // change vers autre chose, on les nettoie pour éviter du bruit.
+        ...(newKind === 'LICENSE'
+          ? {
+              ...(input.licenseNumberPattern !== undefined
+                ? { licenseNumberPattern: input.licenseNumberPattern || null }
+                : {}),
+              ...(input.licenseNumberFormatHint !== undefined
+                ? {
+                    licenseNumberFormatHint:
+                      input.licenseNumberFormatHint || null,
+                  }
+                : {}),
+            }
+          : { licenseNumberPattern: null, licenseNumberFormatHint: null }),
       },
     });
+  }
+
+  /** Vérifie qu'une regex passée par l'admin est compilable (sinon
+   *  on se retrouverait avec une licence impossible à valider). */
+  private assertValidRegex(pattern: string): void {
+    try {
+      // eslint-disable-next-line no-new
+      new RegExp(pattern);
+    } catch (err) {
+      throw new BadRequestException(
+        `Regex invalide « ${pattern} » : ${
+          err instanceof Error ? err.message : 'erreur inconnue'
+        }`,
+      );
+    }
   }
 
   async archiveMembershipOneTimeFee(clubId: string, id: string): Promise<void> {

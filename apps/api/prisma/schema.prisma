@@ -1216,6 +1216,13 @@ model MembershipOneTimeFee {
   kind        MembershipOneTimeFeeKind @default(OPTIONAL)
   /// Ajouté automatiquement à chaque item du panier d'adhésion créé.
   autoApply   Boolean                  @default(false)
+  /// Regex JS-compatible pour valider `existingLicenseNumber` (kind=LICENSE
+  /// uniquement). Ex FFKDA: `^\d{8}[A-Z]$` (8 chiffres + 1 lettre maj).
+  /// Si null, aucune validation de format n'est appliquée.
+  licenseNumberPattern    String?
+  /// Texte humain affiché à l'utilisateur quand on demande son numéro de
+  /// licence existante. Ex: "8 chiffres + 1 lettre majuscule (12345678A)".
+  licenseNumberFormatHint String?
   archivedAt  DateTime?
   createdAt   DateTime                 @default(now())
   updatedAt   DateTime                 @updatedAt
@@ -2355,6 +2362,15 @@ model MembershipCartPendingItem {
   /// IDs de MembershipProduct sélectionnés. Toujours ≥ 1.
   membershipProductIds String[]
   billingRhythm        SubscriptionBillingRhythm @default(ANNUAL)
+  /// Le payeur a déclaré disposer déjà d'une licence valide pour la
+  /// saison — la fee LICENSE est alors skippée pour cet adhérent.
+  hasExistingLicense   Boolean  @default(false)
+  /// Numéro de licence existant (validé contre `licenseNumberPattern`
+  /// du club au moment de la saisie).
+  existingLicenseNumber String?
+  /// CSV des MembershipOneTimeFee.id OPTIONAL sélectionnés par le
+  /// payeur. Vide / null = aucune surcharge (autoApply normaux).
+  oneTimeFeeOverrideIdsCsv String?
   /// FK forte vers le Member créé à la validation. Null = pas encore
   /// converti (cart pas encore validé OU abandon).
   convertedToMemberId  String?

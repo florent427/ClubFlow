@@ -609,6 +609,10 @@ export const MEMBERSHIP_ONE_TIME_FEES = gql`
       clubId
       label
       amountCents
+      kind
+      autoApply
+      licenseNumberPattern
+      licenseNumberFormatHint
     }
   }
 `;
@@ -620,6 +624,10 @@ export const CREATE_MEMBERSHIP_ONE_TIME_FEE = gql`
       clubId
       label
       amountCents
+      kind
+      autoApply
+      licenseNumberPattern
+      licenseNumberFormatHint
     }
   }
 `;
@@ -631,6 +639,10 @@ export const UPDATE_MEMBERSHIP_ONE_TIME_FEE = gql`
       clubId
       label
       amountCents
+      kind
+      autoApply
+      licenseNumberPattern
+      licenseNumberFormatHint
     }
   }
 `;

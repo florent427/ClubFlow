@@ -10,7 +10,9 @@ WorkingDirectory=/home/clubflow/clubflow/apps/landing
 EnvironmentFile=-/home/clubflow/clubflow/apps/landing/.env.production
 Environment=NODE_ENV=production
 Environment=PORT=5276
-ExecStart=/usr/bin/npm run start
+# ExecStart direct (pas npm run start) — le script `start` du package.json
+# de Next.js inclut --port hardcodé qui ignore Environment=PORT.
+ExecStart=/usr/bin/npx next start --port 5276
 Restart=on-failure
 RestartSec=5
 StandardOutput=append:/var/log/clubflow-landing-staging.log
