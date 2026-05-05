@@ -59,6 +59,215 @@ body {
   margin: 0;
 }
 
+/* === UserMenu dropdown (top bar compact) === */
+.user-menu {
+  position: relative;
+  display: inline-block;
+}
+.user-menu__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px 4px 4px;
+  background: transparent;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+  font: inherit;
+  color: inherit;
+}
+.user-menu__trigger:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+.user-menu__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #1d4ed8;
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.user-menu__avatar--lg {
+  width: 44px;
+  height: 44px;
+  font-size: 1rem;
+}
+.user-menu__chevron {
+  font-size: 18px !important;
+  color: #64748b;
+}
+.user-menu__dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 280px;
+  max-width: 360px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow:
+    0 12px 24px rgba(15, 23, 42, 0.08),
+    0 4px 12px rgba(15, 23, 42, 0.04);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+}
+.user-menu__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%);
+  border-radius: 8px;
+  margin-bottom: 4px;
+}
+.user-menu__header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.user-menu__header-text strong {
+  font-size: 0.9rem;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.user-menu__email {
+  font-size: 0.7rem;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.user-menu__club {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  color: #1565c0;
+  font-weight: 600;
+  margin-top: 2px;
+}
+.user-menu__club .material-symbols-outlined {
+  font-size: 14px !important;
+}
+.user-menu__section-title {
+  padding: 8px 12px 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+}
+.user-menu__profile-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.user-menu__profile-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  transition: background 0.12s ease;
+}
+.user-menu__profile-item:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+.user-menu__profile-item:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.user-menu__profile-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 0.7rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.user-menu__profile-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.user-menu__profile-text strong {
+  font-size: 0.85rem;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.user-menu__profile-text small {
+  font-size: 0.7rem;
+  color: #64748b;
+}
+.user-menu__sep {
+  margin: 4px 8px;
+  border: none;
+  border-top: 1px solid #e5e7eb;
+}
+.user-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  color: #0f172a;
+  text-align: left;
+  font-size: 0.875rem;
+  transition: background 0.12s ease;
+}
+.user-menu__item:hover {
+  background: #f1f5f9;
+}
+.user-menu__item .material-symbols-outlined {
+  font-size: 18px !important;
+  color: #64748b;
+}
+.user-menu__item--primary {
+  color: #1565c0;
+  font-weight: 600;
+}
+.user-menu__item--primary .material-symbols-outlined {
+  color: #1565c0;
+}
+.user-menu__item--danger {
+  color: #b91c1c;
+}
+.user-menu__item--danger .material-symbols-outlined {
+  color: #b91c1c;
+}
+
 /* === Sélecteur public de club (RegisterPage sans ?club=) === */
 .club-picker {
   display: flex;

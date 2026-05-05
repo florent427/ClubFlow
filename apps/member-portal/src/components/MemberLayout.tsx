@@ -1,37 +1,24 @@
-import { useMutation, useQuery } from '@apollo/client/react';
+import { useQuery } from '@apollo/client/react';
 import {
   NavLink,
   Outlet,
   useLocation,
-  useNavigate,
 } from 'react-router-dom';
-import {
-  SELECT_VIEWER_CONTACT_PROFILE,
-  SELECT_VIEWER_PROFILE,
-  VIEWER_PROFILES,
-} from '../lib/documents';
+import { VIEWER_PROFILES } from '../lib/documents';
 import type {
-  SelectContactProfileData,
-  SelectProfileData,
-  ViewerProfile,
   ViewerProfilesQueryData,
 } from '../lib/auth-types';
-import { MemberRoleToggle } from './MemberRoleToggle';
-import { clearAuth, clearClubId, getClubId, setMemberSession } from '../lib/storage';
-import { VIEWER_ADMIN_SWITCH, VIEWER_ME } from '../lib/viewer-documents';
+import type { ClubQueryData } from '../lib/viewer-types';
+import { getClubId } from '../lib/storage';
+import { CLUB, VIEWER_ADMIN_SWITCH, VIEWER_ME } from '../lib/viewer-documents';
 import type { ViewerAdminSwitchData, ViewerMeData } from '../lib/viewer-types';
 import { PendingFamilyInvitesBanner } from './PendingFamilyInvitesBanner';
 import { PinGate } from './PinGate';
+import { UserMenu } from './UserMenu';
 import {
   VIEWER_ACTIVE_CART,
   type ViewerActiveCartData,
 } from '../lib/cart-documents';
-
-function profileRowKey(p: ViewerProfile): string {
-  if (p.memberId) return `m:${p.memberId}`;
-  if (p.contactId) return `c:${p.contactId}`;
-  return '';
-}
 
 const navClass = ({ isActive }: { isActive: boolean }) =>
   `mp-sidebar-link${isActive ? ' mp-sidebar-link-active' : ''}`;
@@ -57,7 +44,6 @@ function breadcrumbLabel(pathname: string): string {
 
 export function MemberLayout() {
   const loc = useLocation();
-  const navigate = useNavigate();
   const clubId = getClubId();
 
   const { data: profilesData } = useQuery<ViewerProfilesQueryData>(
@@ -70,10 +56,13 @@ export function MemberLayout() {
     fetchPolicy: 'cache-first',
   });
 
+  const { data: clubData } = useQuery<ClubQueryData>(CLUB, {
+    skip: !clubId,
+    fetchPolicy: 'cache-first',
+  });
+
   // Compteur global "panier d'adhésion" affiché en topbar quand le viewer
-  // peut gérer un panier (payeur du foyer). On utilise cache-and-network
-  // pour rester à jour après ajout/suppression d'un membre depuis
-  // n'importe quelle page.
+  // peut gérer un panier (payeur du foyer).
   const canManageCart = meData?.viewerMe?.canManageMembershipCart === true;
   const { data: activeCartData } = useQuery<ViewerActiveCartData>(
     VIEWER_ACTIVE_CART,
@@ -97,51 +86,19 @@ export function MemberLayout() {
     },
   );
 
-  const [selectProfile, { loading: switchingMember }] =
-    useMutation<SelectProfileData>(SELECT_VIEWER_PROFILE);
-  const [selectContactProfile, { loading: switchingContact }] =
-    useMutation<SelectContactProfileData>(SELECT_VIEWER_CONTACT_PROFILE);
-
-  const switching = switchingMember || switchingContact;
-
   const profiles = profilesData?.viewerProfiles ?? [];
-  const showSwitcher = profiles.length > 1;
   const hideMemberModules = meData?.viewerMe?.hideMemberModules === true;
   const canManageMembershipCart =
     meData?.viewerMe?.canManageMembershipCart === true;
   const adminSwitch = adminSwitchData?.viewerAdminSwitch;
-  const canAccessClubBackOffice: boolean =
-    adminSwitch?.canAccessClubBackOffice === true;
-  const adminWorkspaceClubId = adminSwitch?.adminWorkspaceClubId ?? null;
-
-  async function switchToProfile(p: ViewerProfile) {
-    if (!clubId || switching) return;
-    const nextClubId = p.clubId;
-    if (p.memberId) {
-      const { data: sel } = await selectProfile({
-        variables: { memberId: p.memberId },
-      });
-      const newTok = sel?.selectActiveViewerProfile?.accessToken;
-      if (!newTok) return;
-      setMemberSession(newTok, nextClubId);
-    } else if (p.contactId) {
-      const { data: sel } = await selectContactProfile({
-        variables: { contactId: p.contactId },
-      });
-      const newTok = sel?.selectActiveViewerContactProfile?.accessToken;
-      if (!newTok) return;
-      setMemberSession(newTok, nextClubId);
-    } else {
-      return;
-    }
-    void navigate('/', { replace: true });
-    window.location.reload();
-  }
-
-  function goChangeProfile() {
-    clearClubId();
-    void navigate('/select-profile', { replace: true });
-  }
+  // Bouton Administration n'est visible QUE si l'utilisateur est admin
+  // du CLUB COURANT (pas d'un autre club). Évite la confusion d'un user
+  // admin de B mais sur le portail membre du club A — on ne propose pas
+  // de bascule vers l'admin de B depuis le menu personnel.
+  const canAdminCurrentClub: boolean =
+    adminSwitch?.canAccessClubBackOffice === true &&
+    adminSwitch?.adminWorkspaceClubId === clubId;
+  const clubName = clubData?.club?.name ?? null;
 
   const crumb = breadcrumbLabel(loc.pathname);
 
@@ -261,38 +218,11 @@ export function MemberLayout() {
             <span className="mp-bc-current">{crumb}</span>
           </div>
           <div className="mp-topbar-actions">
-            <MemberRoleToggle
-              variant="header"
-              canAccessClubBackOffice={canAccessClubBackOffice}
-              adminWorkspaceClubId={adminWorkspaceClubId}
-            />
-            {showSwitcher ? (
-              <div className="mp-profile-chips" role="group" aria-label="Changer de profil">
-                {profiles.map((p) => (
-                  <button
-                    key={profileRowKey(p)}
-                    type="button"
-                    className="mp-profile-chip"
-                    title={`${p.firstName} ${p.lastName}`}
-                    disabled={switching}
-                    onClick={() => void switchToProfile(p)}
-                  >
-                    <span className="mp-chip-initials">
-                      {p.firstName.slice(0, 1)}
-                      {p.lastName.slice(0, 1)}
-                    </span>
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  className="mp-profile-chip mp-profile-chip-more"
-                  onClick={goChangeProfile}
-                  title="Liste des profils"
-                >
-                  …
-                </button>
-              </div>
-            ) : null}
+            {/* Notifications toujours visibles : panier badge rouge si
+                items. Le reste des actions (admin, profils, settings,
+                logout) est groupé dans UserMenu pour éviter la
+                prolifération d'icônes (devient illisible avec un foyer
+                à 5+ membres). */}
             {canManageCart ? (
               <NavLink
                 to="/adhesion"
@@ -333,18 +263,13 @@ export function MemberLayout() {
                 ) : null}
               </NavLink>
             ) : null}
-            <button
-              type="button"
-              className="mp-icon-btn"
-              aria-label="Déconnexion"
-              title="Déconnexion"
-              onClick={() => {
-                clearAuth();
-                void navigate('/login', { replace: true });
-              }}
-            >
-              <span className="material-symbols-outlined">logout</span>
-            </button>
+            <UserMenu
+              me={meData?.viewerMe ?? null}
+              clubName={clubName}
+              profiles={profiles}
+              canAdminCurrentClub={canAdminCurrentClub}
+              currentClubId={clubId}
+            />
           </div>
         </header>
 
