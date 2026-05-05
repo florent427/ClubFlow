@@ -426,12 +426,18 @@ export type EligibleMembershipProductsQueryData = {
   eligibleMembershipProducts: MembershipProductsQueryData['membershipProducts'];
 };
 
+export type MembershipOneTimeFeeKind = 'LICENSE' | 'MANDATORY' | 'OPTIONAL';
+
 export type MembershipOneTimeFeesQueryData = {
   membershipOneTimeFees: {
     id: string;
     clubId: string;
     label: string;
     amountCents: number;
+    kind: MembershipOneTimeFeeKind;
+    autoApply: boolean;
+    licenseNumberPattern: string | null;
+    licenseNumberFormatHint: string | null;
   }[];
 };
 

@@ -44,9 +44,11 @@ export class MembershipCartAdminResolver {
     const carts = await this.service.listCartsForClub(club.id, filter ?? {});
     const result: MembershipCartGraph[] = [];
     for (const c of carts) {
-      const { preview, productsById } =
+      const { preview, productsById, clubOneTimeFees } =
         await this.service.getCartFullForGraph(club.id, c.id);
-      result.push(toMembershipCartGraph(c, preview, productsById));
+      result.push(
+        toMembershipCartGraph(c, preview, productsById, clubOneTimeFees),
+      );
     }
     return result;
   }
@@ -56,9 +58,9 @@ export class MembershipCartAdminResolver {
     @CurrentClub() club: Club,
     @Args('id', { type: () => ID }) id: string,
   ): Promise<MembershipCartGraph> {
-    const { cart, preview, productsById } =
+    const { cart, preview, productsById, clubOneTimeFees } =
       await this.service.getCartFullForGraph(club.id, id);
-    return toMembershipCartGraph(cart, preview, productsById);
+    return toMembershipCartGraph(cart, preview, productsById, clubOneTimeFees);
   }
 
   // ------------ Mutations ------------
@@ -76,9 +78,9 @@ export class MembershipCartAdminResolver {
       input.familyId,
       input.clubSeasonId,
     );
-    const { cart: full, preview, productsById } =
+    const { cart: full, preview, productsById, clubOneTimeFees } =
       await this.service.getCartFullForGraph(club.id, cart.id);
-    return toMembershipCartGraph(full, preview, productsById);
+    return toMembershipCartGraph(full, preview, productsById, clubOneTimeFees);
   }
 
   @Mutation(() => MembershipCartGraph, {
@@ -96,9 +98,9 @@ export class MembershipCartAdminResolver {
       input.familyId,
       input.clubSeasonId,
     );
-    const { cart: full, preview, productsById } =
+    const { cart: full, preview, productsById, clubOneTimeFees } =
       await this.service.getCartFullForGraph(club.id, cart.id);
-    return toMembershipCartGraph(full, preview, productsById);
+    return toMembershipCartGraph(full, preview, productsById, clubOneTimeFees);
   }
 
   @Mutation(() => MembershipCartGraph, { name: 'clubUpdateCartItem' })
@@ -111,9 +113,9 @@ export class MembershipCartAdminResolver {
       membershipProductId: input.membershipProductId,
       oneTimeFeeOverrideIds: input.oneTimeFeeOverrideIds ?? null,
     });
-    const { cart: full, preview, productsById } =
+    const { cart: full, preview, productsById, clubOneTimeFees } =
       await this.service.getCartFullForGraph(club.id, item.cartId);
-    return toMembershipCartGraph(full, preview, productsById);
+    return toMembershipCartGraph(full, preview, productsById, clubOneTimeFees);
   }
 
   @Mutation(() => MembershipCartGraph, { name: 'clubToggleCartItemLicense' })
@@ -127,9 +129,9 @@ export class MembershipCartAdminResolver {
       input.hasExistingLicense,
       input.existingLicenseNumber ?? null,
     );
-    const { cart: full, preview, productsById } =
+    const { cart: full, preview, productsById, clubOneTimeFees } =
       await this.service.getCartFullForGraph(club.id, item.cartId);
-    return toMembershipCartGraph(full, preview, productsById);
+    return toMembershipCartGraph(full, preview, productsById, clubOneTimeFees);
   }
 
   @Mutation(() => MembershipCartGraph, { name: 'clubRemoveCartItem' })
@@ -138,9 +140,9 @@ export class MembershipCartAdminResolver {
     @Args('itemId', { type: () => ID }) itemId: string,
   ): Promise<MembershipCartGraph> {
     const res = await this.service.removeItem(club.id, itemId);
-    const { cart: full, preview, productsById } =
+    const { cart: full, preview, productsById, clubOneTimeFees } =
       await this.service.getCartFullForGraph(club.id, res.cartId);
-    return toMembershipCartGraph(full, preview, productsById);
+    return toMembershipCartGraph(full, preview, productsById, clubOneTimeFees);
   }
 
   @Mutation(() => MembershipCartGraph, {
@@ -158,9 +160,9 @@ export class MembershipCartAdminResolver {
       input.amountCents,
       input.reason,
     );
-    const { cart: full, preview, productsById } =
+    const { cart: full, preview, productsById, clubOneTimeFees } =
       await this.service.getCartFullForGraph(club.id, item.cartId);
-    return toMembershipCartGraph(full, preview, productsById);
+    return toMembershipCartGraph(full, preview, productsById, clubOneTimeFees);
   }
 
   @Mutation(() => MembershipCartGraph, { name: 'clubValidateMembershipCart' })
@@ -175,9 +177,9 @@ export class MembershipCartAdminResolver {
       input.cartId,
       input.lockedPaymentMethod ?? null,
     );
-    const { preview, productsById } =
+    const { preview, productsById, clubOneTimeFees } =
       await this.service.getCartFullForGraph(club.id, cart.id);
-    return toMembershipCartGraph(cart, preview, productsById);
+    return toMembershipCartGraph(cart, preview, productsById, clubOneTimeFees);
   }
 
   @Mutation(() => MembershipCartGraph, { name: 'clubCancelMembershipCart' })
@@ -190,8 +192,8 @@ export class MembershipCartAdminResolver {
       input.cartId,
       input.reason,
     );
-    const { cart: full, preview, productsById } =
+    const { cart: full, preview, productsById, clubOneTimeFees } =
       await this.service.getCartFullForGraph(club.id, cart.id);
-    return toMembershipCartGraph(full, preview, productsById);
+    return toMembershipCartGraph(full, preview, productsById, clubOneTimeFees);
   }
 }

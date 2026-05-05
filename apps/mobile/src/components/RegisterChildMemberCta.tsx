@@ -56,8 +56,15 @@ function formatEuros(cents: number): string {
  * Étapes : prénom, nom, civilité, date de naissance (date picker FR),
  * sélection formule (auto-fetch après identité+naissance), rythme.
  * Génère un PendingItem dans le panier d'adhésion.
+ *
+ * `onSuccess` est appelé après création du PendingItem pour permettre
+ * au parent (PanierAdhesionScreen) de refetch le cart actif.
  */
-export function RegisterChildMemberCta() {
+export function RegisterChildMemberCta({
+  onSuccess,
+}: {
+  onSuccess?: () => void;
+} = {}) {
   const [open, setOpen] = useState(false);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -67,7 +74,6 @@ export function RegisterChildMemberCta() {
   const [formulaId, setFormulaId] = useState<string>('');
   const [billingRhythm, setBillingRhythm] = useState<BillingRhythm>('ANNUAL');
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   const [registerChild, { loading }] = useMutation(VIEWER_REGISTER_CHILD_MEMBER);
   const [fetchFormulas, { data: formulasData, loading: formulasLoading }] =
@@ -108,7 +114,6 @@ export function RegisterChildMemberCta() {
     setFormulaId('');
     setBillingRhythm('ANNUAL');
     setError(null);
-    setSuccess(null);
   }
 
   function onPickerChange(event: DateTimePickerEvent, selected?: Date) {
@@ -152,9 +157,11 @@ export function RegisterChildMemberCta() {
         setError("L'inscription n'a pas pu être enregistrée.");
         return;
       }
-      setSuccess(
-        `${res.firstName} a bien été ajouté au panier d'adhésion.`,
-      );
+      // Pas de popup "Inscription envoyée" : on ferme la modale et on
+      // laisse le parent gérer le feedback (refetch cart + nav vers
+      // l'écran Panier qui affiche le pendingItem fraîchement créé).
+      reset();
+      onSuccess?.();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Erreur inconnue.');
     }
@@ -193,17 +200,6 @@ export function RegisterChildMemberCta() {
           </Pressable>
         </View>
         <ScrollView contentContainerStyle={styles.modalBody}>
-          {success ? (
-            <View style={styles.successBox}>
-              <Ionicons name="checkmark-circle" size={48} color="#16a34a" />
-              <Text style={styles.successTitle}>Inscription envoyée !</Text>
-              <Text style={styles.successText}>{success}</Text>
-              <Pressable style={styles.btnPrimary} onPress={reset}>
-                <Text style={styles.btnPrimaryText}>Fermer</Text>
-              </Pressable>
-            </View>
-          ) : (
-            <>
               <Text style={styles.label}>Prénom</Text>
               <TextInput
                 style={styles.input}
@@ -392,8 +388,6 @@ export function RegisterChildMemberCta() {
                   {loading ? 'Envoi…' : 'Inscrire l\'enfant'}
                 </Text>
               </Pressable>
-            </>
-          )}
         </ScrollView>
       </Modal>
     </>
@@ -473,7 +467,4 @@ const styles = StyleSheet.create({
   },
   btnPrimaryText: { color: 'white', fontWeight: '700', fontSize: 15 },
   btnDisabled: { opacity: 0.5 },
-  successBox: { alignItems: 'center', gap: 12, paddingVertical: 24 },
-  successTitle: { fontSize: 18, fontWeight: '700', color: '#0f172a' },
-  successText: { color: '#475569', textAlign: 'center', lineHeight: 21 },
 });

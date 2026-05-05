@@ -11,6 +11,8 @@ export type MainTabParamList = {
   Famille: undefined;
   Parametres: undefined;
   Documents: undefined;
+  /** Panier d'adhésion — saison active, pendingItems, validation. */
+  Panier: undefined;
   /** Overflow menu — modules secondaires (Documents, Actus, Profil…). */
   Plus: undefined;
 };
@@ -20,6 +22,8 @@ export type ContactTabParamList = {
   Actus: undefined;
   Evenements: undefined;
   Documents: undefined;
+  /** Panier d'adhésion — accessible aussi depuis l'espace contact pur. */
+  Panier: undefined;
 };
 
 /**

@@ -4,6 +4,7 @@ import type {
   MembershipCartPendingItem,
   Member,
   MembershipProduct,
+  MembershipOneTimeFee,
   Contact,
   ClubSeason,
   Invoice,
@@ -45,6 +46,7 @@ export function toMembershipCartGraph(
   cart: CartWithRelations,
   preview: CartPreview,
   productsById?: Map<string, { label: string; annualAmountCents: number }>,
+  clubOneTimeFees: MembershipOneTimeFee[] = [],
 ): MembershipCartGraph {
   const previewByItem = new Map(preview.items.map((p) => [p.itemId, p]));
   const previewByPending = new Map(
@@ -52,6 +54,12 @@ export function toMembershipCartGraph(
   );
   const items: MembershipCartItemGraph[] = cart.items.map((item) => {
     const p = previewByItem.get(item.id);
+    // Parse l'override CSV des fees OPTIONAL sélectionnés. Vide = null
+    // (signal "pas de surcharge, applique les autoApply normalement").
+    const overrideIds =
+      item.oneTimeFeeOverrideIdsCsv && item.oneTimeFeeOverrideIdsCsv.length > 0
+        ? item.oneTimeFeeOverrideIdsCsv.split(',').filter(Boolean)
+        : null;
     return {
       id: item.id,
       cartId: item.cartId,
@@ -69,6 +77,7 @@ export function toMembershipCartGraph(
       subscriptionBaseCents: p?.subscriptionBaseCents ?? 0,
       subscriptionAdjustedCents: p?.subscriptionAdjustedCents ?? 0,
       oneTimeFeesCents: p?.oneTimeFeesCents ?? 0,
+      oneTimeFeeOverrideIds: overrideIds,
       pricingRulePreviews: p?.pricingRulePreviews ?? [],
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
@@ -113,6 +122,10 @@ export function toMembershipCartGraph(
         (s, e) => s + e.subscriptionAdjustedCents,
         0,
       );
+      const pendingOverrideIds =
+        p.oneTimeFeeOverrideIdsCsv && p.oneTimeFeeOverrideIdsCsv.length > 0
+          ? p.oneTimeFeeOverrideIdsCsv.split(',').filter(Boolean)
+          : null;
       return {
         id: p.id,
         cartId: p.cartId,
@@ -126,6 +139,9 @@ export function toMembershipCartGraph(
         estimatedTotalCents: pp?.definitiveTotalCents ?? fallbackEstimate,
         subscriptionAdjustedCents,
         oneTimeFeesCents: pp?.oneTimeFeesCents ?? 0,
+        hasExistingLicense: p.hasExistingLicense,
+        existingLicenseNumber: p.existingLicenseNumber,
+        oneTimeFeeOverrideIds: pendingOverrideIds,
         perProduct,
         billingRhythm: p.billingRhythm,
         pricingRulePreviews: pp?.pricingRulePreviews ?? [],
@@ -149,6 +165,7 @@ export function toMembershipCartGraph(
     notes: cart.notes,
     items,
     pendingItems,
+    clubOneTimeFees,
     totalCents: preview.totalCents,
     // Si le panier est validé et qu'une facture est liée, on expose son
     // montant TTC réel — c'est ce qui sera vraiment payé. Null sinon
