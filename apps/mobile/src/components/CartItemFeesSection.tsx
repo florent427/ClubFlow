@@ -164,51 +164,47 @@ export function CartItemFeesSection(props: Props) {
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>Frais ponctuels</Text>
 
-      {/* === LICENSE === */}
+      {/* === LICENSE ===
+          Cochée par défaut = on facture une licence neuve. Si l'adhérent
+          a déjà sa licence pour la saison, il décoche → modale demande
+          le numéro (validé contre regex club). Tap recoche direct =
+          re-facture la licence neuve (utile si erreur de saisie). */}
       {licenseFee ? (
-        <View style={styles.feeRow}>
+        <Pressable
+          onPress={() => {
+            if (togglingLicense) return;
+            if (hasExistingLicense) {
+              void handleToggleLicenseOff();
+            } else {
+              setLicenseModalOpen(true);
+            }
+          }}
+          disabled={togglingLicense}
+          style={[styles.feeRow, styles.feeRowToggle]}
+        >
           <Ionicons
-            name={hasExistingLicense ? 'checkmark-circle' : 'card-outline'}
-            size={20}
-            color={hasExistingLicense ? '#16a34a' : '#1565c0'}
+            name={hasExistingLicense ? 'square-outline' : 'checkbox'}
+            size={22}
+            color={hasExistingLicense ? '#94a3b8' : '#1565c0'}
           />
           <View style={{ flex: 1 }}>
             <Text style={styles.feeLabel}>{licenseFee.label}</Text>
             {hasExistingLicense ? (
-              <Text style={styles.feeSub}>
-                Licence déclarée : {existingLicenseNumber}{' '}
-                <Text style={styles.feeAmtStrike}>
-                  (économie {formatEuros(licenseFee.amountCents)})
-                </Text>
+              <Text style={[styles.feeSub, styles.licenseExisting]}>
+                ✓ Licence existante : {existingLicenseNumber}
               </Text>
             ) : (
               <Text style={styles.feeSub}>
-                Obligatoire — sauf si vous avez déjà une licence pour la
-                saison
+                Décochez si vous avez déjà votre licence pour la saison
               </Text>
             )}
           </View>
-          <View style={{ alignItems: 'flex-end', gap: 4 }}>
-            {!hasExistingLicense ? (
-              <Text style={styles.feeAmt}>
-                {formatEuros(licenseFee.amountCents)}
-              </Text>
-            ) : null}
-            <Pressable
-              onPress={
-                hasExistingLicense
-                  ? () => void handleToggleLicenseOff()
-                  : () => setLicenseModalOpen(true)
-              }
-              disabled={togglingLicense}
-              style={styles.smallBtn}
-            >
-              <Text style={styles.smallBtnText}>
-                {hasExistingLicense ? 'Retirer' : "J'en ai déjà une"}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
+          <Text
+            style={[styles.feeAmt, hasExistingLicense && styles.feeAmtMuted]}
+          >
+            {formatEuros(licenseFee.amountCents)}
+          </Text>
+        </Pressable>
       ) : null}
 
       {/* === MANDATORY (info-only) === */}
@@ -426,21 +422,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#0f172a',
   },
-  feeAmtMuted: { color: '#94a3b8', fontWeight: '500' },
-  feeAmtStrike: {
-    fontSize: 11,
+  feeAmtMuted: {
+    color: '#94a3b8',
+    fontWeight: '500',
+    textDecorationLine: 'line-through',
+  },
+  licenseExisting: {
     color: '#16a34a',
     fontWeight: '600',
   },
-  smallBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: '#dbeafe',
-    borderWidth: 1,
-    borderColor: 'rgba(21, 101, 192, 0.3)',
-  },
-  smallBtnText: { fontSize: 11, fontWeight: '700', color: '#1565c0' },
 });
 
 const modalStyles = StyleSheet.create({
