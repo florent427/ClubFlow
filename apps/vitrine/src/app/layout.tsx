@@ -100,6 +100,7 @@ export default async function RootLayout({
           clubName={branding.clubName}
           kanjiTagline={branding.kanjiTagline}
           logoUrl={branding.logoUrl}
+          clubSlug={club.slug}
         />
         <main id="main">{children}</main>
         <Footer clubName={branding.clubName} content={branding.footer} />

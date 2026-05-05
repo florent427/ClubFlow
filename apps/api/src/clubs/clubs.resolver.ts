@@ -14,6 +14,7 @@ import {
 } from './models/club-branding.model';
 import { ClubGraphModel } from './models/club.model';
 import { ClubMembershipGraphModel } from './models/club-membership.model';
+import { ClubPublicGraph } from './models/club-public.model';
 import { MyAdminClubGraph } from './models/my-admin-club.model';
 import { UpdateClubBrandingInput } from './dto/update-club-branding.input';
 
@@ -89,6 +90,80 @@ export class ClubsResolver {
       select: { required: true },
     });
     return row?.required === true;
+  }
+
+  /**
+   * Vue publique d'un club par son slug — pas d'auth, pour le formulaire
+   * d'inscription portail (`/register?club=<slug>`) et l'autocomplete
+   * mobile au 1er lancement. Retourne null si slug inconnu (pas
+   * d'erreur — l'UI affiche "club introuvable" gracieusement).
+   */
+  @Query(() => ClubPublicGraph, { name: 'clubBySlug', nullable: true })
+  async clubBySlug(
+    @Args('slug') slug: string,
+  ): Promise<ClubPublicGraph | null> {
+    const trimmed = slug.trim().toLowerCase();
+    if (!trimmed || !/^[a-z0-9-]+$/.test(trimmed)) return null;
+    const club = await this.prisma.club.findUnique({
+      where: { slug: trimmed },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        logoUrl: true,
+        customDomain: true,
+        vitrineKanjiTagline: true,
+      },
+    });
+    if (!club) return null;
+    return {
+      id: club.id,
+      slug: club.slug,
+      name: club.name,
+      logoUrl: club.logoUrl ?? null,
+      customDomain: club.customDomain ?? null,
+      tagline: club.vitrineKanjiTagline ?? null,
+    };
+  }
+
+  /**
+   * Recherche publique de clubs par nom ou slug, pour autocomplete au
+   * 1er lancement de l'app mobile (l'utilisateur saisit "Sho" → on
+   * propose "Shotokan Karaté Sud Réunion"). Retourne max 20 résultats
+   * triés par nom. Pas d'auth.
+   */
+  @Query(() => [ClubPublicGraph], { name: 'searchPublicClubs' })
+  async searchPublicClubs(
+    @Args('query') query: string,
+  ): Promise<ClubPublicGraph[]> {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) return [];
+    const rows = await this.prisma.club.findMany({
+      where: {
+        OR: [
+          { name: { contains: trimmed, mode: 'insensitive' } },
+          { slug: { contains: trimmed.toLowerCase() } },
+        ],
+      },
+      orderBy: { name: 'asc' },
+      take: 20,
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        logoUrl: true,
+        customDomain: true,
+        vitrineKanjiTagline: true,
+      },
+    });
+    return rows.map((c) => ({
+      id: c.id,
+      slug: c.slug,
+      name: c.name,
+      logoUrl: c.logoUrl ?? null,
+      customDomain: c.customDomain ?? null,
+      tagline: c.vitrineKanjiTagline ?? null,
+    }));
   }
 
   @Query(() => ClubGraphModel)
