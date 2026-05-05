@@ -2,6 +2,7 @@ import { useMutation } from '@apollo/client/react';
 import { useState } from 'react';
 import {
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,10 +10,32 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import DateTimePicker, {
+  type DateTimePickerEvent,
+} from '@react-native-community/datetimepicker';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { VIEWER_REGISTER_CHILD_MEMBER } from '../lib/viewer-documents';
 
 type Civility = 'MR' | 'MME';
+
+/**
+ * Convertit une Date JS en chaîne ISO `YYYY-MM-DD` (format API).
+ */
+function toIsoDate(d: Date): string {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/**
+ * Convertit une chaîne ISO `YYYY-MM-DD` en affichage `JJ-MM-AAAA` (FR).
+ */
+function toFrDisplay(iso: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const [y, m, d] = iso.split('-');
+  return `${d}-${m}-${y}`;
+}
 
 /**
  * CTA « Inscrire un enfant » — version mobile : prénom, nom, civilité,
@@ -24,7 +47,8 @@ export function RegisterChildMemberCta() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [civility, setCivility] = useState<Civility>('MR');
-  const [birthDate, setBirthDate] = useState('');
+  const [birthDate, setBirthDate] = useState<string>(''); // ISO YYYY-MM-DD interne
+  const [showPicker, setShowPicker] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -36,14 +60,18 @@ export function RegisterChildMemberCta() {
     setLastName('');
     setCivility('MR');
     setBirthDate('');
+    setShowPicker(false);
     setError(null);
     setSuccess(null);
   }
 
-  function isValidDate(s: string): boolean {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
-    const d = new Date(s);
-    return !Number.isNaN(d.getTime());
+  function onPickerChange(event: DateTimePickerEvent, selected?: Date) {
+    // Sur Android, le picker se ferme tout seul après sélection (event.type === 'set' ou 'dismissed').
+    // Sur iOS, on reste affiché en mode 'spinner'/'inline' tant que l'user n'a pas confirmé.
+    if (Platform.OS !== 'ios') setShowPicker(false);
+    if (event.type === 'set' && selected) {
+      setBirthDate(toIsoDate(selected));
+    }
   }
 
   async function onSubmit() {
@@ -52,8 +80,8 @@ export function RegisterChildMemberCta() {
       setError('Prénom et nom sont obligatoires.');
       return;
     }
-    if (!birthDate || !isValidDate(birthDate)) {
-      setError('Date de naissance invalide (AAAA-MM-JJ).');
+    if (!birthDate) {
+      setError('Sélectionnez une date de naissance.');
       return;
     }
     try {
@@ -64,8 +92,9 @@ export function RegisterChildMemberCta() {
             lastName: lastName.trim(),
             civility,
             birthDate,
-            membershipProductId: null,
-            billingRhythm: null,
+            // Schema attend `membershipProductIds: [ID!]!` (array requis).
+            // Vide = panier en attente, le club choisira la formule côté admin.
+            membershipProductIds: [],
           },
         },
       });
@@ -83,6 +112,12 @@ export function RegisterChildMemberCta() {
       setError(e instanceof Error ? e.message : 'Erreur inconnue.');
     }
   }
+
+  // Date max raisonnable = aujourd'hui (pas de naissance future).
+  const maxDate = new Date();
+  // Date min = il y a 100 ans (couvre tous cas adhérent).
+  const minDate = new Date();
+  minDate.setFullYear(minDate.getFullYear() - 100);
 
   return (
     <>
@@ -175,15 +210,26 @@ export function RegisterChildMemberCta() {
                 </Pressable>
               </View>
 
-              <Text style={styles.label}>Date de naissance (AAAA-MM-JJ)</Text>
-              <TextInput
+              <Text style={styles.label}>Date de naissance</Text>
+              <Pressable
                 style={styles.input}
-                value={birthDate}
-                onChangeText={setBirthDate}
-                placeholder="ex. 2015-09-12"
-                keyboardType="numbers-and-punctuation"
-                maxLength={10}
-              />
+                onPress={() => setShowPicker(true)}
+              >
+                <Text style={birthDate ? styles.dateText : styles.datePlaceholder}>
+                  {birthDate ? toFrDisplay(birthDate) : 'JJ-MM-AAAA'}
+                </Text>
+              </Pressable>
+              {showPicker ? (
+                <DateTimePicker
+                  value={birthDate ? new Date(birthDate) : new Date(2015, 0, 1)}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  maximumDate={maxDate}
+                  minimumDate={minDate}
+                  onChange={onPickerChange}
+                  locale="fr-FR"
+                />
+              ) : null}
               <Text style={styles.hint}>
                 Nécessaire pour proposer la bonne formule d'adhésion.
               </Text>
@@ -254,7 +300,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
+    justifyContent: 'center',
   },
+  dateText: { fontSize: 15, color: '#0f172a' },
+  datePlaceholder: { fontSize: 15, color: '#94a3b8' },
   btnPrimary: {
     backgroundColor: '#1565c0',
     paddingVertical: 12,
