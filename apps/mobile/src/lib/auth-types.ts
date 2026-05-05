@@ -52,7 +52,7 @@ export type SelectContactProfileData = {
 };
 
 export type RegisterContactData = {
-  registerContact: { ok: boolean };
+  registerContact: { ok: boolean; requiresEmailVerification: boolean };
 };
 
 export type VerifyEmailData = {

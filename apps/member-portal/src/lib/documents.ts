@@ -23,6 +23,7 @@ export const REGISTER_CONTACT = gql`
   mutation RegisterContact($input: RegisterContactInput!) {
     registerContact(input: $input) {
       ok
+      requiresEmailVerification
     }
   }
 `;
