@@ -103,6 +103,35 @@ export class AuthService {
     return `${base}/reset-password?token=${encodeURIComponent(rawToken)}`;
   }
 
+  /**
+   * Crée la Family du foyer + lie le Contact comme PAYER, si pas
+   * déjà fait. Idempotent. Sans cette étape, viewerProfiles ne
+   * retourne pas le Contact (filtre `linkRole = PAYER`) et le user
+   * arrive sur "Aucun profil disponible" après signup.
+   *
+   * Cette responsabilité est extraite ici (auth.service) car appelée
+   * par les 3 branches de `registerContact` (User existant vérifié /
+   * non vérifié / nouveau User).
+   */
+  private async ensureFamilyForContactPayer(
+    contactId: string,
+    clubId: string,
+  ): Promise<void> {
+    const existing = await this.prisma.familyMember.findFirst({
+      where: { contactId, family: { clubId } },
+      select: { id: true },
+    });
+    if (existing) return;
+    await this.prisma.family.create({
+      data: {
+        clubId,
+        familyMembers: {
+          create: [{ contactId, linkRole: 'PAYER' }],
+        },
+      },
+    });
+  }
+
   private async buildLoginPayload(
     userId: string,
     email: string,
@@ -192,7 +221,7 @@ export class AuthService {
       // Création directe du Contact sur ce nouveau club. Pas d'email
       // de vérification (identité déjà prouvée). Le user peut se
       // logger immédiatement.
-      await this.prisma.contact.create({
+      const contact = await this.prisma.contact.create({
         data: {
           userId: existing.id,
           clubId,
@@ -200,6 +229,9 @@ export class AuthService {
           lastName: input.lastName,
         },
       });
+      // Crée la Family du foyer + lie le Contact comme PAYER. Sans ça,
+      // viewerProfiles ne retourne PAS le Contact (filtre linkRole=PAYER).
+      await this.ensureFamilyForContactPayer(contact.id, clubId);
       return { ok: true, requiresEmailVerification: false };
     }
 
@@ -208,7 +240,7 @@ export class AuthService {
         where: { id: existing.id },
         data: { passwordHash, displayName },
       });
-      await this.prisma.contact.upsert({
+      const contact = await this.prisma.contact.upsert({
         where: {
           userId_clubId: { userId: existing.id, clubId },
         },
@@ -223,6 +255,7 @@ export class AuthService {
           lastName: input.lastName,
         },
       });
+      await this.ensureFamilyForContactPayer(contact.id, clubId);
       const raw = await this.emailVerification.issueTokenForUser(existing.id);
       await this.mail.sendEmailVerificationLink(
         clubId,
@@ -245,7 +278,12 @@ export class AuthService {
           },
         },
       },
+      include: { contacts: true },
     });
+    const newContact = user.contacts.find((c) => c.clubId === clubId);
+    if (newContact) {
+      await this.ensureFamilyForContactPayer(newContact.id, clubId);
+    }
     const raw = await this.emailVerification.issueTokenForUser(user.id);
     await this.mail.sendEmailVerificationLink(
       clubId,
