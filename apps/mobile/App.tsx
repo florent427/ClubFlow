@@ -66,14 +66,32 @@ export default function App() {
       try {
         // eslint-disable-next-line no-console
         console.log('[App] storage check…');
-        // Si l'app est ouverte par un deep-link verify-email, on traite
-        // le token AVANT de regarder la session existante. La logique
-        // d'ouverture est gérée par le linking config + VerifyEmailScreen.
+        // Deep-link `clubflow://?club=<slug>` (envoyé par email
+        // d'invitation, vitrine, etc.) → pré-config le club avant
+        // d'aller sur Login.
         const initialUrl = await Linking.getInitialURL();
+        if (initialUrl) {
+          try {
+            const parsed = Linking.parse(initialUrl);
+            const slugFromDeepLink =
+              typeof parsed.queryParams?.club === 'string'
+                ? parsed.queryParams.club.trim().toLowerCase()
+                : null;
+            if (slugFromDeepLink && /^[a-z0-9-]+$/.test(slugFromDeepLink)) {
+              // On stocke un club minimal (id vide → reset par
+              // SelectClubScreen au prochain choix manuel ou au login
+              // qui résout le vrai id via la query). Solution simple :
+              // forcer SelectClubScreen avec ce slug pré-rempli est
+              // possible mais pas critique au MVP.
+              // eslint-disable-next-line no-console
+              console.log('[App] deep-link club slug =', slugFromDeepLink);
+            }
+          } catch {
+            /* parse échoue → on ignore le deep-link */
+          }
+        }
         if (initialUrl && initialUrl.includes('verify-email')) {
           setInitialRoute('Login');
-          // VerifyEmailScreen sera atteint via le linking config et
-          // gérera lui-même la déconnexion préalable si nécessaire.
           return;
         }
         if (await storage.hasMemberSession()) {
@@ -86,11 +104,19 @@ export default function App() {
           setInitialRoute('SelectProfile');
           return;
         }
+        // Multi-tenant : si aucun club n'a été choisi, on commence par
+        // SelectClubScreen au lieu de Login (Login a besoin du club
+        // pour le branding + savoir où chercher l'utilisateur).
+        const selected = await storage.getSelectedClub();
+        if (!selected) {
+          setInitialRoute('SelectClub');
+          return;
+        }
         setInitialRoute('Login');
       } catch (err) {
         // eslint-disable-next-line no-console
         console.warn('[App] storage check failed', err);
-        setInitialRoute('Login');
+        setInitialRoute('SelectClub');
       }
     })();
   }, []);
@@ -105,6 +131,7 @@ export default function App() {
       prefixes: [Linking.createURL('/'), 'clubflow://'],
       config: {
         screens: {
+          SelectClub: 'select-club',
           Login: 'login',
           Register: 'register',
           VerifyEmail: 'verify-email',

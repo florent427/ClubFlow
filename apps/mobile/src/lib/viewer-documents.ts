@@ -1,5 +1,34 @@
 import { gql } from '@apollo/client';
 
+/**
+ * Recherche publique de clubs (autocomplete SelectClubScreen). Pas
+ * d'auth ni de x-club-id — query publique exposée par l'API.
+ */
+export const SEARCH_PUBLIC_CLUBS = gql`
+  query SearchPublicClubs($query: String!) {
+    searchPublicClubs(query: $query) {
+      id
+      slug
+      name
+      logoUrl
+      tagline
+    }
+  }
+`;
+
+/** Vue publique d'un club par slug. Sert au deep-link `clubflow://?club=`. */
+export const PUBLIC_CLUB_BY_SLUG = gql`
+  query PublicClubBySlug($slug: String!) {
+    clubBySlug(slug: $slug) {
+      id
+      slug
+      name
+      logoUrl
+      tagline
+    }
+  }
+`;
+
 export const VIEWER_ADMIN_SWITCH = gql`
   query ViewerAdminSwitch {
     viewerAdminSwitch {
