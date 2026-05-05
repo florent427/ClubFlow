@@ -14,6 +14,7 @@ import { HomeDashboardScreen } from '../screens/HomeDashboardScreen';
 import { MessagingNavigator } from '../screens/messaging/MessagingNavigator';
 import { MoreMenuScreen } from '../screens/MoreMenuScreen';
 import { NewsScreen } from '../screens/NewsScreen';
+import { PanierAdhesionScreen } from '../screens/PanierAdhesionScreen';
 import { PlanningScreen } from '../screens/PlanningScreen';
 import { ProgressionScreen } from '../screens/ProgressionScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
@@ -178,6 +179,17 @@ export function MemberTabsNavigator() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="people-outline" size={size} color={color} />
           ),
+        }}
+      />
+
+      {/* ─── PANIER (caché — accessible via tile MoreMenu + bannière Home) ─── */}
+      <MemberTab.Screen
+        name="Panier"
+        component={PanierAdhesionScreen}
+        options={{
+          title: 'Panier d’adhésion',
+          tabBarButton: () => null,
+          tabBarItemStyle: { display: 'none' },
         }}
       />
 
@@ -362,6 +374,19 @@ export function ContactTabsNavigator() {
             ),
             tabBarStyle: hideTabBar ? { display: 'none' } : undefined,
           };
+        }}
+      />
+      {/* Panier accessible aussi pour les contacts purs (qui sont
+          typiquement les payeurs first-time, qui inscrivent leurs
+          enfants avant d'être eux-mêmes Member). Caché de la tab bar
+          parce que la home Contact a déjà un CTA dédié. */}
+      <ContactTab.Screen
+        name="Panier"
+        component={PanierAdhesionScreen}
+        options={{
+          title: 'Panier d’adhésion',
+          tabBarButton: () => null,
+          tabBarItemStyle: { display: 'none' },
         }}
       />
     </ContactTab.Navigator>

@@ -19,9 +19,12 @@ import {
   Skeleton,
 } from '../components/ui';
 import { ClubLogoBubble } from '../components/ClubLogoBubble';
+import { InviteFamilyMemberCta } from '../components/InviteFamilyMemberCta';
 import { JoinFamilyByPayerEmailCta } from '../components/JoinFamilyByPayerEmailCta';
 import { MemberProfileSwitcher } from '../components/MemberProfileSwitcher';
 import { MemberRoleToggle } from '../components/MemberRoleToggle';
+import { RegisterChildMemberCta } from '../components/RegisterChildMemberCta';
+import { RegisterSelfMemberCta } from '../components/RegisterSelfMemberCta';
 import { SlotCard } from '../components/SlotCard';
 import {
   CLUB,
@@ -30,6 +33,10 @@ import {
   VIEWER_ME,
   VIEWER_UPCOMING_SLOTS,
 } from '../lib/viewer-documents';
+import {
+  VIEWER_ACTIVE_CART,
+  type ViewerActiveCartData,
+} from '../lib/cart-documents';
 import {
   VIEWER_DOCUMENTS_TO_SIGN,
   type ViewerDocumentsToSignData,
@@ -71,6 +78,9 @@ export function HomeDashboardScreen() {
   const { data: clubData } = useQuery<ClubQueryData>(CLUB);
 
   const hideMemberModules = meData?.viewerMe?.hideMemberModules === true;
+  const canManageMembershipCart =
+    meData?.viewerMe?.canManageMembershipCart === true;
+  const hasClubFamily = meData?.viewerMe?.hasClubFamily === true;
 
   const slotsQ = useQuery<ViewerUpcomingData>(VIEWER_UPCOMING_SLOTS, {
     skip: hideMemberModules,
@@ -85,6 +95,14 @@ export function HomeDashboardScreen() {
   );
   const docsToSignCount =
     docsToSignQ.data?.viewerDocumentsToSign?.length ?? 0;
+  const cartQ = useQuery<ViewerActiveCartData>(VIEWER_ACTIVE_CART, {
+    skip: !canManageMembershipCart,
+    fetchPolicy: 'cache-and-network',
+  });
+  const cart = cartQ.data?.viewerActiveMembershipCart ?? null;
+  const cartItemsCount =
+    (cart?.items.length ?? 0) + (cart?.pendingItems.length ?? 0);
+  const cartIsOpen = cart?.status === 'OPEN' && cartItemsCount > 0;
 
   const me = meData?.viewerMe;
   const adminSwitch = adminSwitchData?.viewerAdminSwitch;
@@ -153,6 +171,33 @@ export function HomeDashboardScreen() {
                   adminWorkspaceClubId={adminSwitch.adminWorkspaceClubId}
                   variant="header"
                 />
+              ) : null}
+              {/* Bouton panier d'adhésion : visible uniquement pour le
+                  payeur (canManageMembershipCart). Badge rouge avec le
+                  nombre d'items quand > 0. Tap → onglet Panier. */}
+              {canManageMembershipCart ? (
+                <AnimatedPressable
+                  onPress={() => navigation.navigate('Panier' as never)}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    cartItemsCount > 0
+                      ? `Panier d'adhésion : ${cartItemsCount} élément${
+                          cartItemsCount > 1 ? 's' : ''
+                        }`
+                      : "Ouvrir le panier d'adhésion"
+                  }
+                  haptic
+                  style={styles.cartIconBtn}
+                >
+                  <Ionicons name="basket" size={22} color="#ffffff" />
+                  {cartItemsCount > 0 ? (
+                    <View style={styles.cartIconBadge}>
+                      <Text style={styles.cartIconBadgeText}>
+                        {cartItemsCount > 9 ? '9+' : cartItemsCount}
+                      </Text>
+                    </View>
+                  ) : null}
+                </AnimatedPressable>
               ) : null}
             </View>
           </View>
@@ -243,6 +288,72 @@ export function HomeDashboardScreen() {
           ) : null}
 
           <JoinFamilyByPayerEmailCta variant="dashboard" />
+
+          {/* === BANNIÈRE PANIER EN COURS (payeur uniquement) === */}
+          {cartIsOpen ? (
+            <AnimatedPressable
+              onPress={() => navigation.navigate('Panier' as never)}
+              accessibilityRole="button"
+              accessibilityLabel={`Panier d'adhésion : ${cartItemsCount} membre${
+                cartItemsCount > 1 ? 's' : ''
+              }, total ${formatEuroCents(cart?.totalCents ?? 0)}`}
+              haptic
+              style={styles.cartBanner}
+            >
+              <View style={styles.cartBannerIcon}>
+                <Ionicons
+                  name="basket"
+                  size={22}
+                  color={palette.primary}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cartBannerTitle}>
+                  Panier d&rsquo;adhésion ({cartItemsCount})
+                </Text>
+                <Text style={styles.cartBannerSub}>
+                  Total {formatEuroCents(cart?.totalCents ?? 0)} —{' '}
+                  {cart?.canValidate
+                    ? 'prêt à valider'
+                    : 'à compléter'}
+                </Text>
+              </View>
+              <View style={styles.cartBannerCta}>
+                <Text style={styles.cartBannerCtaText}>Voir</Text>
+                <Ionicons
+                  name="arrow-forward"
+                  size={14}
+                  color={palette.primary}
+                />
+              </View>
+            </AnimatedPressable>
+          ) : null}
+
+          {/* === ACTIONS PAYEUR (inscriptions famille) ===
+              Visible pour tout membre qui peut gérer un panier d'adhésion
+              (typiquement le PAYER du foyer). Permet d'inscrire un enfant
+              ou d'inviter un autre membre sans devoir basculer vers
+              l'espace contact. Un Member-PAYER peut donc avoir SON espace
+              membre + ses CTAs famille au même endroit. */}
+          {canManageMembershipCart ? (
+            <Card title="Inscriptions famille">
+              <View style={{ gap: spacing.sm }}>
+                <RegisterChildMemberCta
+                  onSuccess={() => {
+                    void cartQ.refetch();
+                    navigation.navigate('Panier' as never);
+                  }}
+                />
+                <RegisterSelfMemberCta
+                  onSuccess={() => {
+                    void cartQ.refetch();
+                    navigation.navigate('Panier' as never);
+                  }}
+                />
+                {hasClubFamily ? <InviteFamilyMemberCta /> : null}
+              </View>
+            </Card>
+          ) : null}
 
           {/* === KPIs FACTURES (payeur uniquement) === */}
           {isPayer ? (
@@ -707,6 +818,82 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   linkText: { ...typography.bodyStrong, color: palette.primary },
+
+  // === Bouton panier dans le hero (header trailing) ===
+  cartIconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  cartIconBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 5,
+    borderRadius: 10,
+    backgroundColor: palette.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#ffffff',
+  },
+  cartIconBadgeText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 14,
+  },
+
+  // === Bannière panier d'adhésion ===
+  cartBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    backgroundColor: palette.primaryLight,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(37, 99, 235, 0.25)',
+  },
+  cartBannerIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: palette.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cartBannerTitle: { ...typography.bodyStrong, color: palette.ink },
+  cartBannerSub: {
+    ...typography.small,
+    color: palette.body,
+    marginTop: 2,
+  },
+  cartBannerCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    backgroundColor: palette.surface,
+    borderWidth: 1,
+    borderColor: 'rgba(37, 99, 235, 0.3)',
+  },
+  cartBannerCtaText: {
+    ...typography.smallStrong,
+    color: palette.primary,
+    fontSize: 12,
+  },
 
   // === Bannière documents à signer ===
   docsBanner: {

@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.15.0](https://github.com/florent427/ClubFlow/compare/v0.14.0...v0.15.0) (2026-05-04)
+
+
+### ✨ Features
+
+* **mobile:** EAS Build setup staging Android (APK installable) ([#56](https://github.com/florent427/ClubFlow/issues/56)) ([dc2846e](https://github.com/florent427/ClubFlow/commit/dc2846efd897a1dc7d08ea82a97b5b5dde4660da))
+
 ## [0.14.0](https://github.com/florent427/ClubFlow/compare/v0.13.2...v0.14.0) (2026-05-04)
 
 

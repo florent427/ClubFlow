@@ -2101,6 +2101,7 @@ export class ViewerService {
     patch: {
       billingRhythm?: SubscriptionBillingRhythm | null;
       membershipProductId?: string | null;
+      oneTimeFeeOverrideIds?: string[] | null;
     },
   ) {
     await this.assertViewerCanManageMembershipCart(clubId, activeProfile);
@@ -2108,6 +2109,7 @@ export class ViewerService {
     return this.membershipCart.updateItem(clubId, itemId, {
       billingRhythm: patch.billingRhythm ?? undefined,
       membershipProductId: patch.membershipProductId ?? undefined,
+      oneTimeFeeOverrideIds: patch.oneTimeFeeOverrideIds ?? null,
     });
   }
 
@@ -2133,6 +2135,7 @@ export class ViewerService {
       pendingItemId: string;
       membershipProductIds: string[];
       billingRhythm: SubscriptionBillingRhythm;
+      oneTimeFeeOverrideIds?: string[] | null;
     },
   ): Promise<{ cartId: string }> {
     await this.assertViewerCanManageMembershipCart(clubId, activeProfile);
@@ -2153,7 +2156,42 @@ export class ViewerService {
     return this.membershipCart.updatePendingItem(clubId, input.pendingItemId, {
       membershipProductIds: input.membershipProductIds,
       billingRhythm: input.billingRhythm,
+      oneTimeFeeOverrideIds: input.oneTimeFeeOverrideIds ?? null,
     });
+  }
+
+  /**
+   * Toggle "j'ai déjà une licence" sur une inscription EN ATTENTE.
+   * Réutilise la même logique de validation regex que pour les items
+   * existants (cf. membership-cart.service.toggleExistingLicense).
+   */
+  async viewerTogglePendingItemLicense(
+    clubId: string,
+    activeProfile: { memberId: string | null; contactId: string | null },
+    pendingItemId: string,
+    hasExistingLicense: boolean,
+    existingLicenseNumber: string | null,
+  ): Promise<{ cartId: string }> {
+    await this.assertViewerCanManageMembershipCart(clubId, activeProfile);
+    const familyId = await this.resolveViewerFamilyId(clubId, activeProfile);
+    if (!familyId) {
+      throw new BadRequestException('Aucun foyer associé au profil.');
+    }
+    const pending = await this.prisma.membershipCartPendingItem.findFirst({
+      where: { id: pendingItemId, cart: { clubId, familyId } },
+      select: { id: true, cartId: true },
+    });
+    if (!pending) {
+      throw new NotFoundException(
+        'Inscription en attente introuvable pour votre foyer.',
+      );
+    }
+    return this.membershipCart.togglePendingItemLicense(
+      clubId,
+      pendingItemId,
+      hasExistingLicense,
+      existingLicenseNumber,
+    );
   }
 
   /**

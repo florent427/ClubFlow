@@ -106,6 +106,23 @@ export const VIEWER_REGISTER_CHILD_MEMBER = gql`
   }
 `;
 
+/**
+ * Inscrit le viewer lui-même au panier d'adhésion (PendingItem).
+ * Utilise l'identité du User connecté (pas de firstName/lastName en
+ * input — auto-remplis côté backend). Le Member sera créé à la
+ * validation du panier, comme pour les enfants.
+ */
+export const VIEWER_REGISTER_SELF_AS_MEMBER = gql`
+  mutation ViewerRegisterSelfAsMember($input: ViewerRegisterSelfAsMemberInput!) {
+    viewerRegisterSelfAsMember(input: $input) {
+      pendingItemId
+      cartId
+      firstName
+      lastName
+    }
+  }
+`;
+
 // =====================================================
 // Famille — invitations
 // =====================================================
@@ -432,5 +449,25 @@ export const VIEWER_BOOK_COURSE_SLOT = gql`
 export const VIEWER_CANCEL_COURSE_SLOT_BOOKING = gql`
   mutation ViewerCancelCourseSlotBooking($slotId: ID!) {
     viewerCancelCourseSlotBooking(slotId: $slotId)
+  }
+`;
+
+export const VIEWER_ELIGIBLE_MEMBERSHIP_FORMULAS = gql`
+  query ViewerEligibleMembershipFormulas(
+    $birthDate: String!
+    $identityFirstName: String
+    $identityLastName: String
+  ) {
+    viewerEligibleMembershipFormulas(
+      birthDate: $birthDate
+      identityFirstName: $identityFirstName
+      identityLastName: $identityLastName
+    ) {
+      id
+      label
+      annualAmountCents
+      monthlyAmountCents
+      alreadyTakenInSeason
+    }
   }
 `;
