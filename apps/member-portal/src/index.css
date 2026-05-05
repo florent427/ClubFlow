@@ -368,6 +368,33 @@ body {
   text-align: center;
 }
 
+/* Club rattaché — affiché sur chaque carte SelectProfile pour
+   différencier les profils multi-clubs. */
+.profile-club {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  border: 1px solid #e5e7eb;
+  font-size: 0.7rem;
+  color: #475569;
+  font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-club__logo {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
 .profile-badge {
   font-size: 0.65rem;
   font-weight: 700;
