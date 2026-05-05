@@ -3552,6 +3552,111 @@ a:focus-visible {
   gap: 8px;
 }
 
+/* === Bannière panier d'adhésion sur dashboard (parité mobile) === */
+.mp-cart-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border: 1px solid rgba(21, 101, 192, 0.25);
+  border-radius: 12px;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.mp-cart-banner:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(21, 101, 192, 0.12);
+}
+.mp-cart-banner__ico {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 22px;
+  background: #ffffff;
+  color: #1565c0;
+  font-size: 24px !important;
+  flex-shrink: 0;
+}
+.mp-cart-banner__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mp-cart-banner__body strong {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+.mp-cart-banner__body small {
+  font-size: 0.8rem;
+  color: #475569;
+}
+.mp-pill-primary {
+  background: #1565c0;
+  color: #ffffff;
+}
+
+/* === KPIs payeur (Reste à payer / Déjà réglé) — tiles cliquables === */
+.mp-kpi-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.mp-kpi-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  position: relative;
+}
+.mp-kpi-tile:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+.mp-kpi-tile__ico {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 20px !important;
+}
+.mp-kpi-tile--cool .mp-kpi-tile__ico {
+  background: #e0f2fe;
+  color: #075985;
+}
+.mp-kpi-tile--warm {
+  border-color: rgba(146, 64, 14, 0.25);
+  background: #fffbeb;
+}
+.mp-kpi-tile__label {
+  font-size: 0.75rem;
+  color: #64748b;
+  font-weight: 600;
+}
+.mp-kpi-tile__value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
 /* === Section frais ponctuels (LICENSE / MANDATORY / OPTIONAL) === */
 .cart-fees {
   margin-top: 12px;
