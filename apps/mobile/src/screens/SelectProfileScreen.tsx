@@ -213,6 +213,13 @@ export function SelectProfileScreen({ navigation }: Props) {
                       <Text style={styles.name}>
                         {p.firstName} {p.lastName}
                       </Text>
+                      {/* Nom du club visible en permanence pour différencier
+                          les profils multi-clubs (parité web). */}
+                      {p.clubName ? (
+                        <Text style={styles.clubName} numberOfLines={1}>
+                          {p.clubName}
+                        </Text>
+                      ) : null}
                       {badge ? (
                         <View style={{ marginTop: spacing.xs, alignSelf: 'flex-start' }}>
                           <Pill
@@ -327,6 +334,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   name: { ...typography.h3, color: palette.ink },
+  clubName: {
+    ...typography.small,
+    color: palette.muted,
+    marginTop: 2,
+  },
 
   footerActions: {
     marginTop: spacing.xl,
