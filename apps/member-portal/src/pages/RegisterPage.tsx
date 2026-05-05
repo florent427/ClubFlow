@@ -70,6 +70,11 @@ export function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [alreadyExists, setAlreadyExists] = useState(false);
   const [done, setDone] = useState(false);
+  // Cas multi-tenant : User déjà vérifié sur un autre club, Contact créé
+  // direct sans email de vérif. On affiche un écran "Inscription terminée"
+  // au lieu de "Vérifiez votre email" (sinon le user attend un mail qui
+  // ne viendra jamais).
+  const [doneSkipMail, setDoneSkipMail] = useState(false);
 
   const [register, { loading }] = useMutation<RegisterContactData>(
     REGISTER_CONTACT,
@@ -84,7 +89,7 @@ export function RegisterPage() {
     setError(null);
     setAlreadyExists(false);
     try {
-      await register({
+      const { data } = await register({
         variables: {
           input: {
             email: email.trim().toLowerCase(),
@@ -97,7 +102,11 @@ export function RegisterPage() {
           },
         },
       });
-      setDone(true);
+      if (data?.registerContact.requiresEmailVerification === false) {
+        setDoneSkipMail(true);
+      } else {
+        setDone(true);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '';
       if (msg.includes('USER_ALREADY_EXISTS')) {
@@ -106,6 +115,29 @@ export function RegisterPage() {
       }
       setError(err instanceof Error ? err.message : 'Inscription impossible.');
     }
+  }
+
+  if (doneSkipMail) {
+    return (
+      <div className="auth-page">
+        <div className="auth-card">
+          <header className="auth-header">
+            <p className="auth-eyebrow">ClubFlow</p>
+            <h1>Inscription terminée</h1>
+            <p className="auth-sub">
+              Votre compte <strong>{email.trim()}</strong> est déjà
+              vérifié{club ? ` — vous rejoignez ${club.name} immédiatement` : ''}.
+              Connectez-vous pour accéder à votre espace.
+            </p>
+          </header>
+          <p className="auth-footer">
+            <Link to={loginLink} className="auth-btn">
+              Se connecter
+            </Link>
+          </p>
+        </div>
+      </div>
+    );
   }
 
   if (done) {
