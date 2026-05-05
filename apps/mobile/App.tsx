@@ -134,6 +134,8 @@ export default function App() {
           SelectClub: 'select-club',
           Login: 'login',
           Register: 'register',
+          ForgotPassword: 'forgot-password',
+          ResetPassword: 'reset-password',
           VerifyEmail: 'verify-email',
           SelectProfile: 'select-profile',
           Main: 'main',
