@@ -27,6 +27,24 @@ export const REGISTER_CONTACT = gql`
   }
 `;
 
+/**
+ * Vue publique d'un club par son slug — utilisé par RegisterPage pour
+ * afficher "Vous rejoignez X" quand l'URL contient `?club=<slug>`.
+ * Pas d'auth requise.
+ */
+export const CLUB_BY_SLUG = gql`
+  query ClubBySlug($slug: String!) {
+    clubBySlug(slug: $slug) {
+      id
+      slug
+      name
+      logoUrl
+      customDomain
+      tagline
+    }
+  }
+`;
+
 export const VERIFY_EMAIL = gql`
   mutation VerifyEmail($input: VerifyEmailInput!) {
     verifyEmail(input: $input) {

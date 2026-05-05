@@ -39,6 +39,8 @@ export type DocumentsStackParamList = {
 };
 
 export type RootStackParamList = {
+  /** Sélection du club au 1er lancement (multi-tenant). */
+  SelectClub: undefined;
   Login: undefined;
   Register: undefined;
   VerifyEmail: { token?: string } | undefined;

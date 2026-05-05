@@ -153,7 +153,24 @@ export class AuthService {
   }
 
   async registerContact(input: RegisterContactInput): Promise<RegisterContactResult> {
-    const clubId = this.clubIdFromEnv();
+    // Multi-tenant : si `clubSlug` fourni (via `?club=` portail ou
+    // SelectClub mobile), on résout le club correspondant. Fallback sur
+    // CLUB_ID env (compat mono-tenant historique pour SKSR).
+    let clubId: string;
+    if (input.clubSlug) {
+      const club = await this.prisma.club.findUnique({
+        where: { slug: input.clubSlug },
+        select: { id: true },
+      });
+      if (!club) {
+        throw new BadRequestException(
+          `Club « ${input.clubSlug} » introuvable.`,
+        );
+      }
+      clubId = club.id;
+    } else {
+      clubId = this.clubIdFromEnv();
+    }
     const email = input.email.trim().toLowerCase();
     const passwordHash = await bcrypt.hash(input.password, 10);
     const displayName = `${input.firstName} ${input.lastName}`.trim();

@@ -10,14 +10,23 @@ const httpLink = new HttpLink({ uri });
 
 const authLink = setContext(async (_, { headers }) => {
   const token = await storage.getToken();
-  const clubId = await storage.getClubId();
+  // x-club-id fallback : 1) token club id (post-login),
+  //                     2) selectedClub.id (pré-login, choisi sur SelectClubScreen).
+  // Permet aux queries publiques (clubBranding, clubBySlug) de viser le
+  // bon tenant avant que l'utilisateur n'ait un Member/Contact.
+  const tokenClubId = await storage.getClubId();
+  let effectiveClubId = tokenClubId;
+  if (!effectiveClubId) {
+    const selected = await storage.getSelectedClub();
+    if (selected) effectiveClubId = selected.id;
+  }
   const authHeader =
     token && token.length > 0 ? { Authorization: `Bearer ${token}` } : {};
   return {
     headers: {
       ...headers,
       ...authHeader,
-      ...(clubId ? { 'x-club-id': clubId } : {}),
+      ...(effectiveClubId ? { 'x-club-id': effectiveClubId } : {}),
       'x-clubflow-client': 'mobile',
     },
   };
