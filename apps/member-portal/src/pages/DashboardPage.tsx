@@ -22,8 +22,15 @@ import {
   slotCalendarBits,
 } from '../lib/format';
 import { DocumentsToSignBanner } from '../components/DocumentsToSignBanner';
+import { InviteFamilyMemberCta } from '../components/InviteFamilyMemberCta';
 import { JoinFamilyByPayerEmailCta } from '../components/JoinFamilyByPayerEmailCta';
 import { MemberRoleToggle } from '../components/MemberRoleToggle';
+import { PromoteSelfToMemberCta } from '../components/PromoteSelfToMemberCta';
+import { RegisterChildMemberCta } from '../components/RegisterChildMemberCta';
+import {
+  VIEWER_ACTIVE_CART,
+  type ViewerActiveCartData,
+} from '../lib/cart-documents';
 
 function SlotCard({ slot }: { slot: ViewerSlot }) {
   const { weekday, dayNum } = slotCalendarBits(slot.startsAt);
@@ -77,6 +84,26 @@ export function DashboardPage() {
     billing?.invoices.filter((i) => i.balanceCents > 0) ?? [];
 
   const cert = medicalCertState(me?.medicalCertExpiresAt ?? null);
+
+  // Bannière panier d'adhésion + CTAs inscriptions famille — parité
+  // mobile (cf. apps/mobile/src/screens/HomeDashboardScreen.tsx).
+  const canManageMembershipCart =
+    meData?.viewerMe?.canManageMembershipCart === true;
+  const hasClubFamily = meData?.viewerMe?.hasClubFamily === true;
+  const isContactProfile = meData?.viewerMe?.isContactProfile === true;
+  const cartQ = useQuery<ViewerActiveCartData>(VIEWER_ACTIVE_CART, {
+    skip: !canManageMembershipCart,
+    fetchPolicy: 'cache-and-network',
+  });
+  const cart = cartQ.data?.viewerActiveMembershipCart ?? null;
+  const cartItemsCount =
+    (cart?.items.length ?? 0) + (cart?.pendingItems.length ?? 0);
+  const cartIsOpen = cart?.status === 'OPEN' && cartItemsCount > 0;
+
+  // KPIs payeur (Reste à payer / Déjà réglé) — parité mobile.
+  const totalBalance = openInvoices.reduce((s, i) => s + i.balanceCents, 0);
+  const totalPaid =
+    billing?.invoices.reduce((s, i) => s + i.totalPaidCents, 0) ?? 0;
 
   return (
     <div className="mp-page">
@@ -152,6 +179,82 @@ export function DashboardPage() {
       </section>
 
       <JoinFamilyByPayerEmailCta variant="dashboard" />
+
+      {/* Bannière panier en cours (cliquable vers /adhesion) — visible
+          dès que le payeur a ≥1 item dans son cart actif. Parité mobile. */}
+      {cartIsOpen ? (
+        <Link to="/adhesion" className="mp-cart-banner">
+          <span
+            className="material-symbols-outlined mp-cart-banner__ico"
+            aria-hidden="true"
+          >
+            shopping_basket
+          </span>
+          <div className="mp-cart-banner__body">
+            <strong>Panier d&rsquo;adhésion ({cartItemsCount})</strong>
+            <small>
+              Total {formatEuroCents(cart?.totalCents ?? 0)} —{' '}
+              {cart?.canValidate ? 'prêt à valider' : 'à compléter'}
+            </small>
+          </div>
+          <span className="mp-pill mp-pill-primary">Voir</span>
+        </Link>
+      ) : null}
+
+      {/* KPIs payeur (Reste à payer / Déjà réglé) — cliquables vers
+          /famille. Affichés uniquement si l'utilisateur est PAYER. */}
+      {isPayer ? (
+        <div className="mp-kpi-row">
+          <Link
+            to="/famille"
+            className={`mp-kpi-tile${totalBalance > 0 ? ' mp-kpi-tile--warm' : ''}`}
+          >
+            <span
+              className="material-symbols-outlined mp-kpi-tile__ico"
+              aria-hidden="true"
+            >
+              account_balance_wallet
+            </span>
+            <span className="mp-kpi-tile__label">Reste à payer</span>
+            <span className="mp-kpi-tile__value">
+              {billQ.loading && !billing
+                ? '…'
+                : formatEuroCents(totalBalance)}
+            </span>
+          </Link>
+          <Link to="/famille" className="mp-kpi-tile mp-kpi-tile--cool">
+            <span
+              className="material-symbols-outlined mp-kpi-tile__ico"
+              aria-hidden="true"
+            >
+              check_circle
+            </span>
+            <span className="mp-kpi-tile__label">Déjà réglé</span>
+            <span className="mp-kpi-tile__value">
+              {billQ.loading && !billing
+                ? '…'
+                : formatEuroCents(totalPaid)}
+            </span>
+          </Link>
+        </div>
+      ) : null}
+
+      {/* Inscriptions famille (PAYER uniquement) — modales déjà présentes
+          dans les composants existants : RegisterChild + PromoteSelf
+          + InviteFamily. Parité avec l'app mobile. */}
+      {canManageMembershipCart ? (
+        <section className="mp-panel">
+          <h2 className="mp-panel-title">Inscriptions famille</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <RegisterChildMemberCta />
+            {/* PromoteSelf : visible uniquement si l'utilisateur n'est
+                pas encore Member sur ce club (sinon = doublon
+                d'inscription). isContactProfile true ⇒ pur Contact. */}
+            {isContactProfile ? <PromoteSelfToMemberCta /> : null}
+            {hasClubFamily ? <InviteFamilyMemberCta /> : null}
+          </div>
+        </section>
+      ) : null}
 
       <div
         className={`mp-dashboard-grid${hideMemberModules ? ' mp-dashboard-grid--billing-only' : ''}`}
