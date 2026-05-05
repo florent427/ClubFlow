@@ -43,6 +43,8 @@ export type RootStackParamList = {
   SelectClub: undefined;
   Login: undefined;
   Register: undefined;
+  ForgotPassword: undefined;
+  ResetPassword: { token?: string } | undefined;
   VerifyEmail: { token?: string } | undefined;
   SelectProfile: undefined;
   Main: undefined;

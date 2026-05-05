@@ -55,6 +55,22 @@ export type RegisterContactData = {
   registerContact: { ok: boolean; requiresEmailVerification: boolean };
 };
 
+export type RequestPasswordResetData = {
+  requestPasswordReset: { ok: boolean };
+};
+
+export type ResetPasswordData = {
+  resetPassword: {
+    accessToken: string;
+    contactClubId: string | null;
+    viewerProfiles: Array<{
+      memberId: string | null;
+      contactId: string | null;
+      clubId: string;
+    }>;
+  };
+};
+
 export type VerifyEmailData = {
   verifyEmail: {
     accessToken: string;

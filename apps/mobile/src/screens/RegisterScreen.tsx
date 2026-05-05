@@ -19,6 +19,7 @@ import {
   GradientButton,
   TextField,
 } from '../components/ui';
+import { AuthClubBanner } from '../components/AuthClubBanner';
 import { REGISTER_CONTACT } from '../lib/documents';
 import * as storage from '../lib/storage';
 import {
@@ -226,6 +227,17 @@ export function RegisterScreen() {
         >
           <View style={styles.cardWrap}>
             <View style={styles.card}>
+              {/* Banner club courant — parité web (?club= dans URL).
+                  Lien "Changer" reset selectedClub + nav SelectClub. */}
+              <AuthClubBanner
+                onChangeClub={async () => {
+                  await storage.clearSelectedClub();
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'SelectClub' }],
+                  });
+                }}
+              />
               <View style={styles.row}>
                 <TextField
                   label="Prénom"
