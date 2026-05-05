@@ -65,7 +65,21 @@ export function MoreMenuScreen() {
   const hideMemberModules = meData?.viewerMe?.hideMemberModules === true;
   const docsToSignCount = docsData?.viewerDocumentsToSign?.length ?? 0;
 
+  const canManageMembershipCart =
+    meData?.viewerMe?.canManageMembershipCart === true;
+
   const tiles: Tile[] = [
+    ...(canManageMembershipCart
+      ? ([
+          {
+            key: 'panier',
+            label: 'Panier d’adhésion',
+            icon: 'basket-outline',
+            target: 'Panier',
+            tone: 'primary',
+          },
+        ] as Tile[])
+      : []),
     {
       key: 'docs',
       label: 'Documents',

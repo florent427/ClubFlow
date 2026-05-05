@@ -52,12 +52,20 @@ function toMembershipOneTimeFeeGraph(row: {
   clubId: string;
   label: string;
   amountCents: number;
+  kind: MembershipOneTimeFeeGraph['kind'];
+  autoApply: boolean;
+  licenseNumberPattern: string | null;
+  licenseNumberFormatHint: string | null;
 }): MembershipOneTimeFeeGraph {
   return {
     id: row.id,
     clubId: row.clubId,
     label: row.label,
     amountCents: row.amountCents,
+    kind: row.kind,
+    autoApply: row.autoApply,
+    licenseNumberPattern: row.licenseNumberPattern,
+    licenseNumberFormatHint: row.licenseNumberFormatHint,
   };
 }
 

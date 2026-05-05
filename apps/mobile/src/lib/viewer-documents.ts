@@ -106,6 +106,23 @@ export const VIEWER_REGISTER_CHILD_MEMBER = gql`
   }
 `;
 
+/**
+ * Inscrit le viewer lui-même au panier d'adhésion (PendingItem).
+ * Utilise l'identité du User connecté (pas de firstName/lastName en
+ * input — auto-remplis côté backend). Le Member sera créé à la
+ * validation du panier, comme pour les enfants.
+ */
+export const VIEWER_REGISTER_SELF_AS_MEMBER = gql`
+  mutation ViewerRegisterSelfAsMember($input: ViewerRegisterSelfAsMemberInput!) {
+    viewerRegisterSelfAsMember(input: $input) {
+      pendingItemId
+      cartId
+      firstName
+      lastName
+    }
+  }
+`;
+
 // =====================================================
 // Famille — invitations
 // =====================================================

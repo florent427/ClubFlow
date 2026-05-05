@@ -639,6 +639,7 @@ export class MembershipCartService {
     patch: {
       membershipProductIds: string[];
       billingRhythm: SubscriptionBillingRhythm;
+      oneTimeFeeOverrideIds?: string[] | null;
     },
   ): Promise<{ cartId: string }> {
     const item = await this.prisma.membershipCartPendingItem.findFirst({
@@ -720,9 +721,83 @@ export class MembershipCartService {
       data: {
         membershipProductIds: patch.membershipProductIds,
         billingRhythm: patch.billingRhythm,
+        ...(patch.oneTimeFeeOverrideIds !== undefined
+          ? {
+              oneTimeFeeOverrideIdsCsv:
+                patch.oneTimeFeeOverrideIds && patch.oneTimeFeeOverrideIds.length > 0
+                  ? patch.oneTimeFeeOverrideIds.join(',')
+                  : null,
+            }
+          : {}),
       },
     });
     return { cartId: item.cart.id };
+  }
+
+  /**
+   * Toggle "j'ai déjà une licence pour la saison" sur un pending. Mêmes
+   * règles de validation regex que pour un cart item (cf. méthode
+   * `toggleExistingLicense`). Refactor candidat — pour l'instant on
+   * duplique car le pending et l'item ont des PK différentes.
+   */
+  async togglePendingItemLicense(
+    clubId: string,
+    pendingItemId: string,
+    hasExistingLicense: boolean,
+    existingLicenseNumber: string | null,
+  ): Promise<{ cartId: string }> {
+    const pending = await this.prisma.membershipCartPendingItem.findFirst({
+      where: { id: pendingItemId, cart: { clubId } },
+      select: { id: true, cartId: true, convertedToMemberId: true },
+    });
+    if (!pending) {
+      throw new NotFoundException('Inscription en attente introuvable.');
+    }
+    if (pending.convertedToMemberId !== null) {
+      throw new BadRequestException(
+        'Inscription déjà convertie — éditez la fiche membre.',
+      );
+    }
+    if (hasExistingLicense) {
+      if (!existingLicenseNumber || existingLicenseNumber.trim().length < 3) {
+        throw new BadRequestException(
+          'Numéro de licence obligatoire (au moins 3 caractères).',
+        );
+      }
+      const licenseFee = await this.prisma.membershipOneTimeFee.findFirst({
+        where: {
+          clubId,
+          archivedAt: null,
+          kind: 'LICENSE',
+          licenseNumberPattern: { not: null },
+        },
+      });
+      if (licenseFee?.licenseNumberPattern) {
+        let regex: RegExp;
+        try {
+          regex = new RegExp(licenseFee.licenseNumberPattern);
+        } catch {
+          regex = /.+/;
+        }
+        if (!regex.test(existingLicenseNumber.trim())) {
+          throw new BadRequestException(
+            licenseFee.licenseNumberFormatHint
+              ? `Format invalide. Attendu : ${licenseFee.licenseNumberFormatHint}`
+              : `Format invalide (regex ${licenseFee.licenseNumberPattern}).`,
+          );
+        }
+      }
+    }
+    await this.prisma.membershipCartPendingItem.update({
+      where: { id: pendingItemId },
+      data: {
+        hasExistingLicense,
+        existingLicenseNumber: hasExistingLicense
+          ? existingLicenseNumber!.trim()
+          : null,
+      },
+    });
+    return { cartId: pending.cartId };
   }
 
   /**
@@ -829,6 +904,37 @@ export class MembershipCartService {
         throw new BadRequestException(
           'Numéro de licence obligatoire (au moins 3 caractères).',
         );
+      }
+      // Si le club a configuré un pattern sur la fee LICENSE active,
+      // valide le numéro saisi contre ce pattern. Source de vérité =
+      // serveur (UI peut tricher). Si plusieurs LICENSE fees existent,
+      // on prend celle qui a un pattern défini (cas marginal — un club
+      // n'a typiquement qu'une seule fédération).
+      const licenseFee = await this.prisma.membershipOneTimeFee.findFirst({
+        where: {
+          clubId,
+          archivedAt: null,
+          kind: 'LICENSE',
+          licenseNumberPattern: { not: null },
+        },
+      });
+      if (licenseFee?.licenseNumberPattern) {
+        let regex: RegExp;
+        try {
+          regex = new RegExp(licenseFee.licenseNumberPattern);
+        } catch {
+          // Pattern admin invalide — on log mais on n'empêche pas la
+          // saisie (regression safety). L'admin doit corriger sa regex.
+          regex = /.+/;
+        }
+        const trimmed = existingLicenseNumber.trim();
+        if (!regex.test(trimmed)) {
+          throw new BadRequestException(
+            licenseFee.licenseNumberFormatHint
+              ? `Format invalide. Attendu : ${licenseFee.licenseNumberFormatHint}`
+              : `Format invalide (regex ${licenseFee.licenseNumberPattern}).`,
+          );
+        }
       }
     }
     return this.prisma.membershipCartItem.update({
@@ -969,11 +1075,18 @@ export class MembershipCartService {
    */
   async getCartFullForGraph(clubId: string, cartId: string) {
     const cart = await this.getCartById(clubId, cartId);
-    const [preview, productsById] = await Promise.all([
+    const [preview, productsById, clubOneTimeFees] = await Promise.all([
       this.computeCartPreview(clubId, cartId),
       this.loadProductsForCartPendingItems(clubId, cart),
+      // Catalogue complet des fees actifs du club — exposé sur le Cart
+      // pour que l'UI panier puisse afficher la décomposition par item
+      // (LICENSE / MANDATORY / OPTIONAL) sans round-trip supplémentaire.
+      this.prisma.membershipOneTimeFee.findMany({
+        where: { clubId, archivedAt: null },
+        orderBy: [{ kind: 'asc' }, { label: 'asc' }],
+      }),
     ]);
-    return { cart, preview, productsById };
+    return { cart, preview, productsById, clubOneTimeFees };
   }
 
   /**
@@ -1267,12 +1380,19 @@ export class MembershipCartService {
       // avec validateCart).
       subtotalByItemKey.set(item.id, subtotalAfterBusinessCents);
 
-      // Frais uniques auto-applicables filtrés par licence
+      // Frais uniques effectifs : LICENSE skippé si déjà déclarée,
+      // MANDATORY toujours, OPTIONAL selon override (sinon autoApply).
+      const itemOverrideIds =
+        item.oneTimeFeeOverrideIdsCsv && item.oneTimeFeeOverrideIdsCsv.length > 0
+          ? new Set(item.oneTimeFeeOverrideIdsCsv.split(',').filter(Boolean))
+          : null;
       const effectiveFees = autoFees.filter((f) => {
         if (f.kind === MembershipOneTimeFeeKind.LICENSE) {
           return !item.hasExistingLicense;
         }
-        return true;
+        if (f.kind === MembershipOneTimeFeeKind.MANDATORY) return true;
+        if (itemOverrideIds === null) return true;
+        return itemOverrideIds.has(f.id);
       });
       let feesTotal = 0;
       for (const f of effectiveFees) {
@@ -1385,10 +1505,23 @@ export class MembershipCartService {
       // par cart item.
       familyCursor += 1;
 
-      // Frais auto : licence (sauf si déclarée existante — pas dispo en
-      // pending v1 car la license se déclare après validation), cotisation
-      // foyer, etc. On applique tous les frais autoApply.
-      const effectiveFees = autoFees.filter(() => true);
+      // Pending overrides : si l'utilisateur a coché "j'ai déjà une
+      // licence" sur le pending, on skip la fee LICENSE. S'il a fourni
+      // une override de OPTIONAL, on suit son choix (sinon autoApply).
+      const pendingOverrideIds =
+        p.oneTimeFeeOverrideIdsCsv && p.oneTimeFeeOverrideIdsCsv.length > 0
+          ? new Set(p.oneTimeFeeOverrideIdsCsv.split(',').filter(Boolean))
+          : null;
+      const effectiveFees = autoFees.filter((f) => {
+        if (f.kind === MembershipOneTimeFeeKind.LICENSE) {
+          return !p.hasExistingLicense;
+        }
+        if (f.kind === MembershipOneTimeFeeKind.MANDATORY) return true;
+        // OPTIONAL — override l'emporte si défini, sinon autoApply
+        // (déjà filtré dans la query autoFees).
+        if (pendingOverrideIds === null) return true;
+        return pendingOverrideIds.has(f.id);
+      });
       let feesTotal = 0;
       for (const f of effectiveFees) {
         feesTotal += f.amountCents;
@@ -1785,12 +1918,19 @@ export class MembershipCartService {
         },
       });
 
-      // Frais uniques auto
+      // Frais uniques effectifs (LICENSE skip / OPTIONAL override) —
+      // logique identique au preview pour cohérence prix UI ↔ facture.
+      const itemOverrideIds =
+        item.oneTimeFeeOverrideIdsCsv && item.oneTimeFeeOverrideIdsCsv.length > 0
+          ? new Set(item.oneTimeFeeOverrideIdsCsv.split(',').filter(Boolean))
+          : null;
       const effectiveFees = autoFees.filter((f) => {
         if (f.kind === MembershipOneTimeFeeKind.LICENSE) {
           return !item.hasExistingLicense;
         }
-        return true;
+        if (f.kind === MembershipOneTimeFeeKind.MANDATORY) return true;
+        if (itemOverrideIds === null) return true;
+        return itemOverrideIds.has(f.id);
       });
       for (const fee of effectiveFees) {
         invoiceBaseCents += fee.amountCents;
@@ -2182,6 +2322,9 @@ export class MembershipCartService {
           },
         });
         if (existing) continue;
+        // Propage license + override de frais OPTIONAL du pending vers
+        // chaque cart item créé (sinon le payeur perdrait ses choix
+        // faits sur l'inscription en attente à la validation).
         await this.prisma.membershipCartItem.create({
           data: {
             cartId,
@@ -2189,6 +2332,9 @@ export class MembershipCartService {
             membershipProductId: productId,
             requiresManualAssignment: false,
             billingRhythm: p.billingRhythm,
+            hasExistingLicense: p.hasExistingLicense,
+            existingLicenseNumber: p.existingLicenseNumber,
+            oneTimeFeeOverrideIdsCsv: p.oneTimeFeeOverrideIdsCsv,
           },
         });
       }
