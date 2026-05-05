@@ -30,9 +30,6 @@ export function RegisterPage() {
     if (urlReturnTo) rememberReturnTo(urlReturnTo);
   }, [urlReturnTo]);
   const returnTo = urlReturnTo ?? peekReturnTo();
-  const loginLink = returnTo
-    ? `/login?returnTo=${encodeURIComponent(returnTo)}`
-    : '/login';
 
   // Multi-tenant : `?club=<slug>` détermine le club d'inscription.
   // Si absent, on tombe sur le fallback `CLUB_ID` env (compat SKSR
@@ -48,6 +45,16 @@ export function RegisterPage() {
   );
   const club = clubData?.clubBySlug ?? null;
   const clubSlugInvalid = clubSlug != null && !clubLoading && club == null;
+
+  // Lien vers /login en propageant returnTo + club pour homogénéité
+  // visuelle (banner club brandé sur les 2 pages).
+  const loginLink = (() => {
+    const qs = new URLSearchParams();
+    if (returnTo) qs.set('returnTo', returnTo);
+    if (clubSlug) qs.set('club', clubSlug);
+    const q = qs.toString();
+    return q ? `/login?${q}` : '/login';
+  })();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
