@@ -150,6 +150,13 @@ export function UserMenu({
   ).toUpperCase()}`;
   const fullName = `${me?.firstName ?? ''} ${me?.lastName ?? ''}`.trim() || '—';
 
+  // Profils du foyer SUR CE CLUB UNIQUEMENT. Les profils sur d'autres
+  // clubs (autre tenant) sont accessibles via "Changer de profil / club"
+  // qui ramène à SelectProfile avec la liste complète.
+  const currentClubProfiles = currentClubId
+    ? profiles.filter((p) => p.clubId === currentClubId)
+    : profiles;
+
   return (
     <div className="user-menu" ref={containerRef}>
       <button
@@ -195,12 +202,15 @@ export function UserMenu({
             </div>
           </div>
 
-          {/* Profils du foyer (si N > 1 — sinon caché) */}
-          {profiles.length > 1 ? (
+          {/* Profils du foyer du CLUB COURANT uniquement (membres du
+              foyer sur ce club). Les profils sur d'autres clubs sont
+              accessibles via "Changer de profil / club" — sinon
+              "Profils du foyer" est faux sémantiquement. */}
+          {currentClubProfiles.length > 1 ? (
             <>
               <div className="user-menu__section-title">Profils du foyer</div>
               <ul className="user-menu__profile-list">
-                {profiles.map((p) => (
+                {currentClubProfiles.map((p) => (
                   <li key={profileRowKey(p)}>
                     <button
                       type="button"
