@@ -48,4 +48,17 @@ export class ViewerProfileGraph {
       'au lieu d\'une simple chip avec initiales.',
   })
   photoUrl!: string | null;
+
+  /**
+   * Nom du club rattaché à ce profil — affiché sur les cartes
+   * SelectProfile pour différencier visuellement les profils quand un
+   * user a 2 espaces sur 2 clubs différents (ex: "Florent Morel — Demo
+   * Staging" vs "Florent Morel — Club Demo").
+   */
+  @Field(() => String, { nullable: true })
+  clubName!: string | null;
+
+  /** Logo du club pour l'avatar de la carte SelectProfile. */
+  @Field(() => String, { nullable: true })
+  clubLogoUrl!: string | null;
 }

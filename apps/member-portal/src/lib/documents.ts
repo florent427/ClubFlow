@@ -117,6 +117,8 @@ export const VIEWER_PROFILES = gql`
       isPrimaryProfile
       familyId
       householdGroupId
+      clubName
+      clubLogoUrl
     }
   }
 `;
