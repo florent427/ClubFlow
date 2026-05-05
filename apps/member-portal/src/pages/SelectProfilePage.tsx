@@ -163,6 +163,20 @@ export function SelectProfilePage() {
                   <span className="profile-name">
                     {p.firstName} {p.lastName}
                   </span>
+                  {/* Club rattaché — visible en permanence pour
+                      différencier les profils multi-clubs. */}
+                  {p.clubName ? (
+                    <span className="profile-club">
+                      {p.clubLogoUrl ? (
+                        <img
+                          src={p.clubLogoUrl}
+                          alt=""
+                          className="profile-club__logo"
+                        />
+                      ) : null}
+                      <span>{p.clubName}</span>
+                    </span>
+                  ) : null}
                   {badge ? (
                     <span className="profile-badge">{badge}</span>
                   ) : null}

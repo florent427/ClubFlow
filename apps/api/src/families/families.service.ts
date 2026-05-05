@@ -219,11 +219,17 @@ export class FamiliesService {
       p.memberId ? `m:${p.memberId}` : `c:${p.contactId!}`;
     const byKey = new Map<string, ViewerProfileGraph>();
 
-    const putProfile = (p: ViewerProfileGraph) => {
-      const key = profileKey(p);
+    // putProfile reçoit le shape "minimal" sans clubName/clubLogoUrl
+    // (résolus en batch tout à la fin via this.prisma.club.findMany).
+    type ProfileInput = Omit<
+      ViewerProfileGraph,
+      'clubName' | 'clubLogoUrl'
+    >;
+    const putProfile = (p: ProfileInput) => {
+      const key = profileKey(p as ViewerProfileGraph);
       const prev = byKey.get(key);
       if (!prev) {
-        byKey.set(key, p);
+        byKey.set(key, { ...p, clubName: null, clubLogoUrl: null });
         return;
       }
       byKey.set(key, {
@@ -238,6 +244,8 @@ export class FamiliesService {
         // Préserve la première photo trouvée — évite d'écraser avec null
         // si une duplication arrive sans photo.
         photoUrl: prev.photoUrl ?? p.photoUrl,
+        clubName: null,
+        clubLogoUrl: null,
       });
     };
 
@@ -475,7 +483,25 @@ export class FamiliesService {
       });
     }
 
-    return [...byKey.values()];
+    // Enrichissement final : batch fetch des clubs pour ajouter
+    // clubName + clubLogoUrl à chaque profil (sert au sélecteur
+    // SelectProfile pour différencier visuellement les profils
+    // multi-clubs). 1 query au lieu de N call-sites à modifier.
+    const profiles = [...byKey.values()];
+    const clubIds = [...new Set(profiles.map((p) => p.clubId))];
+    if (clubIds.length > 0) {
+      const clubs = await this.prisma.club.findMany({
+        where: { id: { in: clubIds } },
+        select: { id: true, name: true, logoUrl: true },
+      });
+      const clubsById = new Map(clubs.map((c) => [c.id, c]));
+      for (const p of profiles) {
+        const club = clubsById.get(p.clubId);
+        p.clubName = club?.name ?? null;
+        p.clubLogoUrl = club?.logoUrl ?? null;
+      }
+    }
+    return profiles;
   }
 
   async assertViewerHasProfile(

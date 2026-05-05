@@ -32,6 +32,8 @@ export const VIEWER_PROFILES = gql`
       familyId
       householdGroupId
       photoUrl
+      clubName
+      clubLogoUrl
     }
   }
 `;

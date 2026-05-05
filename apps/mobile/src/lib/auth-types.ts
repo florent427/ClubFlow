@@ -9,6 +9,10 @@ export type ViewerProfile = {
   householdGroupId?: string | null;
   /** URL photo de la fiche Member ou Contact (optionnel). */
   photoUrl?: string | null;
+  /** Nom du club rattaché — affiché sur les cartes SelectProfile pour
+   *  différencier les profils multi-clubs. */
+  clubName?: string | null;
+  clubLogoUrl?: string | null;
 };
 
 export type LoginWithProfilesData = {
