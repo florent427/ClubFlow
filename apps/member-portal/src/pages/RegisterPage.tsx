@@ -278,10 +278,24 @@ export function RegisterPage() {
                     .toUpperCase()}
                 </span>
               )}
-              <div>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <p className="auth-club-banner__eyebrow">Vous rejoignez</p>
                 <h2 className="auth-club-banner__name">{club.name}</h2>
               </div>
+              {/* Lien "Changer" — discret mais accessible. Au click,
+                  retour à /register sans `?club=` → ClubPicker apparaît
+                  pour choisir un autre tenant sans perdre returnTo. */}
+              <Link
+                to={
+                  returnTo
+                    ? `/register?returnTo=${encodeURIComponent(returnTo)}`
+                    : '/register'
+                }
+                className="auth-club-banner__change"
+                title="Changer de club"
+              >
+                Changer
+              </Link>
             </div>
           ) : (
             <p className="auth-eyebrow">ClubFlow</p>

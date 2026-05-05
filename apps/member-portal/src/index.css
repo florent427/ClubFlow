@@ -419,6 +419,25 @@ body {
   color: #0f172a;
   margin: 0;
 }
+/* Lien "Changer" dans le banner club — petit, discret, pour ne pas
+   capter l'attention principale (l'objectif primaire reste de remplir
+   le form). Hover état plus marqué pour clarifier qu'il est cliquable. */
+.auth-club-banner__change {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #1565c0;
+  text-decoration: none;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(21, 101, 192, 0.2);
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.auth-club-banner__change:hover {
+  background: #ffffff;
+  border-color: #1565c0;
+}
 
 .auth-sub {
   margin: 0.75rem 0 0;
