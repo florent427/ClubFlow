@@ -50,7 +50,8 @@
         {
           "photosPermission": "ClubFlow Admin accède à votre galerie pour vos médias."
         }
-      ]
+      ],
+      "expo-font"
     ],
     "extra": {
       "eas": {
