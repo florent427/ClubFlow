@@ -1,0 +1,47 @@
+{
+  "cli": {
+    "version": ">= 17.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "channel": "development",
+      "env": {
+        "EXPO_ENV": "development"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "channel": "staging",
+      "env": {
+        "EXPO_ENV": "staging",
+        "EXPO_PUBLIC_API_BASE": "https://staging.api.clubflow.topdigital.re",
+        "EXPO_PUBLIC_GRAPHQL_HTTP": "https://staging.api.clubflow.topdigital.re/graphql"
+      },
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": false
+      }
+    },
+    "production": {
+      "distribution": "store",
+      "channel": "production",
+      "autoIncrement": true,
+      "env": {
+        "EXPO_ENV": "production",
+        "EXPO_PUBLIC_API_BASE": "https://api.clubflow.topdigital.re",
+        "EXPO_PUBLIC_GRAPHQL_HTTP": "https://api.clubflow.topdigital.re/graphql"
+      },
+      "android": {
+        "buildType": "app-bundle"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

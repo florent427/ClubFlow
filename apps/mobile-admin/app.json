@@ -29,7 +29,11 @@
         "backgroundColor": "#0f172a"
       },
       "edgeToEdgeEnabled": true,
-      "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE"]
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -47,6 +51,12 @@
           "photosPermission": "ClubFlow Admin accède à votre galerie pour vos médias."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "abd54c01-5fe5-43e5-889c-e0cb05c583fe"
+      }
+    },
+    "owner": "florent427"
   }
 }
