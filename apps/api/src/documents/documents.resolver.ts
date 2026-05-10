@@ -15,6 +15,7 @@ import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.gua
 import { GqlJwtAuthGuard } from '../common/guards/gql-jwt-auth.guard';
 import type { RequestUser } from '../common/types/request-user';
 import { ModuleCode } from '../domain/module-registry/module-codes';
+import { MediaAssetsService } from '../media/media-assets.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { DocumentsCronService } from './documents-cron.service';
 import { DocumentsSeedService } from './documents-seed.service';
@@ -50,6 +51,7 @@ function fieldToGraph(f: ClubDocumentField): ClubDocumentFieldGraph {
 
 async function documentToGraph(
   prisma: PrismaService,
+  mediaAssets: MediaAssetsService,
   doc: DocumentRow,
 ): Promise<ClubDocumentGraph> {
   const [asset, signedCount] = await Promise.all([
@@ -72,7 +74,11 @@ async function documentToGraph(
     name: doc.name,
     description: doc.description,
     mediaAssetId: doc.mediaAssetId,
-    mediaAssetUrl: asset?.publicUrl ?? null,
+    // resolvePublicUrl rewrite `http://localhost:3000/media/...` (legacy
+    // uploads faits sans API_PUBLIC_URL configuré) vers l'URL publique
+    // courante. Sans rewrite, ces uploads cassent l'éditeur PDF.js côté
+    // admin (failed to fetch).
+    mediaAssetUrl: mediaAssets.resolvePublicUrl(asset?.publicUrl),
     version: doc.version,
     fileSha256: doc.fileSha256,
     isRequired: doc.isRequired,
@@ -104,6 +110,7 @@ export class DocumentsResolver {
     private readonly seed: DocumentsSeedService,
     private readonly cron: DocumentsCronService,
     private readonly prisma: PrismaService,
+    private readonly mediaAssets: MediaAssetsService,
   ) {}
 
   // ----------------------------------------------------------------
@@ -115,7 +122,7 @@ export class DocumentsResolver {
     @CurrentClub() club: Club,
   ): Promise<ClubDocumentGraph[]> {
     const rows = await this.documents.listDocuments(club.id);
-    return Promise.all(rows.map((r) => documentToGraph(this.prisma, r)));
+    return Promise.all(rows.map((r) => documentToGraph(this.prisma, this.mediaAssets, r)));
   }
 
   @Query(() => ClubDocumentGraph, { name: 'clubDocument', nullable: true })
@@ -124,7 +131,7 @@ export class DocumentsResolver {
     @Args('id', { type: () => ID }) id: string,
   ): Promise<ClubDocumentGraph | null> {
     const row = await this.documents.getDocument(club.id, id);
-    return row ? documentToGraph(this.prisma, row) : null;
+    return row ? documentToGraph(this.prisma, this.mediaAssets, row) : null;
   }
 
   @Query(() => [ClubSignedDocumentGraph], { name: 'clubDocumentSignatures' })
@@ -172,7 +179,7 @@ export class DocumentsResolver {
       targetSystemRoles: input.targetSystemRoles,
       targetCustomRoleIds: input.targetCustomRoleIds,
     });
-    return documentToGraph(this.prisma, row);
+    return documentToGraph(this.prisma, this.mediaAssets, row);
   }
 
   @Mutation(() => ClubDocumentGraph, { name: 'updateClubDocument' })
@@ -194,7 +201,7 @@ export class DocumentsResolver {
       targetSystemRoles: input.targetSystemRoles,
       targetCustomRoleIds: input.targetCustomRoleIds,
     });
-    return documentToGraph(this.prisma, row);
+    return documentToGraph(this.prisma, this.mediaAssets, row);
   }
 
   @Mutation(() => ClubDocumentGraph, { name: 'archiveClubDocument' })
@@ -203,7 +210,7 @@ export class DocumentsResolver {
     @Args('id', { type: () => ID }) id: string,
   ): Promise<ClubDocumentGraph> {
     const row = await this.documents.archiveDocument(club.id, id);
-    return documentToGraph(this.prisma, row);
+    return documentToGraph(this.prisma, this.mediaAssets, row);
   }
 
   @Mutation(() => Boolean, { name: 'deleteClubDocument' })
@@ -276,7 +283,7 @@ export class DocumentsResolver {
       user.userId,
       category,
     );
-    return documentToGraph(this.prisma, row);
+    return documentToGraph(this.prisma, this.mediaAssets, row);
   }
 
   @Mutation(() => DocumentYearlyResetResultGraph, {
