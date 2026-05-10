@@ -5,9 +5,20 @@ import {
   useNavigate,
   useSearchParams,
 } from 'react-router-dom';
-import { useMutation } from '@apollo/client/react';
-import { LOGIN_WITH_PROFILES } from '../lib/documents';
+import { useMutation, useQuery } from '@apollo/client/react';
+import { CLUB_BY_SLUG, LOGIN_WITH_PROFILES } from '../lib/documents';
 import type { LoginWithProfilesData } from '../lib/auth-types';
+
+type ClubBySlugData = {
+  clubBySlug: {
+    id: string;
+    slug: string;
+    name: string;
+    logoUrl: string | null;
+    customDomain: string | null;
+    tagline: string | null;
+  } | null;
+};
 import { getApiBaseUrl } from '../lib/api-base';
 import {
   clearAuth,
@@ -35,6 +46,18 @@ export function LoginPage() {
     if (urlReturnTo) rememberReturnTo(urlReturnTo);
   }, [urlReturnTo]);
   const returnTo = urlReturnTo ?? peekReturnTo();
+
+  // Multi-tenant : `?club=<slug>` brand la page login (logo + nom du
+  // club). Optionnel — le login reste possible sans (User est global,
+  // SelectProfile filtre après).
+  const clubSlug = params.get('club')?.trim().toLowerCase() ?? null;
+  const { data: clubData } = useQuery<ClubBySlugData>(CLUB_BY_SLUG, {
+    variables: { slug: clubSlug ?? '' },
+    skip: !clubSlug,
+    fetchPolicy: 'cache-first',
+  });
+  const club = clubData?.clubBySlug ?? null;
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -106,11 +129,44 @@ export function LoginPage() {
     <div className="auth-page">
       <div className="auth-card">
         <header className="auth-header">
-          <p className="auth-eyebrow">ClubFlow</p>
+          {/* En-tête club (si ?club=<slug>) — homogène avec /register.
+              Sans param : header générique ClubFlow. Le login lui-même
+              fonctionne dans les 2 cas (User identifié par email global,
+              le club est résolu après via SelectProfile). */}
+          {club ? (
+            <div className="auth-club-banner">
+              {club.logoUrl ? (
+                <img
+                  src={club.logoUrl}
+                  alt=""
+                  className="auth-club-banner__logo"
+                />
+              ) : (
+                <span
+                  className="auth-club-banner__logo auth-club-banner__logo--initials"
+                  aria-hidden="true"
+                >
+                  {club.name
+                    .split(/\s+/)
+                    .map((w) => w[0])
+                    .join('')
+                    .slice(0, 2)
+                    .toUpperCase()}
+                </span>
+              )}
+              <div>
+                <p className="auth-club-banner__eyebrow">Connexion</p>
+                <h2 className="auth-club-banner__name">{club.name}</h2>
+              </div>
+            </div>
+          ) : (
+            <p className="auth-eyebrow">ClubFlow</p>
+          )}
           <h1>Espace membre</h1>
           <p className="auth-sub">
-            Connectez-vous avec l’e-mail enregistré auprès du club. Le club
-            actif sera choisi à l’étape suivante si vous avez plusieurs profils.
+            {club
+              ? `Connectez-vous à votre espace ${club.name} avec votre e-mail. Si vous êtes membre de plusieurs clubs, vous choisirez à l'étape suivante.`
+              : 'Connectez-vous avec l’e-mail enregistré auprès du club. Le club actif sera choisi à l’étape suivante si vous avez plusieurs profils.'}
           </p>
         </header>
         <form onSubmit={(e) => void onSubmit(e)} className="auth-form">
@@ -152,11 +208,15 @@ export function LoginPage() {
             Continuer avec Google
           </a>
           <Link
-            to={
-              returnTo
-                ? `/register?returnTo=${encodeURIComponent(returnTo)}`
-                : '/register'
-            }
+            to={(() => {
+              // Propage `?club=<slug>` vers /register pour homogénéité
+              // (banner club affiché, club bind à l'inscription).
+              const qs = new URLSearchParams();
+              if (returnTo) qs.set('returnTo', returnTo);
+              if (clubSlug) qs.set('club', clubSlug);
+              const q = qs.toString();
+              return q ? `/register?${q}` : '/register';
+            })()}
             className="auth-link"
           >
             Créer un compte contact

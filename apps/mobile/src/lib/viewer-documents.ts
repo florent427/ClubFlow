@@ -1,5 +1,34 @@
 import { gql } from '@apollo/client';
 
+/**
+ * Recherche publique de clubs (autocomplete SelectClubScreen). Pas
+ * d'auth ni de x-club-id — query publique exposée par l'API.
+ */
+export const SEARCH_PUBLIC_CLUBS = gql`
+  query SearchPublicClubs($query: String!) {
+    searchPublicClubs(query: $query) {
+      id
+      slug
+      name
+      logoUrl
+      tagline
+    }
+  }
+`;
+
+/** Vue publique d'un club par slug. Sert au deep-link `clubflow://?club=`. */
+export const PUBLIC_CLUB_BY_SLUG = gql`
+  query PublicClubBySlug($slug: String!) {
+    clubBySlug(slug: $slug) {
+      id
+      slug
+      name
+      logoUrl
+      tagline
+    }
+  }
+`;
+
 export const VIEWER_ADMIN_SWITCH = gql`
   query ViewerAdminSwitch {
     viewerAdminSwitch {
@@ -98,6 +127,23 @@ export const VIEWER_REGISTER_CHILD_MEMBER = gql`
     $input: ViewerRegisterChildMemberInput!
   ) {
     viewerRegisterChildMember(input: $input) {
+      pendingItemId
+      cartId
+      firstName
+      lastName
+    }
+  }
+`;
+
+/**
+ * Inscrit le viewer lui-même au panier d'adhésion (PendingItem).
+ * Utilise l'identité du User connecté (pas de firstName/lastName en
+ * input — auto-remplis côté backend). Le Member sera créé à la
+ * validation du panier, comme pour les enfants.
+ */
+export const VIEWER_REGISTER_SELF_AS_MEMBER = gql`
+  mutation ViewerRegisterSelfAsMember($input: ViewerRegisterSelfAsMemberInput!) {
+    viewerRegisterSelfAsMember(input: $input) {
       pendingItemId
       cartId
       firstName
@@ -432,5 +478,25 @@ export const VIEWER_BOOK_COURSE_SLOT = gql`
 export const VIEWER_CANCEL_COURSE_SLOT_BOOKING = gql`
   mutation ViewerCancelCourseSlotBooking($slotId: ID!) {
     viewerCancelCourseSlotBooking(slotId: $slotId)
+  }
+`;
+
+export const VIEWER_ELIGIBLE_MEMBERSHIP_FORMULAS = gql`
+  query ViewerEligibleMembershipFormulas(
+    $birthDate: String!
+    $identityFirstName: String
+    $identityLastName: String
+  ) {
+    viewerEligibleMembershipFormulas(
+      birthDate: $birthDate
+      identityFirstName: $identityFirstName
+      identityLastName: $identityLastName
+    ) {
+      id
+      label
+      annualAmountCents
+      monthlyAmountCents
+      alreadyTakenInSeason
+    }
   }
 `;

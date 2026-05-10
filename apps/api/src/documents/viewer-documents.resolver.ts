@@ -10,6 +10,7 @@ import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.gua
 import { GqlJwtAuthGuard } from '../common/guards/gql-jwt-auth.guard';
 import type { RequestUser } from '../common/types/request-user';
 import { ModuleCode } from '../domain/module-registry/module-codes';
+import { MediaAssetsService } from '../media/media-assets.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { DocumentsService } from './documents.service';
 import { SignClubDocumentInput } from './dto/sign-club-document.input';
@@ -24,6 +25,7 @@ export class ViewerDocumentsResolver {
   constructor(
     private readonly documents: DocumentsService,
     private readonly prisma: PrismaService,
+    private readonly mediaAssets: MediaAssetsService,
   ) {}
 
   @Query(() => [ClubDocumentGraph], { name: 'viewerDocumentsToSign' })
@@ -76,7 +78,9 @@ export class ViewerDocumentsResolver {
         name: doc.name,
         description: doc.description,
         mediaAssetId: doc.mediaAssetId,
-        mediaAssetUrl: asset?.publicUrl ?? null,
+        // Rewrite localhost:3000 vers API_PUBLIC_URL si la stored URL date
+        // d'un upload pré-fix (cf. apps/api/.env.staging.example).
+        mediaAssetUrl: this.mediaAssets.resolvePublicUrl(asset?.publicUrl),
         version: doc.version,
         fileSha256: doc.fileSha256,
         isRequired: doc.isRequired,

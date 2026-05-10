@@ -9,6 +9,10 @@ export type ViewerProfile = {
   householdGroupId?: string | null;
   /** URL photo de la fiche Member ou Contact (optionnel). */
   photoUrl?: string | null;
+  /** Nom du club rattaché — affiché sur les cartes SelectProfile pour
+   *  différencier les profils multi-clubs. */
+  clubName?: string | null;
+  clubLogoUrl?: string | null;
 };
 
 export type LoginWithProfilesData = {
@@ -48,7 +52,23 @@ export type SelectContactProfileData = {
 };
 
 export type RegisterContactData = {
-  registerContact: { ok: boolean };
+  registerContact: { ok: boolean; requiresEmailVerification: boolean };
+};
+
+export type RequestPasswordResetData = {
+  requestPasswordReset: { ok: boolean };
+};
+
+export type ResetPasswordData = {
+  resetPassword: {
+    accessToken: string;
+    contactClubId: string | null;
+    viewerProfiles: Array<{
+      memberId: string | null;
+      contactId: string | null;
+      clubId: string;
+    }>;
+  };
 };
 
 export type VerifyEmailData = {

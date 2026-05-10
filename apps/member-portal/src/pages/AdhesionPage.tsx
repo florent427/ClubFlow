@@ -16,6 +16,7 @@ import {
   VIEWER_ME,
 } from '../lib/viewer-documents';
 import type { ViewerMeData } from '../lib/viewer-types';
+import { CartFeesSection } from '../components/cart/CartFeesSection';
 import { CartItemCard } from '../components/cart/CartItemCard';
 import { CartSummary } from '../components/cart/CartSummary';
 import { AddChildToCartDrawer } from '../components/cart/AddChildToCartDrawer';
@@ -302,11 +303,19 @@ export function AdhesionPage() {
             ) : cart.items.length === 0 ? null : (
               <div className="mp-cart-item-list">
                 {cart.items.map((it) => (
-                  <CartItemCard
-                    key={it.id}
-                    item={it}
-                    disabled={loading}
-                  />
+                  <div key={it.id}>
+                    <CartItemCard item={it} disabled={loading} />
+                    {/* Section frais ponctuels typés (LICENSE checkbox /
+                        MANDATORY info / OPTIONAL checkbox), parité mobile. */}
+                    {cart.clubOneTimeFees.length > 0 ? (
+                      <CartFeesSection
+                        kind="item"
+                        item={it}
+                        clubOneTimeFees={cart.clubOneTimeFees}
+                        busy={loading}
+                      />
+                    ) : null}
+                  </div>
                 ))}
               </div>
             )}
@@ -565,6 +574,17 @@ export function AdhesionPage() {
                             {formatEuroCents(p.estimatedTotalCents)}
                           </dd>
                         </dl>
+
+                        {/* Section frais ponctuels typés sur le pending
+                            (LICENSE / MANDATORY / OPTIONAL) — parité mobile. */}
+                        {cart.clubOneTimeFees.length > 0 ? (
+                          <CartFeesSection
+                            kind="pending"
+                            pending={p}
+                            clubOneTimeFees={cart.clubOneTimeFees}
+                            busy={loading || removing}
+                          />
+                        ) : null}
                       </div>
                     );
                   })}

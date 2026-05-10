@@ -32,6 +32,8 @@ export const VIEWER_PROFILES = gql`
       familyId
       householdGroupId
       photoUrl
+      clubName
+      clubLogoUrl
     }
   }
 `;
@@ -72,6 +74,38 @@ export const REGISTER_CONTACT = gql`
   mutation RegisterContact($input: RegisterContactInput!) {
     registerContact(input: $input) {
       ok
+      requiresEmailVerification
+    }
+  }
+`;
+
+/**
+ * Reset password — démarre le flow (envoi de l'email avec le lien).
+ * Le serveur retourne toujours `ok: true` (anti-énumération : on ne
+ * révèle pas si l'email existe ou pas).
+ */
+export const REQUEST_PASSWORD_RESET = gql`
+  mutation RequestPasswordReset($input: RequestPasswordResetInput!) {
+    requestPasswordReset(input: $input) {
+      ok
+    }
+  }
+`;
+
+/**
+ * Reset password — finalise via le token reçu par mail. Retourne un
+ * accessToken + viewerProfiles pour login auto post-reset.
+ */
+export const RESET_PASSWORD = gql`
+  mutation ResetPassword($input: ResetPasswordInput!) {
+    resetPassword(input: $input) {
+      accessToken
+      contactClubId
+      viewerProfiles {
+        memberId
+        contactId
+        clubId
+      }
     }
   }
 `;

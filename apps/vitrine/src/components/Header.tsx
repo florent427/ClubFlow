@@ -8,6 +8,8 @@ interface HeaderProps {
   clubName: string;
   kanjiTagline?: string;
   logoUrl?: string | null;
+  /** Slug du club résolu via Host header — pré-remplit `?club=` du portail. */
+  clubSlug?: string;
 }
 
 const LINKS: Array<{ href: string; label: string; id: string; cta?: boolean }> =
@@ -20,8 +22,15 @@ const LINKS: Array<{ href: string; label: string; id: string; cta?: boolean }> =
     { href: '/galerie', label: 'Galerie', id: 'galerie' },
     { href: '/actualites', label: 'Actualités', id: 'actu' },
     { href: '/blog', label: 'Blog', id: 'blog' },
-    { href: '/contact', label: 'Contact', id: 'contact', cta: true },
+    { href: '/contact', label: 'Contact', id: 'contact' },
   ];
+
+/**
+ * URL du portail membre. Côté Next, on lit `NEXT_PUBLIC_PORTAL_URL`
+ * injecté au build. Fallback prod : portail.clubflow.topdigital.re.
+ */
+const PORTAL_URL =
+  process.env.NEXT_PUBLIC_PORTAL_URL ?? 'https://portail.clubflow.topdigital.re';
 
 /**
  * Nav SKSR — port fidèle du markup de `partials.js`.
@@ -30,7 +39,22 @@ const LINKS: Array<{ href: string; label: string; id: string; cta?: boolean }> =
  * - Classe `scrolled` appliquée après 20px de scroll
  * - Bouton CTA visuellement distinct (Contact)
  */
-export function Header({ clubName, kanjiTagline, logoUrl }: HeaderProps) {
+export function Header({
+  clubName,
+  kanjiTagline,
+  logoUrl,
+  clubSlug,
+}: HeaderProps) {
+  // Lien "S'inscrire" pré-paramétré avec le slug du club courant. Le
+  // portail lit `?club=<slug>`, résout le club via la query publique
+  // `clubBySlug`, et affiche un en-tête "Vous rejoignez X" sur le
+  // formulaire d'inscription.
+  const registerUrl = clubSlug
+    ? `${PORTAL_URL}/register?club=${encodeURIComponent(clubSlug)}`
+    : `${PORTAL_URL}/register`;
+  const loginUrl = clubSlug
+    ? `${PORTAL_URL}/login?club=${encodeURIComponent(clubSlug)}`
+    : `${PORTAL_URL}/login`;
   const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
@@ -108,6 +132,24 @@ export function Header({ clubName, kanjiTagline, logoUrl }: HeaderProps) {
             {link.label}
           </Link>
         ))}
+        {/* "Connexion" + "S'inscrire" — externes vers portail membre,
+            pré-remplis avec le slug du club courant. Visibles en
+            permanence dans la nav pour discoverability. */}
+        <a
+          href={loginUrl}
+          onClick={close}
+          rel="noopener"
+        >
+          Connexion
+        </a>
+        <a
+          href={registerUrl}
+          className="nav__cta"
+          onClick={close}
+          rel="noopener"
+        >
+          S&rsquo;inscrire
+        </a>
       </div>
     </nav>
   );
