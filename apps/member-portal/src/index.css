@@ -59,6 +59,386 @@ body {
   margin: 0;
 }
 
+/* === UserMenu dropdown (top bar compact) === */
+.user-menu {
+  position: relative;
+  display: inline-block;
+}
+.user-menu__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px 4px 4px;
+  background: transparent;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+  font: inherit;
+  color: inherit;
+}
+.user-menu__trigger:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+.user-menu__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #1d4ed8;
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.user-menu__avatar--lg {
+  width: 44px;
+  height: 44px;
+  font-size: 1rem;
+}
+.user-menu__chevron {
+  font-size: 18px !important;
+  color: #64748b;
+}
+.user-menu__dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 280px;
+  max-width: 360px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow:
+    0 12px 24px rgba(15, 23, 42, 0.08),
+    0 4px 12px rgba(15, 23, 42, 0.04);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+}
+.user-menu__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%);
+  border-radius: 8px;
+  margin-bottom: 4px;
+}
+.user-menu__header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.user-menu__header-text strong {
+  font-size: 0.9rem;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.user-menu__email {
+  font-size: 0.7rem;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.user-menu__club {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  color: #1565c0;
+  font-weight: 600;
+  margin-top: 2px;
+}
+.user-menu__club .material-symbols-outlined {
+  font-size: 14px !important;
+}
+.user-menu__section-title {
+  padding: 8px 12px 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+}
+.user-menu__profile-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.user-menu__profile-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  transition: background 0.12s ease;
+}
+.user-menu__profile-item:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+.user-menu__profile-item:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.user-menu__profile-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 0.7rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.user-menu__profile-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.user-menu__profile-text strong {
+  font-size: 0.85rem;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.user-menu__profile-text small {
+  font-size: 0.7rem;
+  color: #64748b;
+}
+.user-menu__sep {
+  margin: 4px 8px;
+  border: none;
+  border-top: 1px solid #e5e7eb;
+}
+.user-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  color: #0f172a;
+  text-align: left;
+  font-size: 0.875rem;
+  transition: background 0.12s ease;
+}
+.user-menu__item:hover {
+  background: #f1f5f9;
+}
+.user-menu__item .material-symbols-outlined {
+  font-size: 18px !important;
+  color: #64748b;
+}
+.user-menu__item--primary {
+  color: #1565c0;
+  font-weight: 600;
+}
+.user-menu__item--primary .material-symbols-outlined {
+  color: #1565c0;
+}
+.user-menu__item--danger {
+  color: #b91c1c;
+}
+.user-menu__item--danger .material-symbols-outlined {
+  color: #b91c1c;
+}
+
+/* === Sélecteur public de club (RegisterPage sans ?club=) === */
+.club-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 16px 0;
+}
+.club-picker__title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+.club-picker__hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+.club-picker__search {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  background: #f8fafc;
+}
+.club-picker__search:focus {
+  outline: none;
+  border-color: #1565c0;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(21, 101, 192, 0.12);
+}
+.club-picker__empty {
+  margin: 8px 0 0;
+  padding: 14px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: #64748b;
+  text-align: center;
+}
+.club-picker__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+.club-picker__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.club-picker__item:hover {
+  border-color: #1565c0;
+  background: #eff6ff;
+}
+.club-picker__logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #f8fafc;
+  flex-shrink: 0;
+}
+.club-picker__logo--initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #1565c0;
+  border: 1px solid rgba(21, 101, 192, 0.2);
+}
+.club-picker__name {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.club-picker__name strong {
+  font-size: 0.9rem;
+  color: #0f172a;
+}
+.club-picker__name small {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+.club-picker__chevron {
+  color: #94a3b8;
+  font-size: 20px !important;
+}
+
+/* Banner club affiché sur RegisterPage si ?club=<slug> est présent.
+   Permet à l'utilisateur de voir clairement à quel club il s'inscrit. */
+.auth-club-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border: 1px solid rgba(21, 101, 192, 0.2);
+  border-radius: 10px;
+}
+.auth-club-banner__logo {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: #ffffff;
+  flex-shrink: 0;
+}
+.auth-club-banner__logo--initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1565c0;
+  background: #ffffff;
+  border: 1px solid rgba(21, 101, 192, 0.25);
+}
+.auth-club-banner__eyebrow {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #1565c0;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 2px 0;
+}
+.auth-club-banner__name {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+/* Lien "Changer" dans le banner club — petit, discret, pour ne pas
+   capter l'attention principale (l'objectif primaire reste de remplir
+   le form). Hover état plus marqué pour clarifier qu'il est cliquable. */
+.auth-club-banner__change {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #1565c0;
+  text-decoration: none;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(21, 101, 192, 0.2);
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.auth-club-banner__change:hover {
+  background: #ffffff;
+  border-color: #1565c0;
+}
+
 .auth-sub {
   margin: 0.75rem 0 0;
   font-size: 0.9rem;
@@ -214,6 +594,33 @@ body {
   font-weight: 700;
   font-size: 0.85rem;
   text-align: center;
+}
+
+/* Club rattaché — affiché sur chaque carte SelectProfile pour
+   différencier les profils multi-clubs. */
+.profile-club {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  border: 1px solid #e5e7eb;
+  font-size: 0.7rem;
+  color: #475569;
+  font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-club__logo {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
 }
 
 .profile-badge {
@@ -3505,6 +3912,200 @@ a:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* === Bannière panier d'adhésion sur dashboard (parité mobile) === */
+.mp-cart-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border: 1px solid rgba(21, 101, 192, 0.25);
+  border-radius: 12px;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.mp-cart-banner:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(21, 101, 192, 0.12);
+}
+.mp-cart-banner__ico {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 22px;
+  background: #ffffff;
+  color: #1565c0;
+  font-size: 24px !important;
+  flex-shrink: 0;
+}
+.mp-cart-banner__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mp-cart-banner__body strong {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+.mp-cart-banner__body small {
+  font-size: 0.8rem;
+  color: #475569;
+}
+.mp-pill-primary {
+  background: #1565c0;
+  color: #ffffff;
+}
+
+/* === KPIs payeur (Reste à payer / Déjà réglé) — tiles cliquables === */
+.mp-kpi-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.mp-kpi-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  position: relative;
+}
+.mp-kpi-tile:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+.mp-kpi-tile__ico {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 20px !important;
+}
+.mp-kpi-tile--cool .mp-kpi-tile__ico {
+  background: #e0f2fe;
+  color: #075985;
+}
+.mp-kpi-tile--warm {
+  border-color: rgba(146, 64, 14, 0.25);
+  background: #fffbeb;
+}
+.mp-kpi-tile__label {
+  font-size: 0.75rem;
+  color: #64748b;
+  font-weight: 600;
+}
+.mp-kpi-tile__value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
+/* === Section frais ponctuels (LICENSE / MANDATORY / OPTIONAL) === */
+.cart-fees {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(37, 99, 235, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cart-fees__title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #1565c0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 6px 0;
+}
+.cart-fees__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.cart-fees__row--toggle:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #e5e7eb;
+}
+.cart-fees__row:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+.cart-fees__row--mandatory {
+  cursor: default;
+}
+.cart-fees__check {
+  font-size: 1.2rem;
+  line-height: 1;
+  width: 22px;
+  text-align: center;
+  color: #94a3b8;
+}
+.cart-fees__check--on {
+  color: #1565c0;
+}
+.cart-fees__label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cart-fees__label strong {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+.cart-fees__label small {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+.cart-fees__sub--ok {
+  color: #16a34a !important;
+  font-weight: 600;
+}
+.cart-fees__amount {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+.cart-fees__amount--muted {
+  color: #94a3b8;
+  font-weight: 500;
+}
+.cart-fees__amount--strike {
+  color: #94a3b8;
+  font-weight: 500;
+  text-decoration: line-through;
 }
 
 .mp-checkbox {

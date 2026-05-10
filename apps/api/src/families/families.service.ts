@@ -58,6 +58,23 @@ export function memberEligibleForContactPayerAutoLink(
   return familyLink.linkRole === FamilyMemberLinkRole.PAYER;
 }
 
+/**
+ * Calcule l'âge en années entre `birthDate` et `now`. Renvoie null si
+ * birthDate est invalide. Utilisé par la safety guard de
+ * réconciliation orphan (cf. listViewerProfiles) — un mineur ne peut
+ * jamais être réconcilié avec le userId d'un parent.
+ */
+function computeAgeYearsForReconcile(
+  birthDate: Date | null,
+  now: Date,
+): number | null {
+  if (!birthDate || Number.isNaN(birthDate.getTime())) return null;
+  let age = now.getFullYear() - birthDate.getFullYear();
+  const m = now.getMonth() - birthDate.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < birthDate.getDate())) age--;
+  return age;
+}
+
 @Injectable()
 export class FamiliesService {
   constructor(private readonly prisma: PrismaService) {}
@@ -219,11 +236,17 @@ export class FamiliesService {
       p.memberId ? `m:${p.memberId}` : `c:${p.contactId!}`;
     const byKey = new Map<string, ViewerProfileGraph>();
 
-    const putProfile = (p: ViewerProfileGraph) => {
-      const key = profileKey(p);
+    // putProfile reçoit le shape "minimal" sans clubName/clubLogoUrl
+    // (résolus en batch tout à la fin via this.prisma.club.findMany).
+    type ProfileInput = Omit<
+      ViewerProfileGraph,
+      'clubName' | 'clubLogoUrl'
+    >;
+    const putProfile = (p: ProfileInput) => {
+      const key = profileKey(p as ViewerProfileGraph);
       const prev = byKey.get(key);
       if (!prev) {
-        byKey.set(key, p);
+        byKey.set(key, { ...p, clubName: null, clubLogoUrl: null });
         return;
       }
       byKey.set(key, {
@@ -238,6 +261,8 @@ export class FamiliesService {
         // Préserve la première photo trouvée — évite d'écraser avec null
         // si une duplication arrive sans photo.
         photoUrl: prev.photoUrl ?? p.photoUrl,
+        clubName: null,
+        clubLogoUrl: null,
       });
     };
 
@@ -380,15 +405,59 @@ export class FamiliesService {
       select: { email: true },
     });
     if (userRow?.email) {
+      // ⚠️ SAFETY : la réconciliation par email seul est dangereuse car
+      // les enfants ajoutés via `viewerRegisterChildMember` héritent de
+      // l'email du payeur (pour les notifications). Sans garde-fou, le
+      // user Florent voit son propre userId assigné à la fiche Member
+      // de son enfant Joachim, et le PAYER est migré au mineur. Bug
+      // observé en staging — corrigé ici par 2 checks combinés :
+      // (a) le Member ne doit pas être mineur, (b) le firstName+lastName
+      // doit matcher l'identité du user (via Contact PAYER existant).
+      const userContacts = await this.prisma.contact.findMany({
+        where: { userId },
+        select: {
+          firstName: true,
+          lastName: true,
+          clubId: true,
+        },
+      });
+      const userIdentityKey = (firstName: string, lastName: string): string =>
+        `${firstName.trim().toLowerCase()}|${lastName.trim().toLowerCase()}`;
+      const userIdentitiesByClub = new Map<string, Set<string>>();
+      for (const c of userContacts) {
+        const set = userIdentitiesByClub.get(c.clubId) ?? new Set();
+        set.add(userIdentityKey(c.firstName, c.lastName));
+        userIdentitiesByClub.set(c.clubId, set);
+      }
       const orphanMembers = await this.prisma.member.findMany({
         where: {
           userId: null,
           email: userRow.email,
           status: MemberStatus.ACTIVE,
         },
-        select: { id: true, clubId: true },
+        select: {
+          id: true,
+          clubId: true,
+          firstName: true,
+          lastName: true,
+          birthDate: true,
+        },
       });
       for (const m of orphanMembers) {
+        // (a) Refuse les mineurs — un parent ne peut PAS prendre le
+        //     userId de la fiche Member de son enfant.
+        const ageYears = computeAgeYearsForReconcile(m.birthDate, new Date());
+        if (ageYears !== null && ageYears < 18) continue;
+        // (b) Vérifie que firstName+lastName match au moins un Contact
+        //     du user dans CE club. Sinon c'est un autre adhérent qui a
+        //     simplement le même email (cas famille recomposée, etc).
+        const allowedIdentities = userIdentitiesByClub.get(m.clubId);
+        if (
+          allowedIdentities &&
+          !allowedIdentities.has(userIdentityKey(m.firstName, m.lastName))
+        ) {
+          continue;
+        }
         // Vérifie qu'il n'y a pas DÉJÀ un Member rattaché au même User
         // dans ce club (contrainte unique [clubId, userId] sur Member).
         const conflict = await this.prisma.member.findFirst({
@@ -475,7 +544,25 @@ export class FamiliesService {
       });
     }
 
-    return [...byKey.values()];
+    // Enrichissement final : batch fetch des clubs pour ajouter
+    // clubName + clubLogoUrl à chaque profil (sert au sélecteur
+    // SelectProfile pour différencier visuellement les profils
+    // multi-clubs). 1 query au lieu de N call-sites à modifier.
+    const profiles = [...byKey.values()];
+    const clubIds = [...new Set(profiles.map((p) => p.clubId))];
+    if (clubIds.length > 0) {
+      const clubs = await this.prisma.club.findMany({
+        where: { id: { in: clubIds } },
+        select: { id: true, name: true, logoUrl: true },
+      });
+      const clubsById = new Map(clubs.map((c) => [c.id, c]));
+      for (const p of profiles) {
+        const club = clubsById.get(p.clubId);
+        p.clubName = club?.name ?? null;
+        p.clubLogoUrl = club?.logoUrl ?? null;
+      }
+    }
+    return profiles;
   }
 
   async assertViewerHasProfile(

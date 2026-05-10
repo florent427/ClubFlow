@@ -2,7 +2,7 @@ import { useMutation } from '@apollo/client/react';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -19,7 +19,9 @@ import {
   GradientButton,
   TextField,
 } from '../components/ui';
+import { AuthClubBanner } from '../components/AuthClubBanner';
 import { REGISTER_CONTACT } from '../lib/documents';
+import * as storage from '../lib/storage';
 import {
   gradients,
   palette,
@@ -42,7 +44,23 @@ export function RegisterScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  // Cas multi-tenant : User déjà vérifié ailleurs, Contact créé direct
+  // sans email. Affiche un autre écran "Inscription terminée → Login".
+  const [doneSkipMail, setDoneSkipMail] = useState(false);
   const [alreadyExists, setAlreadyExists] = useState(false);
+
+  // Multi-tenant : on récupère le club choisi sur SelectClubScreen pour
+  // le passer explicitement à `registerContact` (sinon backend tombe
+  // sur `CLUB_ID` env = SKSR par défaut, indépendamment du selectedClub).
+  const [selectedClubSlug, setSelectedClubSlug] = useState<string | null>(
+    null,
+  );
+  useEffect(() => {
+    void (async () => {
+      const sel = await storage.getSelectedClub();
+      setSelectedClubSlug(sel?.slug ?? null);
+    })();
+  }, []);
 
   const [register, { loading }] = useMutation<RegisterContactData>(
     REGISTER_CONTACT,
@@ -59,17 +77,24 @@ export function RegisterScreen() {
       return;
     }
     try {
-      await register({
+      const { data } = await register({
         variables: {
           input: {
             firstName: firstName.trim(),
             lastName: lastName.trim(),
             email: e,
             password,
+            // Sans clubSlug le backend tombe sur CLUB_ID env (compat
+            // mono-tenant SKSR). Avec, on bind explicitement.
+            clubSlug: selectedClubSlug ?? undefined,
           },
         },
       });
-      setDone(true);
+      if (data?.registerContact.requiresEmailVerification === false) {
+        setDoneSkipMail(true);
+      } else {
+        setDone(true);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '';
       if (msg.includes('USER_ALREADY_EXISTS')) {
@@ -78,6 +103,33 @@ export function RegisterScreen() {
       }
       setError(err instanceof Error ? err.message : 'Inscription impossible.');
     }
+  }
+
+  if (doneSkipMail) {
+    return (
+      <View style={styles.feedbackContainer}>
+        <LinearGradient
+          colors={gradients.hero.colors}
+          start={gradients.hero.start}
+          end={gradients.hero.end}
+          style={styles.feedbackIcon}
+        >
+          <Ionicons name="checkmark-circle" size={56} color="#ffffff" />
+        </LinearGradient>
+        <Text style={styles.feedbackTitle}>Inscription terminée</Text>
+        <Text style={styles.feedbackLead}>
+          Votre compte <Text style={styles.strong}>{email.trim()}</Text>{'\n'}
+          est déjà vérifié — connectez-vous pour accéder à votre espace.
+        </Text>
+        <GradientButton
+          label="Se connecter"
+          icon="log-in-outline"
+          onPress={() => navigation.navigate('Login')}
+          fullWidth
+          size="lg"
+        />
+      </View>
+    );
   }
 
   if (done) {
@@ -175,6 +227,17 @@ export function RegisterScreen() {
         >
           <View style={styles.cardWrap}>
             <View style={styles.card}>
+              {/* Banner club courant — parité web (?club= dans URL).
+                  Lien "Changer" reset selectedClub + nav SelectClub. */}
+              <AuthClubBanner
+                onChangeClub={async () => {
+                  await storage.clearSelectedClub();
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'SelectClub' }],
+                  });
+                }}
+              />
               <View style={styles.row}>
                 <TextField
                   label="Prénom"

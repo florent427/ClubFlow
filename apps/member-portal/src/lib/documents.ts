@@ -23,6 +23,42 @@ export const REGISTER_CONTACT = gql`
   mutation RegisterContact($input: RegisterContactInput!) {
     registerContact(input: $input) {
       ok
+      requiresEmailVerification
+    }
+  }
+`;
+
+/**
+ * Vue publique d'un club par son slug — utilisé par RegisterPage pour
+ * afficher "Vous rejoignez X" quand l'URL contient `?club=<slug>`.
+ * Pas d'auth requise.
+ */
+export const CLUB_BY_SLUG = gql`
+  query ClubBySlug($slug: String!) {
+    clubBySlug(slug: $slug) {
+      id
+      slug
+      name
+      logoUrl
+      customDomain
+      tagline
+    }
+  }
+`;
+
+/**
+ * Recherche publique de clubs — utilisée sur RegisterPage et LoginPage
+ * pour proposer un sélecteur quand l'URL n'a pas de `?club=<slug>`.
+ * Pas d'auth requise. Backend filtre name OR slug, max 20 résultats.
+ */
+export const SEARCH_PUBLIC_CLUBS = gql`
+  query SearchPublicClubs($query: String!) {
+    searchPublicClubs(query: $query) {
+      id
+      slug
+      name
+      logoUrl
+      tagline
     }
   }
 `;
@@ -82,6 +118,8 @@ export const VIEWER_PROFILES = gql`
       isPrimaryProfile
       familyId
       householdGroupId
+      clubName
+      clubLogoUrl
     }
   }
 `;

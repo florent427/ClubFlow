@@ -109,7 +109,10 @@ export function SelectProfileScreen({ navigation }: Props) {
       });
       const newTok = sel?.selectActiveViewerContactProfile?.accessToken;
       if (!newTok) return;
-      await storage.setMemberSession(newTok, p.clubId);
+      // Profile Contact PAYER → flag CONTACT_ONLY pour que MainScreen
+      // route vers HomeContactScreen (avec CTAs Inscrire enfant / moi-même)
+      // au lieu de HomeDashboardScreen (vue Member).
+      await storage.setMemberContactSession(newTok, p.clubId);
     } else {
       return;
     }
@@ -210,6 +213,13 @@ export function SelectProfileScreen({ navigation }: Props) {
                       <Text style={styles.name}>
                         {p.firstName} {p.lastName}
                       </Text>
+                      {/* Nom du club visible en permanence pour différencier
+                          les profils multi-clubs (parité web). */}
+                      {p.clubName ? (
+                        <Text style={styles.clubName} numberOfLines={1}>
+                          {p.clubName}
+                        </Text>
+                      ) : null}
                       {badge ? (
                         <View style={{ marginTop: spacing.xs, alignSelf: 'flex-start' }}>
                           <Pill
@@ -324,6 +334,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   name: { ...typography.h3, color: palette.ink },
+  clubName: {
+    ...typography.small,
+    color: palette.muted,
+    marginTop: 2,
+  },
 
   footerActions: {
     marginTop: spacing.xl,

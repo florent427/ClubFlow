@@ -7,6 +7,10 @@ export type ViewerProfile = {
   isPrimaryProfile: boolean;
   familyId: string | null;
   householdGroupId?: string | null;
+  /** Nom du club rattaché — affiché sur les cartes SelectProfile pour
+   *  différencier les profils multi-clubs. */
+  clubName?: string | null;
+  clubLogoUrl?: string | null;
 };
 
 export type LoginWithProfilesData = {
@@ -46,7 +50,7 @@ export type SelectContactProfileData = {
 };
 
 export type RegisterContactData = {
-  registerContact: { ok: boolean };
+  registerContact: { ok: boolean; requiresEmailVerification: boolean };
 };
 
 export type VerifyEmailData = {

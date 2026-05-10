@@ -11,6 +11,8 @@ export type MainTabParamList = {
   Famille: undefined;
   Parametres: undefined;
   Documents: undefined;
+  /** Panier d'adhésion — saison active, pendingItems, validation. */
+  Panier: undefined;
   /** Overflow menu — modules secondaires (Documents, Actus, Profil…). */
   Plus: undefined;
 };
@@ -20,6 +22,8 @@ export type ContactTabParamList = {
   Actus: undefined;
   Evenements: undefined;
   Documents: undefined;
+  /** Panier d'adhésion — accessible aussi depuis l'espace contact pur. */
+  Panier: undefined;
 };
 
 /**
@@ -35,9 +39,15 @@ export type DocumentsStackParamList = {
 };
 
 export type RootStackParamList = {
+  /** Sélection du club au 1er lancement (multi-tenant). */
+  SelectClub: undefined;
   Login: undefined;
   Register: undefined;
+  ForgotPassword: undefined;
+  ResetPassword: { token?: string } | undefined;
   VerifyEmail: { token?: string } | undefined;
   SelectProfile: undefined;
   Main: undefined;
+  /** Mode Admin via WebView (admin web staging/prod) — gaté canAccessClubBackOffice. */
+  Admin: undefined;
 };

@@ -1,7 +1,8 @@
-import { useMutation } from '@apollo/client/react';
-import { useState } from 'react';
+import { useLazyQuery, useMutation } from '@apollo/client/react';
+import { useEffect, useState } from 'react';
 import {
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,26 +10,99 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import DateTimePicker, {
+  type DateTimePickerEvent,
+} from '@react-native-community/datetimepicker';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { VIEWER_REGISTER_CHILD_MEMBER } from '../lib/viewer-documents';
+import {
+  VIEWER_ELIGIBLE_MEMBERSHIP_FORMULAS,
+  VIEWER_REGISTER_CHILD_MEMBER,
+} from '../lib/viewer-documents';
 
 type Civility = 'MR' | 'MME';
+type BillingRhythm = 'ANNUAL' | 'MONTHLY';
+
+type Formula = {
+  id: string;
+  label: string;
+  annualAmountCents: number;
+  monthlyAmountCents: number;
+  alreadyTakenInSeason: boolean;
+};
+
+function toIsoDate(d: Date): string {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function toFrDisplay(iso: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const [y, m, d] = iso.split('-');
+  return `${d}-${m}-${y}`;
+}
+
+function formatEuros(cents: number): string {
+  return (cents / 100).toLocaleString('fr-FR', {
+    style: 'currency',
+    currency: 'EUR',
+    maximumFractionDigits: 2,
+  });
+}
 
 /**
- * CTA « Inscrire un enfant » — version mobile : prénom, nom, civilité,
- * date de naissance. Génère un PendingItem dans le panier d'adhésion ;
- * la formule sera choisie côté admin (ou web) ensuite.
+ * CTA « Inscrire un enfant » — version mobile.
+ * Étapes : prénom, nom, civilité, date de naissance (date picker FR),
+ * sélection formule (auto-fetch après identité+naissance), rythme.
+ * Génère un PendingItem dans le panier d'adhésion.
+ *
+ * `onSuccess` est appelé après création du PendingItem pour permettre
+ * au parent (PanierAdhesionScreen) de refetch le cart actif.
  */
-export function RegisterChildMemberCta() {
+export function RegisterChildMemberCta({
+  onSuccess,
+}: {
+  onSuccess?: () => void;
+} = {}) {
   const [open, setOpen] = useState(false);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [civility, setCivility] = useState<Civility>('MR');
-  const [birthDate, setBirthDate] = useState('');
+  const [birthDate, setBirthDate] = useState<string>('');
+  const [showPicker, setShowPicker] = useState(false);
+  const [formulaId, setFormulaId] = useState<string>('');
+  const [billingRhythm, setBillingRhythm] = useState<BillingRhythm>('ANNUAL');
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   const [registerChild, { loading }] = useMutation(VIEWER_REGISTER_CHILD_MEMBER);
+  const [fetchFormulas, { data: formulasData, loading: formulasLoading }] =
+    useLazyQuery<{ viewerEligibleMembershipFormulas: Formula[] }>(
+      VIEWER_ELIGIBLE_MEMBERSHIP_FORMULAS,
+    );
+
+  useEffect(() => {
+    if (open && birthDate && firstName.trim() && lastName.trim()) {
+      void fetchFormulas({
+        variables: {
+          birthDate,
+          identityFirstName: firstName.trim(),
+          identityLastName: lastName.trim(),
+        },
+      });
+    }
+  }, [open, birthDate, firstName, lastName, fetchFormulas]);
+
+  const formulas = formulasData?.viewerEligibleMembershipFormulas ?? [];
+  const availableFormulas = formulas.filter((f) => !f.alreadyTakenInSeason);
+  const selectedFormula = formulas.find((f) => f.id === formulaId) ?? null;
+
+  // Pré-sélection de la 1re formule disponible.
+  useEffect(() => {
+    if (availableFormulas.length > 0 && !formulaId) {
+      setFormulaId(availableFormulas[0].id);
+    }
+  }, [availableFormulas, formulaId]);
 
   function reset() {
     setOpen(false);
@@ -36,14 +110,17 @@ export function RegisterChildMemberCta() {
     setLastName('');
     setCivility('MR');
     setBirthDate('');
+    setShowPicker(false);
+    setFormulaId('');
+    setBillingRhythm('ANNUAL');
     setError(null);
-    setSuccess(null);
   }
 
-  function isValidDate(s: string): boolean {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
-    const d = new Date(s);
-    return !Number.isNaN(d.getTime());
+  function onPickerChange(event: DateTimePickerEvent, selected?: Date) {
+    if (Platform.OS !== 'ios') setShowPicker(false);
+    if (event.type === 'set' && selected) {
+      setBirthDate(toIsoDate(selected));
+    }
   }
 
   async function onSubmit() {
@@ -52,8 +129,12 @@ export function RegisterChildMemberCta() {
       setError('Prénom et nom sont obligatoires.');
       return;
     }
-    if (!birthDate || !isValidDate(birthDate)) {
-      setError('Date de naissance invalide (AAAA-MM-JJ).');
+    if (!birthDate) {
+      setError('Sélectionnez une date de naissance.');
+      return;
+    }
+    if (!formulaId) {
+      setError('Sélectionnez une formule d’adhésion.');
       return;
     }
     try {
@@ -64,8 +145,8 @@ export function RegisterChildMemberCta() {
             lastName: lastName.trim(),
             civility,
             birthDate,
-            membershipProductId: null,
-            billingRhythm: null,
+            membershipProductIds: [formulaId],
+            billingRhythm,
           },
         },
       });
@@ -76,13 +157,22 @@ export function RegisterChildMemberCta() {
         setError("L'inscription n'a pas pu être enregistrée.");
         return;
       }
-      setSuccess(
-        `${res.firstName} a bien été ajouté au panier d'adhésion. Le club finalisera la formule.`,
-      );
+      // Pas de popup "Inscription envoyée" : on ferme la modale et on
+      // laisse le parent gérer le feedback (refetch cart + nav vers
+      // l'écran Panier qui affiche le pendingItem fraîchement créé).
+      reset();
+      onSuccess?.();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Erreur inconnue.');
     }
   }
+
+  const maxDate = new Date();
+  const minDate = new Date();
+  minDate.setFullYear(minDate.getFullYear() - 100);
+  const identityComplete =
+    Boolean(birthDate) && firstName.trim().length > 0 && lastName.trim().length > 0;
+  const allTaken = formulas.length > 0 && availableFormulas.length === 0;
 
   return (
     <>
@@ -110,17 +200,6 @@ export function RegisterChildMemberCta() {
           </Pressable>
         </View>
         <ScrollView contentContainerStyle={styles.modalBody}>
-          {success ? (
-            <View style={styles.successBox}>
-              <Ionicons name="checkmark-circle" size={48} color="#16a34a" />
-              <Text style={styles.successTitle}>Inscription envoyée !</Text>
-              <Text style={styles.successText}>{success}</Text>
-              <Pressable style={styles.btnPrimary} onPress={reset}>
-                <Text style={styles.btnPrimaryText}>Fermer</Text>
-              </Pressable>
-            </View>
-          ) : (
-            <>
               <Text style={styles.label}>Prénom</Text>
               <TextInput
                 style={styles.input}
@@ -175,32 +254,140 @@ export function RegisterChildMemberCta() {
                 </Pressable>
               </View>
 
-              <Text style={styles.label}>Date de naissance (AAAA-MM-JJ)</Text>
-              <TextInput
+              <Text style={styles.label}>Date de naissance</Text>
+              <Pressable
                 style={styles.input}
-                value={birthDate}
-                onChangeText={setBirthDate}
-                placeholder="ex. 2015-09-12"
-                keyboardType="numbers-and-punctuation"
-                maxLength={10}
-              />
+                onPress={() => setShowPicker(true)}
+              >
+                <Text style={birthDate ? styles.dateText : styles.datePlaceholder}>
+                  {birthDate ? toFrDisplay(birthDate) : 'JJ-MM-AAAA'}
+                </Text>
+              </Pressable>
+              {showPicker ? (
+                <DateTimePicker
+                  value={birthDate ? new Date(birthDate) : new Date(2015, 0, 1)}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  maximumDate={maxDate}
+                  minimumDate={minDate}
+                  onChange={onPickerChange}
+                  locale="fr-FR"
+                />
+              ) : null}
               <Text style={styles.hint}>
                 Nécessaire pour proposer la bonne formule d'adhésion.
               </Text>
 
+              <Text style={styles.label}>Formule d'adhésion</Text>
+              {!identityComplete ? (
+                <Text style={styles.hint}>
+                  Renseignez prénom, nom et date de naissance pour voir les
+                  formules disponibles.
+                </Text>
+              ) : formulasLoading ? (
+                <Text style={styles.hint}>Chargement des formules…</Text>
+              ) : formulas.length === 0 ? (
+                <Text style={styles.warn}>
+                  Aucune formule disponible pour cette date de naissance.
+                  Contactez le club.
+                </Text>
+              ) : allTaken ? (
+                <Text style={styles.warn}>
+                  Toutes les formules compatibles ont déjà été prises pour
+                  cette saison par {firstName} {lastName}.
+                </Text>
+              ) : (
+                <View style={{ gap: 8 }}>
+                  {formulas.map((f) => {
+                    const active = f.id === formulaId;
+                    const disabled = f.alreadyTakenInSeason;
+                    return (
+                      <Pressable
+                        key={f.id}
+                        style={[
+                          styles.formulaCard,
+                          active && styles.formulaCardActive,
+                          disabled && styles.formulaCardDisabled,
+                        ]}
+                        onPress={() => !disabled && setFormulaId(f.id)}
+                        disabled={disabled}
+                      >
+                        <Text
+                          style={[
+                            styles.formulaTitle,
+                            active && styles.formulaTitleActive,
+                          ]}
+                        >
+                          {f.label}
+                          {disabled ? ' (déjà prise)' : ''}
+                        </Text>
+                        <Text style={styles.formulaPrice}>
+                          {formatEuros(f.annualAmountCents)} / an
+                          {f.monthlyAmountCents > 0
+                            ? ` ou ${formatEuros(f.monthlyAmountCents)}/mois`
+                            : ''}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
+
+              {selectedFormula ? (
+                <>
+                  <Text style={styles.label}>Rythme de règlement</Text>
+                  <View style={styles.row}>
+                    <Pressable
+                      style={[
+                        styles.choice,
+                        billingRhythm === 'ANNUAL' && styles.choiceActive,
+                      ]}
+                      onPress={() => setBillingRhythm('ANNUAL')}
+                    >
+                      <Text
+                        style={
+                          billingRhythm === 'ANNUAL'
+                            ? styles.choiceTextActive
+                            : styles.choiceText
+                        }
+                      >
+                        Annuel ({formatEuros(selectedFormula.annualAmountCents)})
+                      </Text>
+                    </Pressable>
+                    {selectedFormula.monthlyAmountCents > 0 ? (
+                      <Pressable
+                        style={[
+                          styles.choice,
+                          billingRhythm === 'MONTHLY' && styles.choiceActive,
+                        ]}
+                        onPress={() => setBillingRhythm('MONTHLY')}
+                      >
+                        <Text
+                          style={
+                            billingRhythm === 'MONTHLY'
+                              ? styles.choiceTextActive
+                              : styles.choiceText
+                          }
+                        >
+                          Mensuel ({formatEuros(selectedFormula.monthlyAmountCents)}/mois)
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                </>
+              ) : null}
+
               {error ? <Text style={styles.error}>{error}</Text> : null}
 
               <Pressable
-                style={[styles.btnPrimary, loading && styles.btnDisabled]}
-                disabled={loading}
+                style={[styles.btnPrimary, (loading || !formulaId) && styles.btnDisabled]}
+                disabled={loading || !formulaId}
                 onPress={() => void onSubmit()}
               >
                 <Text style={styles.btnPrimaryText}>
                   {loading ? 'Envoi…' : 'Inscrire l\'enfant'}
                 </Text>
               </Pressable>
-            </>
-          )}
         </ScrollView>
       </Modal>
     </>
@@ -233,6 +420,7 @@ const styles = StyleSheet.create({
   modalBody: { padding: 16, gap: 12 },
   label: { fontSize: 13, fontWeight: '600', color: '#475569' },
   hint: { fontSize: 12, color: '#64748b' },
+  warn: { fontSize: 12, color: '#b45309' },
   error: { color: '#dc2626', fontSize: 13 },
   row: { flexDirection: 'row', gap: 8 },
   choice: {
@@ -254,7 +442,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 15,
+    justifyContent: 'center',
   },
+  dateText: { fontSize: 15, color: '#0f172a' },
+  datePlaceholder: { fontSize: 15, color: '#94a3b8' },
+  formulaCard: {
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: 'white',
+  },
+  formulaCardActive: { borderColor: '#1565c0', backgroundColor: '#eff6ff' },
+  formulaCardDisabled: { opacity: 0.5 },
+  formulaTitle: { fontSize: 14, fontWeight: '600', color: '#0f172a' },
+  formulaTitleActive: { color: '#1565c0' },
+  formulaPrice: { fontSize: 12, color: '#475569', marginTop: 4 },
   btnPrimary: {
     backgroundColor: '#1565c0',
     paddingVertical: 12,
@@ -264,7 +467,4 @@ const styles = StyleSheet.create({
   },
   btnPrimaryText: { color: 'white', fontWeight: '700', fontSize: 15 },
   btnDisabled: { opacity: 0.5 },
-  successBox: { alignItems: 'center', gap: 12, paddingVertical: 24 },
-  successTitle: { fontSize: 18, fontWeight: '700', color: '#0f172a' },
-  successText: { color: '#475569', textAlign: 'center', lineHeight: 21 },
 });

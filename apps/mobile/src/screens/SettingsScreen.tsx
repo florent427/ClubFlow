@@ -390,6 +390,40 @@ export function SettingsScreen() {
             <Ionicons name="chevron-forward" size={18} color={palette.muted} />
           </Pressable>
 
+          {/* Changer de club : reset complet du selectedClub + session →
+              retour SelectClubScreen (utile pour un payeur qui gère 2
+              clubs différents avec la même app, ou pour repartir de
+              zéro après un test). */}
+          <Pressable
+            onPress={async () => {
+              await storage.clearSelectedClub();
+              rootNav.dispatch(
+                CommonActions.reset({
+                  index: 0,
+                  routes: [{ name: 'SelectClub' }],
+                }),
+              );
+            }}
+            style={({ pressed }) => [
+              styles.sessionRow,
+              pressed && styles.sessionRowPressed,
+            ]}
+            accessibilityRole="button"
+          >
+            <Ionicons
+              name="swap-horizontal-outline"
+              size={20}
+              color={palette.primary}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sessionLabel}>Changer de club</Text>
+              <Text style={styles.sessionSub}>
+                Sélection de l'espace tenant.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={palette.muted} />
+          </Pressable>
+
           <Pressable
             onPress={() => void logout()}
             style={({ pressed }) => [

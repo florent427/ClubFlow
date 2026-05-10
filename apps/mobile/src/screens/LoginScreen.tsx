@@ -17,6 +17,7 @@ import {
   GradientButton,
   TextField,
 } from '../components/ui';
+import { AuthClubBanner } from '../components/AuthClubBanner';
 import type { LoginWithProfilesData } from '../lib/auth-types';
 import { LOGIN_WITH_PROFILES } from '../lib/documents';
 import * as storage from '../lib/storage';
@@ -122,6 +123,17 @@ export function LoginScreen({ navigation }: Props) {
           {/* Card flottante qui chevauche le hero */}
           <View style={styles.cardWrap}>
             <View style={styles.card}>
+              {/* Banner club courant (parité web /login?club=). Bouton
+                  "Changer" reset selectedClub + nav vers SelectClub. */}
+              <AuthClubBanner
+                onChangeClub={async () => {
+                  await storage.clearSelectedClub();
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'SelectClub' }],
+                  });
+                }}
+              />
               <Text style={styles.welcome}>Bonjour</Text>
               <Text style={styles.subtitle}>
                 Connectez-vous à votre espace.
@@ -157,6 +169,16 @@ export function LoginScreen({ navigation }: Props) {
                   size="lg"
                   haptic
                 />
+                {/* Lien "Mot de passe oublié" — discret sous le bouton
+                    Se connecter (parité avec /login portail web). */}
+                <AnimatedPressable
+                  onPress={() => navigation.navigate('ForgotPassword')}
+                  accessibilityRole="link"
+                  accessibilityLabel="Mot de passe oublié"
+                  style={styles.forgotBtn}
+                >
+                  <Text style={styles.forgotText}>Mot de passe oublié ?</Text>
+                </AnimatedPressable>
               </View>
 
               <View style={styles.divider}>
@@ -292,5 +314,15 @@ const styles = StyleSheet.create({
   registerCtaTextBold: {
     ...typography.bodyStrong,
     color: palette.primary,
+  },
+  forgotBtn: {
+    alignSelf: 'center',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+  },
+  forgotText: {
+    ...typography.small,
+    color: palette.primary,
+    fontWeight: '600',
   },
 });

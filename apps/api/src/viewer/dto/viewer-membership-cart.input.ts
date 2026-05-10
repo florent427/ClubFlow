@@ -23,6 +23,17 @@ export class ViewerUpdateCartItemInput {
   @IsOptional()
   @IsEnum(SubscriptionBillingRhythm)
   billingRhythm?: SubscriptionBillingRhythm | null;
+
+  /**
+   * IDs des frais ponctuels OPTIONAL sélectionnés. Vide = aucun OPTIONAL,
+   * null = pas de surcharge (laisse le système appliquer les autoApply).
+   * Les MANDATORY et LICENSE restent forcées indépendamment.
+   */
+  @Field(() => [ID], { nullable: true })
+  @IsOptional()
+  @IsArray()
+  @IsUUID(undefined, { each: true })
+  oneTimeFeeOverrideIds?: string[] | null;
 }
 
 @InputType()
@@ -30,6 +41,29 @@ export class ViewerToggleCartItemLicenseInput {
   @Field(() => ID)
   @IsUUID()
   itemId!: string;
+
+  @Field(() => Boolean)
+  @IsBoolean()
+  hasExistingLicense!: boolean;
+
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(64)
+  existingLicenseNumber?: string | null;
+}
+
+/**
+ * Variante pour les inscriptions en attente (Member pas encore créé).
+ * Permet au payeur de déclarer une licence existante AVANT validation
+ * du panier — sinon il valide au tarif licence puis demande remboursement.
+ */
+@InputType()
+export class ViewerToggleCartPendingItemLicenseInput {
+  @Field(() => ID)
+  @IsUUID()
+  pendingItemId!: string;
 
   @Field(() => Boolean)
   @IsBoolean()
@@ -70,6 +104,13 @@ export class ViewerUpdateCartPendingItemInput {
   @Field(() => SubscriptionBillingRhythm)
   @IsEnum(SubscriptionBillingRhythm)
   billingRhythm!: SubscriptionBillingRhythm;
+
+  /** Override OPTIONAL fees du pending. Vide = aucun OPTIONAL. */
+  @Field(() => [ID], { nullable: true })
+  @IsOptional()
+  @IsArray()
+  @IsUUID(undefined, { each: true })
+  oneTimeFeeOverrideIds?: string[] | null;
 }
 
 @InputType()

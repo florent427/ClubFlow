@@ -78,9 +78,25 @@ export function AdhesionSettingsPage() {
 
   const [fLabel, setFLabel] = useState('');
   const [fEuros, setFEuros] = useState('');
+  // Création fee : kind par défaut OPTIONAL (le cas le plus courant et
+  // le moins surprenant ; admin doit cocher LICENSE/MANDATORY pour
+  // changer). Si LICENSE : pattern + hint deviennent disponibles.
+  const [fKind, setFKind] = useState<'LICENSE' | 'MANDATORY' | 'OPTIONAL'>(
+    'OPTIONAL',
+  );
+  const [fAutoApply, setFAutoApply] = useState(false);
+  const [fLicensePattern, setFLicensePattern] = useState('');
+  const [fLicenseHint, setFLicenseHint] = useState('');
+
   const [editFeeId, setEditFeeId] = useState<string | null>(null);
   const [efLabel, setEfLabel] = useState('');
   const [efEuros, setEfEuros] = useState('');
+  const [efKind, setEfKind] = useState<'LICENSE' | 'MANDATORY' | 'OPTIONAL'>(
+    'OPTIONAL',
+  );
+  const [efAutoApply, setEfAutoApply] = useState(false);
+  const [efLicensePattern, setEfLicensePattern] = useState('');
+  const [efLicenseHint, setEfLicenseHint] = useState('');
 
   const [editProductId, setEditProductId] = useState<string | null>(null);
   const [epLabel, setEpLabel] = useState('');
@@ -167,6 +183,10 @@ export function AdhesionSettingsPage() {
       onCompleted: () => {
         setFLabel('');
         setFEuros('');
+        setFKind('OPTIONAL');
+        setFAutoApply(false);
+        setFLicensePattern('');
+        setFLicenseHint('');
         setFeeMsg(null);
         void refetchFees();
       },
@@ -415,8 +435,30 @@ export function AdhesionSettingsPage() {
       setFeeMsg('Montant invalide.');
       return;
     }
+    if (fKind === 'LICENSE' && fLicensePattern.trim()) {
+      try {
+        // Validation côté client = feedback immédiat ; serveur revérifie.
+        new RegExp(fLicensePattern.trim());
+      } catch (err) {
+        setFeeMsg(
+          `Regex invalide : ${err instanceof Error ? err.message : 'erreur'}.`,
+        );
+        return;
+      }
+    }
     await createFee({
-      variables: { input: { label: fLabel.trim(), amountCents: cents } },
+      variables: {
+        input: {
+          label: fLabel.trim(),
+          amountCents: cents,
+          kind: fKind,
+          autoApply: fKind === 'OPTIONAL' ? fAutoApply : true,
+          licenseNumberPattern:
+            fKind === 'LICENSE' ? fLicensePattern.trim() || null : null,
+          licenseNumberFormatHint:
+            fKind === 'LICENSE' ? fLicenseHint.trim() || null : null,
+        },
+      },
     });
   }
 
@@ -424,6 +466,10 @@ export function AdhesionSettingsPage() {
     setEditFeeId(row.id);
     setEfLabel(row.label);
     setEfEuros(centsToEuros(row.amountCents));
+    setEfKind(row.kind);
+    setEfAutoApply(row.autoApply);
+    setEfLicensePattern(row.licenseNumberPattern ?? '');
+    setEfLicenseHint(row.licenseNumberFormatHint ?? '');
     setFeeMsg(null);
   }
 
@@ -436,12 +482,28 @@ export function AdhesionSettingsPage() {
       setFeeMsg('Montant invalide.');
       return;
     }
+    if (efKind === 'LICENSE' && efLicensePattern.trim()) {
+      try {
+        new RegExp(efLicensePattern.trim());
+      } catch (err) {
+        setFeeMsg(
+          `Regex invalide : ${err instanceof Error ? err.message : 'erreur'}.`,
+        );
+        return;
+      }
+    }
     await updateFee({
       variables: {
         input: {
           id: editFeeId,
           label: efLabel.trim(),
           amountCents: cents,
+          kind: efKind,
+          autoApply: efKind === 'OPTIONAL' ? efAutoApply : true,
+          licenseNumberPattern:
+            efKind === 'LICENSE' ? efLicensePattern.trim() || null : null,
+          licenseNumberFormatHint:
+            efKind === 'LICENSE' ? efLicenseHint.trim() || null : null,
         },
       },
     });
@@ -1059,7 +1121,7 @@ export function AdhesionSettingsPage() {
                 <input
                   value={fLabel}
                   onChange={(e) => setFLabel(e.target.value)}
-                  placeholder="Licence FFGYM"
+                  placeholder="Licence FFKDA"
                 />
               </label>
               <label className="field">
@@ -1070,7 +1132,64 @@ export function AdhesionSettingsPage() {
                   placeholder="25"
                 />
               </label>
+              <label className="field">
+                <span>Type</span>
+                <select
+                  value={fKind}
+                  onChange={(e) =>
+                    setFKind(
+                      e.target.value as 'LICENSE' | 'MANDATORY' | 'OPTIONAL',
+                    )
+                  }
+                >
+                  <option value="OPTIONAL">Optionnel (à cocher)</option>
+                  <option value="MANDATORY">Obligatoire</option>
+                  <option value="LICENSE">Licence fédérale</option>
+                </select>
+              </label>
             </div>
+            {fKind === 'OPTIONAL' ? (
+              <label className="field" style={{ marginTop: '0.5rem' }}>
+                <input
+                  type="checkbox"
+                  checked={fAutoApply}
+                  onChange={(e) => setFAutoApply(e.target.checked)}
+                  style={{ marginRight: 6 }}
+                />
+                <span>
+                  Pré-cocher dans le panier (le payeur peut décocher)
+                </span>
+              </label>
+            ) : (
+              <p className="muted" style={{ marginTop: '0.5rem' }}>
+                Auto-ajouté à chaque inscription (
+                {fKind === 'LICENSE'
+                  ? 'sauf si l’adhérent déclare déjà avoir une licence valide pour la saison'
+                  : 'non décochable par le payeur'}
+                ).
+              </p>
+            )}
+            {fKind === 'LICENSE' ? (
+              <div className="members-form--inline" style={{ marginTop: '0.5rem' }}>
+                <label className="field">
+                  <span>Format attendu (regex)</span>
+                  <input
+                    value={fLicensePattern}
+                    onChange={(e) => setFLicensePattern(e.target.value)}
+                    placeholder="^\d{8}[A-Z]$"
+                    style={{ fontFamily: 'monospace' }}
+                  />
+                </label>
+                <label className="field">
+                  <span>Hint affiché à l'adhérent</span>
+                  <input
+                    value={fLicenseHint}
+                    onChange={(e) => setFLicenseHint(e.target.value)}
+                    placeholder="8 chiffres + 1 lettre majuscule (12345678A)"
+                  />
+                </label>
+              </div>
+            ) : null}
             <button
               type="submit"
               className="btn btn-primary"
@@ -1089,6 +1208,7 @@ export function AdhesionSettingsPage() {
                   <tr>
                     <th>Libellé</th>
                     <th>Montant</th>
+                    <th>Type</th>
                     <th />
                   </tr>
                 </thead>
@@ -1096,7 +1216,7 @@ export function AdhesionSettingsPage() {
                   {oneTimeFees.map((f) =>
                     editFeeId === f.id ? (
                       <tr key={f.id}>
-                        <td colSpan={3}>
+                        <td colSpan={4}>
                           <form
                             className="members-form"
                             onSubmit={(e) => void onUpdateFee(e)}
@@ -1116,7 +1236,76 @@ export function AdhesionSettingsPage() {
                                   onChange={(e) => setEfEuros(e.target.value)}
                                 />
                               </label>
+                              <label className="field">
+                                <span>Type</span>
+                                <select
+                                  value={efKind}
+                                  onChange={(e) =>
+                                    setEfKind(
+                                      e.target.value as
+                                        | 'LICENSE'
+                                        | 'MANDATORY'
+                                        | 'OPTIONAL',
+                                    )
+                                  }
+                                >
+                                  <option value="OPTIONAL">
+                                    Optionnel (à cocher)
+                                  </option>
+                                  <option value="MANDATORY">Obligatoire</option>
+                                  <option value="LICENSE">
+                                    Licence fédérale
+                                  </option>
+                                </select>
+                              </label>
                             </div>
+                            {efKind === 'OPTIONAL' ? (
+                              <label
+                                className="field"
+                                style={{ marginTop: '0.5rem' }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={efAutoApply}
+                                  onChange={(e) =>
+                                    setEfAutoApply(e.target.checked)
+                                  }
+                                  style={{ marginRight: 6 }}
+                                />
+                                <span>
+                                  Pré-cocher dans le panier (le payeur peut
+                                  décocher)
+                                </span>
+                              </label>
+                            ) : null}
+                            {efKind === 'LICENSE' ? (
+                              <div
+                                className="members-form--inline"
+                                style={{ marginTop: '0.5rem' }}
+                              >
+                                <label className="field">
+                                  <span>Format attendu (regex)</span>
+                                  <input
+                                    value={efLicensePattern}
+                                    onChange={(e) =>
+                                      setEfLicensePattern(e.target.value)
+                                    }
+                                    placeholder="^\d{8}[A-Z]$"
+                                    style={{ fontFamily: 'monospace' }}
+                                  />
+                                </label>
+                                <label className="field">
+                                  <span>Hint affiché à l'adhérent</span>
+                                  <input
+                                    value={efLicenseHint}
+                                    onChange={(e) =>
+                                      setEfLicenseHint(e.target.value)
+                                    }
+                                    placeholder="8 chiffres + 1 lettre majuscule (12345678A)"
+                                  />
+                                </label>
+                              </div>
+                            ) : null}
                             <button
                               type="submit"
                               className="btn btn-primary"
@@ -1138,6 +1327,20 @@ export function AdhesionSettingsPage() {
                       <tr key={f.id}>
                         <td>{f.label}</td>
                         <td>{centsToEuros(f.amountCents)} €</td>
+                        <td>
+                          {f.kind === 'LICENSE' ? (
+                            <span title={f.licenseNumberFormatHint ?? ''}>
+                              🎫 Licence
+                              {f.licenseNumberPattern ? ' (format défini)' : ''}
+                            </span>
+                          ) : f.kind === 'MANDATORY' ? (
+                            <span>📌 Obligatoire</span>
+                          ) : (
+                            <span>
+                              ⭐ Optionnel{f.autoApply ? ' (pré-coché)' : ''}
+                            </span>
+                          )}
+                        </td>
                         <td className="members-table__actions">
                           <button
                             type="button"

@@ -1,5 +1,6 @@
 import { Field, GraphQLISODateTime, ID, Int, ObjectType, registerEnumType } from '@nestjs/graphql';
 import { MemberCivility, MembershipCartStatus, SubscriptionBillingRhythm } from '@prisma/client';
+import { MembershipOneTimeFeeGraph } from './membership-one-time-fee.model';
 
 registerEnumType(MembershipCartStatus, {
   name: 'MembershipCartStatus',
@@ -114,6 +115,17 @@ export class MembershipCartPendingItemGraph {
   @Field(() => Int)
   oneTimeFeesCents!: number;
 
+  /** Le payeur a déclaré une licence existante pour cet adhérent. */
+  @Field(() => Boolean)
+  hasExistingLicense!: boolean;
+
+  @Field(() => String, { nullable: true })
+  existingLicenseNumber!: string | null;
+
+  /** OPTIONAL fees explicitement sélectionnés (null = autoApply normal). */
+  @Field(() => [ID], { nullable: true })
+  oneTimeFeeOverrideIds!: string[] | null;
+
   /**
    * Détail par formule sélectionnée (1 entrée par membershipProductId).
    * Permet à l'UI panier de lister chaque cotisation séparément.
@@ -192,6 +204,15 @@ export class MembershipCartItemGraph {
   oneTimeFeesCents!: number;
 
   /**
+   * IDs des frais ponctuels OPTIONAL sélectionnés par l'utilisateur.
+   * Vide ou null = aucune surcharge (les fees autoApply s'appliquent
+   * normalement). Si non-null : remplace complètement le set
+   * autoApply pour les OPTIONAL — les MANDATORY restent forcées.
+   */
+  @Field(() => [ID], { nullable: true })
+  oneTimeFeeOverrideIds!: string[] | null;
+
+  /**
    * Aperçu des remises pricing-rule qui s'appliqueront à la validation
    * du projet. Permet à l'utilisateur de comprendre le détail du prix
    * (ex "🎁 Famille progressive : -10€ — 3ᵉ adhérent du foyer").
@@ -253,6 +274,16 @@ export class MembershipCartGraph {
   /** Inscriptions en attente (Member pas encore créé). */
   @Field(() => [MembershipCartPendingItemGraph])
   pendingItems!: MembershipCartPendingItemGraph[];
+
+  /**
+   * Catalogue complet des frais ponctuels actifs du club (non-archivés).
+   * Permet à l'UI panier d'afficher les fees par item avec leur kind
+   * (LICENSE / MANDATORY / OPTIONAL) sans round-trip supplémentaire.
+   * Inclut le pattern + hint pour valider le numéro de licence côté
+   * client avant submit.
+   */
+  @Field(() => [MembershipOneTimeFeeGraph])
+  clubOneTimeFees!: MembershipOneTimeFeeGraph[];
 
   /**
    * Total estimé du panier (sum des items après pricing rules dynamiques).
