@@ -48,4 +48,6 @@ export type RootStackParamList = {
   VerifyEmail: { token?: string } | undefined;
   SelectProfile: undefined;
   Main: undefined;
+  /** Mode Admin via WebView (admin web staging/prod) — gaté canAccessClubBackOffice. */
+  Admin: undefined;
 };

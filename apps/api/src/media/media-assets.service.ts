@@ -143,6 +143,32 @@ export class MediaAssetsService {
   }
 
   /**
+   * Réécrit une URL `publicUrl` stockée en base pour la rendre joignable
+   * depuis le client courant.
+   *
+   * Cas d'usage : si l'API a démarré sans `API_PUBLIC_URL` (déploiement
+   * mal configuré), les uploads ont été persistés avec
+   * `http://localhost:3000/media/<id>` — non joignable depuis un browser
+   * distant. Ce helper permet de "fixer" la valeur lue côté resolvers
+   * sans forcer une migration DB. Idempotent : laisse intactes les URLs
+   * S3/CDN ou déjà conformes.
+   *
+   * Appelé par les resolvers qui exposent `mediaAssetUrl` au front
+   * (documents, vitrine, chat…) — voir `documentToGraph` etc.
+   */
+  resolvePublicUrl(stored: string | null | undefined): string | null {
+    if (!stored) return null;
+    const explicit = process.env.API_PUBLIC_URL?.replace(/\/+$/, '');
+    if (!explicit) return stored;
+    // Rewrite tout préfixe `http://localhost:<port>` ou `http://127.0.0.1:<port>`
+    // vers l'URL publique configurée. Tolère un éventuel slash trailing.
+    return stored.replace(
+      /^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?/,
+      explicit,
+    );
+  }
+
+  /**
    * Upload d'une image. Validation MIME + taille, stockage + insertion DB.
    */
   async uploadImage(
