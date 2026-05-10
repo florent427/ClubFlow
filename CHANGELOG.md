@@ -9,6 +9,64 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.16.0](https://github.com/florent427/ClubFlow/compare/v0.15.0...v0.16.0) (2026-05-10)
+
+
+### ✨ Features
+
+* **adhesion:** frais ponctuels typés (LICENSE/MANDATORY/OPTIONAL) + UI mobile + panier complet ([4307981](https://github.com/florent427/ClubFlow/commit/4307981bd36854a2d3556bd2aac091b4a734194a))
+* **adhesion:** frais ponctuels typés + UI mobile panier complet ([91dbe14](https://github.com/florent427/ClubFlow/commit/91dbe14edb4dd87d782b0c5b106b4dbc59cec646))
+* **auth/vitrine:** banner club /login + lien Connexion vitrine ([84af7f9](https://github.com/florent427/ClubFlow/commit/84af7f9de4e97f8c65b5735736609a9c4fc9886e))
+* **auth/vitrine:** banner club sur /login + lien Connexion vitrine + propage ?club= entre /login et /register ([69ef0fe](https://github.com/florent427/ClubFlow/commit/69ef0fe022796fc12ed7dd220496d44141efd226))
+* **mobile/auth:** parité web — AuthClubBanner + Forgot/ResetPassword + lien forgot dans Login ([aa6689d](https://github.com/florent427/ClubFlow/commit/aa6689d2c00bbdc106e3fcae663d83d0d4c7fff1))
+* **mobile/auth:** parité web — AuthClubBanner + Forgot/ResetPassword + lien forgot Login ([d5b2a8f](https://github.com/florent427/ClubFlow/commit/d5b2a8f0c3642f946cc8ffcc928dabd26d85675f))
+* **mobile/cart:** LICENSE en checkbox cochée par défaut ([1c83775](https://github.com/florent427/ClubFlow/commit/1c837750d829f2d4f8c82c280089bc8c397d0dee))
+* **mobile/cart:** LICENSE en checkbox cochée par défaut, décocher ouvre modale numéro ([63f275f](https://github.com/florent427/ClubFlow/commit/63f275f69352cd28c924039f6ee1f157253bda18))
+* **mobile:** écran Admin WebView pour accéder au backoffice depuis l'app ([ce01130](https://github.com/florent427/ClubFlow/commit/ce0113026468fdca81d6d62987fca57e75db2d78))
+* **multi-tenant:** sélection club explicite — portail ?club=, vitrine CTA, mobile SelectClub ([bb2a43c](https://github.com/florent427/ClubFlow/commit/bb2a43c23afd30c794b0f7f4b2724732510ecbe9))
+* **multi-tenant:** sélection du club explicite — portail ?club=, vitrine CTA, mobile SelectClub ([a2ed08e](https://github.com/florent427/ClubFlow/commit/a2ed08e1bd94a03906fced729736b2884c18100b))
+* **portal/cart:** section frais ponctuels typés — parité mobile ([1f1a241](https://github.com/florent427/ClubFlow/commit/1f1a2410ddb962f387bc1bd583758242bcb267fb))
+* **portal/cart:** section frais ponctuels typés (LICENSE/MANDATORY/OPTIONAL) — parité mobile ([f256287](https://github.com/florent427/ClubFlow/commit/f25628770c82cddce6f7828534b01efeb00f824d))
+* **portal/dashboard:** parité mobile — bannière panier + KPIs payeur + CTAs inscriptions ([e6bef03](https://github.com/florent427/ClubFlow/commit/e6bef036d6582598a24ca8098a7fd1dd4e43320b))
+* **portal/dashboard:** parité mobile — bannière panier + KPIs payeur + CTAs inscriptions famille ([e82f578](https://github.com/florent427/ClubFlow/commit/e82f578945544254913b8cd829a852c04e57a1be))
+* **portal/topbar:** UserMenu compact + admin gating club courant + SSO cross-domain ([f904394](https://github.com/florent427/ClubFlow/commit/f904394151d6f77af7d0f0c517632323c08807a3))
+* **portal/topbar:** UserMenu compact + admin gating club courant + SSO cross-domain ([d1831fe](https://github.com/florent427/ClubFlow/commit/d1831fe6d6316361e78768fc02919fa2438ba0c9))
+* **register:** lien 'Changer' dans le banner club ([208a0a8](https://github.com/florent427/ClubFlow/commit/208a0a80cce1724e031ee30bb73c56684de94915))
+* **register:** lien 'Changer' dans le banner club du formulaire ([fa0258f](https://github.com/florent427/ClubFlow/commit/fa0258f2da65a683d6be033c1b7ef418f721d881))
+* **register:** sélecteur club inline si pas de ?club= (web) + clubSlug mobile ([029976f](https://github.com/florent427/ClubFlow/commit/029976f5acecb709aa8437591c903a3234e38dde))
+* **register:** sélecteur club inline si pas de ?club= + fix mobile clubSlug ([43e7570](https://github.com/florent427/ClubFlow/commit/43e757054a784e647b5a45664d37a244dddace82))
+* **select-profile:** affiche le club sur chaque carte (parité web/mobile) ([03f61fd](https://github.com/florent427/ClubFlow/commit/03f61fd2506590fffde169c90572a3bf14a7d477))
+* **select-profile:** affiche nom + logo du club sur chaque carte ([a3c4c2b](https://github.com/florent427/ClubFlow/commit/a3c4c2b0f3e591e8292ec1f295b692251a42d8c2))
+
+
+### 🐛 Bug Fixes
+
+* **api:** documenter API_PUBLIC_URL dans le template .env staging ([5d55782](https://github.com/florent427/ClubFlow/commit/5d557820843dcf510410e9730c90095afb74ca6d))
+* **api:** rewrite mediaAssetUrl localhost→API_PUBLIC_URL au query time ([72b06cb](https://github.com/florent427/ClubFlow/commit/72b06cbf550ed269e0107f089bc00d263f40244d))
+* **auth/register:** crée Family + FamilyMember PAYER au signup Contact ([ad42514](https://github.com/florent427/ClubFlow/commit/ad42514ca3a1f732a2b228deae06771246ecc486))
+* **auth/register:** crée Family + FamilyMember PAYER au signup Contact ([44419b9](https://github.com/florent427/ClubFlow/commit/44419b9ead17c0a0a68abc0b72f8a49f6d1b5e06))
+* **auth/register:** User existant + email vérifié peut rejoindre un nouveau club sans re-vérif ([1fad056](https://github.com/florent427/ClubFlow/commit/1fad056667221d15e694340a4afc0d228eca5cfb))
+* **auth/register:** User existant + email vérifié peut rejoindre un nouveau club sans re-vérif ([310c972](https://github.com/florent427/ClubFlow/commit/310c9722c4c74ae6bed37e4c5db13bc766b3d37c))
+* bug Documents admin failed-to-fetch + feature mobile Admin WebView ([d258b05](https://github.com/florent427/ClubFlow/commit/d258b05d392a5f5d003539a06bdb361799350bad))
+* **cart/finalize:** un mineur ne peut JAMAIS être PAYER + check identité sur migration ([ed850c9](https://github.com/florent427/ClubFlow/commit/ed850c9e4ee9418fe1bcf4e7d51cb8bec96574ec))
+* **cart:** mineur jamais PAYER + check identité sur migration Contact→Member ([6992360](https://github.com/florent427/ClubFlow/commit/6992360faec760382fa9ac3e93ea37b1d1aba81d))
+* **mobile-admin:** add babel-preset-expo devDep top-level pour EAS ([c751df6](https://github.com/florent427/ClubFlow/commit/c751df6745235298ee7c7c74606d69a9aaddba73))
+* **mobile-admin:** align deps SDK 55 (worklets 0.7.4) ([2241e6c](https://github.com/florent427/ClubFlow/commit/2241e6cbaf93abfa8e63348207b9f8e55e90eda9))
+* **mobile-admin:** align deps to Expo SDK 55 — react-native-worklets 0.8.1→0.7.4 ([853c7b0](https://github.com/florent427/ClubFlow/commit/853c7b034d662fff7b30580f2dcc117138de207d))
+* **mobile-admin:** babel-preset-expo top-level pour EAS ([438afa6](https://github.com/florent427/ClubFlow/commit/438afa65d8a6ef22e58e78a39de1dde89c018f30))
+* **mobile-admin:** copie locale de mobile-shared pour EAS Build ([7d262f4](https://github.com/florent427/ClubFlow/commit/7d262f48b9a8ceac485bb08b7455fb67a866fd2c))
+* **mobile-admin:** copie locale mobile-shared pour EAS Build ([52da623](https://github.com/florent427/ClubFlow/commit/52da6233f14bebde2d7235a7312df5ca5b134830))
+* **mobile:** EAS preview env complet — GRAPHQL_HTTP + ADMIN_APP_URL (et pas juste API_BASE) ([913a7bd](https://github.com/florent427/ClubFlow/commit/913a7bd6aac6ad647eb64777a66fb35b5b45257e))
+* **mobile:** export VIEWER_ELIGIBLE_MEMBERSHIP_FORMULAS query (manquait, oublié dans commit précédent) ([14ae785](https://github.com/florent427/ClubFlow/commit/14ae785db81991f0dea152ad657135a88374445f))
+* **mobile:** RegisterChildMemberCta — fetch formules + sélection (api requires ≥1 formule) ([6896671](https://github.com/florent427/ClubFlow/commit/6896671252af709a22c7a03d5da4efebe7091cd3))
+* **mobile:** RegisterChildMemberCta — schema membershipProductIds + date picker visuel ([b84e2ac](https://github.com/florent427/ClubFlow/commit/b84e2acbd1289d8c6c29fc400deb1058e01c3351))
+* **mobile:** SelectProfile pour Contact PAYER → setMemberContactSession (pas setMemberSession) ([948b8c7](https://github.com/florent427/ClubFlow/commit/948b8c75af65d22fc6b6f06e6251cae2857931e2))
+* **portal/usermenu:** "Profils du foyer" filtre sur le club courant uniquement ([eecb21a](https://github.com/florent427/ClubFlow/commit/eecb21a2c789d7ebba932a9d8c3be286f956baf7))
+* **portal/usermenu:** "Profils du foyer" filtre sur le club courant uniquement ([a32a5c1](https://github.com/florent427/ClubFlow/commit/a32a5c1264e6dca2650cbd6a4dca4002ff3cb726))
+* **staging:** apps/member-portal/.env.staging.example manquant ("Failed to fetch" sur portail) ([70f2291](https://github.com/florent427/ClubFlow/commit/70f2291f8345d74391d85e7049c8a55c84398727))
+* **viewer/profiles:** listViewerProfiles ne réconcilie plus un mineur ni une identité différente ([d9d5bcc](https://github.com/florent427/ClubFlow/commit/d9d5bcc07b156ef7411fed911ff011f188d61591))
+* **viewer:** listViewerProfiles ne réconcilie plus un mineur ni une identité différente ([86c8304](https://github.com/florent427/ClubFlow/commit/86c830436516f41240584fb542ebd12423fa37a2))
+
 ## [0.15.0](https://github.com/florent427/ClubFlow/compare/v0.14.0...v0.15.0) (2026-05-04)
 
 
