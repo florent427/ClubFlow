@@ -1,29 +1,61 @@
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { openAdminInBrowser } from '../lib/admin-switch';
+import * as storage from '../lib/storage';
 import { palette, radius, spacing, typography } from '../lib/theme';
+import type { RootStackParamList } from '../types/navigation';
 
 type Props = {
   canAccessClubBackOffice: boolean;
+  /** Club de l'admin (depuis viewerAdminSwitch.adminWorkspaceClubId). */
   adminWorkspaceClubId?: string | null;
   /** `header` = bouton compact dans un header (versions onDark via hero
    * gradient adaptent les couleurs). */
   variant?: 'header' | 'segment';
 };
 
+/**
+ * Bouton "Admin" qui ouvre l'écran AdminWebViewScreen (WebView de
+ * l'admin web staging/prod avec SSO automatique). Visible uniquement
+ * si le user a `canAccessClubBackOffice` ET que le club admin matche
+ * le club courant (sinon afficher un bouton "Admin du club X" sur un
+ * autre club serait confus dans le contexte actuel).
+ */
 export function MemberRoleToggle({
   canAccessClubBackOffice,
+  adminWorkspaceClubId,
   variant = 'segment',
 }: Props) {
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+
   if (canAccessClubBackOffice !== true) {
     return null;
+  }
+
+  async function goAdmin() {
+    // Vérif basique : on a bien une session valide pour SSO. Si l'user
+    // a switch de club récent, le clubId actuel doit matcher
+    // adminWorkspaceClubId (sinon admin d'un autre club, pas pertinent ici).
+    const club = await storage.getSelectedClub();
+    if (
+      adminWorkspaceClubId &&
+      club &&
+      adminWorkspaceClubId !== club.id
+    ) {
+      // Pas admin du club courant → on n'ouvre pas (le bouton ne devrait
+      // pas être visible en théorie, mais defense-in-depth).
+      return;
+    }
+    navigation.navigate('Admin');
   }
 
   if (variant === 'header') {
     return (
       <Pressable
         style={({ pressed }) => [styles.headerBtn, pressed && styles.pressed]}
-        onPress={() => openAdminInBrowser()}
+        onPress={() => void goAdmin()}
         accessibilityRole="button"
         accessibilityLabel="Ouvrir l'administration ClubFlow"
       >
@@ -37,7 +69,7 @@ export function MemberRoleToggle({
     <View style={styles.segment}>
       <Pressable
         style={({ pressed }) => [styles.segBtn, pressed && styles.pressed]}
-        onPress={() => openAdminInBrowser()}
+        onPress={() => void goAdmin()}
       >
         <Text style={styles.segBtnText}>Administration</Text>
       </Pressable>
