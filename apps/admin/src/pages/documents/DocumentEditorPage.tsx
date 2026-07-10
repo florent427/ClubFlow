@@ -85,6 +85,25 @@ function genUid(): string {
 }
 
 /**
+ * Sérialise les fields (hors uid/id client) pour détecter les modifications
+ * non enregistrées (garde de navigation du bouton « Retour »).
+ */
+function serializeFields(fs: EditingField[]): string {
+  return JSON.stringify(
+    fs.map((f) => [
+      f.page,
+      f.x,
+      f.y,
+      f.width,
+      f.height,
+      f.fieldType,
+      f.required,
+      f.label,
+    ]),
+  );
+}
+
+/**
  * Éditeur visuel des champs positionnés sur un document PDF.
  *
  * Architecture :
@@ -166,25 +185,27 @@ export function DocumentEditorPage() {
    * document (la version reste la même pendant l'édition des fields).
    */
   const lastSeenDocIdRef = useRef<string | null>(null);
+  /** Snapshot des fields au dernier enregistrement (détection dirty). */
+  const savedSnapshotRef = useRef<string>(serializeFields([]));
   useEffect(() => {
     if (!documentRow) return;
     if (lastSeenDocIdRef.current === documentRow.id) return;
     lastSeenDocIdRef.current = documentRow.id;
-    setFields(
-      documentRow.fields.map((f, idx) => ({
-        uid: genUid(),
-        id: f.id,
-        page: f.page,
-        x: f.x,
-        y: f.y,
-        width: f.width,
-        height: f.height,
-        fieldType: f.fieldType,
-        required: f.required,
-        label: f.label,
-        sortOrder: f.sortOrder ?? idx,
-      })),
-    );
+    const loaded = documentRow.fields.map((f, idx) => ({
+      uid: genUid(),
+      id: f.id,
+      page: f.page,
+      x: f.x,
+      y: f.y,
+      width: f.width,
+      height: f.height,
+      fieldType: f.fieldType,
+      required: f.required,
+      label: f.label,
+      sortOrder: f.sortOrder ?? idx,
+    }));
+    setFields(loaded);
+    savedSnapshotRef.current = serializeFields(loaded);
   }, [documentRow]);
 
   /** Scale de rendu du PDF — partagé entre les 2 effets. */
@@ -420,6 +441,7 @@ export function DocumentEditorPage() {
           })),
         },
       });
+      savedSnapshotRef.current = serializeFields(fields);
       showToast(`${fields.length} champ(s) enregistré(s).`, 'success');
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Erreur', 'error');
@@ -457,7 +479,7 @@ export function DocumentEditorPage() {
             </p>
             <h1 className="members-loom__title">{documentRow.name}</h1>
             <p className="members-loom__subtitle">
-              Édite les zones interactives. Version v{documentRow.version}.
+              Édite les zones interactives. Version v{documentRow.version} ·{' '}
               {fields.length} champ{fields.length > 1 ? 's' : ''} positionné
               {fields.length > 1 ? 's' : ''}.
             </p>
@@ -466,7 +488,17 @@ export function DocumentEditorPage() {
             <button
               type="button"
               className="btn-ghost"
-              onClick={() => navigate('/documents')}
+              onClick={() => {
+                if (
+                  serializeFields(fields) !== savedSnapshotRef.current &&
+                  !window.confirm(
+                    'Modifications non enregistrées. Quitter sans enregistrer ?',
+                  )
+                ) {
+                  return;
+                }
+                navigate('/documents');
+              }}
             >
               Retour
             </button>

@@ -1,6 +1,7 @@
 import { useQuery } from '@apollo/client/react';
 import { DASHBOARD_TRENDS } from '../lib/documents';
 import type { DashboardTrendsData } from '../lib/types';
+import { QueryError } from '../components/QueryError';
 
 function formatEuros(cents: number): string {
   return new Intl.NumberFormat('fr-FR', {
@@ -30,7 +31,7 @@ function trendColor(pct: number): string {
  *   - Stats vitrine (pages/articles/contacts 30j)
  */
 export function DashboardTrendsPanel() {
-  const { data, loading, error } = useQuery<DashboardTrendsData>(
+  const { data, loading, error, refetch } = useQuery<DashboardTrendsData>(
     DASHBOARD_TRENDS,
     { fetchPolicy: 'cache-and-network' },
   );
@@ -38,7 +39,7 @@ export function DashboardTrendsPanel() {
     return <p className="muted">Chargement des tendances…</p>;
   }
   if (error) {
-    return <p className="form-error">{error.message}</p>;
+    return <QueryError error={error} onRetry={() => void refetch()} />;
   }
   const t = data?.adminDashboardTrends;
   if (!t) return null;
@@ -81,7 +82,12 @@ export function DashboardTrendsPanel() {
     },
     {
       label: 'Paiement à l’heure',
-      value: `${Math.round(t.paidOnTimeRate * 100)}%`,
+      // L'API renvoie 1 (100 %) quand aucune facture n'a été payée sur la
+      // période — on affiche "—" plutôt qu'un faux 100 %.
+      value:
+        t.revenueLast30Cents === 0 && t.paidOnTimeRate === 1
+          ? '—'
+          : `${Math.round(t.paidOnTimeRate * 100)}%`,
       hint: 'Sur les factures payées les 30 derniers jours',
     },
     {

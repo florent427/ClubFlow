@@ -27,10 +27,9 @@ export class TransactionalMailService {
     if (!trimmed || !trimmed.includes('@')) {
       throw new BadRequestException('Adresse e-mail invalide');
     }
-    const profile = await this.domains.getVerifiedMailProfile(
-      clubId,
-      'transactional',
-    );
+    // E-mail AUTH : fallback sender plateforme si le club n’a pas encore
+    // de domaine d’envoi vérifié (l’inscription ne doit pas être bloquée).
+    const profile = await this.domains.getAuthMailProfile(clubId);
     await this.transport.sendEmail({
       clubId,
       kind: 'transactional',
@@ -140,10 +139,9 @@ export class TransactionalMailService {
     if (!trimmed || !trimmed.includes('@')) {
       throw new BadRequestException('Adresse e-mail invalide');
     }
-    const profile = await this.domains.getVerifiedMailProfile(
-      clubId,
-      'transactional',
-    );
+    // E-mail AUTH : fallback sender plateforme si le club n’a pas encore
+    // de domaine d’envoi vérifié (le reset ne doit pas être bloqué).
+    const profile = await this.domains.getAuthMailProfile(clubId);
     await this.transport.sendEmail({
       clubId,
       kind: 'transactional',

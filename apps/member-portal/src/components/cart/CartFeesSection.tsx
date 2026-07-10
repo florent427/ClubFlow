@@ -285,6 +285,15 @@ export function CartFeesSection(props: Props) {
   );
 }
 
+/**
+ * Ancre le pattern de licence comme côté serveur : match sur la chaîne
+ * complète, pas partiel (sinon "ABC123XYZ" passerait un pattern
+ * "[A-Z]{3}\d{3}").
+ */
+function anchorLicensePattern(pattern: string): string {
+  return pattern.startsWith('^') ? pattern : `^(?:${pattern})$`;
+}
+
 function LicenseModal({
   fee,
   loading,
@@ -303,7 +312,9 @@ function LicenseModal({
     if (input.trim().length < 3) return 'Au moins 3 caractères.';
     if (fee.licenseNumberPattern) {
       try {
-        const regex = new RegExp(fee.licenseNumberPattern);
+        const regex = new RegExp(
+          anchorLicensePattern(fee.licenseNumberPattern),
+        );
         if (!regex.test(input.trim())) {
           return fee.licenseNumberFormatHint
             ? `Format attendu : ${fee.licenseNumberFormatHint}`

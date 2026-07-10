@@ -34,6 +34,7 @@ import type {
   SubmitReceiptForOcrData,
 } from '../../lib/types';
 import { useToast } from '../../components/ToastProvider';
+import { useClubModules } from '../../lib/club-modules-context';
 import { ConfirmModal, Drawer, EmptyState } from '../../components/ui';
 import { downloadCsv, toCsv } from '../../lib/csv-export';
 import { getClubId, getToken } from '../../lib/storage';
@@ -150,12 +151,17 @@ export function AccountingPage() {
     useQuery<ClubAccountingCohortsData>(CLUB_ACCOUNTING_COHORTS, {
       fetchPolicy: 'cache-and-network',
     });
-  // Query projets tolérante : si le module PROJECTS n'est pas activé
-  // pour ce club, la query renvoie une erreur 403. On l'ignore pour
-  // que l'UI affiche simplement "Fonctionnement général" comme seule option.
+  // Query projets conditionnelle : si le module PROJECTS n'est pas
+  // activé pour ce club, on skip carrément la query (un FORBIDDEN,
+  // même avec errorPolicy 'ignore', déclencherait l'errorLink global
+  // → éjection vers /select-club). L'UI affiche alors simplement
+  // "Fonctionnement général" comme seule option.
+  const { isEnabled: isModuleEnabled } = useClubModules();
+  const projectsOn = isModuleEnabled('PROJECTS');
   const { data: projectsData } = useQuery<ClubProjectsData>(CLUB_PROJECTS, {
     fetchPolicy: 'cache-and-network',
     errorPolicy: 'ignore',
+    skip: !projectsOn,
   });
   // Comptes financiers (banques, caisses, transit Stripe) du club.
   const { data: finAccountsData } = useQuery<ClubFinancialAccountsData>(

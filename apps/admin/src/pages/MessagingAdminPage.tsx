@@ -100,8 +100,12 @@ export function MessagingAdminPage() {
     CLUB_DYNAMIC_GROUPS,
   );
 
-  const [createRoom] = useMutation(ADMIN_CREATE_CHAT_GROUP);
-  const [updateRoom] = useMutation(ADMIN_UPDATE_CHAT_GROUP);
+  const [createRoom, { loading: creatingRoom }] = useMutation(
+    ADMIN_CREATE_CHAT_GROUP,
+  );
+  const [updateRoom, { loading: updatingRoom }] = useMutation(
+    ADMIN_UPDATE_CHAT_GROUP,
+  );
   const [archiveRoom] = useMutation(ADMIN_ARCHIVE_CHAT_GROUP);
 
   const rooms = roomsData?.clubChatRoomsAdmin ?? [];
@@ -267,6 +271,7 @@ export function MessagingAdminPage() {
           members={members}
           groups={groups}
           memberLabel={memberLabel}
+          saving={creatingRoom}
           onClose={() => setDrawer({ kind: 'closed' })}
           onSubmit={async (form) => {
             try {
@@ -290,6 +295,7 @@ export function MessagingAdminPage() {
           groups={groups}
           memberLabel={memberLabel}
           existing={drawer.room}
+          saving={updatingRoom}
           onClose={() => setDrawer({ kind: 'closed' })}
           onSubmit={async (form) => {
             try {
@@ -563,6 +569,8 @@ type RoomDrawerProps = {
   groups: DynamicGroupsQueryData['clubDynamicGroups'];
   memberLabel: Map<string, string>;
   existing?: AdminChatRoomRow;
+  /** Mutation create/update en cours → bouton submit désactivé. */
+  saving?: boolean;
   onClose: () => void;
   onSubmit: (form: {
     name?: string;
@@ -581,6 +589,7 @@ function RoomDrawer({
   members,
   groups,
   existing,
+  saving,
   onClose,
   onSubmit,
 }: RoomDrawerProps) {
@@ -830,8 +839,15 @@ function RoomDrawer({
             <button
               type="submit"
               className="members-btn members-btn--primary"
+              disabled={saving}
             >
-              {mode === 'create' ? 'Créer le salon' : 'Enregistrer'}
+              {mode === 'create'
+                ? saving
+                  ? 'Création…'
+                  : 'Créer le salon'
+                : saving
+                  ? 'Enregistrement…'
+                  : 'Enregistrer'}
             </button>
           </div>
         </form>

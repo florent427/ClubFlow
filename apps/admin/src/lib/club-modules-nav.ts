@@ -7,6 +7,10 @@ export function modulesRequiredForPath(pathname: string): ModuleCodeStr[] {
   if (pathname.startsWith('/contacts')) return ['MEMBERS'];
   if (pathname.startsWith('/planning')) return ['PLANNING'];
   if (pathname.startsWith('/communication')) return ['COMMUNICATION'];
+  if (pathname.startsWith('/comptabilite')) return ['ACCOUNTING'];
+  if (pathname.startsWith('/sponsoring')) return ['SPONSORING'];
+  if (pathname.startsWith('/subventions')) return ['SUBSIDIES'];
+  if (pathname.startsWith('/boutique')) return ['SHOP'];
   if (
     pathname === '/settings/adhesion' ||
     pathname.startsWith('/settings/adhesion')

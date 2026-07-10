@@ -9,6 +9,7 @@ import {
   type AiUsageLog,
 } from '../../lib/ai-documents';
 import { useToast } from '../../components/ToastProvider';
+import { QueryError } from '../../components/QueryError';
 
 /**
  * Paramètres IA par club :
@@ -19,7 +20,7 @@ import { useToast } from '../../components/ToastProvider';
  */
 export function AiSettingsPage() {
   const { showToast } = useToast();
-  const { data, loading, error } = useQuery<{ clubAiSettings: AiSettings }>(
+  const { data, loading, error, refetch } = useQuery<{ clubAiSettings: AiSettings }>(
     CLUB_AI_SETTINGS,
     { fetchPolicy: 'cache-and-network' },
   );
@@ -104,7 +105,7 @@ export function AiSettingsPage() {
       </header>
 
       {error ? (
-        <p className="form-error">{error.message}</p>
+        <QueryError error={error} onRetry={() => void refetch()} />
       ) : loading && !s ? (
         <p className="muted">Chargement…</p>
       ) : s ? (

@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { useQuery } from '@apollo/client/react';
 import { MY_ADMIN_CLUBS } from '../lib/documents';
 import type { MyAdminClubsQueryData, MyAdminClub } from '../lib/types';
+import { landingUrl } from '../lib/landing-url';
 import {
   isLoggedIn,
   getClubId,
@@ -75,7 +76,7 @@ export function SelectClubPage() {
               de vous inscrire, vérifiez que votre email a bien été confirmé.
             </p>
             <p>
-              <a href="/signup" className="btn btn-secondary">
+              <a href={landingUrl('/signup')} className="btn btn-secondary">
                 Créer un nouveau club
               </a>
             </p>
@@ -126,7 +127,7 @@ export function SelectClubPage() {
 
         <p className="select-club-hint">
           Pour créer un nouveau club, allez sur la{' '}
-          <a href="/signup">page de création publique</a>.
+          <a href={landingUrl('/signup')}>page de création publique</a>.
         </p>
       </div>
 

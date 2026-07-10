@@ -140,12 +140,18 @@ export async function resolveCurrentClub(): Promise<ClubInfo> {
   // 3. Fallback env legacy (Phase 1 mono-club)
   const envSlug = process.env.VITRINE_DEFAULT_CLUB_SLUG;
   if (envSlug && envSlug.trim()) {
-    const data = await fetchGraphQL<PublicClubBySlugQueryData>(
-      PUBLIC_CLUB_BY_SLUG_QUERY,
-      { slug: envSlug.trim() },
-      { revalidate: 300 },
-    );
-    return data.publicClub;
+    try {
+      const data = await fetchGraphQL<PublicClubBySlugQueryData>(
+        PUBLIC_CLUB_BY_SLUG_QUERY,
+        { slug: envSlug.trim() },
+        { revalidate: 300 },
+      );
+      if (data.publicClub) return data.publicClub;
+    } catch {
+      // Slug par défaut absent en DB (ex: 'demo-club' baked au build mais
+      // club nommé autrement) → on tombe sur l'erreur descriptive ci-dessous
+      // au lieu de laisser crasher le layout avec une erreur GraphQL brute.
+    }
   }
 
   throw new Error(
