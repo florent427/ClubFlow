@@ -13,14 +13,31 @@ import { EditModeToolbar } from '@/components/edit/EditModeToolbar';
 import { JsonLd, buildSportsClubLd } from '@/components/JsonLd';
 import { RevealRoot } from '@/components/sksr/RevealRoot';
 
-export const metadata: Metadata = {
-  title: {
-    default: 'SKSR — Shotokan Karaté Sud Réunion',
-    template: '%s · SKSR',
-  },
-  description:
-    "SKSR — Shotokan Karaté Sud Réunion. Club de karaté Shotokan à L'Étang-Salé (974) depuis 2009.",
-};
+/**
+ * Metadata dynamique par tenant : le title/description reflètent le club
+ * résolu via le host (plus de branding hardcodé d'un club spécifique).
+ * Fallback neutre si la résolution échoue.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  try {
+    const club = await resolveCurrentClub();
+    return {
+      title: {
+        default: club.name,
+        template: `%s · ${club.name}`,
+      },
+      description: `${club.name} — le site officiel du club.`,
+    };
+  } catch {
+    return {
+      title: {
+        default: 'Mon club',
+        template: '%s · Mon club',
+      },
+      description: 'Le site officiel du club.',
+    };
+  }
+}
 
 export default async function RootLayout({
   children,
@@ -28,7 +45,9 @@ export default async function RootLayout({
   children: ReactNode;
 }) {
   const club = await resolveCurrentClub();
-  const branding = await fetchClubBranding(club.slug);
+  // On passe le nom réel du club (résolu via le host) pour que le fallback
+  // branding neutre affiche le bon nom même sans branding configuré en DB.
+  const branding = await fetchClubBranding(club.slug, club.name);
   const editMode = await isEditModeActive();
 
   const hdrs = await headers();

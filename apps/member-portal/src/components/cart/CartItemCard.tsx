@@ -1,9 +1,7 @@
-import { useState } from 'react';
 import { useMutation } from '@apollo/client/react';
 import {
   VIEWER_ACTIVE_CART,
   VIEWER_REMOVE_CART_ITEM,
-  VIEWER_TOGGLE_CART_LICENSE,
   VIEWER_UPDATE_CART_ITEM,
   type CartItem,
 } from '../../lib/cart-documents';
@@ -19,19 +17,9 @@ interface Props {
 
 export function CartItemCard({ item, disabled }: Props) {
   const { showToast } = useToast();
-  const [licenseNumber, setLicenseNumber] = useState<string>(
-    item.existingLicenseNumber ?? '',
-  );
-  const [licenseDraftOpen, setLicenseDraftOpen] = useState<boolean>(
-    item.hasExistingLicense,
-  );
 
   const [updateItem, { loading: updating }] = useMutation(
     VIEWER_UPDATE_CART_ITEM,
-    { refetchQueries: [{ query: VIEWER_ACTIVE_CART }] },
-  );
-  const [toggleLicense, { loading: togglingLicense }] = useMutation(
-    VIEWER_TOGGLE_CART_LICENSE,
     { refetchQueries: [{ query: VIEWER_ACTIVE_CART }] },
   );
   const [removeItem, { loading: removing }] = useMutation(
@@ -39,7 +27,7 @@ export function CartItemCard({ item, disabled }: Props) {
     { refetchQueries: [{ query: VIEWER_ACTIVE_CART }] },
   );
 
-  const busy = updating || togglingLicense || removing || disabled === true;
+  const busy = updating || removing || disabled === true;
   const manualAssign = item.requiresManualAssignment;
 
   async function handleRhythmChange(rhythm: BillingRhythm): Promise<void> {
@@ -53,57 +41,6 @@ export function CartItemCard({ item, disabled }: Props) {
     } catch (err) {
       showToast(
         err instanceof Error ? err.message : 'Impossible de modifier le rythme.',
-        'error',
-      );
-    }
-  }
-
-  async function handleToggleLicense(newHas: boolean): Promise<void> {
-    if (newHas) {
-      setLicenseDraftOpen(true);
-      return; // attend le submit du numéro
-    }
-    try {
-      await toggleLicense({
-        variables: {
-          input: {
-            itemId: item.id,
-            hasExistingLicense: false,
-            existingLicenseNumber: null,
-          },
-        },
-      });
-      setLicenseDraftOpen(false);
-      setLicenseNumber('');
-      showToast('Licence réintégrée au projet.', 'success');
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Échec du changement.',
-        'error',
-      );
-    }
-  }
-
-  async function submitLicenseNumber(): Promise<void> {
-    const trimmed = licenseNumber.trim();
-    if (trimmed.length < 3) {
-      showToast('Numéro de licence trop court (3 caractères minimum).', 'error');
-      return;
-    }
-    try {
-      await toggleLicense({
-        variables: {
-          input: {
-            itemId: item.id,
-            hasExistingLicense: true,
-            existingLicenseNumber: trimmed,
-          },
-        },
-      });
-      showToast('Licence existante enregistrée.', 'success');
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : 'Échec de l\u2019enregistrement.',
         'error',
       );
     }
@@ -181,36 +118,9 @@ export function CartItemCard({ item, disabled }: Props) {
             </label>
           </fieldset>
 
-          <div className="mp-cart-item__license">
-            <label className="mp-checkbox">
-              <input
-                type="checkbox"
-                checked={item.hasExistingLicense}
-                disabled={busy}
-                onChange={(e) => void handleToggleLicense(e.target.checked)}
-              />
-              <span>J&rsquo;ai déjà une licence fédérale pour cette saison</span>
-            </label>
-            {licenseDraftOpen || item.hasExistingLicense ? (
-              <div className="mp-cart-item__license-input">
-                <input
-                  type="text"
-                  placeholder="Numéro de licence"
-                  value={licenseNumber}
-                  disabled={busy}
-                  onChange={(e) => setLicenseNumber(e.target.value)}
-                />
-                <button
-                  type="button"
-                  className="mp-btn mp-btn-outline mp-btn-compact"
-                  disabled={busy || licenseNumber.trim().length < 3}
-                  onClick={() => void submitLicenseNumber()}
-                >
-                  Enregistrer
-                </button>
-              </div>
-            ) : null}
-          </div>
+          {/* Le toggle « licence existante » vit dans CartFeesSection
+              (row LICENSE avec validation du numéro) — plus de doublon
+              ici pour éviter deux contrôles contradictoires. */}
 
           <dl className="mp-cart-item__lines">
             <div>

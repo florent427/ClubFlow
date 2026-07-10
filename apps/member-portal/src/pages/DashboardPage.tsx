@@ -125,7 +125,7 @@ export function DashboardPage() {
           {meLoading
             ? '…'
             : me
-              ? `Content de te revoir, ${me.firstName}`
+              ? `Bonjour, ${me.firstName}`
               : meError
                 ? 'Espace membre'
                 : '…'}

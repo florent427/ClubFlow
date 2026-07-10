@@ -82,4 +82,10 @@ export class InvoiceDetailGraph {
 
   @Field(() => String, { nullable: true })
   creditNoteReason!: string | null;
+
+  @Field(() => String, {
+    nullable: true,
+    description: "Motif d'annulation saisi lors du passage en VOID.",
+  })
+  voidReason!: string | null;
 }

@@ -9,6 +9,7 @@ import {
   UPDATE_CLUB_GRADE_LEVEL,
 } from '../../lib/documents';
 import type { GradeLevelsQueryData, MembersQueryData } from '../../lib/types';
+import { QueryError } from '../../components/QueryError';
 
 export function MembersGradesPage() {
   const [label, setLabel] = useState('');
@@ -173,7 +174,7 @@ export function MembersGradesPage() {
 
       <div className="members-manage grades-layout">
         {msg ? <p className="form-error">{msg}</p> : null}
-        {error ? <p className="form-error">{error.message}</p> : null}
+        {error ? <QueryError error={error} onRetry={() => void refetch()} /> : null}
 
         {/* Form ajout : card compacte à gauche */}
         <section className="members-panel grades-form-panel">

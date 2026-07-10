@@ -167,6 +167,9 @@ export function InvoiceDetailDrawer({
 
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  // Erreur des actions Émettre / Annuler (affichée dans le drawer,
+  // sinon l'échec serait silencieux à la fermeture de la modale).
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const inv = data?.clubInvoice ?? null;
   const isDraft = inv?.status === 'DRAFT';
@@ -242,18 +245,25 @@ export function InvoiceDetailDrawer({
 
   async function handleIssue() {
     if (!inv) return;
+    setActionError(null);
     try {
       await issueInvoice({ variables: { id: inv.id } });
       setConfirmKind(null);
       await refetch();
       onChanged();
-    } catch {
+    } catch (err) {
       setConfirmKind(null);
+      setActionError(
+        err instanceof Error
+          ? `Émission impossible : ${err.message}`
+          : "Impossible d'émettre la facture.",
+      );
     }
   }
 
   async function handleVoid() {
     if (!inv) return;
+    setActionError(null);
     try {
       await voidInvoice({
         variables: { id: inv.id, reason: voidReason.trim() || null },
@@ -262,8 +272,13 @@ export function InvoiceDetailDrawer({
       setVoidReason('');
       await refetch();
       onChanged();
-    } catch {
+    } catch (err) {
       setConfirmKind(null);
+      setActionError(
+        err instanceof Error
+          ? `Annulation impossible : ${err.message}`
+          : "Impossible d'annuler la facture.",
+      );
     }
   }
 
@@ -793,6 +808,12 @@ export function InvoiceDetailDrawer({
                   </button>
                 </div>
               </form>
+            ) : null}
+
+            {actionError ? (
+              <p className="cf-form-error" role="alert">
+                {actionError}
+              </p>
             ) : null}
 
             {pdfError ? (

@@ -117,8 +117,8 @@ export function VitrineHomePage() {
         <p className="muted">Chargement…</p>
       ) : pages.length === 0 ? (
         <p className="muted">
-          Aucune page vitrine. Lancez le seed :
-          <code> npx tsx prisma/seed-vitrine.ts</code>
+          Aucune page vitrine pour l'instant. Contactez le support si votre
+          site n'a pas été initialisé.
         </p>
       ) : (
         <div className="members-table-wrap">

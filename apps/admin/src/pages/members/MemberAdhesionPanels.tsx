@@ -1,5 +1,5 @@
 import { useLazyQuery, useMutation, useQuery } from '@apollo/client/react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ACTIVE_CLUB_SEASON,
@@ -207,7 +207,25 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
     () => new Set(),
   );
 
+  // Initialise les cases selon le type de frais : MANDATORY inclus
+  // d'office (coché, non-décochable), LICENSE pré-coché (décochable),
+  // OPTIONAL décoché par défaut.
+  const feesInitializedRef = useRef(false);
+  useEffect(() => {
+    if (oneTimeFees.length === 0 || feesInitializedRef.current) return;
+    feesInitializedRef.current = true;
+    setSelectedFeeIds(
+      new Set(
+        oneTimeFees
+          .filter((f) => f.kind === 'MANDATORY' || f.kind === 'LICENSE')
+          .map((f) => f.id),
+      ),
+    );
+  }, [oneTimeFees]);
+
   function toggleOneTimeFee(id: string) {
+    // Un frais obligatoire ne peut pas être décoché.
+    if (oneTimeFees.find((f) => f.id === id)?.kind === 'MANDATORY') return;
     setSelectedFeeIds((prev) => {
       const n = new Set(prev);
       if (n.has(id)) n.delete(id);
@@ -263,7 +281,7 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
         refetchQueries: [{ query: CLUB_INVOICES }],
         onCompleted: (res) => {
           setDraftPreview(res.createMembershipInvoiceDraft);
-          setCotMsg(null);
+          setCotMsg('Brouillon créé — vérifie le récapitulatif avant de finaliser.');
         },
         onError: (e) => setCotMsg(e.message),
       },
@@ -282,6 +300,8 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
   );
 
   async function submitDraft() {
+    // Garde anti double-clic : une création est déjà en cours.
+    if (creatingDraft) return;
     setCotMsg(null);
     if (!selectedProductId || !effectiveDate) {
       setCotMsg('Formule et date d’effet obligatoires.');
@@ -443,7 +463,10 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
           {cotMsg ? (
             <p
               className={
-                cotMsg.startsWith('Facture finalisée') ? 'muted' : 'form-error'
+                cotMsg.startsWith('Facture finalisée') ||
+                cotMsg.startsWith('Brouillon créé')
+                  ? 'muted'
+                  : 'form-error'
               }
             >
               {cotMsg}
@@ -556,6 +579,7 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
                             <input
                               type="checkbox"
                               checked={selectedFeeIds.has(f.id)}
+                              disabled={f.kind === 'MANDATORY'}
                               onChange={() => {
                                 toggleOneTimeFee(f.id);
                                 setDraftPreview(null);
@@ -564,6 +588,7 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
                             <span>
                               {f.label} — {(f.amountCents / 100).toFixed(2)}{' '}
                               €
+                              {f.kind === 'MANDATORY' ? ' (obligatoire)' : ''}
                             </span>
                           </label>
                         ))}
@@ -633,7 +658,7 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
                     disabled={creatingDraft || !selectedProductId}
                     onClick={() => void submitDraft()}
                   >
-                    {creatingDraft ? '…' : 'Créer le brouillon'}
+                    {creatingDraft ? 'Création…' : 'Créer le brouillon'}
                   </button>
                 </div>
               ) : null}

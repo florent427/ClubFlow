@@ -113,6 +113,8 @@ import '../documents/dto/sign-club-document.input';
       driver: ApolloDriver,
       autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
       sortSchema: true,
+      /** Pas de stacktraces dans les réponses GraphQL hors développement. */
+      includeStacktraceInErrorResponses: process.env.NODE_ENV === 'development',
       context: ({
         req,
         res,

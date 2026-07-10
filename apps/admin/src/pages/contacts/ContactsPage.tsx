@@ -12,6 +12,7 @@ import type {
 } from '../../lib/types';
 import { useMembersUi } from '../members/members-ui-context';
 import { ContactDetailDrawer } from './ContactDetailDrawer';
+import { QueryError } from '../../components/QueryError';
 
 type VerifiedFilter = 'all' | 'yes' | 'no';
 type LinkFilter = 'unlinked' | 'linked' | 'all';
@@ -263,7 +264,7 @@ export function ContactsPage() {
           {loading ? (
             <p className="muted">Chargement…</p>
           ) : error ? (
-            <p className="form-error">{error.message}</p>
+            <QueryError error={error} onRetry={() => void refetch()} />
           ) : contacts.length === 0 ? (
             <p className="muted">Aucun contact pour ce club.</p>
           ) : filtered.length === 0 ? (

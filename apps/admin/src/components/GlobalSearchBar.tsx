@@ -119,7 +119,7 @@ export function GlobalSearchBar() {
                       key={c.id}
                       type="button"
                       className="cf-gs__item"
-                      onClick={() => go('/members/contacts')}
+                      onClick={() => go('/contacts')}
                     >
                       <span className="material-symbols-outlined" aria-hidden>
                         badge
@@ -178,7 +178,7 @@ export function GlobalSearchBar() {
                       key={a.id}
                       type="button"
                       className="cf-gs__item"
-                      onClick={() => go('/vie-club')}
+                      onClick={() => go('/vie-du-club')}
                     >
                       <span className="material-symbols-outlined" aria-hidden>
                         campaign
