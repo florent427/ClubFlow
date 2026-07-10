@@ -126,12 +126,23 @@ for h in staging.clubflow.topdigital.re staging.app.clubflow.topdigital.re stagi
   [ "$code" = "200" ] || SMOKE_OK=0
 done
 
-api_code=$(curl -sS -o /dev/null -w '%{http_code}' \
-  -X POST https://staging.api.clubflow.topdigital.re/graphql \
-  -H 'Content-Type: application/json' \
-  -H 'apollo-require-preflight: true' \
-  -H 'Origin: https://staging.app.clubflow.topdigital.re' \
-  -d '{"query":"{__typename}"}')
+# L'API NestJS met 30-60 s à booter (Prisma + génération du schéma
+# GraphQL) : on retente jusqu'à 6 fois espacées de 10 s au lieu
+# d'échouer sur la race restart/smoke (faux ❌ constatés en QA).
+api_code=000
+for attempt in 1 2 3 4 5 6; do
+  api_code=$(curl -sS -o /dev/null -w '%{http_code}' \
+    -X POST https://staging.api.clubflow.topdigital.re/graphql \
+    -H 'Content-Type: application/json' \
+    -H 'apollo-require-preflight: true' \
+    -H 'Origin: https://staging.app.clubflow.topdigital.re' \
+    -d '{"query":"{__typename}"}' || echo 000)
+  if [ "$api_code" = "200" ]; then
+    break
+  fi
+  echo "  … API pas encore prête ($api_code), tentative $attempt/6"
+  sleep 10
+done
 echo "  $api_code  https://staging.api.clubflow.topdigital.re/graphql"
 [ "$api_code" = "200" ] || SMOKE_OK=0
 
