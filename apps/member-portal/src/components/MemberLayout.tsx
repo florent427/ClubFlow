@@ -39,6 +39,11 @@ function breadcrumbLabel(pathname: string): string {
   if (pathname.startsWith('/blog')) return 'Blog du club';
   if (pathname.startsWith('/boutique')) return 'Boutique';
   if (pathname.startsWith('/reservations')) return 'Réservations';
+  if (pathname.startsWith('/documents-a-signer')) return 'Documents à signer';
+  if (pathname.startsWith('/factures')) return 'Factures';
+  if (pathname.startsWith('/mes-projets') || pathname.startsWith('/projets')) {
+    return 'Mes projets';
+  }
   return 'Espace membre';
 }
 

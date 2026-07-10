@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useMutation } from '@apollo/client/react';
+import { useApolloClient, useMutation } from '@apollo/client/react';
 import {
   VIEWER_ACTIVE_CART,
   VIEWER_MEMBERSHIP_CARTS,
@@ -81,6 +81,7 @@ export function PaymentChoiceModal({
   onDone,
 }: Props) {
   const { showToast } = useToast();
+  const apolloClient = useApolloClient();
   const supportsInstallments = billingRhythm === 'ANNUAL';
   const [installments, setInstallments] = useState<1 | 3>(1);
   const [selected, setSelected] = useState<ClubPaymentMethod | null>(null);
@@ -99,10 +100,13 @@ export function PaymentChoiceModal({
     },
   );
 
-  const perInstallment = useMemo(
-    () => Math.round(totalCents / installments),
-    [totalCents, installments],
-  );
+  // Échéancier 3× réel : 2 mensualités arrondies + un solde ajusté
+  // (ex. 250,00 € → 2 × 83,33 € puis 83,34 €). Évite d'afficher un
+  // total trompeur avec 3 × Math.round(total/3).
+  const installmentsPreview = useMemo(() => {
+    const base = Math.round(totalCents / 3);
+    return { base, last: totalCents - base * 2 };
+  }, [totalCents]);
 
   async function handleConfirm(method: ClubPaymentMethod): Promise<void> {
     if (loading) return;
@@ -135,10 +139,23 @@ export function PaymentChoiceModal({
       setInstructions(data.instructions ?? '');
       showToast('Adhésion confirmée. Mode de règlement enregistré.', 'success');
     } catch (e) {
-      showToast(
-        e instanceof Error ? e.message : 'Choix indisponible.',
-        'error',
-      );
+      const msg = e instanceof Error ? e.message : 'Choix indisponible.';
+      if (msg.includes('déjà validé')) {
+        // Le panier a été validé (fiches + facture créées) mais la
+        // session de paiement n'a pas pu démarrer : on resynchronise
+        // le panier et on ferme la modale au lieu de laisser
+        // l'utilisateur bloqué sur un panier fantôme.
+        void apolloClient.refetchQueries({
+          include: [VIEWER_ACTIVE_CART, VIEWER_MEMBERSHIP_CARTS],
+        });
+        showToast(
+          'Votre projet a bien été validé mais le paiement en ligne n’a pas pu démarrer. Retrouvez votre facture dans Mes factures pour réessayer.',
+          'info',
+        );
+        onDone();
+        return;
+      }
+      showToast(msg, 'error');
       setSelected(null);
     }
   }
@@ -239,7 +256,9 @@ export function PaymentChoiceModal({
                     En 3 fois
                     <br />
                     <small style={{ fontWeight: 400 }}>
-                      3 × {formatEuroCents(perInstallment)}
+                      {installmentsPreview.base === installmentsPreview.last
+                        ? `3 × ${formatEuroCents(installmentsPreview.base)}`
+                        : `2 × ${formatEuroCents(installmentsPreview.base)} puis ${formatEuroCents(installmentsPreview.last)}`}
                     </small>
                   </button>
                 </div>

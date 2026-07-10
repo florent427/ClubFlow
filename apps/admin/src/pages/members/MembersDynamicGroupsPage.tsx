@@ -10,6 +10,7 @@ import {
 } from '../../lib/documents';
 import type { DynamicGroupsQueryData, GradeLevelsQueryData } from '../../lib/types';
 import { useClubModules } from '../../lib/club-modules-context';
+import { QueryError } from '../../components/QueryError';
 
 type GroupRow = DynamicGroupsQueryData['clubDynamicGroups'][number];
 type GradeRow = GradeLevelsQueryData['clubGradeLevels'][number];
@@ -395,7 +396,7 @@ export function MembersDynamicGroupsPage() {
 
       <div className="members-manage dyn-group-manage">
         {msg ? <p className="form-error">{msg}</p> : null}
-        {error ? <p className="form-error">{error.message}</p> : null}
+        {error ? <QueryError error={error} onRetry={() => void refetch()} /> : null}
 
         {/* Synthèse haute niveau : 3 KPI visibles en un coup d'œil */}
         {groups.length > 0 ? (

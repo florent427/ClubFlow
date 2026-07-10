@@ -266,8 +266,25 @@ export function AdhesionSettingsPage() {
     return Math.round(n * 100);
   }
 
+  // Valeur pour les champs de saisie (parseable par eurosToCents)
   function centsToEuros(c: number): string {
-    return (c / 100).toFixed(2);
+    return (c / 100).toFixed(2).replace('.', ',');
+  }
+
+  // Affichage : format monétaire français (150,00 €)
+  function formatEuros(c: number): string {
+    return new Intl.NumberFormat('fr-FR', {
+      style: 'currency',
+      currency: 'EUR',
+    }).format(c / 100);
+  }
+
+  // Dates de saison : ISO (2026-09-01) → format français (01/09/2026)
+  function formatSeasonDate(iso: string): string {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime())
+      ? iso.slice(0, 10)
+      : d.toLocaleDateString('fr-FR');
   }
 
   async function onCreateSeason(e: React.FormEvent) {
@@ -329,7 +346,9 @@ export function AdhesionSettingsPage() {
     const annual = eurosToCents(pAnnualEuros);
     const monthly = eurosToCents(pMonthlyEuros);
     if (annual == null || monthly == null) {
-      setProductMsg('Tarif annuel et mensuel invalides (ex. 120 ou 120,50).');
+      setProductMsg(
+        'Tarifs invalides ou incomplets — les deux tarifs (annuel et mensuel) sont requis (ex. 120 ou 120,50).',
+      );
       return;
     }
     const capRaw = pCap.trim();
@@ -633,8 +652,8 @@ export function AdhesionSettingsPage() {
           <div className="cf-alert__content">
             <strong>Saison active : {activeSeason.label}</strong>
             <span>
-              Du {activeSeason.startsOn.slice(0, 10)} au{' '}
-              {activeSeason.endsOn.slice(0, 10)}
+              Du {formatSeasonDate(activeSeason.startsOn)} au{' '}
+              {formatSeasonDate(activeSeason.endsOn)}
             </span>
           </div>
         </div>
@@ -769,7 +788,8 @@ export function AdhesionSettingsPage() {
                       <tr key={s.id}>
                         <td>{s.label}</td>
                         <td>
-                          {s.startsOn.slice(0, 10)} → {s.endsOn.slice(0, 10)}
+                          {formatSeasonDate(s.startsOn)} →{' '}
+                          {formatSeasonDate(s.endsOn)}
                         </td>
                         <td>{s.isActive ? 'Oui' : 'Non'}</td>
                         <td className="members-table__actions">
@@ -1075,8 +1095,8 @@ export function AdhesionSettingsPage() {
                     ) : (
                       <tr key={p.id}>
                         <td>{p.label}</td>
-                        <td>{centsToEuros(p.annualAmountCents)} €</td>
-                        <td>{centsToEuros(p.monthlyAmountCents)} €</td>
+                        <td>{formatEuros(p.annualAmountCents)}</td>
+                        <td>{formatEuros(p.monthlyAmountCents)}</td>
                         <td>{productCriteriaLabel(p)}</td>
                         <td className="members-table__actions">
                           <button
@@ -1326,7 +1346,7 @@ export function AdhesionSettingsPage() {
                     ) : (
                       <tr key={f.id}>
                         <td>{f.label}</td>
-                        <td>{centsToEuros(f.amountCents)} €</td>
+                        <td>{formatEuros(f.amountCents)}</td>
                         <td>
                           {f.kind === 'LICENSE' ? (
                             <span title={f.licenseNumberFormatHint ?? ''}>

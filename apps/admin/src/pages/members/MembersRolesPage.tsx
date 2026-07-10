@@ -10,6 +10,7 @@ import {
 } from '../../lib/documents';
 import type { MembersQueryData, RoleDefinitionsQueryData } from '../../lib/types';
 import { BUILTIN_ROLE_OPTIONS } from './members-constants';
+import { QueryError } from '../../components/QueryError';
 
 /** Rôles système — en lecture seule, documentés pour que l'admin comprenne
  * qu'il complète ces rôles avec ses propres libellés. */
@@ -201,7 +202,7 @@ export function MembersRolesPage() {
 
       <div className="members-manage roles-layout">
         {msg ? <p className="form-error">{msg}</p> : null}
-        {error ? <p className="form-error">{error.message}</p> : null}
+        {error ? <QueryError error={error} onRetry={() => void refetch()} /> : null}
 
         {/* Form création + rappel rôles système à gauche */}
         <aside className="roles-sidebar">

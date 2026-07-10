@@ -2,6 +2,7 @@ import { useQuery } from '@apollo/client/react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { QuickMessageModal } from '../../components/QuickMessageModal';
+import { QueryError } from '../../components/QueryError';
 import {
   CLUB_DYNAMIC_GROUPS,
   CLUB_GRADE_LEVELS,
@@ -75,7 +76,7 @@ export function MembersDirectoryPage() {
     label: string;
   } | null>(null);
 
-  const { data, loading, error } = useQuery<MembersQueryData>(CLUB_MEMBERS);
+  const { data, loading, error, refetch } = useQuery<MembersQueryData>(CLUB_MEMBERS);
   const { data: cartAlertsData } = useQuery<ClubMembershipCartsData>(
     CLUB_MEMBERSHIP_CARTS,
     {
@@ -428,7 +429,7 @@ export function MembersDirectoryPage() {
           {loading ? (
             <p className="muted">Chargement…</p>
           ) : error ? (
-            <p className="form-error">{error.message}</p>
+            <QueryError error={error} onRetry={() => void refetch()} />
           ) : members.length === 0 ? (
             <p className="muted">Aucun membre pour ce club.</p>
           ) : filteredMembers.length === 0 ? (

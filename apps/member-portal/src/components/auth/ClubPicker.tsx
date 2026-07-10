@@ -34,7 +34,7 @@ export function ClubPicker({
   hint = 'Tapez le nom ou le code de votre club.',
 }: Props) {
   const [query, setQuery] = useState('');
-  const [search, { data, loading }] = useLazyQuery<{
+  const [search, { data, loading, error }] = useLazyQuery<{
     searchPublicClubs: PublicClub[];
   }>(SEARCH_PUBLIC_CLUBS, { fetchPolicy: 'network-only' });
 
@@ -71,6 +71,11 @@ export function ClubPicker({
         </p>
       ) : loading ? (
         <p className="club-picker__empty">Recherche…</p>
+      ) : error ? (
+        <p className="club-picker__empty">
+          Impossible de charger les clubs. Vérifiez votre connexion et
+          réessayez.
+        </p>
       ) : results.length === 0 ? (
         <p className="club-picker__empty">
           Aucun club trouvé. Vérifiez l'orthographe ou demandez le nom

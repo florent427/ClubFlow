@@ -117,6 +117,7 @@ export class PaymentsResolver {
       isCreditNote: r.isCreditNote,
       parentInvoiceId: r.parentInvoiceId ?? null,
       creditNoteReason: r.creditNoteReason ?? null,
+      voidReason: r.voidReason ?? null,
     }));
   }
 
@@ -158,6 +159,7 @@ export class PaymentsResolver {
       isCreditNote: row.isCreditNote,
       parentInvoiceId: row.parentInvoiceId ?? null,
       creditNoteReason: row.creditNoteReason ?? null,
+      voidReason: row.voidReason ?? null,
     };
   }
 
@@ -244,6 +246,7 @@ export class PaymentsResolver {
       isCreditNote: inv.isCreditNote,
       parentInvoiceId: inv.parentInvoiceId ?? null,
       creditNoteReason: inv.creditNoteReason ?? null,
+      voidReason: inv.voidReason ?? null,
     };
   }
 
@@ -272,6 +275,7 @@ export class PaymentsResolver {
       isCreditNote: inv.isCreditNote,
       parentInvoiceId: inv.parentInvoiceId ?? null,
       creditNoteReason: inv.creditNoteReason ?? null,
+      voidReason: inv.voidReason ?? null,
     };
   }
 
@@ -302,6 +306,7 @@ export class PaymentsResolver {
       isCreditNote: inv.isCreditNote,
       parentInvoiceId: inv.parentInvoiceId ?? null,
       creditNoteReason: inv.creditNoteReason ?? null,
+      voidReason: inv.voidReason ?? null,
     };
   }
 
@@ -343,6 +348,7 @@ export class PaymentsResolver {
       isCreditNote: inv.isCreditNote,
       parentInvoiceId: inv.parentInvoiceId ?? null,
       creditNoteReason: inv.creditNoteReason ?? null,
+      voidReason: inv.voidReason ?? null,
     };
   }
 }

@@ -157,32 +157,58 @@ export function MemberFieldsSettingsPage() {
   const { data, loading, error, refetch } =
     useQuery<MemberFieldLayoutQueryData>(CLUB_MEMBER_FIELD_LAYOUT);
 
+  /** Dernière erreur de mutation (catalogue ou champs personnalisés). */
+  const [errMsg, setErrMsg] = useState<string | null>(null);
+
   const [upsertCatalog, { loading: savingCatalog }] = useMutation(
     UPSERT_CLUB_MEMBER_CATALOG_FIELD_SETTINGS,
     {
-      onCompleted: () => void refetch(),
+      onCompleted: () => {
+        setErrMsg(null);
+        void refetch();
+      },
+      onError: (e) => setErrMsg(e.message),
     },
   );
 
-  const [createDef] = useMutation(CREATE_MEMBER_CUSTOM_FIELD_DEFINITION, {
-    onCompleted: () => {
-      void refetch();
-      setNewCode('');
-      setNewLabel('');
-      setNewType('TEXT');
-      setNewOptions('');
-      setNewRequired(false);
-      setNewVisibleMember(false);
+  const [createDef, { loading: creatingDef }] = useMutation(
+    CREATE_MEMBER_CUSTOM_FIELD_DEFINITION,
+    {
+      onCompleted: () => {
+        setErrMsg(null);
+        void refetch();
+        setNewCode('');
+        setNewLabel('');
+        setNewType('TEXT');
+        setNewOptions('');
+        setNewRequired(false);
+        setNewVisibleMember(false);
+      },
+      onError: (e) => setErrMsg(e.message),
     },
-  });
+  );
 
-  const [updateDef] = useMutation(UPDATE_MEMBER_CUSTOM_FIELD_DEFINITION, {
-    onCompleted: () => void refetch(),
-  });
+  const [updateDef, { loading: updatingDef }] = useMutation(
+    UPDATE_MEMBER_CUSTOM_FIELD_DEFINITION,
+    {
+      onCompleted: () => {
+        setErrMsg(null);
+        void refetch();
+      },
+      onError: (e) => setErrMsg(e.message),
+    },
+  );
 
-  const [archiveDef] = useMutation(ARCHIVE_MEMBER_CUSTOM_FIELD_DEFINITION, {
-    onCompleted: () => void refetch(),
-  });
+  const [archiveDef, { loading: archivingDef }] = useMutation(
+    ARCHIVE_MEMBER_CUSTOM_FIELD_DEFINITION,
+    {
+      onCompleted: () => {
+        setErrMsg(null);
+        void refetch();
+      },
+      onError: (e) => setErrMsg(e.message),
+    },
+  );
 
   const defs =
     data?.clubMemberFieldLayout?.customFieldDefinitions.slice().sort(
@@ -249,6 +275,8 @@ export function MemberFieldsSettingsPage() {
         </p>
       </header>
 
+      {errMsg ? <p className="form-error">{errMsg}</p> : null}
+
       <div className="members-loom__grid members-loom__grid--single">
         <section className="members-panel">
           <h2 className="members-panel__h">Champs du catalogue</h2>
@@ -283,6 +311,7 @@ export function MemberFieldsSettingsPage() {
                 <CustomFieldRow
                   key={`${d.id}|${d.label}|${d.type}|${d.required}|${d.sortOrder}|${d.visibleToMember}|${d.optionsJson ?? ''}`}
                   definition={d}
+                  busy={updatingDef || archivingDef}
                   onSave={async (patch) => {
                     await updateDef({
                       variables: { input: { id: d.id, ...patch } },
@@ -362,8 +391,12 @@ export function MemberFieldsSettingsPage() {
               />
               <span>Visible par l’adhérent (portail)</span>
             </label>
-            <button type="submit" className="btn btn-primary">
-              Ajouter le champ
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={creatingDef}
+            >
+              {creatingDef ? 'Ajout…' : 'Ajouter le champ'}
             </button>
           </form>
         </section>
@@ -374,10 +407,13 @@ export function MemberFieldsSettingsPage() {
 
 function CustomFieldRow({
   definition: d,
+  busy,
   onSave,
   onArchive,
 }: {
   definition: MemberFieldLayoutQueryData['clubMemberFieldLayout']['customFieldDefinitions'][0];
+  /** Mutation update/archive en cours → boutons désactivés. */
+  busy?: boolean;
   onSave: (patch: Record<string, unknown>) => Promise<void>;
   onArchive: () => Promise<void>;
 }) {
@@ -404,6 +440,7 @@ function CustomFieldRow({
           type="button"
           className="btn btn-ghost btn-tight members-table__danger"
           onClick={() => void onArchive()}
+          disabled={busy}
         >
           Archiver
         </button>
@@ -461,6 +498,7 @@ function CustomFieldRow({
       <button
         type="button"
         className="btn btn-primary btn-tight"
+        disabled={busy}
         onClick={() =>
           void onSave({
             label,

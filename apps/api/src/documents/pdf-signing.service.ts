@@ -121,12 +121,23 @@ export class PdfSigningService {
         }
         case ClubDocumentFieldType.CHECKBOX: {
           if (value.bool !== true) continue;
-          const size = heightPx * 0.8;
-          page.drawText('✓', {
-            x: xPx,
-            y: yPx + (heightPx - size) / 2,
-            size,
-            font: helvetica,
+          // Coche dessinée en 2 traits (Helvetica/WinAnsi ne sait pas
+          // encoder « ✓ » → crash pdf-lib). Repère : coche inscrite dans
+          // un carré centré dans le rectangle du champ.
+          const size = Math.min(widthPx, heightPx) * 0.8;
+          const cx = xPx + (widthPx - size) / 2;
+          const cy = yPx + (heightPx - size) / 2;
+          const thickness = Math.max(1, size * 0.12);
+          page.drawLine({
+            start: { x: cx + size * 0.1, y: cy + size * 0.5 },
+            end: { x: cx + size * 0.4, y: cy + size * 0.15 },
+            thickness,
+            color: rgb(0, 0, 0),
+          });
+          page.drawLine({
+            start: { x: cx + size * 0.4, y: cy + size * 0.15 },
+            end: { x: cx + size * 0.9, y: cy + size * 0.85 },
+            thickness,
             color: rgb(0, 0, 0),
           });
           break;

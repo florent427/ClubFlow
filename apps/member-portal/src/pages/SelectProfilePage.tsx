@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@apollo/client/react';
 import {
@@ -12,7 +12,13 @@ import type {
   ViewerProfile,
   ViewerProfilesQueryData,
 } from '../lib/auth-types';
-import { getToken, hasMemberSession, setMemberSession } from '../lib/storage';
+import {
+  clearAuth,
+  getToken,
+  hasMemberSession,
+  isTokenValid,
+  setMemberSession,
+} from '../lib/storage';
 import {
   consumeReturnTo,
   rememberReturnTo,
@@ -67,29 +73,44 @@ export function SelectProfilePage() {
 
   const selecting = selectingMember || selectingContact;
 
+  const [pickError, setPickError] = useState<string | null>(null);
+
   async function pick(p: ViewerProfile) {
-    if (p.memberId) {
-      const { data: sel } = await selectProfile({
-        variables: { memberId: p.memberId },
-      });
-      const newTok = sel?.selectActiveViewerProfile?.accessToken;
-      if (!newTok) {
+    setPickError(null);
+    try {
+      if (p.memberId) {
+        const { data: sel } = await selectProfile({
+          variables: { memberId: p.memberId },
+        });
+        const newTok = sel?.selectActiveViewerProfile?.accessToken;
+        if (!newTok) {
+          throw new Error('Réponse inattendue du serveur.');
+        }
+        setMemberSession(newTok, p.clubId);
+      } else if (p.contactId) {
+        const { data: sel } = await selectContactProfile({
+          variables: { contactId: p.contactId },
+        });
+        const newTok = sel?.selectActiveViewerContactProfile?.accessToken;
+        if (!newTok) {
+          throw new Error('Réponse inattendue du serveur.');
+        }
+        setMemberSession(newTok, p.clubId);
+      } else {
         return;
       }
-      setMemberSession(newTok, p.clubId);
-    } else if (p.contactId) {
-      const { data: sel } = await selectContactProfile({
-        variables: { contactId: p.contactId },
-      });
-      const newTok = sel?.selectActiveViewerContactProfile?.accessToken;
-      if (!newTok) {
-        return;
-      }
-      setMemberSession(newTok, p.clubId);
-    } else {
-      return;
+      void navigate(consumeReturnTo() ?? '/', { replace: true });
+    } catch (err) {
+      // Réarmer le bypass pour permettre un nouvel essai (bug QA M7 :
+      // avant, « Connexion en cours… » restait affiché pour toujours).
+      autoPickedRef.current = false;
+      const raw = err instanceof Error ? err.message : '';
+      setPickError(
+        /failed to fetch|networkerror/i.test(raw)
+          ? 'Connexion au serveur impossible. Vérifiez votre réseau puis réessayez.'
+          : raw || 'Impossible de sélectionner ce profil. Réessayez.',
+      );
     }
-    void navigate(consumeReturnTo() ?? '/', { replace: true });
   }
 
   const profiles = data?.viewerProfiles ?? [];
@@ -97,22 +118,38 @@ export function SelectProfilePage() {
   // --- Bypass automatique : un seul profil → sélection directe ---
   useEffect(() => {
     if (loading || autoPickedRef.current || profiles.length !== 1) return;
+    if (pickError) return;
     autoPickedRef.current = true;
     void pick(profiles[0]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, profiles]);
+  }, [loading, profiles, pickError]);
 
-  if (!token) {
-    return <Navigate to="/login" replace />;
+  // Token absent OU expiré → retour login (bug QA C2 : un token expiré
+  // piégeait l'utilisateur entre /login et /select-profile).
+  if (!token || !isTokenValid()) {
+    clearAuth();
+    return <Navigate to="/login?reason=session-expiree" replace />;
   }
   if (hasMemberSession()) {
     return <Navigate to="/" replace />;
   }
 
-  const errMsg = error?.message ?? null;
+  const queryErrRaw = error?.message ?? null;
+  const errMsg =
+    pickError ??
+    (queryErrRaw
+      ? /unauthorized/i.test(queryErrRaw)
+        ? 'Votre session a expiré. Reconnectez-vous.'
+        : queryErrRaw
+      : null);
+
+  function logout() {
+    clearAuth();
+    void navigate('/login', { replace: true });
+  }
 
   // Pendant le bypass automatique, afficher un loader
-  if (!loading && profiles.length === 1 && !errMsg) {
+  if (!loading && profiles.length === 1 && !errMsg && !pickError) {
     return (
       <div className="auth-page select-profile-page">
         <div className="auth-card auth-card-wide">
@@ -140,7 +177,27 @@ export function SelectProfilePage() {
           </p>
         </header>
         {loading ? <p className="auth-hint">Chargement des profils…</p> : null}
-        {errMsg ? <p className="auth-error">{errMsg}</p> : null}
+        {errMsg ? (
+          <div>
+            <p className="auth-error">{errMsg}</p>
+            <p className="auth-hint">
+              <button
+                type="button"
+                className="auth-link"
+                onClick={logout}
+                style={{
+                  background: 'none',
+                  border: 0,
+                  padding: 0,
+                  cursor: 'pointer',
+                  font: 'inherit',
+                }}
+              >
+                Se reconnecter avec un autre compte
+              </button>
+            </p>
+          </div>
+        ) : null}
         {!loading && profiles.length === 0 && !errMsg ? (
           <p className="auth-error">Aucun profil disponible.</p>
         ) : null}

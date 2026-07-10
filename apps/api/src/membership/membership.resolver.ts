@@ -125,6 +125,7 @@ function toInvoiceGraph(row: {
     isCreditNote: false,
     parentInvoiceId: null,
     creditNoteReason: null,
+    voidReason: null,
   };
 }
 

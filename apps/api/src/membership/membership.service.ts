@@ -457,6 +457,29 @@ export class MembershipService {
       throw new NotFoundException('Membre introuvable');
     }
 
+    // Garde anti-double-brouillon : un seul projet d'adhésion DRAFT par
+    // membre et par saison (évite les factures dupliquées créées depuis
+    // la fiche membre).
+    const existingDraft = await this.prisma.invoice.findFirst({
+      where: {
+        clubId,
+        clubSeasonId: season.id,
+        status: InvoiceStatus.DRAFT,
+        lines: {
+          some: {
+            memberId: member.id,
+            kind: InvoiceLineKind.MEMBERSHIP_SUBSCRIPTION,
+          },
+        },
+      },
+      select: { id: true },
+    });
+    if (existingDraft) {
+      throw new BadRequestException(
+        'Un projet d’adhésion en brouillon existe déjà pour ce membre sur cette saison.',
+      );
+    }
+
     const product = await this.prisma.membershipProduct.findFirst({
       where: { id: input.membershipProductId, clubId, archivedAt: null },
       include: { gradeFilters: true },

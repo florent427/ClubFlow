@@ -363,6 +363,27 @@ export function DocumentsPage() {
     }
   }
 
+  /**
+   * Depuis le drawer d'édition, après upload d'un PDF de remplacement :
+   * persiste d'abord le nouveau mediaAssetId (sinon la navigation perdrait
+   * la nouvelle version), puis ouvre l'éditeur de champs.
+   */
+  async function saveNewPdfAndGoToEditor() {
+    if (!editing || !form.mediaAssetId) return;
+    try {
+      await updateDoc({
+        variables: {
+          input: { id: editing.id, mediaAssetId: form.mediaAssetId },
+        },
+      });
+      showToast('Document mis à jour (nouvelle version).', 'success');
+      setDrawerOpen(false);
+      navigate(`/documents/${editing.id}/editor`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
+
   async function doArchive(doc: ClubDocument) {
     try {
       if (doc.isActive) {
@@ -513,7 +534,7 @@ export function DocumentsPage() {
         <EmptyState
           icon="description"
           title="Aucun document"
-          message="Ajoute ton premier document à signer pour démarrer."
+          message="Ajoutez votre premier document à signer pour démarrer."
           action={
             <button
               type="button"
@@ -762,10 +783,8 @@ export function DocumentsPage() {
               <button
                 type="button"
                 className="btn-ghost"
-                onClick={() => {
-                  setDrawerOpen(false);
-                  navigate(`/documents/${editing.id}/editor`);
-                }}
+                disabled={updating || uploading}
+                onClick={() => void saveNewPdfAndGoToEditor()}
               >
                 Aller à l’éditeur de champs
               </button>

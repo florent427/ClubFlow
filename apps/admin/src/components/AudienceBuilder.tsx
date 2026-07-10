@@ -272,7 +272,14 @@ export function AudienceBuilder({ value, onChange, disabled }: AudienceBuilderPr
             ) : groups.length === 0 ? (
               <p className="muted">
                 Aucun groupe dynamique configuré.{' '}
-                <a href="/members/groups">Créer un groupe</a>
+                {/* target _blank : ne pas perdre le brouillon de campagne en cours. */}
+                <a
+                  href="/members/dynamic-groups"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Créer un groupe
+                </a>
               </p>
             ) : (
               <div className="audience-chips">

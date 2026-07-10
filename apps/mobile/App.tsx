@@ -1,5 +1,6 @@
 import { ApolloProvider } from '@apollo/client/react';
 import {
+  createNavigationContainerRef,
   NavigationContainer,
   type LinkingOptions,
 } from '@react-navigation/native';
@@ -15,7 +16,12 @@ import {
 import * as Linking from 'expo-linking';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  DeviceEventEmitter,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 
@@ -26,16 +32,31 @@ import { ErrorBoundary } from './src/components/ErrorBoundary';
 // Le call est wrap dans try/catch car en dev avec hot reload, le
 // splash peut déjà être hide → l'appel throw une seconde fois.
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
-import { apolloClient } from './src/lib/apollo';
+import { apolloClient, SESSION_EXPIRED_EVENT } from './src/lib/apollo';
 import * as storage from './src/lib/storage';
 import { palette } from './src/lib/theme';
 import { ClubThemeProvider } from './src/lib/theme-context';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import type { RootStackParamList } from './src/types/navigation';
 
+const navigationRef = createNavigationContainerRef<RootStackParamList>();
+
 export default function App() {
   // eslint-disable-next-line no-console
   console.log('[App] boot');
+
+  // Session expirée signalée par l'errorLink Apollo → purge + retour Login
+  // (bug QA C1 : avant, l'app restait sur un écran cassé sans issue).
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(SESSION_EXPIRED_EVENT, () => {
+      void storage.clearAuth().finally(() => {
+        if (navigationRef.isReady()) {
+          navigationRef.reset({ index: 0, routes: [{ name: 'Login' }] });
+        }
+      });
+    });
+    return () => sub.remove();
+  }, []);
   const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -168,7 +189,7 @@ export default function App() {
       <SafeAreaProvider>
         <ApolloProvider client={apolloClient}>
           <ClubThemeProvider>
-            <NavigationContainer linking={linking}>
+            <NavigationContainer ref={navigationRef} linking={linking}>
               <RootNavigator initialRouteName={initialRoute} />
             </NavigationContainer>
           </ClubThemeProvider>

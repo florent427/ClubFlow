@@ -4,12 +4,13 @@ import {
   AGENT_AUDIT_LOG,
   type AgentAuditEntry,
 } from '../../lib/agent-documents';
+import { QueryError } from '../../components/QueryError';
 
 /**
  * Journal d'audit des actions de l'agent. Réservé aux admins du club.
  */
 export function AgentAuditPage() {
-  const { data, loading, error } = useQuery<{
+  const { data, loading, error, refetch } = useQuery<{
     agentAuditLog: AgentAuditEntry[];
   }>(AGENT_AUDIT_LOG, {
     variables: { limit: 200 },
@@ -41,7 +42,7 @@ export function AgentAuditPage() {
         </div>
       </header>
 
-      {error ? <p className="form-error">{error.message}</p> : null}
+      {error ? <QueryError error={error} onRetry={() => void refetch()} /> : null}
       {loading && entries.length === 0 ? (
         <p className="muted">Chargement…</p>
       ) : entries.length === 0 ? (

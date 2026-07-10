@@ -121,6 +121,8 @@ export function ProjectContributorsTab({
     const reason = window.prompt(
       'Raison de la révocation ? (facultatif, visible dans les logs)',
     );
+    // Prompt annulé (Échap / bouton Annuler) → on n'exécute pas la révocation.
+    if (reason === null) return;
     try {
       await revoke({
         variables: { id: contributorId, reason: reason?.trim() || null },
