@@ -145,11 +145,16 @@ export function VitrineBrandingPage() {
     const b = data?.clubVitrineBranding;
     if (!b) return;
     setTagline(b.kanjiTagline ?? '');
-    setFooter(
-      b.footerJson
-        ? JSON.stringify(JSON.parse(b.footerJson), null, 2)
-        : '',
-    );
+    if (b.footerJson) {
+      try {
+        setFooter(JSON.stringify(JSON.parse(b.footerJson), null, 2));
+      } catch {
+        // JSON corrompu : on affiche la chaîne brute plutôt que de crasher
+        setFooter(b.footerJson);
+      }
+    } else {
+      setFooter('');
+    }
     if (b.paletteJson) {
       try {
         const parsed = JSON.parse(b.paletteJson) as Partial<PaletteState>;

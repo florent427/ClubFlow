@@ -5,6 +5,7 @@ import {
   ApolloLink,
 } from '@apollo/client';
 import { onError } from '@apollo/client/link/error';
+import { CombinedGraphQLErrors, ServerError } from '@apollo/client/errors';
 import {
   clearActiveClub,
   clearSession,
@@ -31,28 +32,37 @@ const authLink = new ApolloLink((operation, forward) => {
 });
 
 /**
- * Lien d'erreur global :
- * - Détecte UNAUTHORIZED (token expiré/invalide) → clearSession + redirect /login
- * - Détecte FORBIDDEN sur club context (clubId stale, perte de membership)
- *   → clearActiveClub + redirect /select-club (l'utilisateur reste loggué)
+ * Lien d'erreur global (API Apollo Client v4 : le handler reçoit `{ error }`,
+ * PAS `{ graphQLErrors, networkError }` comme en v3 — l'ancienne signature
+ * rendait ce link totalement inopérant, cf. bug QA C1) :
+ * - Détecte UNAUTHENTICATED/401 (token expiré/invalide) → clearSession +
+ *   redirect /login?returnTo=<page courante> + raison session-expiree.
+ * - Détecte FORBIDDEN/403 sur club context (clubId stale, perte de
+ *   membership) → clearActiveClub + redirect /select-club (reste loggué).
  *
  * Ne pas re-rediriger pendant qu'on est déjà sur /login ou /select-club
  * (évite les boucles infinies).
  */
-const errorLink = onError(({ graphQLErrors, networkError, operation }) => {
+const errorLink = onError(({ error, operation }) => {
   const path = window.location.pathname;
   const onAuthPage = path === '/login' || path === '/select-club';
+  if (onAuthPage) return;
 
-  // Erreurs HTTP (network)
-  if (networkError && 'statusCode' in networkError) {
-    const status = (networkError as { statusCode?: number }).statusCode;
-    if (status === 401 && !onAuthPage) {
-      clearSession();
-      window.location.assign('/login');
+  const goLogin = () => {
+    clearSession();
+    const returnTo = encodeURIComponent(
+      window.location.pathname + window.location.search,
+    );
+    window.location.assign(`/login?reason=session-expiree&returnTo=${returnTo}`);
+  };
+
+  // Erreurs HTTP brutes (ex. proxy qui répond avant GraphQL)
+  if (ServerError.is(error)) {
+    if (error.statusCode === 401) {
+      goLogin();
       return;
     }
-    if (status === 403 && !onAuthPage) {
-      // 403 sur opération avec ClubContextGuard probable → clubId stale
+    if (error.statusCode === 403) {
       clearActiveClub();
       window.location.assign('/select-club');
       return;
@@ -60,8 +70,8 @@ const errorLink = onError(({ graphQLErrors, networkError, operation }) => {
   }
 
   // Erreurs GraphQL (avec extensions.code Apollo / NestJS)
-  if (graphQLErrors?.length) {
-    const codes = graphQLErrors.map(
+  if (CombinedGraphQLErrors.is(error)) {
+    const codes = error.errors.map(
       (e) => (e.extensions?.code as string | undefined) ?? '',
     );
     const isUnauth = codes.some(
@@ -70,15 +80,14 @@ const errorLink = onError(({ graphQLErrors, networkError, operation }) => {
     const isForbidden = codes.some((c) => c === 'FORBIDDEN');
     const opName = operation.operationName ?? '';
 
-    if (isUnauth && !onAuthPage) {
-      clearSession();
-      window.location.assign('/login');
+    if (isUnauth) {
+      goLogin();
       return;
     }
-    // FORBIDDEN sur opération nécessitant un club → clubId probablement stale.
-    // On exclut MyAdminClubs (qui n'utilise pas ClubContextGuard) pour pas
-    // boucler sur la page select-club elle-même.
-    if (isForbidden && !onAuthPage && opName !== 'MyAdminClubs') {
+    // FORBIDDEN sur opération nécessitant un club → clubId probablement
+    // stale. On exclut MyAdminClubs (qui n'utilise pas ClubContextGuard)
+    // pour ne pas boucler sur la page select-club elle-même.
+    if (isForbidden && opName !== 'MyAdminClubs') {
       clearActiveClub();
       window.location.assign('/select-club');
       return;

@@ -12,17 +12,20 @@ import { ClubThemeProvider } from '@clubflow/mobile-shared';
 import * as Linking from 'expo-linking';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, DeviceEventEmitter, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
+  createNavigationContainerRef,
   NavigationContainer,
   type LinkingOptions,
 } from '@react-navigation/native';
-import { apolloClient } from './src/lib/apollo';
+import { apolloClient, SESSION_EXPIRED_EVENT } from './src/lib/apollo';
 import { storage } from './src/lib/storage';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import type { RootStackParamList } from './src/navigation/types';
+
+const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
 export default function App() {
   const [fontsLoaded] = useFonts({
@@ -40,6 +43,19 @@ export default function App() {
       const has = await storage.hasSession();
       setInitialRoute(has ? 'Main' : 'Login');
     })();
+  }, []);
+
+  // Session expirée signalée par l'errorLink Apollo → purge + retour Login
+  // (bug QA C1 : avant, l'app restait sur un écran cassé sans issue).
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(SESSION_EXPIRED_EVENT, () => {
+      void storage.clearAuth().finally(() => {
+        if (navigationRef.isReady()) {
+          navigationRef.reset({ index: 0, routes: [{ name: 'Login' }] });
+        }
+      });
+    });
+    return () => sub.remove();
   }, []);
 
   const linking = useMemo<LinkingOptions<RootStackParamList>>(
@@ -71,7 +87,7 @@ export default function App() {
         <ApolloProvider client={apolloClient}>
           <ClubThemeProvider variant="admin">
             <StatusBar style="light" />
-            <NavigationContainer linking={linking}>
+            <NavigationContainer ref={navigationRef} linking={linking}>
               <RootNavigator initialRoute={initialRoute} />
             </NavigationContainer>
           </ClubThemeProvider>

@@ -6,8 +6,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return buildPageMetadata({
     pageSlug: 'index',
     fallbackTitle: 'Accueil',
-    fallbackDescription:
-      "L'école de karaté traditionnel Shotokan du sud de La Réunion.",
+    fallbackDescription: 'Le site officiel du club.',
   });
 }
 

@@ -1,10 +1,12 @@
 import { type FormEvent, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useApolloClient } from '@apollo/client/react';
 import { LOGIN, MY_ADMIN_CLUBS } from '../lib/documents';
 import type { LoginMutationData, MyAdminClubsQueryData } from '../lib/types';
 import { hasActiveClub, setActiveClub, setToken } from '../lib/storage';
 import { PasswordInput } from '../components/PasswordInput';
+import { landingUrl } from '../lib/landing-url';
+import { frenchAuthError } from '../lib/errors';
 
 /**
  * Login admin — Phase 2 (post multi-tenant).
@@ -18,12 +20,17 @@ import { PasswordInput } from '../components/PasswordInput';
 export function LoginPage() {
   const navigate = useNavigate();
   const apollo = useApolloClient();
+  const [params] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   const [login] = useMutation<LoginMutationData>(LOGIN);
+
+  // Posé par l'errorLink Apollo quand un token expiré a été purgé.
+  const sessionExpired = params.get('reason') === 'session-expiree';
+  const returnTo = params.get('returnTo');
 
   if (hasActiveClub()) {
     return <Navigate to="/" replace />;
@@ -62,19 +69,25 @@ export function LoginPage() {
       if (clubs.length === 1) {
         const c = clubs[0];
         setActiveClub(c.id, c.slug);
-        void navigate('/', { replace: true });
+        void navigate(safeReturnTo() ?? '/', { replace: true });
         return;
       }
 
       // N clubs → page de sélection
       void navigate('/select-club', { replace: true });
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : 'Connexion impossible.';
-      setError(msg);
+      setError(frenchAuthError(err));
     } finally {
       setPending(false);
     }
+  }
+
+  /** returnTo interne uniquement (path relatif) — évite les open redirects. */
+  function safeReturnTo(): string | null {
+    if (!returnTo || !returnTo.startsWith('/') || returnTo.startsWith('//')) {
+      return null;
+    }
+    return returnTo;
   }
 
   return (
@@ -85,9 +98,14 @@ export function LoginPage() {
           <h1>Connexion</h1>
           <p className="login-sub">
             Espace administrateur de club. Pas de compte ?{' '}
-            <a href="https://clubflow.topdigital.re/signup">Créer mon club</a>
+            <a href={landingUrl('/signup')}>Créer mon club</a>
           </p>
         </header>
+        {sessionExpired ? (
+          <p className="form-error" role="status">
+            Votre session a expiré. Reconnectez-vous pour continuer.
+          </p>
+        ) : null}
         <form onSubmit={(e) => void onSubmit(e)} className="login-form">
           <label className="field">
             <span>Email</span>

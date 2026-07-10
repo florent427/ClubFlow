@@ -19,3 +19,6 @@ design stich/
 .claude/*
 # ... mais on versionne les skills custom partagés (équipe + multi-machine)
 !.claude/skills/
+
+# Comptes de test staging (jamais commit)
+staging-test-accounts.local.md

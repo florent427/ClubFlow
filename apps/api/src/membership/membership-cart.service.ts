@@ -118,6 +118,21 @@ function computeAgeYears(birthDate: Date | null, now: Date): number | null {
   return age;
 }
 
+/**
+ * Ancre le pattern licence configuré par l'admin (match sur TOUTE la
+ * chaîne). Sans ancrage, `new RegExp('\\d{6}').test(...)` accepterait
+ * n'importe quelle saisie CONTENANT 6 chiffres. On n'ajoute les ancres
+ * que si le pattern n'est pas déjà entièrement ancré.
+ */
+function anchorLicensePattern(pattern: string): string {
+  const anchoredStart = pattern.startsWith('^');
+  const anchoredEnd = pattern.endsWith('$') && !pattern.endsWith('\\$');
+  if (anchoredStart && anchoredEnd) {
+    return pattern;
+  }
+  return `^(?:${pattern})$`;
+}
+
 @Injectable()
 export class MembershipCartService {
   constructor(
@@ -789,7 +804,7 @@ export class MembershipCartService {
       if (licenseFee?.licenseNumberPattern) {
         let regex: RegExp;
         try {
-          regex = new RegExp(licenseFee.licenseNumberPattern);
+          regex = new RegExp(anchorLicensePattern(licenseFee.licenseNumberPattern));
         } catch {
           regex = /.+/;
         }
@@ -935,7 +950,7 @@ export class MembershipCartService {
       if (licenseFee?.licenseNumberPattern) {
         let regex: RegExp;
         try {
-          regex = new RegExp(licenseFee.licenseNumberPattern);
+          regex = new RegExp(anchorLicensePattern(licenseFee.licenseNumberPattern));
         } catch {
           // Pattern admin invalide — on log mais on n'empêche pas la
           // saisie (regression safety). L'admin doit corriger sa regex.

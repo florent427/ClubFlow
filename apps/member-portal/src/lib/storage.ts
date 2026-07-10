@@ -50,3 +50,23 @@ export function isContactOnlySession(): boolean {
 export function hasMemberSession(): boolean {
   return Boolean(getToken() && getClubId());
 }
+
+/**
+ * Vérifie que le token stocké n'est pas expiré (décodage local du claim
+ * `exp`, marge de 30 s). Un token illisible est considéré invalide.
+ *
+ * Cf. bug QA C2 : un token expiré présent en localStorage redirigeait
+ * /login vers un dashboard fantôme — reconnexion impossible sans vider
+ * le localStorage à la main.
+ */
+export function isTokenValid(): boolean {
+  const token = getToken();
+  if (!token) return false;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1])) as { exp?: number };
+    if (typeof payload.exp !== 'number') return true;
+    return payload.exp * 1000 > Date.now() + 30_000;
+  } catch {
+    return false;
+  }
+}

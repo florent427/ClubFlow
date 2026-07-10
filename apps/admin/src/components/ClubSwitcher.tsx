@@ -5,6 +5,7 @@ import { apolloClient } from '../lib/apollo';
 import { MY_ADMIN_CLUBS } from '../lib/documents';
 import type { MyAdminClubsQueryData, MyAdminClub } from '../lib/types';
 import { getClubId, setActiveClub, isLoggedIn } from '../lib/storage';
+import { landingUrl } from '../lib/landing-url';
 
 /**
  * Bouton + dropdown affichant le club courant et permettant de switcher
@@ -21,7 +22,7 @@ export function ClubSwitcher() {
   const navigate = useNavigate();
   const ref = useRef<HTMLDivElement>(null);
 
-  const { data, loading } = useQuery<MyAdminClubsQueryData>(MY_ADMIN_CLUBS, {
+  const { data, loading, error } = useQuery<MyAdminClubsQueryData>(MY_ADMIN_CLUBS, {
     skip: !isLoggedIn(),
     fetchPolicy: 'cache-and-network',
   });
@@ -65,6 +66,15 @@ export function ClubSwitcher() {
     void apolloClient.clearStore().then(() => {
       window.location.assign('/');
     });
+  }
+
+  // Erreur de chargement : ne pas afficher un faux "Aucun club accessible"
+  if (error && clubs.length === 0) {
+    return (
+      <div className="cf-club-switcher">
+        <span className="cf-club-switcher__empty">Erreur de chargement des clubs</span>
+      </div>
+    );
   }
 
   // Pas de club accessible : message minimal
@@ -148,7 +158,7 @@ export function ClubSwitcher() {
           </ul>
           <div className="cf-club-switcher__footer">
             <a
-              href="/signup"
+              href={landingUrl('/signup')}
               className="cf-club-switcher__create"
               target="_blank"
               rel="noopener noreferrer"

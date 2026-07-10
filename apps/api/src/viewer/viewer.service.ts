@@ -359,10 +359,16 @@ export class ViewerService {
     label: string;
   }): string {
     const perInstall = Math.round(args.amountCents / args.installments);
+    // Dernière échéance = SOLDE restant (total - mensualités arrondies),
+    // sinon la somme des versements ne retombe pas sur le total exact.
+    const lastInstall =
+      args.amountCents - perInstall * (args.installments - 1);
     const installPart =
       args.installments === 1
         ? `Montant à régler : ${(args.amountCents / 100).toFixed(2)} €.`
-        : `Échéancier : ${args.installments} versements de ${(perInstall / 100).toFixed(2)} € (1 par mois).`;
+        : lastInstall === perInstall
+          ? `Échéancier : ${args.installments} versements de ${(perInstall / 100).toFixed(2)} € (1 par mois).`
+          : `Échéancier : ${args.installments} versements (1 par mois) — ${args.installments - 1} × ${(perInstall / 100).toFixed(2)} € puis un dernier versement de ${(lastInstall / 100).toFixed(2)} € (solde).`;
     switch (args.method) {
       case ClubPaymentMethod.MANUAL_TRANSFER:
         return `Virement bancaire — ${installPart} Le club vous transmet ses coordonnées (IBAN/BIC) par e-mail. Indiquez "${args.label}" en référence du virement.`;
