@@ -37,10 +37,14 @@ jobs:
           username: clubflow
           key: ${{ secrets.SSH_PRIVATE_KEY_STAGING }}
           port: 22
-          command_timeout: 10m
-          script_stop: true
+          command_timeout: 15m
           script: |
-            sudo /usr/local/bin/clubflow-deploy-staging.sh
+            # Pull d'abord pour exécuter la version du script du commit
+            # déployé (la copie /usr/local/bin du bootstrap ne se met
+            # jamais à jour toute seule).
+            sudo -u clubflow git -C /home/clubflow/clubflow fetch origin staging
+            sudo -u clubflow git -C /home/clubflow/clubflow reset --hard origin/staging
+            sudo bash /home/clubflow/clubflow/bin/clubflow-deploy-staging.sh
 
       - name: Smoke test from GitHub runner
         run: |
