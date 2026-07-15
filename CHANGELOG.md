@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.17.0](https://github.com/florent427/ClubFlow/compare/v0.16.1...v0.17.0) (2026-07-15)
+
+
+### ✨ Features
+
+* **vitrine:** page politique de confidentialité RGPD ([cc55ca0](https://github.com/florent427/ClubFlow/commit/cc55ca0f98e72ed27d39166a26afbbd8831f7ad0))
+* **vitrine:** page politique de confidentialité RGPD ([13aabe1](https://github.com/florent427/ClubFlow/commit/13aabe12bab3e78bf4874efe26a0998ff094d250))
+
 ## [0.16.1](https://github.com/florent427/ClubFlow/compare/v0.16.0...v0.16.1) (2026-07-15)
 
 
