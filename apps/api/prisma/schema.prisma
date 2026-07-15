@@ -1514,6 +1514,9 @@ model Invoice {
   parentInvoiceId  String?
   /// Motif textuel affiché sur l'avoir (« erreur de saisie », « remboursement cotisation »…)
   creditNoteReason String?
+  /// Motif d'annulation saisi lors du passage en VOID — champ dédié pour
+  /// ne plus concaténer le motif dans le label de la facture.
+  voidReason       String?
 
   club           Club            @relation(fields: [clubId], references: [id], onDelete: Cascade)
   family         Family?         @relation(fields: [familyId], references: [id], onDelete: SetNull)

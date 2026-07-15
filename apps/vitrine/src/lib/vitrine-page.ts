@@ -54,7 +54,18 @@ const PUBLIC_VITRINE_PAGE = /* GraphQL */ `
   }
 `;
 
-export async function fetchVitrinePage(
+/**
+ * Alias de slugs de page. Les pages seedées à la création d'un club
+ * (`seedDefaultVitrinePages` côté API) nomment la home `accueil`, alors
+ * que les routes vitrine et l'admin utilisent le slug canonique `index`.
+ * Sans cet alias, la home d'un club fraîchement créé tombe en 404 alors
+ * que sa page existe bien en DB.
+ */
+const PAGE_SLUG_ALIASES: Record<string, string[]> = {
+  index: ['accueil'],
+};
+
+async function fetchVitrinePageBySlug(
   clubSlug: string,
   pageSlug: string,
 ): Promise<VitrinePage | null> {
@@ -81,4 +92,17 @@ export async function fetchVitrinePage(
     console.error('[vitrine] fetchVitrinePage failed', err);
     return null;
   }
+}
+
+export async function fetchVitrinePage(
+  clubSlug: string,
+  pageSlug: string,
+): Promise<VitrinePage | null> {
+  const page = await fetchVitrinePageBySlug(clubSlug, pageSlug);
+  if (page) return page;
+  for (const alias of PAGE_SLUG_ALIASES[pageSlug] ?? []) {
+    const aliased = await fetchVitrinePageBySlug(clubSlug, alias);
+    if (aliased) return aliased;
+  }
+  return null;
 }

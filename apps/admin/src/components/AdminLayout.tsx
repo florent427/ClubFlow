@@ -22,18 +22,33 @@ import {
 
 const LS_KEY_COLLAPSED = 'cf-nav-collapsed-sections';
 
-function decodeJwtEmail(token: string): string | null {
+function decodeJwtIdentity(token: string): {
+  email: string | null;
+  displayName: string | null;
+} {
   try {
     const part = token.split('.')[1];
-    if (!part) return null;
-    const json = JSON.parse(atob(part)) as { email?: string };
-    return json.email ?? null;
+    if (!part) return { email: null, displayName: null };
+    const json = JSON.parse(atob(part)) as {
+      email?: string;
+      displayName?: string;
+    };
+    return { email: json.email ?? null, displayName: json.displayName ?? null };
   } catch {
-    return null;
+    return { email: null, displayName: null };
   }
 }
 
-function displayNameFromEmail(email: string | null): string {
+/**
+ * Nom affiché : displayName du JWT en priorité (vrai nom saisi au signup),
+ * fallback dérivé de l'email pour les tokens émis avant l'ajout du claim.
+ */
+function displayNameFrom(identity: {
+  email: string | null;
+  displayName: string | null;
+}): string {
+  if (identity.displayName) return identity.displayName;
+  const email = identity.email;
   if (!email) return 'Admin';
   const local = email.split('@')[0] ?? 'Admin';
   if (!local) return 'Admin';
@@ -44,7 +59,18 @@ function displayNameFromEmail(email: string | null): string {
     .join(' ');
 }
 
-function initialsFromEmail(email: string | null): string {
+function initialsFrom(identity: {
+  email: string | null;
+  displayName: string | null;
+}): string {
+  if (identity.displayName) {
+    const parts = identity.displayName.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    if (parts[0]) return parts[0].slice(0, 2).toUpperCase();
+  }
+  const email = identity.email;
   if (!email) return 'CF';
   const local = email.split('@')[0] ?? '';
   if (local.length >= 2) return local.slice(0, 2).toUpperCase();
@@ -210,8 +236,11 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
   const token = getToken();
   const clubId = getClubId();
   const loggedIn = hasActiveClub();
-  const emailHint = token ? decodeJwtEmail(token) : null;
-  const displayName = displayNameFromEmail(emailHint);
+  const identity = token
+    ? decodeJwtIdentity(token)
+    : { email: null, displayName: null };
+  const emailHint = identity.email;
+  const displayName = displayNameFrom(identity);
 
   const { data: viewerProfilesData } = useQuery<ViewerProfilesQueryData>(
     VIEWER_PROFILES,
@@ -409,7 +438,7 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
 
         <div className="cf-sidenav__user">
           <div className="cf-sidenav__avatar" aria-hidden>
-            {initialsFromEmail(emailHint)}
+            {initialsFrom(identity)}
           </div>
           <div className="cf-sidenav__user-text">
             <p className="cf-sidenav__user-name">{displayName}</p>
@@ -459,7 +488,7 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
               <p className="cf-topbar__profile-role">Administrateur club</p>
             </div>
             <div className="cf-topbar__avatar" aria-hidden>
-              {initialsFromEmail(emailHint)}
+              {initialsFrom(identity)}
             </div>
           </div>
         </div>

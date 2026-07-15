@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { AudienceBuilder } from '../components/AudienceBuilder';
 import {
@@ -326,16 +326,6 @@ export function CommunicationPage() {
       showToast(msg, 'error');
     }
   }
-
-  /* ---------------------------------------------------------------- */
-  /* Effects                                                          */
-  /* ---------------------------------------------------------------- */
-
-  // Si on a chargé en édition une campagne dont les channels[] sont vides
-  // (très ancienne), on retombe sur le legacy `channel` au moment du init.
-  useEffect(() => {
-    if (selectedChannels.length === 0) setSelectedChannels(['EMAIL']);
-  }, [selectedChannels.length]);
 
   /* ---------------------------------------------------------------- */
   /* KPIs                                                             */

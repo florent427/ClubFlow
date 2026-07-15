@@ -320,19 +320,23 @@ export function EventsPage() {
     const capacity = form.capacity ? parseInt(form.capacity, 10) : undefined;
     try {
       if (editing) {
+        // En édition : null explicite pour effacer un champ vidé
+        // (undefined serait ignoré par le service côté API).
         await update({
           variables: {
             input: {
               id: editing.id,
               title: form.title.trim(),
-              description: form.description.trim() || undefined,
-              location: form.location.trim() || undefined,
+              description: form.description.trim() || null,
+              location: form.location.trim() || null,
               startsAt,
               endsAt,
-              capacity,
-              registrationOpensAt: fromLocalInput(form.registrationOpensAt),
-              registrationClosesAt: fromLocalInput(form.registrationClosesAt),
-              priceCents,
+              capacity: capacity ?? null,
+              registrationOpensAt:
+                fromLocalInput(form.registrationOpensAt) ?? null,
+              registrationClosesAt:
+                fromLocalInput(form.registrationClosesAt) ?? null,
+              priceCents: priceCents ?? null,
               allowContactRegistration: form.allowContactRegistration,
             },
           },
@@ -378,6 +382,12 @@ export function EventsPage() {
     }
   }
   async function onCancel(e: ClubEvent) {
+    if (
+      !window.confirm(
+        `Annuler l’événement « ${e.title} » ? Les inscrits ne seront plus comptés.`,
+      )
+    )
+      return;
     try {
       await cancel({ variables: { id: e.id } });
       showToast('Événement annulé', 'success');

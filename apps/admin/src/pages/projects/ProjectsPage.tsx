@@ -11,6 +11,7 @@ import {
 import { useToast } from '../../components/ToastProvider';
 import { ConfirmModal, EmptyState } from '../../components/ui';
 import { ProjectDetailPanel } from './ProjectDetailPanel';
+import { QueryError } from '../../components/QueryError';
 
 function fmtDateShort(iso: string | null): string {
   if (!iso) return '—';
@@ -151,7 +152,7 @@ export function ProjectsPage() {
     return (
       <div className="cf-page">
         <h1>Projets</h1>
-        <p className="cf-error">Erreur : {error.message}</p>
+        <QueryError error={error} onRetry={() => void refetch()} />
       </div>
     );
   }

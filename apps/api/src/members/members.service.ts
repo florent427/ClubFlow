@@ -550,6 +550,43 @@ export class MembersService {
     };
   }
 
+  /**
+   * Crée la Family du foyer avec le membre en PAYER quand un membre
+   * ADULTE (birthDate absente ou âge >= 18) possède un e-mail et n'est
+   * encore rattaché à aucun foyer du club. Miroir côté admin de
+   * `ensureFamilyForContactPayer` (auth.service). Idempotent. Ne fait
+   * rien pour les mineurs (rattachés au foyer d'un parent payeur).
+   */
+  private async ensureFamilyForAdultMemberPayer(
+    clubId: string,
+    memberId: string,
+    info: { birthDate: Date | null; email: string },
+  ): Promise<void> {
+    if (!info.email.trim()) return;
+    if (info.birthDate) {
+      const now = new Date();
+      let age = now.getFullYear() - info.birthDate.getFullYear();
+      const m = now.getMonth() - info.birthDate.getMonth();
+      if (m < 0 || (m === 0 && now.getDate() < info.birthDate.getDate())) {
+        age--;
+      }
+      if (age < 18) return;
+    }
+    const existing = await this.prisma.familyMember.findFirst({
+      where: { memberId, family: { clubId } },
+      select: { id: true },
+    });
+    if (existing) return;
+    await this.prisma.family.create({
+      data: {
+        clubId,
+        familyMembers: {
+          create: [{ memberId, linkRole: FamilyMemberLinkRole.PAYER }],
+        },
+      },
+    });
+  }
+
   async createMember(
     clubId: string,
     input: CreateMemberInput,
@@ -681,6 +718,13 @@ export class MembersService {
       clubId,
       emailTrimmed,
     );
+    // Un membre ADULTE créé avec un e-mail doit avoir un foyer où il est
+    // PAYER (sinon aucun profil payeur côté portail ni facturation
+    // possible). No-op pour les mineurs ou si un foyer existe déjà.
+    await this.ensureFamilyForAdultMemberPayer(clubId, row.id, {
+      birthDate: row.birthDate,
+      email: emailTrimmed,
+    });
     await this.assertMemberMatchesFieldRules(clubId, row.id);
     // Auto-ajout au projet d'adhésion actif (fire-and-forget).
     // Les erreurs sont loggées sans interrompre la création du membre.

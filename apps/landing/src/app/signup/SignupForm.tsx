@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState, useTransition } from 'react';
+import { useCallback, useEffect, useState, useTransition } from 'react';
 import {
   CREATE_CLUB_AND_ADMIN_MUTATION,
   gqlRequest,
@@ -46,6 +46,17 @@ export function SignupForm() {
     process.env.NEXT_PUBLIC_LANDING_ADMIN_URL ??
     process.env.LANDING_ADMIN_URL ??
     'http://localhost:5173';
+
+  // Suffixe vitrine dérivé du host réel : les vitrines vivent en
+  // <slug>.<host-de-la-landing> (prod ET staging). Le suffixe hardcodé
+  // affichait le domaine prod sur staging.
+  const [vitrineSuffix, setVitrineSuffix] = useState('.clubflow.topdigital.re');
+  useEffect(() => {
+    const host = window.location.hostname;
+    if (host !== 'localhost' && host !== '127.0.0.1') {
+      setVitrineSuffix(`.${host}`);
+    }
+  }, []);
 
   const updateField = (key: keyof FormState) =>
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -175,7 +186,7 @@ export function SignupForm() {
               pattern="[a-z0-9]+(-[a-z0-9]+)*"
               aria-describedby="slug-help"
             />
-            <span className="slug-suffix">.clubflow.topdigital.re</span>
+            <span className="slug-suffix">{vitrineSuffix}</span>
           </div>
           <small id="slug-help" className="muted">
             Vous pourrez ajouter votre propre domaine plus tard depuis l'admin.
@@ -295,7 +306,9 @@ export function SignupForm() {
           outline: 0;
           border-color: var(--color-primary);
         }
-        .signup-form input:invalid:not(:placeholder-shown) {
+        /* :user-invalid ne s'applique qu'après interaction de l'utilisateur —
+           :invalid marquait les champs requis en rouge avant toute saisie. */
+        .signup-form input:user-invalid {
           border-color: var(--color-danger);
         }
         .row-2 {

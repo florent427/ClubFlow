@@ -461,12 +461,13 @@ export class PaymentsService {
         "Des paiements existent : annulez d\u2019abord les encaissements.",
       );
     }
-    const labelSuffix = reason ? ` (annul\u00e9 : ${reason})` : ' (annul\u00e9)';
+    // Motif stock\u00e9 en champ d\u00e9di\u00e9 \u2014 le label reste intact (le statut VOID
+    // porte d\u00e9j\u00e0 l'information \u00ab Annul\u00e9e \u00bb c\u00f4t\u00e9 UI).
     return this.prisma.invoice.update({
       where: { id: invoiceId },
       data: {
         status: InvoiceStatus.VOID,
-        label: inv.label.includes('annul\u00e9') ? inv.label : inv.label + labelSuffix,
+        voidReason: reason?.trim() || null,
       },
     });
   }

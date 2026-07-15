@@ -140,6 +140,15 @@ export class AuthService {
     const primary =
       viewerProfiles.find((p) => p.isPrimaryProfile) ?? viewerProfiles[0];
     const jwtPayload: JwtPayload = { sub: userId, email };
+    // displayName embarqué pour que les fronts n'aient pas à dériver un
+    // nom depuis l'email (bug QA M19 : « Bonjour Florent Morel427+stg »).
+    const u = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { displayName: true },
+    });
+    if (u?.displayName) {
+      jwtPayload.displayName = u.displayName;
+    }
     if (primary?.memberId) {
       jwtPayload.activeProfileMemberId = primary.memberId;
     } else if (primary?.contactId) {
@@ -167,15 +176,20 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException(AUTH_LOGIN_REJECT_MESSAGE);
     }
-    if (!user.emailVerifiedAt) {
-      throw new UnauthorizedException(AUTH_LOGIN_REJECT_MESSAGE);
-    }
     if (!user.passwordHash) {
       throw new UnauthorizedException(AUTH_LOGIN_REJECT_MESSAGE);
     }
     const ok = await bcrypt.compare(input.password, user.passwordHash);
     if (!ok) {
       throw new UnauthorizedException(AUTH_LOGIN_REJECT_MESSAGE);
+    }
+    if (!user.emailVerifiedAt) {
+      // Mot de passe correct mais e-mail non vérifié : message distinct.
+      // Pas de fuite d'info — l'identité est déjà prouvée par le mot de
+      // passe, on peut donc révéler l'état de vérification.
+      throw new UnauthorizedException(
+        'Votre adresse e-mail n’est pas encore vérifiée. Vérifiez votre boîte mail ou demandez un nouveau lien.',
+      );
     }
     const viewerProfiles = await this.families.listViewerProfiles(user.id);
     return this.buildLoginPayload(user.id, user.email, viewerProfiles);

@@ -67,7 +67,8 @@ export function VitrinePageEditor() {
   if (!page)
     return (
       <p className="muted">
-        Page « {slug} » introuvable. Lancez le seed vitrine si besoin.
+        Page « {slug} » introuvable. Contactez le support si votre site n'a
+        pas été initialisé.
       </p>
     );
 

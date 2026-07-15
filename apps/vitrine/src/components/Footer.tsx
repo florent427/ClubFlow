@@ -96,7 +96,10 @@ export function Footer({ clubName, content }: FooterProps) {
             )}
           </div>
         ))}
-        {content.contact ? (
+        {content.contact &&
+        (content.contact.address ||
+          content.contact.phone ||
+          content.contact.email) ? (
           <div className="footer__col">
             <h4>Dojo</h4>
             {content.contact.address ? (

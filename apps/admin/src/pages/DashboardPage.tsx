@@ -14,21 +14,26 @@ import type {
 } from '../lib/types';
 import { getToken } from '../lib/storage';
 import { DashboardTrendsPanel } from './DashboardTrendsPanel';
+import { QueryError } from '../components/QueryError';
 
-function decodeJwtEmail(token: string): string | null {
+function decodeJwt(token: string): { email?: string; displayName?: string } {
   try {
     const part = token.split('.')[1];
-    if (!part) return null;
-    const json = JSON.parse(atob(part)) as { email?: string };
-    return json.email ?? null;
+    if (!part) return {};
+    return JSON.parse(atob(part)) as { email?: string; displayName?: string };
   } catch {
-    return null;
+    return {};
   }
 }
 
-function greetName(email: string | null): string {
-  if (!email) return 'cher administrateur';
-  const local = email.split('@')[0] ?? '';
+/**
+ * Nom pour le greeting : displayName du JWT en priorité (le vrai nom
+ * saisi au signup), fallback dérivé de l'email pour les tokens émis
+ * avant l'ajout du claim.
+ */
+function greetName(payload: { email?: string; displayName?: string }): string {
+  if (payload.displayName) return payload.displayName;
+  const local = payload.email?.split('@')[0] ?? '';
   if (!local) return 'cher administrateur';
   return local
     .split(/[._-]/)
@@ -48,6 +53,13 @@ function formatTime(iso: string): string {
   }
 }
 
+function formatEuros(cents: number): string {
+  return new Intl.NumberFormat('fr-FR', {
+    style: 'currency',
+    currency: 'EUR',
+  }).format(cents / 100);
+}
+
 const PIE_COLORS = ['#000666', '#0056c5', '#bdc2ff', '#1a237e', '#c2410c'];
 
 export function DashboardPage() {
@@ -64,11 +76,19 @@ export function DashboardPage() {
     localStorage.setItem('cf_onboarding_dismissed', '1');
   }
   const token = getToken();
-  const email = token ? decodeJwtEmail(token) : null;
+  const jwtPayload = token ? decodeJwt(token) : {};
 
-  const { data: dashData, loading: dashLoading } =
-    useQuery<DashboardQueryData>(DASHBOARD_SUMMARY);
-  const { data: groupsData } = useQuery<DynamicGroupsQueryData>(
+  const {
+    data: dashData,
+    loading: dashLoading,
+    error: dashError,
+    refetch: refetchDash,
+  } = useQuery<DashboardQueryData>(DASHBOARD_SUMMARY);
+  const {
+    data: groupsData,
+    error: groupsError,
+    refetch: refetchGroups,
+  } = useQuery<DynamicGroupsQueryData>(
     CLUB_DYNAMIC_GROUPS,
   );
   const { data: slotsData } = useQuery<CourseSlotsQueryData>(
@@ -144,15 +164,9 @@ export function DashboardPage() {
     return { expiring: count, expired };
   }, [summary]);
 
-  const revenueEuro =
-    summary?.revenueCentsMonth != null
-      ? (summary.revenueCentsMonth / 100).toFixed(2)
-      : '0,00';
+  const revenueEuro = formatEuros(summary?.revenueCentsMonth ?? 0);
   const openInvoices = summary?.outstandingPaymentsCount ?? 0;
-  const balanceEuro =
-    summary?.accountingBalanceCents != null
-      ? (summary.accountingBalanceCents / 100).toFixed(2)
-      : '0,00';
+  const balanceEuro = formatEuros(summary?.accountingBalanceCents ?? 0);
   const miniTiles: {
     icon: string;
     label: string;
@@ -200,7 +214,7 @@ export function DashboardPage() {
         {
           icon: 'account_balance',
           label: 'Solde comptable',
-          value: `${balanceEuro} €`,
+          value: balanceEuro,
           to: '/comptabilite',
           tone:
             (summary.accountingBalanceCents ?? 0) >= 0 ? 'positive' : 'negative',
@@ -274,7 +288,7 @@ export function DashboardPage() {
         <div className="cf-dash__welcome-row">
           <div>
             <h1 className="cf-dash__h1">
-              Bonjour {greetName(email)},
+              Bonjour {greetName(jwtPayload)},
             </h1>
             <p className="cf-dash__lede">
               Voici l’état de votre espace{' '}
@@ -330,6 +344,10 @@ export function DashboardPage() {
 
       <DashboardTrendsPanel />
 
+      {/* Faux zéros : sur erreur des KPIs on affiche l'erreur au lieu de 0/0,00 € */}
+      {dashError ? (
+        <QueryError error={dashError} onRetry={() => void refetchDash()} />
+      ) : (
       <section className="cf-dash__kpi">
         <div className="cf-kpi-card">
           <div className="cf-kpi-card__head">
@@ -368,7 +386,7 @@ export function DashboardPage() {
           </div>
           <div className="cf-kpi-finance">
             <div className="cf-kpi-finance-row">
-              <p className="cf-kpi-value cf-kpi-value--md">{revenueEuro} €</p>
+              <p className="cf-kpi-value cf-kpi-value--md">{revenueEuro}</p>
               <span className="cf-kpi-tag">CA du mois</span>
             </div>
             <div className="cf-kpi-finance-row cf-kpi-finance-row--threat">
@@ -407,6 +425,7 @@ export function DashboardPage() {
           </div>
         </div>
       </section>
+      )}
 
       {miniTiles.length > 0 ? (
         <section className="cf-dash__mini">
@@ -447,7 +466,9 @@ export function DashboardPage() {
               <span className="cf-pie-caption">Membres classés</span>
             </div>
           </div>
-          {pieSlices.slices.length === 0 ? (
+          {groupsError ? (
+            <QueryError error={groupsError} onRetry={() => void refetchGroups()} />
+          ) : pieSlices.slices.length === 0 ? (
             <p className="muted cf-bento-empty">
               Aucun groupe dynamique ou effectifs vides — configurez-les dans
               Membres.
@@ -475,10 +496,13 @@ export function DashboardPage() {
               Comptabilité →
             </Link>
           </div>
+          {dashError ? (
+            <QueryError error={dashError} onRetry={() => void refetchDash()} />
+          ) : (
           <div className="cf-finance-grid">
             <div className="cf-finance-cell cf-finance-cell--primary">
               <span className="cf-finance-cell__label">CA du mois</span>
-              <span className="cf-finance-cell__value">{revenueEuro} €</span>
+              <span className="cf-finance-cell__value">{revenueEuro}</span>
             </div>
             <div
               className={`cf-finance-cell ${
@@ -488,7 +512,7 @@ export function DashboardPage() {
               }`}
             >
               <span className="cf-finance-cell__label">Solde comptable</span>
-              <span className="cf-finance-cell__value">{balanceEuro} €</span>
+              <span className="cf-finance-cell__value">{balanceEuro}</span>
             </div>
             <div className="cf-finance-cell">
               <span className="cf-finance-cell__label">Factures ouvertes</span>
@@ -501,6 +525,7 @@ export function DashboardPage() {
               </span>
             </div>
           </div>
+          )}
         </div>
       </section>
 

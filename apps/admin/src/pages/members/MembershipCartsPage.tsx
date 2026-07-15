@@ -8,6 +8,7 @@ import {
 } from '../../lib/cart-documents';
 import { ACTIVE_CLUB_SEASON, CLUB_SEASONS } from '../../lib/documents';
 import { MembershipCartDetailDrawer } from './MembershipCartDetailDrawer';
+import { QueryError } from '../../components/QueryError';
 
 interface ActiveSeasonData {
   activeClubSeason: {
@@ -60,7 +61,7 @@ export function MembershipCartsPage() {
   const effectiveSeasonId =
     seasonFilter || activeSeasonData?.activeClubSeason?.id || null;
 
-  const { data, loading, error } = useQuery<ClubMembershipCartsData>(
+  const { data, loading, error, refetch } = useQuery<ClubMembershipCartsData>(
     CLUB_MEMBERSHIP_CARTS,
     {
       variables: {
@@ -241,9 +242,7 @@ export function MembershipCartsPage() {
       </section>
 
       {error ? (
-        <p className="form-error" role="alert">
-          {error.message}
-        </p>
+        <QueryError error={error} onRetry={() => void refetch()} />
       ) : loading && carts.length === 0 ? (
         <p className="muted">Chargement…</p>
       ) : filteredCarts.length === 0 ? (

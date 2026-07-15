@@ -225,6 +225,18 @@ export function AccountingReviewDrawer({
   }
 
   const accounts = accountsData?.clubAccountingAccounts ?? [];
+  // Comptes proposés selon le kind de l'ÉCRITURE (même règle que la
+  // liste des écritures) : INCOME → produits ; EXPENSE → charges +
+  // immobilisations (règle PCG 500 € HT : tatamis 750 € → immo 215400) ;
+  // IN_KIND → comptes neutres.
+  const availableAccounts = accounts.filter((a) => {
+    if (!a.isActive || !entry) return false;
+    if (entry.kind === 'INCOME') return a.kind === 'INCOME';
+    if (entry.kind === 'EXPENSE')
+      return a.kind === 'EXPENSE' || a.kind === 'ASSET';
+    if (entry.kind === 'IN_KIND') return a.kind === 'NEUTRAL_IN_KIND';
+    return true;
+  });
   const cohorts = cohortsData?.clubAccountingCohorts ?? [];
   const docs = entry?.documents ?? [];
 
@@ -476,13 +488,11 @@ export function AccountingReviewDrawer({
               onChange={(e) => setAccountCode(e.target.value)}
             >
               <option value="">— Conserver le compte actuel —</option>
-              {accounts
-                .filter((a) => a.kind === 'EXPENSE' && a.isActive)
-                .map((a) => (
-                  <option key={a.id} value={a.code}>
-                    {a.code} — {a.label}
-                  </option>
-                ))}
+              {availableAccounts.map((a) => (
+                <option key={a.id} value={a.code}>
+                  {a.code} — {a.label}
+                </option>
+              ))}
             </select>
           </label>
 
