@@ -36,7 +36,7 @@ import type {
   ViewerSystemRoleQueryData,
 } from '../../lib/types';
 import { SYSTEM_SET_MEMBER_ADMIN_ROLE } from '../../lib/documents';
-import { BUILTIN_ROLE_OPTIONS } from './members-constants';
+import { BUILTIN_ROLE_OPTIONS, roleLabel } from './members-constants';
 import { MemberAdhesionPanels } from './MemberAdhesionPanels';
 import { MemberPhotoField } from './MemberPhotoField';
 
@@ -858,7 +858,7 @@ export function MemberDetailDrawer({
                 ) : null}
                 {member.roles.slice(0, 2).map((r) => (
                   <span key={r} className="cf-badge cf-badge--muted">
-                    {r}
+                    {roleLabel(r)}
                   </span>
                 ))}
                 {member.roles.length > 2 ? (
@@ -1014,13 +1014,10 @@ export function MemberDetailDrawer({
                       lineHeight: 1.45,
                     }}
                   >
-                    Le statut « Compte Telegram relié » n’apparaît qu’après que
-                    Telegram a appelé votre API (webhook) suite au{' '}
-                    <code>/start</code> avec le jeton. Si vous êtes en local sans
-                    URL HTTPS publique, Telegram n’atteint pas{' '}
-                    <code>localhost</code> : la liaison ne peut pas être
-                    enregistrée tant que le webhook n’est pas configuré (ex.
-                    tunnel ngrok vers <code>POST /webhooks/telegram</code>).
+                    Le statut « Compte Telegram relié » apparaît une fois que le
+                    membre a ouvert le lien reçu par e-mail et appuyé sur{' '}
+                    « Démarrer » dans Telegram. Cela peut prendre quelques
+                    instants.
                   </p>
                   <button
                     type="button"

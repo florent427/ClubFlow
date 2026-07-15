@@ -26,6 +26,7 @@ import {
   getClubId,
   getToken,
   hasMemberSession,
+  isTokenValid,
   setMemberContactSession,
   setMemberSession,
   setToken,
@@ -66,10 +67,22 @@ export function LoginPage() {
     LOGIN_WITH_PROFILES,
   );
 
-  if (hasMemberSession()) {
+  // Bannières informatives posées par l'errorLink (session expirée)
+  // ou par le retour OAuth de l'API (échec Google).
+  const sessionExpired = params.get('reason') === 'session-expiree';
+  const oauthFailed = params.get('oauth') !== null;
+
+  // Un token EXPIRÉ ne doit jamais rediriger vers l'espace membre : on
+  // purge et on laisse l'utilisateur se reconnecter (bug QA C2 — avant,
+  // impossible de revenir au login sans vider le localStorage).
+  if (getToken() && !isTokenValid()) {
+    clearAuth();
+  }
+
+  if (hasMemberSession() && isTokenValid()) {
     return <Navigate to={returnTo ?? '/'} replace />;
   }
-  if (getToken() && !getClubId()) {
+  if (getToken() && isTokenValid() && !getClubId()) {
     // Transmet returnTo à select-profile pour que le flow continue après
     // choix de profil.
     const target = returnTo
@@ -119,9 +132,12 @@ export function LoginPage() {
         : '/select-profile';
       void navigate(target, { replace: true });
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : 'Connexion impossible.';
-      setError(msg);
+      const raw = err instanceof Error ? err.message : '';
+      setError(
+        /failed to fetch|networkerror/i.test(raw)
+          ? 'Connexion au serveur impossible. Vérifiez votre réseau puis réessayez.'
+          : raw || 'Connexion impossible. Réessayez.',
+      );
     }
   }
 
@@ -154,10 +170,23 @@ export function LoginPage() {
                     .toUpperCase()}
                 </span>
               )}
-              <div>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <p className="auth-club-banner__eyebrow">Connexion</p>
                 <h2 className="auth-club-banner__name">{club.name}</h2>
               </div>
+              {/* Retour à /login sans `?club=` — même pattern que /register
+                  (le login reste possible pour n'importe quel club). */}
+              <Link
+                to={
+                  returnTo
+                    ? `/login?returnTo=${encodeURIComponent(returnTo)}`
+                    : '/login'
+                }
+                className="auth-club-banner__change"
+                title="Changer de club"
+              >
+                Changer
+              </Link>
             </div>
           ) : (
             <p className="auth-eyebrow">ClubFlow</p>
@@ -169,6 +198,17 @@ export function LoginPage() {
               : 'Connectez-vous avec l’e-mail enregistré auprès du club. Le club actif sera choisi à l’étape suivante si vous avez plusieurs profils.'}
           </p>
         </header>
+        {sessionExpired ? (
+          <p className="auth-error" role="status">
+            Votre session a expiré. Reconnectez-vous pour continuer.
+          </p>
+        ) : null}
+        {oauthFailed ? (
+          <p className="auth-error" role="status">
+            La connexion avec Google a échoué. Réessayez ou utilisez votre
+            e-mail et votre mot de passe.
+          </p>
+        ) : null}
         <form onSubmit={(e) => void onSubmit(e)} className="auth-form">
           <label className="auth-field">
             <span>E-mail</span>

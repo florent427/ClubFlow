@@ -14,6 +14,7 @@ import type {
   MembersQueryData,
 } from '../../lib/types';
 import { useToast } from '../../components/ToastProvider';
+import { QueryError } from '../../components/QueryError';
 
 function fmtDateTime(iso: string | null): string {
   if (!iso) return '—';
@@ -45,13 +46,21 @@ export function DocumentSignaturesPage() {
     CLUB_DOCUMENT,
     { variables: { id: documentId }, skip: !documentId },
   );
-  const { data: sigData, loading: sigLoading } =
-    useQuery<ClubDocumentSignaturesQueryData>(CLUB_DOCUMENT_SIGNATURES, {
-      variables: { documentId },
-      skip: !documentId,
-      fetchPolicy: 'cache-and-network',
-    });
-  const { data: statsData } = useQuery<ClubDocumentSignatureStatsQueryData>(
+  const {
+    data: sigData,
+    loading: sigLoading,
+    error: sigError,
+    refetch: refetchSignatures,
+  } = useQuery<ClubDocumentSignaturesQueryData>(CLUB_DOCUMENT_SIGNATURES, {
+    variables: { documentId },
+    skip: !documentId,
+    fetchPolicy: 'cache-and-network',
+  });
+  const {
+    data: statsData,
+    error: statsError,
+    refetch: refetchStats,
+  } = useQuery<ClubDocumentSignatureStatsQueryData>(
     CLUB_DOCUMENT_SIGNATURE_STATS,
     {
       variables: { documentId },
@@ -262,7 +271,9 @@ export function DocumentSignaturesPage() {
       </div>
 
       {tab === 'SIGNED' ? (
-        sigLoading && signatures.length === 0 ? (
+        sigError ? (
+          <QueryError error={sigError} onRetry={() => void refetchSignatures()} />
+        ) : sigLoading && signatures.length === 0 ? (
           <p className="cf-muted">Chargement…</p>
         ) : signatures.length === 0 ? (
           <p className="cf-muted">Aucune signature enregistrée pour ce document.</p>
@@ -362,7 +373,9 @@ export function DocumentSignaturesPage() {
       ) : null}
 
       {tab === 'UNSIGNED' ? (
-        stats.unsignedMemberIds.length === 0 ? (
+        statsError ? (
+          <QueryError error={statsError} onRetry={() => void refetchStats()} />
+        ) : stats.unsignedMemberIds.length === 0 ? (
           <p className="cf-muted">
             Tous les membres concernés ont signé la version courante.
           </p>

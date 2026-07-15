@@ -5,6 +5,8 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 export type JwtPayload = {
   sub: string;
   email: string;
+  /** Nom d'affichage du User — pour les greetings front sans requête. */
+  displayName?: string;
   activeProfileMemberId?: string;
   activeProfileContactId?: string;
 };

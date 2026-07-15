@@ -156,6 +156,13 @@ export function MessagingPage() {
       transports: ['websocket', 'polling'],
     });
     socketRef.current = s;
+    // (Re)joint le salon courant à chaque (re)connexion — sinon les
+    // messages temps réel sont perdus après une coupure réseau.
+    s.on('connect', () => {
+      if (selectedRoomRef.current) {
+        s.emit('joinRoom', { roomId: selectedRoomRef.current });
+      }
+    });
     s.on('chat:message', (payload: ChatMessageRow) => {
       // Ne pas insérer les réponses en fil dans le flux principal.
       if (
@@ -186,6 +193,21 @@ export function MessagingPage() {
         void refetchMessages();
       },
     );
+    s.on(
+      'chat:message:edit',
+      (payload: { id: string; body: string | null; editedAt: string }) => {
+        setLiveMessages((prev) =>
+          prev.map((m) =>
+            m.id === payload.id ? { ...m, body: payload.body ?? m.body } : m,
+          ),
+        );
+        if (openThreadId) void refetchThread();
+      },
+    );
+    s.on('chat:message:delete', (payload: { id: string }) => {
+      setLiveMessages((prev) => prev.filter((m) => m.id !== payload.id));
+      if (openThreadId) void refetchThread();
+    });
     return () => {
       s.disconnect();
       socketRef.current = null;

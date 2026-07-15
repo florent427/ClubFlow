@@ -15,6 +15,7 @@ import type {
 import { FamilyDetailDrawer } from './FamilyDetailDrawer';
 import { useMembersUi } from './members-ui-context';
 import { useToast } from '../../components/ToastProvider';
+import { frenchError } from '../../lib/errors';
 
 export function FamiliesPage() {
   const { drawerFamilyId, setDrawerFamilyId } = useMembersUi();
@@ -32,7 +33,7 @@ export function FamiliesPage() {
       showToast('Foyer supprimé.', 'success');
     },
     onError: (e) => {
-      showToast(e.message, 'error');
+      showToast(frenchError(e), 'error');
     },
   });
 

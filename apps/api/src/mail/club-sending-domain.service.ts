@@ -237,6 +237,55 @@ export class ClubSendingDomainService {
   }
 
   /**
+   * Sender plateforme de secours pour les e-mails d’authentification
+   * (`CLUBFLOW_SENDER_EMAIL` ou `MAIL_FROM`, format « Nom <adresse> »
+   * accepté). Retourne null si non configuré côté serveur.
+   */
+  private platformSenderFallback(): { fqdn: string; from: SmtpMailFrom } | null {
+    const raw =
+      process.env.CLUBFLOW_SENDER_EMAIL?.trim() ||
+      process.env.MAIL_FROM?.trim() ||
+      '';
+    if (!raw) {
+      return null;
+    }
+    const match = raw.match(/^(?:"?([^"<]*)"?\s*)?<([^>]+)>$/);
+    const address = (match ? match[2] : raw).trim().toLowerCase();
+    if (!address.includes('@')) {
+      return null;
+    }
+    const name = (match?.[1] ?? '').trim() || 'ClubFlow';
+    return { fqdn: address.split('@')[1], from: { name, address } };
+  }
+
+  /**
+   * Profil d’envoi pour les e-mails AUTH (vérification d’adresse, reset
+   * de mot de passe) : domaine vérifié du club si disponible, sinon
+   * fallback sur le sender plateforme. L’inscription ne doit JAMAIS être
+   * bloquée par la config e-mail du club (contrairement aux campagnes /
+   * communications club qui exigent un domaine vérifié).
+   */
+  async getAuthMailProfile(
+    clubId: string,
+  ): Promise<{ fqdn: string; from: SmtpMailFrom }> {
+    try {
+      return await this.getVerifiedMailProfile(clubId, 'transactional');
+    } catch (err) {
+      if (!(err instanceof BadRequestException)) {
+        throw err;
+      }
+      const fallback = this.platformSenderFallback();
+      if (!fallback) {
+        throw err;
+      }
+      this.log.warn(
+        `Aucun domaine d’envoi vérifié pour club=${clubId} — fallback sender plateforme ${fallback.from.address} (e-mail AUTH).`,
+      );
+      return fallback;
+    }
+  }
+
+  /**
    * Domaine vérifié requis pour envoyer (spec : aucun envoi sinon).
    */
   async getVerifiedMailProfile(

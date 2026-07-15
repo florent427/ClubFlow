@@ -32,10 +32,13 @@ type FieldValue = {
  *   précédentes.
  */
 export function DocumentsToSignPage() {
-  const { data, loading, refetch } = useQuery<Data>(VIEWER_DOCUMENTS_TO_SIGN, {
-    errorPolicy: 'all',
-    fetchPolicy: 'cache-and-network',
-  });
+  const { data, loading, error, refetch } = useQuery<Data>(
+    VIEWER_DOCUMENTS_TO_SIGN,
+    {
+      errorPolicy: 'all',
+      fetchPolicy: 'cache-and-network',
+    },
+  );
   const [signMutation, { loading: signing }] = useMutation(
     VIEWER_SIGN_CLUB_DOCUMENT,
     {
@@ -56,6 +59,30 @@ export function DocumentsToSignPage() {
 
   if (loading && docs.length === 0) {
     return <p className="cf-muted">Chargement…</p>;
+  }
+  // Erreur réseau sans donnée : ne JAMAIS afficher « Tout est à jour »
+  // (documents légaux) — on ne sait pas s'il reste des documents à signer.
+  if (error && docs.length === 0) {
+    return (
+      <div className="docs-empty">
+        <h1>Documents à signer</h1>
+        <div className="docs-empty__card">
+          <span aria-hidden>⚠️</span>
+          <h2>Impossible de vérifier vos documents</h2>
+          <p>
+            Une erreur réseau empêche de savoir si des documents attendent
+            votre signature. Vérifiez votre connexion puis réessayez.
+          </p>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => void refetch()}
+          >
+            Réessayer
+          </button>
+        </div>
+      </div>
+    );
   }
   if (docs.length === 0) {
     return (

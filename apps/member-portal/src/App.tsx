@@ -1,7 +1,13 @@
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { ApolloProvider } from '@apollo/client/react';
 import { apolloClient } from './lib/apollo';
-import { getClubId, getToken, hasMemberSession } from './lib/storage';
+import {
+  clearAuth,
+  getClubId,
+  getToken,
+  hasMemberSession,
+  isTokenValid,
+} from './lib/storage';
 import { MemberOrContactShell } from './components/MemberOrContactShell';
 import { MemberOnly } from './components/MemberOnly';
 import { ToastProvider } from './components/ToastProvider';
@@ -40,8 +46,20 @@ import {
 import { PublicShopPage } from './pages/public/PublicShopPage';
 
 function Protected() {
-  if (!getToken()) {
-    return <Navigate to="/login" replace />;
+  // Vérifie la VALIDITÉ du token, pas seulement sa présence : un token
+  // expiré rendait un espace membre fantôme (bug QA C1/C2). returnTo
+  // permet de revenir sur la page demandée après reconnexion.
+  if (!getToken() || !isTokenValid()) {
+    clearAuth();
+    const returnTo = encodeURIComponent(
+      window.location.pathname + window.location.search,
+    );
+    return (
+      <Navigate
+        to={`/login?reason=session-expiree&returnTo=${returnTo}`}
+        replace
+      />
+    );
   }
   if (!getClubId()) {
     return <Navigate to="/select-profile" replace />;

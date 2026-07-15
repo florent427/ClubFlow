@@ -15,6 +15,7 @@ import {
 } from '../../lib/vitrine-documents';
 import { getClubId, getToken } from '../../lib/storage';
 import { useToast } from '../../components/ToastProvider';
+import { useCurrentClub } from '../../lib/use-current-club';
 import { TiptapEditor } from '../../components/editor/TiptapEditor';
 
 function apiBase(): string {
@@ -106,6 +107,9 @@ export function VitrineArticleEditor() {
   const { id } = useParams<{ id: string }>();
   const { showToast } = useToast();
   const navigate = useNavigate();
+  // URL publique du club courant (customDomain ACTIVE ou subdomain fallback),
+  // calculée côté API. Cf. useCurrentClub.
+  const { club: currentClub } = useCurrentClub();
 
   const { data, loading, error, refetch, startPolling, stopPolling } =
     useQuery<ClubVitrineArticlesData>(CLUB_VITRINE_ARTICLES, {
@@ -280,8 +284,8 @@ export function VitrineArticleEditor() {
     setDirty(true);
   }
 
-  async function save(): Promise<void> {
-    if (!article) return;
+  async function save(): Promise<boolean> {
+    if (!article) return false;
     const bodyJson = JSON.stringify({ format: 'html', html: bodyHtml });
     try {
       await update({
@@ -314,15 +318,20 @@ export function VitrineArticleEditor() {
       await refetch();
       setDirty(false);
       showToast('Article enregistré.', 'success');
+      return true;
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Échec', 'error');
+      return false;
     }
   }
 
   async function togglePublish(): Promise<void> {
     if (!article) return;
-    // On enregistre d'abord si dirty
-    if (dirty) await save();
+    // On enregistre d'abord si dirty — on n'y va pas si l'enregistrement échoue
+    if (dirty) {
+      const saved = await save();
+      if (!saved) return;
+    }
     const next = article.status === 'PUBLISHED' ? 'DRAFT' : 'PUBLISHED';
     try {
       await setStatus({
@@ -420,7 +429,11 @@ export function VitrineArticleEditor() {
 
   const seoTitleFinal = seoTitle || title;
   const seoDescriptionFinal = seoDescription || excerpt || '';
-  const urlPreview = `mondojo.fr/actualites/${slug || 'slug-auto'}`;
+  const channelPath = article.channel === 'BLOG' ? 'blog' : 'actualites';
+  const vitrineHost = currentClub?.vitrinePublicUrl
+    ? currentClub.vitrinePublicUrl.replace(/^https?:\/\//, '').replace(/\/+$/, '')
+    : 'votre-site';
+  const urlPreview = `${vitrineHost}/${channelPath}/${slug || 'slug-auto'}`;
 
   return (
     <>
@@ -706,7 +719,7 @@ export function VitrineArticleEditor() {
               />
               <span className="seo-field__hint">
                 <span>
-                  URL: /actualites/<strong>{slug || '...'}</strong>
+                  URL: /{channelPath}/<strong>{slug || '...'}</strong>
                 </span>
               </span>
             </div>

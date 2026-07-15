@@ -1,6 +1,12 @@
 import { ApolloClient, HttpLink, InMemoryCache } from '@apollo/client';
 import { setContext } from '@apollo/client/link/context';
+import { onError } from '@apollo/client/link/error';
+import { CombinedGraphQLErrors, ServerError } from '@apollo/client/errors';
+import { DeviceEventEmitter } from 'react-native';
 import * as storage from './storage';
+
+/** Événement émis quand l'API répond « token expiré/invalide ». */
+export const SESSION_EXPIRED_EVENT = 'clubflow:session-expired';
 
 const uri =
   process.env.EXPO_PUBLIC_GRAPHQL_HTTP ?? 'http://localhost:3000/graphql';
@@ -32,8 +38,33 @@ const authLink = setContext(async (_, { headers }) => {
   };
 });
 
+/**
+ * Lien d'erreur global (bug QA C1 : aucun errorLink → token expiré =
+ * app inutilisable avec erreurs brutes). Sur UNAUTHENTICATED/401, émet
+ * SESSION_EXPIRED_EVENT — App.tsx purge la session et renvoie sur Login.
+ * API Apollo v4 : le handler reçoit `{ error }`.
+ */
+let unauthNotified = false;
+const errorLink = onError(({ error }) => {
+  if (unauthNotified) return;
+  const isUnauth =
+    (ServerError.is(error) && error.statusCode === 401) ||
+    (CombinedGraphQLErrors.is(error) &&
+      error.errors.some((e) => {
+        const code = (e.extensions?.code as string | undefined) ?? '';
+        return code === 'UNAUTHENTICATED' || code === 'UNAUTHORIZED';
+      }));
+  if (isUnauth) {
+    unauthNotified = true;
+    DeviceEventEmitter.emit(SESSION_EXPIRED_EVENT);
+    setTimeout(() => {
+      unauthNotified = false;
+    }, 5000);
+  }
+});
+
 export const apolloClient = new ApolloClient({
-  link: authLink.concat(httpLink),
+  link: errorLink.concat(authLink).concat(httpLink),
   cache: new InMemoryCache(),
   defaultOptions: {
     watchQuery: { fetchPolicy: 'network-only' },
