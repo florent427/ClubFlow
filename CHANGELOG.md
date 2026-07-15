@@ -9,6 +9,16 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.16.1](https://github.com/florent427/ClubFlow/compare/v0.16.0...v0.16.1) (2026-07-15)
+
+
+### 🐛 Bug Fixes
+
+* **ci:** deploy staging exécute le script du repo (à jour) au lieu de la copie bootstrap ([7eccccc](https://github.com/florent427/ClubFlow/commit/7ecccccc74ac57eb15465218bf8572d54de3f9f2))
+* corrections QA complètes — session expirée, multi-tenant, erreurs propres ([9d7774a](https://github.com/florent427/ClubFlow/commit/9d7774a4eb91221e2a83ea0ff31bfcaec6fd6272))
+* corrections QA complètes (45 findings) — session, multi-tenant, erreurs propres ([c74ebf8](https://github.com/florent427/ClubFlow/commit/c74ebf8c3bc7ba21e0ca24e9d0fe2d55edacdac9))
+* **deploy:** retry du smoke test API staging pendant le boot NestJS ([9a752b4](https://github.com/florent427/ClubFlow/commit/9a752b424043d14578f99f0956a2b16ceb1ec7ed))
+
 ## [0.16.0](https://github.com/florent427/ClubFlow/compare/v0.15.0...v0.16.0) (2026-05-10)
 
 
