@@ -123,6 +123,8 @@ export function Footer({ clubName, content }: FooterProps) {
         <div>
           © {new Date().getFullYear()}{' '}
           {content.copyright ?? clubName}
+          {' · '}
+          <Link href="/confidentialite">Politique de confidentialité</Link>
         </div>
         {content.legalBottomRight ? <div>{content.legalBottomRight}</div> : null}
       </div>

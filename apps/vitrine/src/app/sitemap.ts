@@ -15,6 +15,7 @@ const STATIC_PAGES = [
   '/blog',
   '/competitions',
   '/contact',
+  '/confidentialite',
 ];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
