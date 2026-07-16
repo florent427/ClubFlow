@@ -123,7 +123,7 @@ export class EventsService {
     const events = await this.prisma.clubEvent.findMany({
       where: { clubId },
       orderBy: [{ startsAt: 'desc' }],
-      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
+      include: { registrations: { include: { slots: true } }, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
     });
     return Promise.all(events.map((e) => this.hydrate(e, {})));
   }
@@ -135,7 +135,7 @@ export class EventsService {
         status: ClubEventStatus.PUBLISHED,
       },
       orderBy: [{ startsAt: 'asc' }],
-      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
+      include: { registrations: { include: { slots: true } }, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
     });
     // filter contact visibility
     const filtered = viewer.contactId
@@ -222,7 +222,7 @@ export class EventsService {
         publicDescription: input.publicDescription?.trim() || null,
         publicCtaLabel: input.publicCtaLabel?.trim() || null,
       },
-      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
+      include: { registrations: { include: { slots: true } }, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
     });
     return this.hydrate(ev, {});
   }
@@ -272,7 +272,7 @@ export class EventsService {
     const updated = await this.prisma.clubEvent.update({
       where: { id },
       data,
-      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
+      include: { registrations: { include: { slots: true } }, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
     });
     return this.hydrate(updated, {});
   }
@@ -288,7 +288,7 @@ export class EventsService {
         status: ClubEventStatus.PUBLISHED,
         publishedAt: existing.publishedAt ?? new Date(),
       },
-      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
+      include: { registrations: { include: { slots: true } }, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
     });
     return this.hydrate(updated, {});
   }
@@ -301,7 +301,7 @@ export class EventsService {
     const updated = await this.prisma.clubEvent.update({
       where: { id },
       data: { status: ClubEventStatus.CANCELLED },
-      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
+      include: { registrations: { include: { slots: true } }, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
     });
     return this.hydrate(updated, {});
   }
@@ -385,7 +385,7 @@ export class EventsService {
 
     const refreshed = await this.prisma.clubEvent.findUnique({
       where: { id: eventId },
-      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
+      include: { registrations: { include: { slots: true } }, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
     });
     if (!refreshed) throw new NotFoundException('Événement introuvable');
     return this.hydrate(refreshed, {});
@@ -398,19 +398,23 @@ export class EventsService {
   /** Vue publique sanitisée : jamais de données d'inscrits. */
   private toPublicGraph(
     ev: Prisma.ClubEventGetPayload<{
-      include: { registrations: true; programItems: true };
+      include: {
+        registrations: { include: { slots: true } };
+        programItems: true;
+      };
     }>,
   ) {
     const now = new Date();
     const activeRegs = ev.registrations.filter(
       (r) => r.status === ClubEventRegistrationStatus.REGISTERED,
     );
+    // Réservations par créneau = lignes de liaison des inscriptions actives.
     const bookedByItem = new Map<string, number>();
     for (const r of activeRegs) {
-      if (r.programItemId) {
+      for (const slot of r.slots) {
         bookedByItem.set(
-          r.programItemId,
-          (bookedByItem.get(r.programItemId) ?? 0) + 1,
+          slot.programItemId,
+          (bookedByItem.get(slot.programItemId) ?? 0) + 1,
         );
       }
     }
@@ -469,7 +473,7 @@ export class EventsService {
       },
       orderBy: { startsAt: 'asc' },
       include: {
-        registrations: true,
+        registrations: { include: { slots: true } },
         programItems: { orderBy: { sortOrder: 'asc' } },
       },
     });
@@ -491,7 +495,7 @@ export class EventsService {
         status: ClubEventStatus.PUBLISHED,
       },
       include: {
-        registrations: true,
+        registrations: { include: { slots: true } },
         programItems: { orderBy: { sortOrder: 'asc' } },
       },
     });
@@ -509,7 +513,7 @@ export class EventsService {
   async registerPublic(input: {
     clubSlug: string;
     eventSlug: string;
-    programItemId?: string;
+    programItemIds?: string[];
     firstName: string;
     lastName: string;
     email: string;
@@ -537,7 +541,7 @@ export class EventsService {
         status: ClubEventStatus.PUBLISHED,
       },
       include: {
-        registrations: true,
+        registrations: { include: { slots: true } },
         programItems: true,
       },
     });
@@ -556,37 +560,19 @@ export class EventsService {
       throw new BadRequestException('Les inscriptions sont fermées.');
     }
 
-    // Créneau choisi : requis si l'événement propose des créneaux réservables
+    // Créneaux choisis : un visiteur peut en sélectionner plusieurs.
+    // Requis (au moins un) si l'événement propose des créneaux réservables.
     const bookableItems = event.programItems.filter((pi) => pi.bookable);
-    let programItem: (typeof bookableItems)[number] | null = null;
-    if (input.programItemId) {
-      programItem =
-        bookableItems.find((pi) => pi.id === input.programItemId) ?? null;
-      if (!programItem) {
+    const requestedIds = Array.from(new Set(input.programItemIds ?? []));
+    const chosenItems = requestedIds.map((id) => {
+      const it = bookableItems.find((pi) => pi.id === id);
+      if (!it) {
         throw new BadRequestException('Créneau invalide pour cet événement.');
       }
-    } else if (bookableItems.length > 0) {
-      throw new BadRequestException('Choisissez un créneau.');
-    }
-
-    const activeRegs = event.registrations.filter(
-      (r) => r.status === ClubEventRegistrationStatus.REGISTERED,
-    );
-
-    // Capacité au niveau événement
-    if (event.capacity !== null && activeRegs.length >= event.capacity) {
-      throw new BadRequestException('Cet événement est complet.');
-    }
-    // Capacité du créneau
-    if (programItem && programItem.capacity !== null) {
-      const booked = activeRegs.filter(
-        (r) => r.programItemId === programItem.id,
-      ).length;
-      if (booked >= programItem.capacity) {
-        throw new BadRequestException(
-          'Ce créneau est complet — choisissez-en un autre.',
-        );
-      }
+      return it;
+    });
+    if (bookableItems.length > 0 && chosenItems.length === 0) {
+      throw new BadRequestException('Choisissez au moins un créneau.');
     }
 
     // Visiteur → Contact (pattern VitrineContactService)
@@ -611,45 +597,80 @@ export class EventsService {
       },
     });
 
-    // Déjà inscrit (actif) ? Idempotent, pas de doublon.
     const existing = event.registrations.find(
       (r) => r.contactId === contact.id,
     );
-    if (existing && existing.status !== ClubEventRegistrationStatus.CANCELLED) {
-      return {
-        success: true,
-        message: 'Vous êtes déjà inscrit(e) à cet événement.',
-      };
+    const existingActive =
+      existing && existing.status !== ClubEventRegistrationStatus.CANCELLED;
+
+    // --- Contrôles de capacité (en excluant la propre réservation du
+    // visiteur, pour permettre de modifier sa sélection sans faux « complet »).
+    const activeRegs = event.registrations.filter(
+      (r) => r.status === ClubEventRegistrationStatus.REGISTERED,
+    );
+    // Capacité événement : nombre de PERSONNES. Ne compte pas ce visiteur
+    // s'il est déjà inscrit (il ne prend pas une place de plus).
+    if (event.capacity !== null && !existingActive) {
+      const activePersons = activeRegs.filter(
+        (r) => r.contactId !== contact.id,
+      ).length;
+      if (activePersons >= event.capacity) {
+        throw new BadRequestException('Cet événement est complet.');
+      }
+    }
+    // Capacité par créneau : réservations actives des AUTRES personnes.
+    for (const item of chosenItems) {
+      if (item.capacity === null) continue;
+      const bookedByOthers = activeRegs.reduce((acc, r) => {
+        if (r.contactId === contact.id) return acc;
+        return acc + r.slots.filter((s) => s.programItemId === item.id).length;
+      }, 0);
+      if (bookedByOthers >= item.capacity) {
+        throw new BadRequestException(
+          `Le créneau « ${item.title} » est complet — choisissez-en un autre.`,
+        );
+      }
     }
 
-    const noteParts: string[] = [];
-    if (programItem) noteParts.push(`Créneau : ${programItem.title}`);
-    if (input.note?.trim()) noteParts.push(input.note.trim());
-    const note = noteParts.length ? noteParts.join(' — ') : null;
+    const note = input.note?.trim() || null;
 
-    if (existing) {
-      // Réinscription après annulation
-      await this.prisma.clubEventRegistration.update({
-        where: { id: existing.id },
-        data: {
-          status: ClubEventRegistrationStatus.REGISTERED,
-          registeredAt: new Date(),
-          cancelledAt: null,
-          programItemId: programItem?.id ?? null,
-          note,
-        },
-      });
-    } else {
-      await this.prisma.clubEventRegistration.create({
-        data: {
-          eventId: event.id,
-          contactId: contact.id,
-          programItemId: programItem?.id ?? null,
-          status: ClubEventRegistrationStatus.REGISTERED,
-          note,
-        },
-      });
-    }
+    // Upsert de l'inscription + remplacement de ses créneaux (transaction).
+    await this.prisma.$transaction(async (tx) => {
+      let registrationId: string;
+      if (existing) {
+        await tx.clubEventRegistration.update({
+          where: { id: existing.id },
+          data: {
+            status: ClubEventRegistrationStatus.REGISTERED,
+            registeredAt: new Date(),
+            cancelledAt: null,
+            note,
+          },
+        });
+        registrationId = existing.id;
+        await tx.clubEventRegistrationSlot.deleteMany({
+          where: { registrationId },
+        });
+      } else {
+        const created = await tx.clubEventRegistration.create({
+          data: {
+            eventId: event.id,
+            contactId: contact.id,
+            status: ClubEventRegistrationStatus.REGISTERED,
+            note,
+          },
+        });
+        registrationId = created.id;
+      }
+      if (chosenItems.length) {
+        await tx.clubEventRegistrationSlot.createMany({
+          data: chosenItems.map((item) => ({
+            registrationId,
+            programItemId: item.id,
+          })),
+        });
+      }
+    });
 
     // E-mail de confirmation best-effort (fallback sender plateforme —
     // un club neuf sans domaine vérifié doit pouvoir organiser sa JPO).
@@ -664,12 +685,13 @@ export class EventsService {
         `Date : ${whenFr}`,
       ];
       if (event.location) lines.push(`Lieu : ${event.location}`);
-      if (programItem) {
-        lines.push(
-          `Créneau : ${programItem.title}${
-            programItem.timeLabel ? ` (${programItem.timeLabel})` : ''
-          }`,
-        );
+      if (chosenItems.length) {
+        lines.push('', 'Créneaux réservés :');
+        for (const item of chosenItems) {
+          lines.push(
+            `- ${item.title}${item.timeLabel ? ` (${item.timeLabel})` : ''}`,
+          );
+        }
       }
       lines.push('', 'À très bientôt,', club.name);
       const text = lines.join('\n');
@@ -696,16 +718,18 @@ export class EventsService {
         eventId: event.id,
         clubId: club.id,
         contactId: contact.id,
-        programItemId: programItem?.id ?? null,
+        slots: chosenItems.map((i) => i.id),
+        updated: !!existing,
       }),
     );
 
-    return {
-      success: true,
-      message: programItem
-        ? `Inscription confirmée sur le créneau « ${programItem.title} ».`
-        : 'Inscription confirmée.',
-    };
+    const label =
+      chosenItems.length === 1
+        ? `Inscription confirmée sur le créneau « ${chosenItems[0].title} ».`
+        : chosenItems.length > 1
+          ? `Inscription confirmée sur ${chosenItems.length} créneaux.`
+          : 'Inscription confirmée.';
+    return { success: true, message: label };
   }
 
   async register(clubId: string, viewer: Viewer, eventId: string, note?: string) {
@@ -714,7 +738,7 @@ export class EventsService {
     }
     const event = await this.prisma.clubEvent.findFirst({
       where: { id: eventId, clubId },
-      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
+      include: { registrations: { include: { slots: true } }, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
     });
     if (!event) throw new NotFoundException('Événement introuvable');
     if (event.status !== ClubEventStatus.PUBLISHED) {
@@ -784,7 +808,7 @@ export class EventsService {
 
     const refreshed = await this.prisma.clubEvent.findUnique({
       where: { id: event.id },
-      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
+      include: { registrations: { include: { slots: true } }, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
     });
     if (!refreshed) throw new NotFoundException('Événement introuvable');
     return this.hydrate(refreshed, viewer);
@@ -845,7 +869,7 @@ export class EventsService {
 
     const refreshed = await this.prisma.clubEvent.findUnique({
       where: { id: event.id },
-      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
+      include: { registrations: { include: { slots: true } }, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
     });
     if (!refreshed) throw new NotFoundException('Événement introuvable');
     return this.hydrate(refreshed, {});
@@ -857,7 +881,7 @@ export class EventsService {
     }
     const event = await this.prisma.clubEvent.findFirst({
       where: { id: eventId, clubId },
-      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
+      include: { registrations: { include: { slots: true } }, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
     });
     if (!event) throw new NotFoundException('Événement introuvable');
     const existing = event.registrations.find((r) =>
@@ -898,7 +922,7 @@ export class EventsService {
 
     const refreshed = await this.prisma.clubEvent.findUnique({
       where: { id: event.id },
-      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
+      include: { registrations: { include: { slots: true } }, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
     });
     if (!refreshed) throw new NotFoundException('Événement introuvable');
     return this.hydrate(refreshed, viewer);
@@ -907,7 +931,7 @@ export class EventsService {
   private async hydrate(
     ev: Prisma.ClubEventGetPayload<{
       include: {
-        registrations: true;
+        registrations: { include: { slots: true } };
         attachments: true;
         programItems: true;
       };
@@ -964,13 +988,14 @@ export class EventsService {
       contacts.map((c) => [c.id, `${c.firstName} ${c.lastName}`.trim()]),
     );
 
-    // Compteur d'inscriptions actives par créneau du programme
+    // Réservations actives par créneau = lignes de liaison des inscriptions
+    // non annulées (une inscription peut couvrir plusieurs créneaux).
     const bookedByItem = new Map<string, number>();
     for (const r of activeRegs) {
-      if (r.programItemId) {
+      for (const slot of r.slots) {
         bookedByItem.set(
-          r.programItemId,
-          (bookedByItem.get(r.programItemId) ?? 0) + 1,
+          slot.programItemId,
+          (bookedByItem.get(slot.programItemId) ?? 0) + 1,
         );
       }
     }
@@ -1019,10 +1044,9 @@ export class EventsService {
         eventId: r.eventId,
         memberId: r.memberId,
         contactId: r.contactId,
-        programItemId: r.programItemId,
-        programItemTitle: r.programItemId
-          ? itemTitle.get(r.programItemId) ?? null
-          : null,
+        slotTitles: r.slots
+          .map((s) => itemTitle.get(s.programItemId) ?? null)
+          .filter((t): t is string => !!t),
         status: r.status,
         registeredAt: r.registeredAt,
         cancelledAt: r.cancelledAt,

@@ -52,12 +52,9 @@ export class ClubEventRegistrationGraph {
   @Field(() => ID, { nullable: true })
   contactId!: string | null;
 
-  @Field(() => ID, { nullable: true })
-  programItemId!: string | null;
-
-  /** Titre du créneau choisi (inscription publique) — null sinon. */
-  @Field(() => String, { nullable: true })
-  programItemTitle!: string | null;
+  /** Titres des créneaux choisis (inscription publique) — vide sinon. */
+  @Field(() => [String])
+  slotTitles!: string[];
 
   @Field(() => ClubEventRegistrationStatus)
   status!: ClubEventRegistrationStatus;

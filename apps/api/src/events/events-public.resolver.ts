@@ -51,6 +51,15 @@ export class EventsPublicResolver {
   registerForPublicEvent(
     @Args('input') input: RegisterPublicEventInput,
   ): Promise<PublicEventRegistrationResult> {
-    return this.service.registerPublic(input);
+    return this.service.registerPublic({
+      clubSlug: input.clubSlug,
+      eventSlug: input.eventSlug,
+      programItemIds: input.programItemIds,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      email: input.email,
+      phone: input.phone,
+      note: input.note,
+    });
   }
 }
