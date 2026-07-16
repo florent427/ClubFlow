@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.19.1](https://github.com/florent427/ClubFlow/compare/v0.19.0...v0.19.1) (2026-07-16)
+
+
+### 🐛 Bug Fixes
+
+* **admin:** éditeur de programme accessible dès la création de l'événement ([be0a97b](https://github.com/florent427/ClubFlow/commit/be0a97b691f3d3f50a6b59c7e5415b6815d124aa))
+* **admin:** éditeur de programme accessible dès la création de l'événement ([d6d69d8](https://github.com/florent427/ClubFlow/commit/d6d69d837ec4ae09df36605988a80b5a959e0661))
+
 ## [0.19.0](https://github.com/florent427/ClubFlow/compare/v0.18.3...v0.19.0) (2026-07-16)
 
 
