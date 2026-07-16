@@ -40,11 +40,14 @@ jobs:
           username: clubflow
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
-          # Timeout 10 min — npm ci + 4 builds peuvent prendre du temps
-          command_timeout: 10m
-          script_stop: true
+          # Timeout 15 min — npm ci + 4 builds + retry smoke test
+          command_timeout: 15m
           script: |
-            sudo /usr/local/bin/clubflow-deploy.sh
+            # Pull d'abord pour exécuter la version du script du commit
+            # déployé (la copie /usr/local/bin est dépréciée et figée).
+            sudo -u clubflow git -C /home/clubflow/clubflow fetch origin main
+            sudo -u clubflow git -C /home/clubflow/clubflow reset --hard origin/main
+            sudo bash /home/clubflow/clubflow/bin/clubflow-deploy.sh
 
       - name: Smoke test from GitHub runner
         run: |
