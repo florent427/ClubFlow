@@ -9,6 +9,20 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.18.0](https://github.com/florent427/ClubFlow/compare/v0.17.0...v0.18.0) (2026-07-16)
+
+
+### ✨ Features
+
+* **admin,vitrine:** UI événements publics — landing JPO + programme + réservation de créneau ([a9008ca](https://github.com/florent427/ClubFlow/commit/a9008ca926dba0e64dd0ddc510b4da96f5339b73))
+* **api:** événements publics — landing vitrine, programme par créneaux, inscription visiteur → Contact ([76bdd37](https://github.com/florent427/ClubFlow/commit/76bdd370b724b3574b3927767564adf01d3ceb90))
+* événements publics — landing JPO, programme par créneaux, inscription visiteur → Contact ([4f38f66](https://github.com/florent427/ClubFlow/commit/4f38f667d458f9bbd44f283ebfbd835e77eac7d1))
+
+
+### 🐛 Bug Fixes
+
+* **vitrine:** horaires des événements affichés dans le fuseau du club ([329a4c5](https://github.com/florent427/ClubFlow/commit/329a4c5a3040c9e83c70749bca7019f07da7235f))
+
 ## [0.17.0](https://github.com/florent427/ClubFlow/compare/v0.16.1...v0.17.0) (2026-07-15)
 
 
