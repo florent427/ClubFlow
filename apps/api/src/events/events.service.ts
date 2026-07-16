@@ -6,6 +6,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import {
   ClubEventRegistrationStatus,
   ClubEventStatus,
@@ -38,6 +39,17 @@ function escapeHtml(s: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function slugify(input: string): string {
+  const base = input
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 120);
+  return base.length > 0 ? base : 'evenement';
 }
 
 function formatDateRange(startsAt: Date, endsAt: Date): string {
@@ -111,7 +123,7 @@ export class EventsService {
     const events = await this.prisma.clubEvent.findMany({
       where: { clubId },
       orderBy: [{ startsAt: 'desc' }],
-      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } } },
+      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
     });
     return Promise.all(events.map((e) => this.hydrate(e, {})));
   }
@@ -123,13 +135,41 @@ export class EventsService {
         status: ClubEventStatus.PUBLISHED,
       },
       orderBy: [{ startsAt: 'asc' }],
-      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } } },
+      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
     });
     // filter contact visibility
     const filtered = viewer.contactId
       ? events.filter((e) => e.allowContactRegistration)
       : events;
     return Promise.all(filtered.map((e) => this.hydrate(e, viewer)));
+  }
+
+  /**
+   * Résout le slug public d'un événement : slug fourni (nettoyé) ou dérivé
+   * du titre, avec suffixe numérique si déjà pris par un autre événement du
+   * club.
+   */
+  private async resolvePublicSlug(
+    clubId: string,
+    desired: string | undefined,
+    title: string,
+    excludeEventId?: string,
+  ): Promise<string> {
+    const base = slugify((desired ?? '').trim() || title);
+    let candidate = base;
+    for (let i = 2; i < 50; i++) {
+      const clash = await this.prisma.clubEvent.findFirst({
+        where: {
+          clubId,
+          publicSlug: candidate,
+          ...(excludeEventId ? { id: { not: excludeEventId } } : {}),
+        },
+        select: { id: true },
+      });
+      if (!clash) return candidate;
+      candidate = `${base}-${i}`;
+    }
+    throw new BadRequestException('Impossible de générer un slug unique.');
   }
 
   async create(
@@ -146,12 +186,21 @@ export class EventsService {
       priceCents?: number;
       allowContactRegistration?: boolean;
       publishNow?: boolean;
+      isPublic?: boolean;
+      publicSlug?: string;
+      publicHeadline?: string;
+      publicDescription?: string;
+      publicCtaLabel?: string;
     },
   ) {
     if (input.endsAt.getTime() <= input.startsAt.getTime()) {
       throw new BadRequestException('La fin doit être après le début.');
     }
     const publishNow = input.publishNow !== false;
+    const isPublic = input.isPublic === true;
+    const publicSlug = isPublic
+      ? await this.resolvePublicSlug(clubId, input.publicSlug, input.title)
+      : null;
     const ev = await this.prisma.clubEvent.create({
       data: {
         clubId,
@@ -167,8 +216,13 @@ export class EventsService {
         allowContactRegistration: input.allowContactRegistration === true,
         status: publishNow ? ClubEventStatus.PUBLISHED : ClubEventStatus.DRAFT,
         publishedAt: publishNow ? new Date() : null,
+        isPublic,
+        publicSlug,
+        publicHeadline: input.publicHeadline?.trim() || null,
+        publicDescription: input.publicDescription?.trim() || null,
+        publicCtaLabel: input.publicCtaLabel?.trim() || null,
       },
-      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } } },
+      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
     });
     return this.hydrate(ev, {});
   }
@@ -187,6 +241,11 @@ export class EventsService {
       registrationClosesAt: Date;
       priceCents: number;
       allowContactRegistration: boolean;
+      isPublic: boolean;
+      publicSlug: string;
+      publicHeadline: string;
+      publicDescription: string;
+      publicCtaLabel: string;
     }>,
   ) {
     const existing = await this.prisma.clubEvent.findFirst({
@@ -197,10 +256,23 @@ export class EventsService {
     for (const [k, v] of Object.entries(input)) {
       if (v !== undefined) (data as Record<string, unknown>)[k] = v;
     }
+    // Slug public : recalculé si l'événement devient public sans slug, ou
+    // nettoyé/dédupliqué si fourni explicitement.
+    const willBePublic = input.isPublic ?? existing.isPublic;
+    if (willBePublic) {
+      if (input.publicSlug !== undefined || !existing.publicSlug) {
+        data.publicSlug = await this.resolvePublicSlug(
+          clubId,
+          input.publicSlug ?? existing.publicSlug ?? undefined,
+          input.title ?? existing.title,
+          id,
+        );
+      }
+    }
     const updated = await this.prisma.clubEvent.update({
       where: { id },
       data,
-      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } } },
+      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
     });
     return this.hydrate(updated, {});
   }
@@ -216,7 +288,7 @@ export class EventsService {
         status: ClubEventStatus.PUBLISHED,
         publishedAt: existing.publishedAt ?? new Date(),
       },
-      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } } },
+      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
     });
     return this.hydrate(updated, {});
   }
@@ -229,7 +301,7 @@ export class EventsService {
     const updated = await this.prisma.clubEvent.update({
       where: { id },
       data: { status: ClubEventStatus.CANCELLED },
-      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } } },
+      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
     });
     return this.hydrate(updated, {});
   }
@@ -243,13 +315,406 @@ export class EventsService {
     return true;
   }
 
+  /**
+   * Remplace le programme de l'événement (replace-all, comme
+   * `upsertClubDocumentFields`) : les lignes avec `id` sont mises à jour,
+   * les nouvelles créées, les absentes supprimées. Les inscriptions liées
+   * à une ligne supprimée sont conservées (programItemId → null via
+   * onDelete: SetNull).
+   */
+  async upsertProgramItems(
+    clubId: string,
+    eventId: string,
+    items: Array<{
+      id?: string;
+      timeLabel?: string;
+      title: string;
+      description?: string;
+      bookable?: boolean;
+      capacity?: number;
+      sortOrder?: number;
+    }>,
+  ) {
+    const event = await this.prisma.clubEvent.findFirst({
+      where: { id: eventId, clubId },
+      include: { programItems: true },
+    });
+    if (!event) throw new NotFoundException('Événement introuvable');
+
+    const existingIds = new Set(event.programItems.map((pi) => pi.id));
+    const keptIds = new Set(
+      items.map((i) => i.id).filter((x): x is string => !!x),
+    );
+    for (const id of keptIds) {
+      if (!existingIds.has(id)) {
+        throw new BadRequestException(
+          'Ligne de programme inconnue pour cet événement.',
+        );
+      }
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const toDelete = [...existingIds].filter((id) => !keptIds.has(id));
+      if (toDelete.length) {
+        await tx.clubEventProgramItem.deleteMany({
+          where: { id: { in: toDelete }, eventId },
+        });
+      }
+      for (let idx = 0; idx < items.length; idx++) {
+        const it = items[idx];
+        const data = {
+          timeLabel: it.timeLabel?.trim() || null,
+          title: it.title.trim(),
+          description: it.description?.trim() || null,
+          bookable: it.bookable === true,
+          capacity: it.capacity ?? null,
+          sortOrder: it.sortOrder ?? idx,
+        };
+        if (it.id) {
+          await tx.clubEventProgramItem.update({
+            where: { id: it.id },
+            data,
+          });
+        } else {
+          await tx.clubEventProgramItem.create({
+            data: { ...data, eventId },
+          });
+        }
+      }
+    });
+
+    const refreshed = await this.prisma.clubEvent.findUnique({
+      where: { id: eventId },
+      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
+    });
+    if (!refreshed) throw new NotFoundException('Événement introuvable');
+    return this.hydrate(refreshed, {});
+  }
+
+  // ================================================================
+  // Événements PUBLICS (landing vitrine — visiteur anonyme)
+  // ================================================================
+
+  /** Vue publique sanitisée : jamais de données d'inscrits. */
+  private toPublicGraph(
+    ev: Prisma.ClubEventGetPayload<{
+      include: { registrations: true; programItems: true };
+    }>,
+  ) {
+    const now = new Date();
+    const activeRegs = ev.registrations.filter(
+      (r) => r.status === ClubEventRegistrationStatus.REGISTERED,
+    );
+    const bookedByItem = new Map<string, number>();
+    for (const r of activeRegs) {
+      if (r.programItemId) {
+        bookedByItem.set(
+          r.programItemId,
+          (bookedByItem.get(r.programItemId) ?? 0) + 1,
+        );
+      }
+    }
+    const remainingSpots =
+      ev.capacity !== null
+        ? Math.max(0, ev.capacity - activeRegs.length)
+        : null;
+    const registrationOpen =
+      ev.status === ClubEventStatus.PUBLISHED &&
+      ev.endsAt > now &&
+      (!ev.registrationOpensAt || ev.registrationOpensAt <= now) &&
+      (!ev.registrationClosesAt || ev.registrationClosesAt >= now) &&
+      (remainingSpots === null || remainingSpots > 0);
+
+    return {
+      id: ev.id,
+      title: ev.title,
+      location: ev.location,
+      startsAt: ev.startsAt,
+      endsAt: ev.endsAt,
+      priceCents: ev.priceCents,
+      publicSlug: ev.publicSlug ?? '',
+      publicHeadline: ev.publicHeadline,
+      publicDescription: ev.publicDescription ?? ev.description,
+      publicCtaLabel: ev.publicCtaLabel,
+      remainingSpots,
+      registrationOpen,
+      programItems: (ev.programItems ?? []).map((pi) => ({
+        id: pi.id,
+        timeLabel: pi.timeLabel,
+        title: pi.title,
+        description: pi.description,
+        bookable: pi.bookable,
+        remainingSpots:
+          pi.capacity !== null
+            ? Math.max(0, pi.capacity - (bookedByItem.get(pi.id) ?? 0))
+            : null,
+        sortOrder: pi.sortOrder,
+      })),
+    };
+  }
+
+  /** Événements publics à venir d'un club (landing liste vitrine). */
+  async listPublic(clubSlug: string) {
+    const club = await this.prisma.club.findUnique({
+      where: { slug: clubSlug },
+      select: { id: true },
+    });
+    if (!club) throw new NotFoundException('Club introuvable.');
+    const events = await this.prisma.clubEvent.findMany({
+      where: {
+        clubId: club.id,
+        isPublic: true,
+        status: ClubEventStatus.PUBLISHED,
+        endsAt: { gte: new Date() },
+      },
+      orderBy: { startsAt: 'asc' },
+      include: {
+        registrations: true,
+        programItems: { orderBy: { sortOrder: 'asc' } },
+      },
+    });
+    return events.map((e) => this.toPublicGraph(e));
+  }
+
+  /** Détail public d'un événement par slug (landing page). */
+  async getPublicBySlug(clubSlug: string, eventSlug: string) {
+    const club = await this.prisma.club.findUnique({
+      where: { slug: clubSlug },
+      select: { id: true },
+    });
+    if (!club) throw new NotFoundException('Club introuvable.');
+    const event = await this.prisma.clubEvent.findFirst({
+      where: {
+        clubId: club.id,
+        publicSlug: eventSlug,
+        isPublic: true,
+        status: ClubEventStatus.PUBLISHED,
+      },
+      include: {
+        registrations: true,
+        programItems: { orderBy: { sortOrder: 'asc' } },
+      },
+    });
+    if (!event) throw new NotFoundException('Événement introuvable.');
+    return this.toPublicGraph(event);
+  }
+
+  /**
+   * Inscription publique depuis la landing vitrine : le visiteur devient
+   * un Contact du club (upsert User sans mot de passe + Contact, même
+   * pattern que `VitrineContactService`) et une inscription est créée sur
+   * le créneau choisi, avec contrôle de capacité par créneau ET au niveau
+   * événement.
+   */
+  async registerPublic(input: {
+    clubSlug: string;
+    eventSlug: string;
+    programItemId?: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone?: string;
+    note?: string;
+  }): Promise<{ success: boolean; message: string | null }> {
+    const email = input.email.trim().toLowerCase();
+    const firstName = input.firstName.trim();
+    const lastName = input.lastName.trim();
+    if (!email || !firstName || !lastName) {
+      throw new BadRequestException('Prénom, nom et e-mail requis.');
+    }
+
+    const club = await this.prisma.club.findUnique({
+      where: { slug: input.clubSlug },
+      select: { id: true, name: true },
+    });
+    if (!club) throw new NotFoundException('Club introuvable.');
+
+    const event = await this.prisma.clubEvent.findFirst({
+      where: {
+        clubId: club.id,
+        publicSlug: input.eventSlug,
+        isPublic: true,
+        status: ClubEventStatus.PUBLISHED,
+      },
+      include: {
+        registrations: true,
+        programItems: true,
+      },
+    });
+    if (!event) throw new NotFoundException('Événement introuvable.');
+
+    const now = new Date();
+    if (event.endsAt <= now) {
+      throw new BadRequestException('Cet événement est terminé.');
+    }
+    if (event.registrationOpensAt && event.registrationOpensAt > now) {
+      throw new BadRequestException(
+        'Les inscriptions ne sont pas encore ouvertes.',
+      );
+    }
+    if (event.registrationClosesAt && event.registrationClosesAt < now) {
+      throw new BadRequestException('Les inscriptions sont fermées.');
+    }
+
+    // Créneau choisi : requis si l'événement propose des créneaux réservables
+    const bookableItems = event.programItems.filter((pi) => pi.bookable);
+    let programItem: (typeof bookableItems)[number] | null = null;
+    if (input.programItemId) {
+      programItem =
+        bookableItems.find((pi) => pi.id === input.programItemId) ?? null;
+      if (!programItem) {
+        throw new BadRequestException('Créneau invalide pour cet événement.');
+      }
+    } else if (bookableItems.length > 0) {
+      throw new BadRequestException('Choisissez un créneau.');
+    }
+
+    const activeRegs = event.registrations.filter(
+      (r) => r.status === ClubEventRegistrationStatus.REGISTERED,
+    );
+
+    // Capacité au niveau événement
+    if (event.capacity !== null && activeRegs.length >= event.capacity) {
+      throw new BadRequestException('Cet événement est complet.');
+    }
+    // Capacité du créneau
+    if (programItem && programItem.capacity !== null) {
+      const booked = activeRegs.filter(
+        (r) => r.programItemId === programItem.id,
+      ).length;
+      if (booked >= programItem.capacity) {
+        throw new BadRequestException(
+          'Ce créneau est complet — choisissez-en un autre.',
+        );
+      }
+    }
+
+    // Visiteur → Contact (pattern VitrineContactService)
+    const displayName = `${firstName} ${lastName}`.trim();
+    const user = await this.prisma.user.upsert({
+      where: { email },
+      create: { id: randomUUID(), email, displayName },
+      update: {},
+    });
+    const contact = await this.prisma.contact.upsert({
+      where: { userId_clubId: { userId: user.id, clubId: club.id } },
+      create: {
+        userId: user.id,
+        clubId: club.id,
+        firstName,
+        lastName,
+        phone: input.phone?.trim() || null,
+      },
+      update: {
+        // Complète le téléphone s'il manquait, sans écraser l'existant
+        phone: input.phone?.trim() || undefined,
+      },
+    });
+
+    // Déjà inscrit (actif) ? Idempotent, pas de doublon.
+    const existing = event.registrations.find(
+      (r) => r.contactId === contact.id,
+    );
+    if (existing && existing.status !== ClubEventRegistrationStatus.CANCELLED) {
+      return {
+        success: true,
+        message: 'Vous êtes déjà inscrit(e) à cet événement.',
+      };
+    }
+
+    const noteParts: string[] = [];
+    if (programItem) noteParts.push(`Créneau : ${programItem.title}`);
+    if (input.note?.trim()) noteParts.push(input.note.trim());
+    const note = noteParts.length ? noteParts.join(' — ') : null;
+
+    if (existing) {
+      // Réinscription après annulation
+      await this.prisma.clubEventRegistration.update({
+        where: { id: existing.id },
+        data: {
+          status: ClubEventRegistrationStatus.REGISTERED,
+          registeredAt: new Date(),
+          cancelledAt: null,
+          programItemId: programItem?.id ?? null,
+          note,
+        },
+      });
+    } else {
+      await this.prisma.clubEventRegistration.create({
+        data: {
+          eventId: event.id,
+          contactId: contact.id,
+          programItemId: programItem?.id ?? null,
+          status: ClubEventRegistrationStatus.REGISTERED,
+          note,
+        },
+      });
+    }
+
+    // E-mail de confirmation best-effort (fallback sender plateforme —
+    // un club neuf sans domaine vérifié doit pouvoir organiser sa JPO).
+    try {
+      const profile = await this.sendingDomains.getAuthMailProfile(club.id);
+      const whenFr = formatDateRange(event.startsAt, event.endsAt);
+      const lines = [
+        `Bonjour ${firstName},`,
+        '',
+        `Votre inscription à « ${event.title} » (${club.name}) est confirmée.`,
+        '',
+        `Date : ${whenFr}`,
+      ];
+      if (event.location) lines.push(`Lieu : ${event.location}`);
+      if (programItem) {
+        lines.push(
+          `Créneau : ${programItem.title}${
+            programItem.timeLabel ? ` (${programItem.timeLabel})` : ''
+          }`,
+        );
+      }
+      lines.push('', 'À très bientôt,', club.name);
+      const text = lines.join('\n');
+      await this.mail.sendEmail({
+        clubId: club.id,
+        kind: 'transactional',
+        from: profile.from,
+        to: email,
+        subject: `${club.name} — Inscription confirmée : ${event.title}`,
+        html: `<div style="white-space:pre-wrap;font-family:Arial,Helvetica,sans-serif;color:#1e293b;font-size:15px;line-height:1.55">${escapeHtml(
+          text,
+        )}</div>`,
+        text,
+      });
+    } catch (err) {
+      this.log.warn(
+        `events.public_register_confirmation_failed event=${event.id} to=${email}: ${err}`,
+      );
+    }
+
+    this.log.log(
+      JSON.stringify({
+        event: 'events.public_registration',
+        eventId: event.id,
+        clubId: club.id,
+        contactId: contact.id,
+        programItemId: programItem?.id ?? null,
+      }),
+    );
+
+    return {
+      success: true,
+      message: programItem
+        ? `Inscription confirmée sur le créneau « ${programItem.title} ».`
+        : 'Inscription confirmée.',
+    };
+  }
+
   async register(clubId: string, viewer: Viewer, eventId: string, note?: string) {
     if (!viewer.memberId && !viewer.contactId) {
       throw new ForbiddenException('Profil requis.');
     }
     const event = await this.prisma.clubEvent.findFirst({
       where: { id: eventId, clubId },
-      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } } },
+      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
     });
     if (!event) throw new NotFoundException('Événement introuvable');
     if (event.status !== ClubEventStatus.PUBLISHED) {
@@ -319,7 +784,7 @@ export class EventsService {
 
     const refreshed = await this.prisma.clubEvent.findUnique({
       where: { id: event.id },
-      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } } },
+      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
     });
     if (!refreshed) throw new NotFoundException('Événement introuvable');
     return this.hydrate(refreshed, viewer);
@@ -380,7 +845,7 @@ export class EventsService {
 
     const refreshed = await this.prisma.clubEvent.findUnique({
       where: { id: event.id },
-      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } } },
+      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
     });
     if (!refreshed) throw new NotFoundException('Événement introuvable');
     return this.hydrate(refreshed, {});
@@ -392,7 +857,7 @@ export class EventsService {
     }
     const event = await this.prisma.clubEvent.findFirst({
       where: { id: eventId, clubId },
-      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } } },
+      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
     });
     if (!event) throw new NotFoundException('Événement introuvable');
     const existing = event.registrations.find((r) =>
@@ -433,7 +898,7 @@ export class EventsService {
 
     const refreshed = await this.prisma.clubEvent.findUnique({
       where: { id: event.id },
-      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } } },
+      include: { registrations: true, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
     });
     if (!refreshed) throw new NotFoundException('Événement introuvable');
     return this.hydrate(refreshed, viewer);
@@ -444,6 +909,7 @@ export class EventsService {
       include: {
         registrations: true;
         attachments: true;
+        programItems: true;
       };
     }>,
     viewer: Viewer,
@@ -498,6 +964,20 @@ export class EventsService {
       contacts.map((c) => [c.id, `${c.firstName} ${c.lastName}`.trim()]),
     );
 
+    // Compteur d'inscriptions actives par créneau du programme
+    const bookedByItem = new Map<string, number>();
+    for (const r of activeRegs) {
+      if (r.programItemId) {
+        bookedByItem.set(
+          r.programItemId,
+          (bookedByItem.get(r.programItemId) ?? 0) + 1,
+        );
+      }
+    }
+    const itemTitle = new Map<string, string>(
+      (ev.programItems ?? []).map((pi) => [pi.id, pi.title]),
+    );
+
     return {
       id: ev.id,
       clubId: ev.clubId,
@@ -513,16 +993,36 @@ export class EventsService {
       status: ev.status,
       publishedAt: ev.publishedAt,
       allowContactRegistration: ev.allowContactRegistration,
+      isPublic: ev.isPublic,
+      publicSlug: ev.publicSlug,
+      publicHeadline: ev.publicHeadline,
+      publicDescription: ev.publicDescription,
+      publicCtaLabel: ev.publicCtaLabel,
       createdAt: ev.createdAt,
       updatedAt: ev.updatedAt,
       registeredCount,
       waitlistCount,
       viewerRegistrationStatus: viewerStatus,
+      programItems: (ev.programItems ?? []).map((pi) => ({
+        id: pi.id,
+        eventId: pi.eventId,
+        timeLabel: pi.timeLabel,
+        title: pi.title,
+        description: pi.description,
+        bookable: pi.bookable,
+        capacity: pi.capacity,
+        sortOrder: pi.sortOrder,
+        bookedCount: bookedByItem.get(pi.id) ?? 0,
+      })),
       registrations: ev.registrations.map((r) => ({
         id: r.id,
         eventId: r.eventId,
         memberId: r.memberId,
         contactId: r.contactId,
+        programItemId: r.programItemId,
+        programItemTitle: r.programItemId
+          ? itemTitle.get(r.programItemId) ?? null
+          : null,
         status: r.status,
         registeredAt: r.registeredAt,
         cancelledAt: r.cancelledAt,

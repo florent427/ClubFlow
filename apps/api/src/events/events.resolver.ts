@@ -12,6 +12,7 @@ import { ViewerActiveProfileGuard } from '../common/guards/viewer-active-profile
 import type { RequestUser } from '../common/types/request-user';
 import { ModuleCode } from '../domain/module-registry/module-codes';
 import { CreateEventInput } from './dto/create-event.input';
+import { EventProgramItemInput } from './dto/event-program-item.input';
 import { SendEventConvocationInput } from './dto/send-event-convocation.input';
 import { UpdateEventInput } from './dto/update-event.input';
 import { ClubEventGraph } from './models/club-event.model';
@@ -107,6 +108,21 @@ export class EventsAdminResolver {
     @Args('input') input: SendEventConvocationInput,
   ): Promise<EventConvocationResult> {
     return this.service.sendConvocation(club.id, input);
+  }
+
+  /** Remplace le programme complet de l'événement (replace-all). */
+  @Mutation(() => ClubEventGraph)
+  upsertEventProgramItems(
+    @CurrentClub() club: Club,
+    @Args('eventId', { type: () => ID }) eventId: string,
+    @Args('items', { type: () => [EventProgramItemInput] })
+    items: EventProgramItemInput[],
+  ): Promise<ClubEventGraph> {
+    return this.service.upsertProgramItems(
+      club.id,
+      eventId,
+      items,
+    ) as Promise<ClubEventGraph>;
   }
 }
 
