@@ -38,7 +38,7 @@ export function RegistrationForm({
   registrationOpen,
   slots,
 }: RegistrationFormProps) {
-  const [slotId, setSlotId] = useState<string | null>(null);
+  const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -81,8 +81,8 @@ export function RegistrationForm({
       setConfirmation('Votre inscription a bien été enregistrée.');
       return;
     }
-    if (slots.length > 0 && !slotId) {
-      setError('Choisissez un créneau.');
+    if (slots.length > 0 && selectedSlots.length === 0) {
+      setError('Choisissez au moins un créneau.');
       return;
     }
     if (!firstName.trim() || !lastName.trim() || !email.trim()) {
@@ -97,7 +97,7 @@ export function RegistrationForm({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           eventSlug,
-          programItemId: slotId,
+          programItemIds: selectedSlots,
           firstName: firstName.trim(),
           lastName: lastName.trim(),
           email: email.trim(),
@@ -143,12 +143,15 @@ export function RegistrationForm({
           style={{ border: 'none' }}
           disabled={submitting}
         >
-          <legend className={styles.slotsLabel}>Choisissez un créneau *</legend>
+          <legend className={styles.slotsLabel}>
+            Choisissez un ou plusieurs créneaux *
+          </legend>
           {slots.map((slot) => {
             const full = slot.remainingSpots === 0;
+            const selected = selectedSlots.includes(slot.id);
             const classNames = [
               styles.slot,
-              slotId === slot.id ? styles.slotSelected : '',
+              selected ? styles.slotSelected : '',
               full ? styles.slotDisabled : '',
             ]
               .filter(Boolean)
@@ -156,11 +159,17 @@ export function RegistrationForm({
             return (
               <label key={slot.id} className={classNames}>
                 <input
-                  type="radio"
+                  type="checkbox"
                   name="programItem"
                   value={slot.id}
-                  checked={slotId === slot.id}
-                  onChange={() => setSlotId(slot.id)}
+                  checked={selected}
+                  onChange={() =>
+                    setSelectedSlots((prev) =>
+                      prev.includes(slot.id)
+                        ? prev.filter((id) => id !== slot.id)
+                        : [...prev, slot.id],
+                    )
+                  }
                   disabled={full || submitting}
                 />
                 {slot.timeLabel ? (

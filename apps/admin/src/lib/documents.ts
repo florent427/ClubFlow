@@ -1743,8 +1743,7 @@ const EVENT_FIELDS = `
     id
     memberId
     contactId
-    programItemId
-    programItemTitle
+    slotTitles
     status
     registeredAt
     cancelledAt

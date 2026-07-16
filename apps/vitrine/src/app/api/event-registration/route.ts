@@ -11,8 +11,8 @@ import { resolveCurrentClub } from '@/lib/club-resolution';
  *    relayer à l'API.
  *  - Le `clubSlug` est résolu côté serveur depuis le hostname
  *    (multi-tenant), jamais fourni par le client.
- *  - Les messages d'erreur FR de l'API (« Ce créneau est complet… »,
- *    « Choisissez un créneau. », etc.) sont propagés tels quels en 400.
+ *  - Les messages d'erreur FR de l'API (« Le créneau « X » est complet… »,
+ *    « Choisissez au moins un créneau. », etc.) sont propagés tels quels en 400.
  */
 
 const REGISTER_MUTATION = /* GraphQL */ `
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     const body = (await req.json()) as {
       eventSlug?: string;
-      programItemId?: string | null;
+      programItemIds?: string[] | null;
       firstName?: string;
       lastName?: string;
       email?: string;
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         input: {
           clubSlug: club.slug,
           eventSlug: body.eventSlug.trim(),
-          programItemId: body.programItemId || null,
+          programItemIds: body.programItemIds ?? [],
           firstName: body.firstName.trim(),
           lastName: body.lastName.trim(),
           email: body.email.trim().toLowerCase(),
