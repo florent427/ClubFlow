@@ -1718,15 +1718,33 @@ const EVENT_FIELDS = `
   status
   publishedAt
   allowContactRegistration
+  isPublic
+  publicSlug
+  publicHeadline
+  publicDescription
+  publicCtaLabel
   createdAt
   updatedAt
   registeredCount
   waitlistCount
   viewerRegistrationStatus
+  programItems {
+    id
+    eventId
+    timeLabel
+    title
+    description
+    bookable
+    capacity
+    sortOrder
+    bookedCount
+  }
   registrations {
     id
     memberId
     contactId
+    programItemId
+    programItemTitle
     status
     registeredAt
     cancelledAt
@@ -1808,6 +1826,17 @@ export const ADMIN_REGISTER_MEMBER_TO_EVENT = gql`
 export const ADMIN_CANCEL_EVENT_REGISTRATION = gql`
   mutation AdminCancelEventRegistration($registrationId: ID!) {
     adminCancelEventRegistration(registrationId: $registrationId) {
+      ${EVENT_FIELDS}
+    }
+  }
+`;
+
+export const UPSERT_EVENT_PROGRAM_ITEMS = gql`
+  mutation UpsertEventProgramItems(
+    $eventId: ID!
+    $items: [EventProgramItemInput!]!
+  ) {
+    upsertEventProgramItems(eventId: $eventId, items: $items) {
       ${EVENT_FIELDS}
     }
   }
