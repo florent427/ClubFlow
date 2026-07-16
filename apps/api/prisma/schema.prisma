@@ -2180,31 +2180,46 @@ model ClubEventProgramItem {
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
 
-  event         ClubEvent               @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  registrations ClubEventRegistration[]
+  event             ClubEvent                   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  registrationSlots ClubEventRegistrationSlot[]
 
   @@index([eventId, sortOrder])
 }
 
 model ClubEventRegistration {
-  id            String                      @id @default(uuid())
-  eventId       String
-  memberId      String?
-  contactId     String?
-  /// Créneau du programme choisi lors d'une inscription publique (null =
-  /// inscription à l'événement entier).
-  programItemId String?
-  status        ClubEventRegistrationStatus @default(REGISTERED)
-  registeredAt  DateTime                    @default(now())
-  cancelledAt   DateTime?
-  note          String?
+  id           String                      @id @default(uuid())
+  eventId      String
+  memberId     String?
+  contactId    String?
+  status       ClubEventRegistrationStatus @default(REGISTERED)
+  registeredAt DateTime                    @default(now())
+  cancelledAt  DateTime?
+  note         String?
 
-  event       ClubEvent             @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  programItem ClubEventProgramItem? @relation(fields: [programItemId], references: [id], onDelete: SetNull)
+  event ClubEvent                   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  /// Créneaux du programme choisis lors d'une inscription publique. Vide
+  /// pour une inscription membre/viewer à l'événement entier. Un visiteur
+  /// peut réserver PLUSIEURS créneaux (ex. essai enfant + essai ado).
+  slots ClubEventRegistrationSlot[]
 
   @@unique([eventId, memberId])
   @@unique([eventId, contactId])
   @@index([eventId, status])
+}
+
+/// Liaison inscription ↔ créneau de programme. Une inscription (= une
+/// personne sur l'événement) peut couvrir N créneaux réservables. La
+/// capacité d'un créneau se compte via ces lignes (inscriptions actives).
+model ClubEventRegistrationSlot {
+  id             String   @id @default(uuid())
+  registrationId String
+  programItemId  String
+  createdAt      DateTime @default(now())
+
+  registration ClubEventRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  programItem  ClubEventProgramItem  @relation(fields: [programItemId], references: [id], onDelete: Cascade)
+
+  @@unique([registrationId, programItemId])
   @@index([programItemId])
 }
 
