@@ -9,6 +9,15 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.19.0](https://github.com/florent427/ClubFlow/compare/v0.18.3...v0.19.0) (2026-07-16)
+
+
+### ✨ Features
+
+* **api:** événement public — réservation de PLUSIEURS créneaux par visiteur ([56f077a](https://github.com/florent427/ClubFlow/commit/56f077a2977a44de9802dfea9c1656953cff8488))
+* événement public — réservation de plusieurs créneaux (multi-sélection) ([e9fe95d](https://github.com/florent427/ClubFlow/commit/e9fe95d4033f6d759292221aea5ae58535f73c69))
+* **vitrine,admin:** UI multi-créneaux pour les événements publics ([0077ddf](https://github.com/florent427/ClubFlow/commit/0077ddf2693c5ea7a7d6cbe7f9b64a7a0d957639))
+
 ## [0.18.3](https://github.com/florent427/ClubFlow/compare/v0.18.2...v0.18.3) (2026-07-16)
 
 
