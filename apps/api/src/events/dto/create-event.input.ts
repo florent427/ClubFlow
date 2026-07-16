@@ -69,4 +69,35 @@ export class CreateEventInput {
   @IsOptional()
   @IsBoolean()
   publishNow?: boolean;
+
+  /** Événement public : landing d'inscription sur le site vitrine. */
+  @Field({ nullable: true, defaultValue: false })
+  @IsOptional()
+  @IsBoolean()
+  isPublic?: boolean;
+
+  /** Slug de la landing — dérivé du titre si absent quand isPublic. */
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  publicSlug?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  publicHeadline?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(10_000)
+  publicDescription?: string;
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  publicCtaLabel?: string;
 }
