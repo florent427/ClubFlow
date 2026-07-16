@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.18.3](https://github.com/florent427/ClubFlow/compare/v0.18.2...v0.18.3) (2026-07-16)
+
+
+### 🐛 Bug Fixes
+
+* **ci:** retry du smoke test sur les hosts vitrine aussi (pas que l'API) ([4ef4b8a](https://github.com/florent427/ClubFlow/commit/4ef4b8a1d33661dec6397a5c8e4b0f14017ae5b0))
+* **ci:** retry smoke test vitrine (deploy vert) ([d5bdd6b](https://github.com/florent427/ClubFlow/commit/d5bdd6b820357d5fb559f12872cb6615ab96d2b9))
+
 ## [0.18.2](https://github.com/florent427/ClubFlow/compare/v0.18.1...v0.18.2) (2026-07-16)
 
 
