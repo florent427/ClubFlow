@@ -21,9 +21,12 @@ import { EventsService } from './events.service';
 export class EventsPublicResolver {
   constructor(private readonly service: EventsService) {}
 
-  @Query(() => [PublicClubEventGraph], { name: 'publicClubEvents' })
+  // Note : nom `publicOpenEvent(s)` distinct de `publicClubEvents` du
+  // module public-site (qui liste TOUS les événements à venir) — éviter
+  // la collision de nom de query qui shadowait ce resolver.
+  @Query(() => [PublicClubEventGraph], { name: 'publicOpenEvents' })
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
-  publicClubEvents(
+  publicOpenEvents(
     @Args('clubSlug') clubSlug: string,
   ): Promise<PublicClubEventGraph[]> {
     return this.service.listPublic(clubSlug) as Promise<
@@ -31,9 +34,9 @@ export class EventsPublicResolver {
     >;
   }
 
-  @Query(() => PublicClubEventGraph, { name: 'publicClubEvent' })
+  @Query(() => PublicClubEventGraph, { name: 'publicOpenEvent' })
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
-  publicClubEvent(
+  publicOpenEvent(
     @Args('clubSlug') clubSlug: string,
     @Args('eventSlug') eventSlug: string,
   ): Promise<PublicClubEventGraph> {
