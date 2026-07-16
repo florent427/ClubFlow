@@ -9,6 +9,11 @@ import {
 import { PageHero } from '@/blocks/PageHero';
 import { RegistrationForm } from '@/components/events/RegistrationForm';
 
+// Fuseau d'affichage des horaires — les dates sont stockées en UTC ;
+// sans timeZone explicite, le SSR (serveur UTC) affichait 05:00 au lieu
+// de 09:00 (bug QA JPO). TODO Phase 2 : champ timezone par club.
+const VITRINE_TZ = process.env.VITRINE_TZ ?? 'Indian/Reunion';
+
 interface RouteParams {
   params: Promise<{ slug: string }>;
 }
@@ -39,12 +44,14 @@ export async function generateMetadata({
 function formatEventDate(iso: string): string {
   const d = new Date(iso);
   const date = d.toLocaleDateString('fr-FR', {
+    timeZone: VITRINE_TZ,
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
   });
   const time = d.toLocaleTimeString('fr-FR', {
+    timeZone: VITRINE_TZ,
     hour: '2-digit',
     minute: '2-digit',
   });
