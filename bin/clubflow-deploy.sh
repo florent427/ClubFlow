@@ -75,31 +75,37 @@ echo "=== systemd restart ==="
 systemctl restart clubflow-api clubflow-vitrine
 systemctl reload caddy
 
-# 7. Smoke test — l'API NestJS met 30-60 s à booter (Prisma + schéma
-# GraphQL) : on retente jusqu'à 6× espacées de 10 s au lieu d'échouer sur
-# la race restart/smoke.
+# 7. Smoke test — l'API NestJS (Prisma + schéma GraphQL) ET la vitrine
+# Next.js mettent 30-60 s à booter : chaque cible est retentée jusqu'à
+# 6× / 10 s au lieu d'échouer sur la race restart/smoke.
 echo "=== smoke test ==="
 FAIL=0
-for h in clubflow.topdigital.re portail.clubflow.topdigital.re sksr.re; do
-  code=$(curl -s -o /dev/null -w '%{http_code}' "https://$h/" || echo "000")
-  printf '  %s  https://%s/\n' "$code" "$h"
+
+# check_url <url> [<method> <data>] : retente jusqu'à 200 (6× / 10 s).
+check_url() {
+  local url="$1" method="${2:-GET}" data="${3:-}"
+  local code=000 attempt
+  for attempt in 1 2 3 4 5 6; do
+    if [ "$method" = "POST" ]; then
+      code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$url" \
+        -H 'Content-Type: application/json' \
+        -H 'Origin: https://clubflow.topdigital.re' \
+        -d "$data" || echo 000)
+    else
+      code=$(curl -s -o /dev/null -w '%{http_code}' "$url" || echo 000)
+    fi
+    [ "$code" = "200" ] && break
+    echo "  … pas encore prêt ($code) $url, tentative $attempt/6"
+    sleep 10
+  done
+  printf '  %s  %s\n' "$code" "$url"
   [ "$code" = "200" ] || FAIL=1
-done
-api_code=000
-for attempt in 1 2 3 4 5 6; do
-  api_code=$(curl -s -o /dev/null -w '%{http_code}' \
-    -X POST https://api.clubflow.topdigital.re/graphql \
-    -H 'Content-Type: application/json' \
-    -H 'Origin: https://clubflow.topdigital.re' \
-    -d '{"query":"{__typename}"}' || echo 000)
-  if [ "$api_code" = "200" ]; then
-    break
-  fi
-  echo "  … API pas encore prête ($api_code), tentative $attempt/6"
-  sleep 10
-done
-printf '  %s  https://api.clubflow.topdigital.re/graphql\n' "$api_code"
-[ "$api_code" = "200" ] || FAIL=1
+}
+
+check_url https://clubflow.topdigital.re/
+check_url https://portail.clubflow.topdigital.re/
+check_url https://sksr.re/
+check_url https://api.clubflow.topdigital.re/graphql POST '{"query":"{__typename}"}'
 
 if [ "$FAIL" = "0" ]; then
   echo "OK Deploy PROD réussi à $(date '+%F %T')"
