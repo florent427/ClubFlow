@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.18.1](https://github.com/florent427/ClubFlow/compare/v0.18.0...v0.18.1) (2026-07-16)
+
+
+### 🐛 Bug Fixes
+
+* **ci:** deploy prod versionné + --accept-data-loss (débloque la migration JPO) ([91efce7](https://github.com/florent427/ClubFlow/commit/91efce7e2bb4e4f20a725517ab96a155a7586534))
+* **ci:** deploy prod versionné avec --accept-data-loss + retry smoke test ([002995b](https://github.com/florent427/ClubFlow/commit/002995b906c65d702f3595fe360ece25576eb8c8))
+
 ## [0.18.0](https://github.com/florent427/ClubFlow/compare/v0.17.0...v0.18.0) (2026-07-16)
 
 
