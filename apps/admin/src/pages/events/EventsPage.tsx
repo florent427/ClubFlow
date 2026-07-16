@@ -417,8 +417,10 @@ export function EventsPage() {
           },
         });
         showToast('Événement mis à jour', 'success');
+        setDrawerOpen(false);
+        await refetch();
       } else {
-        await create({
+        const res = await create({
           variables: {
             input: {
               title: form.title.trim(),
@@ -444,9 +446,20 @@ export function EventsPage() {
           form.publishNow ? 'Événement publié' : 'Brouillon enregistré',
           'success',
         );
+        await refetch();
+        // Le programme (lignes réservables) a besoin de l'id de l'événement,
+        // disponible seulement après création. On reste donc dans le drawer
+        // en mode édition sur l'événement créé, pour que la section
+        // « Programme ligne par ligne » soit accessible tout de suite —
+        // sans le cycle créer → fermer → rouvrir → modifier.
+        const created = (res.data as { createClubEvent?: ClubEvent } | null)
+          ?.createClubEvent;
+        if (created) {
+          openEdit(created);
+        } else {
+          setDrawerOpen(false);
+        }
       }
-      setDrawerOpen(false);
-      await refetch();
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Erreur', 'error');
     }
