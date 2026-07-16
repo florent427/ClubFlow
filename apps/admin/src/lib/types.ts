@@ -925,11 +925,30 @@ export type ClubEventRegistration = {
   id: string;
   memberId: string | null;
   contactId: string | null;
+  /** Créneau du programme choisi lors d'une inscription publique. */
+  programItemId: string | null;
+  programItemTitle: string | null;
   status: ClubEventRegistrationStatusStr;
   registeredAt: string;
   cancelledAt: string | null;
   note: string | null;
   displayName: string | null;
+};
+
+/**
+ * Ligne de programme d'un événement. `bookable = true` ⇒ créneau
+ * sélectionnable dans le formulaire d'inscription public.
+ */
+export type ClubEventProgramItem = {
+  id: string;
+  eventId: string;
+  timeLabel: string | null;
+  title: string;
+  description: string | null;
+  bookable: boolean;
+  capacity: number | null;
+  sortOrder: number;
+  bookedCount: number;
 };
 
 export type ClubEventAttachment = {
@@ -955,6 +974,14 @@ export type ClubEvent = {
   status: ClubEventStatusStr;
   publishedAt: string | null;
   allowContactRegistration: boolean;
+  /** Exposé sur le site vitrine avec landing d'inscription publique. */
+  isPublic: boolean;
+  /** Slug de la landing vitrine (/evenements/<slug>). */
+  publicSlug: string | null;
+  publicHeadline: string | null;
+  publicDescription: string | null;
+  publicCtaLabel: string | null;
+  programItems: ClubEventProgramItem[];
   createdAt: string;
   updatedAt: string;
   registeredCount: number;
@@ -970,6 +997,9 @@ export type UpdateClubEventMutationData = { updateClubEvent: ClubEvent };
 export type PublishClubEventMutationData = { publishClubEvent: ClubEvent };
 export type CancelClubEventMutationData = { cancelClubEvent: ClubEvent };
 export type DeleteClubEventMutationData = { deleteClubEvent: boolean };
+export type UpsertEventProgramItemsMutationData = {
+  upsertEventProgramItems: ClubEvent;
+};
 
 export type EventConvocationMode =
   | 'REGISTERED'

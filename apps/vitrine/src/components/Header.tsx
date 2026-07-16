@@ -22,6 +22,7 @@ const LINKS: Array<{ href: string; label: string; id: string; cta?: boolean }> =
     { href: '/galerie', label: 'Galerie', id: 'galerie' },
     { href: '/actualites', label: 'Actualités', id: 'actu' },
     { href: '/blog', label: 'Blog', id: 'blog' },
+    { href: '/evenements', label: 'Événements', id: 'evenements' },
     { href: '/contact', label: 'Contact', id: 'contact' },
   ];
 

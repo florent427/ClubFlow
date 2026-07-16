@@ -14,6 +14,7 @@ const STATIC_PAGES = [
   '/actualites',
   '/blog',
   '/competitions',
+  '/evenements',
   '/contact',
   '/confidentialite',
 ];
