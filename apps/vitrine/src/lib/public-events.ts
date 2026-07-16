@@ -64,7 +64,7 @@ const EVENT_FIELDS = /* GraphQL */ `
 
 const LIST_PUBLIC_EVENTS = /* GraphQL */ `
   query PublicClubEvents($clubSlug: String!) {
-    publicClubEvents(clubSlug: $clubSlug) {
+    publicOpenEvents(clubSlug: $clubSlug) {
       ${EVENT_FIELDS}
     }
   }
@@ -72,7 +72,7 @@ const LIST_PUBLIC_EVENTS = /* GraphQL */ `
 
 const GET_PUBLIC_EVENT = /* GraphQL */ `
   query PublicClubEvent($clubSlug: String!, $eventSlug: String!) {
-    publicClubEvent(clubSlug: $clubSlug, eventSlug: $eventSlug) {
+    publicOpenEvent(clubSlug: $clubSlug, eventSlug: $eventSlug) {
       ${EVENT_FIELDS}
     }
   }
@@ -90,12 +90,12 @@ function sortProgramItems(event: PublicClubEvent): PublicClubEvent {
 export async function fetchPublicEvents(
   clubSlug: string,
 ): Promise<PublicClubEvent[]> {
-  const data = await fetchGraphQL<{ publicClubEvents: PublicClubEvent[] }>(
+  const data = await fetchGraphQL<{ publicOpenEvents: PublicClubEvent[] }>(
     LIST_PUBLIC_EVENTS,
     { clubSlug },
     { revalidate: 60 },
   );
-  return data.publicClubEvents.map(sortProgramItems);
+  return data.publicOpenEvents.map(sortProgramItems);
 }
 
 /**
@@ -108,12 +108,12 @@ export async function fetchPublicEvent(
   eventSlug: string,
 ): Promise<PublicClubEvent | null> {
   try {
-    const data = await fetchGraphQL<{ publicClubEvent: PublicClubEvent }>(
+    const data = await fetchGraphQL<{ publicOpenEvent: PublicClubEvent }>(
       GET_PUBLIC_EVENT,
       { clubSlug, eventSlug },
       { revalidate: 60 },
     );
-    return sortProgramItems(data.publicClubEvent);
+    return sortProgramItems(data.publicOpenEvent);
   } catch {
     return null;
   }
