@@ -7,6 +7,7 @@ import { MailModule } from '../mail/mail.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EventAttachmentsController } from './event-attachments.controller';
 import { EventAttachmentsService } from './event-attachments.service';
+import { EventsPublicResolver } from './events-public.resolver';
 import { EventsService } from './events.service';
 import {
   EventsAdminResolver,
@@ -21,6 +22,7 @@ import {
     EventAttachmentsService,
     EventsAdminResolver,
     EventsViewerResolver,
+    EventsPublicResolver,
     ClubModuleEnabledGuard,
     ViewerActiveProfileGuard,
   ],

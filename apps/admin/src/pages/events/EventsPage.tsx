@@ -13,21 +13,25 @@ import {
   PUBLISH_CLUB_EVENT,
   SEND_CLUB_EVENT_CONVOCATION,
   UPDATE_CLUB_EVENT,
+  UPSERT_EVENT_PROGRAM_ITEMS,
 } from '../../lib/documents';
 import type {
   ClubEvent,
   ClubEventAttachment,
+  ClubEventProgramItem,
   ClubEventsQueryData,
   ClubEventStatusStr,
   DynamicGroupsQueryData,
   EventConvocationMode,
   MembersQueryData,
   SendClubEventConvocationMutationData,
+  UpsertEventProgramItemsMutationData,
 } from '../../lib/types';
 import { useToast } from '../../components/ToastProvider';
 import { ConfirmModal, Drawer, EmptyState } from '../../components/ui';
 import { downloadCsv, toCsv } from '../../lib/csv-export';
 import { getClubId, getToken } from '../../lib/storage';
+import { useCurrentClub } from '../../lib/use-current-club';
 
 /** Racine REST dérivée de l'URL GraphQL (pour l'upload/download des pièces jointes). */
 const API_ROOT = (
@@ -76,6 +80,15 @@ function fmtDateTime(iso: string): string {
   }
 }
 
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+}
+
 function statusLabel(s: ClubEventStatusStr): string {
   if (s === 'DRAFT') return 'Brouillon';
   if (s === 'PUBLISHED') return 'Publié';
@@ -99,6 +112,11 @@ type FormState = {
   priceCents: string;
   allowContactRegistration: boolean;
   publishNow: boolean;
+  isPublic: boolean;
+  publicSlug: string;
+  publicHeadline: string;
+  publicDescription: string;
+  publicCtaLabel: string;
 };
 
 function emptyForm(): FormState {
@@ -114,7 +132,37 @@ function emptyForm(): FormState {
     priceCents: '',
     allowContactRegistration: false,
     publishNow: true,
+    isPublic: false,
+    publicSlug: '',
+    publicHeadline: '',
+    publicDescription: '',
+    publicCtaLabel: '',
   };
+}
+
+/** Ligne de l'éditeur de programme. `id` présent = ligne existante côté serveur. */
+type ProgramRow = {
+  id?: string;
+  timeLabel: string;
+  title: string;
+  description: string;
+  bookable: boolean;
+  capacity: string;
+  bookedCount: number;
+};
+
+function rowsFromProgramItems(items: ClubEventProgramItem[]): ProgramRow[] {
+  return [...items]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((p) => ({
+      id: p.id,
+      timeLabel: p.timeLabel ?? '',
+      title: p.title,
+      description: p.description ?? '',
+      bookable: p.bookable,
+      capacity: p.capacity !== null ? String(p.capacity) : '',
+      bookedCount: p.bookedCount,
+    }));
 }
 
 export function EventsPage() {
@@ -137,10 +185,24 @@ export function EventsPage() {
   const [sendConvocation, { loading: sendingConvocation }] = useMutation(
     SEND_CLUB_EVENT_CONVOCATION,
   );
+  const [upsertProgram, { loading: savingProgram }] = useMutation(
+    UPSERT_EVENT_PROGRAM_ITEMS,
+  );
+
+  // URL publique du site vitrine du club courant (customDomain ACTIVE,
+  // sinon subdomain fallback). Calculée côté API. Cf. useCurrentClub.
+  const { club: currentClub } = useCurrentClub();
+  const vitrineUrl = (
+    currentClub?.vitrinePublicUrl ??
+    (import.meta as unknown as { env?: { VITE_VITRINE_URL?: string } }).env
+      ?.VITE_VITRINE_URL ??
+    'http://localhost:5175'
+  ).replace(/\/+$/, '');
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<ClubEvent | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
+  const [programRows, setProgramRows] = useState<ProgramRow[]>([]);
   const [confirmDelete, setConfirmDelete] = useState<ClubEvent | null>(null);
   const [detailEvent, setDetailEvent] = useState<ClubEvent | null>(null);
   const [memberPickerOpen, setMemberPickerOpen] = useState(false);
@@ -281,6 +343,7 @@ export function EventsPage() {
   function openCreate() {
     setEditing(null);
     setForm(emptyForm());
+    setProgramRows([]);
     setDrawerOpen(true);
   }
   function openEdit(e: ClubEvent) {
@@ -298,7 +361,13 @@ export function EventsPage() {
         e.priceCents !== null ? (e.priceCents / 100).toFixed(2) : '',
       allowContactRegistration: e.allowContactRegistration,
       publishNow: true,
+      isPublic: e.isPublic,
+      publicSlug: e.publicSlug ?? '',
+      publicHeadline: e.publicHeadline ?? '',
+      publicDescription: e.publicDescription ?? '',
+      publicCtaLabel: e.publicCtaLabel ?? '',
     });
+    setProgramRows(rowsFromProgramItems(e.programItems));
     setDrawerOpen(true);
   }
 
@@ -338,6 +407,12 @@ export function EventsPage() {
                 fromLocalInput(form.registrationClosesAt) ?? null,
               priceCents: priceCents ?? null,
               allowContactRegistration: form.allowContactRegistration,
+              isPublic: form.isPublic,
+              // Slug vide + isPublic → re-dérivé du titre côté serveur.
+              publicSlug: form.publicSlug.trim() || null,
+              publicHeadline: form.publicHeadline.trim() || null,
+              publicDescription: form.publicDescription.trim() || null,
+              publicCtaLabel: form.publicCtaLabel.trim() || null,
             },
           },
         });
@@ -357,6 +432,11 @@ export function EventsPage() {
               priceCents,
               allowContactRegistration: form.allowContactRegistration,
               publishNow: form.publishNow,
+              isPublic: form.isPublic,
+              publicSlug: form.publicSlug.trim() || undefined,
+              publicHeadline: form.publicHeadline.trim() || undefined,
+              publicDescription: form.publicDescription.trim() || undefined,
+              publicCtaLabel: form.publicCtaLabel.trim() || undefined,
             },
           },
         });
@@ -431,6 +511,80 @@ export function EventsPage() {
     }
   }
 
+  /** URL de la landing publique d'un événement sur le site vitrine. */
+  function publicEventUrl(publicSlug: string): string {
+    return `${vitrineUrl}/evenements/${publicSlug}`;
+  }
+
+  function updateProgramRow(index: number, patch: Partial<ProgramRow>) {
+    setProgramRows((rows) =>
+      rows.map((r, i) => (i === index ? { ...r, ...patch } : r)),
+    );
+  }
+  function moveProgramRow(index: number, dir: -1 | 1) {
+    setProgramRows((rows) => {
+      const j = index + dir;
+      if (j < 0 || j >= rows.length) return rows;
+      const next = [...rows];
+      [next[index], next[j]] = [next[j], next[index]];
+      return next;
+    });
+  }
+  function removeProgramRow(index: number) {
+    setProgramRows((rows) => rows.filter((_, i) => i !== index));
+  }
+  function addProgramRow() {
+    setProgramRows((rows) => [
+      ...rows,
+      {
+        timeLabel: '',
+        title: '',
+        description: '',
+        bookable: false,
+        capacity: '',
+        bookedCount: 0,
+      },
+    ]);
+  }
+
+  async function onSaveProgram() {
+    if (!editing) return;
+    if (programRows.some((r) => !r.title.trim())) {
+      showToast('Chaque ligne du programme doit avoir un titre', 'error');
+      return;
+    }
+    try {
+      const res = await upsertProgram({
+        variables: {
+          eventId: editing.id,
+          items: programRows.map((r, i) => {
+            const capacity =
+              r.bookable && r.capacity ? parseInt(r.capacity, 10) : null;
+            return {
+              id: r.id,
+              timeLabel: r.timeLabel.trim() || null,
+              title: r.title.trim(),
+              description: r.description.trim() || null,
+              bookable: r.bookable,
+              capacity: Number.isFinite(capacity) ? capacity : null,
+              sortOrder: i,
+            };
+          }),
+        },
+      });
+      showToast('Programme enregistré', 'success');
+      const updated = (res.data as UpsertEventProgramItemsMutationData | null)
+        ?.upsertEventProgramItems;
+      if (updated) {
+        setEditing(updated);
+        setProgramRows(rowsFromProgramItems(updated.programItems));
+      }
+      await refetch();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
+
   function openConvocationModal(ev: ClubEvent) {
     setDetailEvent(ev);
     const defaultSubject = `Convocation : ${ev.title}`;
@@ -497,9 +651,10 @@ export function EventsPage() {
 
   function exportAttendeesCsv(ev: ClubEvent) {
     const csv = toCsv(
-      ['Nom', 'Statut', 'Inscrit le', 'Annulé le', 'Note'],
+      ['Nom', 'Créneau', 'Statut', 'Inscrit le', 'Annulé le', 'Note'],
       ev.registrations.map((r) => [
         r.displayName ?? '',
+        r.programItemTitle ?? '',
         r.status === 'REGISTERED'
           ? 'Confirmé'
           : r.status === 'WAITLISTED'
@@ -510,12 +665,7 @@ export function EventsPage() {
         r.note ?? '',
       ]),
     );
-    const slug = ev.title
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '') || 'evenement';
+    const slug = slugify(ev.title) || 'evenement';
     downloadCsv(`emargement-${slug}.csv`, csv);
   }
 
@@ -575,6 +725,14 @@ export function EventsPage() {
             <li key={e.id} className="cf-event-card">
               <div className="cf-event-card__head">
                 <h3 className="cf-event-card__title">{e.title}</h3>
+                {e.isPublic ? (
+                  <span
+                    className="cf-pill cf-pill--info"
+                    title="Landing d’inscription publique sur le site vitrine"
+                  >
+                    Public
+                  </span>
+                ) : null}
                 <span className={`cf-pill cf-pill--${statusTone(e.status)}`}>
                   {statusLabel(e.status)}
                 </span>
@@ -646,6 +804,16 @@ export function EventsPage() {
                 >
                   Modifier
                 </button>
+                {e.isPublic && e.publicSlug ? (
+                  <a
+                    className="cf-btn cf-btn--ghost"
+                    href={publicEventUrl(e.publicSlug)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Voir la landing →
+                  </a>
+                ) : null}
                 <button
                   type="button"
                   className="cf-btn cf-btn--danger"
@@ -798,6 +966,97 @@ export function EventsPage() {
             />
             <span>Ouvrir aux contacts (non-adhérents)</span>
           </label>
+          <fieldset className="cf-field">
+            <span className="cf-field__label">
+              Événement public (site vitrine)
+            </span>
+            <label className="cf-checkbox">
+              <input
+                type="checkbox"
+                checked={form.isPublic}
+                onChange={(e) =>
+                  setForm({ ...form, isPublic: e.target.checked })
+                }
+              />
+              <span>
+                Publier sur le site vitrine (landing d’inscription publique)
+              </span>
+            </label>
+            {form.isPublic ? (
+              <>
+                <label className="cf-field">
+                  <span className="cf-field__label">Slug</span>
+                  <input
+                    type="text"
+                    className="cf-input"
+                    value={form.publicSlug}
+                    onChange={(e) =>
+                      setForm({ ...form, publicSlug: e.target.value })
+                    }
+                    maxLength={120}
+                    placeholder={slugify(form.title) || 'portes-ouvertes'}
+                  />
+                  <span className="cf-field__hint">
+                    /evenements/
+                    {form.publicSlug.trim() || slugify(form.title) || '…'} —
+                    dérivé automatiquement du titre si laissé vide.
+                  </span>
+                </label>
+                <label className="cf-field">
+                  <span className="cf-field__label">Accroche</span>
+                  <input
+                    type="text"
+                    className="cf-input"
+                    value={form.publicHeadline}
+                    onChange={(e) =>
+                      setForm({ ...form, publicHeadline: e.target.value })
+                    }
+                    maxLength={300}
+                    placeholder="ex. Venez découvrir le club en famille !"
+                  />
+                </label>
+                <label className="cf-field">
+                  <span className="cf-field__label">
+                    Texte de présentation
+                  </span>
+                  <textarea
+                    className="cf-input cf-textarea"
+                    value={form.publicDescription}
+                    onChange={(e) =>
+                      setForm({ ...form, publicDescription: e.target.value })
+                    }
+                    rows={6}
+                    maxLength={10000}
+                  />
+                  <span className="cf-field__hint">
+                    Paragraphes séparés par une ligne vide.
+                  </span>
+                </label>
+                <label className="cf-field">
+                  <span className="cf-field__label">Libellé du bouton</span>
+                  <input
+                    type="text"
+                    className="cf-input"
+                    value={form.publicCtaLabel}
+                    onChange={(e) =>
+                      setForm({ ...form, publicCtaLabel: e.target.value })
+                    }
+                    maxLength={80}
+                    placeholder="Je m’inscris"
+                  />
+                </label>
+                {editing?.isPublic && editing.publicSlug ? (
+                  <a
+                    href={publicEventUrl(editing.publicSlug)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Voir la landing →
+                  </a>
+                ) : null}
+              </>
+            ) : null}
+          </fieldset>
           {!editing ? (
             <label className="cf-checkbox">
               <input
@@ -827,6 +1086,189 @@ export function EventsPage() {
             </button>
           </div>
         </form>
+        {editing ? (
+          <section className="cf-form" style={{ marginTop: 24 }}>
+            <h3 style={{ margin: 0 }}>Programme ligne par ligne</h3>
+            {programRows.length === 0 ? (
+              <p className="cf-muted">
+                Aucune ligne de programme. Ajoutez des lignes pour détailler
+                le déroulé et proposer des créneaux réservables.
+              </p>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table className="cf-table cf-table--compact">
+                  <thead>
+                    <tr>
+                      <th>Horaire</th>
+                      <th>Titre</th>
+                      <th>Description</th>
+                      <th>Réservable</th>
+                      <th>Capacité</th>
+                      <th aria-label="Actions" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {programRows.map((row, i) => (
+                      <tr key={row.id ?? `new-${i}`}>
+                        <td>
+                          <input
+                            type="text"
+                            className="cf-input"
+                            value={row.timeLabel}
+                            onChange={(e) =>
+                              updateProgramRow(i, {
+                                timeLabel: e.target.value,
+                              })
+                            }
+                            maxLength={80}
+                            placeholder="10h00 – 11h00"
+                            style={{ width: 130 }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            className="cf-input"
+                            value={row.title}
+                            onChange={(e) =>
+                              updateProgramRow(i, { title: e.target.value })
+                            }
+                            maxLength={200}
+                            placeholder="ex. Essai enfants"
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            className="cf-input"
+                            value={row.description}
+                            onChange={(e) =>
+                              updateProgramRow(i, {
+                                description: e.target.value,
+                              })
+                            }
+                            maxLength={2000}
+                          />
+                        </td>
+                        <td style={{ textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={row.bookable}
+                            onChange={(e) =>
+                              updateProgramRow(i, {
+                                bookable: e.target.checked,
+                              })
+                            }
+                            aria-label="Réservable"
+                          />
+                        </td>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          {row.bookable ? (
+                            <>
+                              <input
+                                type="number"
+                                min={0}
+                                className="cf-input"
+                                value={row.capacity}
+                                onChange={(e) =>
+                                  updateProgramRow(i, {
+                                    capacity: e.target.value,
+                                  })
+                                }
+                                style={{ width: 72 }}
+                                aria-label="Capacité"
+                              />{' '}
+                              {row.id ? (
+                                <span className="cf-muted">
+                                  {row.bookedCount}
+                                  {row.capacity ? `/${row.capacity}` : ''}{' '}
+                                  inscrit
+                                  {row.bookedCount > 1 ? 's' : ''}
+                                </span>
+                              ) : null}
+                            </>
+                          ) : (
+                            <span className="cf-muted">—</span>
+                          )}
+                        </td>
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <button
+                            type="button"
+                            className="cf-btn cf-btn--ghost cf-btn--sm"
+                            onClick={() => moveProgramRow(i, -1)}
+                            disabled={i === 0}
+                            aria-label="Monter la ligne"
+                          >
+                            <span
+                              className="material-symbols-outlined"
+                              aria-hidden
+                            >
+                              arrow_upward
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            className="cf-btn cf-btn--ghost cf-btn--sm"
+                            onClick={() => moveProgramRow(i, 1)}
+                            disabled={i === programRows.length - 1}
+                            aria-label="Descendre la ligne"
+                          >
+                            <span
+                              className="material-symbols-outlined"
+                              aria-hidden
+                            >
+                              arrow_downward
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            className="cf-btn cf-btn--ghost cf-btn--sm"
+                            onClick={() => removeProgramRow(i)}
+                            aria-label="Supprimer la ligne"
+                          >
+                            <span
+                              className="material-symbols-outlined"
+                              aria-hidden
+                            >
+                              close
+                            </span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <p className="cf-muted">
+              Les lignes « réservables » apparaissent comme créneaux à
+              choisir dans le formulaire d’inscription public (ex. Essai
+              enfants, Essai adultes).
+            </p>
+            <div className="cf-form-actions">
+              <button
+                type="button"
+                className="cf-btn"
+                onClick={addProgramRow}
+              >
+                <span className="material-symbols-outlined" aria-hidden>
+                  add
+                </span>
+                Ajouter une ligne
+              </button>
+              <button
+                type="button"
+                className="cf-btn cf-btn--primary"
+                onClick={() => void onSaveProgram()}
+                disabled={savingProgram}
+              >
+                {savingProgram
+                  ? 'Enregistrement…'
+                  : 'Enregistrer le programme'}
+              </button>
+            </div>
+          </section>
+        ) : null}
       </Drawer>
 
       <Drawer
@@ -1032,6 +1474,14 @@ export function EventsPage() {
                     <span className="cf-registration__name">
                       {r.displayName ?? '—'}
                     </span>
+                    {r.programItemTitle ? (
+                      <span
+                        className="cf-pill cf-pill--info"
+                        title="Créneau choisi lors de l’inscription publique"
+                      >
+                        {r.programItemTitle}
+                      </span>
+                    ) : null}
                     <span
                       className={`cf-pill cf-pill--${
                         r.status === 'REGISTERED'
