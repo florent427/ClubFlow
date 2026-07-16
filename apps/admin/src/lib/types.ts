@@ -925,9 +925,8 @@ export type ClubEventRegistration = {
   id: string;
   memberId: string | null;
   contactId: string | null;
-  /** Créneau du programme choisi lors d'une inscription publique. */
-  programItemId: string | null;
-  programItemTitle: string | null;
+  /** Titres des créneaux du programme réservés lors d'une inscription publique. */
+  slotTitles: string[];
   status: ClubEventRegistrationStatusStr;
   registeredAt: string;
   cancelledAt: string | null;

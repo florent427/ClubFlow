@@ -1,5 +1,7 @@
 import { Field, ID, InputType } from '@nestjs/graphql';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsEmail,
   IsOptional,
   IsString,
@@ -28,11 +30,17 @@ export class RegisterPublicEventInput {
   @MaxLength(120)
   eventSlug!: string;
 
-  /** Créneau du programme choisi (requis si l'événement en propose). */
-  @Field(() => ID, { nullable: true })
+  /**
+   * Créneaux du programme choisis. Un visiteur peut en sélectionner
+   * PLUSIEURS. Requis (au moins un) si l'événement propose des créneaux
+   * réservables.
+   */
+  @Field(() => [ID], { nullable: true })
   @IsOptional()
-  @IsUUID()
-  programItemId?: string;
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsUUID('4', { each: true })
+  programItemIds?: string[];
 
   @Field()
   @IsString()
