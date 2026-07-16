@@ -651,10 +651,10 @@ export function EventsPage() {
 
   function exportAttendeesCsv(ev: ClubEvent) {
     const csv = toCsv(
-      ['Nom', 'Créneau', 'Statut', 'Inscrit le', 'Annulé le', 'Note'],
+      ['Nom', 'Créneaux', 'Statut', 'Inscrit le', 'Annulé le', 'Note'],
       ev.registrations.map((r) => [
         r.displayName ?? '',
-        r.programItemTitle ?? '',
+        r.slotTitles.join(' | '),
         r.status === 'REGISTERED'
           ? 'Confirmé'
           : r.status === 'WAITLISTED'
@@ -1474,14 +1474,17 @@ export function EventsPage() {
                     <span className="cf-registration__name">
                       {r.displayName ?? '—'}
                     </span>
-                    {r.programItemTitle ? (
-                      <span
-                        className="cf-pill cf-pill--info"
-                        title="Créneau choisi lors de l’inscription publique"
-                      >
-                        {r.programItemTitle}
-                      </span>
-                    ) : null}
+                    {r.slotTitles.length > 0
+                      ? r.slotTitles.map((slotTitle, i) => (
+                          <span
+                            key={i}
+                            className="cf-pill cf-pill--info"
+                            title="Créneau réservé lors de l’inscription publique"
+                          >
+                            {slotTitle}
+                          </span>
+                        ))
+                      : null}
                     <span
                       className={`cf-pill cf-pill--${
                         r.status === 'REGISTERED'
