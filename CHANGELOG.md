@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.18.2](https://github.com/florent427/ClubFlow/compare/v0.18.1...v0.18.2) (2026-07-16)
+
+
+### 🐛 Bug Fixes
+
+* **api:** collision de nom query événements publics — publicOpenEvents ([e8a497b](https://github.com/florent427/ClubFlow/commit/e8a497b1f0d636c172845c0a6f841fb4c2213d42))
+* **api:** renomme les queries publiques d'événements ouverts (collision de nom) ([84b413f](https://github.com/florent427/ClubFlow/commit/84b413f6e1f5e991ec276927cd447a97ebba202f))
+
 ## [0.18.1](https://github.com/florent427/ClubFlow/compare/v0.18.0...v0.18.1) (2026-07-16)
 
 
