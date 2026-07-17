@@ -100,4 +100,11 @@ export class CreateEventInput {
   @IsString()
   @MaxLength(80)
   publicCtaLabel?: string;
+
+  /** Id du MediaAsset de l'image d'illustration (uploadé via /media/upload). */
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  coverMediaAssetId?: string;
 }

@@ -18,6 +18,7 @@ import { ModuleCode } from '../domain/module-registry/module-codes';
 import { ClubSendingDomainService } from '../mail/club-sending-domain.service';
 import { MAIL_TRANSPORT } from '../mail/mail.constants';
 import type { MailTransport } from '../mail/mail-transport.interface';
+import { MediaAssetsService } from '../media/media-assets.service';
 import {
   memberMatchesDynamicGroup,
   type DynamicGroupCriteria,
@@ -81,7 +82,43 @@ export class EventsService {
     private readonly sendingDomains: ClubSendingDomainService,
     @Inject(MAIL_TRANSPORT) private readonly mail: MailTransport,
     private readonly documentsGating: DocumentsGatingService,
+    private readonly mediaAssets: MediaAssetsService,
   ) {}
+
+  /**
+   * Résout l'URL publique de l'image d'illustration d'un événement à
+   * partir de son mediaAssetId (localhost → API_PUBLIC_URL réécrit).
+   */
+  private async resolveCoverUrl(
+    coverMediaAssetId: string | null,
+  ): Promise<string | null> {
+    if (!coverMediaAssetId) return null;
+    const asset = await this.prisma.mediaAsset.findUnique({
+      where: { id: coverMediaAssetId },
+      select: { publicUrl: true },
+    });
+    return this.mediaAssets.resolvePublicUrl(asset?.publicUrl);
+  }
+
+  /**
+   * Garde-fou à l'écriture : l'asset de cover doit exister, appartenir au
+   * club courant et être une IMAGE. Empêche de référencer l'asset d'un
+   * autre tenant ou un PDF (qui donnerait un `<img src=pdf>` cassé sur la
+   * vitrine). `null`/`undefined` = pas de cover → rien à valider.
+   */
+  private async assertValidCoverAsset(
+    clubId: string,
+    coverMediaAssetId: string | null | undefined,
+  ): Promise<void> {
+    if (!coverMediaAssetId) return;
+    const asset = await this.prisma.mediaAsset.findFirst({
+      where: { id: coverMediaAssetId, clubId, kind: 'IMAGE' },
+      select: { id: true },
+    });
+    if (!asset) {
+      throw new BadRequestException("Image d'illustration invalide.");
+    }
+  }
 
   /**
    * Refuse l'inscription si le viewer (couple userId + memberId) a des
@@ -191,11 +228,13 @@ export class EventsService {
       publicHeadline?: string;
       publicDescription?: string;
       publicCtaLabel?: string;
+      coverMediaAssetId?: string;
     },
   ) {
     if (input.endsAt.getTime() <= input.startsAt.getTime()) {
       throw new BadRequestException('La fin doit être après le début.');
     }
+    await this.assertValidCoverAsset(clubId, input.coverMediaAssetId);
     const publishNow = input.publishNow !== false;
     const isPublic = input.isPublic === true;
     const publicSlug = isPublic
@@ -218,6 +257,7 @@ export class EventsService {
         publishedAt: publishNow ? new Date() : null,
         isPublic,
         publicSlug,
+        coverMediaAssetId: input.coverMediaAssetId ?? null,
         publicHeadline: input.publicHeadline?.trim() || null,
         publicDescription: input.publicDescription?.trim() || null,
         publicCtaLabel: input.publicCtaLabel?.trim() || null,
@@ -246,14 +286,18 @@ export class EventsService {
       publicHeadline: string;
       publicDescription: string;
       publicCtaLabel: string;
+      coverMediaAssetId: string | null;
     }>,
   ) {
     const existing = await this.prisma.clubEvent.findFirst({
       where: { id, clubId },
     });
     if (!existing) throw new NotFoundException('Événement introuvable');
+    await this.assertValidCoverAsset(clubId, input.coverMediaAssetId);
     const data: Prisma.ClubEventUpdateInput = {};
     for (const [k, v] of Object.entries(input)) {
+      // null explicite accepté (ex. coverMediaAssetId: null pour retirer
+      // l'image), undefined ignoré.
       if (v !== undefined) (data as Record<string, unknown>)[k] = v;
     }
     // Slug public : recalculé si l'événement devient public sans slug, ou
@@ -396,7 +440,7 @@ export class EventsService {
   // ================================================================
 
   /** Vue publique sanitisée : jamais de données d'inscrits. */
-  private toPublicGraph(
+  private async toPublicGraph(
     ev: Prisma.ClubEventGetPayload<{
       include: {
         registrations: { include: { slots: true } };
@@ -429,6 +473,8 @@ export class EventsService {
       (!ev.registrationClosesAt || ev.registrationClosesAt >= now) &&
       (remainingSpots === null || remainingSpots > 0);
 
+    const coverImageUrl = await this.resolveCoverUrl(ev.coverMediaAssetId);
+
     return {
       id: ev.id,
       title: ev.title,
@@ -440,6 +486,7 @@ export class EventsService {
       publicHeadline: ev.publicHeadline,
       publicDescription: ev.publicDescription ?? ev.description,
       publicCtaLabel: ev.publicCtaLabel,
+      coverImageUrl,
       remainingSpots,
       registrationOpen,
       programItems: (ev.programItems ?? []).map((pi) => ({
@@ -477,7 +524,7 @@ export class EventsService {
         programItems: { orderBy: { sortOrder: 'asc' } },
       },
     });
-    return events.map((e) => this.toPublicGraph(e));
+    return Promise.all(events.map((e) => this.toPublicGraph(e)));
   }
 
   /** Détail public d'un événement par slug (landing page). */
@@ -502,6 +549,7 @@ export class EventsService {
     if (!event) throw new NotFoundException('Événement introuvable.');
     return this.toPublicGraph(event);
   }
+  // (toPublicGraph est async : resolveCoverUrl fait un lookup MediaAsset)
 
   /**
    * Inscription publique depuis la landing vitrine : le visiteur devient
@@ -1002,6 +1050,7 @@ export class EventsService {
     const itemTitle = new Map<string, string>(
       (ev.programItems ?? []).map((pi) => [pi.id, pi.title]),
     );
+    const coverImageUrl = await this.resolveCoverUrl(ev.coverMediaAssetId);
 
     return {
       id: ev.id,
@@ -1023,6 +1072,8 @@ export class EventsService {
       publicHeadline: ev.publicHeadline,
       publicDescription: ev.publicDescription,
       publicCtaLabel: ev.publicCtaLabel,
+      coverMediaAssetId: ev.coverMediaAssetId,
+      coverImageUrl,
       createdAt: ev.createdAt,
       updatedAt: ev.updatedAt,
       registeredCount,

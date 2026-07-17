@@ -104,6 +104,10 @@ type FormState = {
   title: string;
   description: string;
   location: string;
+  /** MediaAsset id de l'image d'illustration (null = aucune). */
+  coverMediaAssetId: string | null;
+  /** URL publique de l'image d'illustration (preview locale). */
+  coverImageUrl: string | null;
   startsAt: string;
   endsAt: string;
   capacity: string;
@@ -124,6 +128,8 @@ function emptyForm(): FormState {
     title: '',
     description: '',
     location: '',
+    coverMediaAssetId: null,
+    coverImageUrl: null,
     startsAt: '',
     endsAt: '',
     capacity: '',
@@ -209,6 +215,8 @@ export function EventsPage() {
   const [memberSearch, setMemberSearch] = useState('');
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadingCover, setUploadingCover] = useState(false);
+  const coverFileInputRef = useRef<HTMLInputElement | null>(null);
   const [convocationOpen, setConvocationOpen] = useState(false);
   const [convocationMode, setConvocationMode] =
     useState<EventConvocationMode>('REGISTERED');
@@ -332,6 +340,65 @@ export function EventsPage() {
     void uploadAttachment(detailEvent.id, file);
   }
 
+  /**
+   * Upload de l'image d'illustration vers le pipeline MediaAsset générique
+   * (`POST /media/upload?kind=image`). Retourne `{ id, publicUrl }` : on stocke
+   * l'id dans le form (envoyé au create/update) et l'URL pour la preview locale.
+   * Même pattern que ClubBrandingSettingsPage.uploadImage (token + clubId depuis
+   * le storage admin, FormData 'file', gestion d'erreur via toast).
+   */
+  async function onCoverPicked(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Fail-fast : l'API rejette les images > 10 Mo (MediaAssetsService.MAX_BYTES).
+    // On coupe côté client pour éviter de transférer un gros fichier pour rien.
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('Image trop volumineuse (max 10 Mo)', 'error');
+      if (coverFileInputRef.current) coverFileInputRef.current.value = '';
+      return;
+    }
+    const token = getToken();
+    const clubId = getClubId();
+    if (!token || !clubId) {
+      showToast('Session expirée', 'error');
+      return;
+    }
+    setUploadingCover(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`${API_ROOT}/media/upload?kind=image`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Club-Id': clubId,
+        },
+        body: fd,
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => '');
+        throw new Error(msg || `Erreur HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as { id: string; publicUrl: string };
+      setForm((f) => ({
+        ...f,
+        coverMediaAssetId: data.id,
+        coverImageUrl: data.publicUrl,
+      }));
+      showToast('Image d’illustration ajoutée', 'success');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur upload', 'error');
+    } finally {
+      setUploadingCover(false);
+      if (coverFileInputRef.current) coverFileInputRef.current.value = '';
+    }
+  }
+
+  function removeCover() {
+    setForm((f) => ({ ...f, coverMediaAssetId: null, coverImageUrl: null }));
+    if (coverFileInputRef.current) coverFileInputRef.current.value = '';
+  }
+
   const events = useMemo(
     () =>
       [...(data?.clubEvents ?? [])].sort((a, b) =>
@@ -352,6 +419,8 @@ export function EventsPage() {
       title: e.title,
       description: e.description ?? '',
       location: e.location ?? '',
+      coverMediaAssetId: e.coverMediaAssetId,
+      coverImageUrl: e.coverImageUrl,
       startsAt: toLocalInputValue(e.startsAt),
       endsAt: toLocalInputValue(e.endsAt),
       capacity: e.capacity !== null ? String(e.capacity) : '',
@@ -398,6 +467,8 @@ export function EventsPage() {
               title: form.title.trim(),
               description: form.description.trim() || null,
               location: form.location.trim() || null,
+              // null explicite = retire l'image côté API.
+              coverMediaAssetId: form.coverMediaAssetId,
               startsAt,
               endsAt,
               capacity: capacity ?? null,
@@ -426,6 +497,7 @@ export function EventsPage() {
               title: form.title.trim(),
               description: form.description.trim() || undefined,
               location: form.location.trim() || undefined,
+              coverMediaAssetId: form.coverMediaAssetId ?? undefined,
               startsAt,
               endsAt,
               capacity,
@@ -737,18 +809,29 @@ export function EventsPage() {
           {events.map((e) => (
             <li key={e.id} className="cf-event-card">
               <div className="cf-event-card__head">
-                <h3 className="cf-event-card__title">{e.title}</h3>
-                {e.isPublic ? (
-                  <span
-                    className="cf-pill cf-pill--info"
-                    title="Landing d’inscription publique sur le site vitrine"
-                  >
-                    Public
+                <div className="cf-event-card__heading">
+                  {e.coverImageUrl ? (
+                    <img
+                      src={e.coverImageUrl}
+                      alt=""
+                      className="cf-event-card__thumb"
+                    />
+                  ) : null}
+                  <h3 className="cf-event-card__title">{e.title}</h3>
+                </div>
+                <div className="cf-event-card__tags">
+                  {e.isPublic ? (
+                    <span
+                      className="cf-pill cf-pill--info"
+                      title="Landing d’inscription publique sur le site vitrine"
+                    >
+                      Public
+                    </span>
+                  ) : null}
+                  <span className={`cf-pill cf-pill--${statusTone(e.status)}`}>
+                    {statusLabel(e.status)}
                   </span>
-                ) : null}
-                <span className={`cf-pill cf-pill--${statusTone(e.status)}`}>
-                  {statusLabel(e.status)}
-                </span>
+                </div>
               </div>
               <div className="cf-event-card__meta">
                 <span>
@@ -847,6 +930,48 @@ export function EventsPage() {
         width={720}
       >
         <form onSubmit={(e) => void onSubmit(e)} className="cf-form">
+          <div className="cf-field">
+            <span className="cf-field__label">Image d’illustration</span>
+            <input
+              ref={coverFileInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: 'none' }}
+              onChange={(e) => void onCoverPicked(e)}
+            />
+            {form.coverImageUrl ? (
+              <div className="cf-event-cover-editor">
+                <img
+                  src={form.coverImageUrl}
+                  alt="Image d’illustration de l’événement"
+                  className="cf-event-cover-editor__preview"
+                />
+                <button
+                  type="button"
+                  className="cf-btn cf-btn--ghost cf-btn--sm"
+                  onClick={removeCover}
+                  disabled={uploadingCover}
+                >
+                  Retirer
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="cf-btn"
+                onClick={() => coverFileInputRef.current?.click()}
+                disabled={uploadingCover}
+              >
+                <span className="material-symbols-outlined" aria-hidden>
+                  add_photo_alternate
+                </span>
+                {uploadingCover ? 'Envoi…' : 'Ajouter une image'}
+              </button>
+            )}
+            <span className="cf-field__hint">
+              Affichée en tête de la fiche événement et sur le site vitrine.
+            </span>
+          </div>
           <label className="cf-field">
             <span className="cf-field__label">Titre</span>
             <input
@@ -1108,62 +1233,50 @@ export function EventsPage() {
                 le déroulé et proposer des créneaux réservables.
               </p>
             ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table className="cf-table cf-table--compact">
-                  <thead>
-                    <tr>
-                      <th>Horaire</th>
-                      <th>Titre</th>
-                      <th>Description</th>
-                      <th>Réservable</th>
-                      <th>Capacité</th>
-                      <th aria-label="Actions" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {programRows.map((row, i) => (
-                      <tr key={row.id ?? `new-${i}`}>
-                        <td>
-                          <input
-                            type="text"
-                            className="cf-input"
-                            value={row.timeLabel}
-                            onChange={(e) =>
-                              updateProgramRow(i, {
-                                timeLabel: e.target.value,
-                              })
-                            }
-                            maxLength={80}
-                            placeholder="10h00 – 11h00"
-                            style={{ width: 130 }}
-                          />
-                        </td>
-                        <td>
-                          <input
-                            type="text"
-                            className="cf-input"
-                            value={row.title}
-                            onChange={(e) =>
-                              updateProgramRow(i, { title: e.target.value })
-                            }
-                            maxLength={200}
-                            placeholder="ex. Essai enfants"
-                          />
-                        </td>
-                        <td>
-                          <input
-                            type="text"
-                            className="cf-input"
-                            value={row.description}
-                            onChange={(e) =>
-                              updateProgramRow(i, {
-                                description: e.target.value,
-                              })
-                            }
-                            maxLength={2000}
-                          />
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
+              <div className="cf-program-editor">
+                {programRows.map((row, i) => (
+                  <div
+                    key={row.id ?? `new-${i}`}
+                    className="cf-program-card"
+                  >
+                    <div className="cf-program-card__line">
+                      <input
+                        type="text"
+                        className="cf-input cf-program-card__time"
+                        value={row.timeLabel}
+                        onChange={(e) =>
+                          updateProgramRow(i, { timeLabel: e.target.value })
+                        }
+                        maxLength={80}
+                        placeholder="10h00 – 11h00"
+                        aria-label="Horaire"
+                      />
+                      <input
+                        type="text"
+                        className="cf-input cf-program-card__title"
+                        value={row.title}
+                        onChange={(e) =>
+                          updateProgramRow(i, { title: e.target.value })
+                        }
+                        maxLength={200}
+                        placeholder="ex. Essai enfants"
+                        aria-label="Titre"
+                      />
+                    </div>
+                    <input
+                      type="text"
+                      className="cf-input"
+                      value={row.description}
+                      onChange={(e) =>
+                        updateProgramRow(i, { description: e.target.value })
+                      }
+                      maxLength={2000}
+                      placeholder="Description (optionnel)"
+                      aria-label="Description"
+                    />
+                    <div className="cf-program-card__footer">
+                      <div className="cf-program-card__booking">
+                        <label className="cf-checkbox">
                           <input
                             type="checkbox"
                             checked={row.bookable}
@@ -1172,85 +1285,81 @@ export function EventsPage() {
                                 bookable: e.target.checked,
                               })
                             }
-                            aria-label="Réservable"
                           />
-                        </td>
-                        <td style={{ whiteSpace: 'nowrap' }}>
-                          {row.bookable ? (
-                            <>
-                              <input
-                                type="number"
-                                min={0}
-                                className="cf-input"
-                                value={row.capacity}
-                                onChange={(e) =>
-                                  updateProgramRow(i, {
-                                    capacity: e.target.value,
-                                  })
-                                }
-                                style={{ width: 72 }}
-                                aria-label="Capacité"
-                              />{' '}
-                              {row.id ? (
-                                <span className="cf-muted">
-                                  {row.bookedCount}
-                                  {row.capacity ? `/${row.capacity}` : ''}{' '}
-                                  inscrit
-                                  {row.bookedCount > 1 ? 's' : ''}
-                                </span>
-                              ) : null}
-                            </>
-                          ) : (
-                            <span className="cf-muted">—</span>
-                          )}
-                        </td>
-                        <td style={{ whiteSpace: 'nowrap' }}>
-                          <button
-                            type="button"
-                            className="cf-btn cf-btn--ghost cf-btn--sm"
-                            onClick={() => moveProgramRow(i, -1)}
-                            disabled={i === 0}
-                            aria-label="Monter la ligne"
+                          <span>Réservable sur inscription</span>
+                        </label>
+                        {row.bookable ? (
+                          <>
+                            <input
+                              type="number"
+                              min={0}
+                              className="cf-input cf-program-card__capacity"
+                              value={row.capacity}
+                              onChange={(e) =>
+                                updateProgramRow(i, {
+                                  capacity: e.target.value,
+                                })
+                              }
+                              placeholder="Capacité"
+                              aria-label="Capacité"
+                            />
+                            {row.id ? (
+                              <span className="cf-muted">
+                                {row.bookedCount}
+                                {row.capacity ? `/${row.capacity}` : ''}{' '}
+                                inscrit
+                                {row.bookedCount > 1 ? 's' : ''}
+                              </span>
+                            ) : null}
+                          </>
+                        ) : null}
+                      </div>
+                      <div className="cf-program-card__actions">
+                        <button
+                          type="button"
+                          className="cf-btn cf-btn--ghost cf-btn--sm"
+                          onClick={() => moveProgramRow(i, -1)}
+                          disabled={i === 0}
+                          aria-label="Monter la ligne"
+                        >
+                          <span
+                            className="material-symbols-outlined"
+                            aria-hidden
                           >
-                            <span
-                              className="material-symbols-outlined"
-                              aria-hidden
-                            >
-                              arrow_upward
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            className="cf-btn cf-btn--ghost cf-btn--sm"
-                            onClick={() => moveProgramRow(i, 1)}
-                            disabled={i === programRows.length - 1}
-                            aria-label="Descendre la ligne"
+                            arrow_upward
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          className="cf-btn cf-btn--ghost cf-btn--sm"
+                          onClick={() => moveProgramRow(i, 1)}
+                          disabled={i === programRows.length - 1}
+                          aria-label="Descendre la ligne"
+                        >
+                          <span
+                            className="material-symbols-outlined"
+                            aria-hidden
                           >
-                            <span
-                              className="material-symbols-outlined"
-                              aria-hidden
-                            >
-                              arrow_downward
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            className="cf-btn cf-btn--ghost cf-btn--sm"
-                            onClick={() => removeProgramRow(i)}
-                            aria-label="Supprimer la ligne"
+                            arrow_downward
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          className="cf-btn cf-btn--ghost cf-btn--sm"
+                          onClick={() => removeProgramRow(i)}
+                          aria-label="Supprimer la ligne"
+                        >
+                          <span
+                            className="material-symbols-outlined"
+                            aria-hidden
                           >
-                            <span
-                              className="material-symbols-outlined"
-                              aria-hidden
-                            >
-                              close
-                            </span>
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                            close
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
             <p className="cf-muted">
