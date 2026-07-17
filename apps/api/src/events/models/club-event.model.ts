@@ -133,6 +133,14 @@ export class ClubEventGraph {
   @Field(() => String, { nullable: true })
   publicCtaLabel!: string | null;
 
+  /** Id du MediaAsset de l'image d'illustration (pour ré-édition admin). */
+  @Field(() => ID, { nullable: true })
+  coverMediaAssetId!: string | null;
+
+  /** URL publique de l'image d'illustration — résolue au query time. */
+  @Field(() => String, { nullable: true })
+  coverImageUrl!: string | null;
+
   @Field(() => [ClubEventProgramItemGraph])
   programItems!: ClubEventProgramItemGraph[];
 

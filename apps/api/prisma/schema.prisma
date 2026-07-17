@@ -2149,6 +2149,9 @@ model ClubEvent {
   publicDescription String?
   /// Libellé du bouton d'inscription (défaut côté UI : « Je m'inscris »).
   publicCtaLabel    String?
+  /// Image d'illustration (bannière) — id d'un MediaAsset. L'URL est
+  /// résolue au query time (coverImageUrl), comme pour les documents.
+  coverMediaAssetId String?
 
   project       ClubProject?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
   registrations ClubEventRegistration[]

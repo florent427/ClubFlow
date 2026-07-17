@@ -102,4 +102,11 @@ export class UpdateEventInput {
   @IsString()
   @MaxLength(80)
   publicCtaLabel?: string;
+
+  /** Id du MediaAsset de l'image ; null explicite pour retirer l'image. */
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  coverMediaAssetId?: string | null;
 }
