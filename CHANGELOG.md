@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.20.1](https://github.com/florent427/ClubFlow/compare/v0.20.0...v0.20.1) (2026-07-17)
+
+
+### 🐛 Bug Fixes
+
+* **events,vitrine:** fermer l'exposition du roster aux membres + activer le rate-limit public ([ebed373](https://github.com/florent427/ClubFlow/commit/ebed3730ac1d1434b4c0dff57e574766d5f822b2))
+* **events,vitrine:** fermeture exposition roster membres + rate-limit public effectif ([0bd8ce1](https://github.com/florent427/ClubFlow/commit/0bd8ce185940922a4c878e666b76213002335e73))
+
 ## [0.20.0](https://github.com/florent427/ClubFlow/compare/v0.19.1...v0.20.0) (2026-07-17)
 
 
