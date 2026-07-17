@@ -4561,6 +4561,22 @@ a:focus-visible {
 .cf-event-card__meta .material-symbols-outlined { font-size: 18px; opacity: 0.75; }
 .cf-event-card__body { margin: 0; color: #374151; white-space: pre-wrap; }
 .cf-event-card__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.cf-event-card__heading { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.cf-event-card__thumb { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; flex-shrink: 0; border: 1px solid #e5e7eb; }
+.cf-event-card__tags { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+/* Éditeur d'image d'illustration (drawer événement) */
+.cf-event-cover-editor { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.cf-event-cover-editor__preview { width: 100%; max-width: 100%; height: 160px; object-fit: cover; border-radius: 10px; border: 1px solid #e5e7eb; }
+/* Éditeur de programme (cartes empilées, pleine largeur du drawer) */
+.cf-program-editor { display: flex; flex-direction: column; gap: 10px; }
+.cf-program-card { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid #e5e7eb; border-radius: 10px; background: #f9fafb; }
+.cf-program-card__line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.cf-program-card__time { width: 140px; flex-shrink: 0; }
+.cf-program-card__title { flex: 1; min-width: 160px; }
+.cf-program-card__footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.cf-program-card__booking { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cf-program-card__capacity { width: 90px; flex-shrink: 0; }
+.cf-program-card__actions { display: flex; gap: 4px; flex-shrink: 0; }
 .cf-registration-list { list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; gap: 6px; }
 .cf-registration { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 8px; background: #f9fafb; }
 .cf-registration--cancelled { opacity: 0.55; text-decoration: line-through; }

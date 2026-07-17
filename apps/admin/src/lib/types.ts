@@ -964,6 +964,10 @@ export type ClubEvent = {
   title: string;
   description: string | null;
   location: string | null;
+  /** MediaAsset de l'image d'illustration (null = pas d'image). */
+  coverMediaAssetId: string | null;
+  /** URL publique résolue de l'image d'illustration. */
+  coverImageUrl: string | null;
   startsAt: string;
   endsAt: string;
   capacity: number | null;

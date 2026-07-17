@@ -68,6 +68,10 @@ export class PublicClubEventGraph {
   @Field(() => String, { nullable: true })
   publicCtaLabel!: string | null;
 
+  /** URL de l'image d'illustration (bannière landing). */
+  @Field(() => String, { nullable: true })
+  coverImageUrl!: string | null;
+
   /** Places restantes au niveau de l'événement — null = illimité. */
   @Field(() => Int, { nullable: true })
   remainingSpots!: number | null;
