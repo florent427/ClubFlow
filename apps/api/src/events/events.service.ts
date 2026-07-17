@@ -178,7 +178,9 @@ export class EventsService {
     const filtered = viewer.contactId
       ? events.filter((e) => e.allowContactRegistration)
       : events;
-    return Promise.all(filtered.map((e) => this.hydrate(e, viewer)));
+    return Promise.all(
+      filtered.map((e) => this.hydrate(e, viewer, { exposeRoster: false })),
+    );
   }
 
   /**
@@ -780,7 +782,16 @@ export class EventsService {
     return { success: true, message: label };
   }
 
-  async register(clubId: string, viewer: Viewer, eventId: string, note?: string) {
+  async register(
+    clubId: string,
+    viewer: Viewer,
+    eventId: string,
+    note?: string,
+    // Back-office (adminRegisterMember) passe true pour récupérer le roster
+    // complet ; le portail membre laisse false → il ne voit que sa propre
+    // inscription en retour.
+    exposeRoster = false,
+  ) {
     if (!viewer.memberId && !viewer.contactId) {
       throw new ForbiddenException('Profil requis.');
     }
@@ -811,7 +822,7 @@ export class EventsService {
         ? r.memberId === viewer.memberId
         : r.contactId === viewer.contactId,
     );
-    if (alreadyRegistered) return this.hydrate(event, viewer);
+    if (alreadyRegistered) return this.hydrate(event, viewer, { exposeRoster });
 
     // Gating Documents à signer : un membre avec des documents requis
     // non signés ne peut pas s'inscrire à un événement. Le check est
@@ -859,7 +870,7 @@ export class EventsService {
       include: { registrations: { include: { slots: true } }, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
     });
     if (!refreshed) throw new NotFoundException('Événement introuvable');
-    return this.hydrate(refreshed, viewer);
+    return this.hydrate(refreshed, viewer, { exposeRoster });
   }
 
   async adminRegisterMember(
@@ -873,7 +884,8 @@ export class EventsService {
       select: { id: true },
     });
     if (!member) throw new NotFoundException('Adhérent introuvable');
-    return this.register(clubId, { memberId }, eventId, note);
+    // Admin : exposeRoster=true pour renvoyer le roster complet à l'admin.
+    return this.register(clubId, { memberId }, eventId, note, true);
   }
 
   async adminCancelRegistrationById(clubId: string, registrationId: string) {
@@ -937,7 +949,7 @@ export class EventsService {
         ? r.memberId === viewer.memberId
         : r.contactId === viewer.contactId,
     );
-    if (!existing) return this.hydrate(event, viewer);
+    if (!existing) return this.hydrate(event, viewer, { exposeRoster: false });
 
     await this.prisma.$transaction(async (tx) => {
       await tx.clubEventRegistration.update({
@@ -973,7 +985,7 @@ export class EventsService {
       include: { registrations: { include: { slots: true } }, attachments: { orderBy: { createdAt: 'asc' } }, programItems: { orderBy: { sortOrder: 'asc' } } },
     });
     if (!refreshed) throw new NotFoundException('Événement introuvable');
-    return this.hydrate(refreshed, viewer);
+    return this.hydrate(refreshed, viewer, { exposeRoster: false });
   }
 
   private async hydrate(
@@ -985,7 +997,13 @@ export class EventsService {
       };
     }>,
     viewer: Viewer,
+    opts: { exposeRoster?: boolean } = {},
   ) {
+    // Roster nominatif des inscrits : exposé au back-office (défaut). Côté
+    // portail membre (exposeRoster=false), on ne renvoie QUE l'inscription du
+    // viewer lui-même — jamais l'identité/notes des autres inscrits (RGPD,
+    // principe de moindre exposition).
+    const exposeRoster = opts.exposeRoster ?? true;
     const activeRegs = ev.registrations.filter(
       (r) => r.status !== ClubEventRegistrationStatus.CANCELLED,
     );
@@ -1052,6 +1070,16 @@ export class EventsService {
     );
     const coverImageUrl = await this.resolveCoverUrl(ev.coverMediaAssetId);
 
+    const rosterRegs = exposeRoster
+      ? ev.registrations
+      : ev.registrations.filter((r) =>
+          viewer.memberId
+            ? r.memberId === viewer.memberId
+            : viewer.contactId
+              ? r.contactId === viewer.contactId
+              : false,
+        );
+
     return {
       id: ev.id,
       clubId: ev.clubId,
@@ -1090,7 +1118,7 @@ export class EventsService {
         sortOrder: pi.sortOrder,
         bookedCount: bookedByItem.get(pi.id) ?? 0,
       })),
-      registrations: ev.registrations.map((r) => ({
+      registrations: rosterRegs.map((r) => ({
         id: r.id,
         eventId: r.eventId,
         memberId: r.memberId,
