@@ -1709,6 +1709,8 @@ const EVENT_FIELDS = `
   title
   description
   location
+  coverMediaAssetId
+  coverImageUrl
   startsAt
   endsAt
   capacity

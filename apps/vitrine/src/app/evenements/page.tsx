@@ -93,7 +93,17 @@ export default async function EvenementsPage() {
           border: 1px solid var(--line);
           border-radius: 4px;
           color: var(--fg);
+          overflow: hidden;
           transition: border-color 0.2s, transform 0.2s;
+        }
+        .evt-card__cover {
+          margin: -26px -24px 0;
+        }
+        .evt-card__cover img {
+          display: block;
+          width: 100%;
+          height: 160px;
+          object-fit: cover;
         }
         .evt-card:hover {
           border-color: var(--accent);
@@ -156,6 +166,12 @@ function EventCard({ event }: { event: PublicClubEvent }) {
   const full = event.remainingSpots === 0;
   return (
     <Link href={`/evenements/${event.publicSlug}`} className="evt-card">
+      {event.coverImageUrl ? (
+        <div className="evt-card__cover">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={event.coverImageUrl} alt={event.title} loading="lazy" />
+        </div>
+      ) : null}
       <div className="evt-card__date">{formatEventDate(event.startsAt)}</div>
       <h3 className="evt-card__title">{event.title}</h3>
       {event.publicHeadline ? (
