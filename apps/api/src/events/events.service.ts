@@ -101,6 +101,26 @@ export class EventsService {
   }
 
   /**
+   * Garde-fou à l'écriture : l'asset de cover doit exister, appartenir au
+   * club courant et être une IMAGE. Empêche de référencer l'asset d'un
+   * autre tenant ou un PDF (qui donnerait un `<img src=pdf>` cassé sur la
+   * vitrine). `null`/`undefined` = pas de cover → rien à valider.
+   */
+  private async assertValidCoverAsset(
+    clubId: string,
+    coverMediaAssetId: string | null | undefined,
+  ): Promise<void> {
+    if (!coverMediaAssetId) return;
+    const asset = await this.prisma.mediaAsset.findFirst({
+      where: { id: coverMediaAssetId, clubId, kind: 'IMAGE' },
+      select: { id: true },
+    });
+    if (!asset) {
+      throw new BadRequestException("Image d'illustration invalide.");
+    }
+  }
+
+  /**
    * Refuse l'inscription si le viewer (couple userId + memberId) a des
    * documents requis non signés. Pas de gating si le module DOCUMENTS est
    * désactivé pour le club, ni pour les contacts (qui n'ont pas de fiche
@@ -214,6 +234,7 @@ export class EventsService {
     if (input.endsAt.getTime() <= input.startsAt.getTime()) {
       throw new BadRequestException('La fin doit être après le début.');
     }
+    await this.assertValidCoverAsset(clubId, input.coverMediaAssetId);
     const publishNow = input.publishNow !== false;
     const isPublic = input.isPublic === true;
     const publicSlug = isPublic
@@ -272,6 +293,7 @@ export class EventsService {
       where: { id, clubId },
     });
     if (!existing) throw new NotFoundException('Événement introuvable');
+    await this.assertValidCoverAsset(clubId, input.coverMediaAssetId);
     const data: Prisma.ClubEventUpdateInput = {};
     for (const [k, v] of Object.entries(input)) {
       // null explicite accepté (ex. coverMediaAssetId: null pour retirer
