@@ -4,6 +4,7 @@ import { ViewerActiveProfileGuard } from '../common/guards/viewer-active-profile
 import { DocumentsModule } from '../documents/documents.module';
 import { FamiliesModule } from '../families/families.module';
 import { MailModule } from '../mail/mail.module';
+import { MediaModule } from '../media/media.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EventAttachmentsController } from './event-attachments.controller';
 import { EventAttachmentsService } from './event-attachments.service';
@@ -15,7 +16,13 @@ import {
 } from './events.resolver';
 
 @Module({
-  imports: [PrismaModule, FamiliesModule, MailModule, DocumentsModule],
+  imports: [
+    PrismaModule,
+    FamiliesModule,
+    MailModule,
+    DocumentsModule,
+    MediaModule,
+  ],
   controllers: [EventAttachmentsController],
   providers: [
     EventsService,
