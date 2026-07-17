@@ -350,6 +350,13 @@ export function EventsPage() {
   async function onCoverPicked(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    // Fail-fast : l'API rejette les images > 10 Mo (MediaAssetsService.MAX_BYTES).
+    // On coupe côté client pour éviter de transférer un gros fichier pour rien.
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('Image trop volumineuse (max 10 Mo)', 'error');
+      if (coverFileInputRef.current) coverFileInputRef.current.value = '';
+      return;
+    }
     const token = getToken();
     const clubId = getClubId();
     if (!token || !clubId) {

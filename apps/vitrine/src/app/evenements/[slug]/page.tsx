@@ -173,7 +173,10 @@ export default async function EvenementDetailPage({ params }: RouteParams) {
           display: block;
           width: 100%;
           max-width: 820px;
-          max-height: 380px;
+          /* aspect-ratio réserve la hauteur dès le layout (avant décodage
+             de l'image) → pas de layout-shift/CLS sur connexion lente. */
+          aspect-ratio: 820 / 380;
+          height: auto;
           margin: 40px auto 0;
           object-fit: cover;
           border: 1px solid var(--line);
