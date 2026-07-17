@@ -1,5 +1,7 @@
+import { UseGuards } from '@nestjs/common';
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Throttle } from '@nestjs/throttler';
+import { GqlThrottlerGuard } from '../common/guards/gql-throttler.guard';
 import { RegisterPublicEventInput } from './dto/register-public-event.input';
 import {
   PublicClubEventGraph,
@@ -18,6 +20,9 @@ import { EventsService } from './events.service';
  * ajoute un honeypot côté route Next).
  */
 @Resolver()
+// Active réellement les @Throttle ci-dessous (limite les bots sur la
+// mutation d'inscription anonyme). Sans ce guard, @Throttle est inerte.
+@UseGuards(GqlThrottlerGuard)
 export class EventsPublicResolver {
   constructor(private readonly service: EventsService) {}
 

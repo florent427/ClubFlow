@@ -1,5 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { GqlThrottlerGuard } from '../common/guards/gql-throttler.guard';
 import { PrismaModule } from '../prisma/prisma.module';
 import { MediaModule } from '../media/media.module';
 import { AiModule } from '../ai/ai.module';
@@ -32,6 +33,7 @@ import { VitrineSettingsService } from './vitrine-settings.service';
     VitrineSettingsService,
     VitrineAdminResolver,
     VitrinePublicResolver,
+    GqlThrottlerGuard,
   ],
   exports: [
     VitrinePageService,
