@@ -34,6 +34,7 @@ export async function generateMetadata({
         description: event.publicHeadline ?? undefined,
         type: 'website',
         siteName: club.name,
+        ...(event.coverImageUrl ? { images: [event.coverImageUrl] } : {}),
       },
     };
   } catch {
@@ -119,6 +120,18 @@ export default async function EvenementDetailPage({ params }: RouteParams) {
         subtitle={event.publicHeadline ?? undefined}
       />
 
+      {event.coverImageUrl ? (
+        <div className="container">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            className="evt-detail__cover"
+            src={event.coverImageUrl}
+            alt={event.title}
+            loading="eager"
+          />
+        </div>
+      ) : null}
+
       <section className="container evt-detail">
         {event.publicDescription ? (
           <div className="evt-detail__intro">
@@ -156,6 +169,16 @@ export default async function EvenementDetailPage({ params }: RouteParams) {
       </section>
 
       <style>{`
+        .evt-detail__cover {
+          display: block;
+          width: 100%;
+          max-width: 820px;
+          max-height: 380px;
+          margin: 40px auto 0;
+          object-fit: cover;
+          border: 1px solid var(--line);
+          border-radius: 4px;
+        }
         .evt-detail {
           padding: 64px 48px 96px;
           max-width: 820px;

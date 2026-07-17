@@ -32,6 +32,8 @@ export interface PublicClubEvent {
   publicHeadline: string | null;
   publicDescription: string | null;
   publicCtaLabel: string | null;
+  /** Image de couverture (bannière) — null si aucune. */
+  coverImageUrl: string | null;
   /** Places restantes au niveau de l'événement — null = illimité. */
   remainingSpots: number | null;
   registrationOpen: boolean;
@@ -49,6 +51,7 @@ const EVENT_FIELDS = /* GraphQL */ `
   publicHeadline
   publicDescription
   publicCtaLabel
+  coverImageUrl
   remainingSpots
   registrationOpen
   programItems {
