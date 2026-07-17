@@ -9,6 +9,20 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.20.0](https://github.com/florent427/ClubFlow/compare/v0.19.1...v0.20.0) (2026-07-17)
+
+
+### ✨ Features
+
+* **admin,vitrine:** image d'illustration événement + refonte éditeur de programme ([9a514ce](https://github.com/florent427/ClubFlow/commit/9a514ce8ea4ae2ddef771f3e91219e79a180e07f))
+* **api:** image d'illustration pour les événements ([9368bba](https://github.com/florent427/ClubFlow/commit/9368bba39934f3a275c658119946d732a8c0e91b))
+* **events:** image d'illustration + refonte éditeur de programme + durcissements ([923f08a](https://github.com/florent427/ClubFlow/commit/923f08aa8f850eea1bc8a4522fef726eab6d39d4))
+
+
+### 🐛 Bug Fixes
+
+* **events:** durcissement image d'illustration (validation asset, garde-fou taille, anti-CLS) ([950e3ba](https://github.com/florent427/ClubFlow/commit/950e3ba03d04764faae5706ba7b49fc0c860485b))
+
 ## [0.19.1](https://github.com/florent427/ClubFlow/compare/v0.19.0...v0.19.1) (2026-07-16)
 
 
