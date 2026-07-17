@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.guard';
+import { GqlThrottlerGuard } from '../common/guards/gql-throttler.guard';
 import { ViewerActiveProfileGuard } from '../common/guards/viewer-active-profile.guard';
 import { DocumentsModule } from '../documents/documents.module';
 import { FamiliesModule } from '../families/families.module';
@@ -32,6 +33,7 @@ import {
     EventsPublicResolver,
     ClubModuleEnabledGuard,
     ViewerActiveProfileGuard,
+    GqlThrottlerGuard,
   ],
   exports: [EventsService, EventAttachmentsService],
 })

@@ -1,7 +1,8 @@
 import { Args, Context, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Throttle } from '@nestjs/throttler';
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
+import { GqlThrottlerGuard } from '../common/guards/gql-throttler.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   SubmitArticleCommentInput,
@@ -40,6 +41,9 @@ import { VitrinePageService } from './vitrine-page.service';
  *  - Rate-limit global sur ce resolver : 100/min/IP (aligné avec public-site).
  */
 @Resolver()
+// Sans ce guard, les @Throttle (classe 100/min + mutations 10/min) sont
+// inertes → création anonyme illimitée de prospects/commentaires.
+@UseGuards(GqlThrottlerGuard)
 @Throttle({ default: { limit: 100, ttl: 60_000 } })
 export class VitrinePublicResolver {
   constructor(
