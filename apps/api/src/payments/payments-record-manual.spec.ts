@@ -23,8 +23,13 @@ describe('PaymentsService / encaissements manuels', () => {
   };
   let accounting: { recordIncomeFromPayment: jest.Mock };
   let documentsGating: { hasUnsignedRequiredDocuments: jest.Mock };
+  let closeSchedule: jest.Mock;
+  let sumInFlight: jest.Mock;
 
   beforeEach(async () => {
+    closeSchedule = jest.fn().mockResolvedValue(undefined);
+    // Par défaut : aucun prélèvement en vol sur la facture.
+    sumInFlight = jest.fn().mockResolvedValue(0);
     accounting = { recordIncomeFromPayment: jest.fn().mockResolvedValue(undefined) };
     documentsGating = {
       hasUnsignedRequiredDocuments: jest
@@ -63,7 +68,13 @@ describe('PaymentsService / encaissements manuels', () => {
         // Non exercées par ces specs, mais le constructeur doit être résoluble.
         { provide: StripeConnectService, useValue: {} },
         { provide: PaymentScheduleService, useValue: {} },
-        { provide: PaymentScheduleEngineService, useValue: {} },
+        {
+          provide: PaymentScheduleEngineService,
+          useValue: {
+            closeScheduleForInvoice: closeSchedule,
+            sumInFlightForInvoice: sumInFlight,
+          },
+        },
       ],
     }).compile();
 

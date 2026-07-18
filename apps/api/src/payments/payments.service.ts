@@ -472,13 +472,23 @@ export class PaymentsService {
     }
     // Motif stock\u00e9 en champ d\u00e9di\u00e9 \u2014 le label reste intact (le statut VOID
     // porte d\u00e9j\u00e0 l'information \u00ab Annul\u00e9e \u00bb c\u00f4t\u00e9 UI).
-    return this.prisma.invoice.update({
+    const voided = await this.prisma.invoice.update({
       where: { id: invoiceId },
       data: {
         status: InvoiceStatus.VOID,
         voidReason: reason?.trim() || null,
       },
     });
+
+    // Une facture annul\u00e9e ne doit plus rien pr\u00e9lever : sans cette cl\u00f4ture, un
+    // \u00e9ch\u00e9ancier rest\u00e9 ACTIVE continuerait de d\u00e9biter l'adh\u00e9rent pour une
+    // facture qui n'existe plus comptablement.
+    await this.scheduleEngine.closeScheduleForInvoice(
+      invoiceId,
+      InvoiceStatus.VOID,
+    );
+
+    return voided;
   }
 
   async listPricingRules(clubId: string) {
@@ -632,6 +642,21 @@ export class PaymentsService {
       );
     }
 
+    // Un prélèvement peut être parti sans être encore dénoué — 3 à 5 jours en
+    // SEPA. Il n'apparaît dans aucun Payment, donc `balanceCents` le croit
+    // encore dû. C'est le cas réel le plus probable de double paiement :
+    // l'adhérent ne voit rien sur son compte, remet un chèque, et le
+    // prélèvement se dénoue ensuite. On refuse la part qui ferait doublon,
+    // sans bloquer un encaissement partiel qui, lui, ne chevauche rien.
+    const engaged = await this.scheduleEngine.sumInFlightForInvoice(invoice.id);
+    if (engaged > 0 && input.amountCents > balanceCents - engaged) {
+      throw new BadRequestException(
+        `Un prélèvement de ${engaged} cts est en cours de dénouement sur cette facture. ` +
+          `Vous pouvez encaisser au plus ${Math.max(0, balanceCents - engaged)} cts sans risque ` +
+          `de double paiement. Attendez son issue, ou annulez l’échéancier avant de saisir.`,
+      );
+    }
+
     const ref = input.externalRef?.trim() || null;
     const payment = await this.prisma.$transaction(async (tx) => {
       const p = await tx.payment.create({
@@ -661,6 +686,17 @@ export class PaymentsService {
       `Encaissement ${invoice.label}`,
       payment.amountCents,
     );
+
+    // Un règlement encaissé hors échéancier peut solder la facture. Sans cette
+    // clôture, le plan reste ACTIVE et le moteur continuerait de prélever une
+    // facture déjà payée. On se base sur le solde réel — avoirs déduits — et
+    // non sur le passage en PAID, qui ne couvre pas le cas d'un avoir.
+    if (balanceCents - input.amountCents <= 0) {
+      await this.scheduleEngine.closeScheduleForInvoice(
+        invoice.id,
+        InvoiceStatus.PAID,
+      );
+    }
 
     return payment;
   }
@@ -825,6 +861,15 @@ export class PaymentsService {
       where: { id: invoiceId, clubId, status: InvoiceStatus.OPEN },
     });
     if (!invoice) {
+      // De l'argent a été encaissé sur le compte du club pour une facture qui
+      // n'est plus ouverte. On ne peut pas l'enregistrer — la facture n'attend
+      // plus rien — mais se taire reviendrait à le faire disparaître des
+      // comptes. Le trésorier doit pouvoir retrouver et rembourser.
+      this.logger.error(
+        `[stripe] ENCAISSEMENT ORPHELIN : paymentIntent ${paymentIntentId} ` +
+          `(${amountCents} cts) reçu pour la facture ${invoiceId} du club ${clubId}, ` +
+          `qui n'est pas OPEN. Aucun Payment créé — remboursement probablement dû.`,
+      );
       return;
     }
 
@@ -854,6 +899,11 @@ export class PaymentsService {
       invoice.isCreditNote,
     );
     if (balanceCents <= 0) {
+      this.logger.error(
+        `[stripe] ENCAISSEMENT ORPHELIN : paymentIntent ${paymentIntentId} ` +
+          `(${amountCents} cts) reçu pour la facture ${invoiceId} du club ${clubId}, ` +
+          `dont le solde est déjà nul. Aucun Payment créé — remboursement probablement dû.`,
+      );
       return;
     }
 

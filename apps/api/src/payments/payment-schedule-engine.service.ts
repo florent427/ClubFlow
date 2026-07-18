@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import {
+  InvoiceStatus,
   PaymentScheduleInstallmentStatus as InstallmentStatus,
   PaymentScheduleStatus,
 } from '@prisma/client';
@@ -11,6 +12,7 @@ import {
   SCHEDULING_TIMEZONE,
 } from '../scheduling/scheduling.constants';
 import { SchedulerLockService } from '../scheduling/scheduler-lock.service';
+import { resolveInvoiceBalance } from './invoice-balance';
 import { PaymentScheduleNotifierService } from './payment-schedule-notifier.service';
 
 /** Résumé d'un passage du moteur, pour les logs et le déclenchement manuel. */
@@ -146,6 +148,98 @@ export class PaymentScheduleEngineService {
   }
 
   /**
+   * Clôt un échéancier dont la facture n'est plus encaissable.
+   *
+   * Annule l'échéance en cours — dont on sait qu'aucun PaymentIntent n'a été
+   * créé, puisqu'on renonce avant l'appel Stripe — et toutes celles qui
+   * n'étaient pas encore parties.
+   *
+   * Les autres échéances en PROCESSING sont laissées telles quelles : un
+   * prélèvement SEPA met plusieurs jours à se dénouer, et une écriture déjà
+   * partie chez Stripe doit rester réconciliable quand son webhook arrivera.
+   * Les annuler ici ferait perdre la trace d'un encaissement réel.
+   */
+  /**
+   * Montant déjà parti chez Stripe pour cette facture et pas encore constaté.
+   *
+   * Exposé pour que l'encaissement manuel puisse refuser ce qui ferait doublon
+   * avec un prélèvement en cours de dénouement.
+   */
+  async sumInFlightForInvoice(invoiceId: string): Promise<number> {
+    const balance = await resolveInvoiceBalance(this.prisma, invoiceId);
+    return balance.inFlightCents;
+  }
+
+  /**
+   * Variante appelée depuis PaymentsService quand une facture est soldée ou
+   * annulée en dehors de l'échéancier (règlement manuel, avoir, annulation).
+   *
+   * Éteindre le plan à la source évite de compter sur la seule relecture du
+   * moteur : moins il reste de fenêtres où un prélèvement peut partir sur une
+   * facture close, mieux c'est.
+   */
+  async closeScheduleForInvoice(
+    invoiceId: string,
+    invoiceStatus: InvoiceStatus | null,
+  ): Promise<void> {
+    const schedule = await this.prisma.paymentSchedule.findUnique({
+      where: { invoiceId },
+      select: { id: true, status: true },
+    });
+    if (!schedule) return;
+    if (
+      schedule.status === PaymentScheduleStatus.COMPLETED ||
+      schedule.status === PaymentScheduleStatus.CANCELLED
+    ) {
+      return;
+    }
+    await this.closeSettledSchedule(schedule.id, null, invoiceStatus);
+    this.logger.log(
+      `[echeancier] ${schedule.id} clôturé : facture ${invoiceId} soldée ou annulée hors échéancier.`,
+    );
+  }
+
+  private async closeSettledSchedule(
+    scheduleId: string,
+    currentInstallmentId: string | null,
+    invoiceStatus: InvoiceStatus | null,
+  ): Promise<void> {
+    // Facture payée → l'échéancier a rempli son office. Facture annulée ou
+    // disparue → il n'avait plus d'objet.
+    const finalStatus =
+      invoiceStatus === InvoiceStatus.PAID
+        ? PaymentScheduleStatus.COMPLETED
+        : PaymentScheduleStatus.CANCELLED;
+
+    await this.prisma.$transaction([
+      this.prisma.paymentScheduleInstallment.updateMany({
+        where: {
+          scheduleId,
+          OR: [
+            // L'échéance qu'on vient de réserver : elle est en PROCESSING mais
+            // aucun PaymentIntent n'a été créé, on peut l'annuler sans risque.
+            ...(currentInstallmentId ? [{ id: currentInstallmentId }] : []),
+            {
+              status: {
+                in: [
+                  InstallmentStatus.SCHEDULED,
+                  InstallmentStatus.FAILED_RETRYABLE,
+                  InstallmentStatus.REQUIRES_ACTION,
+                ],
+              },
+            },
+          ],
+        },
+        data: { status: InstallmentStatus.CANCELLED },
+      }),
+      this.prisma.paymentSchedule.update({
+        where: { id: scheduleId },
+        data: { status: finalStatus },
+      }),
+    ]);
+  }
+
+  /**
    * Traite une échéance. Renvoie l'issue pour le rapport.
    *
    * `schedule` est passé en paramètre plutôt que rechargé : il vient du même
@@ -200,10 +294,49 @@ export class PaymentScheduleEngineService {
       return 'skipped';
     }
 
+    // Dernier point où l'on peut encore NE PAS prendre l'argent.
+    //
+    // La facture a pu être soldée depuis la planification par un chemin que le
+    // plan ignore : règlement manuel du trésorier, paiement depuis un client
+    // mobile ancien, ou avoir. Sans cette relecture, le moteur prélève une
+    // seconde fois — et le webhook de succès, qui ne cherche que des factures
+    // OPEN, ignore silencieusement l'encaissement. L'argent part du compte de
+    // l'adhérent, arrive chez le club, et ClubFlow n'en garde aucune trace.
+    //
+    // La réservation atomique est déjà faite : l'échéance nous appartient, on
+    // peut décider de son sort sans course avec une autre exécution.
+    const balance = await resolveInvoiceBalance(
+      this.prisma,
+      schedule.invoiceId,
+      schedule.clubId,
+    );
+    if (!balance.isCollectable) {
+      await this.closeSettledSchedule(schedule.id, inst.id, balance.status);
+      this.logger.log(
+        `[echeancier] échéance ${inst.id} non prélevée : facture ${schedule.invoiceId} ` +
+          `soldée ou close (statut ${balance.status ?? 'introuvable'}) — échéancier clôturé.`,
+      );
+      return 'skipped';
+    }
+
+    // Plafonnement sur ce qui reste RÉCLAMABLE, et non sur le solde constaté :
+    // un règlement partiel rend l'échéance trop élevée, et une échéance déjà
+    // partie chez Stripe consomme déjà une part du solde sans apparaître dans
+    // les Payment. Se fier à `balanceCents` ferait prélever deux échéances
+    // dues le même jour pour le montant entier chacune.
+    const amountToCharge = Math.min(inst.amountCents, balance.collectableCents);
+    if (amountToCharge < inst.amountCents) {
+      this.logger.warn(
+        `[echeancier] échéance ${inst.id} plafonnée à ${amountToCharge} cts ` +
+          `(planifié ${inst.amountCents}) : solde ${balance.balanceCents}, ` +
+          `dont ${balance.inFlightCents} déjà en cours de dénouement.`,
+      );
+    }
+
     try {
       const pi = await stripe.paymentIntents.create(
         {
-          amount: inst.amountCents,
+          amount: amountToCharge,
           currency: 'eur',
           customer: schedule.stripeCustomerId,
           payment_method: schedule.stripePaymentMethodId,
