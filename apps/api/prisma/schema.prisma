@@ -58,6 +58,7 @@ model Club {
   pricingRules                    ClubPricingRule[]
   invoices                        Invoice[]
   payments                        Payment[]
+  paymentSchedules                PaymentSchedule[]
   messageCampaigns                MessageCampaign[]
   accountingEntries               AccountingEntry[]
   grantApplications               GrantApplication[]
@@ -1535,13 +1536,14 @@ model Invoice {
   /// ne plus concaténer le motif dans le label de la facture.
   voidReason       String?
 
-  club           Club            @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  family         Family?         @relation(fields: [familyId], references: [id], onDelete: SetNull)
-  householdGroup HouseholdGroup? @relation(fields: [householdGroupId], references: [id], onDelete: SetNull)
-  clubSeason     ClubSeason?     @relation(fields: [clubSeasonId], references: [id], onDelete: SetNull)
-  lines          InvoiceLine[]
-  payments       Payment[]
-  membershipCart MembershipCart?
+  club            Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  family          Family?          @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  householdGroup  HouseholdGroup?  @relation(fields: [householdGroupId], references: [id], onDelete: SetNull)
+  clubSeason      ClubSeason?      @relation(fields: [clubSeasonId], references: [id], onDelete: SetNull)
+  lines           InvoiceLine[]
+  payments        Payment[]
+  paymentSchedule PaymentSchedule?
+  membershipCart  MembershipCart?
 
   parentInvoice Invoice?  @relation("InvoiceCreditNotes", fields: [parentInvoiceId], references: [id], onDelete: SetNull)
   creditNotes   Invoice[] @relation("InvoiceCreditNotes")
@@ -1574,14 +1576,15 @@ model Payment {
   stripeAccountId    String?
   createdAt          DateTime          @default(now())
 
-  club                    Club                     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  invoice                 Invoice                  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
-  paidByMember            Member?                  @relation("PaymentPaidByMember", fields: [paidByMemberId], references: [id], onDelete: SetNull)
-  paidByContact           Contact?                 @relation("PaymentPaidByContact", fields: [paidByContactId], references: [id], onDelete: SetNull)
-  financialAccount        ClubFinancialAccount?    @relation(fields: [financialAccountId], references: [id], onDelete: SetNull)
+  club                    Club                        @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  invoice                 Invoice                     @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  paidByMember            Member?                     @relation("PaymentPaidByMember", fields: [paidByMemberId], references: [id], onDelete: SetNull)
+  paidByContact           Contact?                    @relation("PaymentPaidByContact", fields: [paidByContactId], references: [id], onDelete: SetNull)
+  financialAccount        ClubFinancialAccount?       @relation(fields: [financialAccountId], references: [id], onDelete: SetNull)
   accountingEntries       AccountingEntry[]
   grantInstallments       GrantInstallment[]
   sponsorshipInstallments SponsorshipInstallment[]
+  scheduleInstallment     PaymentScheduleInstallment?
 
   @@index([clubId, createdAt])
   @@index([invoiceId])
@@ -1590,9 +1593,167 @@ model Payment {
   @@index([clubId, financialAccountId])
 }
 
+/// Moyen de prélèvement d'un échéancier (cf. ADR-0009).
+enum PaymentScheduleMethod {
+  /// Carte enregistrée via `setup_future_usage`, prélevée off-session.
+  /// Rapide à mettre en place, mais ~1,5 % + 0,25 € PAR échéance, et la
+  /// carte peut expirer en cours de saison.
+  CARD
+  /// Mandat SEPA Direct Debit (RUM). Quelques centimes par prélèvement et
+  /// pas d'expiration, mais préavis obligatoire et rejet plus lent.
+  SEPA_DEBIT
+}
+
+enum PaymentScheduleStatus {
+  /// Créé, mais aucun moyen de paiement utilisable n'est encore enregistré
+  /// (carte non validée, ou mandat SEPA non signé).
+  PENDING_SETUP
+  /// Opérationnel : les échéances sont prélevées à leur date d'exigibilité.
+  ACTIVE
+  /// Toutes les échéances sont encaissées.
+  COMPLETED
+  /// Interrompu : annulation, avoir, ou révocation du mandat par l'adhérent.
+  CANCELLED
+}
+
+enum PaymentScheduleInstallmentStatus {
+  /// Planifiée, pas encore due.
+  SCHEDULED
+  /// Prélèvement en cours. Sert de verrou : empêche qu'un second passage du
+  /// cron ne relance la même échéance et produise un double débit.
+  PROCESSING
+  /// Le prélèvement exige une authentification 3-D Secure de l'adhérent ;
+  /// il faut le recontacter avec un lien.
+  REQUIRES_ACTION
+  /// Encaissée — un `Payment` a été créé (seul cas où il en existe un).
+  PAID
+  /// Tentative échouée, une nouvelle est planifiée (`nextAttemptAt`).
+  FAILED_RETRYABLE
+  /// Échec définitif après épuisement des 3 tentatives : la facture reste
+  /// due et le trésorier est alerté.
+  FAILED_FINAL
+  /// Annulée parce que l'échéancier a été interrompu.
+  CANCELLED
+}
+
+/// Échéancier de paiement d'une facture (3×, ou mensualisation bornée par
+/// la saison). Cf. ADR-0009.
+///
+/// RÈGLE CENTRALE : ce modèle porte tout le cycle de vie AVANT encaissement.
+/// Une ligne `Payment` n'est créée que lorsque l'argent arrive réellement —
+/// sinon les soldes de facture et les écritures comptables seraient faux.
+model PaymentSchedule {
+  id        String                @id @default(uuid())
+  clubId    String
+  /// Un seul échéancier par facture.
+  invoiceId String                @unique
+  method    PaymentScheduleMethod
+  status    PaymentScheduleStatus @default(PENDING_SETUP)
+
+  /// Montant total couvert. INVARIANT : la somme des `amountCents` des
+  /// échéances doit toujours être exactement égale à ce total (la dernière
+  /// échéance absorbe le reliquat de la division).
+  totalCents       Int
+  installmentCount Int
+
+  /// Customer et moyen de paiement Stripe. ATTENTION : en direct charges
+  /// (ADR-0008) ils vivent sur le COMPTE CONNECTÉ du club, pas sur la
+  /// plateforme. Un adhérent présent dans deux clubs a donc deux Customers
+  /// distincts, sans lien entre eux.
+  stripeCustomerId      String?
+  stripePaymentMethodId String?
+  /// Compte connecté hébergeant le Customer — nécessaire pour rejouer un
+  /// prélèvement sur le bon compte si le club en change.
+  stripeAccountId       String?
+
+  /// SEPA uniquement : référence unique de mandat (RUM) et date d'acceptation.
+  sepaMandateReference  String?
+  sepaMandateAcceptedAt DateTime?
+
+  /// Renseigné quand l'échéancier est interrompu, pour tracer le pourquoi.
+  cancelledAt     DateTime?
+  cancelledReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  club         Club                         @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  invoice      Invoice                      @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  installments PaymentScheduleInstallment[]
+
+  @@index([clubId, status])
+}
+
+/// Une échéance d'un échéancier : son exigibilité, son état, et l'historique
+/// de ses tentatives de prélèvement.
+model PaymentScheduleInstallment {
+  id         String @id @default(uuid())
+  scheduleId String
+  clubId     String
+  /// Rang dans l'échéancier, de 1 à N.
+  seq        Int
+
+  /// Date d'exigibilité, au jour près : le moteur tourne à heure murale et
+  /// prélève toutes les échéances dues à cette date ou avant.
+  dueOn       DateTime                         @db.Date
+  amountCents Int
+  status      PaymentScheduleInstallmentStatus @default(SCHEDULED)
+
+  /// Politique d'échec (ADR-0009) : tentative initiale, puis J+3, puis J+7.
+  /// Au-delà de 3 tentatives → FAILED_FINAL + alerte trésorier.
+  attemptCount       Int       @default(0)
+  lastAttemptAt      DateTime?
+  nextAttemptAt      DateTime?
+  lastFailureCode    String?
+  lastFailureMessage String?
+
+  /// PaymentIntent de la tentative courante ou réussie.
+  stripePaymentIntentId String?
+  /// Clé d'idempotence envoyée à Stripe pour la tentative en cours. Elle
+  /// empêche qu'un rejeu du cron ou du webhook ne produise un DOUBLE DÉBIT.
+  lastIdempotencyKey    String?
+
+  /// Renseigné UNIQUEMENT lorsque l'argent est encaissé (cf. règle centrale).
+  paymentId String? @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  schedule PaymentSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  payment  Payment?        @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@unique([scheduleId, seq])
+  /// Le moteur cherche les échéances dues : (statut, date) est le chemin chaud.
+  @@index([status, dueOn])
+  /// Reprise des échecs planifiés.
+  @@index([status, nextAttemptAt])
+  @@index([clubId, status])
+}
+
 model StripeWebhookEvent {
   id          String   @id
   processedAt DateTime @default(now())
+}
+
+/// Verrou à bail pour les tâches planifiées (cf. ADR-0009).
+///
+/// Pourquoi une table plutôt que `pg_advisory_lock` : les verrous
+/// consultatifs Postgres sont liés à la SESSION. Avec le pool de connexions
+/// de Prisma, rien ne garantit que la libération s'exécute sur la même
+/// connexion que la prise — le verrou pourrait rester tenu indéfiniment.
+///
+/// Un bail en table est insensible au pooling, expire de lui-même si le
+/// process meurt en cours de route, et empêche aussi deux exécutions du même
+/// job de se chevaucher (cas réel : un run de prélèvement plus long que son
+/// intervalle de déclenchement).
+model SchedulerLock {
+  /// Identifiant logique du job (ex. « payment-schedule-run »).
+  key         String   @id
+  /// Tant que cette date est dans le futur, le verrou est considéré tenu.
+  lockedUntil DateTime
+  /// Détenteur courant (pid@host) — sert à diagnostiquer un verrou bloqué.
+  lockedBy    String
+  updatedAt   DateTime @updatedAt
 }
 
 // --- Phase F : Communication (campagnes, audience = groupes dynamiques) ---
