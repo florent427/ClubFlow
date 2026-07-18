@@ -177,6 +177,67 @@ describe('PaymentsService / encaissements manuels', () => {
     });
   });
 
+  it('paiement qui solde : clôture l’échéancier', async () => {
+    prisma.invoice.findFirst.mockResolvedValue(openInvoice);
+    prisma.payment.aggregate.mockResolvedValue({ _sum: { amountCents: 4000 } });
+    const tx = makeTx('pay-2', 6000);
+    prisma.$transaction.mockImplementation(
+      async (fn: (t: InvoiceTx) => Promise<unknown>) => fn(tx),
+    );
+
+    await service.recordManualPayment('club-1', {
+      invoiceId: 'inv-1',
+      amountCents: 6000,
+      method: ClubPaymentMethod.MANUAL_CASH,
+    });
+
+    expect(closeSchedule).toHaveBeenCalledWith('inv-1', InvoiceStatus.PAID);
+  });
+
+  it('ne clôture pas l’échéancier sur un paiement partiel', async () => {
+    prisma.invoice.findFirst.mockResolvedValue(openInvoice);
+    prisma.payment.aggregate.mockResolvedValue({ _sum: { amountCents: null } });
+    const tx = makeTx();
+    prisma.$transaction.mockImplementation(
+      async (fn: (t: InvoiceTx) => Promise<unknown>) => fn(tx),
+    );
+
+    await service.recordManualPayment('club-1', {
+      invoiceId: 'inv-1',
+      amountCents: 4000,
+      method: ClubPaymentMethod.MANUAL_TRANSFER,
+    });
+
+    expect(closeSchedule).not.toHaveBeenCalled();
+  });
+
+  it('clôture l’échéancier même si l’écriture comptable échoue', async () => {
+    // Régression : la clôture était placée APRÈS le hook comptable. Un club
+    // sans compte financier configuré le faisait échouer, et l'échéancier
+    // restait ACTIVE sur une facture soldée — l'état exact que le verrou doit
+    // empêcher. La sécurité financière ne dépend pas de la comptabilité.
+    prisma.invoice.findFirst.mockResolvedValue(openInvoice);
+    prisma.payment.aggregate.mockResolvedValue({ _sum: { amountCents: 4000 } });
+    const tx = makeTx('pay-3', 6000);
+    prisma.$transaction.mockImplementation(
+      async (fn: (t: InvoiceTx) => Promise<unknown>) => fn(tx),
+    );
+    accounting.recordIncomeFromPayment.mockRejectedValue(
+      new Error('Aucun compte financier configuré pour ce club.'),
+    );
+
+    await expect(
+      service.recordManualPayment('club-1', {
+        invoiceId: 'inv-1',
+        amountCents: 6000,
+        method: ClubPaymentMethod.MANUAL_CASH,
+      }),
+    ).rejects.toThrow('Aucun compte financier');
+
+    // L'échec comptable remonte bien, mais la clôture a eu lieu avant.
+    expect(closeSchedule).toHaveBeenCalledWith('inv-1', InvoiceStatus.PAID);
+  });
+
   it('refuse un payeur hors du foyer de la facture', async () => {
     prisma.invoice.findFirst.mockResolvedValue(openInvoice);
     prisma.member.findFirst.mockResolvedValue({
