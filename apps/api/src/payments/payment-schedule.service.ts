@@ -12,7 +12,7 @@ import {
 import Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { invoicePaymentTotals } from './invoice-totals';
-import { formatDueDate, formatEuros } from './payment-format';
+import { buildSetupNotice } from './payment-schedule-notice';
 import {
   buildInstallmentPlan,
   SEPA_PRENOTIFICATION_DAYS,
@@ -175,6 +175,12 @@ export class PaymentScheduleService {
       schedule.stripeCustomerId ??
       (await this.createCustomer(stripe, stripeAccount, schedule.id, clubId));
 
+    const setupNotice = buildSetupNotice({
+      clubName: schedule.invoice.club.name,
+      method: schedule.method,
+      installments: schedule.installments,
+    });
+
     const base = this.portalBaseUrl();
     const session = await stripe.checkout.sessions.create(
       {
@@ -197,7 +203,7 @@ export class PaymentScheduleService {
             invoiceId: schedule.invoiceId,
           },
         },
-        custom_text: this.setupCustomText(schedule),
+        ...(setupNotice ? { custom_text: { submit: { message: setupNotice } } } : {}),
         success_url: `${base}/facturation?echeancier=ok`,
         cancel_url: `${base}/facturation?echeancier=annule`,
       },
@@ -216,58 +222,6 @@ export class PaymentScheduleService {
     });
 
     return { url: session.url, sessionId: session.id };
-  }
-
-  /** Longueur maximale d'un `custom_text` Checkout, imposée par Stripe. */
-  private static readonly CUSTOM_TEXT_MAX = 1200;
-
-  /**
-   * Mention affichée au-dessus du bouton de validation, juste avant le mandat.
-   *
-   * Raison d'être : le mandat SEPA généré par Stripe nomme comme créancier
-   * l'identité DÉCLARÉE AU KYC du compte connecté (raison sociale, libellé de
-   * relevé) — ce qui est correct juridiquement, mais peut ne pas correspondre
-   * au nom sous lequel l'adhérent connaît son club dans ClubFlow. Un débiteur
-   * qui ne reconnaît pas le créancier conteste : le SEPA lui en laisse le
-   * droit pendant 8 semaines, sans motif à fournir.
-   *
-   * Cette mention fait donc le pont entre les deux noms, et récapitule les
-   * échéances pour que l'engagement soit chiffré avant signature. Elle ne
-   * redéfinit PAS le créancier — seul le mandat Stripe fait foi.
-   */
-  private setupCustomText(schedule: {
-    method: PaymentScheduleMethod;
-    invoice: { club: { name: string } };
-    installments: { amountCents: number; dueOn: Date }[];
-  }): Stripe.Checkout.SessionCreateParams.CustomText | undefined {
-    const clubName = schedule.invoice.club.name;
-    const count = schedule.installments.length;
-    if (count === 0) return undefined;
-
-    const total = schedule.installments.reduce(
-      (sum, i) => sum + i.amountCents,
-      0,
-    );
-    const first = schedule.installments[0]!;
-
-    const message =
-      schedule.method === PaymentScheduleMethod.SEPA_DEBIT
-        ? `Échéancier ${clubName} : ${count} prélèvements pour un total de ` +
-          `${formatEuros(total)} €, le premier le ${formatDueDate(first.dueOn)}. ` +
-          `Le mandat ci-dessous peut désigner ${clubName} sous sa raison ` +
-          `sociale, qui est aussi le libellé qui apparaîtra sur votre relevé ` +
-          `bancaire. Le détail des échéances vous est envoyé par e-mail dès la ` +
-          `signature. Vous pouvez révoquer ce mandat à tout moment auprès de ` +
-          `${clubName}.`
-        : `Échéancier ${clubName} : ${count} débits sur votre carte pour un ` +
-          `total de ${formatEuros(total)} €, le premier le ` +
-          `${formatDueDate(first.dueOn)}. Aucun montant n'est débité maintenant.`;
-
-    return {
-      submit: {
-        message: message.slice(0, PaymentScheduleService.CUSTOM_TEXT_MAX),
-      },
-    };
   }
 
   /** Crée le Customer sur le compte connecté et le mémorise. */
