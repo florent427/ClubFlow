@@ -12,6 +12,7 @@ import {
   type RefreshStripeConnectStatusMutationData,
   type StartStripeConnectOnboardingMutationData,
 } from '../../lib/stripe-connect-documents';
+import { hasMandateNameMismatch } from '../../lib/stripe-mandate-identity';
 import { QueryError } from '../../components/QueryError';
 import { useToast } from '../../components/ToastProvider';
 import { frenchError } from '../../lib/errors';
@@ -161,6 +162,17 @@ export function PaymentsSettingsPage() {
             onOpenDashboard={() => void handleOpenDashboard()}
           />
 
+          {/* L'identité KYC n'existe qu'à partir du moment où un compte est
+              créé — avant, il n'y a rien à vérifier. */}
+          {status.stripeAccountId ? (
+            <MandateIdentityCard
+              status={status}
+              busy={busy}
+              opening={opening}
+              onOpenDashboard={() => void handleOpenDashboard()}
+            />
+          ) : null}
+
           <div className="cf-stripe-connect__footer">
             <button
               type="button"
@@ -280,6 +292,107 @@ function StripeConnectPanel({
           disabled={busy}
         >
           {opening ? 'Ouverture…' : 'Ouvrir mon tableau de bord Stripe'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Identité déclarée au KYC Stripe — ce que l'adhérent verra réellement.
+ *
+ * En direct charges (ADR-0008), le club est marchand de référence : le mandat
+ * SEPA et le libellé du relevé bancaire portent l'identité du compte connecté,
+ * jamais `Club.name`. Un adhérent qui ne reconnaît pas ce nom peut contester
+ * le prélèvement — le SEPA lui en laisse le droit 8 semaines sans motif.
+ *
+ * Affichage seul : la raison sociale est une donnée KYC, elle ne se modifie
+ * que depuis le dashboard Express du club, jamais depuis ClubFlow.
+ */
+export function MandateIdentityCard({
+  status,
+  busy,
+  opening,
+  onOpenDashboard,
+}: {
+  status: ClubStripeConnectStatus;
+  busy: boolean;
+  opening: boolean;
+  onOpenDashboard: () => void;
+}) {
+  const { businessName, statementDescriptor, clubName } = status;
+  const mismatch = hasMandateNameMismatch(businessName, clubName);
+
+  return (
+    <div className="cf-card">
+      <h2>Identité vue par vos adhérents</h2>
+      <p className="muted">
+        Vos adhérents ne voient pas le nom du club tel qu'il est saisi dans
+        ClubFlow, mais l'identité déclarée à Stripe lors de votre inscription.
+        C'est ce nom qui figure sur le mandat de prélèvement qu'ils signent et
+        sur leur relevé bancaire.
+      </p>
+
+      <dl className="cf-stripe-connect__identity">
+        <div>
+          <dt>Raison sociale déclarée à Stripe</dt>
+          <dd>
+            {businessName ?? (
+              <span className="muted">
+                Pas encore renseignée dans votre dossier Stripe.
+              </span>
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt>Libellé sur le relevé bancaire</dt>
+          <dd>
+            {statementDescriptor ?? (
+              <span className="muted">
+                Pas encore défini — Stripe le dérivera de votre raison sociale.
+              </span>
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt>Nom du club dans ClubFlow</dt>
+          <dd>{clubName}</dd>
+        </div>
+      </dl>
+
+      {mismatch ? (
+        <div className="cf-alert cf-alert--warning" role="alert">
+          <span className="material-symbols-outlined" aria-hidden>
+            report
+          </span>
+          <div className="cf-alert__content">
+            <strong>
+              Ce nom ne correspond pas à celui de votre club dans ClubFlow
+            </strong>
+            <span>
+              Vos adhérents verront «&nbsp;{businessName}&nbsp;» sur leur mandat
+              et leur relevé, alors qu'ils vous connaissent sous
+              «&nbsp;{clubName}&nbsp;». Un adhérent qui ne reconnaît pas un
+              prélèvement peut le faire annuler par sa banque pendant huit
+              semaines, sans avoir à se justifier. Nous vous recommandons
+              d'aligner les deux noms.
+            </span>
+          </div>
+        </div>
+      ) : null}
+
+      <p className="cf-stripe-connect__hint">
+        Cette identité provient de votre dossier Stripe : elle ne peut être
+        modifiée que depuis votre tableau de bord Stripe, par le club lui-même.
+      </p>
+      <div className="cf-stripe-connect__actions">
+        <button
+          type="button"
+          className="cf-btn cf-btn--secondary"
+          onClick={onOpenDashboard}
+          disabled={busy}
+        >
+          {opening ? 'Ouverture…' : 'Modifier chez Stripe'}
         </button>
       </div>
     </div>

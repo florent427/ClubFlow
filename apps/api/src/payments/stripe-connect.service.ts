@@ -170,6 +170,16 @@ export class StripeConnectService {
         stripeChargesEnabled: chargesEnabled,
         stripePayoutsEnabled: account.payouts_enabled === true,
         stripeDetailsSubmitted: account.details_submitted === true,
+        // Identité vue par le débiteur. `?? null` et non `?? undefined` :
+        // si le club efface le champ chez Stripe, le miroir doit l'effacer
+        // aussi, sinon on continuerait d'afficher un nom qui n'existe plus.
+        stripeBusinessName: account.business_profile?.name ?? null,
+        stripeStatementDescriptor:
+          account.settings?.payments?.statement_descriptor ?? null,
+        // Témoin de synchro : marque l'identité comme « lue chez Stripe »,
+        // même si elle en revient vide (KYC incomplet). C'est lui qui empêche
+        // le rattrapage de se redéclencher indéfiniment.
+        stripeIdentitySyncedAt: new Date(),
         // Posé une seule fois, au premier passage en "encaissable".
         ...(chargesEnabled && !club.stripeOnboardedAt
           ? { stripeOnboardedAt: new Date() }

@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: 'jsdom',
-    include: ['src/**/*.test.ts'],
+    // `.tsx` inclus : les tests de rendu de composants portent l'extension JSX.
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
   },
 });

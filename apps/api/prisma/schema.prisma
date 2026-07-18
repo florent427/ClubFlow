@@ -33,16 +33,31 @@ model Club {
   /// plateforme. Null = club pas encore onboardé → le paiement en ligne est
   /// refusé explicitement (on ne retombe volontairement PAS sur un compte
   /// plateforme, ce serait de l'encaissement pour compte de tiers).
-  stripeAccountId        String?   @unique
+  stripeAccountId           String?   @unique
   /// Miroir local des capacités du compte connecté, synchronisé par le
   /// webhook `account.updated`. La source de vérité reste Stripe : ces
   /// champs servent à décider vite (afficher l'état, autoriser un checkout)
   /// sans appel API à chaque requête.
-  stripeChargesEnabled   Boolean   @default(false)
-  stripePayoutsEnabled   Boolean   @default(false)
-  stripeDetailsSubmitted Boolean   @default(false)
+  stripeChargesEnabled      Boolean   @default(false)
+  stripePayoutsEnabled      Boolean   @default(false)
+  stripeDetailsSubmitted    Boolean   @default(false)
   /// Horodatage du premier passage de `charges_enabled` à true.
-  stripeOnboardedAt      DateTime?
+  stripeOnboardedAt         DateTime?
+  /// Identité déclarée au KYC Stripe, telle qu'elle apparaît au débiteur.
+  /// En direct charges, c'est le compte connecté qui est marchand de
+  /// référence : le mandat SEPA et le relevé bancaire de l'adhérent portent
+  /// CES noms, pas `Club.name`. On les mire pour pouvoir alerter le trésorier
+  /// quand ils divergent — un adhérent qui ne reconnaît pas le libellé peut
+  /// contester le prélèvement (8 semaines sans motif en SEPA).
+  /// Données KYC : lecture seule ici, seul le club les modifie chez Stripe.
+  stripeBusinessName        String?
+  stripeStatementDescriptor String?
+  /// Date de la dernière synchro de l'identité ci-dessus. Null = jamais
+  /// synchronisée : distingue « pas encore lu chez Stripe » de « lu, mais le
+  /// club n'a rien renseigné ». Sans ce témoin, un club au KYC incomplet
+  /// (identité légitimement vide) déclencherait un appel Stripe à CHAQUE
+  /// affichage de la page, ce que le miroir local existe pour éviter.
+  stripeIdentitySyncedAt    DateTime?
 
   memberships     ClubMembership[]
   modules         ClubModule[]
