@@ -168,6 +168,127 @@ ${clubName}`,
   }
 
   /**
+   * Pré-notification SEPA, envoyée à la signature du mandat.
+   *
+   * Le schéma SEPA impose d'informer le débiteur du montant et de la date
+   * avant tout prélèvement. Pour un échéancier fixe, dont toutes les dates
+   * sont connues d'avance, un avis unique récapitulant l'ensemble des
+   * échéances couvre l'obligation — inutile d'écrire avant chacune.
+   *
+   * @returns true si l'avis est parti (l'appelant en trace la date, qui
+   *          constitue la preuve d'envoi).
+   */
+  async notifySepaPreNotification(scheduleId: string): Promise<boolean> {
+    try {
+      const schedule = await this.prisma.paymentSchedule.findUnique({
+        where: { id: scheduleId },
+        include: {
+          installments: { orderBy: { seq: 'asc' } },
+          invoice: {
+            include: {
+              club: { select: { name: true } },
+              family: {
+                include: {
+                  familyMembers: {
+                    where: { linkRole: FamilyMemberLinkRole.PAYER },
+                    include: {
+                      member: { select: { firstName: true, email: true } },
+                      contact: {
+                        select: {
+                          firstName: true,
+                          user: { select: { email: true } },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+      if (!schedule) return false;
+
+      const invoice = schedule.invoice;
+      const payerLink = invoice.family?.familyMembers?.[0];
+      const to =
+        payerLink?.contact?.user?.email ?? payerLink?.member?.email ?? null;
+      if (!to) {
+        this.logger.warn(
+          `[echeancier] pré-notification SEPA impossible pour ${scheduleId} : ` +
+            `aucun e-mail payeur. L'obligation d'information n'est pas remplie.`,
+        );
+        return false;
+      }
+
+      const firstName =
+        payerLink?.contact?.firstName ?? payerLink?.member?.firstName ?? '';
+      const profile = await this.domains.getVerifiedMailProfile(
+        schedule.clubId,
+        'transactional',
+      );
+
+      const rows = schedule.installments
+        .map(
+          (i) =>
+            `<tr><td>Échéance ${i.seq}</td><td>${i.dueOn.toLocaleDateString(
+              'fr-FR',
+            )}</td><td><strong>${euros(i.amountCents)} €</strong></td></tr>`,
+        )
+        .join('');
+      const lines = schedule.installments
+        .map(
+          (i) =>
+            `  ${i.seq}. ${i.dueOn.toLocaleDateString('fr-FR')} — ${euros(i.amountCents)} €`,
+        )
+        .join('\n');
+
+      await this.transport.sendEmail({
+        clubId: schedule.clubId,
+        kind: 'transactional',
+        from: profile.from,
+        to,
+        subject: `Avis de prélèvement — ${invoice.label}`,
+        html: `
+          <p>Bonjour ${escapeHtml(firstName)},</p>
+          <p>Vous venez d'autoriser <strong>${escapeHtml(invoice.club.name)}</strong>
+          à prélever votre compte pour <em>${escapeHtml(invoice.label)}</em>.</p>
+          <p>Voici le détail des prélèvements à venir, pour un total de
+          <strong>${euros(schedule.totalCents)} €</strong> :</p>
+          <table cellpadding="6" style="border-collapse:collapse">${rows}</table>
+          ${
+            schedule.sepaMandateReference
+              ? `<p style="color:#555">Référence de votre mandat :
+                 ${escapeHtml(schedule.sepaMandateReference)}</p>`
+              : ''
+          }
+          <p>Aucune démarche n'est nécessaire de votre part : les prélèvements
+          seront effectués automatiquement aux dates indiquées. Conservez ce
+          message, il vaut avis de prélèvement.</p>
+          <p>Cordialement,<br>${escapeHtml(invoice.club.name)}</p>
+        `,
+        text: `Bonjour ${firstName},
+
+Vous venez d'autoriser ${invoice.club.name} à prélever votre compte pour « ${invoice.label} ».
+
+Prélèvements à venir (total ${euros(schedule.totalCents)} €) :
+${lines}
+${schedule.sepaMandateReference ? `\nRéférence de votre mandat : ${schedule.sepaMandateReference}` : ''}
+
+Aucune démarche nécessaire : les prélèvements seront effectués automatiquement aux dates indiquées. Conservez ce message, il vaut avis de prélèvement.
+
+${invoice.club.name}`,
+      });
+      return true;
+    } catch (err) {
+      this.logger.warn(
+        `[echeancier] pré-notification SEPA impossible pour ${scheduleId} : ${(err as Error).message}`,
+      );
+      return false;
+    }
+  }
+
+  /**
    * Alerte le club après un échec DÉFINITIF.
    *
    * Sans ce message, une créance en échec définitif resterait invisible côté

@@ -415,10 +415,16 @@ export class PaymentScheduleEngineService {
         lastAttemptAt: { lt: new Date(now.getTime() - graceMs) },
         stripePaymentIntentId: { not: null },
       },
-      select: { id: true, clubId: true, stripePaymentIntentId: true },
+      select: {
+        id: true,
+        clubId: true,
+        stripePaymentIntentId: true,
+        schedule: { select: { stripeAccountId: true } },
+      },
       take: 200,
     });
 
+    const stripe = this.getStripe();
     let repaired = 0;
     for (const inst of stuck) {
       const payment = await this.prisma.payment.findFirst({
@@ -429,6 +435,21 @@ export class PaymentScheduleEngineService {
         select: { id: true },
       });
       if (!payment) {
+        // Pas de Payment : soit le webhook s'est perdu, soit — cas courant en
+        // SEPA — le prélèvement est encore EN COURS chez la banque, ce qui
+        // dure plusieurs jours. On demande son état à Stripe avant d'alerter,
+        // sinon on inonderait les logs à chaque passage pendant tout ce délai.
+        if (stripe && inst.schedule.stripeAccountId) {
+          try {
+            const pi = await stripe.paymentIntents.retrieve(
+              inst.stripePaymentIntentId!,
+              { stripeAccount: inst.schedule.stripeAccountId },
+            );
+            if (pi.status === 'processing') continue; // en vol, rien à faire
+          } catch {
+            // On retombe sur l'alerte ci-dessous.
+          }
+        }
         this.logger.warn(
           `[echeancier] échéance ${inst.id} bloquée en PROCESSING sans Payment ` +
             `pour ${inst.stripePaymentIntentId} — à vérifier côté Stripe.`,
@@ -442,6 +463,65 @@ export class PaymentScheduleEngineService {
       );
     }
     return repaired;
+  }
+
+  /**
+   * Un mandat SEPA a changé d'état (`mandate.updated`).
+   *
+   * Un mandat révoqué — l'adhérent peut le faire auprès de sa banque à tout
+   * moment — rend l'échéancier inutilisable. Continuer à prélever ne
+   * produirait que des rejets, facturés au club et pénalisants pour la
+   * réputation du compte.
+   *
+   * On repasse donc l'échéancier en PENDING_SETUP et on oublie le moyen de
+   * paiement : côté portail, l'adhérent retrouve alors l'encart
+   * « Enregistrement non terminé » et son bouton de reprise, donc un chemin
+   * explicite pour en fournir un nouveau. Les échéances déjà encaissées ne
+   * sont pas touchées.
+   */
+  async applyMandateUpdated(
+    mandate: Stripe.Mandate,
+    stripeAccountId: string | null,
+  ): Promise<void> {
+    if (mandate.status === 'active' || mandate.status === 'pending') return;
+
+    const paymentMethodId =
+      typeof mandate.payment_method === 'string'
+        ? mandate.payment_method
+        : (mandate.payment_method?.id ?? null);
+    if (!paymentMethodId) return;
+
+    const schedule = await this.prisma.paymentSchedule.findFirst({
+      where: {
+        stripePaymentMethodId: paymentMethodId,
+        status: PaymentScheduleStatus.ACTIVE,
+      },
+      select: { id: true, stripeAccountId: true },
+    });
+    if (!schedule) return;
+
+    // Garde-fou multi-tenant.
+    if (
+      stripeAccountId &&
+      schedule.stripeAccountId &&
+      schedule.stripeAccountId !== stripeAccountId
+    ) {
+      return;
+    }
+
+    await this.prisma.paymentSchedule.update({
+      where: { id: schedule.id },
+      data: {
+        status: PaymentScheduleStatus.PENDING_SETUP,
+        stripePaymentMethodId: null,
+        sepaMandateReference: null,
+        sepaMandateAcceptedAt: null,
+      },
+    });
+    this.logger.warn(
+      `[echeancier] mandat SEPA ${mandate.id} devenu ${mandate.status} — ` +
+        `échéancier ${schedule.id} remis en attente d'un moyen de paiement.`,
+    );
   }
 
   /**
