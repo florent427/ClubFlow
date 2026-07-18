@@ -680,23 +680,29 @@ export class PaymentsService {
       return p;
     });
 
-    await this.accounting.recordIncomeFromPayment(
-      clubId,
-      payment.id,
-      `Encaissement ${invoice.label}`,
-      payment.amountCents,
-    );
-
-    // Un règlement encaissé hors échéancier peut solder la facture. Sans cette
-    // clôture, le plan reste ACTIVE et le moteur continuerait de prélever une
-    // facture déjà payée. On se base sur le solde réel — avoirs déduits — et
-    // non sur le passage en PAID, qui ne couvre pas le cas d'un avoir.
+    // AVANT la comptabilité, et c'est délibéré. Un règlement encaissé hors
+    // échéancier peut solder la facture ; sans cette clôture, le plan reste
+    // ACTIVE et le moteur continuerait de prélever une facture déjà payée.
+    // Placée après le hook comptable, la clôture sautait dès que celui-ci
+    // échouait — un club sans compte financier configuré suffisait — et
+    // laissait exactement l'état dangereux qu'elle doit empêcher.
+    //
+    // On se base sur le solde réel, avoirs déduits, et non sur le passage en
+    // PAID : celui-ci repose sur une égalité stricte au montant nominal, qui
+    // ne couvre pas le cas d'un avoir.
     if (balanceCents - input.amountCents <= 0) {
       await this.scheduleEngine.closeScheduleForInvoice(
         invoice.id,
         InvoiceStatus.PAID,
       );
     }
+
+    await this.accounting.recordIncomeFromPayment(
+      clubId,
+      payment.id,
+      `Encaissement ${invoice.label}`,
+      payment.amountCents,
+    );
 
     return payment;
   }
