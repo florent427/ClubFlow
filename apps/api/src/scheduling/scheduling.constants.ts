@@ -14,4 +14,12 @@ export const SCHEDULING_TIMEZONE = 'Indian/Reunion';
 export const SCHEDULER_LOCK_KEYS = {
   /** Run quotidien de prélèvement des échéances dues (ADR-0009, lot 3). */
   paymentScheduleRun: 'payment-schedule-run',
+  /**
+   * Balayage des frais Stripe restant à récupérer (Phase 2).
+   *
+   * Verrou DISTINCT de celui du prélèvement, volontairement : un balayage de
+   * frais qui traîne ne doit jamais retarder un prélèvement dû, et le
+   * prélèvement tient son verrou jusqu'à 15 minutes.
+   */
+  stripeFeesSweep: 'stripe-fees-sweep',
 } as const;
