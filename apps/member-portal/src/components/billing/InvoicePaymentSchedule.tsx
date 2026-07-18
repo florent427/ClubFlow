@@ -12,6 +12,7 @@ import type {
   ViewerCreatePaymentScheduleData,
   ViewerInvoicePaymentScheduleData,
   ViewerPaymentSchedule,
+  ViewerPaymentScheduleInstallment,
   ViewerStartPaymentScheduleSetupData,
 } from '../../lib/viewer-types';
 import { formatEuroCents } from '../../lib/format';
@@ -65,6 +66,80 @@ function installmentBadgeModifier(
       return 'mp-badge--muted';
     default:
       return 'mp-badge--neutral';
+  }
+}
+
+/**
+ * Statuts qui demandent l'attention de l'adhérent, du plus grave au moins
+ * grave. L'ordre du tableau EST l'ordre de priorité d'affichage.
+ */
+const ATTENTION_STATUSES = [
+  'FAILED_FINAL',
+  'REQUIRES_ACTION',
+  'FAILED_RETRYABLE',
+] as const satisfies readonly PaymentScheduleInstallmentStatus[];
+
+type AttentionStatus = (typeof ATTENTION_STATUSES)[number];
+
+function isAttentionStatus(
+  status: PaymentScheduleInstallmentStatus,
+): status is AttentionStatus {
+  return (ATTENTION_STATUSES as readonly string[]).includes(status);
+}
+
+/** Surlignage de la ligne concernée, en écho au badge. */
+function installmentRowModifier(
+  status: PaymentScheduleInstallmentStatus,
+): string {
+  if (status === 'FAILED_FINAL') return 'mp-row--danger';
+  if (status === 'REQUIRES_ACTION' || status === 'FAILED_RETRYABLE') {
+    return 'mp-row--attention';
+  }
+  return '';
+}
+
+/**
+ * Le cas le plus grave présent dans l'échéancier, ou `null` si tout va bien.
+ * FAILED_FINAL > REQUIRES_ACTION > FAILED_RETRYABLE.
+ */
+function worstAttentionStatus(
+  installments: ViewerPaymentScheduleInstallment[],
+): AttentionStatus | null {
+  return (
+    ATTENTION_STATUSES.find((candidate) =>
+      installments.some((inst) => inst.status === candidate),
+    ) ?? null
+  );
+}
+
+/** Message contextuel affiché au-dessus du tableau des échéances. */
+function attentionNotice(status: AttentionStatus): {
+  title: string;
+  message: string;
+  tone: 'warn' | 'danger';
+} {
+  switch (status) {
+    case 'FAILED_FINAL':
+      return {
+        title: 'Un versement n’a pas pu être encaissé',
+        message:
+          'Un prélèvement n’a pas pu aboutir après plusieurs tentatives. Le montant reste dû : réglez-le depuis cette page ou contactez votre club.',
+        tone: 'danger',
+      };
+    case 'REQUIRES_ACTION':
+      return {
+        title: 'Votre banque attend votre confirmation',
+        message:
+          'Votre banque demande une confirmation. Réglez cette échéance depuis cette page pour valider l’opération.',
+        tone: 'warn',
+      };
+    case 'FAILED_RETRYABLE':
+      return {
+        title: 'Un prélèvement a été refusé',
+        message:
+          'Un prélèvement a été refusé. Une nouvelle tentative est prévue. Vérifiez que votre moyen de paiement est à jour.',
+        tone: 'warn',
+      };
   }
 }
 
@@ -197,7 +272,7 @@ export function InvoicePaymentSchedule({
 
   // Un échéancier existe déjà : on affiche son état, pas le formulaire.
   if (schedule) {
-    return <ScheduleRecap schedule={schedule} />;
+    return <ScheduleRecap schedule={schedule} onRefresh={() => void refetch()} />;
   }
 
   // Pas d'échéancier : proposition uniquement sur une facture à payer.
@@ -318,10 +393,53 @@ export function InvoicePaymentSchedule({
 }
 
 /** État d'un échéancier déjà créé + détail des échéances. */
-function ScheduleRecap({ schedule }: { schedule: ViewerPaymentSchedule }) {
+function ScheduleRecap({
+  schedule,
+  onRefresh,
+}: {
+  schedule: ViewerPaymentSchedule;
+  onRefresh: () => void;
+}) {
+  const { showToast } = useToast();
+  const [resuming, setResuming] = useState(false);
+  const [startSetup] = useMutation<ViewerStartPaymentScheduleSetupData>(
+    VIEWER_START_PAYMENT_SCHEDULE_SETUP,
+  );
+
   const paidCents = schedule.installments
     .filter((i) => i.status === 'PAID')
     .reduce((sum, i) => sum + i.amountCents, 0);
+
+  const attention = worstAttentionStatus(schedule.installments);
+  const notice = attention ? attentionNotice(attention) : null;
+
+  // Enregistrement interrompu : la mutation accepte de rejouer un échéancier
+  // qui attend encore son moyen de paiement, on renvoie donc l'adhérent sur
+  // la page sécurisée du prestataire.
+  async function handleResumeSetup(): Promise<void> {
+    if (resuming) return;
+    setResuming(true);
+    try {
+      const session = await startSetup({
+        variables: { scheduleId: schedule.id },
+      });
+      const url = session.data?.viewerStartPaymentScheduleSetup.url;
+      if (!url) {
+        throw new Error(
+          'La page d’enregistrement de votre moyen de paiement est indisponible. Réessayez dans quelques instants.',
+        );
+      }
+      window.location.href = url;
+    } catch (e) {
+      const msg =
+        e instanceof Error
+          ? e.message
+          : 'Impossible de reprendre l’enregistrement pour le moment.';
+      showToast(msg, 'error');
+      setResuming(false);
+      onRefresh();
+    }
+  }
 
   return (
     <div className="mp-subsection">
@@ -349,10 +467,33 @@ function ScheduleRecap({ schedule }: { schedule: ViewerPaymentSchedule }) {
       </dl>
 
       {schedule.status === 'PENDING_SETUP' ? (
-        <p className="mp-hint mp-hint--warn">
-          Votre moyen de paiement n’est pas encore enregistré : les
-          prélèvements ne démarreront qu’une fois cette étape terminée.
-        </p>
+        <div className="mp-hint mp-hint--block mp-hint--warn">
+          <strong>Enregistrement non terminé</strong>
+          <p>
+            Votre moyen de paiement n’est pas encore enregistré : les
+            prélèvements ne démarreront qu’une fois cette étape terminée. Vous
+            pouvez la reprendre là où vous vous étiez arrêté, aucun montant ne
+            sera débité maintenant.
+          </p>
+          <button
+            type="button"
+            className="mp-btn mp-btn-primary mp-btn-sm"
+            onClick={() => void handleResumeSetup()}
+            disabled={resuming}
+          >
+            {resuming ? 'Redirection…' : 'Reprendre l’enregistrement'}
+          </button>
+        </div>
+      ) : null}
+
+      {notice ? (
+        <div
+          className={`mp-hint mp-hint--block mp-hint--${notice.tone}`}
+          role="status"
+        >
+          <strong>{notice.title}</strong>
+          <p>{notice.message}</p>
+        </div>
       ) : null}
 
       <div className="mp-table-wrap">
@@ -367,7 +508,7 @@ function ScheduleRecap({ schedule }: { schedule: ViewerPaymentSchedule }) {
           </thead>
           <tbody>
             {schedule.installments.map((inst) => (
-              <tr key={inst.id}>
+              <tr key={inst.id} className={installmentRowModifier(inst.status)}>
                 <td>
                   {inst.seq} / {schedule.installmentCount}
                 </td>
@@ -377,6 +518,14 @@ function ScheduleRecap({ schedule }: { schedule: ViewerPaymentSchedule }) {
                   <span
                     className={`mp-badge ${installmentBadgeModifier(inst.status)}`}
                   >
+                    {isAttentionStatus(inst.status) ? (
+                      <span
+                        className="material-symbols-outlined"
+                        aria-hidden
+                      >
+                        error
+                      </span>
+                    ) : null}
                     {installmentStatusLabel(inst.status)}
                   </span>
                 </td>
