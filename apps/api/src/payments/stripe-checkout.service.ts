@@ -3,19 +3,27 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InvoiceStatus } from '@prisma/client';
+import { InvoiceStatus, PaymentScheduleStatus } from '@prisma/client';
 import Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { invoicePaymentTotals } from './invoice-totals';
+import { StripeConnectService } from './stripe-connect.service';
 
 /**
  * Crée des sessions Stripe Checkout pour régler une facture depuis le portail.
  * Le webhook `payment_intent.succeeded` (dans PaymentsService) prend le relai
  * pour enregistrer le Payment et marquer la facture comme PAID.
+ *
+ * Encaissement en *direct charges* sur le compte connecté du club
+ * (cf. ADR-0008) : la session est créée « au nom de » `acct_xxx`, donc les
+ * fonds arrivent chez le club et non sur le compte plateforme.
  */
 @Injectable()
 export class StripeCheckoutService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly connect: StripeConnectService,
+  ) {}
 
   private getStripe(): Stripe {
     const key = process.env.STRIPE_SECRET_KEY;
@@ -66,9 +74,28 @@ export class StripeCheckoutService {
         clubId: args.clubId,
         status: InvoiceStatus.OPEN,
       },
+      include: { paymentSchedule: { select: { status: true } } },
     });
     if (!invoice) {
       throw new NotFoundException('Facture introuvable ou déjà réglée.');
+    }
+
+    // Un échéancier en cours couvre DÉJÀ tout le solde de la facture. Laisser
+    // payer en plus, c'est encaisser deux fois : le paiement solde la facture
+    // mais n'éteint pas les échéances, que le moteur continue de prélever.
+    //
+    // Le contrôle est ici, dans le service, et non dans les resolvers : c'est
+    // le seul point de passage commun au portail, au mobile — y compris les
+    // versions déjà installées, qui affichent encore un bouton « payer le
+    // solde » — et à tout futur client.
+    const scheduleStatus = invoice.paymentSchedule?.status;
+    if (
+      scheduleStatus === PaymentScheduleStatus.ACTIVE ||
+      scheduleStatus === PaymentScheduleStatus.PENDING_SETUP
+    ) {
+      throw new BadRequestException(
+        'Cette facture est réglée par un échéancier. Annulez-le avant de payer le solde en une fois.',
+      );
     }
 
     const paidAgg = await this.prisma.payment.aggregate({
@@ -99,6 +126,15 @@ export class StripeCheckoutService {
     if (args.paidByMemberId) {
       metadata.paidByMemberId = args.paidByMemberId;
     }
+
+    // Compte connecté du club : throw explicite si l'onboarding Stripe
+    // n'est pas terminé. Pas de repli sur le compte plateforme (ADR-0008).
+    const stripeAccount = await this.connect.requireChargeableAccount(
+      args.clubId,
+    );
+    // Tracé dans les metadata pour que le webhook puisse vérifier que
+    // l'événement provient bien du compte attendu.
+    metadata.stripeAccountId = stripeAccount;
 
     const stripe = this.getStripe();
     const installmentsRequested =
@@ -137,7 +173,12 @@ export class StripeCheckoutService {
         : {}),
       success_url: successUrl,
       cancel_url: cancelUrl,
-    });
+    },
+    // Direct charge : la session vit sur le compte du club, les fonds y
+    // arrivent directement. `application_fee_amount` n'est volontairement
+    // pas envoyé — la commission plateforme n'est pas tranchée (ADR-0008),
+    // et ce montage permettra de l'ajouter sans migration.
+    { stripeAccount });
 
     if (!session.url) {
       throw new BadRequestException(

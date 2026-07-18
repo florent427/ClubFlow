@@ -526,6 +526,59 @@ export const VIEWER_CREATE_INVOICE_CHECKOUT_SESSION = gql`
   }
 `;
 
+/** Champs communs d'un échéancier (paiement en plusieurs fois). */
+const VIEWER_PAYMENT_SCHEDULE_FIELDS = `
+  id
+  invoiceId
+  method
+  status
+  totalCents
+  installmentCount
+  installments {
+    id
+    seq
+    dueOn
+    amountCents
+    status
+  }
+`;
+
+/** Échéancier d'une facture — renvoie null si la facture n'en a pas encore. */
+export const VIEWER_INVOICE_PAYMENT_SCHEDULE = gql`
+  query ViewerInvoicePaymentSchedule($invoiceId: String!) {
+    viewerInvoicePaymentSchedule(invoiceId: $invoiceId) {
+      ${VIEWER_PAYMENT_SCHEDULE_FIELDS}
+    }
+  }
+`;
+
+/** Crée l'échéancier (aucun débit à ce stade). */
+export const VIEWER_CREATE_PAYMENT_SCHEDULE = gql`
+  mutation ViewerCreatePaymentSchedule(
+    $invoiceId: String!
+    $method: PaymentScheduleMethod!
+    $installmentCount: Int!
+  ) {
+    viewerCreatePaymentSchedule(
+      invoiceId: $invoiceId
+      method: $method
+      installmentCount: $installmentCount
+    ) {
+      ${VIEWER_PAYMENT_SCHEDULE_FIELDS}
+    }
+  }
+`;
+
+/** Ouvre l'enregistrement du moyen de paiement chez Stripe (URL à suivre). */
+export const VIEWER_START_PAYMENT_SCHEDULE_SETUP = gql`
+  mutation ViewerStartPaymentScheduleSetup($scheduleId: String!) {
+    viewerStartPaymentScheduleSetup(scheduleId: $scheduleId) {
+      url
+      sessionId
+    }
+  }
+`;
+
 export const VIEWER_LOCK_INVOICE_PAYMENT_CHOICE = gql`
   mutation ViewerLockInvoicePaymentChoice(
     $invoiceId: String!

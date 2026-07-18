@@ -47,6 +47,16 @@ export function SettingsLayout() {
           Frais paiement
         </ModuleGatedNavLink>
         <ModuleGatedNavLink
+          to="/settings/payments"
+          modules={['PAYMENT']}
+          disabledClassName="members-subnav__link--disabled"
+          className={({ isActive }) =>
+            `members-subnav__link${isActive ? ' members-subnav__link--active' : ''}`
+          }
+        >
+          Paiements
+        </ModuleGatedNavLink>
+        <ModuleGatedNavLink
           to="/settings/mail-domain"
           modules={['COMMUNICATION']}
           disabledClassName="members-subnav__link--disabled"
