@@ -78,8 +78,11 @@ export function buildSetupNotice(args: {
     args.method === PaymentScheduleMethod.SEPA_DEBIT
       ? `Échéancier ${club} : ${count} ${plural(count, 'prélèvement')} pour un ` +
         `total de ${formatEuros(total)} €, le premier le ${firstDue}. ` +
+        // « proche du » et non « identique au » : le libellé de relevé est un
+        // champ distinct de la raison sociale côté Stripe (ex. raison sociale
+        // « SKSR », libellé « SKSR.RE »). Annoncer une égalité serait faux.
         `Le mandat ci-dessous peut désigner ${club} sous sa raison sociale, ` +
-        `qui est aussi le libellé qui apparaîtra sur votre relevé bancaire. ` +
+        `proche du libellé qui apparaîtra sur votre relevé bancaire. ` +
         `Le détail des échéances vous est envoyé par e-mail dès la signature. ` +
         `Vous pouvez révoquer ce mandat à tout moment auprès de ${club}.`
       : `Échéancier ${club} : ${count} ${plural(count, 'débit')} sur votre ` +
