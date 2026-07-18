@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InvoiceStatus } from '@prisma/client';
+import { InvoiceStatus, PaymentScheduleStatus } from '@prisma/client';
 import Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { invoicePaymentTotals } from './invoice-totals';
@@ -74,9 +74,28 @@ export class StripeCheckoutService {
         clubId: args.clubId,
         status: InvoiceStatus.OPEN,
       },
+      include: { paymentSchedule: { select: { status: true } } },
     });
     if (!invoice) {
       throw new NotFoundException('Facture introuvable ou déjà réglée.');
+    }
+
+    // Un échéancier en cours couvre DÉJÀ tout le solde de la facture. Laisser
+    // payer en plus, c'est encaisser deux fois : le paiement solde la facture
+    // mais n'éteint pas les échéances, que le moteur continue de prélever.
+    //
+    // Le contrôle est ici, dans le service, et non dans les resolvers : c'est
+    // le seul point de passage commun au portail, au mobile — y compris les
+    // versions déjà installées, qui affichent encore un bouton « payer le
+    // solde » — et à tout futur client.
+    const scheduleStatus = invoice.paymentSchedule?.status;
+    if (
+      scheduleStatus === PaymentScheduleStatus.ACTIVE ||
+      scheduleStatus === PaymentScheduleStatus.PENDING_SETUP
+    ) {
+      throw new BadRequestException(
+        'Cette facture est réglée par un échéancier. Annulez-le avant de payer le solde en une fois.',
+      );
     }
 
     const paidAgg = await this.prisma.payment.aggregate({
