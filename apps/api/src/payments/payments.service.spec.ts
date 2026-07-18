@@ -5,6 +5,7 @@ import Stripe from 'stripe';
 import { AccountingService } from '../accounting/accounting.service';
 import { DocumentsGatingService } from '../documents/documents-gating.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { PaymentScheduleEngineService } from './payment-schedule-engine.service';
 import { PaymentScheduleService } from './payment-schedule.service';
 import { PaymentsService } from './payments.service';
 import { StripeConnectService } from './stripe-connect.service';
@@ -21,6 +22,7 @@ describe('PaymentsService / Stripe webhook', () => {
   let documentsGating: { hasUnsignedRequiredDocuments: jest.Mock };
   let stripeConnect: { applyAccountUpdated: jest.Mock };
   let paymentSchedules: { applySetupCompleted: jest.Mock };
+  let scheduleEngine: { markInstallmentPaid: jest.Mock };
 
   beforeEach(async () => {
     process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_secret';
@@ -32,6 +34,7 @@ describe('PaymentsService / Stripe webhook', () => {
     };
     stripeConnect = { applyAccountUpdated: jest.fn().mockResolvedValue(undefined) };
     paymentSchedules = { applySetupCompleted: jest.fn().mockResolvedValue(undefined) };
+    scheduleEngine = { markInstallmentPaid: jest.fn().mockResolvedValue(undefined) };
     prisma = {
       stripeWebhookEvent: {
         findUnique: jest.fn().mockResolvedValue(null),
@@ -81,6 +84,7 @@ describe('PaymentsService / Stripe webhook', () => {
         // mais Nest exige que le constructeur soit résoluble.
         { provide: StripeConnectService, useValue: stripeConnect },
         { provide: PaymentScheduleService, useValue: paymentSchedules },
+        { provide: PaymentScheduleEngineService, useValue: scheduleEngine },
       ],
     }).compile();
 

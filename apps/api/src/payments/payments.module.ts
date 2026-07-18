@@ -10,6 +10,8 @@ import { InvoicePayerScopeService } from './invoice-payer-scope.service';
 import { InvoiceRemindersService } from './invoice-reminders.service';
 import { PaymentsResolver } from './payments.resolver';
 import { PaymentsService } from './payments.service';
+import { PaymentScheduleAdminResolver } from './payment-schedule-admin.resolver';
+import { PaymentScheduleEngineService } from './payment-schedule-engine.service';
 import { PaymentScheduleResolver } from './payment-schedule.resolver';
 import { PaymentScheduleService } from './payment-schedule.service';
 import { StripeCheckoutService } from './stripe-checkout.service';
@@ -34,7 +36,9 @@ import { StripeWebhookController } from './stripe-webhook.controller';
     StripeConnectService,
     StripeConnectResolver,
     PaymentScheduleService,
+    PaymentScheduleEngineService,
     PaymentScheduleResolver,
+    PaymentScheduleAdminResolver,
     InvoicePayerScopeService,
     InvoiceRemindersService,
     ClubModuleEnabledGuard,

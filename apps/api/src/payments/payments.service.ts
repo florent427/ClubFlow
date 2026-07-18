@@ -17,6 +17,7 @@ import { AccountingService } from '../accounting/accounting.service';
 import { DocumentsGatingService } from '../documents/documents-gating.service';
 import { ModuleCode } from '../domain/module-registry/module-codes';
 import { PrismaService } from '../prisma/prisma.service';
+import { PaymentScheduleEngineService } from './payment-schedule-engine.service';
 import { PaymentScheduleService } from './payment-schedule.service';
 import { StripeConnectService } from './stripe-connect.service';
 import { CreateInvoiceInput } from './dto/create-invoice.input';
@@ -54,6 +55,7 @@ export class PaymentsService {
     private readonly documentsGating: DocumentsGatingService,
     private readonly connect: StripeConnectService,
     private readonly paymentSchedules: PaymentScheduleService,
+    private readonly scheduleEngine: PaymentScheduleEngineService,
   ) {}
 
   /**
@@ -742,6 +744,12 @@ export class PaymentsService {
         pi.metadata.paidByMemberId.length > 0
           ? pi.metadata.paidByMemberId
           : null;
+      // Présent uniquement quand le paiement vient du moteur d'échéancier.
+      const installmentId =
+        typeof pi.metadata?.installmentId === 'string' &&
+        pi.metadata.installmentId.length > 0
+          ? pi.metadata.installmentId
+          : null;
       await this.applyStripePaymentSuccess(
         clubId,
         invoiceId,
@@ -749,6 +757,7 @@ export class PaymentsService {
         amount,
         paidByMemberId,
         eventAccount,
+        installmentId,
       );
     }
   }
@@ -760,6 +769,7 @@ export class PaymentsService {
     amountCents: number,
     paidByMemberId: string | null,
     stripeAccountId: string | null = null,
+    installmentId: string | null = null,
   ): Promise<void> {
     const invoice = await this.prisma.invoice.findFirst({
       where: { id: invoiceId, clubId, status: InvoiceStatus.OPEN },
@@ -848,6 +858,13 @@ export class PaymentsService {
       `Stripe — ${invoice.label}`,
       payment.amountCents,
     );
+
+    // Prélèvement d'échéancier : le Payment vient d'être créé, on peut donc
+    // solder l'échéance correspondante. Le moteur ne fait jamais cette
+    // écriture lui-même — un seul chemin crée un encaissement (ADR-0009).
+    if (installmentId) {
+      await this.scheduleEngine.markInstallmentPaid(installmentId, payment.id);
+    }
   }
 
   async countOutstandingInvoices(clubId: string): Promise<number> {
