@@ -374,6 +374,59 @@ export type ViewerCreateInvoiceCheckoutSessionData = {
   };
 };
 
+/* --- Paiement en plusieurs fois (échéanciers) --- */
+
+export type PaymentScheduleMethod = 'CARD' | 'SEPA_DEBIT';
+
+export type PaymentScheduleStatus =
+  | 'PENDING_SETUP'
+  | 'ACTIVE'
+  | 'COMPLETED'
+  | 'CANCELLED';
+
+export type PaymentScheduleInstallmentStatus =
+  | 'SCHEDULED'
+  | 'PROCESSING'
+  | 'REQUIRES_ACTION'
+  | 'PAID'
+  | 'FAILED_RETRYABLE'
+  | 'FAILED_FINAL'
+  | 'CANCELLED';
+
+export type ViewerPaymentScheduleInstallment = {
+  id: string;
+  seq: number;
+  dueOn: string;
+  amountCents: number;
+  status: PaymentScheduleInstallmentStatus;
+};
+
+export type ViewerPaymentSchedule = {
+  id: string;
+  invoiceId: string;
+  method: PaymentScheduleMethod;
+  status: PaymentScheduleStatus;
+  totalCents: number;
+  installmentCount: number;
+  installments: ViewerPaymentScheduleInstallment[];
+};
+
+/** `null` tant que la facture n'a pas d'échéancier. */
+export type ViewerInvoicePaymentScheduleData = {
+  viewerInvoicePaymentSchedule: ViewerPaymentSchedule | null;
+};
+
+export type ViewerCreatePaymentScheduleData = {
+  viewerCreatePaymentSchedule: ViewerPaymentSchedule;
+};
+
+export type ViewerStartPaymentScheduleSetupData = {
+  viewerStartPaymentScheduleSetup: {
+    url: string;
+    sessionId: string;
+  };
+};
+
 export type ViewerShopProductsData = { viewerShopProducts: ViewerShopProduct[] };
 export type ViewerShopOrdersData = { viewerShopOrders: ViewerShopOrder[] };
 export type ViewerPlaceShopOrderData = {

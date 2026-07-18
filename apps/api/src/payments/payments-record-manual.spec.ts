@@ -4,12 +4,14 @@ import { ClubPaymentMethod, InvoiceStatus } from '@prisma/client';
 import { AccountingService } from '../accounting/accounting.service';
 import { DocumentsGatingService } from '../documents/documents-gating.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { PaymentScheduleService } from './payment-schedule.service';
 import { PaymentsService } from './payments.service';
+import { StripeConnectService } from './stripe-connect.service';
 
 describe('PaymentsService / encaissements manuels', () => {
   let service: PaymentsService;
   let prisma: {
-    invoice: { findFirst: jest.Mock };
+    invoice: { findFirst: jest.Mock; aggregate: jest.Mock };
     member: { findFirst: jest.Mock };
     contact: { findFirst: jest.Mock };
     family: { findFirst: jest.Mock };
@@ -29,7 +31,12 @@ describe('PaymentsService / encaissements manuels', () => {
         .mockResolvedValue({ count: 0, documents: [] }),
     };
     prisma = {
-      invoice: { findFirst: jest.fn() },
+      invoice: {
+        findFirst: jest.fn(),
+        // Somme des avoirs (sumCreditNotesForInvoice) : aucun avoir dans ces
+        // scénarios, mais l'appel doit être mockable sinon le service casse.
+        aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: null } }),
+      },
       member: { findFirst: jest.fn() },
       contact: { findFirst: jest.fn() },
       family: {
@@ -52,6 +59,9 @@ describe('PaymentsService / encaissements manuels', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: AccountingService, useValue: accounting },
         { provide: DocumentsGatingService, useValue: documentsGating },
+        // Non exercées par ces specs, mais le constructeur doit être résoluble.
+        { provide: StripeConnectService, useValue: {} },
+        { provide: PaymentScheduleService, useValue: {} },
       ],
     }).compile();
 

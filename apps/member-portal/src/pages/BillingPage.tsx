@@ -15,6 +15,7 @@ import { LoadingState } from '../components/ui/LoadingState';
 import { ErrorState } from '../components/ui/ErrorState';
 import { useToast } from '../components/ToastProvider';
 import { DocumentsToSignBanner } from '../components/DocumentsToSignBanner';
+import { InvoicePaymentSchedule } from '../components/billing/InvoicePaymentSchedule';
 
 type StatusFilter = 'ALL' | 'OPEN' | 'PAID' | 'DRAFT';
 
@@ -367,6 +368,12 @@ export function BillingPage() {
                         </p>
                       </div>
                     ) : null}
+                    {/* Échéancier : proposé à côté du paiement comptant. */}
+                    <InvoicePaymentSchedule
+                      invoiceId={inv.id}
+                      balanceCents={inv.balanceCents}
+                      invoiceStatus={inv.status}
+                    />
                   </div>
                 ) : null}
               </li>

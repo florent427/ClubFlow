@@ -35,6 +35,7 @@ import {
   isStrictlyMinorProfile,
   shouldIncludeMemberInHouseholdViewerProfiles,
 } from '../families/viewer-profile-rules';
+import { InvoicePayerScopeService } from '../payments/invoice-payer-scope.service';
 import { invoicePaymentTotals } from '../payments/invoice-totals';
 import { StripeCheckoutService } from '../payments/stripe-checkout.service';
 import { PlanningService } from '../planning/planning.service';
@@ -88,6 +89,7 @@ export class ViewerService {
     private readonly membership: MembershipService,
     private readonly membershipCart: MembershipCartService,
     private readonly stripeCheckout: StripeCheckoutService,
+    private readonly payerScope: InvoicePayerScopeService,
     private readonly memberActivation: MemberAccountActivationService,
     private readonly documentsGating: DocumentsGatingService,
   ) {}
@@ -123,96 +125,9 @@ export class ViewerService {
     }
   }
 
-  /**
-   * Ensemble des foyers dont les factures sont accessibles au visiteur dans
-   * un groupe foyer étendu : foyers où il est payeur (PAYER) + foyers qui
-   * l'ont invité (invitation consommée). Modèle unilatéral.
-   */
-  private async computeVisibleFamilyIdsInGroup(
-    viewerUserId: string,
-    householdGroupId: string,
-  ): Promise<Set<string>> {
-    const [payer, invited] = await Promise.all([
-      this.families.viewerPayerFamilyIdsInHouseholdGroup(
-        viewerUserId,
-        householdGroupId,
-      ),
-      this.families.viewerInvitedFamilyIdsInHouseholdGroup(
-        viewerUserId,
-        householdGroupId,
-      ),
-    ]);
-    return new Set([...payer, ...invited]);
-  }
-
-  private async buildPayerInvoiceWhereForMember(
-    clubId: string,
-    memberId: string,
-    viewerUserId: string,
-  ): Promise<Prisma.InvoiceWhereInput | null> {
-    const memberFamilyLinks = await this.prisma.familyMember.findMany({
-      where: { memberId, family: { clubId } },
-      include: { family: { include: { householdGroup: true } } },
-    });
-    const householdGroup =
-      memberFamilyLinks
-        .map((l) => l.family.householdGroup)
-        .find((g) => g != null) ?? null;
-    if (householdGroup) {
-      const visibleFamilyIds = await this.computeVisibleFamilyIdsInGroup(
-        viewerUserId,
-        householdGroup.id,
-      );
-      return {
-        clubId,
-        ...buildInvoiceWhereForHouseholdGroup({
-          kind: 'householdGroup',
-          householdGroupId: householdGroup.id,
-          carrierFamilyId: householdGroup.carrierFamilyId ?? null,
-          visibleFamilyIds,
-        }),
-      };
-    }
-    const payerLink = memberFamilyLinks.find(
-      (l) => l.linkRole === FamilyMemberLinkRole.PAYER,
-    );
-    if (!payerLink) return null;
-    return { clubId, familyId: payerLink.familyId };
-  }
-
-  private async buildPayerInvoiceWhereForContact(
-    clubId: string,
-    contactId: string,
-    viewerUserId: string,
-  ): Promise<Prisma.InvoiceWhereInput | null> {
-    const link = await this.prisma.familyMember.findFirst({
-      where: {
-        contactId,
-        linkRole: FamilyMemberLinkRole.PAYER,
-        family: { clubId },
-        contact: { userId: viewerUserId },
-      },
-      include: { family: { include: { householdGroup: true } } },
-    });
-    if (!link) return null;
-    const householdGroup = link.family.householdGroup;
-    if (householdGroup) {
-      const visibleFamilyIds = await this.computeVisibleFamilyIdsInGroup(
-        viewerUserId,
-        householdGroup.id,
-      );
-      return {
-        clubId,
-        ...buildInvoiceWhereForHouseholdGroup({
-          kind: 'householdGroup',
-          householdGroupId: householdGroup.id,
-          carrierFamilyId: householdGroup.carrierFamilyId ?? null,
-          visibleFamilyIds,
-        }),
-      };
-    }
-    return { clubId, familyId: link.familyId };
-  }
+  // Le périmètre payeur vit désormais dans `InvoicePayerScopeService`
+  // (payments/) : l'échéancier du portail applique EXACTEMENT la même règle,
+  // et une seule implémentation évite qu'elles divergent.
 
   async viewerCreateInvoiceCheckoutSession(args: {
     clubId: string;
@@ -222,19 +137,11 @@ export class ViewerService {
     /** 1 = paiement comptant. 3 = échelonnement Stripe (carte 3 fois). */
     installmentsCount?: number;
   }): Promise<{ url: string; sessionId: string }> {
-    const where = args.activeProfile.memberId
-      ? await this.buildPayerInvoiceWhereForMember(
-          args.clubId,
-          args.activeProfile.memberId,
-          args.viewerUserId,
-        )
-      : args.activeProfile.contactId
-        ? await this.buildPayerInvoiceWhereForContact(
-            args.clubId,
-            args.activeProfile.contactId,
-            args.viewerUserId,
-          )
-        : null;
+    const where = await this.payerScope.resolvePayerInvoiceWhere({
+      clubId: args.clubId,
+      activeProfile: args.activeProfile,
+      viewerUserId: args.viewerUserId,
+    });
     if (!where) {
       throw new BadRequestException(
         'Seul le payeur du foyer peut régler une facture en ligne.',
@@ -295,19 +202,11 @@ export class ViewerService {
     installmentsCount: number;
     instructions: string;
   }> {
-    const where = args.activeProfile.memberId
-      ? await this.buildPayerInvoiceWhereForMember(
-          args.clubId,
-          args.activeProfile.memberId,
-          args.viewerUserId,
-        )
-      : args.activeProfile.contactId
-        ? await this.buildPayerInvoiceWhereForContact(
-            args.clubId,
-            args.activeProfile.contactId,
-            args.viewerUserId,
-          )
-        : null;
+    const where = await this.payerScope.resolvePayerInvoiceWhere({
+      clubId: args.clubId,
+      activeProfile: args.activeProfile,
+      viewerUserId: args.viewerUserId,
+    });
     if (!where) {
       throw new BadRequestException(
         'Seul le payeur du foyer peut choisir un mode de règlement.',

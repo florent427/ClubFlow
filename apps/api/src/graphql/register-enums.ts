@@ -26,6 +26,9 @@ import {
   MemberStatus,
   MembershipRole,
   MessageCampaignStatus,
+  PaymentScheduleInstallmentStatus,
+  PaymentScheduleMethod,
+  PaymentScheduleStatus,
   PricingAdjustmentType,
   SponsorshipDealStatus,
   SponsorshipDocumentKind,
@@ -69,6 +72,11 @@ registerEnumType(InvoiceLineAdjustmentType, {
   name: 'InvoiceLineAdjustmentType',
 });
 registerEnumType(ClubPaymentMethod, { name: 'ClubPaymentMethod' });
+registerEnumType(PaymentScheduleMethod, { name: 'PaymentScheduleMethod' });
+registerEnumType(PaymentScheduleStatus, { name: 'PaymentScheduleStatus' });
+registerEnumType(PaymentScheduleInstallmentStatus, {
+  name: 'PaymentScheduleInstallmentStatus',
+});
 registerEnumType(PricingAdjustmentType, {
   name: 'PricingAdjustmentType',
 });
