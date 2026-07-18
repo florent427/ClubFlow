@@ -9,6 +9,31 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.21.0](https://github.com/florent427/ClubFlow/compare/v0.20.1...v0.21.0) (2026-07-18)
+
+
+### ✨ Features
+
+* **payments,admin:** afficher l'identité Stripe portée par le mandat SEPA ([7d95e82](https://github.com/florent427/ClubFlow/commit/7d95e82a12aa0ee7071dcdc626824120968da344))
+* **payments,admin:** Stripe Connect Express — encaissement sur le compte du club ([da586fc](https://github.com/florent427/ClubFlow/commit/da586fc8a18d87d9aecace9dc6bdc67c943fb5cc))
+* **payments,portail:** alerte trésorier, relance 3-D Secure et lisibilité des échecs (lot 4) ([f8154d3](https://github.com/florent427/ClubFlow/commit/f8154d3c43796354f7cadfd4447365e0f468b260))
+* **payments,portail:** échéancier — exposition GraphQL et parcours adhérent (lot 2) ([4f98d00](https://github.com/florent427/ClubFlow/commit/4f98d00aff4963d10098f4aa63da8969bea0e7be))
+* **payments:** gestion des échecs de prélèvement — webhooks asynchrones, relances, 3-D Secure (lot 4) ([af8b254](https://github.com/florent427/ClubFlow/commit/af8b25435f4900a3d607bcb025ce7c9e24140fc8))
+* **payments:** mention explicite du club avant la signature du mandat SEPA ([16bffca](https://github.com/florent427/ClubFlow/commit/16bffcacaaee1c6bbf364897bb665a92278d5706))
+* **payments:** moteur de prélèvement des échéances (lot 3) ([aefb815](https://github.com/florent427/ClubFlow/commit/aefb815f02199704ea64ba10300e118d34a6dc76))
+* **payments:** SEPA — avis de prélèvement, mandat révoqué, rattrapage tolérant au délai bancaire ([8c5d38b](https://github.com/florent427/ClubFlow/commit/8c5d38b24f1b08a2c359d86e03a4d36bc6c376fc))
+* **payments:** socle de l'échéancier de paiement (ADR-0009 + modèle + planification) ([aea4e0f](https://github.com/florent427/ClubFlow/commit/aea4e0f998b4bfa44c9a936bb2e2e2d8d690e0e5))
+* **payments:** Stripe Connect Express + échéancier de prélèvement ([d08239a](https://github.com/florent427/ClubFlow/commit/d08239a3a2f55688b24b1db3ca88589df59a663c))
+
+
+### 🐛 Bug Fixes
+
+* **payments:** clôturer l'échéancier avant l'écriture comptable, pas après ([80c710d](https://github.com/florent427/ClubFlow/commit/80c710d9d50e93951d91d9a66d3b5bd0c6c6ec57))
+* **payments:** empêcher le double encaissement d'une facture échelonnée ([db465e4](https://github.com/florent427/ClubFlow/commit/db465e4300628f37eb63757df5722552a45d64b4))
+* **payments:** n'annoncer que les échéances restant à prélever ([425c73a](https://github.com/florent427/ClubFlow/commit/425c73a548787085634e2af69d6e9b4008cadbdd))
+* **payments:** ne plus affirmer que raison sociale et libellé de relevé sont identiques ([caf0d77](https://github.com/florent427/ClubFlow/commit/caf0d77444d6618e7d944c3548c8df2ed5ca54a2))
+* **payments:** ne plus perdre le travail d'un webhook qui échoue + rattraper les échéances bloquées ([66217b7](https://github.com/florent427/ClubFlow/commit/66217b7d4303bb654b28176feb45b244a605a159))
+
 ## [0.20.1](https://github.com/florent427/ClubFlow/compare/v0.20.0...v0.20.1) (2026-07-17)
 
 
