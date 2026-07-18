@@ -52,6 +52,13 @@ CLUB_ID=a8a1041c-ec1e-4e4d-a1cc-cd58247cf982
 ADMIN_WEB_ORIGIN=https://clubflow.topdigital.re,https://portail.clubflow.topdigital.re,https://sksr.re,https://www.sksr.re,http://localhost:5173,http://localhost:5174,http://localhost:5175
 CORS_ALLOW_NO_ORIGIN=true
 
+API_PUBLIC_URL=https://api.clubflow.topdigital.re
+
+AI_SECRETS_KEY=CHANGE_ME_32B_BASE64
+
+STRIPE_SECRET_KEY=sk_live_CHANGE_ME
+STRIPE_WEBHOOK_SECRET=whsec_CHANGE_ME
+
 SMTP_HOST=
 SMTP_PORT=
 SMTP_USER=
@@ -63,6 +70,25 @@ chmod 600 /home/clubflow/clubflow/apps/api/.env'
 ⚠️ **CORS_ALLOW_NO_ORIGIN=true** est obligatoire — sinon vitrine SSR (Next.js
 server-to-server vers API) reçoit `500 "Not allowed by CORS"`.
 Cf. `pitfalls/cors-no-origin-prod.md`.
+
+⚠️ **API_PUBLIC_URL** : si absent, les URLs de médias sont stockées en
+`http://localhost:3000/media/<id>`, non joignables depuis le navigateur →
+« failed to fetch » sur les Documents (éditeur de champs PDF) et images
+d'illustration cassées.
+
+🔴 **AI_SECRETS_KEY** — clé maîtresse qui **déchiffre tous les secrets
+stockés par club** (clé OpenRouter de l'IA, et tout futur secret PSP).
+Si elle est perdue, ces secrets sont **irrécupérables** : il faut les
+re-saisir club par club. Elle n'est présente dans aucun autre fichier du
+repo — **conserver impérativement une copie dans le gestionnaire de mots
+de passe.** Générer avec `openssl rand -base64 32`.
+
+⚠️ **STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET** : sans elles, le paiement
+en ligne (Checkout adhésion) et le webhook d'encaissement sont HS — les
+factures ne passeront jamais en `PAID` et aucune écriture comptable ne sera
+générée. Le webhook secret est celui de l'endpoint `POST /webhooks/stripe`
+(Stripe Dashboard → Developers → Webhooks). Cf.
+[ADR-0008](../memory/decisions/0008-stripe-connect-express.md).
 
 ### 3. Reconstruire `apps/admin/.env.production`
 
