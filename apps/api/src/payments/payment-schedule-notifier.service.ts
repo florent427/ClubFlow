@@ -4,6 +4,7 @@ import { ClubSendingDomainService } from '../mail/club-sending-domain.service';
 import { MAIL_TRANSPORT } from '../mail/mail.constants';
 import type { MailTransport } from '../mail/mail-transport.interface';
 import { PrismaService } from '../prisma/prisma.service';
+import { formatDueDate, formatEuros } from './payment-format';
 
 function escapeHtml(s: string): string {
   return s
@@ -13,9 +14,9 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function euros(cents: number): string {
-  return (cents / 100).toFixed(2).replace('.', ',');
-}
+// Partagés avec le mandat SEPA affiché par Checkout : l'avis et le mandat
+// doivent annoncer les mêmes montants aux mêmes dates (cf. payment-format.ts).
+const euros = formatEuros;
 
 /**
  * Courriers liés aux échéanciers (cf. ADR-0009, lot 4).
@@ -231,15 +232,14 @@ ${clubName}`,
       const rows = schedule.installments
         .map(
           (i) =>
-            `<tr><td>Échéance ${i.seq}</td><td>${i.dueOn.toLocaleDateString(
-              'fr-FR',
-            )}</td><td><strong>${euros(i.amountCents)} €</strong></td></tr>`,
+            `<tr><td>Échéance ${i.seq}</td><td>${formatDueDate(i.dueOn)}</td>` +
+            `<td><strong>${euros(i.amountCents)} €</strong></td></tr>`,
         )
         .join('');
       const lines = schedule.installments
         .map(
           (i) =>
-            `  ${i.seq}. ${i.dueOn.toLocaleDateString('fr-FR')} — ${euros(i.amountCents)} €`,
+            `  ${i.seq}. ${formatDueDate(i.dueOn)} — ${euros(i.amountCents)} €`,
         )
         .join('\n');
 
