@@ -8,6 +8,8 @@ import { InvoiceRemindersService } from './invoice-reminders.service';
 import { PaymentsResolver } from './payments.resolver';
 import { PaymentsService } from './payments.service';
 import { StripeCheckoutService } from './stripe-checkout.service';
+import { StripeConnectResolver } from './stripe-connect.resolver';
+import { StripeConnectService } from './stripe-connect.service';
 import { StripeWebhookController } from './stripe-webhook.controller';
 
 @Module({
@@ -17,9 +19,16 @@ import { StripeWebhookController } from './stripe-webhook.controller';
     PaymentsService,
     PaymentsResolver,
     StripeCheckoutService,
+    StripeConnectService,
+    StripeConnectResolver,
     InvoiceRemindersService,
     ClubModuleEnabledGuard,
   ],
-  exports: [PaymentsService, StripeCheckoutService, InvoiceRemindersService],
+  exports: [
+    PaymentsService,
+    StripeCheckoutService,
+    StripeConnectService,
+    InvoiceRemindersService,
+  ],
 })
 export class PaymentsModule {}

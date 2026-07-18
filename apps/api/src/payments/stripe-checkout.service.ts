@@ -7,15 +7,23 @@ import { InvoiceStatus } from '@prisma/client';
 import Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { invoicePaymentTotals } from './invoice-totals';
+import { StripeConnectService } from './stripe-connect.service';
 
 /**
  * Crée des sessions Stripe Checkout pour régler une facture depuis le portail.
  * Le webhook `payment_intent.succeeded` (dans PaymentsService) prend le relai
  * pour enregistrer le Payment et marquer la facture comme PAID.
+ *
+ * Encaissement en *direct charges* sur le compte connecté du club
+ * (cf. ADR-0008) : la session est créée « au nom de » `acct_xxx`, donc les
+ * fonds arrivent chez le club et non sur le compte plateforme.
  */
 @Injectable()
 export class StripeCheckoutService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly connect: StripeConnectService,
+  ) {}
 
   private getStripe(): Stripe {
     const key = process.env.STRIPE_SECRET_KEY;
@@ -100,6 +108,15 @@ export class StripeCheckoutService {
       metadata.paidByMemberId = args.paidByMemberId;
     }
 
+    // Compte connecté du club : throw explicite si l'onboarding Stripe
+    // n'est pas terminé. Pas de repli sur le compte plateforme (ADR-0008).
+    const stripeAccount = await this.connect.requireChargeableAccount(
+      args.clubId,
+    );
+    // Tracé dans les metadata pour que le webhook puisse vérifier que
+    // l'événement provient bien du compte attendu.
+    metadata.stripeAccountId = stripeAccount;
+
     const stripe = this.getStripe();
     const installmentsRequested =
       typeof args.installmentsCount === 'number' && args.installmentsCount > 1;
@@ -137,7 +154,12 @@ export class StripeCheckoutService {
         : {}),
       success_url: successUrl,
       cancel_url: cancelUrl,
-    });
+    },
+    // Direct charge : la session vit sur le compte du club, les fonds y
+    // arrivent directement. `application_fee_amount` n'est volontairement
+    // pas envoyé — la commission plateforme n'est pas tranchée (ADR-0008),
+    // et ce montage permettra de l'ajouter sans migration.
+    { stripeAccount });
 
     if (!session.url) {
       throw new BadRequestException(

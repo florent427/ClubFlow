@@ -27,6 +27,23 @@ model Club {
   /// E-mail de contact du club affiché sur l'en-tête de facture.
   contactEmail  String?
 
+  /// === Stripe Connect Express (cf. ADR-0008) ===
+  /// Compte connecté du club (`acct_xxx`). L'encaissement se fait EN DIRECT
+  /// sur ce compte (direct charges) : l'argent va au club, jamais à la
+  /// plateforme. Null = club pas encore onboardé → le paiement en ligne est
+  /// refusé explicitement (on ne retombe volontairement PAS sur un compte
+  /// plateforme, ce serait de l'encaissement pour compte de tiers).
+  stripeAccountId        String?   @unique
+  /// Miroir local des capacités du compte connecté, synchronisé par le
+  /// webhook `account.updated`. La source de vérité reste Stripe : ces
+  /// champs servent à décider vite (afficher l'état, autoriser un checkout)
+  /// sans appel API à chaque requête.
+  stripeChargesEnabled   Boolean   @default(false)
+  stripePayoutsEnabled   Boolean   @default(false)
+  stripeDetailsSubmitted Boolean   @default(false)
+  /// Horodatage du premier passage de `charges_enabled` à true.
+  stripeOnboardedAt      DateTime?
+
   memberships     ClubMembership[]
   modules         ClubModule[]
   gradeLevels     GradeLevel[]
@@ -1550,6 +1567,11 @@ model Payment {
   /// Null = legacy ou paiement créé avant configuration multi-comptes.
   /// Résolu via `ClubFinancialAccountsService.resolveForPayment(clubId, method)`.
   financialAccountId String?
+  /// Compte Stripe sur lequel l'encaissement a réellement eu lieu
+  /// (`acct_xxx` du club, cf. ADR-0008). Indispensable pour rembourser sur
+  /// le BON compte si le club change de compte connecté par la suite.
+  /// Null = paiement non-Stripe (espèces, chèque, virement).
+  stripeAccountId    String?
   createdAt          DateTime          @default(now())
 
   club                    Club                     @relation(fields: [clubId], references: [id], onDelete: Cascade)
