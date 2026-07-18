@@ -12,6 +12,7 @@ import { PaymentsResolver } from './payments.resolver';
 import { PaymentsService } from './payments.service';
 import { PaymentScheduleAdminResolver } from './payment-schedule-admin.resolver';
 import { PaymentScheduleEngineService } from './payment-schedule-engine.service';
+import { PaymentScheduleNotifierService } from './payment-schedule-notifier.service';
 import { PaymentScheduleResolver } from './payment-schedule.resolver';
 import { PaymentScheduleService } from './payment-schedule.service';
 import { StripeCheckoutService } from './stripe-checkout.service';
@@ -37,6 +38,7 @@ import { StripeWebhookController } from './stripe-webhook.controller';
     StripeConnectResolver,
     PaymentScheduleService,
     PaymentScheduleEngineService,
+    PaymentScheduleNotifierService,
     PaymentScheduleResolver,
     PaymentScheduleAdminResolver,
     InvoicePayerScopeService,

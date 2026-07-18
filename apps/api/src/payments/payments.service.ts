@@ -749,6 +749,28 @@ export class PaymentsService {
       return;
     }
 
+    // Échec de prélèvement signalé après coup. Vital pour le SEPA, dont le
+    // rejet survient plusieurs jours après l'ordre : sans ça, l'échéance
+    // resterait bloquée en PROCESSING indéfiniment.
+    if (event.type === 'payment_intent.payment_failed') {
+      const pi = event.data.object as Stripe.PaymentIntent;
+      await this.scheduleEngine.applyAsyncFailure({
+        paymentIntentId: pi.id,
+        stripeAccountId: eventAccount,
+        code: pi.last_payment_error?.code ?? 'payment_failed',
+        message:
+          pi.last_payment_error?.message ?? 'Prélèvement refusé par la banque',
+      });
+      return;
+    }
+
+    // Le prélèvement off-session réclame une authentification forte.
+    if (event.type === 'payment_intent.requires_action') {
+      const pi = event.data.object as Stripe.PaymentIntent;
+      await this.scheduleEngine.applyRequiresAction(pi.id, eventAccount);
+      return;
+    }
+
     if (event.type === 'payment_intent.succeeded') {
       const pi = event.data.object as Stripe.PaymentIntent;
       const invoiceId = pi.metadata?.invoiceId;

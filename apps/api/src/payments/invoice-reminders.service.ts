@@ -178,8 +178,17 @@ export class InvoiceRemindersService {
     const payerFirstName =
       payer?.contact?.firstName ?? payer?.member?.firstName ?? 'Bonjour';
 
-    const portalUrl = process.env.MEMBER_PORTAL_ORIGIN ?? 'http://localhost:5174';
-    const invoiceUrl = `${portalUrl}/factures/${invoice.id}`;
+    // MEMBER_PORTAL_ORIGIN peut contenir une liste séparée par des virgules
+    // et/ou un slash final : sans nettoyage, le lien du mail est cassé.
+    const portalUrl = (
+      process.env.MEMBER_PORTAL_ORIGIN ?? 'http://localhost:5174'
+    )
+      .split(',')[0]!
+      .trim()
+      .replace(/\/+$/, '');
+    // La route `/factures/:id` n'existe pas dans le portail : seule
+    // `/facturation` est déclarée. Le lien renvoyait donc vers une page vide.
+    const invoiceUrl = `${portalUrl}/facturation`;
     const amountEuros = (balanceCents / 100).toFixed(2).replace('.', ',');
 
     const profile = await this.domains.getVerifiedMailProfile(
