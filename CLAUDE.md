@@ -46,7 +46,8 @@ docs/
 │   ├── rotate-secrets.md     rotation sécurité
 │   ├── add-new-club.md       onboarder un nouveau club
 │   ├── add-new-app.md        ajouter une app au monorepo
-│   └── seed-vitrine-pages.md créer pages vitrine + flush cache
+│   ├── seed-vitrine-pages.md créer pages vitrine + flush cache
+│   └── agent-ia-acces-donnees.md  lire les données via l'API (JWT + x-club-id)
 │
 └── memory/             ← apprentissages cumulés (le vrai cerveau)
     ├── INDEX.md              ⚠️ auto-généré par bin/memory-index
