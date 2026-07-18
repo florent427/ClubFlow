@@ -1589,6 +1589,31 @@ model Payment {
   /// le BON compte si le club change de compte connecté par la suite.
   /// Null = paiement non-Stripe (espèces, chèque, virement).
   stripeAccountId    String?
+
+  /// Frais Stripe réellement prélevés sur cet encaissement, en centimes.
+  ///
+  /// Stocké sur le Payment et pas seulement en écriture comptable : la
+  /// comptabilisation est un no-op quand le module compta du club est
+  /// désactivé, et l'information serait alors définitivement perdue — il
+  /// faudrait réinterroger l'API Stripe compte par compte pour la retrouver.
+  /// L'écriture comptable est une PROJECTION de cette donnée, pas sa source.
+  ///
+  /// Ne compte que les frais Stripe proprement dits (`fee_details` de type
+  /// `stripe_fee`), à l'exclusion d'une éventuelle commission plateforme
+  /// ClubFlow, qui n'aurait rien à faire dans les frais bancaires du club.
+  stripeFeeCents     Int?
+  /// Devise des frais, telle que renvoyée par Stripe. Peut différer de celle
+  /// de l'encaissement sur un compte multidevise.
+  stripeFeeCurrency  String?
+  /// `txn_xxx` — pièce justificative côté Stripe, et clé d'idempotence
+  /// naturelle si l'on doit un jour rapprocher ou rejouer.
+  stripeBalanceTransactionId String?
+  /// Date de récupération effective des frais. Null = pas encore connus.
+  /// C'est le cas NOMINAL d'un prélèvement SEPA : la balance transaction
+  /// n'existe qu'une fois la charge dénouée, plusieurs jours plus tard.
+  /// Sert de critère de reprise au balayage quotidien.
+  stripeFeesSyncedAt DateTime?
+
   createdAt          DateTime          @default(now())
 
   club                    Club                        @relation(fields: [clubId], references: [id], onDelete: Cascade)
@@ -1606,6 +1631,8 @@ model Payment {
   @@index([paidByMemberId])
   @@index([paidByContactId])
   @@index([clubId, financialAccountId])
+  /// Balayage des encaissements Stripe dont les frais restent à récupérer.
+  @@index([stripeFeesSyncedAt, createdAt])
 }
 
 /// Moyen de prélèvement d'un échéancier (cf. ADR-0009).

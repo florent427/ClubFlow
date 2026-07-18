@@ -9,6 +9,7 @@ import { PaymentScheduleEngineService } from './payment-schedule-engine.service'
 import { PaymentScheduleService } from './payment-schedule.service';
 import { PaymentsService } from './payments.service';
 import { StripeConnectService } from './stripe-connect.service';
+import { StripeFeesService } from './stripe-fees.service';
 
 describe('PaymentsService / Stripe webhook', () => {
   let service: PaymentsService;
@@ -23,6 +24,7 @@ describe('PaymentsService / Stripe webhook', () => {
     $transaction: jest.Mock;
   };
   let accounting: { recordIncomeFromPayment: jest.Mock };
+  let stripeFees: { syncFeesForPayment: jest.Mock };
   let documentsGating: { hasUnsignedRequiredDocuments: jest.Mock };
   let stripeConnect: { applyAccountUpdated: jest.Mock };
   let paymentSchedules: { applySetupCompleted: jest.Mock };
@@ -31,6 +33,9 @@ describe('PaymentsService / Stripe webhook', () => {
   beforeEach(async () => {
     process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_secret';
     accounting = { recordIncomeFromPayment: jest.fn().mockResolvedValue(undefined) };
+    // Frais « best effort » : par défaut le double ne trouve rien, comme le
+    // vrai service face à une charge SEPA non dénouée.
+    stripeFees = { syncFeesForPayment: jest.fn().mockResolvedValue(false) };
     documentsGating = {
       hasUnsignedRequiredDocuments: jest
         .fn()
@@ -89,6 +94,7 @@ describe('PaymentsService / Stripe webhook', () => {
         // Dépendances Connect / échéancier : ces specs ne les exercent pas,
         // mais Nest exige que le constructeur soit résoluble.
         { provide: StripeConnectService, useValue: stripeConnect },
+        { provide: StripeFeesService, useValue: stripeFees },
         { provide: PaymentScheduleService, useValue: paymentSchedules },
         { provide: PaymentScheduleEngineService, useValue: scheduleEngine },
       ],
@@ -143,6 +149,15 @@ describe('PaymentsService / Stripe webhook', () => {
       5000,
     );
 
+    // Les frais sont tentés APRÈS la recette, sur le paiement qui vient
+    // d'être créé. Sans cette assertion, supprimer l'appel laisserait la
+    // suite verte — vérifié par mutation lors de la revue du 2026-07-18.
+    expect(stripeFees.syncFeesForPayment).toHaveBeenCalledWith('pay-1');
+    const ordreRecette =
+      accounting.recordIncomeFromPayment.mock.invocationCallOrder[0];
+    const ordreFrais = stripeFees.syncFeesForPayment.mock.invocationCallOrder[0];
+    expect(ordreFrais).toBeGreaterThan(ordreRecette);
+
     prisma.$transaction.mockClear();
     await service.handleStripeWebhook(Buffer.from(raw), header);
     expect(prisma.$transaction).not.toHaveBeenCalled();
@@ -186,4 +201,43 @@ describe('PaymentsService / Stripe webhook', () => {
       where: { id: 'evt_test_fail' },
     });
   });
+
+  it('un service de frais en panne ne casse pas l’encaissement', async () => {
+    // Invariant cardinal du lot frais : les frais sont du confort comptable.
+    // Si leur récupération lève, la recette et la facture doivent rester
+    // acquises — et le webhook doit répondre 200, sinon Stripe rejouerait
+    // indéfiniment un encaissement pourtant correctement enregistré.
+    stripeFees.syncFeesForPayment.mockRejectedValue(new Error('Stripe down'));
+    prisma.stripeWebhookEvent.create.mockResolvedValueOnce({ id: 'evt_boom' });
+
+    const payload = {
+      id: 'evt_boom',
+      object: 'event',
+      type: 'payment_intent.succeeded',
+      data: {
+        object: {
+          id: 'pi_2',
+          object: 'payment_intent',
+          metadata: { invoiceId: 'inv-1', clubId: 'club-1' },
+          amount_received: 5000,
+          amount: 5000,
+        },
+      },
+    };
+    const raw = JSON.stringify(payload);
+    const header = Stripe.webhooks.generateTestHeaderString({
+      payload: raw,
+      secret: process.env.STRIPE_WEBHOOK_SECRET!,
+    });
+
+    await expect(
+      service.handleStripeWebhook(Buffer.from(raw), header),
+    ).resolves.toBeUndefined();
+
+    expect(accounting.recordIncomeFromPayment).toHaveBeenCalled();
+    // La réservation d'idempotence NE doit pas être libérée : le traitement a
+    // réussi, seul l'accessoire a échoué.
+    expect(prisma.stripeWebhookEvent.delete).not.toHaveBeenCalled();
+  });
+
 });

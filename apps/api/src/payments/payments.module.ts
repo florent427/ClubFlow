@@ -18,6 +18,7 @@ import { PaymentScheduleService } from './payment-schedule.service';
 import { StripeCheckoutService } from './stripe-checkout.service';
 import { StripeConnectResolver } from './stripe-connect.resolver';
 import { StripeConnectService } from './stripe-connect.service';
+import { StripeFeesService } from './stripe-fees.service';
 import { StripeWebhookController } from './stripe-webhook.controller';
 
 @Module({
@@ -36,6 +37,7 @@ import { StripeWebhookController } from './stripe-webhook.controller';
     StripeCheckoutService,
     StripeConnectService,
     StripeConnectResolver,
+    StripeFeesService,
     PaymentScheduleService,
     PaymentScheduleEngineService,
     PaymentScheduleNotifierService,

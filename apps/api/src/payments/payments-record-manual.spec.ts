@@ -8,6 +8,7 @@ import { PaymentScheduleEngineService } from './payment-schedule-engine.service'
 import { PaymentScheduleService } from './payment-schedule.service';
 import { PaymentsService } from './payments.service';
 import { StripeConnectService } from './stripe-connect.service';
+import { StripeFeesService } from './stripe-fees.service';
 
 describe('PaymentsService / encaissements manuels', () => {
   let service: PaymentsService;
@@ -67,6 +68,12 @@ describe('PaymentsService / encaissements manuels', () => {
         { provide: DocumentsGatingService, useValue: documentsGating },
         // Non exercées par ces specs, mais le constructeur doit être résoluble.
         { provide: StripeConnectService, useValue: {} },
+        {
+          provide: StripeFeesService,
+          // Frais « best effort » : le double ne fait rien et ne lève jamais,
+          // exactement comme le vrai service quand Stripe est indisponible.
+          useValue: { syncFeesForPayment: jest.fn().mockResolvedValue(false) },
+        },
         { provide: PaymentScheduleService, useValue: {} },
         {
           provide: PaymentScheduleEngineService,

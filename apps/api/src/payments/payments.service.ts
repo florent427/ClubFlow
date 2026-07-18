@@ -20,6 +20,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PaymentScheduleEngineService } from './payment-schedule-engine.service';
 import { PaymentScheduleService } from './payment-schedule.service';
 import { StripeConnectService } from './stripe-connect.service';
+import { StripeFeesService } from './stripe-fees.service';
 import { CreateInvoiceInput } from './dto/create-invoice.input';
 import { RecordManualPaymentInput } from './dto/record-manual-payment.input';
 import { UpsertClubPricingRuleInput } from './dto/upsert-pricing-rule.input';
@@ -56,6 +57,7 @@ export class PaymentsService {
     private readonly connect: StripeConnectService,
     private readonly paymentSchedules: PaymentScheduleService,
     private readonly scheduleEngine: PaymentScheduleEngineService,
+    private readonly stripeFees: StripeFeesService,
   ) {}
 
   /**
@@ -919,6 +921,10 @@ export class PaymentsService {
       select: { id: true },
     });
     if (already) {
+      // Rejeu de webhook. On ressort sans rien dupliquer, mais on en profite
+      // pour retenter les frais : c'est souvent la raison même du rejeu, et
+      // sans cette tentative le rejeu serait entièrement stérile.
+      await this.trySyncFees(already.id);
       return;
     }
 
@@ -970,6 +976,33 @@ export class PaymentsService {
     // écriture lui-même — un seul chemin crée un encaissement (ADR-0009).
     if (installmentId) {
       await this.scheduleEngine.markInstallmentPaid(installmentId, payment.id);
+    }
+
+    // En DERNIER, et sans jamais lever. Les frais sont une information de
+    // confort comptable : ni l'encaissement, ni le soldage d'échéance ne
+    // doivent en dépendre. En carte ils sont déjà connus ; en SEPA la charge
+    // n'est pas dénouée et c'est le balayage quotidien qui repassera.
+    await this.trySyncFees(payment.id);
+  }
+
+  /**
+   * Récupération des frais, isolée du sort de l'encaissement.
+   *
+   * `StripeFeesService` s'engage déjà à ne jamais lever, mais ce garde-fou est
+   * ici parce que la conséquence d'un manquement serait disproportionnée : une
+   * exception ferait échouer le webhook, libérerait la réservation
+   * d'idempotence, et Stripe rejouerait en boucle un encaissement pourtant
+   * correctement enregistré — le rejeu retombant à chaque fois sur la même
+   * exception. Une discipline d'appelé ne se vérifie pas au moment où elle
+   * compte ; ce catch, si.
+   */
+  private async trySyncFees(paymentId: string): Promise<void> {
+    try {
+      await this.stripeFees.syncFeesForPayment(paymentId);
+    } catch (err) {
+      this.logger.warn(
+        `[stripe] frais non récupérés pour le paiement ${paymentId} — ${(err as Error).message}`,
+      );
     }
   }
 
