@@ -42,6 +42,7 @@ import { MailDomainSettingsPage } from './pages/settings/MailDomainSettingsPage'
 import { VitrineDomainSettingsPage } from './pages/settings/VitrineDomainSettingsPage';
 import { ClubBrandingSettingsPage } from './pages/settings/ClubBrandingSettingsPage';
 import { AiSettingsPage } from './pages/settings/AiSettingsPage';
+import { PaymentsSettingsPage } from './pages/settings/PaymentsSettingsPage';
 import AccountingSettingsPage from './pages/settings/AccountingSettingsPage';
 import AdhesionPricingRulesPage from './pages/settings/AdhesionPricingRulesPage';
 import { AgentChatPage } from './pages/agent/AgentChatPage';
@@ -177,6 +178,8 @@ export default function App() {
                 element={<AdhesionPricingRulesPage />}
               />
               <Route path="administrateurs" element={<SystemAdminsPage />} />
+              {/* Cible de la `return_url` d'onboarding Stripe (?stripe=return). */}
+              <Route path="payments" element={<PaymentsSettingsPage />} />
             </Route>
             <Route path="agent" element={<AgentChatPage />} />
             <Route path="agent/audit" element={<AgentAuditPage />} />

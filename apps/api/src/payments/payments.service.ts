@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -16,6 +17,7 @@ import { AccountingService } from '../accounting/accounting.service';
 import { DocumentsGatingService } from '../documents/documents-gating.service';
 import { ModuleCode } from '../domain/module-registry/module-codes';
 import { PrismaService } from '../prisma/prisma.service';
+import { StripeConnectService } from './stripe-connect.service';
 import { CreateInvoiceInput } from './dto/create-invoice.input';
 import { RecordManualPaymentInput } from './dto/record-manual-payment.input';
 import { UpsertClubPricingRuleInput } from './dto/upsert-pricing-rule.input';
@@ -43,10 +45,13 @@ function deriveFamilyLabel(family: FamilyForLabel): string | null {
 
 @Injectable()
 export class PaymentsService {
+  private readonly logger = new Logger(PaymentsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly accounting: AccountingService,
     private readonly documentsGating: DocumentsGatingService,
+    private readonly connect: StripeConnectService,
   ) {}
 
   /**
@@ -688,6 +693,17 @@ export class PaymentsService {
       data: { id: event.id },
     });
 
+    // Compte connecté émetteur de l'événement (direct charges, ADR-0008).
+    // Null pour les événements émis par le compte plateforme lui-même.
+    const eventAccount = event.account ?? null;
+
+    // Onboarding Connect : Stripe notifie chaque changement de capacité
+    // (KYC validé, virements activés, pièces manquantes…).
+    if (event.type === 'account.updated') {
+      await this.connect.applyAccountUpdated(event.data.object as Stripe.Account);
+      return;
+    }
+
     if (event.type === 'payment_intent.succeeded') {
       const pi = event.data.object as Stripe.PaymentIntent;
       const invoiceId = pi.metadata?.invoiceId;
@@ -707,6 +723,7 @@ export class PaymentsService {
         pi.id,
         amount,
         paidByMemberId,
+        eventAccount,
       );
     }
   }
@@ -717,12 +734,30 @@ export class PaymentsService {
     paymentIntentId: string,
     amountCents: number,
     paidByMemberId: string | null,
+    stripeAccountId: string | null = null,
   ): Promise<void> {
     const invoice = await this.prisma.invoice.findFirst({
       where: { id: invoiceId, clubId, status: InvoiceStatus.OPEN },
     });
     if (!invoice) {
       return;
+    }
+
+    // Garde-fou multi-tenant : l'événement doit provenir du compte connecté
+    // de CE club. Sans ce contrôle, un compte connecté tiers pourrait, en
+    // forgeant les metadata, faire passer la facture d'un autre club en PAID.
+    if (stripeAccountId) {
+      const club = await this.prisma.club.findUnique({
+        where: { id: clubId },
+        select: { stripeAccountId: true },
+      });
+      if (club?.stripeAccountId && club.stripeAccountId !== stripeAccountId) {
+        this.logger.warn(
+          `[stripe] payment_intent ${paymentIntentId} reçu du compte ${stripeAccountId} ` +
+            `mais le club ${clubId} est rattaché à ${club.stripeAccountId} — ignoré.`,
+        );
+        return;
+      }
     }
     await this.assertPaidByMemberAllowedForInvoice(invoice, paidByMemberId);
     const paidBefore = await this.sumPaidCentsForInvoice(invoice.id);
@@ -764,6 +799,9 @@ export class PaymentsService {
           method: ClubPaymentMethod.STRIPE_CARD,
           externalRef: paymentIntentId,
           paidByMemberId,
+          // Compte sur lequel l'argent est réellement tombé : indispensable
+          // pour rembourser sur le bon compte plus tard (ADR-0008).
+          stripeAccountId,
         },
       });
       const fullyPaid = amountToRecord >= balanceCents;

@@ -12403,3 +12403,81 @@ body[data-overlay-active='true'] .cf-aiko-panel {
   background: rgba(67, 56, 202, 0.28);
 }
 
+
+/* ================================
+ * Paramètres — Paiements (Stripe Connect)
+ * ================================ */
+
+.cf-stripe-connect {
+  max-width: 780px;
+  display: grid;
+  gap: 1rem;
+}
+
+.cf-stripe-connect__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.cf-stripe-connect__footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.cf-stripe-connect__hint {
+  font-size: 0.8rem;
+  color: var(--cf-text-muted, #64748b);
+  line-height: 1.5;
+  margin: 0.5rem 0 0;
+}
+
+.cf-stripe-connect__checklist {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.cf-stripe-connect__check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+
+.cf-stripe-connect__check > .material-symbols-outlined {
+  font-size: 1.25rem !important;
+  flex-shrink: 0;
+  line-height: 1.35;
+}
+
+.cf-stripe-connect__check--ok > .material-symbols-outlined {
+  color: #16a34a;
+}
+
+.cf-stripe-connect__check--todo > .material-symbols-outlined {
+  color: #94a3b8;
+}
+
+.cf-stripe-connect__check-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.cf-stripe-connect__check-body strong {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--cf-primary, #0f172a);
+}
+
+.cf-stripe-connect__check-body span {
+  font-size: 0.82rem;
+  color: var(--cf-text-muted, #64748b);
+  line-height: 1.5;
+}
