@@ -42,6 +42,46 @@ export class PaymentScheduleNotifierService {
   }
 
   /**
+   * Charge une échéance avec tout ce qu'il faut pour écrire un courrier :
+   * facture, club, et coordonnées du payeur du foyer.
+   */
+  private async loadContext(installmentId: string) {
+    return this.prisma.paymentScheduleInstallment.findUnique({
+      where: { id: installmentId },
+      include: {
+        schedule: {
+          include: {
+            invoice: {
+              include: {
+                club: { select: { name: true, contactEmail: true } },
+                family: {
+                  include: {
+                    familyMembers: {
+                      where: { linkRole: FamilyMemberLinkRole.PAYER },
+                      include: {
+                        member: { select: { firstName: true, email: true } },
+                        // L'e-mail d'un contact vit sur son User, pas sur
+                        // le contact lui-même.
+                        contact: {
+                          select: {
+                            firstName: true,
+                            lastName: true,
+                            user: { select: { email: true } },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  /**
    * Prévient l'adhérent qu'un prélèvement a échoué.
    *
    * `definitive` distingue les deux situations, qui n'appellent pas du tout
@@ -54,38 +94,7 @@ export class PaymentScheduleNotifierService {
     nextAttemptAt: Date | null;
   }): Promise<void> {
     try {
-      const inst = await this.prisma.paymentScheduleInstallment.findUnique({
-        where: { id: args.installmentId },
-        include: {
-          schedule: {
-            include: {
-              invoice: {
-                include: {
-                  club: { select: { name: true } },
-                  family: {
-                    include: {
-                      familyMembers: {
-                        where: { linkRole: FamilyMemberLinkRole.PAYER },
-                        include: {
-                          member: { select: { firstName: true, email: true } },
-                          // L'e-mail d'un contact vit sur son User, pas sur
-                          // le contact lui-même.
-                          contact: {
-                            select: {
-                              firstName: true,
-                              user: { select: { email: true } },
-                            },
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      });
+      const inst = await this.loadContext(args.installmentId);
       if (!inst) return;
 
       const invoice = inst.schedule.invoice;
@@ -154,6 +163,138 @@ ${clubName}`,
       // Volontairement avalé : cf. docstring de la classe.
       this.logger.warn(
         `[echeancier] notification d'échec impossible pour ${args.installmentId} : ${(err as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * Alerte le club après un échec DÉFINITIF.
+   *
+   * Sans ce message, une créance en échec définitif resterait invisible côté
+   * club : l'adhérent est prévenu, mais personne au bureau ne sait qu'il faut
+   * reprendre la main. C'est précisément le moment où l'automatisme s'arrête
+   * et où un humain doit décider.
+   */
+  async notifyTreasurerFinalFailure(installmentId: string): Promise<void> {
+    try {
+      const inst = await this.loadContext(installmentId);
+      if (!inst) return;
+
+      const invoice = inst.schedule.invoice;
+      const to = invoice.club.contactEmail;
+      if (!to) {
+        this.logger.warn(
+          `[echeancier] échec définitif de ${installmentId} : aucun e-mail de contact ` +
+            `pour le club — le bureau n'est pas averti.`,
+        );
+        return;
+      }
+
+      const payerLink = invoice.family?.familyMembers?.[0];
+      const payerName =
+        [
+          payerLink?.contact?.firstName ?? payerLink?.member?.firstName,
+          payerLink?.contact?.lastName,
+        ]
+          .filter(Boolean)
+          .join(' ') || 'Payeur inconnu';
+
+      const profile = await this.domains.getVerifiedMailProfile(
+        inst.clubId,
+        'transactional',
+      );
+      const amount = euros(inst.amountCents);
+
+      await this.transport.sendEmail({
+        clubId: inst.clubId,
+        kind: 'transactional',
+        from: profile.from,
+        to,
+        subject: `Prélèvement en échec définitif — ${invoice.label}`,
+        html: `
+          <p>Le prélèvement automatique de <strong>${amount} €</strong> sur la
+          facture <em>${escapeHtml(invoice.label)}</em> a échoué après trois
+          tentatives.</p>
+          <p>Payeur : <strong>${escapeHtml(payerName)}</strong>${
+            inst.lastFailureMessage
+              ? `<br>Motif du dernier refus : ${escapeHtml(inst.lastFailureMessage)}`
+              : ''
+          }</p>
+          <p>Aucune nouvelle tentative n'aura lieu. Le montant reste dû : il
+          vous appartient de contacter l'adhérent ou d'enregistrer un
+          règlement manuel.</p>
+        `,
+        text: `Le prélèvement automatique de ${amount} € sur la facture « ${invoice.label} » a échoué après trois tentatives.
+
+Payeur : ${payerName}
+${inst.lastFailureMessage ? `Motif du dernier refus : ${inst.lastFailureMessage}` : ''}
+
+Aucune nouvelle tentative n'aura lieu. Le montant reste dû.`,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `[echeancier] alerte trésorier impossible pour ${installmentId} : ${(err as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * Sollicite l'adhérent quand le prélèvement exige une authentification
+   * forte (3-D Secure).
+   *
+   * On ne cherche pas à rejouer l'authentification du PaymentIntent
+   * hors-session — chemin fragile et peu lisible pour l'adhérent. On
+   * l'oriente vers son espace, où il règle en étant présent : la banque
+   * l'authentifie alors normalement.
+   */
+  async notifyRequiresAction(installmentId: string): Promise<void> {
+    try {
+      const inst = await this.loadContext(installmentId);
+      if (!inst) return;
+
+      const invoice = inst.schedule.invoice;
+      const payerLink = invoice.family?.familyMembers?.[0];
+      const to =
+        payerLink?.contact?.user?.email ?? payerLink?.member?.email ?? null;
+      if (!to) return;
+
+      const firstName =
+        payerLink?.contact?.firstName ?? payerLink?.member?.firstName ?? '';
+      const profile = await this.domains.getVerifiedMailProfile(
+        inst.clubId,
+        'transactional',
+      );
+      const url = `${this.portalBaseUrl()}/facturation`;
+      const amount = euros(inst.amountCents);
+
+      await this.transport.sendEmail({
+        clubId: inst.clubId,
+        kind: 'transactional',
+        from: profile.from,
+        to,
+        subject: `Confirmation requise pour votre prélèvement — ${invoice.label}`,
+        html: `
+          <p>Bonjour ${escapeHtml(firstName)},</p>
+          <p>Votre banque demande une confirmation de votre part pour le
+          prélèvement de <strong>${amount} €</strong> lié à
+          <em>${escapeHtml(invoice.label)}</em>.</p>
+          <p>Le prélèvement n'a donc pas été effectué. Vous pouvez régler cette
+          échéance depuis votre espace membre : votre banque vous demandera
+          alors de valider l'opération.</p>
+          <p><a href="${url}">Ouvrir mon espace facturation</a></p>
+          <p>Cordialement,<br>${escapeHtml(invoice.club.name)}</p>
+        `,
+        text: `Bonjour ${firstName},
+
+Votre banque demande une confirmation pour le prélèvement de ${amount} € lié à « ${invoice.label} ». Le prélèvement n'a pas été effectué.
+
+Réglez cette échéance depuis votre espace membre, votre banque vous demandera de valider : ${url}
+
+${invoice.club.name}`,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `[echeancier] notification 3-D Secure impossible pour ${installmentId} : ${(err as Error).message}`,
       );
     }
   }

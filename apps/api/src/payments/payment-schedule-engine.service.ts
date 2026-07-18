@@ -303,6 +303,12 @@ export class PaymentScheduleEngineService {
         ? null
         : new Date(now.getTime() + nextOffset * 86_400_000),
     });
+
+    // Échec définitif : l'automatisme s'arrête ici, il faut qu'un humain du
+    // club reprenne la main — donc on l'avertit.
+    if (definitive) {
+      await this.notifier.notifyTreasurerFinalFailure(installmentId);
+    }
   }
 
   /**
@@ -379,6 +385,7 @@ export class PaymentScheduleEngineService {
     this.logger.warn(
       `[echeancier] échéance ${inst.id} en attente d'authentification 3-D Secure.`,
     );
+    await this.notifier.notifyRequiresAction(inst.id);
   }
 
   /**
