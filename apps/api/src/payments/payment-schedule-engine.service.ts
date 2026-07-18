@@ -11,6 +11,7 @@ import {
   SCHEDULING_TIMEZONE,
 } from '../scheduling/scheduling.constants';
 import { SchedulerLockService } from '../scheduling/scheduler-lock.service';
+import { PaymentScheduleNotifierService } from './payment-schedule-notifier.service';
 
 /** Résumé d'un passage du moteur, pour les logs et le déclenchement manuel. */
 export type ScheduleRunReport = {
@@ -43,6 +44,7 @@ export class PaymentScheduleEngineService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly lock: SchedulerLockService,
+    private readonly notifier: PaymentScheduleNotifierService,
   ) {}
 
   private getStripe(): Stripe | null {
@@ -290,6 +292,92 @@ export class PaymentScheduleEngineService {
         (definitive
           ? 'échec définitif après 3 tentatives'
           : `nouvelle tentative dans ${nextOffset} jours`),
+    );
+
+    // Prévenir l'adhérent. L'envoi ne peut pas faire échouer le traitement
+    // financier : le notificateur avale ses propres erreurs.
+    await this.notifier.notifyInstallmentFailed({
+      installmentId,
+      definitive,
+      nextAttemptAt: definitive
+        ? null
+        : new Date(now.getTime() + nextOffset * 86_400_000),
+    });
+  }
+
+  /**
+   * Échec de prélèvement signalé APRÈS coup par Stripe
+   * (`payment_intent.payment_failed`).
+   *
+   * Indispensable pour le SEPA : un rejet y survient plusieurs jours après
+   * l'ordre, bien après le retour de l'appel API. Sans ce point d'entrée,
+   * l'échéance resterait bloquée en PROCESSING indéfiniment.
+   */
+  async applyAsyncFailure(args: {
+    paymentIntentId: string;
+    stripeAccountId: string | null;
+    code: string;
+    message: string;
+  }): Promise<void> {
+    const inst = await this.prisma.paymentScheduleInstallment.findFirst({
+      where: { stripePaymentIntentId: args.paymentIntentId },
+      include: { schedule: { select: { stripeAccountId: true } } },
+    });
+    if (!inst) return;
+
+    // Garde-fou multi-tenant : l'événement doit venir du compte du club.
+    if (
+      args.stripeAccountId &&
+      inst.schedule.stripeAccountId &&
+      inst.schedule.stripeAccountId !== args.stripeAccountId
+    ) {
+      this.logger.warn(
+        `[echeancier] échec reçu du compte ${args.stripeAccountId} pour une ` +
+          `échéance rattachée à ${inst.schedule.stripeAccountId} — ignoré.`,
+      );
+      return;
+    }
+    // Un encaissement déjà constaté prime sur un échec tardif.
+    if (inst.status === InstallmentStatus.PAID) return;
+
+    await this.markFailed(
+      inst.id,
+      args.code,
+      args.message,
+      inst.attemptCount,
+      new Date(),
+    );
+  }
+
+  /**
+   * Le prélèvement exige une authentification 3-D Secure. L'échéance sort de
+   * PROCESSING pour ne pas rester bloquée ; solliciter l'adhérent reste à
+   * faire (il peut déjà régler la facture depuis son espace).
+   */
+  async applyRequiresAction(
+    paymentIntentId: string,
+    stripeAccountId: string | null,
+  ): Promise<void> {
+    const inst = await this.prisma.paymentScheduleInstallment.findFirst({
+      where: { stripePaymentIntentId: paymentIntentId },
+      include: { schedule: { select: { stripeAccountId: true } } },
+    });
+    if (!inst) return;
+    if (
+      stripeAccountId &&
+      inst.schedule.stripeAccountId &&
+      inst.schedule.stripeAccountId !== stripeAccountId
+    ) {
+      return;
+    }
+    if (inst.status === InstallmentStatus.PAID) return;
+
+    await this.prisma.paymentScheduleInstallment.updateMany({
+      where: { id: inst.id, status: { not: InstallmentStatus.PAID } },
+      data: { status: InstallmentStatus.REQUIRES_ACTION },
+    });
+    this.logger.warn(
+      `[echeancier] échéance ${inst.id} en attente d'authentification 3-D Secure.`,
     );
   }
 
