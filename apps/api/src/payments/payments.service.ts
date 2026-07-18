@@ -686,17 +686,35 @@ export class PaymentsService {
       throw new BadRequestException('Signature ou payload Stripe invalide');
     }
 
-    const existing = await this.prisma.stripeWebhookEvent.findUnique({
-      where: { id: event.id },
-    });
-    if (existing) {
+    // Réservation de l'événement. La contrainte d'unicité arbitre : si deux
+    // livraisons concurrentes arrivent, une seule crée la ligne et traite.
+    // (L'ancien findUnique-puis-create n'était pas atomique.)
+    try {
+      await this.prisma.stripeWebhookEvent.create({ data: { id: event.id } });
+    } catch {
+      // Déjà réservé — traitement en cours ou terminé.
       return;
     }
 
-    await this.prisma.stripeWebhookEvent.create({
-      data: { id: event.id },
-    });
+    try {
+      await this.dispatchWebhookEvent(event);
+    } catch (err) {
+      // On LIBÈRE la réservation avant de propager l'erreur, sinon la
+      // réessai de Stripe se heurterait au marqueur et sortirait aussitôt :
+      // le travail restant serait perdu définitivement. Constaté en staging
+      // le 2026-07-18 — une échéance encaissée est restée non rattachée.
+      await this.prisma.stripeWebhookEvent
+        .delete({ where: { id: event.id } })
+        .catch(() => undefined);
+      throw err;
+    }
+  }
 
+  /**
+   * Aiguillage par type d'événement. Isolé de la réservation d'idempotence
+   * pour que toute erreur ici puisse être rejouée par Stripe.
+   */
+  private async dispatchWebhookEvent(event: Stripe.Event): Promise<void> {
     // Compte connecté émetteur de l'événement (direct charges, ADR-0008).
     // Null pour les événements émis par le compte plateforme lui-même.
     const eventAccount = event.account ?? null;

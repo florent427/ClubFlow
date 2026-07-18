@@ -86,6 +86,9 @@ export class PaymentScheduleEngineService {
    */
   async runDue(opts?: { now?: Date; clubId?: string }): Promise<ScheduleRunReport> {
     const now = opts?.now ?? new Date();
+    // Avant de prélever, on rattrape les échéances restées bloquées : sinon
+    // de l'argent encaissé resterait invisible pour l'échéancier.
+    await this.reconcileStuckProcessing(opts?.clubId, now);
     const report: ScheduleRunReport = {
       examined: 0,
       charged: 0,
@@ -288,6 +291,62 @@ export class PaymentScheduleEngineService {
           ? 'échec définitif après 3 tentatives'
           : `nouvelle tentative dans ${nextOffset} jours`),
     );
+  }
+
+  /**
+   * Rattrape les échéances restées en PROCESSING.
+   *
+   * Une échéance entre en PROCESSING au moment du prélèvement et n'en sort
+   * que par le webhook. Si celui-ci se perd (échec de livraison, erreur en
+   * cours de traitement, redémarrage), l'échéance reste bloquée alors que
+   * l'argent a bel et bien été encaissé — l'échéancier ne le sait pas.
+   *
+   * On ne devine rien : on se raccroche au `Payment` réellement enregistré
+   * pour ce PaymentIntent. Sans lui, on se contente d'alerter, car créer un
+   * encaissement ici violerait la règle du chemin d'écriture unique.
+   *
+   * Le délai de grâce évite de traiter une échéance dont le webhook est
+   * simplement en route.
+   */
+  async reconcileStuckProcessing(
+    clubId?: string,
+    now: Date = new Date(),
+    graceMs = 5 * 60_000,
+  ): Promise<number> {
+    const stuck = await this.prisma.paymentScheduleInstallment.findMany({
+      where: {
+        ...(clubId ? { clubId } : {}),
+        status: InstallmentStatus.PROCESSING,
+        lastAttemptAt: { lt: new Date(now.getTime() - graceMs) },
+        stripePaymentIntentId: { not: null },
+      },
+      select: { id: true, clubId: true, stripePaymentIntentId: true },
+      take: 200,
+    });
+
+    let repaired = 0;
+    for (const inst of stuck) {
+      const payment = await this.prisma.payment.findFirst({
+        where: {
+          clubId: inst.clubId,
+          externalRef: inst.stripePaymentIntentId!,
+        },
+        select: { id: true },
+      });
+      if (!payment) {
+        this.logger.warn(
+          `[echeancier] échéance ${inst.id} bloquée en PROCESSING sans Payment ` +
+            `pour ${inst.stripePaymentIntentId} — à vérifier côté Stripe.`,
+        );
+        continue;
+      }
+      await this.markInstallmentPaid(inst.id, payment.id);
+      repaired += 1;
+      this.logger.log(
+        `[echeancier] échéance ${inst.id} rattachée au paiement ${payment.id} (rattrapage)`,
+      );
+    }
+    return repaired;
   }
 
   /**
