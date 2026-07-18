@@ -474,16 +474,26 @@ export class AccountingService {
         },
       });
 
-      // Marque l'entry originale comme cancelledAt si elle existe
-      if (originalEntry) {
-        await tx.accountingEntry.update({
-          where: { id: originalEntry.id },
-          data: {
-            cancelledAt: new Date(),
-            status: AccountingEntryStatus.CANCELLED,
-          },
-        });
-      }
+      // L'écriture d'origine reste POSTED, volontairement.
+      //
+      // Une contre-passation neutralise par ADDITION d'une écriture inverse,
+      // pas par suppression de l'originale : les deux mouvements ont eu lieu
+      // et doivent rester au journal. L'annuler EN PLUS de poster la contra
+      // comptait la neutralisation deux fois, puisque `summary` ignore les
+      // entries CANCELLED (cf. son commentaire) et additionne les POSTED.
+      //
+      // L'écart était double :
+      //  - avoir TOTAL de 100 € sur 100 € : produit 0 + charge 100 = −100 €,
+      //    au lieu de 0 € — le club paraissait avoir perdu ce qu'il a rendu ;
+      //  - avoir PARTIEL de 10 € sur 100 € : produit 0 + charge 10 = −110 €,
+      //    au lieu de −10 € — et 100 € de produit réellement encaissé
+      //    disparaissaient du résultat.
+      //
+      // Le lien entre les deux écritures reste porté par `contra.contraEntryId`
+      // ci-dessus. On ne pose PAS `contraEntryId` sur l'originale : ce champ
+      // sert de garde-fou « déjà contre-passée » à la contre-passation
+      // manuelle, et un avoir partiel ne doit pas interdire un geste ultérieur
+      // sur la même écriture.
     });
 
     await this.audit.log({
