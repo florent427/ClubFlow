@@ -5,18 +5,22 @@ import Stripe from 'stripe';
 import { AccountingService } from '../accounting/accounting.service';
 import { DocumentsGatingService } from '../documents/documents-gating.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { PaymentScheduleService } from './payment-schedule.service';
 import { PaymentsService } from './payments.service';
+import { StripeConnectService } from './stripe-connect.service';
 
 describe('PaymentsService / Stripe webhook', () => {
   let service: PaymentsService;
   let prisma: {
     stripeWebhookEvent: { findUnique: jest.Mock; create: jest.Mock };
-    invoice: { findFirst: jest.Mock };
+    invoice: { findFirst: jest.Mock; aggregate: jest.Mock; update: jest.Mock };
     payment: { aggregate: jest.Mock; findFirst: jest.Mock };
     $transaction: jest.Mock;
   };
   let accounting: { recordIncomeFromPayment: jest.Mock };
   let documentsGating: { hasUnsignedRequiredDocuments: jest.Mock };
+  let stripeConnect: { applyAccountUpdated: jest.Mock };
+  let paymentSchedules: { applySetupCompleted: jest.Mock };
 
   beforeEach(async () => {
     process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_secret';
@@ -26,6 +30,8 @@ describe('PaymentsService / Stripe webhook', () => {
         .fn()
         .mockResolvedValue({ count: 0, documents: [] }),
     };
+    stripeConnect = { applyAccountUpdated: jest.fn().mockResolvedValue(undefined) };
+    paymentSchedules = { applySetupCompleted: jest.fn().mockResolvedValue(undefined) };
     prisma = {
       stripeWebhookEvent: {
         findUnique: jest.fn().mockResolvedValue(null),
@@ -41,6 +47,9 @@ describe('PaymentsService / Stripe webhook', () => {
           amountCents: 5000,
           label: 'Adhésion',
         }),
+        // Somme des avoirs (sumCreditNotesForInvoice) : aucun avoir ici.
+        aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: null } }),
+        update: jest.fn().mockResolvedValue({ id: 'inv-1' }),
       },
       payment: {
         aggregate: jest
@@ -68,6 +77,10 @@ describe('PaymentsService / Stripe webhook', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: AccountingService, useValue: accounting },
         { provide: DocumentsGatingService, useValue: documentsGating },
+        // Dépendances Connect / échéancier : ces specs ne les exercent pas,
+        // mais Nest exige que le constructeur soit résoluble.
+        { provide: StripeConnectService, useValue: stripeConnect },
+        { provide: PaymentScheduleService, useValue: paymentSchedules },
       ],
     }).compile();
 

@@ -17,6 +17,7 @@ import { AccountingService } from '../accounting/accounting.service';
 import { DocumentsGatingService } from '../documents/documents-gating.service';
 import { ModuleCode } from '../domain/module-registry/module-codes';
 import { PrismaService } from '../prisma/prisma.service';
+import { PaymentScheduleService } from './payment-schedule.service';
 import { StripeConnectService } from './stripe-connect.service';
 import { CreateInvoiceInput } from './dto/create-invoice.input';
 import { RecordManualPaymentInput } from './dto/record-manual-payment.input';
@@ -52,6 +53,7 @@ export class PaymentsService {
     private readonly accounting: AccountingService,
     private readonly documentsGating: DocumentsGatingService,
     private readonly connect: StripeConnectService,
+    private readonly paymentSchedules: PaymentScheduleService,
   ) {}
 
   /**
@@ -701,6 +703,29 @@ export class PaymentsService {
     // (KYC validé, virements activés, pièces manquantes…).
     if (event.type === 'account.updated') {
       await this.connect.applyAccountUpdated(event.data.object as Stripe.Account);
+      return;
+    }
+
+    // Fin du parcours d'enregistrement d'un moyen de paiement pour un
+    // échéancier (ADR-0009). On écoute le SetupIntent plutôt que la session :
+    // il porte directement le payment_method et, en SEPA, le mandat.
+    if (event.type === 'setup_intent.succeeded') {
+      const si = event.data.object as Stripe.SetupIntent;
+      const scheduleId = si.metadata?.scheduleId;
+      if (!scheduleId || !eventAccount) return;
+      const paymentMethodId =
+        typeof si.payment_method === 'string'
+          ? si.payment_method
+          : (si.payment_method?.id ?? null);
+      if (!paymentMethodId) return;
+      const mandateReference =
+        typeof si.mandate === 'string' ? si.mandate : (si.mandate?.id ?? null);
+      await this.paymentSchedules.applySetupCompleted({
+        scheduleId,
+        stripeAccountId: eventAccount,
+        paymentMethodId,
+        mandateReference,
+      });
       return;
     }
 
