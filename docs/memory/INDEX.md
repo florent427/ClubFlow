@@ -65,6 +65,8 @@
 | [`0005-release-please-auto-merge.md`](decisions/0005-release-please-auto-merge.md) | ADR-0005 — Auto-merge des PR release-please via API REST |
 | [`0006-path-based-multi-tenant.md`](decisions/0006-path-based-multi-tenant.md) | ADR-0006 — Multi-tenant admin via path (`app.clubflow.topdigital.re/<slug>/...`) |
 | [`0007-caddy-admin-api-vs-caddyfile.md`](decisions/0007-caddy-admin-api-vs-caddyfile.md) | ADR-0007 — Caddy Admin API (port 2019) pour vhosts dynamiques |
+| [`0008-stripe-connect-express.md`](decisions/0008-stripe-connect-express.md) | ADR-0008 — Stripe Connect Express + direct charges (encaissement multi-tenant) |
+| [`0009-echeancier-paiement-clubflow.md`](decisions/0009-echeancier-paiement-clubflow.md) | ADR-0009 — Échéancier de paiement géré par ClubFlow (carte + SEPA) |
 
 ## 🔄 Workflows métier
 
@@ -77,7 +79,7 @@
 
 ---
 
-_Index généré le 2026-05-04 12:04 UTC par `bin/memory-index`._
+_Index généré le 2026-07-18 18:04 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`
