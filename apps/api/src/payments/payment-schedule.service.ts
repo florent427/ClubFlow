@@ -12,7 +12,11 @@ import {
 import Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { invoicePaymentTotals } from './invoice-totals';
-import { buildInstallmentPlan } from './payment-schedule-plan';
+import {
+  buildInstallmentPlan,
+  SEPA_PRENOTIFICATION_DAYS,
+} from './payment-schedule-plan';
+import { PaymentScheduleNotifierService } from './payment-schedule-notifier.service';
 import { StripeConnectService } from './stripe-connect.service';
 
 /**
@@ -29,6 +33,7 @@ export class PaymentScheduleService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly connect: StripeConnectService,
+    private readonly notifier: PaymentScheduleNotifierService,
   ) {}
 
   private getStripe(): Stripe {
@@ -93,10 +98,25 @@ export class PaymentScheduleService {
       throw new BadRequestException('Cette facture est déjà soldée.');
     }
 
+    // SEPA : le schéma impose d'informer le débiteur AVANT de prélever. L'avis
+    // part à la signature du mandat ; on décale donc la première échéance pour
+    // qu'il la précède réellement — sans ce délai, un mandat signé le matin
+    // pourrait être prélevé dès le lendemain et l'avis n'aurait servi à rien.
+    const requestedFirstDue = args.firstDueOn ?? new Date();
+    const firstDueOn =
+      args.method === PaymentScheduleMethod.SEPA_DEBIT
+        ? new Date(
+            Math.max(
+              requestedFirstDue.getTime(),
+              Date.now() + SEPA_PRENOTIFICATION_DAYS * 86_400_000,
+            ),
+          )
+        : requestedFirstDue;
+
     const plan = buildInstallmentPlan({
       totalCents: balanceCents,
       count: args.installmentCount,
-      firstDueOn: args.firstDueOn ?? new Date(),
+      firstDueOn,
       intervalMonths: args.intervalMonths,
     });
 
@@ -259,5 +279,19 @@ export class PaymentScheduleService {
     this.logger.log(
       `[echeancier] ${schedule.id} actif — moyen de paiement enregistré`,
     );
+
+    // SEPA : l'avis de prélèvement part maintenant, à la signature du mandat.
+    // Il récapitule toutes les échéances, ce qui couvre l'obligation
+    // d'information pour l'ensemble de l'échéancier. On trace la date : sans
+    // preuve d'envoi, l'obligation n'est pas démontrable.
+    if (schedule.method === PaymentScheduleMethod.SEPA_DEBIT) {
+      const sent = await this.notifier.notifySepaPreNotification(schedule.id);
+      if (sent) {
+        await this.prisma.paymentSchedule.update({
+          where: { id: schedule.id },
+          data: { sepaPreNotifiedAt: new Date() },
+        });
+      }
+    }
   }
 }

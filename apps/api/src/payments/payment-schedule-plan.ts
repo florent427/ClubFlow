@@ -7,6 +7,18 @@
  * échéance qui saute un mois).
  */
 
+/**
+ * Délai minimal, en jours, entre la signature d'un mandat SEPA et le premier
+ * prélèvement.
+ *
+ * Le schéma SEPA impose d'informer le débiteur avant de le prélever. L'avis
+ * partant à la signature du mandat, ce délai garantit qu'il la précède
+ * réellement. Il est volontairement court : pour un échéancier fixe, un avis
+ * unique listant toutes les échéances couvre l'obligation, il ne s'agit donc
+ * pas d'appliquer les 14 jours du préavis standard.
+ */
+export const SEPA_PRENOTIFICATION_DAYS = 2;
+
 export type PlannedInstallment = {
   /** Rang dans l'échéancier, de 1 à N. */
   seq: number;

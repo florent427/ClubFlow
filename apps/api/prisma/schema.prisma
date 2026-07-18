@@ -1670,6 +1670,15 @@ model PaymentSchedule {
   sepaMandateReference  String?
   sepaMandateAcceptedAt DateTime?
 
+  /// SEPA : date d'envoi de la pré-notification au débiteur.
+  ///
+  /// Le schéma SEPA impose d'informer l'adhérent du montant et de la date
+  /// AVANT tout prélèvement. Pour un échéancier fixe, un avis unique à la
+  /// souscription — listant toutes les échéances — couvre l'obligation.
+  /// Ce champ en est la preuve : sans trace d'envoi, l'obligation n'est pas
+  /// démontrable en cas de contestation.
+  sepaPreNotifiedAt DateTime?
+
   /// Renseigné quand l'échéancier est interrompu, pour tracer le pourquoi.
   cancelledAt     DateTime?
   cancelledReason String?

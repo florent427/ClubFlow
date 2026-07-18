@@ -749,6 +749,16 @@ export class PaymentsService {
       return;
     }
 
+    // Mandat SEPA révoqué : l'adhérent peut le faire auprès de sa banque à
+    // tout moment. Continuer à prélever ne produirait que des rejets facturés.
+    if (event.type === 'mandate.updated') {
+      await this.scheduleEngine.applyMandateUpdated(
+        event.data.object as Stripe.Mandate,
+        eventAccount,
+      );
+      return;
+    }
+
     // Échec de prélèvement signalé après coup. Vital pour le SEPA, dont le
     // rejet survient plusieurs jours après l'ordre : sans ça, l'échéance
     // resterait bloquée en PROCESSING indéfiniment.
