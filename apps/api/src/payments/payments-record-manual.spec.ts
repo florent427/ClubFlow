@@ -4,6 +4,7 @@ import { ClubPaymentMethod, InvoiceStatus } from '@prisma/client';
 import { AccountingService } from '../accounting/accounting.service';
 import { DocumentsGatingService } from '../documents/documents-gating.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { PaymentScheduleEngineService } from './payment-schedule-engine.service';
 import { PaymentScheduleService } from './payment-schedule.service';
 import { PaymentsService } from './payments.service';
 import { StripeConnectService } from './stripe-connect.service';
@@ -62,6 +63,7 @@ describe('PaymentsService / encaissements manuels', () => {
         // Non exercées par ces specs, mais le constructeur doit être résoluble.
         { provide: StripeConnectService, useValue: {} },
         { provide: PaymentScheduleService, useValue: {} },
+        { provide: PaymentScheduleEngineService, useValue: {} },
       ],
     }).compile();
 

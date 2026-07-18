@@ -126,6 +126,34 @@ et les relances d'impayés.
   mensualités de 15 €, les frais rongent ~4 €) ; SEPA quelques centimes.
   C'est ce qui justifie de proposer les deux.
 
+## ⚠️ Souscription des événements Stripe — piège opérationnel
+
+Écouter un événement dans le code **ne suffit pas** : il faut aussi le
+souscrire sur la destination webhook côté Stripe (Dashboard →
+Développeurs → Webhooks → destination → modifier les événements).
+
+Constaté le 2026-07-18 : le lot 2 écoutait `setup_intent.succeeded`, mais
+la destination n'avait été configurée qu'avec deux événements au lot 1.
+L'échéancier restait donc bloqué en `PENDING_SETUP` alors que le code était
+correct — aucune erreur nulle part, juste un événement jamais délivré.
+
+Événements à souscrire, par lot (⚠️ périmètre **« Comptes connectés »**,
+puisqu'on est en direct charges) :
+
+| Événement | Requis par |
+|---|---|
+| `account.updated` | Connect (onboarding) — ✅ souscrit |
+| `payment_intent.succeeded` | Encaissement — ✅ souscrit |
+| `setup_intent.succeeded` | Lot 2 — enregistrement du moyen de paiement |
+| `setup_intent.setup_failed` | Lot 2 — échec d'enregistrement |
+| `payment_intent.payment_failed` | Lot 4 — échec de prélèvement |
+| `payment_intent.requires_action` | Lot 4 — 3-D Secure off-session |
+| `mandate.updated` | Lot 4 — révocation d'un mandat SEPA |
+| `charge.dispute.created` | Phase 2 — litiges |
+
+**Règle** : tout ajout d'un `event.type` dans `handleStripeWebhook` doit
+s'accompagner de la mise à jour de la destination, en test **et** en prod.
+
 ## Lots
 
 | Lot | Contenu |
