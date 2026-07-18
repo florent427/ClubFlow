@@ -20,6 +20,15 @@ export type ClubStripeConnectStatus = {
   detailsSubmitted: boolean;
   /** `null` tant que le compte n'a jamais été encaissable. */
   onboardedAt: string | null;
+  /**
+   * Raison sociale déclarée au KYC Stripe. En direct charges, c'est ce nom
+   * que l'adhérent voit sur son mandat SEPA — pas `clubName`.
+   */
+  businessName: string | null;
+  /** Libellé du relevé bancaire du débiteur (champ Stripe distinct). */
+  statementDescriptor: string | null;
+  /** Nom du club dans ClubFlow, pour comparaison avec `businessName`. */
+  clubName: string;
 };
 
 /** Le champ est nullable côté client tant que la query n'a pas répondu. */
@@ -45,6 +54,9 @@ const STATUS_FIELDS = `
   payoutsEnabled
   detailsSubmitted
   onboardedAt
+  businessName
+  statementDescriptor
+  clubName
 `;
 
 export const CLUB_STRIPE_CONNECT_STATUS = gql`

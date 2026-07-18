@@ -30,4 +30,31 @@ export class ClubStripeConnectStatusGraph {
       "Date du premier passage en encaissable. Null tant que le club n'a jamais pu encaisser.",
   })
   onboardedAt!: Date | null;
+
+  /**
+   * Identité déclarée au KYC Stripe. En direct charges, c'est elle — et non
+   * `Club.name` — que l'adhérent lit sur son mandat SEPA et son relevé.
+   * Exposée pour que le trésorier vérifie qu'elle est reconnaissable.
+   */
+  @Field(() => String, {
+    nullable: true,
+    description:
+      "Raison sociale déclarée à Stripe (business_profile.name). Null tant que le KYC ne l'a pas renseignée.",
+  })
+  businessName!: string | null;
+
+  @Field(() => String, {
+    nullable: true,
+    description:
+      'Libellé qui apparaît sur le relevé bancaire du débiteur. Champ distinct de la raison sociale.',
+  })
+  statementDescriptor!: string | null;
+
+  /**
+   * Nom du club côté ClubFlow, renvoyé pour que le client compare sans avoir
+   * à recouper deux queries. La comparaison est faite côté front (affichage),
+   * pas ici : l'API expose les faits, l'UI décide quoi en dire.
+   */
+  @Field({ description: 'Nom du club dans ClubFlow, pour comparaison.' })
+  clubName!: string;
 }
