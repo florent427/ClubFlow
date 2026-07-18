@@ -1628,6 +1628,15 @@ a.mp-pill-link:hover {
   border-bottom: none;
 }
 
+/* Lignes à signaler (échéance refusée / confirmation bancaire attendue). */
+.mp-table tbody tr.mp-row--attention td {
+  background: rgba(242, 171, 54, 0.1);
+}
+
+.mp-table tbody tr.mp-row--danger td {
+  background: rgba(217, 63, 63, 0.09);
+}
+
 .mp-num {
   text-align: right;
   white-space: nowrap;
@@ -4213,6 +4222,39 @@ a:focus-visible {
   border-radius: 6px;
 }
 
+/* Même gabarit que .mp-hint--warn, ton rouge des badges "danger". */
+.mp-hint--danger {
+  color: #a52727;
+  background: rgba(217, 63, 63, 0.12);
+  border-left: 3px solid #d93f3f;
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+
+/*
+ * Variante « encart » d'un .mp-hint--warn / --danger : bloc autonome pouvant
+ * contenir un titre, un texte et une action. À combiner avec la couleur :
+ * `mp-hint mp-hint--block mp-hint--warn`. Modifieur séparé pour ne pas
+ * déplacer les .mp-hint--warn existants, qui sont de simples paragraphes.
+ */
+.mp-hint--block {
+  margin: 0.75rem 0;
+}
+
+.mp-hint--block > strong {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.mp-hint--block > p {
+  margin: 0;
+  color: inherit;
+}
+
+.mp-hint--block > .mp-btn {
+  margin-top: 10px;
+}
+
 .mp-empty-state,
 .mp-cart-validated,
 .mp-cart-cancelled {
@@ -4380,6 +4422,7 @@ a:focus-visible {
 .mp-badge--info    { background: rgba(0, 86, 197, 0.12);   color: #0056c5; }
 .mp-badge--neutral { background: rgba(25, 28, 29, 0.08);   color: #454652; }
 .mp-badge--muted   { background: rgba(25, 28, 29, 0.04);   color: #6f7078; font-weight: 600; }
+.mp-badge .material-symbols-outlined { font-size: 14px; line-height: 1; }
 
 .mp-text-muted {
   color: #6f7078;

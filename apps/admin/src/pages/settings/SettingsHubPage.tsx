@@ -85,6 +85,14 @@ export function SettingsHubPage() {
             </li>
             <li>
               <SettingsHubCard
+                to="/settings/payments"
+                modules={['PAYMENT']}
+                title="Paiements en ligne"
+                desc="Connectez le compte Stripe du club pour encaisser les paiements par carte."
+              />
+            </li>
+            <li>
+              <SettingsHubCard
                 to="/settings/mail-domain"
                 modules={['COMMUNICATION']}
                 title="E-mail (domaine)"

@@ -5,18 +5,28 @@ import Stripe from 'stripe';
 import { AccountingService } from '../accounting/accounting.service';
 import { DocumentsGatingService } from '../documents/documents-gating.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { PaymentScheduleEngineService } from './payment-schedule-engine.service';
+import { PaymentScheduleService } from './payment-schedule.service';
 import { PaymentsService } from './payments.service';
+import { StripeConnectService } from './stripe-connect.service';
 
 describe('PaymentsService / Stripe webhook', () => {
   let service: PaymentsService;
   let prisma: {
-    stripeWebhookEvent: { findUnique: jest.Mock; create: jest.Mock };
-    invoice: { findFirst: jest.Mock };
+    stripeWebhookEvent: {
+      findUnique: jest.Mock;
+      create: jest.Mock;
+      delete: jest.Mock;
+    };
+    invoice: { findFirst: jest.Mock; aggregate: jest.Mock; update: jest.Mock };
     payment: { aggregate: jest.Mock; findFirst: jest.Mock };
     $transaction: jest.Mock;
   };
   let accounting: { recordIncomeFromPayment: jest.Mock };
   let documentsGating: { hasUnsignedRequiredDocuments: jest.Mock };
+  let stripeConnect: { applyAccountUpdated: jest.Mock };
+  let paymentSchedules: { applySetupCompleted: jest.Mock };
+  let scheduleEngine: { markInstallmentPaid: jest.Mock };
 
   beforeEach(async () => {
     process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_secret';
@@ -26,10 +36,15 @@ describe('PaymentsService / Stripe webhook', () => {
         .fn()
         .mockResolvedValue({ count: 0, documents: [] }),
     };
+    stripeConnect = { applyAccountUpdated: jest.fn().mockResolvedValue(undefined) };
+    paymentSchedules = { applySetupCompleted: jest.fn().mockResolvedValue(undefined) };
+    scheduleEngine = { markInstallmentPaid: jest.fn().mockResolvedValue(undefined) };
     prisma = {
       stripeWebhookEvent: {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 'evt_1' }),
+        // Libération de la réservation quand le traitement échoue.
+        delete: jest.fn().mockResolvedValue({ id: 'evt_1' }),
       },
       invoice: {
         findFirst: jest.fn().mockResolvedValue({
@@ -41,6 +56,9 @@ describe('PaymentsService / Stripe webhook', () => {
           amountCents: 5000,
           label: 'Adhésion',
         }),
+        // Somme des avoirs (sumCreditNotesForInvoice) : aucun avoir ici.
+        aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: null } }),
+        update: jest.fn().mockResolvedValue({ id: 'inv-1' }),
       },
       payment: {
         aggregate: jest
@@ -68,6 +86,11 @@ describe('PaymentsService / Stripe webhook', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: AccountingService, useValue: accounting },
         { provide: DocumentsGatingService, useValue: documentsGating },
+        // Dépendances Connect / échéancier : ces specs ne les exercent pas,
+        // mais Nest exige que le constructeur soit résoluble.
+        { provide: StripeConnectService, useValue: stripeConnect },
+        { provide: PaymentScheduleService, useValue: paymentSchedules },
+        { provide: PaymentScheduleEngineService, useValue: scheduleEngine },
       ],
     }).compile();
 
@@ -81,9 +104,11 @@ describe('PaymentsService / Stripe webhook', () => {
   });
 
   it('traite payment_intent.succeeded idempotent (signature Stripe test)', async () => {
-    prisma.stripeWebhookEvent.findUnique
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ id: 'evt_test_1', processedAt: new Date() });
+    // La réservation d'idempotence est un `create` : la 1re livraison le
+    // réussit, la 2e se heurte à la contrainte d'unicité et sort aussitôt.
+    prisma.stripeWebhookEvent.create
+      .mockResolvedValueOnce({ id: 'evt_test_1' })
+      .mockRejectedValueOnce(new Error('Unique constraint failed'));
 
     const payload = {
       id: 'evt_test_1',
@@ -121,5 +146,44 @@ describe('PaymentsService / Stripe webhook', () => {
     prisma.$transaction.mockClear();
     await service.handleStripeWebhook(Buffer.from(raw), header);
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('libère la réservation quand le traitement échoue, pour que Stripe puisse rejouer', async () => {
+    // Régression : le marqueur d'idempotence était posé AVANT le traitement.
+    // Un échec en cours de route laissait l'événement marqué comme traité, et
+    // la réessai de Stripe sortait aussitôt — le travail restant était perdu
+    // définitivement. Constaté en staging (échéance encaissée non rattachée).
+    prisma.$transaction.mockRejectedValueOnce(new Error('base indisponible'));
+
+    const payload = {
+      id: 'evt_test_fail',
+      object: 'event',
+      type: 'payment_intent.succeeded',
+      data: {
+        object: {
+          id: 'pi_fail',
+          object: 'payment_intent',
+          metadata: { invoiceId: 'inv-1', clubId: 'club-1' },
+          amount_received: 5000,
+          amount: 5000,
+        },
+      },
+    };
+    const raw = JSON.stringify(payload);
+    const header = Stripe.webhooks.generateTestHeaderString({
+      payload: raw,
+      secret: process.env.STRIPE_WEBHOOK_SECRET!,
+    });
+
+    // L'erreur doit remonter : c'est elle qui fait répondre 500 à Stripe et
+    // déclenche la réessai.
+    await expect(
+      service.handleStripeWebhook(Buffer.from(raw), header),
+    ).rejects.toThrow('base indisponible');
+
+    // Et la réservation doit avoir été retirée, sinon la réessai serait vaine.
+    expect(prisma.stripeWebhookEvent.delete).toHaveBeenCalledWith({
+      where: { id: 'evt_test_fail' },
+    });
   });
 });

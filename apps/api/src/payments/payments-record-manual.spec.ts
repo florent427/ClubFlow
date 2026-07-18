@@ -4,12 +4,15 @@ import { ClubPaymentMethod, InvoiceStatus } from '@prisma/client';
 import { AccountingService } from '../accounting/accounting.service';
 import { DocumentsGatingService } from '../documents/documents-gating.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { PaymentScheduleEngineService } from './payment-schedule-engine.service';
+import { PaymentScheduleService } from './payment-schedule.service';
 import { PaymentsService } from './payments.service';
+import { StripeConnectService } from './stripe-connect.service';
 
 describe('PaymentsService / encaissements manuels', () => {
   let service: PaymentsService;
   let prisma: {
-    invoice: { findFirst: jest.Mock };
+    invoice: { findFirst: jest.Mock; aggregate: jest.Mock };
     member: { findFirst: jest.Mock };
     contact: { findFirst: jest.Mock };
     family: { findFirst: jest.Mock };
@@ -20,8 +23,13 @@ describe('PaymentsService / encaissements manuels', () => {
   };
   let accounting: { recordIncomeFromPayment: jest.Mock };
   let documentsGating: { hasUnsignedRequiredDocuments: jest.Mock };
+  let closeSchedule: jest.Mock;
+  let sumInFlight: jest.Mock;
 
   beforeEach(async () => {
+    closeSchedule = jest.fn().mockResolvedValue(undefined);
+    // Par défaut : aucun prélèvement en vol sur la facture.
+    sumInFlight = jest.fn().mockResolvedValue(0);
     accounting = { recordIncomeFromPayment: jest.fn().mockResolvedValue(undefined) };
     documentsGating = {
       hasUnsignedRequiredDocuments: jest
@@ -29,7 +37,12 @@ describe('PaymentsService / encaissements manuels', () => {
         .mockResolvedValue({ count: 0, documents: [] }),
     };
     prisma = {
-      invoice: { findFirst: jest.fn() },
+      invoice: {
+        findFirst: jest.fn(),
+        // Somme des avoirs (sumCreditNotesForInvoice) : aucun avoir dans ces
+        // scénarios, mais l'appel doit être mockable sinon le service casse.
+        aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: null } }),
+      },
       member: { findFirst: jest.fn() },
       contact: { findFirst: jest.fn() },
       family: {
@@ -52,6 +65,16 @@ describe('PaymentsService / encaissements manuels', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: AccountingService, useValue: accounting },
         { provide: DocumentsGatingService, useValue: documentsGating },
+        // Non exercées par ces specs, mais le constructeur doit être résoluble.
+        { provide: StripeConnectService, useValue: {} },
+        { provide: PaymentScheduleService, useValue: {} },
+        {
+          provide: PaymentScheduleEngineService,
+          useValue: {
+            closeScheduleForInvoice: closeSchedule,
+            sumInFlightForInvoice: sumInFlight,
+          },
+        },
       ],
     }).compile();
 
@@ -152,6 +175,67 @@ describe('PaymentsService / encaissements manuels', () => {
       amountCents: 6000,
       method: ClubPaymentMethod.MANUAL_CASH,
     });
+  });
+
+  it('paiement qui solde : clôture l’échéancier', async () => {
+    prisma.invoice.findFirst.mockResolvedValue(openInvoice);
+    prisma.payment.aggregate.mockResolvedValue({ _sum: { amountCents: 4000 } });
+    const tx = makeTx('pay-2', 6000);
+    prisma.$transaction.mockImplementation(
+      async (fn: (t: InvoiceTx) => Promise<unknown>) => fn(tx),
+    );
+
+    await service.recordManualPayment('club-1', {
+      invoiceId: 'inv-1',
+      amountCents: 6000,
+      method: ClubPaymentMethod.MANUAL_CASH,
+    });
+
+    expect(closeSchedule).toHaveBeenCalledWith('inv-1', InvoiceStatus.PAID);
+  });
+
+  it('ne clôture pas l’échéancier sur un paiement partiel', async () => {
+    prisma.invoice.findFirst.mockResolvedValue(openInvoice);
+    prisma.payment.aggregate.mockResolvedValue({ _sum: { amountCents: null } });
+    const tx = makeTx();
+    prisma.$transaction.mockImplementation(
+      async (fn: (t: InvoiceTx) => Promise<unknown>) => fn(tx),
+    );
+
+    await service.recordManualPayment('club-1', {
+      invoiceId: 'inv-1',
+      amountCents: 4000,
+      method: ClubPaymentMethod.MANUAL_TRANSFER,
+    });
+
+    expect(closeSchedule).not.toHaveBeenCalled();
+  });
+
+  it('clôture l’échéancier même si l’écriture comptable échoue', async () => {
+    // Régression : la clôture était placée APRÈS le hook comptable. Un club
+    // sans compte financier configuré le faisait échouer, et l'échéancier
+    // restait ACTIVE sur une facture soldée — l'état exact que le verrou doit
+    // empêcher. La sécurité financière ne dépend pas de la comptabilité.
+    prisma.invoice.findFirst.mockResolvedValue(openInvoice);
+    prisma.payment.aggregate.mockResolvedValue({ _sum: { amountCents: 4000 } });
+    const tx = makeTx('pay-3', 6000);
+    prisma.$transaction.mockImplementation(
+      async (fn: (t: InvoiceTx) => Promise<unknown>) => fn(tx),
+    );
+    accounting.recordIncomeFromPayment.mockRejectedValue(
+      new Error('Aucun compte financier configuré pour ce club.'),
+    );
+
+    await expect(
+      service.recordManualPayment('club-1', {
+        invoiceId: 'inv-1',
+        amountCents: 6000,
+        method: ClubPaymentMethod.MANUAL_CASH,
+      }),
+    ).rejects.toThrow('Aucun compte financier');
+
+    // L'échec comptable remonte bien, mais la clôture a eu lieu avant.
+    expect(closeSchedule).toHaveBeenCalledWith('inv-1', InvoiceStatus.PAID);
   });
 
   it('refuse un payeur hors du foyer de la facture', async () => {
