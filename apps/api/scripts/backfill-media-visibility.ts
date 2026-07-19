@@ -18,7 +18,12 @@
  * IDEMPOTENT et rejouable.
  *
  * Usage :
- *   cd apps/api && npx ts-node ../../bin/backfill-media-visibility.ts [--dry-run]
+ *   cd apps/api && npx ts-node scripts/backfill-media-visibility.ts [--dry-run]
+ *
+ * DANS apps/api et non dans bin/ : il n'y a pas de workspaces npm (ADR-0004),
+ * donc `node_modules` n'existe que dans chaque app. Un script placé à la
+ * racine ne peut pas résoudre `@prisma/client`, quelles que soient les
+ * options passées à ts-node — vérifié sur staging.
  */
 import { PrismaClient, MediaVisibility } from '@prisma/client';
 

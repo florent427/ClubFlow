@@ -12,7 +12,10 @@
  * Rejouable sans risque.
  *
  * Usage :
- *   cd apps/api && npx ts-node ../../bin/backfill-shop-variants.ts [--dry-run]
+ *   cd apps/api && npx ts-node scripts/backfill-shop-variants.ts [--dry-run]
+ *
+ * DANS apps/api et non dans bin/ : pas de workspaces npm (ADR-0004), donc
+ * `node_modules` n'existe que dans chaque app.
  */
 import { PrismaClient, Prisma } from '@prisma/client';
 
