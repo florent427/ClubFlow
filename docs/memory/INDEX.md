@@ -57,6 +57,7 @@
 | [`ssh-passphrase-non-tty.md`](pitfalls/ssh-passphrase-non-tty.md) | Piège — SSH `Permission denied` quand la clé a une passphrase |
 | [`staging-supprimee-au-merge.md`](pitfalls/staging-supprimee-au-merge.md) | Piège — `staging` disparaît à chaque promotion vers `main` |
 | [`test-verifie-la-forme-pas-le-comportement.md`](pitfalls/test-verifie-la-forme-pas-le-comportement.md) | Piège — un test vert qui certifie un invariant que le code n'a pas |
+| [`tsc-noemit-ne-compile-rien.md`](pitfalls/tsc-noemit-ne-compile-rien.md) | Piège — `tsc --noEmit` qui ne compile aucun fichier et sort toujours 0 |
 | [`windows-scp-crlf-bash-script.md`](pitfalls/windows-scp-crlf-bash-script.md) | Piège — `scp` Windows transfère les `.sh` avec line endings CRLF |
 
 ## 🏛️ Décisions architecturales (ADR)
@@ -74,6 +75,8 @@
 | [`0009-echeancier-paiement-clubflow.md`](decisions/0009-echeancier-paiement-clubflow.md) | ADR-0009 — Échéancier de paiement géré par ClubFlow (carte + SEPA) |
 | [`0010-compte-transit-stripe.md`](decisions/0010-compte-transit-stripe.md) | ADR-0010 — Les encaissements Stripe transitent par le compte 512300 |
 | [`0011-remboursement-eteint-la-creance.md`](decisions/0011-remboursement-eteint-la-creance.md) | ADR-0011 — Un remboursement éteint la créance correspondante |
+| [`0012-boutique-variantes-et-stock.md`](decisions/0012-boutique-variantes-et-stock.md) | ADR-0012 — Tout ce qui est vendable est une variante, et le stock est un journal |
+| [`0013-commandes-fournisseur.md`](decisions/0013-commandes-fournisseur.md) | ADR-0013 — Commandes fournisseur : réception, rapprochement et écart |
 
 ## 🔄 Workflows métier
 
@@ -86,7 +89,7 @@
 
 ---
 
-_Index généré le 2026-07-19 10:31 UTC par `bin/memory-index`._
+_Index généré le 2026-07-19 16:26 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`

@@ -59,6 +59,15 @@ export class AccountingSeedService {
     { code: '606300', label: 'Petit équipement (< 500€ HT)', kind: 'EXPENSE', sortOrder: 11 },
     { code: '606400', label: 'Fournitures administratives', kind: 'EXPENSE', sortOrder: 12 },
     { code: '606800', label: 'Autres matières et fournitures', kind: 'EXPENSE', sortOrder: 13 },
+    // Achats destinés à la REVENTE (boutique du club) — à distinguer des
+    // fournitures 606xxx, consommées par le club lui-même. Proposé par défaut
+    // quand le trésorier saisit une facture fournisseur rattachée à une
+    // commande boutique (ADR-0013 §1).
+    //
+    // La RÉCEPTION n'écrit rien : la comptabilité reste en trésorerie, et
+    // l'écriture naît au paiement. Ce compte n'a donc pas de contrepartie
+    // fournisseur — il n'existe volontairement aucun 401000 au plan.
+    { code: '607000', label: 'Achats de marchandises (revente boutique)', kind: 'EXPENSE', sortOrder: 14 },
     { code: '611000', label: 'Sous-traitance générale', kind: 'EXPENSE', sortOrder: 20 },
     { code: '613200', label: 'Locations immobilières', kind: 'EXPENSE', sortOrder: 21 },
     { code: '613500', label: 'Locations mobilières (matériel sportif)', kind: 'EXPENSE', sortOrder: 22 },

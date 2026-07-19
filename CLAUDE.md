@@ -83,8 +83,20 @@ docs/
 6. **TOUJOURS** chercher dans `docs/memory/pitfalls/` avant de redébugger un truc
 7. **TOUJOURS** utiliser `"/c/Windows/System32/OpenSSH/ssh.exe"` pour SSH
    (cf. [ssh-windows.md](docs/knowledge/ssh-windows.md))
-8. **TOUJOURS** type-check (`npx tsc --noEmit`) avant un commit côté
-   `apps/api` ET `apps/admin`
+8. **TOUJOURS** type-check avant un commit — mais **PAS** avec
+   `npx tsc --noEmit` côté front : le `tsconfig.json` d'`admin` et de
+   `member-portal` est un fichier de références (`"files": []`), donc cette
+   commande compile **zéro fichier** et sort toujours 0. Elle a « validé »
+   ces deux apps pendant des mois sans rien lire.
+   ```bash
+   cd apps/api           && npx tsc --noEmit   # 1 projet, la commande mord
+   cd apps/admin         && npm run typecheck  # tsc -b, 184 fichiers
+   cd apps/member-portal && npm run typecheck  # tsc -b,  81 fichiers
+   cd apps/mobile-admin  && npx tsc --noEmit   # 351 fichiers, mordait déjà
+   ```
+   Contrôle du contrôle : `npx tsc --noEmit --listFiles | grep -c /src/`
+   doit renvoyer un nombre **non nul**. Cf.
+   [pitfall](docs/memory/pitfalls/tsc-noemit-ne-compile-rien.md).
 
 ---
 
