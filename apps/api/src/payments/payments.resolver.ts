@@ -186,7 +186,7 @@ export class PaymentsResolver {
   @Mutation(() => RefundResultGraph, {
     name: 'refundClubPayment',
     description:
-      "Rembourse tout ou partie d'un encaissement Stripe sur le compte connecté du club. Un avoir du même montant est émis automatiquement : sans lui la facture redeviendrait due et l'échéancier reprélèverait l'adhérent.",
+      "Rembourse tout ou partie d'un encaissement Stripe sur le compte connecté du club. amountCents absent = remboursement total du solde encore remboursable. Un avoir du montant remboursé est émis automatiquement, et il ÉTEINT la créance correspondante (ADR-0011) : sur une facture déjà soldée il empêche un nouveau prélèvement ; sur une facture encore due, il abandonne la part remboursée — rembourser 100 € sur une adhésion de 300 € ramène le reste dû à 200 €.",
   })
   async refundClubPayment(
     @CurrentClub() club: Club,
