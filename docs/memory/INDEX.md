@@ -32,9 +32,11 @@
 | [`caddyfile-log-block-inline-vs-multiline.md`](pitfalls/caddyfile-log-block-inline-vs-multiline.md) | Piège — `caddy validate` rejette `log { output file ... { ... } }` inline |
 | [`cloudflare-proxy-breaks-letsencrypt.md`](pitfalls/cloudflare-proxy-breaks-letsencrypt.md) | Piège — Cloudflare proxy ON casse le challenge Let's Encrypt |
 | [`cloudflare-zone-id-vs-account-id.md`](pitfalls/cloudflare-zone-id-vs-account-id.md) | Piège — Confondre Cloudflare **Zone ID** et **Account ID** |
+| [`compta-non-seedee-webhook-500.md`](pitfalls/compta-non-seedee-webhook-500.md) | Piège — module comptable activé mais plan comptable jamais seedé |
 | [`cors-admin-web-origin-missing-domain.md`](pitfalls/cors-admin-web-origin-missing-domain.md) | Piège — Login admin "Failed to fetch" : nouveau sous-domaine pas dans ADMIN_WEB_ORIGIN |
 | [`cors-no-origin-prod.md`](pitfalls/cors-no-origin-prod.md) | Piège — CORS API en `NODE_ENV=production` bloque les appels SSR |
 | [`env-production-perdus-reset-hard.md`](pitfalls/env-production-perdus-reset-hard.md) | Piège — `.env.production` perdus après `git reset --hard` |
+| [`garantie-derriere-effet-de-bord.md`](pitfalls/garantie-derriere-effet-de-bord.md) | Piège — une garantie placée derrière un effet de bord qui peut échouer |
 | [`gh-pr-create-no-commits.md`](pitfalls/gh-pr-create-no-commits.md) | Piège — `gh pr create` "No commits between" après squash merge |
 | [`gha-pr-permission.md`](pitfalls/gha-pr-permission.md) | Piège — GitHub Actions ne peut pas créer ou approuver de PRs |
 | [`gitignore-claude-trailing-slash-blocks-negation.md`](pitfalls/gitignore-claude-trailing-slash-blocks-negation.md) | Piège — `.gitignore` `.claude/` (trailing slash) bloque la négation `!.claude/skills/` |
@@ -52,6 +54,7 @@
 | [`safety-blocks-shared-infra-mcp.md`](pitfalls/safety-blocks-shared-infra-mcp.md) | Piège — Safety bloque les modifs d'infra partagée via Chrome MCP |
 | [`signup-unverified-email-blocks-login.md`](pitfalls/signup-unverified-email-blocks-login.md) | Piège — Signup self-service : compte créé mais bloqué au login (email pas vérifié) |
 | [`ssh-passphrase-non-tty.md`](pitfalls/ssh-passphrase-non-tty.md) | Piège — SSH `Permission denied` quand la clé a une passphrase |
+| [`test-verifie-la-forme-pas-le-comportement.md`](pitfalls/test-verifie-la-forme-pas-le-comportement.md) | Piège — un test vert qui certifie un invariant que le code n'a pas |
 | [`windows-scp-crlf-bash-script.md`](pitfalls/windows-scp-crlf-bash-script.md) | Piège — `scp` Windows transfère les `.sh` avec line endings CRLF |
 
 ## 🏛️ Décisions architecturales (ADR)
@@ -67,6 +70,7 @@
 | [`0007-caddy-admin-api-vs-caddyfile.md`](decisions/0007-caddy-admin-api-vs-caddyfile.md) | ADR-0007 — Caddy Admin API (port 2019) pour vhosts dynamiques |
 | [`0008-stripe-connect-express.md`](decisions/0008-stripe-connect-express.md) | ADR-0008 — Stripe Connect Express + direct charges (encaissement multi-tenant) |
 | [`0009-echeancier-paiement-clubflow.md`](decisions/0009-echeancier-paiement-clubflow.md) | ADR-0009 — Échéancier de paiement géré par ClubFlow (carte + SEPA) |
+| [`0010-compte-transit-stripe.md`](decisions/0010-compte-transit-stripe.md) | ADR-0010 — Les encaissements Stripe transitent par le compte 512300 |
 
 ## 🔄 Workflows métier
 
@@ -79,7 +83,7 @@
 
 ---
 
-_Index généré le 2026-07-18 18:04 UTC par `bin/memory-index`._
+_Index généré le 2026-07-19 07:24 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`

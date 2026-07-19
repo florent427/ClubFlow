@@ -140,19 +140,34 @@ correct — aucune erreur nulle part, juste un événement jamais délivré.
 Événements à souscrire, par lot (⚠️ périmètre **« Comptes connectés »**,
 puisqu'on est en direct charges) :
 
-| Événement | Requis par |
-|---|---|
-| `account.updated` | Connect (onboarding) — ✅ souscrit |
-| `payment_intent.succeeded` | Encaissement — ✅ souscrit |
-| `setup_intent.succeeded` | Lot 2 — enregistrement du moyen de paiement |
-| `setup_intent.setup_failed` | Lot 2 — échec d'enregistrement |
-| `payment_intent.payment_failed` | Lot 4 — échec de prélèvement |
-| `payment_intent.requires_action` | Lot 4 — 3-D Secure off-session |
-| `mandate.updated` | Lot 4 — révocation d'un mandat SEPA |
-| `charge.dispute.created` | Phase 2 — litiges |
+État au 2026-07-19 — **9 événements souscrits** sur les deux destinations
+(`ClubFlow staging` et `ClubFlow API prod`) :
+
+| Événement | Requis par | Souscrit |
+|---|---|---|
+| `account.updated` | Connect (onboarding) | ✅ |
+| `payment_intent.succeeded` | Encaissement | ✅ |
+| `setup_intent.succeeded` | Lot 2 — enregistrement du moyen de paiement | ✅ |
+| `setup_intent.setup_failed` | Lot 2 — échec d'enregistrement | ✅ |
+| `payment_intent.payment_failed` | Lot 4 — échec de prélèvement | ✅ |
+| `payment_intent.requires_action` | Lot 4 — 3-D Secure off-session | ✅ |
+| `mandate.updated` | Lot 4 — révocation d'un mandat SEPA | ✅ |
+| `payout.paid` | Phase 2 — solde du compte de transit ([ADR-0010](0010-compte-transit-stripe.md)) | ✅ |
+| `charge.refunded` | Phase 2 — remboursements | ✅ |
+| `charge.dispute.created` | Litiges — **ni souscrit, ni traité dans le code** | ❌ |
 
 **Règle** : tout ajout d'un `event.type` dans `handleStripeWebhook` doit
 s'accompagner de la mise à jour de la destination, en test **et** en prod.
+L'ordre compte : abonner d'abord, déployer ensuite. Le code seul ne reçoit
+rien ; l'abonnement seul est inoffensif.
+
+**Deux comportements différés, assumés** (cf. [ADR-0010](0010-compte-transit-stripe.md)) :
+
+- Les **frais** ne sont généralement pas disponibles au moment du webhook,
+  carte comprise — un balayage horaire les récupère.
+- Un remboursement **SEPA** naît `pending` : le webhook l'ignore à raison,
+  et c'est le rapprochement quotidien qui l'enregistre une fois passé à
+  `succeeded`. Brancher `refund.updated` le rendrait immédiat.
 
 ## Lots
 

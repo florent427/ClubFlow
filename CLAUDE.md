@@ -156,8 +156,23 @@ deploy-staging.yml. Détails → [runbooks/release.md](docs/runbooks/release.md)
 | Bootstrap multi-tenant Phase 1 (vhost app/wildcard, landing systemd, SKSR rename) | une seule passe | [phase1-bootstrap-multi-tenant.md](docs/runbooks/phase1-bootstrap-multi-tenant.md) |
 | `<slug>.clubflow.topdigital.re` cert TLS fail | endpoint check-domain KO | vérifier `curl -s "http://localhost:3000/v1/vitrine/check-domain?domain=<host>"` retourne 200 |
 
+| Écritures comptables absentes malgré module activé | plan jamais seedé | [pitfall](docs/memory/pitfalls/compta-non-seedee-webhook-500.md) |
+| Taux d'erreur non nul sur une destination webhook Stripe | échec masqué par le rejeu | [pitfall](docs/memory/pitfalls/compta-non-seedee-webhook-500.md) |
+
 Pour tout autre symptôme : grep dans `docs/memory/pitfalls/` ou demander
 à `/learn`.
+
+### Deux pièges SANS symptôme
+
+Ceux-là ne se trouvent pas par `grep` sur un message d'erreur — il n'y en
+a pas. Ce sont des motifs à reconnaître en écrivant, pas en débuggant :
+
+- **[Une garantie derrière un effet de bord qui peut échouer](docs/memory/pitfalls/garantie-derriere-effet-de-bord.md)**
+  — rencontré 3× dans la seule session du 2026-07-18/19. Se demander de
+  chaque ligne : *garantie ou accessoire ?*
+- **[Un test qui vérifie la forme au lieu du comportement](docs/memory/pitfalls/test-verifie-la-forme-pas-le-comportement.md)**
+  — reste vert en certifiant un invariant que le code n'a pas. Seul le
+  mutation testing le démasque.
 
 ---
 
