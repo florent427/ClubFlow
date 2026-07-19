@@ -19,6 +19,8 @@ import { StripeCheckoutService } from './stripe-checkout.service';
 import { StripeConnectResolver } from './stripe-connect.resolver';
 import { StripeConnectService } from './stripe-connect.service';
 import { StripeFeesService } from './stripe-fees.service';
+import { StripeRefundsService } from './stripe-refunds.service';
+import { CreditNotesService } from './credit-notes.service';
 import { StripeWebhookController } from './stripe-webhook.controller';
 
 @Module({
@@ -38,6 +40,8 @@ import { StripeWebhookController } from './stripe-webhook.controller';
     StripeConnectService,
     StripeConnectResolver,
     StripeFeesService,
+    StripeRefundsService,
+    CreditNotesService,
     PaymentScheduleService,
     PaymentScheduleEngineService,
     PaymentScheduleNotifierService,
@@ -52,6 +56,8 @@ import { StripeWebhookController } from './stripe-webhook.controller';
     PaymentsService,
     StripeCheckoutService,
     StripeConnectService,
+    StripeRefundsService,
+    CreditNotesService,
     PaymentScheduleService,
     // Exporté pour que ViewerService partage la MÊME règle « seul le payeur ».
     InvoicePayerScopeService,

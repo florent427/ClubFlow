@@ -10,6 +10,8 @@ import { PaymentScheduleService } from './payment-schedule.service';
 import { PaymentsService } from './payments.service';
 import { StripeConnectService } from './stripe-connect.service';
 import { StripeFeesService } from './stripe-fees.service';
+import { StripeRefundsService } from './stripe-refunds.service';
+import { CreditNotesService } from './credit-notes.service';
 
 describe('PaymentsService / Stripe webhook', () => {
   let service: PaymentsService;
@@ -95,6 +97,10 @@ describe('PaymentsService / Stripe webhook', () => {
         // mais Nest exige que le constructeur soit résoluble.
         { provide: StripeConnectService, useValue: stripeConnect },
         { provide: StripeFeesService, useValue: stripeFees },
+        // Remboursements : non exercés par ces specs, mais le constructeur
+        // doit rester résoluble.
+        { provide: StripeRefundsService, useValue: {} },
+        { provide: CreditNotesService, useValue: {} },
         { provide: PaymentScheduleService, useValue: paymentSchedules },
         { provide: PaymentScheduleEngineService, useValue: scheduleEngine },
       ],

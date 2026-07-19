@@ -400,6 +400,12 @@ export class AccountingService {
   async createContraEntryForCreditNote(
     clubId: string,
     creditNoteInvoiceId: string,
+    /**
+     * Encaissement précis que cet avoir rembourse. Fourni par le
+     * remboursement Stripe ; absent pour un avoir manuel, qui ne désigne
+     * aucun paiement en particulier.
+     */
+    sourcePaymentId?: string | null,
   ): Promise<void> {
     if (!(await this.isAccountingEnabled(clubId))) return;
 
@@ -408,23 +414,63 @@ export class AccountingService {
     });
     if (!creditNote || !creditNote.parentInvoiceId) return;
 
-    // Trouve l'entry originale (liée au premier paiement de la facture parente)
+    // Écriture de recette à contre-passer.
+    //
+    // Quand l'avoir rembourse un encaissement PRÉCIS, on cible celui-là. Une
+    // facture peut porter plusieurs encaissements — échéancier, acompte puis
+    // solde — et rien ne garantit qu'ils soient tombés sur le même compte : un
+    // prélèvement Stripe atterrit sur le transit, un règlement en espèces dans
+    // la caisse. Prendre « le plus récent » créditerait la caisse d'un argent
+    // repris par Stripe sur le transit : les deux comptes faux d'un coup.
     const originalEntry = await this.prisma.accountingEntry.findFirst({
       where: {
         clubId,
-        payment: { invoiceId: creditNote.parentInvoiceId },
+        ...(sourcePaymentId
+          ? { paymentId: sourcePaymentId }
+          : { payment: { invoiceId: creditNote.parentInvoiceId } }),
         source: AccountingEntrySource.AUTO_MEMBER_PAYMENT,
         cancelledAt: null,
       },
-      include: { lines: true },
+      include: {
+        lines: true,
+        financialAccount: { include: { accountingAccount: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
 
-    const bankCode = await this.mapping.resolveAccountCode(
-      clubId,
-      'BANK_ACCOUNT',
-    );
-    const bankAccount = await this.lookupAccount(clubId, bankCode);
+    // Aucune recette constatée : il n'y a rien à contre-passer.
+    //
+    // La comptabilité est tenue en ENCAISSEMENT — `createInvoice` n'écrit
+    // aucune écriture, seul le paiement en produit une. Une facture jamais
+    // réglée n'a donc pas d'écriture d'origine, et c'est le cas le plus
+    // courant de l'avoir manuel : l'adhérent annule avant d'avoir payé.
+    //
+    // Écrire quand même DÉBIT produit / CRÉDIT banque inventerait une sortie
+    // de trésorerie qui n'a jamais eu lieu : le rapprochement bancaire
+    // porterait un écart permanent, sans ligne de relevé en face, et cet écart
+    // se cumulerait à chaque annulation de la saison. L'avoir garde tout son
+    // effet côté facturation — `invoicePaymentTotals` le déduit du solde.
+    if (!originalEntry) {
+      this.logger.log(
+        `[avoir] ${creditNoteInvoiceId} sans encaissement d'origine — ` +
+          `aucune écriture comptable (facture jamais réglée).`,
+      );
+      return;
+    }
+
+    // Contrepartie de trésorerie : le compte où l'encaissement est RÉELLEMENT
+    // tombé, et non la banque générique.
+    //
+    // Un encaissement Stripe atterrit sur le compte de transit 512300, pas sur
+    // 512000 : créditer la banque rendrait l'argent depuis un compte qui ne
+    // l'a jamais reçu, et laisserait le transit débiteur du montant remboursé,
+    // indéfiniment. Le compte est déjà tranché et figé sur l'écriture de
+    // recette — on le reprend, exactement comme le fait la charge de frais.
+    const cashCode =
+      originalEntry.financialAccount?.accountingAccount.code ??
+      // Encaissement antérieur au multi-comptes : le compte n'a pas été figé.
+      (await this.mapping.resolveAccountCode(clubId, 'BANK_ACCOUNT'));
+    const bankAccount = await this.lookupAccount(clubId, cashCode);
     const revenueCode = await this.mapping.resolveAccountCode(
       clubId,
       'MEMBERSHIP_PRODUCT',
@@ -442,7 +488,7 @@ export class AccountingService {
           source: AccountingEntrySource.AUTO_REFUND,
           label: `Avoir — ${creditNote.label}`,
           amountCents,
-          contraEntryId: originalEntry?.id ?? null,
+          contraEntryId: originalEntry.id,
           occurredAt: creditNote.createdAt,
         },
       });
@@ -500,7 +546,7 @@ export class AccountingService {
       clubId,
       userId: 'system',
       action: AccountingAuditAction.CONTRAPASS,
-      entryId: originalEntry?.id ?? null,
+      entryId: originalEntry.id,
       metadata: {
         source: 'AUTO_REFUND',
         creditNoteInvoiceId,

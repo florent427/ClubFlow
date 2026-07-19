@@ -168,6 +168,10 @@ export class StripeFeesService {
       where: {
         stripeFeesSyncedAt: null,
         stripeAccountId: { not: null },
+        // Un remboursement (montant négatif) n'a pas de frais propres :
+        // l'inclure le ferait reprendre chaque jour en pure perte, puis
+        // grossir le compteur d'abandons et déclencher une alerte perpétuelle.
+        amountCents: { gt: 0 },
         createdAt: { lt: notBefore, gte: giveUpBefore },
       },
       select: { id: true },
@@ -187,6 +191,7 @@ export class StripeFeesService {
       where: {
         stripeFeesSyncedAt: null,
         stripeAccountId: { not: null },
+        amountCents: { gt: 0 },
         createdAt: { lt: giveUpBefore },
       },
     });

@@ -21,6 +21,8 @@ import { PaymentScheduleEngineService } from './payment-schedule-engine.service'
 import { PaymentScheduleService } from './payment-schedule.service';
 import { StripeConnectService } from './stripe-connect.service';
 import { StripeFeesService } from './stripe-fees.service';
+import { StripeRefundsService } from './stripe-refunds.service';
+import { CreditNotesService } from './credit-notes.service';
 import { CreateInvoiceInput } from './dto/create-invoice.input';
 import { RecordManualPaymentInput } from './dto/record-manual-payment.input';
 import { UpsertClubPricingRuleInput } from './dto/upsert-pricing-rule.input';
@@ -58,6 +60,8 @@ export class PaymentsService {
     private readonly paymentSchedules: PaymentScheduleService,
     private readonly scheduleEngine: PaymentScheduleEngineService,
     private readonly stripeFees: StripeFeesService,
+    private readonly stripeRefunds: StripeRefundsService,
+    private readonly creditNotes: CreditNotesService,
   ) {}
 
   /**
@@ -410,51 +414,15 @@ export class PaymentsService {
     reason: string,
     amountCents?: number | null,
   ) {
-    const parent = await this.prisma.invoice.findFirst({
-      where: { id: parentInvoiceId, clubId },
-    });
-    if (!parent) {
-      throw new NotFoundException('Facture parente introuvable');
-    }
-    if (parent.isCreditNote) {
-      throw new BadRequestException(
-        'Impossible de créer un avoir sur un avoir.',
-      );
-    }
-    const amount = amountCents ?? parent.amountCents;
-    if (amount <= 0) {
-      throw new BadRequestException('Le montant doit être positif.');
-    }
-    if (amount > parent.amountCents) {
-      throw new BadRequestException(
-        "Le montant de l'avoir ne peut excéder celui de la facture.",
-      );
-    }
-    const trimmedReason = reason.trim();
-    if (!trimmedReason) {
-      throw new BadRequestException('Motif obligatoire pour un avoir.');
-    }
-    const creditNote = await this.prisma.invoice.create({
-      data: {
-        clubId,
-        familyId: parent.familyId,
-        householdGroupId: parent.householdGroupId,
-        clubSeasonId: parent.clubSeasonId,
-        label: `Avoir — ${parent.label}`,
-        baseAmountCents: amount,
-        amountCents: amount,
-        status: InvoiceStatus.PAID,
-        isCreditNote: true,
-        parentInvoiceId: parent.id,
-        creditNoteReason: trimmedReason,
-      },
-    });
-    // Hook comptable : génère l'entry de contre-passation liée à la
-    // facture parente. Silencieux si module compta désactivé.
-    await this.accounting.createContraEntryForCreditNote(
+    // Délégué : le remboursement Stripe passe par le même service, et deux
+    // chemins d'avoir divergents produiraient des documents différents.
+    const creditNote = await this.creditNotes.create({
       clubId,
-      creditNote.id,
-    );
+      parentInvoiceId,
+      reason,
+      amountCents,
+    });
+    await this.creditNotes.recordAccounting(clubId, creditNote.id);
     return creditNote;
   }
 
@@ -818,6 +786,43 @@ export class PaymentsService {
       return;
     }
 
+    // Remboursement confirmé par Stripe. On écoute l'événement plutôt que de
+    // n'enregistrer qu'au retour de notre propre appel : un club peut aussi
+    // rembourser depuis son dashboard Stripe, et le webhook est le seul point
+    // de passage commun aux deux origines.
+    if (event.type === 'charge.refunded') {
+      const charge = event.data.object as Stripe.Charge;
+      const paymentIntentId =
+        typeof charge.payment_intent === 'string'
+          ? charge.payment_intent
+          : (charge.payment_intent?.id ?? null);
+      if (!paymentIntentId || !eventAccount) return;
+
+      const clubId =
+        charge.metadata?.clubId ?? (await this.clubIdForAccount(eventAccount));
+      if (!clubId) return;
+
+      const refunds = await this.stripeRefunds.listRefundsForCharge(
+        charge,
+        eventAccount,
+      );
+      for (const r of refunds) {
+        // Un remboursement `pending` ou `failed` n'a rien rendu : l'inscrire
+        // créerait un avoir pour de l'argent qui n'est jamais parti.
+        if (r.status !== 'succeeded') continue;
+        await this.stripeRefunds.applyRefundConfirmed({
+          clubId,
+          paymentIntentId,
+          refundId: r.id,
+          amountCents: r.amount,
+          stripeAccountId: eventAccount,
+          reason:
+            typeof r.metadata?.reason === 'string' ? r.metadata.reason : null,
+        });
+      }
+      return;
+    }
+
     // Stripe a viré au club le net de ses encaissements : on solde le compte
     // de transit vers la banque. Sans cette écriture, le transit gonflerait
     // indéfiniment et la banque resterait vide alors que l'argent y est.
@@ -881,6 +886,16 @@ export class PaymentsService {
         installmentId,
       );
     }
+  }
+
+  /** Club propriétaire d'un compte connecté, pour les événements sans metadata. */
+  private async clubIdForAccount(account: string | null): Promise<string | null> {
+    if (!account) return null;
+    const club = await this.prisma.club.findFirst({
+      where: { stripeAccountId: account },
+      select: { id: true },
+    });
+    return club?.id ?? null;
   }
 
   private async applyStripePaymentSuccess(

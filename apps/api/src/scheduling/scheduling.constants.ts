@@ -22,4 +22,10 @@ export const SCHEDULER_LOCK_KEYS = {
    * prélèvement tient son verrou jusqu'à 15 minutes.
    */
   stripeFeesSweep: 'stripe-fees-sweep',
+  /**
+   * Rapprochement des remboursements Stripe non enregistrés (Phase 2).
+   * Verrou distinct : un rapprochement lent ne doit retarder ni le
+   * prélèvement, ni la récupération des frais.
+   */
+  stripeRefundReconcile: 'stripe-refund-reconcile',
 } as const;
