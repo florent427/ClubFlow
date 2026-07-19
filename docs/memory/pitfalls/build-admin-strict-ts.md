@@ -49,7 +49,9 @@ Le script `clubflow-deploy.sh` Phase 3 utilise déjà `npx vite build`.
 
 ## Solution propre (à faire — TODO ticket)
 
-1. Lister toutes les erreurs : `cd apps/admin && npx tsc --noEmit > /tmp/ts-errors.txt`
+1. Lister toutes les erreurs : `cd apps/admin && npm run typecheck > /tmp/ts-errors.txt`
+   (⚠️ **pas** `npx tsc --noEmit` : vérifie 0 fichier, cf.
+   [typecheck-noop-solution-tsconfig.md](typecheck-noop-solution-tsconfig.md))
 2. Fixer les ~10 fichiers fautifs
 3. Réactiver `tsc -b` dans le script `build`
 
@@ -72,7 +74,7 @@ Pour voir le diff entre le code et la "vraie" propreté TS :
 
 ```bash
 cd apps/admin
-npx tsc --noEmit 2>&1 | head -30
+npm run typecheck 2>&1 | head -30
 ```
 
 À faire 1x par mois pour suivre le tech debt.
