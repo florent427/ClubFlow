@@ -156,6 +156,8 @@ deploy-staging.yml. Détails → [runbooks/release.md](docs/runbooks/release.md)
 | Bootstrap multi-tenant Phase 1 (vhost app/wildcard, landing systemd, SKSR rename) | une seule passe | [phase1-bootstrap-multi-tenant.md](docs/runbooks/phase1-bootstrap-multi-tenant.md) |
 | `<slug>.clubflow.topdigital.re` cert TLS fail | endpoint check-domain KO | vérifier `curl -s "http://localhost:3000/v1/vitrine/check-domain?domain=<host>"` retourne 200 |
 
+| `staging` n'existe plus après un merge vers main | `delete_branch_on_merge` | [pitfall](docs/memory/pitfalls/staging-supprimee-au-merge.md) |
+| `staging` a perdu des commits / déploie du code plus ancien que la prod | recréée depuis une réf locale périmée | [pitfall](docs/memory/pitfalls/staging-supprimee-au-merge.md) |
 | Écritures comptables absentes malgré module activé | plan jamais seedé | [pitfall](docs/memory/pitfalls/compta-non-seedee-webhook-500.md) |
 | Taux d'erreur non nul sur une destination webhook Stripe | échec masqué par le rejeu | [pitfall](docs/memory/pitfalls/compta-non-seedee-webhook-500.md) |
 
