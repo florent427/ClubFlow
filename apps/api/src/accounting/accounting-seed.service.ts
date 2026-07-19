@@ -278,13 +278,26 @@ export class AccountingSeedService {
   ): Promise<number> {
     let created = 0;
     const defaults: Array<{
-      kind: 'BANK' | 'CASH';
+      kind: 'BANK' | 'CASH' | 'STRIPE_TRANSIT';
       label: string;
       accountCode: string;
       sortOrder: number;
     }> = [
       { kind: 'BANK', label: 'Banque principale', accountCode: '512000', sortOrder: 0 },
       { kind: 'CASH', label: 'Caisse principale', accountCode: '530000', sortOrder: 10 },
+      // Compte tampon entre l'encaissement et le virement Stripe.
+      //
+      // Stripe encaisse le BRUT, prélève sa commission, puis vire le NET
+      // quelques jours plus tard. Faire tomber l'encaissement directement sur
+      // la banque ferait dériver son solde du montant des frais, à chaque
+      // paiement et sans que rien ne le détecte — un rapprochement bancaire
+      // ne tomberait jamais juste.
+      {
+        kind: 'STRIPE_TRANSIT',
+        label: 'Stripe (en transit)',
+        accountCode: '512300',
+        sortOrder: 5,
+      },
     ];
     for (const d of defaults) {
       const acc = accountsByCode.get(d.accountCode);
@@ -329,6 +342,12 @@ export class AccountingSeedService {
       where: { clubId, kind: 'CASH', isDefault: true },
       select: { id: true },
     });
+    // Repli sur la banque si le compte de transit n'a pas pu être créé (plan
+    // comptable incomplet) : mieux vaut une route imparfaite que pas de route
+    // du tout, qui ferait échouer l'encaissement.
+    const stripeTransitDefault = await this.prisma.clubFinancialAccount.findFirst(
+      { where: { clubId, kind: 'STRIPE_TRANSIT', isDefault: true }, select: { id: true } },
+    );
     const routes: Array<{
       method:
         | 'STRIPE_CARD'
@@ -338,7 +357,13 @@ export class AccountingSeedService {
       finId: string | null;
     }> = [
       { method: 'MANUAL_CASH', finId: cashDefault?.id ?? null },
-      { method: 'STRIPE_CARD', finId: bankDefault?.id ?? null },
+      // STRIPE_CARD couvre aussi les prélèvements SEPA : l'enum
+      // ClubPaymentMethod ne distingue pas les deux, et les deux transitent
+      // par Stripe avant d'atterrir en banque.
+      {
+        method: 'STRIPE_CARD',
+        finId: stripeTransitDefault?.id ?? bankDefault?.id ?? null,
+      },
       { method: 'MANUAL_CHECK', finId: bankDefault?.id ?? null },
       { method: 'MANUAL_TRANSFER', finId: bankDefault?.id ?? null },
     ];
@@ -363,6 +388,59 @@ export class AccountingSeedService {
         if (!(err instanceof Prisma.PrismaClientKnownRequestError)) throw err;
       }
     }
+
+    created += await this.repointStripeRouteToTransit(
+      clubId,
+      stripeTransitDefault?.id ?? null,
+      bankDefault?.id ?? null,
+    );
     return created;
+  }
+
+  /**
+   * Redirige vers le compte de transit la route Stripe des clubs créés AVANT
+   * son introduction.
+   *
+   * Une boucle de seed ordinaire ne suffit pas : elle saute toute route déjà
+   * présente, et ces clubs en ont une — vers la banque. Sans cette reprise,
+   * ils continueraient indéfiniment à faire tomber le brut sur leur compte
+   * bancaire, dont le solde dériverait du montant des frais.
+   *
+   * DEUX conditions, et aucune n'est superflue :
+   *
+   *  - `isDefault: true` — la route n'a jamais été touchée par un humain.
+   *    `ClubPaymentRoutesService.upsert` pose `false` dès qu'un trésorier
+   *    choisit son compte. Sans ce marqueur le filtre serait inerte, puisque
+   *    le champ vaut `true` par défaut au schéma : on écraserait alors toutes
+   *    les routes, y compris délibérées — et comme ce seed tourne aussi sur
+   *    les chemins de LECTURE, le choix disparaîtrait au rechargement de
+   *    l'écran où il vient d'être fait.
+   *  - la route pointe encore sur la BANQUE PAR DÉFAUT, c'est-à-dire
+   *    exactement l'état produit par l'ancien seed. On corrige un défaut de
+   *    fabrique identifié, pas « tout ce qui n'est pas le transit ».
+   */
+  private async repointStripeRouteToTransit(
+    clubId: string,
+    transitAccountId: string | null,
+    bankDefaultId: string | null,
+  ): Promise<number> {
+    if (!transitAccountId || !bankDefaultId) return 0;
+    if (transitAccountId === bankDefaultId) return 0;
+
+    const { count } = await this.prisma.clubPaymentRoute.updateMany({
+      where: {
+        clubId,
+        method: 'STRIPE_CARD',
+        isDefault: true,
+        financialAccountId: bankDefaultId,
+      },
+      data: { financialAccountId: transitAccountId },
+    });
+    if (count > 0) {
+      this.logger.log(
+        `Club ${clubId} : route STRIPE_CARD redirigée vers le compte de transit.`,
+      );
+    }
+    return count;
   }
 }

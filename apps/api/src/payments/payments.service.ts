@@ -818,6 +818,33 @@ export class PaymentsService {
       return;
     }
 
+    // Stripe a viré au club le net de ses encaissements : on solde le compte
+    // de transit vers la banque. Sans cette écriture, le transit gonflerait
+    // indéfiniment et la banque resterait vide alors que l'argent y est.
+    if (event.type === 'payout.paid') {
+      const payout = event.data.object as Stripe.Payout;
+      if (!eventAccount) return;
+      const club = await this.prisma.club.findFirst({
+        where: { stripeAccountId: eventAccount },
+        select: { id: true },
+      });
+      if (!club) {
+        this.logger.warn(
+          `[payout] virement ${payout.id} reçu du compte ${eventAccount} — aucun club rattaché.`,
+        );
+        return;
+      }
+      await this.accounting.recordStripePayout({
+        clubId: club.id,
+        payoutId: payout.id,
+        amountCents: payout.amount,
+        // `arrival_date` est en secondes ; c'est la date à laquelle les fonds
+        // atteignent la banque, donc la date comptable pertinente.
+        occurredAt: new Date(payout.arrival_date * 1000),
+      });
+      return;
+    }
+
     // Le prélèvement off-session réclame une authentification forte.
     if (event.type === 'payment_intent.requires_action') {
       const pi = event.data.object as Stripe.PaymentIntent;
