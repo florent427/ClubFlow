@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsString,
   IsUrl,
+  IsUUID,
   MaxLength,
   Min,
   MinLength,
@@ -12,7 +13,18 @@ import {
 
 @InputType()
 export class UpdateShopProductInput {
+  /**
+   * `@IsUUID()` n'est pas décoratif ici : le ValidationPipe global tourne en
+   * `whitelist + forbidNonWhitelisted` (main.ts), donc tout champ SANS
+   * décorateur class-validator est rejeté comme propriété inconnue —
+   * « property id should not exist », erreur 400, mutation inutilisable.
+   *
+   * Ce champ n'en avait aucun depuis le premier commit : `updateShopProduct`
+   * n'a jamais fonctionné. Aucun test ne l'a vu, les tests unitaires appelant
+   * le service directement et court-circuitant le pipe.
+   */
   @Field(() => ID)
+  @IsUUID()
   id!: string;
 
   @Field({ nullable: true })

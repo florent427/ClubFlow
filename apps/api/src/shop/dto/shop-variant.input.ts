@@ -7,6 +7,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   Min,
   MinLength,
@@ -35,6 +36,7 @@ export class ShopProductOptionAxisInput {
 @InputType()
 export class SetShopProductOptionsInput {
   @Field(() => ID)
+  @IsUUID()
   productId!: string;
 
   /**
@@ -59,6 +61,7 @@ export class SetShopProductOptionsInput {
 @InputType()
 export class UpdateShopProductVariantInput {
   @Field(() => ID)
+  @IsUUID()
   variantId!: string;
 
   @Field(() => String, { nullable: true })
@@ -108,6 +111,7 @@ export class UpdateShopProductVariantInput {
 @InputType()
 export class RestockShopVariantInput {
   @Field(() => ID)
+  @IsUUID()
   variantId!: string;
 
   @Field(() => Int)
@@ -125,6 +129,7 @@ export class RestockShopVariantInput {
 @InputType()
 export class AdjustShopVariantStockInput {
   @Field(() => ID)
+  @IsUUID()
   variantId!: string;
 
   /** Ce que l'admin a COMPTÉ, pas un delta : le moteur calcule l'écart. */
@@ -143,6 +148,7 @@ export class AdjustShopVariantStockInput {
 @InputType()
 export class RecordShopVariantShrinkageInput {
   @Field(() => ID)
+  @IsUUID()
   variantId!: string;
 
   @Field(() => Int)

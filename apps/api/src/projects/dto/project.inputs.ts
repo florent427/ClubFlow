@@ -163,7 +163,10 @@ export class UpdateClubProjectInput {
 
 @InputType()
 export class RenameProjectSectionInput {
+  // Sans décorateur, le ValidationPipe global (whitelist +
+  // forbidNonWhitelisted) rejette le champ : « property id should not exist ».
   @Field(() => ID)
+  @IsString()
   id!: string;
 
   @Field()
@@ -175,7 +178,10 @@ export class RenameProjectSectionInput {
 
 @InputType()
 export class UpdateProjectSectionBodyInput {
+  // Sans décorateur, le ValidationPipe global (whitelist +
+  // forbidNonWhitelisted) rejette le champ : « property id should not exist ».
   @Field(() => ID)
+  @IsString()
   id!: string;
 
   /** JSON Tiptap stringifié. On parse côté service. */
