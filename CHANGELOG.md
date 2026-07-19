@@ -9,6 +9,29 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.22.0](https://github.com/florent427/ClubFlow/compare/v0.21.0...v0.22.0) (2026-07-19)
+
+
+### ✨ Features
+
+* **compta:** faire transiter les encaissements Stripe par le compte 512300 ([bd90ba6](https://github.com/florent427/ClubFlow/commit/bd90ba6147e944f44e1e93039063a30c1785863d))
+* **payments:** comptabiliser les frais Stripe (Phase 2, lot 1) ([a784308](https://github.com/florent427/ClubFlow/commit/a7843082d102722eacc20e20003e633323d5193d))
+* **payments:** déclencher à la main le balayage des frais Stripe ([1221f52](https://github.com/florent427/ClubFlow/commit/1221f529712b487cb32db4dc8b0ce79b7d2b902c))
+* **payments:** remboursement Stripe réel, adossé à un avoir ([625cf65](https://github.com/florent427/ClubFlow/commit/625cf652655ae9664784b0595f8274b19239c458))
+* **payments:** Stripe Phase 2 — frais comptabilisés, compte de transit 512300, remboursements ([6af9fd7](https://github.com/florent427/ClubFlow/commit/6af9fd70dd4c211d7261c99856d307d0e83628b9))
+
+
+### 🐛 Bug Fixes
+
+* **compta:** seeder le plan comptable et cesser de perdre les recettes ([d45b3b7](https://github.com/florent427/ClubFlow/commit/d45b3b7304063e4a3a41613b9f0782427cab80ce))
+* **compta:** un avoir ne doit plus retrancher deux fois la recette ([2948094](https://github.com/florent427/ClubFlow/commit/2948094fe969de2da7d5897350adb76247939f8d))
+* **payments:** lire le déjà-remboursé chez Stripe, pas dans notre base ([00f27c8](https://github.com/florent427/ClubFlow/commit/00f27c8c38871dcc7fdd0e2f7835bfe4230f58c4))
+
+
+### ⚡ Performance
+
+* **payments:** passer le balayage des frais Stripe en horaire ([5aade6b](https://github.com/florent427/ClubFlow/commit/5aade6b3fbdd27977be2ec0801c4be0b39b6c526))
+
 ## [0.21.0](https://github.com/florent427/ClubFlow/compare/v0.20.1...v0.21.0) (2026-07-18)
 
 
