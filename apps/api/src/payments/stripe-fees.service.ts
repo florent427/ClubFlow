@@ -119,31 +119,64 @@ export class StripeFeesService {
     const fee = extractStripeFee(pi);
     if (!fee) {
       // Cas ORDINAIRE, carte comprise : la balance transaction n'existe pas
-      // encore. Le balayage quotidien repassera — c'est lui qui aboutit dans
+      // encore. Le balayage horaire repassera — c'est lui qui aboutit dans
       // la plupart des cas, pas cet appel-ci.
       return false;
     }
 
+    // La donnée Stripe est acquise tout de suite : elle a coûté un appel
+    // réseau et rien ne justifie de la reperdre. Mais PAS `stripeFeesSyncedAt`
+    // — cf. plus bas.
     await this.prisma.payment.update({
       where: { id: payment.id },
       data: {
         stripeFeeCents: fee.feeCents,
         stripeFeeCurrency: fee.currency,
         stripeBalanceTransactionId: fee.balanceTransactionId,
-        stripeFeesSyncedAt: new Date(),
       },
     });
 
-    // La charge comptable vient APRÈS la persistance : si l'écriture échoue
-    // (plan comptable incomplet), la donnée reste acquise sur le Payment et
-    // le club la retrouvera en activant sa comptabilité.
-    await this.accounting
-      .recordStripeFeesFromPayment(payment.clubId, payment.id, fee.feeCents)
-      .catch((err: Error) => {
-        this.logger.warn(
-          `[frais] écriture comptable impossible pour ${payment.id} — ${err.message}`,
-        );
-      });
+    // `stripeFeesSyncedAt` n'est posé qu'APRÈS le succès de l'écriture
+    // comptable, et c'est tout l'enjeu : cette colonne est le critère de
+    // reprise du balayage (`where: { stripeFeesSyncedAt: null }`, et le
+    // court-circuit `if (payment.stripeFeesSyncedAt) return true` plus haut).
+    // La poser avant faisait sortir l'encaissement du champ du balayage
+    // définitivement : si l'écriture échouait, la charge n'était jamais
+    // écrite, jamais reprise, et la seule trace était un WARN. Le résultat du
+    // club restait surévalué du montant des frais ET le compte de transit ne
+    // retombait pas à zéro au virement, faute du débit correspondant — soit
+    // une enquête, des semaines plus tard, sur un solde résiduel dont la
+    // cause avait disparu des logs.
+    //
+    // C'est le motif « une garantie derrière un effet de bord qui peut
+    // échouer » (docs/memory/pitfalls/garantie-derriere-effet-de-bord.md),
+    // ici dans sa variante inverse : le marqueur de succès posé AVANT le
+    // succès. La double exécution concurrente, elle, n'est plus retenue par
+    // ce marqueur mais par la contrainte `@@unique([clubId, paymentId,
+    // source])` sur AccountingEntry, qui la refuse en base.
+    try {
+      await this.accounting.recordStripeFeesFromPayment(
+        payment.clubId,
+        payment.id,
+        fee.feeCents,
+      );
+    } catch (err) {
+      // ERROR et non WARN : des frais non comptabilisés faussent le résultat
+      // du club, exactement comme une recette non comptabilisée. Le message
+      // porte de quoi rejouer à la main sans rien chercher.
+      this.logger.error(
+        `[frais] ÉCRITURE COMPTABLE ÉCHOUÉE — club=${payment.clubId} ` +
+          `payment=${payment.id} frais=${fee.feeCents}cts ` +
+          `txn=${fee.balanceTransactionId} — ${(err as Error).message} ` +
+          `(sera repris au prochain balayage horaire)`,
+      );
+      return false;
+    }
+
+    await this.prisma.payment.update({
+      where: { id: payment.id },
+      data: { stripeFeesSyncedAt: new Date() },
+    });
 
     this.logger.log(
       `[frais] paiement ${payment.id} — ${fee.feeCents} cts (${fee.balanceTransactionId})`,
@@ -160,10 +193,10 @@ export class StripeFeesService {
    * ne serait jamais comptabilisée.
    *
    * Conséquence pratique à connaître : entre la fenêtre de grâce de 10 minutes
-   * et le passage quotidien de 9h, l'écriture de frais peut arriver jusqu'à un
-   * jour après l'encaissement. Le résultat du club est donc juste à J+1, pas à
-   * l'instant. Le déclenchement manuel (mutation triggerStripeFeesSweep) permet
-   * de ne pas attendre.
+   * et le passage horaire suivant (à :15), l'écriture de frais arrive au plus
+   * tard environ 1 h 10 après l'encaissement. Le résultat du club est donc
+   * juste à l'heure près, pas à l'instant. Le déclenchement manuel (mutation
+   * triggerStripeFeesSweep) permet de ne pas attendre.
    */
   async sweepPendingFees(opts?: {
     now?: Date;
@@ -257,7 +290,18 @@ export class StripeFeesService {
    */
   @Cron('15 * * * *', { timeZone: SCHEDULING_TIMEZONE })
   async hourlySweep(): Promise<void> {
-    if (process.env.STRIPE_FEES_SWEEP_DISABLED === 'true') return;
+    if (process.env.STRIPE_FEES_SWEEP_DISABLED === 'true') {
+      // Bruyant à dessein, et c'est la raison d'être de ce log : un
+      // interrupteur d'urgence oublié ne se signale par rien d'autre. Sans
+      // cette ligne, un balayage coupé « le temps de l'incident » laisse le
+      // résultat de tous les clubs surévalué du total de leurs frais, en
+      // silence et pour aussi longtemps que personne n'y repense.
+      this.logger.warn(
+        '[frais] balayage DÉSACTIVÉ par STRIPE_FEES_SWEEP_DISABLED — ' +
+          'aucune récupération de frais ce passage.',
+      );
+      return;
+    }
     await this.lock.withLock(
       SCHEDULER_LOCK_KEYS.stripeFeesSweep,
       10 * 60_000,

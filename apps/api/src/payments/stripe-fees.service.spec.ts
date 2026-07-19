@@ -155,17 +155,48 @@ describe('StripeFeesService.syncFeesForPayment', () => {
     await expect(svc.syncFeesForPayment('pay-1')).resolves.toBe(false);
   });
 
-  it('un échec d’écriture comptable ne perd pas la donnée acquise', async () => {
-    // Plan comptable incomplet : les frais restent sur le Payment, le club
-    // les retrouvera en activant sa comptabilité.
+  it('un échec d’écriture comptable garde la donnée ET laisse le balayage repasser', async () => {
+    // L'ancien code posait `stripeFeesSyncedAt` AVANT de tenter l'écriture
+    // comptable. La colonne étant le critère de reprise du balayage, un échec
+    // sortait l'encaissement de son champ pour toujours : la charge n'était
+    // jamais écrite, jamais reprise, et la seule trace était un WARN.
+    //
+    // Le contrat est désormais en deux temps, et ce test vérifie les deux.
     const { svc, prisma, accounting } = makeSvc(STRIPE_PAYMENT);
     retrieve.mockResolvedValue(PI_WITH_FEE);
     accounting.recordStripeFeesFromPayment.mockRejectedValue(
       new Error('Compte 627000 introuvable'),
     );
 
+    // 1. Le balayage ne considère PAS l'encaissement comme traité.
+    await expect(svc.syncFeesForPayment('pay-1')).resolves.toBe(false);
+
+    const updates = prisma.payment.update.mock.calls.map(
+      (c: [{ data: Record<string, unknown> }]) => c[0].data,
+    );
+
+    // 2. La donnée Stripe est tout de même acquise : elle a coûté un appel
+    //    réseau, la reperdre obligerait à réinterroger Stripe.
+    expect(updates.some((d) => d.stripeFeeCents === 175)).toBe(true);
+
+    // 3. Mais RIEN n'a marqué la synchronisation comme faite — c'est ce qui
+    //    permet au balayage horaire de reprendre l'écriture manquante.
+    expect(updates.some((d) => 'stripeFeesSyncedAt' in d)).toBe(false);
+  });
+
+  it('marque la synchronisation UNIQUEMENT quand l’écriture comptable a réussi', async () => {
+    // Le pendant du test précédent : sans lui, poser `stripeFeesSyncedAt`
+    // nulle part passerait aussi les tests, et le balayage rejouerait
+    // l'écriture indéfiniment.
+    const { svc, prisma } = makeSvc(STRIPE_PAYMENT);
+    retrieve.mockResolvedValue(PI_WITH_FEE);
+
     await expect(svc.syncFeesForPayment('pay-1')).resolves.toBe(true);
-    expect(prisma.payment.update).toHaveBeenCalled();
+
+    const updates = prisma.payment.update.mock.calls.map(
+      (c: [{ data: Record<string, unknown> }]) => c[0].data,
+    );
+    expect(updates.some((d) => 'stripeFeesSyncedAt' in d)).toBe(true);
   });
 
   it('sans clé Stripe, n’échoue pas — se contente de ne rien faire', async () => {
