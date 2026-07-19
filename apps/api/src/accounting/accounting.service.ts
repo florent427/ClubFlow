@@ -249,6 +249,21 @@ export class AccountingService {
   ): Promise<void> {
     if (!(await this.isAccountingEnabled(clubId))) return;
 
+    // Le plan comptable doit exister AVANT de chercher un compte.
+    //
+    // Activer le module ne seedait rien : `seedIfEmpty` n'était appelé que
+    // depuis les écrans de comptabilité. Un club qui activait la compta puis
+    // encaissait sans jamais ouvrir ces écrans voyait donc `lookupAccount`
+    // lever, l'exception remonter jusqu'au webhook, la réservation
+    // d'idempotence être libérée, et Stripe rejouer — le rejeu trouvant le
+    // Payment déjà créé et sortant en succès. Résultat : argent enregistré,
+    // comptabilité absente, échec invisible. Constaté sur staging le
+    // 2026-07-19 (0 compte, 0 écriture, 11 % d'échecs de livraison webhook).
+    //
+    // Le seed est idempotent : l'appeler ici répare aussi les clubs déjà
+    // dans cet état, sans migration.
+    await this.seed.seedIfEmpty(clubId);
+
     // Idempotence
     const existing = await this.prisma.accountingEntry.findFirst({
       where: { clubId, paymentId, source: AccountingEntrySource.AUTO_MEMBER_PAYMENT },

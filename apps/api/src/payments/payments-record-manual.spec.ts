@@ -224,11 +224,11 @@ describe('PaymentsService / encaissements manuels', () => {
     expect(closeSchedule).not.toHaveBeenCalled();
   });
 
-  it('clôture l’échéancier même si l’écriture comptable échoue', async () => {
-    // Régression : la clôture était placée APRÈS le hook comptable. Un club
-    // sans compte financier configuré le faisait échouer, et l'échéancier
-    // restait ACTIVE sur une facture soldée — l'état exact que le verrou doit
-    // empêcher. La sécurité financière ne dépend pas de la comptabilité.
+  it('un échec d’écriture comptable ne fait PAS échouer l’encaissement', async () => {
+    // Le Payment est déjà commité quand le hook comptable s'exécute. Laisser
+    // l'erreur remonter afficherait un échec au trésorier sur un encaissement
+    // pourtant enregistré — et il resaisirait, créant un doublon. L'échec est
+    // journalisé en ERROR, pas propagé.
     prisma.invoice.findFirst.mockResolvedValue(openInvoice);
     prisma.payment.aggregate.mockResolvedValue({ _sum: { amountCents: 4000 } });
     const tx = makeTx('pay-3', 6000);
@@ -236,18 +236,18 @@ describe('PaymentsService / encaissements manuels', () => {
       async (fn: (t: InvoiceTx) => Promise<unknown>) => fn(tx),
     );
     accounting.recordIncomeFromPayment.mockRejectedValue(
-      new Error('Aucun compte financier configuré pour ce club.'),
+      new Error('Compte comptable 706100 introuvable'),
     );
 
-    await expect(
-      service.recordManualPayment('club-1', {
-        invoiceId: 'inv-1',
-        amountCents: 6000,
-        method: ClubPaymentMethod.MANUAL_CASH,
-      }),
-    ).rejects.toThrow('Aucun compte financier');
+    const p = await service.recordManualPayment('club-1', {
+      invoiceId: 'inv-1',
+      amountCents: 6000,
+      method: ClubPaymentMethod.MANUAL_CASH,
+    });
 
-    // L'échec comptable remonte bien, mais la clôture a eu lieu avant.
+    // L'encaissement est bien rendu à l'appelant…
+    expect(p.id).toBe('pay-3');
+    // …et la clôture de l'échéancier, qui le précède, a bien eu lieu.
     expect(closeSchedule).toHaveBeenCalledWith('inv-1', InvoiceStatus.PAID);
   });
 
