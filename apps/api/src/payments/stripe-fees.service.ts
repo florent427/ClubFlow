@@ -151,6 +151,12 @@ export class StripeFeesService {
   async sweepPendingFees(opts?: {
     now?: Date;
     limit?: number;
+    /**
+     * Restreint le balayage à un club. Utilisé par le déclenchement manuel :
+     * un admin ne doit jamais provoquer d'appels Stripe sur les comptes
+     * connectés d'autres tenants. Absent = passage global du cron.
+     */
+    clubId?: string;
   }): Promise<{ examined: number; resolved: number; abandoned: number }> {
     const now = opts?.now ?? new Date();
     // On laisse passer quelques minutes : inutile de réinterroger Stripe pour
@@ -166,6 +172,7 @@ export class StripeFeesService {
 
     const pending = await this.prisma.payment.findMany({
       where: {
+        ...(opts?.clubId ? { clubId: opts.clubId } : {}),
         stripeFeesSyncedAt: null,
         stripeAccountId: { not: null },
         // Un remboursement (montant négatif) n'a pas de frais propres :
@@ -189,6 +196,7 @@ export class StripeFeesService {
     // silence — et le résultat du club resterait faux sans que rien ne le dise.
     const abandoned = await this.prisma.payment.count({
       where: {
+        ...(opts?.clubId ? { clubId: opts.clubId } : {}),
         stripeFeesSyncedAt: null,
         stripeAccountId: { not: null },
         amountCents: { gt: 0 },
