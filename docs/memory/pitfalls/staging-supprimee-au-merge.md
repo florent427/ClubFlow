@@ -1,5 +1,16 @@
 # Piège — `staging` disparaît à chaque promotion vers `main`
 
+> ✅ **Corrigé à la racine le 2026-07-19** — `delete_branch_on_merge` est
+> désormais à `false` sur le dépôt. Ce piège ne devrait plus se déclencher.
+>
+> L'entrée reste utile pour deux raisons : la **procédure de réparation**, si
+> le réglage est réactivé un jour ou si la branche est supprimée à la main ;
+> et parce que le vrai danger — une branche recréée de travers, qui ne se voit
+> pas — n'a rien de spécifique à ce réglage.
+>
+> Contrôle : `gh api repos/florent427/ClubFlow --jq '.delete_branch_on_merge'`
+> doit renvoyer `false`.
+
 ## Symptôme
 
 Juste après avoir mergé la PR `staging` → `main`, la branche n'existe plus :
@@ -28,11 +39,12 @@ du dépôt, et il se reproduira à la prochaine.
 
 ## Cause root
 
-Le dépôt a `delete_branch_on_merge` activé :
+Le dépôt avait `delete_branch_on_merge` activé (désactivé depuis, cf. l'encart
+en tête) :
 
 ```bash
 gh api repos/florent427/ClubFlow --jq '.delete_branch_on_merge'
-# true
+# true   ← à l'époque des trois incidents
 ```
 
 Ce réglage supprime la branche source de toute PR mergée. Il est conçu pour
@@ -73,15 +85,16 @@ git ls-remote --heads origin main staging
 # les deux SHA doivent être identiques
 ```
 
-## Le corriger à la racine (recommandé)
+## Le correctif de fond — appliqué le 2026-07-19
 
 ```bash
-gh api -X PATCH repos/florent427/ClubFlow -f delete_branch_on_merge=false
+# Attention : -F et non -f, pour envoyer un vrai booléen JSON
+gh api -X PATCH repos/florent427/ClubFlow -F delete_branch_on_merge=false
 ```
 
-Le réglage ne sert à rien ici : les branches de feature du dépôt sont rares
-et supprimées à la main, alors que la seule branche qu'il touche en pratique
-est justement celle qu'il ne faut pas supprimer.
+Le réglage ne servait à rien ici : les branches de feature du dépôt sont rares
+et supprimées à la main, alors que la seule branche qu'il touchait en pratique
+était justement celle qu'il ne faut pas supprimer.
 
 ## Pourquoi NE PAS faire
 
