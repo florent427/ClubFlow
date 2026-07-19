@@ -529,6 +529,7 @@ export class MediaAssetsService {
         visibility: true,
         _count: {
           select: {
+            // Surfaces PUBLIQUES.
             galleryPhotos: true,
             articleCovers: true,
             articleOgImages: true,
@@ -536,6 +537,15 @@ export class MediaAssetsService {
             projectPosters: true,
             projectCovers: true,
             projectLiveItems: true,
+            // Surfaces PRIVÉES — elles l'emportent, cf. plus bas.
+            accountingDocuments: true,
+            accountingExtractions: true,
+            grantDocuments: true,
+            sponsorshipDocuments: true,
+            clubDocumentSources: true,
+            clubSignedDocuments: true,
+            chatAttachments: true,
+            chatThumbnails: true,
           },
         },
       },
@@ -552,8 +562,44 @@ export class MediaAssetsService {
     // La vérification sur staging l'a montré : le logo du SKSR, référencé par
     // aucune FK, serait passé en 404 sur la vitrine, les factures et les
     // mails si l'on s'était fié aux seules relations.
+    // LE PRIVÉ L'EMPORTE, et cette précédence est le correctif d'une faille
+    // trouvée en vérifiant le rattrapage sur staging.
+    //
+    // Un même fichier peut être désigné par une surface publique ET rattaché
+    // à une pièce privée : un trésorier qui choisit comme logo de club une
+    // image déjà attachée à une facture, ou une photo de produit réutilisée
+    // en pièce jointe. Rien ne l'en empêche, et rien ne l'avertirait.
+    //
+    // Sans cette précédence, `visibility === PUBLIC` gagnait inconditionnellement
+    // et le justificatif devenait lisible par tous. Constaté en conditions
+    // réelles : l'asset choisi au hasard pour le test était à la fois candidat
+    // au logo et rattaché à un AccountingDocument, et il est passé en 200.
+    //
+    // Refuser ici coûte au pire une image cassée — visible, corrigeable en
+    // dupliquant le fichier. L'inverse ouvre une facture au monde.
+    const prive =
+      row._count.accountingDocuments +
+      row._count.accountingExtractions +
+      row._count.grantDocuments +
+      row._count.sponsorshipDocuments +
+      row._count.clubDocumentSources +
+      row._count.clubSignedDocuments +
+      row._count.chatAttachments +
+      row._count.chatThumbnails;
+    if (prive > 0) return false;
+
     if (row.visibility === MediaVisibility.PUBLIC) return true;
-    return Object.values(row._count).some((n) => n > 0);
+
+    return (
+      row._count.galleryPhotos +
+        row._count.articleCovers +
+        row._count.articleOgImages +
+        row._count.ogPages +
+        row._count.projectPosters +
+        row._count.projectCovers +
+        row._count.projectLiveItems >
+      0
+    );
   }
 
   /**

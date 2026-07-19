@@ -24,6 +24,8 @@ type Asset = {
   publicRefs: number;
   /** Colonne `visibility` — couvre les surfaces rattachées par URL en texte. */
   visibility?: 'PUBLIC' | 'PRIVATE';
+  /** Rattachements à des pièces PRIVÉES (facture, subvention, pièce jointe). */
+  privateRefs?: number;
 };
 
 const PHOTO_VITRINE: Asset = {
@@ -60,6 +62,14 @@ function makeSvc(assets: Asset[]) {
                 projectPosters: 0,
                 projectCovers: 0,
                 projectLiveItems: 0,
+                accountingDocuments: a.privateRefs ?? 0,
+                accountingExtractions: 0,
+                grantDocuments: 0,
+                sponsorshipDocuments: 0,
+                clubDocumentSources: 0,
+                clubSignedDocuments: 0,
+                chatAttachments: 0,
+                chatThumbnails: 0,
               },
             };
           }
@@ -171,6 +181,46 @@ describe('isPubliclyReadable — surfaces rattachées par URL en TEXTE', () => {
     await expect(svc.streamFor('a-prive', { clubId: null })).rejects.toThrow(
       NotFoundException,
     );
+  });
+});
+
+describe('isPubliclyReadable — LE PRIVÉ L’EMPORTE', () => {
+  it('un fichier à la fois logo ET justificatif comptable reste REFUSÉ', async () => {
+    // Faille trouvée en vérifiant le rattrapage sur staging : l'asset pioché
+    // au hasard était candidat au logo ET rattaché à un AccountingDocument.
+    // Le `OU` faisait gagner PUBLIC inconditionnellement, et la facture est
+    // passée en 200 en lecture anonyme.
+    const MIXTE: Asset = {
+      id: 'a-mixte',
+      clubId: 'club-1',
+      storagePath: 'p/mixte.jpg',
+      publicRefs: 1, // désigné par la galerie
+      privateRefs: 1, // ET attaché à une facture
+      visibility: 'PUBLIC', // ET marqué public à l'upload
+    };
+    const { svc, storage } = makeSvc([MIXTE]);
+
+    await expect(svc.streamFor('a-mixte', { clubId: null })).rejects.toThrow(
+      NotFoundException,
+    );
+    expect(storage.getObjectStream).not.toHaveBeenCalled();
+  });
+
+  it('le club propriétaire y accède quand même', async () => {
+    // Le pendant : refuser à tout le monde casserait la comptabilité.
+    const MIXTE: Asset = {
+      id: 'a-mixte',
+      clubId: 'club-1',
+      storagePath: 'p/mixte.jpg',
+      publicRefs: 1,
+      privateRefs: 1,
+      visibility: 'PUBLIC',
+    };
+    const { svc } = makeSvc([MIXTE]);
+
+    const r = await svc.streamFor('a-mixte', { clubId: 'club-1' });
+
+    expect(r.isPublic).toBe(false);
   });
 });
 
