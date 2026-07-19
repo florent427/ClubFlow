@@ -22,6 +22,11 @@ function makeHarness(opts?: {
   accountingEnabled?: boolean;
   hasTransit?: boolean;
   existingEntry?: boolean;
+  /**
+   * Écriture de virement d'origine, telle que la retrouve
+   * `reverseStripePayout`. `null` = aucun virement n'a été constaté.
+   */
+  originalPayoutEntry?: Record<string, unknown> | null;
 }) {
   const entries: Array<Record<string, unknown>> = [];
   const lines: Line[] = [];
@@ -48,9 +53,29 @@ function makeHarness(opts?: {
         .mockResolvedValue({ enabled: opts?.accountingEnabled ?? true }),
     },
     accountingEntry: {
-      findFirst: jest
-        .fn()
-        .mockResolvedValue(opts?.existingEntry ? { id: 'deja' } : null),
+      findFirst: jest.fn(
+        async ({ where }: { where: Record<string, unknown> }) => {
+          // `reverseStripePayout` cherche l'écriture d'ORIGINE en filtrant sur
+          // la source ; `recordStripePayout` cherche un doublon sans ce
+          // filtre. Le double distingue les deux appels ainsi.
+          if (where.source === 'AUTO_STRIPE_PAYOUT') {
+            return opts?.originalPayoutEntry === undefined
+              ? {
+                  id: 'entry-origine',
+                  amountCents: 48_250,
+                  financialAccountId: 'fin-transit',
+                  financialAccount: {
+                    accountingAccount: {
+                      code: '512300',
+                      label: 'Stripe transit (intermédiaire)',
+                    },
+                  },
+                }
+              : opts.originalPayoutEntry;
+          }
+          return opts?.existingEntry ? { id: 'deja' } : null;
+        },
+      ),
     },
     clubFinancialAccount: {
       findFirst: jest.fn().mockResolvedValue(
@@ -175,6 +200,108 @@ describe('recordStripePayout', () => {
 
     await h.svc.recordStripePayout({ ...PAYOUT, amountCents: 0 });
     await h.svc.recordStripePayout({ ...PAYOUT, amountCents: -5_000 });
+
+    expect(h.tx.accountingEntry.create).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Virement RETOURNÉ par la banque.
+ *
+ * Un virement passé en `paid` peut basculer en `failed` — IBAN clôturé, rejet
+ * du correspondant — et les fonds retournent au solde Stripe. Sans réversion,
+ * la banque affiche un encaissement jamais reçu et le transit reste
+ * durablement sous ce que Stripe doit au club : exactement la divergence que
+ * le compte de transit existe pour rendre détectable (ADR-0010).
+ */
+const REJET = {
+  clubId: 'club-1',
+  payoutId: 'po_123',
+  reason: 'account_closed',
+  occurredAt: new Date('2026-07-24T09:12:00Z'),
+};
+
+describe('reverseStripePayout', () => {
+  it('écrit le MIROIR : débit du transit, crédit de la banque', async () => {
+    const h = makeHarness();
+
+    await h.svc.reverseStripePayout(REJET);
+
+    const transit = h.lines.find((l) => l.accountCode === '512300');
+    const banque = h.lines.find((l) => l.accountCode === '512000');
+
+    // L'argent revient chez Stripe…
+    expect(transit?.side).toBe(AccountingLineSide.DEBIT);
+    expect(transit?.debitCents).toBe(48_250);
+    // …et repart de la banque, qui n'a finalement rien reçu.
+    expect(banque?.side).toBe(AccountingLineSide.CREDIT);
+    expect(banque?.creditCents).toBe(48_250);
+  });
+
+  it('reprend le montant de l’écriture d’ORIGINE, pas celui de l’événement', async () => {
+    // Neutraliser suppose des montants strictement égaux. Se fier au montant
+    // porté par l'événement de rejet laisserait un résidu si les deux
+    // divergeaient, et ce résidu serait indétectable.
+    const h = makeHarness({
+      originalPayoutEntry: {
+        id: 'entry-origine',
+        amountCents: 12_345,
+        financialAccountId: 'fin-transit',
+        financialAccount: {
+          accountingAccount: { code: '512300', label: 'Stripe transit' },
+        },
+      },
+    });
+
+    await h.svc.reverseStripePayout(REJET);
+
+    expect(h.entries[0].amountCents).toBe(12_345);
+  });
+
+  it('neutralise par ADDITION : l’écriture d’origine reste postée', async () => {
+    // Le virement a réellement eu lieu avant d'être rejeté. Un grand livre
+    // doit montrer les deux mouvements, pas escamoter le premier.
+    const h = makeHarness();
+
+    await h.svc.reverseStripePayout(REJET);
+
+    expect(h.entries).toHaveLength(1);
+    expect(h.entries[0].contraEntryId).toBe('entry-origine');
+  });
+
+  it('prend une clé d’idempotence DISTINCTE de celle du virement', async () => {
+    // Réutiliser `po_123` heurterait la contrainte @@unique([clubId,
+    // stripePayoutId]) posée par l'écriture d'origine : la réversion
+    // n'aurait jamais lieu.
+    const h = makeHarness();
+
+    await h.svc.reverseStripePayout(REJET);
+
+    expect(h.entries[0].stripePayoutId).toBe('po_123:reversed');
+  });
+
+  it('date la réversion au rejet, pas à l’arrivée prévue des fonds', async () => {
+    const h = makeHarness();
+
+    await h.svc.reverseStripePayout(REJET);
+
+    expect(h.entries[0].occurredAt).toEqual(REJET.occurredAt);
+  });
+
+  it('n’écrit rien si aucun virement n’avait été constaté', async () => {
+    // Club sans compta au moment du virement : il n'y a rien à défaire, et
+    // écrire une réversion isolée creuserait le transit sans contrepartie.
+    const h = makeHarness({ originalPayoutEntry: null });
+
+    await h.svc.reverseStripePayout(REJET);
+
+    expect(h.tx.accountingEntry.create).not.toHaveBeenCalled();
+  });
+
+  it('ne fait rien si le module comptable est désactivé', async () => {
+    const h = makeHarness({ accountingEnabled: false });
+
+    await h.svc.reverseStripePayout(REJET);
 
     expect(h.tx.accountingEntry.create).not.toHaveBeenCalled();
   });
