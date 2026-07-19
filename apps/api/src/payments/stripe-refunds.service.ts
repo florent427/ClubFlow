@@ -108,9 +108,25 @@ export class StripeRefundsService {
       );
     }
 
-    // Ce qui a déjà été rendu sur cet encaissement, pour ne jamais rembourser
-    // plus que ce qui a été perçu.
-    const alreadyRefunded = await this.sumRefundedForPayment(payment.id);
+    const stripe = this.getStripe();
+
+    // Ce qui a DÉJÀ été rendu, lu chez Stripe et non dans notre base.
+    //
+    // Notre base ne l'apprend qu'au retour du webhook. Entre l'appel et sa
+    // livraison — quelques secondes — elle croit encore que rien n'a été
+    // rendu. Deux remboursements partiels identiques enchaînés dans cette
+    // fenêtre produiraient la même clé d'idempotence, et Stripe renverrait
+    // simplement le PREMIER au lieu d'en créer un second : le trésorier
+    // croirait avoir rendu 20 €, l'adhérent n'en aurait reçu que 10.
+    //
+    // `charge.amount_refunded` est mis à jour immédiatement et fait autorité.
+    // On ne retombe sur notre base que si Stripe est illisible — auquel cas
+    // l'estimation est prudente, jamais permissive : elle ne peut que
+    // SOUS-estimer le déjà-remboursé, donc refuser un remboursement légitime
+    // plutôt qu'en autoriser un de trop.
+    const alreadyRefunded =
+      (await this.stripeAmountRefunded(stripe, payment)) ??
+      (await this.sumRefundedForPayment(payment.id));
     const refundable = payment.amountCents - alreadyRefunded;
     if (refundable <= 0) {
       throw new BadRequestException(
@@ -128,7 +144,6 @@ export class StripeRefundsService {
       );
     }
 
-    const stripe = this.getStripe();
     // Clé d'idempotence portant le montant : deux remboursements PARTIELS
     // successifs du même montant sont légitimes et ne doivent pas être
     // confondus, mais un double-clic sur le même geste ne doit rendre
@@ -156,6 +171,36 @@ export class StripeRefundsService {
     );
 
     return { refundId: refund.id, amountCents: amount };
+  }
+
+  /**
+   * Montant déjà remboursé d'après Stripe, ou `null` s'il est illisible.
+   *
+   * Volontairement tolérant : l'appelant retombe alors sur la base. Faire
+   * échouer un remboursement parce qu'une lecture accessoire a échoué serait
+   * disproportionné.
+   */
+  private async stripeAmountRefunded(
+    stripe: Stripe,
+    payment: { externalRef: string | null; stripeAccountId: string | null },
+  ): Promise<number | null> {
+    if (!payment.externalRef || !payment.stripeAccountId) return null;
+    try {
+      const pi = await stripe.paymentIntents.retrieve(
+        payment.externalRef,
+        { expand: ['latest_charge'] },
+        { stripeAccount: payment.stripeAccountId },
+      );
+      const charge = pi.latest_charge;
+      if (!charge || typeof charge === 'string') return null;
+      return charge.amount_refunded ?? 0;
+    } catch (err) {
+      this.logger.warn(
+        `[remboursement] montant déjà remboursé illisible chez Stripe pour ` +
+          `${payment.externalRef} — repli sur la base. ${(err as Error).message}`,
+      );
+      return null;
+    }
   }
 
   /**
