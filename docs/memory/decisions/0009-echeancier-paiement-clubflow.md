@@ -140,9 +140,9 @@ correct — aucune erreur nulle part, juste un événement jamais délivré.
 Événements à souscrire, par lot (⚠️ périmètre **« Comptes connectés »**,
 puisqu'on est en direct charges) :
 
-État au 2026-07-19 — **9 événements souscrits** sur les deux destinations
-(`ClubFlow staging` et `ClubFlow API prod`), plus **2 traités dans le code et
-restant à abonner** :
+État au 2026-07-19 — **11 événements souscrits** sur `ClubFlow API prod`
+(vérifié dans le dashboard, destination `we_1TucTvHcQYEH3X1ZdKcZrJ3H`,
+périmètre « Comptes connectés », taux d'erreur 0 %) :
 
 | Événement | Requis par | Souscrit |
 |---|---|---|
@@ -155,17 +155,28 @@ restant à abonner** :
 | `mandate.updated` | Lot 4 — révocation d'un mandat SEPA | ✅ |
 | `payout.paid` | Phase 2 — solde du compte de transit ([ADR-0010](0010-compte-transit-stripe.md)) | ✅ |
 | `charge.refunded` | Phase 2 — remboursements | ✅ |
-| `payout.failed` | Phase 2 — virement rejeté par la banque : contre-passe l'écriture de virement | ⚠️ **traité, à abonner** |
-| `payout.canceled` | Phase 2 — virement annulé avant exécution, même traitement | ⚠️ **traité, à abonner** |
+| `payout.failed` | Phase 2 — virement rejeté par la banque : contre-passe l'écriture de virement | ✅ |
+| `payout.canceled` | Phase 2 — virement annulé avant exécution, même traitement | ✅ |
 | `charge.dispute.created` | Litiges — **ni souscrit, ni traité dans le code** | ❌ |
 
-⚠️ **`payout.failed` / `payout.canceled` sont la contrepartie indispensable de
+**`payout.failed` / `payout.canceled` sont la contrepartie indispensable de
 `payout.paid`.** Un virement passé en `paid` peut basculer en `failed` — IBAN
 clôturé, rejet du correspondant — et les fonds retournent au solde Stripe.
 Sans l'abonnement, l'écriture de virement reste postée : la banque affiche un
 encaissement jamais reçu, et le transit reste durablement sous ce que Stripe
 doit au club. C'est précisément la divergence que le compte de transit existe
 pour rendre détectable.
+
+Stripe le documente lui-même dans la description de `payout.paid` :
+« *If the payout fails, a `payout.failed` notification is also sent, at a later
+time.* » S'abonner à `payout.paid` sans son pendant, c'est ne recevoir que la
+moitié du cycle de vie d'un virement.
+
+**Version d'API de la destination : `2020-08-27`.** C'est elle qui explique
+que `charge.refunds` arrive encore dans le payload alors que le champ n'est
+plus inclus par défaut depuis l'API 2022-11-15. `listRefundsForCharge`
+interroge Stripe explicitement plutôt que de s'y fier : le jour où cette
+version sera relevée, les remboursements continueront d'être enregistrés.
 
 **Règle** : tout ajout d'un `event.type` dans `handleStripeWebhook` doit
 s'accompagner de la mise à jour de la destination, en test **et** en prod.
