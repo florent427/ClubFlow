@@ -10,9 +10,16 @@ import type { SchedulerLockService } from '../scheduling/scheduler-lock.service'
 jest.mock('stripe');
 
 const create = jest.fn();
+const retrieve = jest.fn();
 (Stripe as unknown as jest.Mock).mockImplementation(() => ({
   refunds: { create },
+  paymentIntents: { retrieve },
 }));
+
+/** PaymentIntent enrichi annonçant un montant déjà remboursé chez Stripe. */
+const piRefunded = (amountRefunded: number) => ({
+  latest_charge: { amount_refunded: amountRefunded },
+});
 
 const STRIPE_PAYMENT = {
   id: 'pay-1',
@@ -99,6 +106,8 @@ describe('StripeRefundsService.refundPayment', () => {
     jest.clearAllMocks();
     process.env.STRIPE_SECRET_KEY = 'sk_test_x';
     create.mockResolvedValue({ id: 're_1' });
+    // Par défaut Stripe ne connaît aucun remboursement sur cet encaissement.
+    retrieve.mockResolvedValue(piRefunded(0));
   });
   afterAll(() => {
     if (OLD === undefined) delete process.env.STRIPE_SECRET_KEY;
@@ -139,7 +148,8 @@ describe('StripeRefundsService.refundPayment', () => {
   });
 
   it('rembourse tout le solde restant quand aucun montant n’est donné', async () => {
-    const { svc } = makeSvc({ alreadyRefundedCents: 3_000 });
+    const { svc } = makeSvc();
+    retrieve.mockResolvedValue(piRefunded(3_000));
 
     const res = await svc.refundPayment({
       clubId: 'club-1',
@@ -151,7 +161,8 @@ describe('StripeRefundsService.refundPayment', () => {
   });
 
   it('refuse de rendre plus que ce qui a été perçu', async () => {
-    const { svc } = makeSvc({ alreadyRefundedCents: 8_000 });
+    const { svc } = makeSvc();
+    retrieve.mockResolvedValue(piRefunded(8_000));
 
     await expect(
       svc.refundPayment({
@@ -165,7 +176,8 @@ describe('StripeRefundsService.refundPayment', () => {
   });
 
   it('refuse un encaissement déjà intégralement remboursé', async () => {
-    const { svc } = makeSvc({ alreadyRefundedCents: 10_000 });
+    const { svc } = makeSvc();
+    retrieve.mockResolvedValue(piRefunded(10_000));
 
     await expect(
       svc.refundPayment({ clubId: 'club-1', paymentId: 'pay-1', reason: 'x' }),
@@ -209,6 +221,70 @@ describe('StripeRefundsService.refundPayment', () => {
       svc.refundPayment({ clubId: 'club-1', paymentId: 'nope', reason: 'x' }),
     ).rejects.toThrow(NotFoundException);
   });
+
+  it('lit le déjà-remboursé CHEZ STRIPE, pas dans la base', async () => {
+    // Notre base ne l'apprend qu'au retour du webhook. Deux gestes rapprochés
+    // dans cette fenêtre produiraient la même clé d'idempotence, et Stripe
+    // renverrait le premier remboursement au lieu d'en créer un second : le
+    // trésorier croirait avoir rendu 80 €, l'adhérent n'en aurait reçu que 40.
+    const { svc } = makeSvc({ alreadyRefundedCents: 0 });
+    retrieve.mockResolvedValue(piRefunded(4_000));
+
+    const res = await svc.refundPayment({
+      clubId: 'club-1',
+      paymentId: 'pay-1',
+      reason: 'Annulation',
+    });
+
+    // 100 € encaissés, 40 € déjà rendus selon Stripe → 60 € remboursables,
+    // alors que la base en annonce encore 100.
+    expect(res.amountCents).toBe(6_000);
+  });
+
+  it('la clé d’idempotence suit le montant connu de Stripe', async () => {
+    const { svc } = makeSvc({ alreadyRefundedCents: 0 });
+    retrieve.mockResolvedValue(piRefunded(4_000));
+
+    await svc.refundPayment({
+      clubId: 'club-1',
+      paymentId: 'pay-1',
+      amountCents: 1_000,
+      reason: 'x',
+    });
+
+    // Deux remboursements successifs de 10 € ne partagent plus la même clé
+    // dès lors que Stripe a enregistré le premier.
+    expect(create.mock.calls[0][1].idempotencyKey).toContain('4000');
+  });
+
+  it('refuse de dépasser ce que Stripe dit remboursable', async () => {
+    const { svc } = makeSvc({ alreadyRefundedCents: 0 });
+    retrieve.mockResolvedValue(piRefunded(9_000));
+
+    await expect(
+      svc.refundPayment({
+        clubId: 'club-1',
+        paymentId: 'pay-1',
+        amountCents: 5_000,
+        reason: 'x',
+      }),
+    ).rejects.toThrow(/1000/);
+  });
+
+  it('Stripe illisible : repli sur la base, jamais de blocage', async () => {
+    // Une lecture accessoire en échec ne doit pas empêcher un remboursement.
+    const { svc } = makeSvc({ alreadyRefundedCents: 3_000 });
+    retrieve.mockRejectedValue(new Error('Stripe down'));
+
+    const res = await svc.refundPayment({
+      clubId: 'club-1',
+      paymentId: 'pay-1',
+      reason: 'Annulation',
+    });
+
+    expect(res.amountCents).toBe(7_000);
+  });
+
 });
 
 describe('StripeRefundsService.applyRefundConfirmed', () => {
