@@ -1589,6 +1589,42 @@ model Payment {
   /// le BON compte si le club change de compte connecté par la suite.
   /// Null = paiement non-Stripe (espèces, chèque, virement).
   stripeAccountId    String?
+
+  /// Frais Stripe réellement prélevés sur cet encaissement, en centimes.
+  ///
+  /// Stocké sur le Payment et pas seulement en écriture comptable : la
+  /// comptabilisation est un no-op quand le module compta du club est
+  /// désactivé, et l'information serait alors définitivement perdue — il
+  /// faudrait réinterroger l'API Stripe compte par compte pour la retrouver.
+  /// L'écriture comptable est une PROJECTION de cette donnée, pas sa source.
+  ///
+  /// Ne compte que les frais Stripe proprement dits (`fee_details` de type
+  /// `stripe_fee`), à l'exclusion d'une éventuelle commission plateforme
+  /// ClubFlow, qui n'aurait rien à faire dans les frais bancaires du club.
+  stripeFeeCents     Int?
+  /// Devise des frais, telle que renvoyée par Stripe. Peut différer de celle
+  /// de l'encaissement sur un compte multidevise.
+  stripeFeeCurrency  String?
+  /// `txn_xxx` — pièce justificative côté Stripe, et clé d'idempotence
+  /// naturelle si l'on doit un jour rapprocher ou rejouer.
+  stripeBalanceTransactionId String?
+  /// Si cette ligne est un REMBOURSEMENT (montant négatif), encaissement
+  /// qu'elle rembourse. Une facture peut porter plusieurs encaissements
+  /// Stripe (acompte puis solde, échéancier) : sans ce rattachement, on ne
+  /// saurait pas lequel a déjà été remboursé et de combien.
+  refundedPaymentId  String?
+  /// `re_xxx` du remboursement Stripe que cette ligne matérialise.
+  /// Champ DÉDIÉ plutôt qu'une contrainte sur `externalRef`, qui porte aussi
+  /// des numéros de chèque et des références de virement — deux clubs peuvent
+  /// légitimement saisir le même. Ici l'unicité est garantie par Stripe.
+  stripeRefundId     String?
+
+  /// Date de récupération effective des frais. Null = pas encore connus.
+  /// C'est le cas NOMINAL d'un prélèvement SEPA : la balance transaction
+  /// n'existe qu'une fois la charge dénouée, plusieurs jours plus tard.
+  /// Sert de critère de reprise au balayage quotidien.
+  stripeFeesSyncedAt DateTime?
+
   createdAt          DateTime          @default(now())
 
   club                    Club                        @relation(fields: [clubId], references: [id], onDelete: Cascade)
@@ -1600,12 +1636,22 @@ model Payment {
   grantInstallments       GrantInstallment[]
   sponsorshipInstallments SponsorshipInstallment[]
   scheduleInstallment     PaymentScheduleInstallment?
+  refundedPayment         Payment?                    @relation("PaymentRefunds", fields: [refundedPaymentId], references: [id], onDelete: SetNull)
+  refunds                 Payment[]                   @relation("PaymentRefunds")
 
   @@index([clubId, createdAt])
   @@index([invoiceId])
   @@index([paidByMemberId])
   @@index([paidByContactId])
   @@index([clubId, financialAccountId])
+  /// Balayage des encaissements Stripe dont les frais restent à récupérer.
+  @@index([stripeFeesSyncedAt, createdAt])
+  /// Somme déjà remboursée sur un encaissement donné.
+  @@index([refundedPaymentId])
+  /// Idempotence du remboursement, garantie par la BASE et non par un
+  /// check-then-create : deux livraisons concurrentes du même webhook ne
+  /// peuvent pas enregistrer deux fois le même remboursement.
+  @@unique([clubId, stripeRefundId])
 }
 
 /// Moyen de prélèvement d'un échéancier (cf. ADR-0009).
@@ -1936,6 +1982,8 @@ enum AccountingEntrySource {
   AUTO_REFUND
   /// Split frais Stripe (512 net / 627 frais / 411 contrepartie).
   AUTO_STRIPE_FEES
+  /// Virement Stripe vers la banque du club : solde le compte de transit.
+  AUTO_STRIPE_PAYOUT
 }
 
 /// Côté comptable d'une ligne d'écriture. AUTO = dérivé à la création
@@ -1973,6 +2021,10 @@ model AccountingEntry {
   sponsorshipDealId        String?
   /// Si `source = OCR_AI`, trace l'extraction IA qui a généré cette entry.
   extractionId             String?
+  /// Si `source = AUTO_STRIPE_PAYOUT`, identifiant `po_xxx` du virement.
+  /// Sert de clé d'idempotence : un webhook rejoué ne peut pas créer deux
+  /// fois l'écriture de virement.
+  stripePayoutId           String?
   /// Contre-passation : si cette entry est une contre-passation, pointe vers
   /// l'entry originale. Si cette entry a été contre-passée, la relation inverse
   /// `contraEntryOf` liste les contre-passations qui la visent.
@@ -2039,6 +2091,10 @@ model AccountingEntry {
   sponsorshipInstallments SponsorshipInstallment[]
 
   @@index([clubId, occurredAt])
+  /// Idempotence du virement Stripe : deux livraisons du même `payout.paid`
+  /// ne peuvent pas produire deux écritures. Les NULL ne se heurtent pas
+  /// entre eux sous PostgreSQL, les autres écritures ne sont donc pas gênées.
+  @@unique([clubId, stripePayoutId])
   @@index([clubId, projectId])
   @@index([clubId, status])
   @@index([clubId, source])

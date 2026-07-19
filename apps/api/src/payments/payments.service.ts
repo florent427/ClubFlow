@@ -20,6 +20,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PaymentScheduleEngineService } from './payment-schedule-engine.service';
 import { PaymentScheduleService } from './payment-schedule.service';
 import { StripeConnectService } from './stripe-connect.service';
+import { StripeFeesService } from './stripe-fees.service';
+import { StripeRefundsService } from './stripe-refunds.service';
+import { CreditNotesService } from './credit-notes.service';
 import { CreateInvoiceInput } from './dto/create-invoice.input';
 import { RecordManualPaymentInput } from './dto/record-manual-payment.input';
 import { UpsertClubPricingRuleInput } from './dto/upsert-pricing-rule.input';
@@ -56,6 +59,9 @@ export class PaymentsService {
     private readonly connect: StripeConnectService,
     private readonly paymentSchedules: PaymentScheduleService,
     private readonly scheduleEngine: PaymentScheduleEngineService,
+    private readonly stripeFees: StripeFeesService,
+    private readonly stripeRefunds: StripeRefundsService,
+    private readonly creditNotes: CreditNotesService,
   ) {}
 
   /**
@@ -408,51 +414,15 @@ export class PaymentsService {
     reason: string,
     amountCents?: number | null,
   ) {
-    const parent = await this.prisma.invoice.findFirst({
-      where: { id: parentInvoiceId, clubId },
-    });
-    if (!parent) {
-      throw new NotFoundException('Facture parente introuvable');
-    }
-    if (parent.isCreditNote) {
-      throw new BadRequestException(
-        'Impossible de créer un avoir sur un avoir.',
-      );
-    }
-    const amount = amountCents ?? parent.amountCents;
-    if (amount <= 0) {
-      throw new BadRequestException('Le montant doit être positif.');
-    }
-    if (amount > parent.amountCents) {
-      throw new BadRequestException(
-        "Le montant de l'avoir ne peut excéder celui de la facture.",
-      );
-    }
-    const trimmedReason = reason.trim();
-    if (!trimmedReason) {
-      throw new BadRequestException('Motif obligatoire pour un avoir.');
-    }
-    const creditNote = await this.prisma.invoice.create({
-      data: {
-        clubId,
-        familyId: parent.familyId,
-        householdGroupId: parent.householdGroupId,
-        clubSeasonId: parent.clubSeasonId,
-        label: `Avoir — ${parent.label}`,
-        baseAmountCents: amount,
-        amountCents: amount,
-        status: InvoiceStatus.PAID,
-        isCreditNote: true,
-        parentInvoiceId: parent.id,
-        creditNoteReason: trimmedReason,
-      },
-    });
-    // Hook comptable : génère l'entry de contre-passation liée à la
-    // facture parente. Silencieux si module compta désactivé.
-    await this.accounting.createContraEntryForCreditNote(
+    // Délégué : le remboursement Stripe passe par le même service, et deux
+    // chemins d'avoir divergents produiraient des documents différents.
+    const creditNote = await this.creditNotes.create({
       clubId,
-      creditNote.id,
-    );
+      parentInvoiceId,
+      reason,
+      amountCents,
+    });
+    await this.creditNotes.recordAccounting(clubId, creditNote.id);
     return creditNote;
   }
 
@@ -697,7 +667,7 @@ export class PaymentsService {
       );
     }
 
-    await this.accounting.recordIncomeFromPayment(
+    await this.tryRecordIncome(
       clubId,
       payment.id,
       `Encaissement ${invoice.label}`,
@@ -816,6 +786,70 @@ export class PaymentsService {
       return;
     }
 
+    // Remboursement confirmé par Stripe. On écoute l'événement plutôt que de
+    // n'enregistrer qu'au retour de notre propre appel : un club peut aussi
+    // rembourser depuis son dashboard Stripe, et le webhook est le seul point
+    // de passage commun aux deux origines.
+    if (event.type === 'charge.refunded') {
+      const charge = event.data.object as Stripe.Charge;
+      const paymentIntentId =
+        typeof charge.payment_intent === 'string'
+          ? charge.payment_intent
+          : (charge.payment_intent?.id ?? null);
+      if (!paymentIntentId || !eventAccount) return;
+
+      const clubId =
+        charge.metadata?.clubId ?? (await this.clubIdForAccount(eventAccount));
+      if (!clubId) return;
+
+      const refunds = await this.stripeRefunds.listRefundsForCharge(
+        charge,
+        eventAccount,
+      );
+      for (const r of refunds) {
+        // Un remboursement `pending` ou `failed` n'a rien rendu : l'inscrire
+        // créerait un avoir pour de l'argent qui n'est jamais parti.
+        if (r.status !== 'succeeded') continue;
+        await this.stripeRefunds.applyRefundConfirmed({
+          clubId,
+          paymentIntentId,
+          refundId: r.id,
+          amountCents: r.amount,
+          stripeAccountId: eventAccount,
+          reason:
+            typeof r.metadata?.reason === 'string' ? r.metadata.reason : null,
+        });
+      }
+      return;
+    }
+
+    // Stripe a viré au club le net de ses encaissements : on solde le compte
+    // de transit vers la banque. Sans cette écriture, le transit gonflerait
+    // indéfiniment et la banque resterait vide alors que l'argent y est.
+    if (event.type === 'payout.paid') {
+      const payout = event.data.object as Stripe.Payout;
+      if (!eventAccount) return;
+      const club = await this.prisma.club.findFirst({
+        where: { stripeAccountId: eventAccount },
+        select: { id: true },
+      });
+      if (!club) {
+        this.logger.warn(
+          `[payout] virement ${payout.id} reçu du compte ${eventAccount} — aucun club rattaché.`,
+        );
+        return;
+      }
+      await this.accounting.recordStripePayout({
+        clubId: club.id,
+        payoutId: payout.id,
+        amountCents: payout.amount,
+        // `arrival_date` est en secondes ; c'est la date à laquelle les fonds
+        // atteignent la banque, donc la date comptable pertinente.
+        occurredAt: new Date(payout.arrival_date * 1000),
+      });
+      return;
+    }
+
     // Le prélèvement off-session réclame une authentification forte.
     if (event.type === 'payment_intent.requires_action') {
       const pi = event.data.object as Stripe.PaymentIntent;
@@ -852,6 +886,16 @@ export class PaymentsService {
         installmentId,
       );
     }
+  }
+
+  /** Club propriétaire d'un compte connecté, pour les événements sans metadata. */
+  private async clubIdForAccount(account: string | null): Promise<string | null> {
+    if (!account) return null;
+    const club = await this.prisma.club.findFirst({
+      where: { stripeAccountId: account },
+      select: { id: true },
+    });
+    return club?.id ?? null;
   }
 
   private async applyStripePaymentSuccess(
@@ -919,6 +963,10 @@ export class PaymentsService {
       select: { id: true },
     });
     if (already) {
+      // Rejeu de webhook. On ressort sans rien dupliquer, mais on en profite
+      // pour retenter les frais : c'est souvent la raison même du rejeu, et
+      // sans cette tentative le rejeu serait entièrement stérile.
+      await this.trySyncFees(already.id);
       return;
     }
 
@@ -958,7 +1006,7 @@ export class PaymentsService {
       return p;
     });
 
-    await this.accounting.recordIncomeFromPayment(
+    await this.tryRecordIncome(
       clubId,
       payment.id,
       `Stripe — ${invoice.label}`,
@@ -970,6 +1018,68 @@ export class PaymentsService {
     // écriture lui-même — un seul chemin crée un encaissement (ADR-0009).
     if (installmentId) {
       await this.scheduleEngine.markInstallmentPaid(installmentId, payment.id);
+    }
+
+    // En DERNIER, et sans jamais lever. Les frais sont une information de
+    // confort comptable : ni l'encaissement, ni le soldage d'échéance ne
+    // doivent en dépendre. En carte ils sont déjà connus ; en SEPA la charge
+    // n'est pas dénouée et c'est le balayage quotidien qui repassera.
+    await this.trySyncFees(payment.id);
+  }
+
+  /**
+   * Récupération des frais, isolée du sort de l'encaissement.
+   *
+   * `StripeFeesService` s'engage déjà à ne jamais lever, mais ce garde-fou est
+   * ici parce que la conséquence d'un manquement serait disproportionnée : une
+   * exception ferait échouer le webhook, libérerait la réservation
+   * d'idempotence, et Stripe rejouerait en boucle un encaissement pourtant
+   * correctement enregistré — le rejeu retombant à chaque fois sur la même
+   * exception. Une discipline d'appelé ne se vérifie pas au moment où elle
+   * compte ; ce catch, si.
+   */
+  /**
+   * Écriture de recette, isolée du sort de l'encaissement.
+   *
+   * L'encaissement est DÉJÀ commité quand on arrive ici : l'argent est chez le
+   * club et la facture est à jour. Laisser une erreur comptable remonter
+   * jusqu'au webhook libérerait la réservation d'idempotence, Stripe rejouerait,
+   * et le rejeu sortirait aussitôt sur le Payment déjà créé — succès apparent,
+   * écriture définitivement perdue, et 500 dans les statistiques de livraison.
+   * C'est exactement ce qui s'est produit sur staging.
+   *
+   * L'échec est journalisé en ERROR et non en WARN : une recette non
+   * comptabilisée fausse le résultat du club, ça n'est pas un incident mineur.
+   */
+  private async tryRecordIncome(
+    clubId: string,
+    paymentId: string,
+    label: string,
+    amountCents: number,
+  ): Promise<void> {
+    try {
+      await this.accounting.recordIncomeFromPayment(
+        clubId,
+        paymentId,
+        label,
+        amountCents,
+      );
+    } catch (err) {
+      this.logger.error(
+        `[compta] RECETTE NON COMPTABILISÉE pour le paiement ${paymentId} ` +
+          `(club ${clubId}, ${amountCents} cts) — ${(err as Error).message}. ` +
+          `L'encaissement est enregistré ; l'écriture est à reprendre à la main.`,
+      );
+    }
+  }
+
+  private async trySyncFees(paymentId: string): Promise<void> {
+    try {
+      await this.stripeFees.syncFeesForPayment(paymentId);
+    } catch (err) {
+      this.logger.warn(
+        `[stripe] frais non récupérés pour le paiement ${paymentId} — ${(err as Error).message}`,
+      );
     }
   }
 
