@@ -28,10 +28,18 @@ const FEES_SWEEP_GIVE_UP_DAYS = 30;
  *    remis en cause parce que Stripe est lent ou indisponible. Aucune méthode
  *    ne relance d'exception vers son appelant.
  *
- * 2. LES FRAIS ARRIVENT APRÈS. En carte ils sont connus presque tout de suite,
- *    mais en SEPA la balance transaction n'existe qu'au dénouement, plusieurs
- *    jours plus tard. L'absence de frais au moment de l'encaissement est donc
- *    le cas NOMINAL, pas une erreur : le balayage quotidien repasse derrière.
+ * 2. LES FRAIS ARRIVENT APRÈS, Y COMPRIS EN CARTE. La balance transaction
+ *    n'existe pas encore au moment où le webhook de succès est traité —
+ *    constaté sur staging le 2026-07-19 : un paiement par carte n'avait
+ *    toujours pas la sienne à la réception de l'événement, et c'est le
+ *    balayage, une vingtaine de minutes plus tard, qui l'a trouvée. En SEPA
+ *    l'attente se compte en jours, le temps que la charge se dénoue.
+ *
+ *    Le balayage n'est donc PAS un filet de sécurité pour le seul SEPA : il
+ *    est le chemin nominal pour tout le monde. La tentative faite depuis le
+ *    webhook n'est qu'une chance de gagner du temps quand la transaction est
+ *    déjà là. Ne rien trouver à ce moment-là est le cas ORDINAIRE, jamais une
+ *    anomalie — d'où l'absence de log d'erreur sur ce chemin.
  */
 @Injectable()
 export class StripeFeesService {
@@ -110,7 +118,9 @@ export class StripeFeesService {
 
     const fee = extractStripeFee(pi);
     if (!fee) {
-      // Cas nominal en SEPA : la charge n'est pas encore dénouée.
+      // Cas ORDINAIRE, carte comprise : la balance transaction n'existe pas
+      // encore. Le balayage quotidien repassera — c'est lui qui aboutit dans
+      // la plupart des cas, pas cet appel-ci.
       return false;
     }
 
@@ -144,9 +154,16 @@ export class StripeFeesService {
   /**
    * Repasse sur les encaissements Stripe dont les frais restent inconnus.
    *
-   * Nécessaire parce qu'un prélèvement SEPA se dénoue en plusieurs jours :
-   * au moment du webhook de succès, la balance transaction n'existe pas encore.
-   * Sans ce balayage, ces frais ne seraient JAMAIS comptabilisés.
+   * C'est le chemin par lequel la PLUPART des frais sont récupérés, carte
+   * comprise : la balance transaction n'existe généralement pas encore au
+   * moment du webhook de succès. Sans ce balayage, la quasi-totalité des frais
+   * ne serait jamais comptabilisée.
+   *
+   * Conséquence pratique à connaître : entre la fenêtre de grâce de 10 minutes
+   * et le passage quotidien de 9h, l'écriture de frais peut arriver jusqu'à un
+   * jour après l'encaissement. Le résultat du club est donc juste à J+1, pas à
+   * l'instant. Le déclenchement manuel (mutation triggerStripeFeesSweep) permet
+   * de ne pas attendre.
    */
   async sweepPendingFees(opts?: {
     now?: Date;
