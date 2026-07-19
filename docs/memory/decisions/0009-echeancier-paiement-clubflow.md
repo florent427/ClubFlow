@@ -141,7 +141,8 @@ correct — aucune erreur nulle part, juste un événement jamais délivré.
 puisqu'on est en direct charges) :
 
 État au 2026-07-19 — **9 événements souscrits** sur les deux destinations
-(`ClubFlow staging` et `ClubFlow API prod`) :
+(`ClubFlow staging` et `ClubFlow API prod`), plus **2 traités dans le code et
+restant à abonner** :
 
 | Événement | Requis par | Souscrit |
 |---|---|---|
@@ -154,7 +155,17 @@ puisqu'on est en direct charges) :
 | `mandate.updated` | Lot 4 — révocation d'un mandat SEPA | ✅ |
 | `payout.paid` | Phase 2 — solde du compte de transit ([ADR-0010](0010-compte-transit-stripe.md)) | ✅ |
 | `charge.refunded` | Phase 2 — remboursements | ✅ |
+| `payout.failed` | Phase 2 — virement rejeté par la banque : contre-passe l'écriture de virement | ⚠️ **traité, à abonner** |
+| `payout.canceled` | Phase 2 — virement annulé avant exécution, même traitement | ⚠️ **traité, à abonner** |
 | `charge.dispute.created` | Litiges — **ni souscrit, ni traité dans le code** | ❌ |
+
+⚠️ **`payout.failed` / `payout.canceled` sont la contrepartie indispensable de
+`payout.paid`.** Un virement passé en `paid` peut basculer en `failed` — IBAN
+clôturé, rejet du correspondant — et les fonds retournent au solde Stripe.
+Sans l'abonnement, l'écriture de virement reste postée : la banque affiche un
+encaissement jamais reçu, et le transit reste durablement sous ce que Stripe
+doit au club. C'est précisément la divergence que le compte de transit existe
+pour rendre détectable.
 
 **Règle** : tout ajout d'un `event.type` dans `handleStripeWebhook` doit
 s'accompagner de la mise à jour de la destination, en test **et** en prod.

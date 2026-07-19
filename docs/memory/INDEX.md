@@ -71,6 +71,7 @@
 | [`0008-stripe-connect-express.md`](decisions/0008-stripe-connect-express.md) | ADR-0008 — Stripe Connect Express + direct charges (encaissement multi-tenant) |
 | [`0009-echeancier-paiement-clubflow.md`](decisions/0009-echeancier-paiement-clubflow.md) | ADR-0009 — Échéancier de paiement géré par ClubFlow (carte + SEPA) |
 | [`0010-compte-transit-stripe.md`](decisions/0010-compte-transit-stripe.md) | ADR-0010 — Les encaissements Stripe transitent par le compte 512300 |
+| [`0011-remboursement-eteint-la-creance.md`](decisions/0011-remboursement-eteint-la-creance.md) | ADR-0011 — Un remboursement éteint la créance correspondante |
 
 ## 🔄 Workflows métier
 
@@ -83,7 +84,7 @@
 
 ---
 
-_Index généré le 2026-07-19 07:24 UTC par `bin/memory-index`._
+_Index généré le 2026-07-19 08:23 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`
