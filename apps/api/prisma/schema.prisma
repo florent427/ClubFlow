@@ -2095,6 +2095,21 @@ model AccountingEntry {
   /// ne peuvent pas produire deux écritures. Les NULL ne se heurtent pas
   /// entre eux sous PostgreSQL, les autres écritures ne sont donc pas gênées.
   @@unique([clubId, stripePayoutId])
+  /// Idempotence des écritures automatiques adossées à un encaissement,
+  /// garantie par la BASE et non par un check-then-create.
+  ///
+  /// `recordIncomeFromPayment` et `recordStripeFeesFromPayment` cherchaient
+  /// l'écriture existante puis la créaient : entre les deux, deux exécutions
+  /// concurrentes (double-clic sur le balayage manuel, ou déclenchement manuel
+  /// tombant pendant le passage horaire) passaient toutes deux le contrôle et
+  /// comptabilisaient les mêmes frais deux fois.
+  ///
+  /// Le triplet ne gêne aucun cas légitime : les CONTRE-PASSATIONS ne posent
+  /// jamais `paymentId` — elles se rattachent par `contraEntryId` — et deux
+  /// remboursements partiels successifs produisent donc deux écritures à
+  /// `paymentId` nul, que PostgreSQL ne fait pas se heurter. La recette et les
+  /// frais d'un même encaissement cohabitent puisque `source` les distingue.
+  @@unique([clubId, paymentId, source])
   @@index([clubId, projectId])
   @@index([clubId, status])
   @@index([clubId, source])
