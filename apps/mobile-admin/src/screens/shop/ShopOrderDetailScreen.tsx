@@ -21,36 +21,37 @@ import {
   CANCEL_SHOP_ORDER,
   MARK_SHOP_ORDER_PAID,
   SHOP_ORDERS,
-  SHOP_PRODUCTS,
 } from '../../lib/documents/shop';
 import type { ShopStackParamList } from '../../navigation/types';
 
 type Route = RouteProp<ShopStackParamList, 'OrderDetail'>;
 
+type OrderLine = {
+  id: string;
+  productId: string;
+  /** Null sur les lignes antérieures aux déclinaisons — elles restent lisibles. */
+  variantId: string | null;
+  quantity: number;
+  unitPriceCents: number;
+  /** Intitulé figé à la commande : « Maillot — L / Rouge ». */
+  label: string;
+};
+
 type Order = {
   id: string;
   memberId: string | null;
   contactId: string | null;
-  productId: string;
-  quantity: number;
   totalCents: number;
   status: string;
+  note: string | null;
   createdAt: string;
-};
-
-type Product = {
-  id: string;
-  name: string;
-  sku: string | null;
-  priceCents: number;
-  stock: number | null;
-  active: boolean;
-  imageUrl: string | null;
-  createdAt: string;
+  paidAt: string | null;
+  buyerFirstName: string | null;
+  buyerLastName: string | null;
+  lines: OrderLine[];
 };
 
 type OrdersData = { shopOrders: Order[] };
-type ProductsData = { shopProducts: Product[] };
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: 'En attente',
@@ -68,24 +69,20 @@ export function ShopOrderDetailScreen() {
   const route = useRoute<Route>();
   const { orderId } = route.params;
 
-  const { data: ordersData, loading: ordersLoading, refetch } =
-    useQuery<OrdersData>(SHOP_ORDERS, { errorPolicy: 'all' });
-  const { data: productsData } = useQuery<ProductsData>(SHOP_PRODUCTS, {
-    errorPolicy: 'all',
-  });
+  // Le détail n'interroge PLUS le catalogue : chaque ligne porte son propre
+  // `label` et son `unitPriceCents`, figés à la commande. Recroiser
+  // `shopProducts` afficherait le prix d'aujourd'hui sur une vente d'hier, et
+  // « produit indisponible » dès qu'une référence est retirée du catalogue.
+  const {
+    data: ordersData,
+    loading: ordersLoading,
+    error,
+    refetch,
+  } = useQuery<OrdersData>(SHOP_ORDERS, { errorPolicy: 'all' });
 
   const order = useMemo(
     () => ordersData?.shopOrders.find((o) => o.id === orderId) ?? null,
     [ordersData, orderId],
-  );
-
-  const product = useMemo(
-    () =>
-      order
-        ? productsData?.shopProducts.find((p) => p.id === order.productId) ??
-          null
-        : null,
-    [productsData, order],
   );
 
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -136,30 +133,45 @@ export function ShopOrderDetailScreen() {
   }
 
   if (!order) {
+    // Distinguer les deux causes : `errorPolicy: 'all'` rend une liste vide
+    // quand la requête échoue entièrement, ce qui se lit sinon comme une
+    // commande supprimée alors que c'est l'appel qui n'est jamais passé.
     return (
       <ScreenContainer padding={0}>
         <ScreenHero
           eyebrow="COMMANDE"
-          title="Introuvable"
+          title={error ? 'Erreur' : 'Introuvable'}
           compact
           showBack
         />
         <Card style={{ marginHorizontal: spacing.lg, marginTop: spacing.lg }}>
           <EmptyState
             icon="alert-circle-outline"
-            title="Commande introuvable"
-            description="La commande n'existe plus ou n'est pas accessible."
+            title={error ? 'Chargement impossible' : 'Commande introuvable'}
+            description={
+              error
+                ? error.message
+                : "La commande n'existe plus ou n'est pas accessible."
+            }
           />
         </Card>
       </ScreenContainer>
     );
   }
 
-  const customerLabel = order.memberId
-    ? `Adhérent · ${order.memberId.slice(0, 8)}…`
-    : order.contactId
-      ? `Contact · ${order.contactId.slice(0, 8)}…`
-      : 'Client anonyme';
+  const buyerName = [order.buyerFirstName, order.buyerLastName]
+    .filter((part): part is string => !!part && part.trim().length > 0)
+    .join(' ');
+
+  const customerLabel = buyerName
+    ? buyerName
+    : order.memberId
+      ? `Adhérent · ${order.memberId.slice(0, 8)}…`
+      : order.contactId
+        ? `Contact · ${order.contactId.slice(0, 8)}…`
+        : 'Client anonyme';
+
+  const totalQuantity = order.lines.reduce((sum, l) => sum + l.quantity, 0);
 
   return (
     <ScreenContainer
@@ -185,28 +197,40 @@ export function ShopOrderDetailScreen() {
           </View>
         </Card>
 
-        <Card title="Produit">
-          {product ? (
+        <Card
+          title={
+            order.lines.length > 1
+              ? `Articles (${order.lines.length})`
+              : 'Article'
+          }
+        >
+          {order.lines.length > 0 ? (
             <View style={styles.metaList}>
-              <MetaRow label="Article" value={product.name} />
-              {product.sku ? (
-                <MetaRow label="SKU" value={product.sku} />
-              ) : null}
+              {order.lines.map((line) => (
+                <View key={line.id} style={styles.line}>
+                  <Text style={styles.lineLabel} numberOfLines={2}>
+                    {line.label}
+                  </Text>
+                  <View style={styles.metaRow}>
+                    <Text style={styles.metaLabel}>
+                      {line.quantity} × {formatEuroCents(line.unitPriceCents)}
+                    </Text>
+                    <Text style={styles.metaValue}>
+                      {formatEuroCents(line.unitPriceCents * line.quantity)}
+                    </Text>
+                  </View>
+                </View>
+              ))}
               <MetaRow
-                label="Prix unitaire"
-                value={formatEuroCents(product.priceCents)}
-              />
-              <MetaRow label="Quantité" value={String(order.quantity)} />
-              <MetaRow
-                label="Total"
+                label={`Total · ${totalQuantity} article${totalQuantity > 1 ? 's' : ''}`}
                 value={formatEuroCents(order.totalCents)}
               />
             </View>
           ) : (
             <EmptyState
               icon="cube-outline"
-              title="Produit indisponible"
-              description="Le produit lié à cette commande a été supprimé."
+              title="Aucune ligne"
+              description="Cette commande ne contient aucun article."
             />
           )}
         </Card>
@@ -218,6 +242,15 @@ export function ShopOrderDetailScreen() {
               label="Commande"
               value={formatDateTime(order.createdAt)}
             />
+            {order.paidAt ? (
+              <MetaRow
+                label="Payée le"
+                value={formatDateTime(order.paidAt)}
+              />
+            ) : null}
+            {order.note ? (
+              <MetaRow label="Note" value={order.note} />
+            ) : null}
           </View>
         </Card>
 
@@ -289,6 +322,14 @@ const styles = StyleSheet.create({
   },
   metaList: {
     gap: spacing.sm,
+  },
+  line: {
+    gap: 2,
+  },
+  lineLabel: {
+    ...typography.body,
+    color: palette.ink,
+    fontWeight: '600',
   },
   metaRow: {
     flexDirection: 'row',

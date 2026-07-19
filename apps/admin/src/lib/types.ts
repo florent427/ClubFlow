@@ -1045,6 +1045,29 @@ export type PublishClubBlogPostMutationData = { publishClubBlogPost: BlogPost };
 export type ArchiveClubBlogPostMutationData = { archiveClubBlogPost: BlogPost };
 export type DeleteClubBlogPostMutationData = { deleteClubBlogPost: boolean };
 
+/**
+ * Une déclinaison vendable (ADR-0012). Un produit SIMPLE en possède
+ * exactement une, `isDefault`, que l'interface ne montre jamais.
+ */
+export type ShopProductVariant = {
+  id: string;
+  productId: string;
+  isDefault: boolean;
+  /** « L / Rouge ». Null pour la déclinaison par défaut. */
+  label: string | null;
+  sku: string | null;
+  /** Prix réellement appliqué : celui de la déclinaison, sinon du produit. */
+  unitPriceCents: number;
+  /** Faux = stock illimité. Ce n'est PAS `available === null` (ADR-0012 §2). */
+  trackStock: boolean;
+  available: number | null;
+  onHand: number | null;
+  reorderThreshold: number | null;
+  inStock: boolean;
+  belowThreshold: boolean;
+  active: boolean;
+};
+
 export type ShopProduct = {
   id: string;
   clubId: string;
@@ -1053,10 +1076,81 @@ export type ShopProduct = {
   description: string | null;
   imageUrl: string | null;
   priceCents: number;
+  /**
+   * Champ DÉRIVÉ (ADR-0012) : somme des `available` des déclinaisons suivies,
+   * null si aucune ne l'est. La somme masque qu'il ne reste que des XXL, d'où
+   * `variantsBelowThreshold` qui l'accompagne toujours à l'écran.
+   */
   stock: number | null;
+  /** Vrai si le produit a de vraies déclinaisons (autres que celle par défaut). */
+  hasVariants: boolean;
+  priceFromCents: number;
+  variantsBelowThreshold: number;
+  variants: ShopProductVariant[];
   active: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+/** Une valeur possible d'un axe (« L », « Rouge »). */
+export type ShopProductOptionValue = {
+  id: string;
+  value: string;
+  position: number;
+};
+
+/** Un axe de variation (« Taille », « Couleur »). */
+export type ShopProductOption = {
+  id: string;
+  productId: string;
+  name: string;
+  position: number;
+  values: ShopProductOptionValue[];
+};
+
+export type ShopStockMovementKindGql =
+  | 'RESTOCK'
+  | 'RESERVE'
+  | 'RELEASE'
+  | 'FULFILL'
+  | 'ADJUSTMENT'
+  | 'SHRINKAGE';
+
+/** Une ligne du journal de stock (ADR-0012 §4). */
+export type ShopStockMovement = {
+  id: string;
+  variantId: string;
+  kind: ShopStockMovementKindGql;
+  /** Deltas SIGNÉS : le sens vit ici, pas dans `kind`. */
+  onHandDelta: number;
+  availableDelta: number;
+  orderId: string | null;
+  orderLineId: string | null;
+  reason: string | null;
+  userId: string | null;
+  occurredAt: string;
+};
+
+/** Une déclinaison sous son seuil, tous produits confondus. */
+export type ShopLowStockVariant = {
+  variantId: string;
+  productId: string;
+  productName: string;
+  label: string | null;
+  sku: string | null;
+  available: number;
+  onHand: number;
+  reorderThreshold: number;
+  reorderTargetQty: number | null;
+  /** Null = le club n'a pas encore été prévenu. */
+  alertedAt: string | null;
+};
+
+export type ShopStockSweepReport = {
+  examined: number;
+  alerted: number;
+  rearmed: number;
+  failed: number;
 };
 
 export type ShopOrderStatusGql = 'PENDING' | 'PAID' | 'CANCELLED';
@@ -1093,6 +1187,37 @@ export type DeleteShopProductMutationData = { deleteShopProduct: boolean };
 export type ShopOrdersQueryData = { shopOrders: ShopOrder[] };
 export type MarkShopOrderPaidMutationData = { markShopOrderPaid: ShopOrder };
 export type CancelShopOrderMutationData = { cancelShopOrder: ShopOrder };
+
+export type ShopProductOptionsQueryData = {
+  shopProductOptions: ShopProductOption[];
+};
+export type SetShopProductOptionsMutationData = {
+  setShopProductOptions: ShopProduct;
+};
+export type GenerateShopProductVariantsMutationData = {
+  generateShopProductVariants: ShopProduct;
+};
+export type UpdateShopProductVariantMutationData = {
+  updateShopProductVariant: ShopProduct;
+};
+export type RestockShopVariantMutationData = {
+  restockShopVariant: ShopProduct;
+};
+export type AdjustShopVariantStockMutationData = {
+  adjustShopVariantStock: ShopProduct;
+};
+export type RecordShopVariantShrinkageMutationData = {
+  recordShopVariantShrinkage: ShopProduct;
+};
+export type ShopStockMovementsQueryData = {
+  shopStockMovements: ShopStockMovement[];
+};
+export type ShopLowStockVariantsQueryData = {
+  shopLowStockVariants: ShopLowStockVariant[];
+};
+export type TriggerShopStockSweepMutationData = {
+  triggerShopStockSweep: ShopStockSweepReport;
+};
 
 export type SponsorshipDealStatusGql =
   | 'DRAFT'

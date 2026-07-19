@@ -39,12 +39,21 @@ export class ShopService {
         variants: { where: { active: true }, orderBy: { createdAt: 'asc' } },
       },
     });
-    // `withQuantities: false` : l'acheteur reçoit `inStock`, jamais un chiffre.
+    // `withQuantities: false` : l'acheteur reçoit `inStock`, jamais un
+    // chiffre — y compris les champs DÉRIVÉS des quantités (`stock`,
+    // `variantsBelowThreshold`, `belowThreshold`), qui les trahiraient tout
+    // autant. Le portail membre passe par ici.
     return rows.map((p) => this.shapeProduct(p, { withQuantities: false }));
   }
 
-  /** Recharge un produit sous sa forme GraphQL après écriture. */
-  private async reloadProduct(clubId: string, id: string) {
+  /**
+   * Recharge un produit sous sa forme GraphQL après écriture.
+   *
+   * Public parce que `ShopVariantsService` écrit lui aussi des variantes et
+   * doit rendre le MÊME objet que les mutations produit — dupliquer la
+   * projection ferait diverger les deux écrans à la première évolution.
+   */
+  async reloadProduct(clubId: string, id: string) {
     const row = await this.prisma.shopProduct.findFirstOrThrow({
       where: { id, clubId },
       include: { variants: { orderBy: { createdAt: 'asc' } } },
@@ -79,8 +88,14 @@ export class ShopService {
       priceCents: p.priceCents,
       // Somme des variantes suivies, ou null si aucune ne l'est : c'est
       // exactement l'ancienne sémantique « illimité ».
+      //
+      // NEUTRALISÉ HORS ADMINISTRATION, et c'est un correctif : ce champ est
+      // DÉRIVÉ des quantités, donc les masquer une à une ne suffisait pas.
+      // Un adhérent muni de son JWT de portail pouvait lire le stock exact via
+      // `viewerShopProducts { stock }` — GraphQL n'est pas un contrôle
+      // d'accès, ne pas sélectionner un champ ne le protège pas.
       stock:
-        tracked.length === 0
+        !opts.withQuantities || tracked.length === 0
           ? null
           : tracked.reduce((sum, v) => sum + v.available, 0),
       hasVariants: variants.some((v) => !v.isDefault),
@@ -88,9 +103,14 @@ export class ShopService {
         variants.length === 0
           ? p.priceCents
           : Math.min(...variants.map(priceOf)),
-      variantsBelowThreshold: tracked.filter(
-        (v) => v.reorderThreshold !== null && v.available <= v.reorderThreshold,
-      ).length,
+      // Même raison : le nombre de déclinaisons sous seuil trahit à la fois
+      // une quantité et le niveau auquel le club réapprovisionne.
+      variantsBelowThreshold: opts.withQuantities
+        ? tracked.filter(
+            (v) =>
+              v.reorderThreshold !== null && v.available <= v.reorderThreshold,
+          ).length
+        : 0,
       variants: variants.map((v) => ({
         id: v.id,
         productId: v.productId,
@@ -103,7 +123,11 @@ export class ShopService {
         onHand: opts.withQuantities ? v.onHand : null,
         reorderThreshold: opts.withQuantities ? v.reorderThreshold : null,
         inStock: !v.trackStock || v.available > 0,
+        // Neutralisé hors administration au même titre que le reste : savoir
+        // qu'une taille est « sous le seuil » revient à connaître à la fois la
+        // quantité restante et la politique de réappro du club.
         belowThreshold:
+          opts.withQuantities &&
           v.trackStock &&
           v.reorderThreshold !== null &&
           v.available <= v.reorderThreshold,
@@ -156,7 +180,7 @@ export class ShopService {
           active: input.active !== false,
         },
       });
-      await tx.shopProductVariant.create({
+      const variant = await tx.shopProductVariant.create({
         data: {
           clubId,
           productId: product.id,
@@ -166,11 +190,22 @@ export class ShopService {
           sku: input.sku ?? null,
           priceCents: null, // hérite du produit
           trackStock: tracked,
-          onHand: quantity,
-          available: quantity,
+          onHand: 0,
+          available: 0,
           reorderThreshold: input.reorderThreshold ?? null,
         },
       });
+      // Le stock initial passe par le MOTEUR, qui l'archive. Le poser
+      // directement à la création laisserait le journal irréconciliable dès le
+      // premier produit — l'écart valant exactement ce stock initial.
+      if (quantity > 0 || tracked) {
+        await this.stock.open(tx, {
+          clubId,
+          variantId: variant.id,
+          qty: quantity,
+          trackStock: tracked,
+        });
+      }
       return product.id;
     })
       .then((id) => this.reloadProduct(clubId, id));
@@ -219,10 +254,19 @@ export class ShopService {
         });
       } else {
         if (!def.trackStock) {
-          await this.prisma.shopProductVariant.update({
-            where: { id: def.id },
-            data: { trackStock: true, onHand: 0, available: 0 },
-          });
+          // Passage d'illimité à suivi : la remise à zéro passe par le
+          // moteur, qui l'archive. L'écrire à la main ferait apparaître, dans
+          // le journal, une correction sortie de nulle part — la vraie
+          // discontinuité, elle, n'y figurerait pas.
+          await this.prisma.$transaction((tx) =>
+            this.stock.open(tx, {
+              clubId,
+              variantId: def.id,
+              qty: 0,
+              trackStock: true,
+              reason: 'Passage en stock suivi depuis la fiche produit',
+            }),
+          );
         }
         await this.stock.adjust({
           clubId,

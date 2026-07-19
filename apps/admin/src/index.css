@@ -4800,6 +4800,45 @@ a:focus-visible {
   flex-wrap: wrap;
 }
 
+/* Boutique — déclinaisons et stock (ADR-0012) */
+.cf-variant-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 20px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+.cf-variant-section:last-child {
+  border-bottom: 0;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+.cf-variant-section__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+/*
+  La matrice déborde volontiers : 3 tailles × 4 couleurs × 2 floquages font
+  24 lignes de 7 colonnes. On la fait défiler dans son propre cadre plutôt que
+  de laisser la page entière partir en largeur.
+*/
+.cf-variant-matrix {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.cf-variant-matrix .cf-data-table {
+  min-width: 780px;
+}
+.cf-variant-matrix .cf-data-table td {
+  vertical-align: middle;
+}
+.cf-variant-matrix .cf-input {
+  min-width: 84px;
+}
+
 /* Finance pages (sponsoring, subventions, comptabilité) */
 .cf-finance-list {
   list-style: none;

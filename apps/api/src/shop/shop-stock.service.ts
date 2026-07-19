@@ -342,6 +342,60 @@ export class ShopStockService {
     });
   }
 
+  /**
+   * OUVERTURE d'une variante : pose ses compteurs à `qty` ET archive le
+   * mouvement correspondant.
+   *
+   * Sans elle, une variante naissait avec `onHand = available = 12` sans
+   * qu'aucun mouvement ne le justifie : `SUM(availableDelta)` sur le journal
+   * ne pouvait alors JAMAIS se réconcilier avec le compteur, l'écart valant
+   * exactement le stock initial. La réconciliation promise par l'ADR-0012 §4
+   * était donc impossible pour tout produit, dès sa création — et « pourquoi
+   * il manque trois t-shirts ? » redevenait sans réponse.
+   *
+   * Sert aussi à remettre une variante à zéro avant de rebasculer son suivi :
+   * la discontinuité apparaît dans le journal au lieu d'être escamotée.
+   */
+  async open(
+    tx: Prisma.TransactionClient,
+    args: {
+      clubId: string;
+      variantId: string;
+      qty: number;
+      trackStock: boolean;
+      userId?: string | null;
+      reason?: string | null;
+    },
+  ): Promise<void> {
+    const { clubId, variantId, qty, trackStock } = args;
+
+    await tx.shopProductVariant.updateMany({
+      where: { id: variantId, clubId },
+      data: {
+        trackStock,
+        onHand: qty,
+        available: qty,
+        lowStockAlertedAt: null,
+      },
+    });
+
+    // Une ouverture à zéro sur une variante non suivie n'a rien à archiver :
+    // il ne s'est rien passé de comptable.
+    if (!trackStock && qty === 0) return;
+
+    await tx.shopStockMovement.create({
+      data: {
+        clubId,
+        variantId,
+        kind: ShopStockMovementKind.ADJUSTMENT,
+        onHandDelta: qty,
+        availableDelta: qty,
+        reason: args.reason ?? 'Stock initial',
+        userId: args.userId ?? null,
+      },
+    });
+  }
+
   /** Journal d'une variante, du plus récent au plus ancien. */
   async listMovements(
     clubId: string,

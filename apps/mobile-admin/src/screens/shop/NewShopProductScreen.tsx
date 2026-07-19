@@ -7,11 +7,13 @@ import {
   ScreenContainer,
   ScreenHero,
   TextField,
+  palette,
   spacing,
+  typography,
 } from '@clubflow/mobile-shared';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import {
   CREATE_SHOP_PRODUCT,
   SHOP_PRODUCTS,
@@ -23,7 +25,10 @@ type Product = {
   name: string;
   sku: string | null;
   priceCents: number;
+  /** Champ DÉRIVÉ (ADR-0012) : somme des déclinaisons suivies, null = illimité. */
   stock: number | null;
+  hasVariants: boolean;
+  variantsBelowThreshold: number;
   active: boolean;
   imageUrl: string | null;
   createdAt: string;
@@ -72,6 +77,17 @@ export function NewShopProductScreen() {
   const [active, setActive] = useState(true);
   const [hydrated, setHydrated] = useState(false);
 
+  /**
+   * Un produit décliné ne se pilote PAS depuis ce formulaire.
+   *
+   * Le champ « stock » de la fiche produit s'applique à la variante par
+   * défaut. Or dès qu'un axe existe, cette variante est désactivée au profit
+   * de la matrice : y écrire produirait un mouvement de stock sur une
+   * déclinaison qui n'est plus vendue — un chiffre faux, archivé comme vrai.
+   * L'édition des déclinaisons reste sur l'admin web.
+   */
+  const hasVariants = product?.hasVariants ?? false;
+
   // Note: description n'est pas dans la query liste — on laisse vide en édition,
   // l'utilisateur peut la repréciser. Côté GraphQL update, le champ est optionnel.
 
@@ -85,7 +101,13 @@ export function NewShopProductScreen() {
       setSku(product.sku ?? '');
       setImageUrl(product.imageUrl ?? '');
       setPrice(centsToEuros(product.priceCents));
-      setStock(product.stock != null ? String(product.stock) : '');
+      // Sur un produit décliné, le champ n'est pas affiché : l'hydrater avec
+      // le cumul le renverrait tel quel sur la variante par défaut.
+      setStock(
+        !product.hasVariants && product.stock != null
+          ? String(product.stock)
+          : '',
+      );
       setActive(product.active);
       setHydrated(true);
     }
@@ -111,7 +133,7 @@ export function NewShopProductScreen() {
     }
 
     let stockNum: number | undefined = undefined;
-    if (stock.trim()) {
+    if (!hasVariants && stock.trim()) {
       const n = parseInt(stock.trim(), 10);
       if (Number.isNaN(n) || n < 0) {
         Alert.alert('Stock invalide', 'Le stock doit être un entier ≥ 0.');
@@ -252,13 +274,31 @@ export function NewShopProductScreen() {
               placeholder="0,00"
               keyboardType="decimal-pad"
             />
-            <TextField
-              label="Stock disponible (vide = illimité)"
-              value={stock}
-              onChangeText={setStock}
-              placeholder="50"
-              keyboardType="number-pad"
-            />
+            {hasVariants ? (
+              <View style={styles.readOnly}>
+                <Text style={styles.readOnlyLabel}>Stock cumulé</Text>
+                <Text style={styles.readOnlyValue}>
+                  {product?.stock != null
+                    ? `${product.stock} unité${product.stock > 1 ? 's' : ''}`
+                    : 'Illimité'}
+                </Text>
+                <Text style={styles.readOnlyHint}>
+                  Ce produit a des déclinaisons
+                  {product && product.variantsBelowThreshold > 0
+                    ? `, dont ${product.variantsBelowThreshold} sous son seuil de réapprovisionnement`
+                    : ''}
+                  . Leur stock se modifie depuis l’espace d’administration web.
+                </Text>
+              </View>
+            ) : (
+              <TextField
+                label="Stock disponible (vide = illimité)"
+                value={stock}
+                onChangeText={setStock}
+                placeholder="50"
+                keyboardType="number-pad"
+              />
+            )}
           </View>
         </Card>
 
@@ -298,6 +338,21 @@ const styles = StyleSheet.create({
   },
   fields: {
     gap: spacing.md,
+  },
+  readOnly: {
+    gap: spacing.xs,
+  },
+  readOnlyLabel: {
+    ...typography.smallStrong,
+    color: palette.muted,
+  },
+  readOnlyValue: {
+    ...typography.body,
+    color: palette.ink,
+  },
+  readOnlyHint: {
+    ...typography.small,
+    color: palette.muted,
   },
   pillRow: {
     flexDirection: 'row',

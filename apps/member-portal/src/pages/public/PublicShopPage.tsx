@@ -38,6 +38,10 @@ export function PublicShopPage() {
               {p.description ? (
                 <p className="ps-shop-card__desc">{p.description}</p>
               ) : null}
+              {/* TODO ADR-0012 §6 — « à partir de X € » dès que
+                  `PublicShopProductGraph` exposera `hasVariants` et
+                  `priceFromCents`. Le service vitrine s'y refuse aujourd'hui
+                  de façon délibérée ; l'arbitrage est côté API, pas ici. */}
               <p className="ps-shop-card__price">{fmtEuros(p.priceCents)}</p>
             </li>
           ))}

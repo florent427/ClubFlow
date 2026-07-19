@@ -3438,6 +3438,22 @@ a:focus-visible {
   color: #b91c1c;
   font-weight: 600;
 }
+/* Sélecteur de déclinaison — n'existe que pour un produit qui en a. */
+.mp-product-card__variants {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mp-product-card__variants-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #454652;
+}
+.mp-product-card__variants-select {
+  min-width: 0;
+  width: 100%;
+  background: #fff;
+}
 .mp-product-card__qty {
   display: flex;
   align-items: center;

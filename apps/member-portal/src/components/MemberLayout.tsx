@@ -12,6 +12,7 @@ import type { ClubQueryData } from '../lib/viewer-types';
 import { getClubId } from '../lib/storage';
 import { CLUB, VIEWER_ADMIN_SWITCH, VIEWER_ME } from '../lib/viewer-documents';
 import type { ViewerAdminSwitchData, ViewerMeData } from '../lib/viewer-types';
+import { ModuleGatedNavLink } from './ModuleGatedNavLink';
 import { PendingFamilyInvitesBanner } from './PendingFamilyInvitesBanner';
 import { PinGate } from './PinGate';
 import { UserMenu } from './UserMenu';
@@ -191,10 +192,17 @@ export function MemberLayout() {
             <span className="mp-ico material-symbols-outlined">article</span>
             Blog
           </NavLink>
-          <NavLink to="/boutique" className={navClass}>
+          {/* L'entrée était la seule à ne pas être conditionnée à son module,
+              alors que l'admin l'est : l'onglet s'affichait même boutique
+              coupée, et menait à un écran refusé par le garde de module. */}
+          <ModuleGatedNavLink
+            to="/boutique"
+            modules={['SHOP']}
+            className={navClass}
+          >
             <span className="mp-ico material-symbols-outlined">storefront</span>
             Boutique
-          </NavLink>
+          </ModuleGatedNavLink>
           <NavLink to="/messagerie" className={navClass}>
             <span className="mp-ico material-symbols-outlined">chat</span>
             Messagerie

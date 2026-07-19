@@ -62,6 +62,15 @@ export const PUBLIC_CLUB_BLOG_POST = gql`
   }
 `;
 
+/**
+ * Vitrine publique de la boutique.
+ *
+ * `hasVariants` / `priceFromCents` ne sont PAS sélectionnés : `PublicShopProductGraph`
+ * ne les expose pas, et le service vitrine s'y refuse explicitement (« lui servir le
+ * prix minimum des déclinaisons changerait silencieusement ce qu'elle annonce »).
+ * Les demander ici ferait échouer la validation du document et viderait la page
+ * entière. Le « à partir de X € » de l'ADR-0012 §6 attend donc que l'API tranche.
+ */
 export const PUBLIC_CLUB_SHOP_PRODUCTS = gql`
   query PublicClubShopProducts($clubSlug: String!) {
     publicClubShopProducts(clubSlug: $clubSlug) {

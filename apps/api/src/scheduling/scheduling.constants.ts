@@ -28,4 +28,16 @@ export const SCHEDULER_LOCK_KEYS = {
    * prélèvement, ni la récupération des frais.
    */
   stripeRefundReconcile: 'stripe-refund-reconcile',
+  /**
+   * Balayage quotidien des seuils de réapprovisionnement boutique (ADR-0012).
+   *
+   * Clé NEUVE et DISTINCTE, pour la même raison que `stripeFeesSweep` : ce
+   * balayage envoie des e-mails, donc sa durée dépend d'un SMTP tiers. Le
+   * partager avec un verrou financier laisserait un relais lent retarder un
+   * prélèvement dû — un t-shirt qui manque ne doit jamais bloquer de l'argent.
+   *
+   * Réciproquement, un prélèvement qui tient son verrou 15 minutes ne doit pas
+   * faire sauter le balayage des seuils du jour.
+   */
+  shopStockThresholdSweep: 'shop-stock-threshold-sweep',
 } as const;
