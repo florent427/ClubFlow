@@ -12,6 +12,13 @@ export class ShopOrderLineGraph {
   @Field(() => ID)
   productId!: string;
 
+  /**
+   * Déclinaison vendue. Null sur les lignes antérieures à l'ADR-0012 : elles
+   * restent affichables, leur `label` ayant figé le libellé à la commande.
+   */
+  @Field(() => ID, { nullable: true })
+  variantId!: string | null;
+
   @Field(() => Int)
   quantity!: number;
 
