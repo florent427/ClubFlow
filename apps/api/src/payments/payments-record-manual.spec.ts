@@ -9,6 +9,8 @@ import { PaymentScheduleService } from './payment-schedule.service';
 import { PaymentsService } from './payments.service';
 import { StripeConnectService } from './stripe-connect.service';
 import { StripeFeesService } from './stripe-fees.service';
+import { StripeRefundsService } from './stripe-refunds.service';
+import { CreditNotesService } from './credit-notes.service';
 
 describe('PaymentsService / encaissements manuels', () => {
   let service: PaymentsService;
@@ -74,6 +76,10 @@ describe('PaymentsService / encaissements manuels', () => {
           // exactement comme le vrai service quand Stripe est indisponible.
           useValue: { syncFeesForPayment: jest.fn().mockResolvedValue(false) },
         },
+        // Remboursements : non exercés par ces specs, mais le constructeur
+        // doit rester résoluble.
+        { provide: StripeRefundsService, useValue: {} },
+        { provide: CreditNotesService, useValue: {} },
         { provide: PaymentScheduleService, useValue: {} },
         {
           provide: PaymentScheduleEngineService,

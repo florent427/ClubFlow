@@ -17,6 +17,7 @@ import { InvoiceDetailGraph } from './models/invoice-detail.model';
 import { PaymentGraph } from './models/payment.model';
 import { InvoiceRemindersService } from './invoice-reminders.service';
 import { PaymentsService } from './payments.service';
+import { StripeRefundsService } from './stripe-refunds.service';
 import { Field, ID, Int, ObjectType } from '@nestjs/graphql';
 
 @ObjectType()
@@ -66,6 +67,16 @@ class InvoiceReminderResultGraph {
   sentTo!: string;
 }
 
+/** Confirmation d'un remboursement Stripe. */
+@ObjectType('RefundResult')
+class RefundResultGraph {
+  @Field(() => ID, { description: 'Identifiant Stripe du remboursement (re_...)' })
+  refundId!: string;
+
+  @Field(() => Int, { description: 'Montant réellement rendu, en centimes' })
+  amountCents!: number;
+}
+
 @Resolver()
 @UseGuards(
   GqlJwtAuthGuard,
@@ -77,6 +88,7 @@ class InvoiceReminderResultGraph {
 export class PaymentsResolver {
   constructor(
     private readonly payments: PaymentsService,
+    private readonly refunds: StripeRefundsService,
     private readonly reminders: InvoiceRemindersService,
   ) {}
 
@@ -169,6 +181,31 @@ export class PaymentsResolver {
     @Args('input') input: UpsertClubPricingRuleInput,
   ): Promise<ClubPricingRuleGraph> {
     return this.payments.upsertPricingRule(club.id, input);
+  }
+
+  @Mutation(() => RefundResultGraph, {
+    name: 'refundClubPayment',
+    description:
+      "Rembourse tout ou partie d'un encaissement Stripe sur le compte connecté du club. Un avoir du même montant est émis automatiquement : sans lui la facture redeviendrait due et l'échéancier reprélèverait l'adhérent.",
+  })
+  async refundClubPayment(
+    @CurrentClub() club: Club,
+    @Args('paymentId') paymentId: string,
+    @Args('reason') reason: string,
+    @Args('amountCents', { type: () => Int, nullable: true })
+    amountCents?: number | null,
+  ): Promise<RefundResultGraph> {
+    const res = await this.refunds.refundPayment({
+      clubId: club.id,
+      paymentId,
+      amountCents,
+      reason,
+    });
+    // L'enregistrement en base (Payment négatif + avoir) est fait par le
+    // webhook `charge.refunded`, seul chemin commun avec un remboursement
+    // déclenché depuis le dashboard Stripe. La mutation ne renvoie donc que
+    // la confirmation du mouvement d'argent.
+    return { refundId: res.refundId, amountCents: res.amountCents };
   }
 
   @Mutation(() => PaymentGraph)

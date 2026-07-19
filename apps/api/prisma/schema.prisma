@@ -1608,6 +1608,17 @@ model Payment {
   /// `txn_xxx` — pièce justificative côté Stripe, et clé d'idempotence
   /// naturelle si l'on doit un jour rapprocher ou rejouer.
   stripeBalanceTransactionId String?
+  /// Si cette ligne est un REMBOURSEMENT (montant négatif), encaissement
+  /// qu'elle rembourse. Une facture peut porter plusieurs encaissements
+  /// Stripe (acompte puis solde, échéancier) : sans ce rattachement, on ne
+  /// saurait pas lequel a déjà été remboursé et de combien.
+  refundedPaymentId  String?
+  /// `re_xxx` du remboursement Stripe que cette ligne matérialise.
+  /// Champ DÉDIÉ plutôt qu'une contrainte sur `externalRef`, qui porte aussi
+  /// des numéros de chèque et des références de virement — deux clubs peuvent
+  /// légitimement saisir le même. Ici l'unicité est garantie par Stripe.
+  stripeRefundId     String?
+
   /// Date de récupération effective des frais. Null = pas encore connus.
   /// C'est le cas NOMINAL d'un prélèvement SEPA : la balance transaction
   /// n'existe qu'une fois la charge dénouée, plusieurs jours plus tard.
@@ -1625,6 +1636,8 @@ model Payment {
   grantInstallments       GrantInstallment[]
   sponsorshipInstallments SponsorshipInstallment[]
   scheduleInstallment     PaymentScheduleInstallment?
+  refundedPayment         Payment?                    @relation("PaymentRefunds", fields: [refundedPaymentId], references: [id], onDelete: SetNull)
+  refunds                 Payment[]                   @relation("PaymentRefunds")
 
   @@index([clubId, createdAt])
   @@index([invoiceId])
@@ -1633,6 +1646,12 @@ model Payment {
   @@index([clubId, financialAccountId])
   /// Balayage des encaissements Stripe dont les frais restent à récupérer.
   @@index([stripeFeesSyncedAt, createdAt])
+  /// Somme déjà remboursée sur un encaissement donné.
+  @@index([refundedPaymentId])
+  /// Idempotence du remboursement, garantie par la BASE et non par un
+  /// check-then-create : deux livraisons concurrentes du même webhook ne
+  /// peuvent pas enregistrer deux fois le même remboursement.
+  @@unique([clubId, stripeRefundId])
 }
 
 /// Moyen de prélèvement d'un échéancier (cf. ADR-0009).

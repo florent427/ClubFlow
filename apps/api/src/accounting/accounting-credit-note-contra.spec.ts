@@ -40,6 +40,12 @@ function resultatCents(entries: Entry[]): number {
 function makeHarness(args: {
   encaissementCents: number;
   avoirCents: number;
+  /** Compte financier où l'encaissement d'origine est tombé. */
+  compteEncaissement?: { code: string; label: string } | null;
+  /** Plusieurs encaissements sur la même facture, du plus ancien au plus récent. */
+  recettes?: Array<{ paymentId: string; compte: string }>;
+  /** Facture jamais réglée : aucune écriture de recette. */
+  sansRecette?: boolean;
 }) {
   // L'écriture de recette née de l'encaissement d'origine.
   const original: Entry = {
@@ -50,6 +56,12 @@ function makeHarness(args: {
     cancelledAt: null,
   };
   const entries: Entry[] = [original];
+  const lines: Array<{
+    accountCode: string;
+    side: string;
+    creditCents: number;
+    debitCents: number;
+  }> = [];
 
   const tx = {
     accountingEntry: {
@@ -78,7 +90,12 @@ function makeHarness(args: {
         },
       ),
     },
-    accountingEntryLine: { create: jest.fn().mockResolvedValue({}) },
+    accountingEntryLine: {
+      create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        lines.push(data as never);
+        return data;
+      }),
+    },
   };
 
   const prisma = {
@@ -95,7 +112,39 @@ function makeHarness(args: {
       }),
     },
     accountingEntry: {
-      findFirst: jest.fn().mockResolvedValue({ ...original, lines: [] }),
+      // Applique vraiment le filtre : c'est le seul moyen de vérifier que la
+      // contre-passation cible le BON encaissement quand il y en a plusieurs.
+      findFirst: jest.fn(async ({ where }: { where: Record<string, unknown> }) => {
+        if (args.recettes) {
+          const cible = where.paymentId
+            ? args.recettes.find((r) => r.paymentId === where.paymentId)
+            : // Pas de paiement désigné : le code retient le plus récent.
+              args.recettes[args.recettes.length - 1];
+          if (!cible) return null;
+          return {
+            ...original,
+            id: 'entry-' + cible.paymentId,
+            lines: [],
+            financialAccount: {
+              accountingAccount: { code: cible.compte, label: cible.compte },
+            },
+          };
+        }
+        if (args.compteEncaissement === undefined && args.sansRecette) return null;
+        return {
+          ...original,
+          lines: [],
+          financialAccount:
+            args.compteEncaissement === null
+              ? null
+              : {
+                  accountingAccount: args.compteEncaissement ?? {
+                    code: '512000',
+                    label: 'Banque principale',
+                  },
+                },
+        };
+      }),
     },
     accountingAccount: {
       findUnique: jest.fn(async ({ where }: { where: { clubId_code: { code: string } } }) => ({
@@ -110,7 +159,13 @@ function makeHarness(args: {
   const svc = new AccountingService(
     prisma as unknown as PrismaService,
     {} as never,
-    { resolveAccountCode: jest.fn().mockResolvedValue('706100') } as never,
+    {
+      // Mapping fidèle : le produit et la banque ne sont pas le même compte,
+      // et le repli du test porte précisément sur celui de la banque.
+      resolveAccountCode: jest.fn(async (_c: string, key: string) =>
+        key === 'BANK_ACCOUNT' ? '512000' : '706100',
+      ),
+    } as never,
     {} as never,
     { log: jest.fn().mockResolvedValue(undefined) } as never,
     {} as never,
@@ -118,7 +173,7 @@ function makeHarness(args: {
     {} as never,
   );
 
-  return { svc, entries, original, tx };
+  return { svc, entries, original, tx, lines };
 }
 
 describe('createContraEntryForCreditNote — effet sur le résultat', () => {
@@ -185,4 +240,101 @@ describe('createContraEntryForCreditNote — effet sur le résultat', () => {
 
     expect(h.tx.accountingEntry.create).not.toHaveBeenCalled();
   });
+
+  it('crédite le compte de TRANSIT quand l’encaissement y est tombé', async () => {
+    // Un encaissement Stripe atterrit sur 512300, pas sur la banque. Créditer
+    // 512000 rendrait l'argent depuis un compte qui ne l'a jamais reçu, et
+    // laisserait le transit débiteur du montant remboursé, indéfiniment.
+    const h = makeHarness({
+      encaissementCents: 10_000,
+      avoirCents: 4_000,
+      compteEncaissement: { code: '512300', label: 'Stripe transit' },
+    });
+
+    await h.svc.createContraEntryForCreditNote('club-1', 'cn-1');
+
+    const credit = h.lines.find((l) => l.side === 'CREDIT');
+    expect(credit?.accountCode).toBe('512300');
+    expect(credit?.creditCents).toBe(4_000);
+  });
+
+  it('crédite la banque pour un encaissement tombé en banque', async () => {
+    const h = makeHarness({
+      encaissementCents: 10_000,
+      avoirCents: 4_000,
+      compteEncaissement: { code: '512000', label: 'Banque principale' },
+    });
+
+    await h.svc.createContraEntryForCreditNote('club-1', 'cn-1');
+
+    expect(h.lines.find((l) => l.side === 'CREDIT')?.accountCode).toBe('512000');
+  });
+
+  it('retombe sur la banque quand l’écriture d’origine n’a pas de compte', async () => {
+    // Encaissement antérieur au multi-comptes : mieux vaut une contrepartie
+    // par défaut qu'une écriture impossible à passer.
+    const h = makeHarness({
+      encaissementCents: 10_000,
+      avoirCents: 4_000,
+      compteEncaissement: null,
+    });
+
+    await h.svc.createContraEntryForCreditNote('club-1', 'cn-1');
+
+    expect(h.lines.find((l) => l.side === 'CREDIT')?.accountCode).toBe('512000');
+  });
+
+
+  it('cible l’encaissement REMBOURSÉ, pas le plus récent de la facture', async () => {
+    // Facture réglée en deux fois : une échéance Stripe (transit) puis un
+    // règlement en espèces (caisse). On rembourse la jambe Stripe. Retenir le
+    // plus récent créditerait la caisse d'un argent que Stripe a repris sur le
+    // transit — les deux comptes faux d'un coup.
+    const h = makeHarness({
+      encaissementCents: 10_000,
+      avoirCents: 5_000,
+      recettes: [
+        { paymentId: 'pay-stripe', compte: '512300' },
+        { paymentId: 'pay-especes', compte: '530000' },
+      ],
+    });
+
+    await h.svc.createContraEntryForCreditNote('club-1', 'cn-1', 'pay-stripe');
+
+    expect(h.lines.find((l) => l.side === 'CREDIT')?.accountCode).toBe('512300');
+  });
+
+  it('sans paiement désigné, retient le plus récent (avoir manuel)', async () => {
+    const h = makeHarness({
+      encaissementCents: 10_000,
+      avoirCents: 5_000,
+      recettes: [
+        { paymentId: 'pay-1', compte: '512300' },
+        { paymentId: 'pay-2', compte: '530000' },
+      ],
+    });
+
+    await h.svc.createContraEntryForCreditNote('club-1', 'cn-1');
+
+    expect(h.lines.find((l) => l.side === 'CREDIT')?.accountCode).toBe('530000');
+  });
+
+  it('facture JAMAIS RÉGLÉE : aucune écriture, pas de sortie fantôme', async () => {
+    // La compta est tenue en encaissement : une facture impayée n'a pas
+    // d'écriture de recette. Écrire DÉBIT produit / CRÉDIT banque inventerait
+    // une sortie de trésorerie sans ligne de relevé en face, et l'écart se
+    // cumulerait à chaque annulation de la saison. C'est pourtant le cas le
+    // plus courant de l'avoir manuel.
+    const h = makeHarness({
+      encaissementCents: 10_000,
+      avoirCents: 25_000,
+      sansRecette: true,
+    });
+
+    await h.svc.createContraEntryForCreditNote('club-1', 'cn-1');
+
+    expect(h.tx.accountingEntry.create).not.toHaveBeenCalled();
+    expect(h.lines).toHaveLength(0);
+  });
+
 });
