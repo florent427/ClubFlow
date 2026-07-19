@@ -107,4 +107,7 @@ souscrire un événement dans le code ne suffit pas.
 
 - [ADR-0008](0008-stripe-connect-express.md) — direct charges
 - [ADR-0009](0009-echeancier-paiement-clubflow.md) — tableau des événements webhook
+- [ADR-0011](0011-remboursement-eteint-la-creance.md) — ce que devient la
+  créance quand on rembourse : c'est l'écriture d'avoir décrite ici qui
+  matérialise ce choix
 - [pitfalls/compta-non-seedee-webhook-500.md](../pitfalls/compta-non-seedee-webhook-500.md)

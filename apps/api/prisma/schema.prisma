@@ -198,6 +198,22 @@ model Club {
 
   documents       ClubDocument[]
   signedDocuments ClubSignedDocument[]
+
+  /// Boutique (ADR-0012). ShopProduct et ShopOrder n'avaient aucune relation
+  /// vers Club : l'isolation multi-tenant tenait au seul WHERE applicatif.
+  shopProducts       ShopProduct[]
+  shopProductOptions ShopProductOption[]
+  shopOptionValues   ShopProductOptionValue[]
+  shopVariants       ShopProductVariant[]
+  shopStockMovements ShopStockMovement[]
+  shopOrders         ShopOrder[]
+
+  /// Approvisionnement (ADR-0013).
+  shopSuppliers          ShopSupplier[]
+  shopPurchaseOrders     ShopPurchaseOrder[]
+  shopPurchaseOrderLines ShopPurchaseOrderLine[]
+  shopReceptions         ShopPurchaseReception[]
+  shopReceptionLines     ShopPurchaseReceptionLine[]
 }
 
 enum AiUsageFeature {
@@ -2531,6 +2547,25 @@ enum ShopOrderStatus {
   CANCELLED
 }
 
+/// Nature d'un mouvement de stock. Le SENS est porté par les deltas, pas par
+/// le type : une correction d'inventaire peut être positive ou négative.
+enum ShopStockMovementKind {
+  /// Entrée en stock : réception d'une commande fournisseur.
+  RESTOCK
+  /// Réservation liée à une commande : l'article n'est plus vendable, mais il
+  /// est encore physiquement là. Ne touche que `available`.
+  RESERVE
+  /// Retour d'une réservation : commande annulée avant paiement.
+  RELEASE
+  /// Sortie physique : la commande est payée, l'article quitte le placard.
+  /// Ne touche que `onHand` — `available` avait déjà baissé à la réservation.
+  FULFILL
+  /// Correction manuelle après comptage physique.
+  ADJUSTMENT
+  /// Perte, casse, vol.
+  SHRINKAGE
+}
+
 model ShopProduct {
   id          String   @id @default(uuid())
   clubId      String
@@ -2538,15 +2573,374 @@ model ShopProduct {
   name        String
   description String?
   imageUrl    String?
+  /// Prix de référence. Une variante peut le surcharger (ADR-0012 §6).
   priceCents  Int
+  /// @deprecated ADR-0012 — COLONNE MORTE, ne plus lire ni écrire.
+  ///
+  /// Le stock vit désormais sur ShopProductVariant. Cette colonne survit une
+  /// release pour que les 18 opérations GraphQL existantes continuent de
+  /// compiler ; `ShopProductGraph.stock` est devenu un champ DÉRIVÉ (somme
+  /// des `available` des variantes suivies).
+  ///
+  /// Morte et non secondaire : deux sources de vérité concurrentes sur le
+  /// stock seraient pires que tout. Supprimée au lot 5.
   stock       Int?
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  /// Rattrapage ADR-0012 : ShopProduct et ShopOrder étaient les seuls modèles
+  /// du schéma à porter un clubId sans relation vers Club — l'isolation
+  /// multi-tenant reposait sur le seul WHERE applicatif, sans FK.
+  club       Club                 @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  options    ShopProductOption[]
+  variants   ShopProductVariant[]
   orderLines ShopOrderLine[]
 
   @@index([clubId, active])
+}
+
+/// Axe de variation défini par LE CLUB, jamais par ClubFlow : « Taille »,
+/// « Couleur », mais aussi « Floquage » ou « Main ». Aucun axe n'est codé en
+/// dur.
+model ShopProductOption {
+  id        String @id @default(uuid())
+  clubId    String
+  productId String
+  name      String @db.VarChar(60)
+  /// Ordre d'affichage dans le sélecteur du portail.
+  position  Int    @default(0)
+
+  club    Club                    @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  product ShopProduct             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  values  ShopProductOptionValue[]
+
+  /// Deux axes homonymes rendraient la signature de variante ambiguë.
+  @@unique([productId, name])
+  @@index([clubId, productId])
+}
+
+/// Valeur possible sur un axe : « S », « Rouge », « Floqué ».
+model ShopProductOptionValue {
+  id       String @id @default(uuid())
+  clubId   String
+  optionId String
+  value    String @db.VarChar(60)
+  position Int    @default(0)
+
+  club   Club              @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  option ShopProductOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+
+  @@unique([optionId, value])
+  @@index([clubId, optionId])
+}
+
+/// La SEULE chose vendable, et la seule chose stockée (ADR-0012 §1).
+///
+/// Un produit sans axe possède exactement une variante `isDefault`, invisible
+/// dans l'interface. Il n'existe donc jamais deux chemins de vente : une seule
+/// garantie à tenir, pas deux.
+model ShopProductVariant {
+  id        String @id @default(uuid())
+  clubId    String
+  productId String
+
+  /// Signature canonique de la combinaison : identifiants de valeurs TRIÉS et
+  /// joints par « | ». Chaîne VIDE pour la variante par défaut.
+  ///
+  /// Non nullable, et c'est ce qui rend l'unicité tenable par la base : un
+  /// @@unique sur des colonnes de valeurs nullables ne protégerait rien,
+  /// PostgreSQL traitant les NULL comme distincts dans un index unique
+  /// (plusieurs « variantes par défaut » cohabiteraient). La chaîne vide, elle,
+  /// est une valeur. `NULLS NOT DISTINCT` n'est pas exprimable en Prisma.
+  optionSignature String @db.VarChar(400)
+
+  /// Vraie pour l'unique variante d'un produit sans axe : permet à l'admin et
+  /// au portail de masquer entièrement le sélecteur.
+  isDefault Boolean @default(false)
+
+  /// Libellé humain figé (« L / Rouge / Floqué »), null si isDefault.
+  /// Recopié dans ShopOrderLine.label à la commande.
+  label String? @db.VarChar(200)
+
+  /// Référence interne au niveau VENDABLE, pas au niveau produit : c'est la
+  /// variante qu'on commande au fournisseur.
+  sku String? @db.VarChar(60)
+
+  /// Prix ABSOLU de la variante. Null = hérite de ShopProduct.priceCents.
+  /// Absolu et non delta (ADR-0012 §6) : dans une matrice de 24 lignes, un
+  /// surcoût oblige à faire l'addition de tête pour vérifier un prix.
+  priceCents Int?
+
+  /// Faux = stock illimité. Le suivi est un BOOLÉEN DÉDIÉ et non un `available`
+  /// nullable : en SQL `NULL >= 3` vaut UNKNOWN, donc un stock nullable ferait
+  /// exclure silencieusement les lignes illimitées du prédicat de garantie
+  /// `available >= qty`, et une vente valide serait refusée (ADR-0012 §2).
+  trackStock Boolean @default(true)
+
+  /// Quantité physiquement détenue. Ne bouge qu'à la réception, à la
+  /// correction d'inventaire et à la perte — PAS à la réservation.
+  onHand Int @default(0)
+
+  /// Quantité vendable. NON NULLABLE : c'est sur elle que porte le prédicat
+  /// `available: { gte: qty }` de l'updateMany conditionnel, seul mécanisme
+  /// anti-survente disponible puisque `prisma db push` interdit tout CHECK
+  /// (ADR-0003). Ce prédicat doit rester trivialement correct.
+  available Int @default(0)
+
+  /// Sous ce seuil, le balayage quotidien alerte. Null = jamais d'alerte.
+  /// Sur la VARIANTE et non le produit : on est en rupture de M bien avant
+  /// d'être en rupture de t-shirt.
+  reorderThreshold Int?
+  /// Quantité à recommander, purement informative pour le trésorier.
+  reorderTargetQty Int?
+  /// Marqueur d'alerte déjà envoyée, RÉCLAMÉ par updateMany conditionnel avant
+  /// tout envoi — l'anti-spam est tenu par la base, pas par un `if`. Remis à
+  /// null à la remontée du stock ET au changement de seuil, sans quoi un seuil
+  /// relevé n'alerterait plus jamais.
+  lowStockAlertedAt DateTime?
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  club      Club                @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  product   ShopProduct         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  movements ShopStockMovement[]
+  orderLines ShopOrderLine[]
+  purchaseLines ShopPurchaseOrderLine[]
+
+  @@unique([productId, optionSignature])
+  @@index([clubId, productId, active])
+  /// Sert le balayage des seuils : ne ramener que les variantes suivies dont
+  /// l'alerte n'a pas déjà été réclamée.
+  @@index([clubId, trackStock, lowStockAlertedAt])
+}
+
+/// Cycle de vie d'une commande fournisseur (ADR-0013 §3).
+/// Le statut est CALCULÉ après chaque réception, jamais saisi : un statut posé
+/// à la main finirait par contredire ses propres lignes.
+enum ShopPurchaseOrderStatus {
+  /// En préparation, modifiable, sans effet sur l'encours.
+  DRAFT
+  /// Envoyée au fournisseur. C'est à partir de là qu'elle compte dans `onOrder`.
+  ORDERED
+  /// Au moins une réception, au moins une ligne encore ouverte.
+  PARTIALLY_RECEIVED
+  /// Toutes les lignes soldées — reçues, ou closes courtes avec motif.
+  RECEIVED
+  /// Abandonnée. Les lignes cessent de compter dans l'encours.
+  CANCELLED
+}
+
+/// Pourquoi le reçu diffère du commandé (ADR-0013 §2).
+///
+/// Ce n'est PAS un champ décoratif : il tranche entre « le reliquat arrive »
+/// et « on ne l'aura jamais », donc entre une ligne qui reste ouverte et une
+/// ligne soldée courte. Sans lui, une commande reste éternellement ouverte ou
+/// se ferme à tort, et le stock prévisionnel ment dans les deux cas.
+enum ShopReceiptDiscrepancyReason {
+  /// Reliquat annoncé par le fournisseur : la ligne RESTE OUVERTE.
+  BACKORDER
+  /// Rupture définitive chez le fournisseur : ligne soldée courte.
+  SUPPLIER_SHORTAGE
+  /// Casse ou perte pendant le transport.
+  DAMAGED_IN_TRANSIT
+  /// Erreur de préparation du fournisseur.
+  PICKING_ERROR
+  /// Reçu PLUS que commandé.
+  OVER_DELIVERY
+  /// Autre — le commentaire devient obligatoire.
+  OTHER
+}
+
+/// Fournisseur du club. Entité et non texte libre (ADR-0013 §Alternatives) :
+/// on recommande toujours aux mêmes, et les fautes de frappe fragmenteraient
+/// l'historique.
+model ShopSupplier {
+  id      String  @id @default(uuid())
+  clubId  String
+  name    String  @db.VarChar(160)
+  contactName  String? @db.VarChar(160)
+  email        String? @db.VarChar(200)
+  phone        String? @db.VarChar(40)
+  /// Référence du club chez ce fournisseur (numéro de compte client).
+  accountRef   String? @db.VarChar(80)
+  /// Délai de livraison habituel, en jours. Sert à proposer une date
+  /// d'arrivée attendue à la création d'une commande.
+  leadTimeDays Int?
+  notes        String? @db.VarChar(500)
+  active       Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  club   Club                @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  orders ShopPurchaseOrder[]
+
+  /// Deux fournisseurs homonymes dans un même club sont une erreur de saisie.
+  @@unique([clubId, name])
+  @@index([clubId, active])
+}
+
+model ShopPurchaseOrder {
+  id         String                  @id @default(uuid())
+  clubId     String
+  supplierId String
+  /// Référence lisible, engendrée : « CF-2026-004 ». Portée par la base pour
+  /// que deux créations simultanées ne produisent pas le même numéro.
+  reference  String                  @db.VarChar(40)
+  status     ShopPurchaseOrderStatus @default(DRAFT)
+
+  /// Date d'envoi au fournisseur. Null tant que la commande est un brouillon.
+  orderedAt  DateTime?
+  /// Arrivée attendue, pré-remplie depuis `supplier.leadTimeDays`.
+  expectedAt DateTime?
+  /// Date de solde, posée quand le statut devient RECEIVED ou CANCELLED.
+  closedAt   DateTime?
+
+  notes String? @db.VarChar(1000)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  club       Club                     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  supplier   ShopSupplier             @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  lines      ShopPurchaseOrderLine[]
+  receptions ShopPurchaseReception[]
+
+  @@unique([clubId, reference])
+  @@index([clubId, status])
+  @@index([clubId, supplierId])
+}
+
+model ShopPurchaseOrderLine {
+  id        String @id @default(uuid())
+  clubId    String
+  orderId   String
+  variantId String
+
+  orderedQty  Int
+  /// Cumul des réceptions. Maintenu par le moteur, jamais saisi directement.
+  receivedQty Int @default(0)
+
+  /// Prix d'achat unitaire HT. Sert au coût moyen pondéré, à la valeur du
+  /// stock et à la marge — en REPORTING seulement : la réception ne produit
+  /// aucune écriture (ADR-0013 §1).
+  unitCostCents Int @default(0)
+
+  /// Ligne soldée : plus rien n'est attendu dessus, que la quantité soit
+  /// atteinte ou non. C'est le motif d'écart qui décide — BACKORDER la laisse
+  /// ouverte, les autres la soldent courte.
+  closed Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  club    Club                        @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  order   ShopPurchaseOrder           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant ShopProductVariant          @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  receiptLines ShopPurchaseReceptionLine[]
+
+  /// Une déclinaison n'apparaît qu'une fois par commande : deux lignes pour
+  /// le même article rendraient le rapprochement ambigu.
+  @@unique([orderId, variantId])
+  @@index([clubId, variantId, closed])
+}
+
+/// Une livraison. Une commande en a PLUSIEURS (ADR-0013 §5) : modéliser une
+/// réception unique forcerait à écraser la précédente, donc à perdre
+/// l'historique des livraisons partielles — précisément ce qu'on documente.
+model ShopPurchaseReception {
+  id         String   @id @default(uuid())
+  clubId     String
+  orderId    String
+  receivedAt DateTime @default(now())
+  /// Bon de livraison du fournisseur.
+  deliveryNote String? @db.VarChar(80)
+  /// Qui a réceptionné. Null = réception système (import, reprise).
+  userId     String?
+  notes      String?  @db.VarChar(500)
+
+  createdAt DateTime @default(now())
+
+  club  Club                        @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  order ShopPurchaseOrder           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  lines ShopPurchaseReceptionLine[]
+
+  @@index([clubId, orderId, receivedAt])
+}
+
+model ShopPurchaseReceptionLine {
+  id          String @id @default(uuid())
+  clubId      String
+  receptionId String
+  orderLineId String
+
+  /// Ce qui a RÉELLEMENT été reçu sur cette livraison.
+  receivedQty Int
+
+  /// Obligatoire dès que le cumul reçu diffère du commandé. Un écart sans
+  /// explication est une information perdue au moment précis où quelqu'un la
+  /// connaissait encore.
+  discrepancyReason ShopReceiptDiscrepancyReason?
+  /// Commentaire libre, obligatoire quand le motif est OTHER.
+  discrepancyNote   String?                       @db.VarChar(300)
+
+  /// Mouvement de stock engendré par cette ligne. C'est ce rattachement qui
+  /// rend le journal précis : « +17 reçu sur commande CF-2026-004 » au lieu
+  /// de « +17 ».
+  movementId String? @unique
+
+  createdAt DateTime @default(now())
+
+  club      Club                  @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  reception ShopPurchaseReception @relation(fields: [receptionId], references: [id], onDelete: Cascade)
+  orderLine ShopPurchaseOrderLine @relation(fields: [orderLineId], references: [id], onDelete: Restrict)
+  movement  ShopStockMovement?    @relation(fields: [movementId], references: [id], onDelete: SetNull)
+
+  /// Une ligne de commande n'est réceptionnée qu'une fois par livraison.
+  @@unique([receptionId, orderLineId])
+  @@index([clubId, orderLineId])
+}
+
+/// Journal des mouvements de stock (ADR-0012 §4).
+///
+/// Écrit dans la MÊME transaction que la mise à jour des compteurs qu'il
+/// justifie : l'archive ne peut pas manquer sans annuler l'écriture qu'elle
+/// documente. Jamais sommé pour vendre — les compteurs donnent l'arbitrage,
+/// le journal donne l'audit.
+model ShopStockMovement {
+  id        String                @id @default(uuid())
+  clubId    String
+  variantId String
+  kind      ShopStockMovementKind
+
+  /// Deltas SIGNÉS, appliqués aux deux compteurs. Une réservation ne touche
+  /// que `available` (l'article est encore physiquement là) ; une réception ne
+  /// touche que... les deux. Le sens vit ici, pas dans `kind`.
+  onHandDelta    Int @default(0)
+  availableDelta Int @default(0)
+
+  /// Rattachement à la commande qui l'a provoqué, s'il y en a une.
+  orderId     String?
+  orderLineId String?
+
+  /// Motif saisi par l'admin sur les corrections et les pertes.
+  reason String? @db.VarChar(300)
+  /// Utilisateur à l'origine du mouvement manuel. Null = mouvement système.
+  userId String?
+
+  occurredAt DateTime @default(now())
+
+  club    Club               @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  variant ShopProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  /// Réception qui a engendré ce mouvement, s'il vient d'une commande.
+  receptionLine ShopPurchaseReceptionLine?
+
+  @@index([clubId, variantId, occurredAt])
+  @@index([clubId, occurredAt])
+  @@index([orderId])
 }
 
 model ShopOrder {
@@ -2560,7 +2954,12 @@ model ShopOrder {
   createdAt  DateTime        @default(now())
   updatedAt  DateTime        @updatedAt
   paidAt     DateTime?
+  /// Horodatage de l'annulation. Sert à distinguer une commande jamais
+  /// annulée d'une commande annulée puis rouverte — ce dernier cas n'existe
+  /// pas, la machine à états ne permettant aucune transition depuis CANCELLED.
+  cancelledAt DateTime?
 
+  club  Club            @relation(fields: [clubId], references: [id], onDelete: Cascade)
   lines ShopOrderLine[]
 
   @@index([clubId, status])
@@ -2571,15 +2970,25 @@ model ShopOrder {
 model ShopOrderLine {
   id             String @id @default(uuid())
   orderId        String
+  /// Conservé : les lignes antérieures aux variantes restent résolvables, et
+  /// la FK Restrict qui protège l'historique reste intacte.
   productId      String
+  /// Variante réellement vendue. NULLABLE le temps que les lignes historiques
+  /// coexistent ; toute ligne créée depuis l'ADR-0012 la renseigne.
+  variantId      String?
   quantity       Int
   unitPriceCents Int
+  /// Libellé FIGÉ à la commande, suffixe de variante compris
+  /// (« T-shirt — L / Rouge »). Il n'existe aucun autre chemin d'affichage du
+  /// détail de ligne, et le snapshot survit au renommage du produit.
   label          String
 
-  order   ShopOrder   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product ShopProduct @relation(fields: [productId], references: [id], onDelete: Restrict)
+  order   ShopOrder           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product ShopProduct         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant ShopProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
 
   @@index([orderId])
+  @@index([variantId])
 }
 
 model BlogPost {
@@ -3001,10 +3410,33 @@ model VitrineGalleryPhoto {
 /// Actif média générique (image, document) — scope par club, propriétaire
 /// polymorphe (`ownerKind` + `ownerId`). Remplace progressivement
 /// `ClubEventAttachment` en Phase 2.
+/// Qui a le droit de lire un fichier (ADR : correctif du 2026-07-20).
+enum MediaVisibility {
+  /// Servi sans authentification : logo de club, photo de la vitrine, image
+  /// d'un article, photo d'un produit boutique.
+  PUBLIC
+  /// Exige un JWT dont le club est PROPRIÉTAIRE : justificatif comptable,
+  /// document de subvention, pièce jointe de messagerie, document signé.
+  PRIVATE
+}
+
 model MediaAsset {
   id               String         @id @default(uuid())
   clubId           String
   kind             MediaAssetKind @default(IMAGE)
+  /// PRIVÉ PAR DÉFAUT, et c'est tout le montage : un fichier dont personne
+  /// n'a déclaré la nature ne doit pas être lisible par le monde.
+  ///
+  /// Le contrôle de lecture combine ce champ ET les relations publiques qui
+  /// pointent vers l'asset. La redondance est voulue : les surfaces publiques
+  /// rattachées par CLÉ ÉTRANGÈRE (galerie, couverture d'article) sont vues
+  /// par la relation, celles rattachées par URL EN TEXTE — `Club.logoUrl`,
+  /// `BlogPost.coverImageUrl`, `ShopProduct.imageUrl` — ne le sont pas, et
+  /// c'est ce champ qui les couvre.
+  ///
+  /// Sans lui, le logo du club serait passé en 404 sur la vitrine, les
+  /// factures et les mails : il n'est référencé par aucune FK.
+  visibility       MediaVisibility @default(PRIVATE)
   ownerKind        String?
   ownerId          String?
   fileName         String

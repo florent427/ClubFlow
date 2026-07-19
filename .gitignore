@@ -22,3 +22,7 @@ design stich/
 
 # Comptes de test staging (jamais commit)
 staging-test-accounts.local.md
+
+# Scripts SQL opérationnels : contiennent des noms réels, des identifiants
+# utilisateur et des manipulations de base. Le dépôt est PUBLIC.
+bin/*.sql

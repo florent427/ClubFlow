@@ -20,18 +20,36 @@ import {
   SHOP_ORDERS,
 } from '../../lib/documents/shop';
 
+type OrderLine = {
+  id: string;
+  productId: string;
+  variantId: string | null;
+  quantity: number;
+  unitPriceCents: number;
+  /** Intitulé figé à la commande — survit au renommage du produit. */
+  label: string;
+};
+
 type Order = {
   id: string;
   memberId: string | null;
   contactId: string | null;
-  productId: string;
-  quantity: number;
   totalCents: number;
   status: string;
+  note: string | null;
   createdAt: string;
+  paidAt: string | null;
+  buyerFirstName: string | null;
+  buyerLastName: string | null;
+  lines: OrderLine[];
 };
 
 type Data = { shopOrders: Order[] };
+
+/** Total d'articles commandés, toutes lignes confondues. */
+function totalQuantity(order: Order): number {
+  return order.lines.reduce((sum, l) => sum + l.quantity, 0);
+}
 
 const STATUS_BADGE: Record<
   string,
@@ -55,7 +73,11 @@ export function ShopOrdersScreen() {
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [actionTargetId, setActionTargetId] = useState<string | null>(null);
 
-  const { data, loading, refetch } = useQuery<Data>(SHOP_ORDERS, {
+  // `errorPolicy: 'all'` rend les données partielles exploitables, mais il
+  // transforme aussi un échec TOTAL en liste vide. C'est ce qui a permis à une
+  // requête invalide de s'afficher comme « aucune commande » pendant tout le
+  // passage au multi-lignes. On récupère donc `error` pour le DIRE à l'écran.
+  const { data, loading, error, refetch } = useQuery<Data>(SHOP_ORDERS, {
     errorPolicy: 'all',
   });
   const [markPaid, { loading: markingPaid }] = useMutation(MARK_SHOP_ORDER_PAID);
@@ -67,12 +89,24 @@ export function ShopOrdersScreen() {
   const rows = useMemo<DataTableRow[]>(() => {
     return orders
       .filter((o) => statusFilter == null || o.status === statusFilter)
-      .map((o) => ({
-        key: o.id,
-        title: `${formatEuroCents(o.totalCents)} · ${o.quantity} article${o.quantity > 1 ? 's' : ''}`,
-        subtitle: `Commande du ${formatDateShort(o.createdAt)}`,
-        badge: STATUS_BADGE[o.status] ?? null,
-      }));
+      .map((o) => {
+        const qty = totalQuantity(o);
+        // Une seule ligne : on annonce l'article. Plusieurs : on annonce leur
+        // nombre, sinon le libellé de la première laisserait croire que la
+        // commande ne contient que celui-là.
+        const what =
+          o.lines.length === 0
+            ? 'Commande'
+            : o.lines.length === 1
+              ? o.lines[0].label
+              : `${o.lines.length} références`;
+        return {
+          key: o.id,
+          title: `${formatEuroCents(o.totalCents)} · ${qty} article${qty > 1 ? 's' : ''}`,
+          subtitle: `${what} · ${formatDateShort(o.createdAt)}`,
+          badge: STATUS_BADGE[o.status] ?? null,
+        };
+      });
   }, [orders, statusFilter]);
 
   const handleMarkPaid = async (id: string) => {
@@ -115,9 +149,13 @@ export function ShopOrdersScreen() {
         loading={loading}
         onRefresh={refetch}
         refreshing={loading}
-        emptyTitle="Aucune commande"
-        emptySubtitle="Les commandes apparaîtront ici."
-        emptyIcon="bag-outline"
+        emptyTitle={error ? 'Chargement impossible' : 'Aucune commande'}
+        emptySubtitle={
+          error
+            ? error.message
+            : 'Les commandes apparaîtront ici.'
+        }
+        emptyIcon={error ? 'alert-circle-outline' : 'bag-outline'}
         onPressRow={(id) =>
           (nav as any).navigate('ShopOrderDetail', { orderId: id })
         }

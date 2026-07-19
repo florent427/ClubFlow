@@ -56,7 +56,7 @@ export function ResizableImageView(props: NodeViewProps) {
     try {
       const form = new FormData();
       form.append('file', file);
-      const res = await fetch(`${apiBase()}/media/upload?kind=image`, {
+      const res = await fetch(`${apiBase()}/media/upload?kind=image&visibility=public`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,

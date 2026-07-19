@@ -15,9 +15,19 @@ import {
 
 @InputType()
 export class PlaceShopOrderLineInput {
+  /**
+   * Identifiant de la DÉCLINAISON, pas du produit (ADR-0012).
+   *
+   * Rupture d'API assumée : on ne peut pas faire passer un couple
+   * produit + déclinaison dans un champ UUID, et résoudre implicitement un
+   * produit vers sa variante par défaut masquerait les erreurs d'intégration
+   * — un client qui oublierait de choisir une taille commanderait au hasard.
+   * Un produit simple expose sa variante par défaut : l'appelant l'utilise
+   * sans jamais avoir à savoir qu'elle existe.
+   */
   @Field(() => ID)
   @IsUUID()
-  productId!: string;
+  variantId!: string;
 
   @Field(() => Int)
   @IsInt()

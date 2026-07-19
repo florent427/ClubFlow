@@ -23,6 +23,7 @@ import * as libreConvertLib from 'libreoffice-convert';
 // est reconnu comme `application/octet-stream` et rejeté en amont.
 import { fromBuffer as fileTypeFromBuffer } from 'file-type';
 import type { Readable } from 'stream';
+import { MediaVisibility } from '@prisma/client';
 import type { MediaAsset, MediaAssetKind, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MEDIA_STORAGE, type MediaStorageAdapter } from './media-storage.interface';
@@ -490,7 +491,7 @@ export class MediaAssetsService {
     return row;
   }
 
-  /** Lookup public (sans clubId) — utilisé par le controller GET /media/:id. */
+  /** Lookup sans contrôle d'accès. Réservé aux appels INTERNES. */
   async getPublic(assetId: string): Promise<MediaAsset> {
     const row = await this.prisma.mediaAsset.findUnique({
       where: { id: assetId },
@@ -499,16 +500,159 @@ export class MediaAssetsService {
     return row;
   }
 
-  async streamFor(assetId: string): Promise<{
+  /**
+   * Un asset est PUBLIC s'il est rattaché à une surface publique, et privé
+   * sinon. La liste blanche ci-dessous est la seule chose qui ouvre un
+   * fichier au monde.
+   *
+   * POURQUOI PAS `ownerKind` — le champ existe et servirait, en apparence,
+   * exactement à ça. Mais il est déclaratif et nul dans la quasi-totalité des
+   * cas : sur staging, 8 assets sur 9 l'ont à `null`, alors que deux
+   * documents comptables existent bel et bien. S'y fier laisserait donc soit
+   * le trou ouvert (nul = public), soit casserait toutes les images
+   * existantes (nul = privé).
+   *
+   * La vérité n'est pas dans un champ que l'appelant renseigne : elle est
+   * dans la RELATION qui pointe vers l'asset. Un fichier référencé par un
+   * document comptable est privé, quoi que prétende son `ownerKind`.
+   *
+   * REFUS PAR DÉFAUT, et c'est le sens du montage : tout ce qui n'est pas
+   * explicitement listé ici est privé. Si une surface publique naît et qu'on
+   * oublie de l'ajouter, l'image casse — visiblement, tout de suite, et
+   * quelqu'un le corrige. Dans l'autre sens, un justificatif de subvention
+   * fuirait sans que personne ne le remarque jamais.
+   */
+  async isPubliclyReadable(assetId: string): Promise<boolean> {
+    const row = await this.prisma.mediaAsset.findUnique({
+      where: { id: assetId },
+      select: {
+        visibility: true,
+        _count: {
+          select: {
+            // Surfaces PUBLIQUES.
+            galleryPhotos: true,
+            articleCovers: true,
+            articleOgImages: true,
+            ogPages: true,
+            projectPosters: true,
+            projectCovers: true,
+            projectLiveItems: true,
+            // Surfaces PRIVÉES — elles l'emportent, cf. plus bas.
+            accountingDocuments: true,
+            accountingExtractions: true,
+            grantDocuments: true,
+            sponsorshipDocuments: true,
+            clubDocumentSources: true,
+            clubSignedDocuments: true,
+            chatAttachments: true,
+            chatThumbnails: true,
+          },
+        },
+      },
+    });
+    if (!row) return false;
+
+    // Deux sources, réunies par un OU, et la redondance est VOULUE.
+    //
+    // Les surfaces publiques rattachées par CLÉ ÉTRANGÈRE sont vues par les
+    // compteurs. Celles rattachées par URL EN TEXTE — `Club.logoUrl`,
+    // `BlogPost.coverImageUrl`, `ShopProduct.imageUrl` — sont invisibles à
+    // toute relation, et c'est `visibility` qui les couvre.
+    //
+    // La vérification sur staging l'a montré : le logo du SKSR, référencé par
+    // aucune FK, serait passé en 404 sur la vitrine, les factures et les
+    // mails si l'on s'était fié aux seules relations.
+    // LE PRIVÉ L'EMPORTE, et cette précédence est le correctif d'une faille
+    // trouvée en vérifiant le rattrapage sur staging.
+    //
+    // Un même fichier peut être désigné par une surface publique ET rattaché
+    // à une pièce privée : un trésorier qui choisit comme logo de club une
+    // image déjà attachée à une facture, ou une photo de produit réutilisée
+    // en pièce jointe. Rien ne l'en empêche, et rien ne l'avertirait.
+    //
+    // Sans cette précédence, `visibility === PUBLIC` gagnait inconditionnellement
+    // et le justificatif devenait lisible par tous. Constaté en conditions
+    // réelles : l'asset choisi au hasard pour le test était à la fois candidat
+    // au logo et rattaché à un AccountingDocument, et il est passé en 200.
+    //
+    // Refuser ici coûte au pire une image cassée — visible, corrigeable en
+    // dupliquant le fichier. L'inverse ouvre une facture au monde.
+    const prive =
+      row._count.accountingDocuments +
+      row._count.accountingExtractions +
+      row._count.grantDocuments +
+      row._count.sponsorshipDocuments +
+      row._count.clubDocumentSources +
+      row._count.clubSignedDocuments +
+      row._count.chatAttachments +
+      row._count.chatThumbnails;
+    if (prive > 0) return false;
+
+    if (row.visibility === MediaVisibility.PUBLIC) return true;
+
+    return (
+      row._count.galleryPhotos +
+        row._count.articleCovers +
+        row._count.articleOgImages +
+        row._count.ogPages +
+        row._count.projectPosters +
+        row._count.projectCovers +
+        row._count.projectLiveItems >
+      0
+    );
+  }
+
+  /**
+   * Déclare un asset public. Appelé quand on le rattache à une surface qui
+   * n'a pas de clé étrangère vers lui — logo de club, couverture de billet,
+   * photo de produit.
+   *
+   * Scopé par `clubId` DANS l'écriture : un club ne rend pas public le
+   * fichier d'un autre.
+   */
+  async markPublic(clubId: string, assetId: string): Promise<void> {
+    await this.prisma.mediaAsset.updateMany({
+      where: { id: assetId, clubId },
+      data: { visibility: MediaVisibility.PUBLIC },
+    });
+  }
+
+  /**
+   * Ouvre le flux d'un asset, en vérifiant le droit de le lire.
+   *
+   * `clubId` absent = requête anonyme : seuls les assets publics passent.
+   * `clubId` présent = requête authentifiée : le club doit être PROPRIÉTAIRE.
+   *
+   * Le contrôle est ici et non dans le contrôleur pour qu'il n'existe qu'un
+   * seul chemin de lecture — `delete()` filtrait déjà sur `{ id, clubId }`
+   * dix lignes plus bas, `getPublic` non, et c'est cet écart qui a laissé
+   * tout média de tout club lisible sans JWT par qui connaissait l'UUID.
+   */
+  async streamFor(
+    assetId: string,
+    opts?: { clubId?: string | null },
+  ): Promise<{
     row: MediaAsset;
     stream: Readable;
+    isPublic: boolean;
   }> {
     const row = await this.getPublic(assetId);
+    const isPublic = await this.isPubliclyReadable(assetId);
+
+    if (!isPublic) {
+      const clubId = opts?.clubId ?? null;
+      if (!clubId || clubId !== row.clubId) {
+        // 404 et non 403 : répondre « interdit » confirmerait l'existence de
+        // l'asset, et transformerait l'énumération d'UUID en oracle.
+        throw new NotFoundException('Asset introuvable');
+      }
+    }
+
     const stream = await this.storage.getObjectStream(row.storagePath);
     if (!stream) {
       throw new NotFoundException('Fichier absent du stockage');
     }
-    return { row, stream };
+    return { row, stream, isPublic };
   }
 
   async delete(clubId: string, assetId: string): Promise<boolean> {

@@ -1,6 +1,6 @@
 import { Args, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { UseGuards } from '@nestjs/common';
-import type { Club } from '@prisma/client';
+import { BadRequestException, UseGuards } from '@nestjs/common';
+import { AiUsageFeature, type Club } from '@prisma/client';
 import { CurrentClub } from '../common/decorators/current-club.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { RequestUser } from '../common/types/request-user';
@@ -13,15 +13,19 @@ import {
   CURATED_TEXT_MODELS,
 } from './ai-settings.service';
 import { ArticleGeneratorService } from './article-generator.service';
+import { ShopDescriptionGeneratorService } from './shop-description-generator.service';
+import { AiBudgetService } from './ai-budget.service';
 import { ImageGeneratorService } from './image-generator.service';
 import { VitrineArticleGenerationService } from './vitrine-article-generation.service';
 import {
+  GenerateShopProductDescriptionInput,
   GenerateVitrineArticleDraftInput,
   UpdateAiSettingsInput,
 } from './dto/ai-inputs';
 import {
   AiArticleDraftGraph,
   AiSettingsGraph,
+  AiShopProductDescriptionGraph,
   AiUsageLogGraph,
   StartVitrineArticleGenerationResult,
 } from './models/ai-models';
@@ -32,6 +36,8 @@ export class AiResolver {
   constructor(
     private readonly settings: AiSettingsService,
     private readonly articleGen: ArticleGeneratorService,
+    private readonly shopDescriptionGen: ShopDescriptionGeneratorService,
+    private readonly budget: AiBudgetService,
     private readonly imageGen: ImageGeneratorService,
     private readonly vitrineGen: VitrineArticleGenerationService,
   ) {}
@@ -259,5 +265,77 @@ export class AiResolver {
       channel: input.channel,
     });
     return { articleId };
+  }
+
+  // ============ Boutique : description produit ============
+
+  /**
+   * Réécrit un descriptif fournisseur en fiche produit au ton du club.
+   *
+   * Ne touche PAS au produit : la mutation retourne une proposition que
+   * l'admin relit et corrige avant d'enregistrer. Aucun `ShopProduct`
+   * n'est modifié ici.
+   *
+   * Le budget est vérifié AVANT l'appel (un club au plafond ne déclenche
+   * aucune dépense) et la consommation est enregistrée APRÈS, en `await` :
+   * si le décompte échoue, la mutation échoue. Un coût encaissé mais non
+   * décompté rouvrirait le plafond qu'on vient de poser.
+   *
+   * `AiUsageFeature.OTHER` faute de valeur dédiée : l'enum vit dans
+   * `schema.prisma`, hors périmètre de ce lot. Une valeur
+   * `SHOP_DESCRIPTION` rendrait le suivi de coût lisible par
+   * fonctionnalité — à ajouter avec la prochaine migration.
+   */
+  @Mutation(() => AiShopProductDescriptionGraph)
+  async generateShopProductDescription(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('input') input: GenerateShopProductDescriptionInput,
+  ): Promise<AiShopProductDescriptionGraph> {
+    const budget = await this.budget.checkBudget(club.id);
+    if (!budget.allowed) {
+      throw new BadRequestException(
+        'Budget IA mensuel atteint. Augmentez le plafond dans Paramètres → IA, ou attendez le mois prochain.',
+      );
+    }
+
+    const apiKey = await this.settings.getDecryptedApiKey(club.id);
+    const { textModel, textFallbackModel } = await this.settings.getModels(
+      club.id,
+    );
+
+    const { description, usage } = await this.shopDescriptionGen.generate({
+      apiKey,
+      textModel,
+      textFallbackModel,
+      productName: input.productName,
+      supplierText: input.supplierText,
+    });
+
+    const costCents = usage.costCents ?? 0;
+    await this.settings.logUsage({
+      clubId: club.id,
+      userId: user.userId,
+      feature: AiUsageFeature.OTHER,
+      model: usage.model,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      imagesGenerated: 0,
+      costCents,
+    });
+    await this.budget.incrementUsage(
+      club.id,
+      AiUsageFeature.OTHER,
+      costCents,
+      usage.inputTokens,
+      usage.outputTokens,
+    );
+
+    return {
+      description,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      model: usage.model,
+    };
   }
 }

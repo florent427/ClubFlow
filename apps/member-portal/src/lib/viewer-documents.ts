@@ -310,6 +310,23 @@ export const CLUB = gql`
   }
 `;
 
+/**
+ * Modules activés pour le club courant.
+ *
+ * `clubModules` n'est gardée que par le JWT + le contexte club (pas de garde
+ * de rôle admin) : un adhérent peut donc la lire. Elle sert à masquer les
+ * entrées de navigation dont le module est coupé — sans quoi l'onglet mène à
+ * un écran que `ClubModuleEnabledGuard` refuse côté API.
+ */
+export const VIEWER_CLUB_MODULES = gql`
+  query ViewerClubModules {
+    clubModules {
+      moduleCode
+      enabled
+    }
+  }
+`;
+
 export const VIEWER_CLUB_ANNOUNCEMENTS = gql`
   query ViewerClubAnnouncements {
     viewerClubAnnouncements {
@@ -458,6 +475,18 @@ export const VIEWER_CLUB_BLOG_POST = gql`
   }
 `;
 
+/**
+ * Champs boutique visibles par un ADHÉRENT (ADR-0012).
+ *
+ * Ce qui est vendable est la DÉCLINAISON, jamais le produit : le panier et la
+ * commande ne manipulent que des `variants { id }`. Un produit sans
+ * déclinaison en expose exactement une, `isDefault`, que l'écran n'affiche pas.
+ *
+ * On ne sélectionne volontairement AUCUN compteur — ni `stock`, ni `available`,
+ * ni `onHand`, ni `reorderThreshold` : côté portail l'API les renvoie à null,
+ * et un adhérent n'a pas à savoir combien il reste de M ni à quel niveau le
+ * club réapprovisionne. La seule information de stock est le booléen `inStock`.
+ */
 const VIEWER_SHOP_PRODUCT_FIELDS = `
   id
   sku
@@ -465,8 +494,17 @@ const VIEWER_SHOP_PRODUCT_FIELDS = `
   description
   imageUrl
   priceCents
-  stock
+  hasVariants
+  priceFromCents
   active
+  variants {
+    id
+    isDefault
+    label
+    sku
+    unitPriceCents
+    inStock
+  }
 `;
 
 const VIEWER_SHOP_ORDER_FIELDS = `

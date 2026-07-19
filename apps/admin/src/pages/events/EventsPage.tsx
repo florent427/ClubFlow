@@ -367,7 +367,7 @@ export function EventsPage() {
     try {
       const fd = new FormData();
       fd.append('file', file);
-      const res = await fetch(`${API_ROOT}/media/upload?kind=image`, {
+      const res = await fetch(`${API_ROOT}/media/upload?kind=image&visibility=public`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,

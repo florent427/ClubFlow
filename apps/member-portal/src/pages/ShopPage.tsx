@@ -9,7 +9,9 @@ import {
 import type {
   ViewerShopOrder,
   ViewerShopOrdersData,
+  ViewerShopProduct,
   ViewerShopProductsData,
+  ViewerShopVariant,
 } from '../lib/viewer-types';
 
 function fmtEuros(cents: number): string {
@@ -35,6 +37,20 @@ function statusLabel(s: ViewerShopOrder['status']): {
   return { label: 'En attente', cls: 'warn' };
 }
 
+/** Libellé affiché pour une déclinaison, jamais vide. */
+function variantLabel(v: ViewerShopVariant): string {
+  return v.label ?? 'Modèle unique';
+}
+
+/**
+ * Déclinaison proposée par défaut : la première disponible, sinon la première
+ * tout court. Choisir d'emblée une taille épuisée forcerait l'adhérent à
+ * comprendre le sélecteur avant de pouvoir acheter quoi que ce soit.
+ */
+function defaultVariantOf(p: ViewerShopProduct): ViewerShopVariant | null {
+  return p.variants.find((v) => v.inStock) ?? p.variants[0] ?? null;
+}
+
 export function ShopPage() {
   const { showToast } = useToast();
   const { data: prodData, loading: prodLoading } =
@@ -49,35 +65,72 @@ export function ShopPage() {
   });
   const [place, { loading: placing }] = useMutation(VIEWER_PLACE_SHOP_ORDER);
 
-  const products = prodData?.viewerShopProducts ?? [];
+  // Mémoïsé : le `?? []` fabriquerait un tableau neuf à chaque rendu, donc
+  // reconstruirait l'index des déclinaisons et le total pour rien.
+  const products = useMemo(
+    () => prodData?.viewerShopProducts ?? [],
+    [prodData],
+  );
   const orders = ordData?.viewerShopOrders ?? [];
 
+  /**
+   * Le panier est indexé par DÉCLINAISON, pas par produit (ADR-0012) : c'est
+   * la déclinaison qui porte le prix et le stock, et deux tailles du même
+   * t-shirt sont deux lignes distinctes. Volatile et non persisté — rien à
+   * migrer, un rechargement le vide comme avant.
+   */
   const [cart, setCart] = useState<Map<string, number>>(new Map());
+  /** Déclinaison choisie par produit. Vide = on retombe sur `defaultVariantOf`. */
+  const [picked, setPicked] = useState<Map<string, string>>(new Map());
   const [note, setNote] = useState('');
+
+  /**
+   * Index déclinaison → (produit, déclinaison). C'est LE point de résolution
+   * du panier : le total, l'affichage des lignes et l'envoi de la commande le
+   * partagent, donc ils ne peuvent plus diverger.
+   */
+  const byVariantId = useMemo(() => {
+    const idx = new Map<
+      string,
+      { product: ViewerShopProduct; variant: ViewerShopVariant }
+    >();
+    for (const product of products) {
+      for (const variant of product.variants) {
+        idx.set(variant.id, { product, variant });
+      }
+    }
+    return idx;
+  }, [products]);
 
   const total = useMemo(() => {
     let sum = 0;
-    for (const [pid, qty] of cart.entries()) {
-      const p = products.find((x) => x.id === pid);
-      if (p) sum += p.priceCents * qty;
+    for (const [variantId, qty] of cart.entries()) {
+      const hit = byVariantId.get(variantId);
+      if (hit) sum += hit.variant.unitPriceCents * qty;
     }
     return sum;
-  }, [cart, products]);
+  }, [cart, byVariantId]);
 
-  function setQty(productId: string, quantity: number) {
+  function setQty(variantId: string, quantity: number) {
     setCart((prev) => {
       const next = new Map(prev);
-      if (quantity <= 0) next.delete(productId);
-      else next.set(productId, quantity);
+      if (quantity <= 0) next.delete(variantId);
+      else next.set(variantId, quantity);
       return next;
     });
   }
 
+  function pickVariant(productId: string, variantId: string) {
+    setPicked((prev) => new Map(prev).set(productId, variantId));
+  }
+
   async function onPlaceOrder() {
-    const lines = Array.from(cart.entries()).map(([productId, quantity]) => ({
-      productId,
-      quantity,
-    }));
+    // Une déclinaison disparue du catalogue entre l'ajout au panier et la
+    // validation ne part pas au serveur : on ne lui envoie que ce qu'on sait
+    // encore résoudre.
+    const lines = Array.from(cart.entries())
+      .filter(([variantId]) => byVariantId.has(variantId))
+      .map(([variantId, quantity]) => ({ variantId, quantity }));
     if (lines.length === 0) return;
     try {
       await place({
@@ -110,9 +163,28 @@ export function ShopPage() {
       ) : (
         <ul className="mp-product-list">
           {products.map((p) => {
-            const qty = cart.get(p.id) ?? 0;
-            const max = p.stock ?? 99;
-            const oos = p.stock !== null && p.stock <= 0;
+            const fallback = defaultVariantOf(p);
+            const pickedId = picked.get(p.id);
+            const variant =
+              (pickedId ? p.variants.find((v) => v.id === pickedId) : null) ??
+              fallback;
+
+            // Un produit actif dont toutes les déclinaisons ont été
+            // désactivées n'a plus rien de vendable : il n'y a pas d'identité
+            // à mettre dans le panier.
+            if (!variant) {
+              return (
+                <li key={p.id} className="mp-product-card">
+                  <div className="mp-product-card__body">
+                    <h3 className="mp-product-card__name">{p.name}</h3>
+                    <p className="mp-product-card__oos">Indisponible</p>
+                  </div>
+                </li>
+              );
+            }
+
+            const qty = cart.get(variant.id) ?? 0;
+
             return (
               <li key={p.id} className="mp-product-card">
                 {p.imageUrl ? (
@@ -127,28 +199,68 @@ export function ShopPage() {
                   {p.description ? (
                     <p className="mp-product-card__desc">{p.description}</p>
                   ) : null}
+
+                  {/* Le sélecteur n'apparaît QUE pour un produit qui a de
+                      vraies déclinaisons. Un porte-clés reste exactement la
+                      carte d'avant (ADR-0012 §1). */}
+                  {p.hasVariants ? (
+                    <label className="mp-product-card__variants">
+                      <span className="mp-product-card__variants-label">
+                        Déclinaison
+                      </span>
+                      <select
+                        className="mp-input mp-product-card__variants-select"
+                        value={variant.id}
+                        onChange={(e) => pickVariant(p.id, e.target.value)}
+                      >
+                        {p.variants.map((v) => (
+                          <option key={v.id} value={v.id}>
+                            {variantLabel(v)}
+                            {v.inStock ? '' : ' — épuisé'}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+
+                  {/* Le prix affiché est celui de la déclinaison choisie : il
+                      peut varier d'une taille à l'autre (ADR-0012 §6). */}
                   <p className="mp-product-card__price">
-                    {fmtEuros(p.priceCents)}
+                    {fmtEuros(variant.unitPriceCents)}
                   </p>
-                  {oos ? (
-                    <p className="mp-product-card__oos">Rupture de stock</p>
+
+                  {!variant.inStock ? (
+                    <p className="mp-product-card__oos">
+                      {p.hasVariants
+                        ? `${variantLabel(variant)} : épuisé`
+                        : 'Rupture de stock'}
+                    </p>
                   ) : (
                     <div className="mp-product-card__qty">
                       <button
                         type="button"
                         className="mp-qty-btn"
-                        onClick={() => setQty(p.id, qty - 1)}
+                        onClick={() => setQty(variant.id, qty - 1)}
                         disabled={qty === 0}
                         aria-label="Retirer"
                       >
                         −
                       </button>
                       <span>{qty}</span>
+                      {/* Le « + » est borné par la SEULE disponibilité que le
+                          portail connaisse : `inStock`. Quand il est faux,
+                          c'est ce bloc entier qui disparaît au profit du
+                          message d'épuisement — d'où l'absence de plafond
+                          numérique ici. L'ancien `p.stock ?? 99` ne bornait
+                          rien (99 est arbitraire) et exposait un compteur que
+                          l'adhérent ne doit pas voir ; le vrai plafond est
+                          tenu par le `updateMany` conditionnel du serveur, qui
+                          refuse la commande et renvoie l'erreur affichée en
+                          toast. */}
                       <button
                         type="button"
                         className="mp-qty-btn"
-                        onClick={() => setQty(p.id, Math.min(max, qty + 1))}
-                        disabled={qty >= max}
+                        onClick={() => setQty(variant.id, qty + 1)}
                         aria-label="Ajouter"
                       >
                         +
@@ -166,15 +278,17 @@ export function ShopPage() {
         <section className="mp-cart">
           <h2 className="mp-cart__title">Votre panier</h2>
           <ul className="mp-cart__lines">
-            {Array.from(cart.entries()).map(([pid, qty]) => {
-              const p = products.find((x) => x.id === pid);
-              if (!p) return null;
+            {Array.from(cart.entries()).map(([variantId, qty]) => {
+              const hit = byVariantId.get(variantId);
+              if (!hit) return null;
+              const { product, variant } = hit;
               return (
-                <li key={pid}>
+                <li key={variantId}>
                   <span>
-                    {qty} × {p.name}
+                    {qty} × {product.name}
+                    {product.hasVariants ? ` — ${variantLabel(variant)}` : ''}
                   </span>
-                  <span>{fmtEuros(p.priceCents * qty)}</span>
+                  <span>{fmtEuros(variant.unitPriceCents * qty)}</span>
                 </li>
               );
             })}
@@ -220,6 +334,9 @@ export function ShopPage() {
                     </span>
                   </div>
                   <ul className="mp-order-lines">
+                    {/* `label` a figé le libellé (déclinaison comprise) à la
+                        commande : l'historique reste juste même si le produit
+                        est renommé ou la déclinaison supprimée. */}
                     {o.lines.map((l) => (
                       <li key={l.id}>
                         <span>

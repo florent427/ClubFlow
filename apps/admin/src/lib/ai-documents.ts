@@ -107,6 +107,34 @@ export interface StartVitrineArticleGenerationData {
   };
 }
 
+/**
+ * Réécrit un descriptif fournisseur en fiche produit boutique.
+ *
+ * Retourne une PROPOSITION : rien n'est enregistré côté produit. L'admin
+ * relit, corrige, puis enregistre le produit lui-même.
+ */
+export const GENERATE_SHOP_PRODUCT_DESCRIPTION = gql`
+  mutation GenerateShopProductDescription(
+    $input: GenerateShopProductDescriptionInput!
+  ) {
+    generateShopProductDescription(input: $input) {
+      description
+      inputTokens
+      outputTokens
+      model
+    }
+  }
+`;
+
+export interface GenerateShopProductDescriptionData {
+  generateShopProductDescription: {
+    description: string;
+    inputTokens: number;
+    outputTokens: number;
+    model: string;
+  };
+}
+
 export interface AiSettings {
   apiKeyMasked: string | null;
   hasApiKey: boolean;

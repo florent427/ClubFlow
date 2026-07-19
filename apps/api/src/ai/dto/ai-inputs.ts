@@ -104,3 +104,30 @@ export class GenerateVitrineArticleDraftInput {
   @IsEnum(VitrineArticleChannelEnum)
   channel?: VitrineArticleChannelEnum;
 }
+
+/**
+ * Entrées de la réécriture IA d'une fiche produit boutique.
+ *
+ * Volontairement minimal : le nom du produit et le texte fournisseur collé
+ * par l'admin. Pas d'URL, pas de PDF, pas de génération depuis l'image —
+ * une seule source, celle que l'admin a sous les yeux.
+ *
+ * ⚠️ Chaque champ porte un décorateur class-validator : le ValidationPipe
+ * global tourne en whitelist + forbidNonWhitelisted, un champ nu ferait
+ * échouer toute la mutation en 400 (cf. dto-validation-whitelist.spec.ts).
+ */
+@InputType()
+export class GenerateShopProductDescriptionInput {
+  @Field({ description: 'Nom du produit tel que saisi dans le formulaire.' })
+  @IsString()
+  @Length(2, 160)
+  productName!: string;
+
+  @Field({
+    description:
+      'Descriptif brut collé depuis le catalogue fournisseur, à réécrire.',
+  })
+  @IsString()
+  @Length(20, 6000)
+  supplierText!: string;
+}

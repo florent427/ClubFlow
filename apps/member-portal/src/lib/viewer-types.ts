@@ -159,6 +159,10 @@ export type ClubQueryData = {
   club: { id: string; name: string; slug: string };
 };
 
+export type ViewerClubModule = { moduleCode: string; enabled: boolean };
+
+export type ViewerClubModulesData = { clubModules: ViewerClubModule[] };
+
 export type ViewerMemberCreatedResult = {
   memberId: string;
   firstName: string;
@@ -334,6 +338,26 @@ export type ViewerClubBlogPostData = {
   viewerClubBlogPost: ViewerBlogPost | null;
 };
 
+/**
+ * Déclinaison vendable telle que la voit un ADHÉRENT (ADR-0012).
+ *
+ * Le type ne comporte volontairement ni `available`, ni `onHand`, ni
+ * `reorderThreshold` : l'API les renvoie à null côté portail, les typer ici
+ * inviterait à les afficher. La seule information de stock est `inStock`.
+ */
+export type ViewerShopVariant = {
+  id: string;
+  /** Vraie pour l'unique déclinaison d'un produit qui n'en a pas. */
+  isDefault: boolean;
+  /** « L / Rouge ». Null pour la déclinaison par défaut. */
+  label: string | null;
+  sku: string | null;
+  /** Prix réellement appliqué : celui de la déclinaison, sinon du produit. */
+  unitPriceCents: number;
+  /** Seule information de stock transmise à l'adhérent. */
+  inStock: boolean;
+};
+
 export type ViewerShopProduct = {
   id: string;
   sku: string | null;
@@ -341,7 +365,12 @@ export type ViewerShopProduct = {
   description: string | null;
   imageUrl: string | null;
   priceCents: number;
-  stock: number | null;
+  /** Vrai si le produit a de vraies déclinaisons (hors celle par défaut). */
+  hasVariants: boolean;
+  /** Prix le plus bas parmi les déclinaisons — « à partir de X € ». */
+  priceFromCents: number;
+  /** Toujours au moins une (celle par défaut si le produit est simple). */
+  variants: ViewerShopVariant[];
   active: boolean;
 };
 

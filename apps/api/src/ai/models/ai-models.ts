@@ -103,6 +103,25 @@ export class AiArticleDraftGraph {
   @Field(() => Int) totalImagesGenerated!: number;
 }
 
+/**
+ * Description de fiche produit proposée par l'IA.
+ *
+ * C'est une PROPOSITION : elle n'est jamais écrite en base par cette
+ * mutation. L'admin la relit, la corrige si besoin, puis enregistre le
+ * produit normalement.
+ */
+@ObjectType()
+export class AiShopProductDescriptionGraph {
+  @Field({ description: 'Description proposée, en français. Éditable.' })
+  description!: string;
+
+  @Field(() => Int) inputTokens!: number;
+  @Field(() => Int) outputTokens!: number;
+
+  @Field({ description: 'Modèle réellement utilisé (repli éventuel inclus).' })
+  model!: string;
+}
+
 @ObjectType()
 export class StartVitrineArticleGenerationResult {
   @Field(() => ID)

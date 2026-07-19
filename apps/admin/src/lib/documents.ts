@@ -1916,6 +1916,27 @@ export const DELETE_CLUB_BLOG_POST = gql`
   }
 `;
 
+const SHOP_PRODUCT_VARIANT_FIELDS = `
+  id
+  productId
+  isDefault
+  label
+  sku
+  unitPriceCents
+  trackStock
+  available
+  onHand
+  reorderThreshold
+  inStock
+  belowThreshold
+  active
+`;
+
+/**
+ * `stock` reste sélectionné : c'est désormais un champ DÉRIVÉ (ADR-0012), pas
+ * la colonne morte du même nom. `variantsBelowThreshold` l'accompagne toujours
+ * — la somme seule masquerait qu'il ne reste que des XXL.
+ */
 const SHOP_PRODUCT_FIELDS = `
   id
   clubId
@@ -1925,6 +1946,12 @@ const SHOP_PRODUCT_FIELDS = `
   imageUrl
   priceCents
   stock
+  hasVariants
+  priceFromCents
+  variantsBelowThreshold
+  variants {
+    ${SHOP_PRODUCT_VARIANT_FIELDS}
+  }
   active
   createdAt
   updatedAt
@@ -2003,6 +2030,125 @@ export const CANCEL_SHOP_ORDER = gql`
   mutation CancelShopOrder($id: ID!) {
     cancelShopOrder(id: $id) {
       ${SHOP_ORDER_FIELDS}
+    }
+  }
+`;
+
+// ---------------------------------------------------------------------------
+// Déclinaisons et stock (ADR-0012)
+//
+// Toutes ces opérations vivent sur ShopAdminResolver, qui porte les quatre
+// gardes et le gating de module. Elles renvoient le PRODUIT entier — l'écran
+// se recharge donc d'un seul objet après chaque écriture, sans refetch.
+// ---------------------------------------------------------------------------
+
+export const SHOP_PRODUCT_OPTIONS = gql`
+  query ShopProductOptions($productId: ID!) {
+    shopProductOptions(productId: $productId) {
+      id
+      productId
+      name
+      position
+      values {
+        id
+        value
+        position
+      }
+    }
+  }
+`;
+
+export const SET_SHOP_PRODUCT_OPTIONS = gql`
+  mutation SetShopProductOptions($input: SetShopProductOptionsInput!) {
+    setShopProductOptions(input: $input) {
+      ${SHOP_PRODUCT_FIELDS}
+    }
+  }
+`;
+
+export const GENERATE_SHOP_PRODUCT_VARIANTS = gql`
+  mutation GenerateShopProductVariants($productId: ID!) {
+    generateShopProductVariants(productId: $productId) {
+      ${SHOP_PRODUCT_FIELDS}
+    }
+  }
+`;
+
+export const UPDATE_SHOP_PRODUCT_VARIANT = gql`
+  mutation UpdateShopProductVariant($input: UpdateShopProductVariantInput!) {
+    updateShopProductVariant(input: $input) {
+      ${SHOP_PRODUCT_FIELDS}
+    }
+  }
+`;
+
+export const RESTOCK_SHOP_VARIANT = gql`
+  mutation RestockShopVariant($input: RestockShopVariantInput!) {
+    restockShopVariant(input: $input) {
+      ${SHOP_PRODUCT_FIELDS}
+    }
+  }
+`;
+
+export const ADJUST_SHOP_VARIANT_STOCK = gql`
+  mutation AdjustShopVariantStock($input: AdjustShopVariantStockInput!) {
+    adjustShopVariantStock(input: $input) {
+      ${SHOP_PRODUCT_FIELDS}
+    }
+  }
+`;
+
+export const RECORD_SHOP_VARIANT_SHRINKAGE = gql`
+  mutation RecordShopVariantShrinkage(
+    $input: RecordShopVariantShrinkageInput!
+  ) {
+    recordShopVariantShrinkage(input: $input) {
+      ${SHOP_PRODUCT_FIELDS}
+    }
+  }
+`;
+
+export const SHOP_STOCK_MOVEMENTS = gql`
+  query ShopStockMovements($variantId: ID, $take: Int, $skip: Int) {
+    shopStockMovements(variantId: $variantId, take: $take, skip: $skip) {
+      id
+      variantId
+      kind
+      onHandDelta
+      availableDelta
+      orderId
+      orderLineId
+      reason
+      userId
+      occurredAt
+    }
+  }
+`;
+
+export const SHOP_LOW_STOCK_VARIANTS = gql`
+  query ShopLowStockVariants {
+    shopLowStockVariants {
+      variantId
+      productId
+      productName
+      label
+      sku
+      available
+      onHand
+      reorderThreshold
+      reorderTargetQty
+      alertedAt
+    }
+  }
+`;
+
+export const TRIGGER_SHOP_STOCK_SWEEP = gql`
+  mutation TriggerShopStockSweep {
+    triggerShopStockSweep {
+      examined
+      alerted
+      rearmed
+      failed
     }
   }
 `;

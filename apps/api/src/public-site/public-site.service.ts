@@ -4,10 +4,14 @@ import {
   ClubEventStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { ShopService } from '../shop/shop.service';
 
 @Injectable()
 export class PublicSiteService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly shop: ShopService,
+  ) {}
 
   async getClubBySlug(slug: string) {
     const club = await this.prisma.club.findUnique({ where: { slug } });
@@ -76,11 +80,37 @@ export class PublicSiteService {
     return post;
   }
 
+  /**
+   * Catalogue affiché sur la vitrine — donc à des visiteurs NON authentifiés,
+   * hors de tout guard.
+   *
+   * Ce service lisait auparavant `shopProduct` directement, ce qui plaçait la
+   * vitrine hors du module boutique : la moindre colonne ajoutée à la table
+   * remontait mécaniquement jusqu'ici. Le passage par
+   * `ShopService.listProductsPublic` fait entrer la vitrine par la même porte
+   * que le portail membre — celle qui ne rend que des booléens de
+   * disponibilité (`withQuantities: false`, ADR-0012).
+   *
+   * La projection ci-dessous est ensuite EXPLICITE, et c'est la garantie
+   * réelle : une future quantité ajoutée en amont ne peut pas fuiter par
+   * inadvertance, il faudrait l'écrire ici. Ni `available`, ni `onHand`, ni
+   * `reorderThreshold`, ni le `stock` dérivé ne franchissent cette frontière.
+   *
+   * Le tri par nom et le prix de base du produit sont conservés à l'identique :
+   * la vitrine n'affiche pas « à partir de », lui servir le prix minimum des
+   * déclinaisons changerait silencieusement ce qu'elle annonce.
+   */
   async listShopProducts(clubSlug: string) {
     const club = await this.getClubBySlug(clubSlug);
-    return this.prisma.shopProduct.findMany({
-      where: { clubId: club.id, active: true },
-      orderBy: { name: 'asc' },
-    });
+    const products = await this.shop.listProductsPublic(club.id);
+    return products
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        imageUrl: p.imageUrl,
+        priceCents: p.priceCents,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   }
 }

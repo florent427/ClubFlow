@@ -51,6 +51,7 @@
 | [`prisma-migration-order-broken.md`](pitfalls/prisma-migration-order-broken.md) | Piège — Migrations Prisma dans le mauvais ordre |
 | [`rclone-config-root-vs-user.md`](pitfalls/rclone-config-root-vs-user.md) | Piège — `rclone` config absente côté root → backups script v2 fail |
 | [`release-please-no-trigger.md`](pitfalls/release-please-no-trigger.md) | Piège — release-please ne se déclenche pas (pas de `workflow_dispatch`) |
+| [`revue-adversariale-tout-refute.md`](pitfalls/revue-adversariale-tout-refute.md) | Piège — une revue adversariale qui réfute 100 % de ses constats |
 | [`safety-blocks-shared-infra-mcp.md`](pitfalls/safety-blocks-shared-infra-mcp.md) | Piège — Safety bloque les modifs d'infra partagée via Chrome MCP |
 | [`signup-unverified-email-blocks-login.md`](pitfalls/signup-unverified-email-blocks-login.md) | Piège — Signup self-service : compte créé mais bloqué au login (email pas vérifié) |
 | [`ssh-passphrase-non-tty.md`](pitfalls/ssh-passphrase-non-tty.md) | Piège — SSH `Permission denied` quand la clé a une passphrase |
@@ -74,6 +75,8 @@
 | [`0009-echeancier-paiement-clubflow.md`](decisions/0009-echeancier-paiement-clubflow.md) | ADR-0009 — Échéancier de paiement géré par ClubFlow (carte + SEPA) |
 | [`0010-compte-transit-stripe.md`](decisions/0010-compte-transit-stripe.md) | ADR-0010 — Les encaissements Stripe transitent par le compte 512300 |
 | [`0011-remboursement-eteint-la-creance.md`](decisions/0011-remboursement-eteint-la-creance.md) | ADR-0011 — Un remboursement éteint la créance correspondante |
+| [`0012-boutique-variantes-et-stock.md`](decisions/0012-boutique-variantes-et-stock.md) | ADR-0012 — Tout ce qui est vendable est une variante, et le stock est un journal |
+| [`0013-commandes-fournisseur.md`](decisions/0013-commandes-fournisseur.md) | ADR-0013 — Commandes fournisseur : réception, rapprochement et écart |
 
 ## 🔄 Workflows métier
 
@@ -86,7 +89,7 @@
 
 ---
 
-_Index généré le 2026-07-19 16:24 UTC par `bin/memory-index`._
+_Index généré le 2026-07-19 17:16 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`
