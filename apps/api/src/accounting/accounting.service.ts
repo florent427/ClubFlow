@@ -534,18 +534,33 @@ export class AccountingService {
 
     const feeCode = await this.mapping.resolveAccountCode(clubId, 'STRIPE_FEE');
     const feeAccount = await this.lookupAccount(clubId, feeCode);
-    // Important : les frais Stripe sortent du compte STRIPE_TRANSIT
-    // (compte sur lequel l'argent encaissé est tombé), pas de la banque
-    // physique finale. Le routage va donc préférer le compte Stripe si
-    // configuré, sinon fallback BANK.
-    const fin = await this.financialAccounts.resolveForPayment(
-      clubId,
-      payment.method,
-    );
-    const bankAccount = await this.lookupAccount(
-      clubId,
-      fin.accountingAccount.code,
-    );
+
+    // Les frais doivent sortir du compte où l'encaissement est RÉELLEMENT
+    // tombé, et ce compte est déjà tranché : il est figé sur l'écriture de
+    // recette. On le reprend au lieu de re-router.
+    //
+    // Re-résoudre la route ici ouvrirait un écart : en SEPA, les frais sont
+    // connus plusieurs jours après l'encaissement, et la route peut changer
+    // entre-temps — une reprise de routage suffit. On aurait alors le brut au
+    // débit d'un compte et les frais au crédit d'un autre : ni l'un ni l'autre
+    // ne se rapprocherait, de l'exact montant des frais.
+    const incomeEntry = await this.prisma.accountingEntry.findFirst({
+      where: {
+        clubId,
+        paymentId,
+        source: AccountingEntrySource.AUTO_MEMBER_PAYMENT,
+      },
+      include: { financialAccount: { include: { accountingAccount: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const cashAccountCode =
+      incomeEntry?.financialAccount?.accountingAccount.code ??
+      // Repli : encaissement antérieur au multi-comptes, ou écriture de
+      // recette absente (module compta activé après coup).
+      (await this.financialAccounts.resolveForPayment(clubId, payment.method))
+        .accountingAccount.code;
+    const bankAccount = await this.lookupAccount(clubId, cashAccountCode);
 
     await this.prisma.$transaction(async (tx) => {
       const entry = await tx.accountingEntry.create({
@@ -558,7 +573,8 @@ export class AccountingService {
           amountCents: feeAmountCents,
           paymentId,
           occurredAt: payment.createdAt,
-          financialAccountId: fin.id,
+          // Même compte financier que la recette qu'ils grèvent.
+          financialAccountId: incomeEntry?.financialAccountId ?? null,
         },
       });
       // Débit 627 (frais bancaires)
@@ -588,6 +604,104 @@ export class AccountingService {
         },
       });
     });
+  }
+
+  /**
+   * Virement Stripe vers la banque du club : solde le compte de transit.
+   *
+   * C'est la seconde moitié du dispositif de transit, et sans elle la
+   * première est nuisible. Les encaissements créditent 512300 au brut, les
+   * frais le débitent ; si rien ne constate le virement, le transit gonfle
+   * indéfiniment et la banque reste vide alors que l'argent y est arrivé.
+   *
+   * Écriture : DÉBIT banque (l'argent entre) / CRÉDIT transit (il en sort).
+   * Le montant est le NET viré par Stripe, ce qui fait naturellement tomber
+   * le transit à zéro une fois les frais de la période comptabilisés.
+   *
+   * Idempotent par `stripePayoutId` : Stripe rejoue ses webhooks, et une
+   * écriture de virement en double fausserait les deux comptes à la fois.
+   */
+  async recordStripePayout(args: {
+    clubId: string;
+    payoutId: string;
+    amountCents: number;
+    /** Date d'arrivée des fonds annoncée par Stripe. */
+    occurredAt: Date;
+  }): Promise<void> {
+    if (!(await this.isAccountingEnabled(args.clubId))) return;
+    if (args.amountCents <= 0) return;
+
+    const existing = await this.prisma.accountingEntry.findFirst({
+      where: { clubId: args.clubId, stripePayoutId: args.payoutId },
+      select: { id: true },
+    });
+    if (existing) return;
+
+    // Compte de transit du club. Absent = le club encaisse encore
+    // directement en banque : il n'y a alors rien à solder, et écrire ce
+    // virement créerait un doublon avec l'encaissement déjà porté en banque.
+    const transit = await this.prisma.clubFinancialAccount.findFirst({
+      where: { clubId: args.clubId, kind: 'STRIPE_TRANSIT' },
+      include: { accountingAccount: true },
+    });
+    if (!transit) {
+      this.logger.warn(
+        `[payout] club ${args.clubId} sans compte de transit — virement ${args.payoutId} non écrit.`,
+      );
+      return;
+    }
+
+    const bankCode = await this.mapping.resolveAccountCode(
+      args.clubId,
+      'BANK_ACCOUNT',
+    );
+    const bankAccount = await this.lookupAccount(args.clubId, bankCode);
+
+    await this.prisma.$transaction(async (tx) => {
+      const entry = await tx.accountingEntry.create({
+        data: {
+          clubId: args.clubId,
+          // Ni produit ni charge : un simple mouvement de trésorerie entre
+          // deux comptes d'actif. Le résultat du club n'en est pas affecté.
+          kind: AccountingEntryKind.TRANSFER,
+          status: AccountingEntryStatus.POSTED,
+          source: AccountingEntrySource.AUTO_STRIPE_PAYOUT,
+          label: `Virement Stripe — ${args.payoutId}`,
+          amountCents: args.amountCents,
+          stripePayoutId: args.payoutId,
+          occurredAt: args.occurredAt,
+          financialAccountId: transit.id,
+        },
+      });
+      await tx.accountingEntryLine.create({
+        data: {
+          entryId: entry.id,
+          clubId: args.clubId,
+          accountCode: bankAccount.code,
+          accountLabel: bankAccount.label,
+          side: AccountingLineSide.DEBIT,
+          debitCents: args.amountCents,
+          creditCents: 0,
+          sortOrder: 0,
+        },
+      });
+      await tx.accountingEntryLine.create({
+        data: {
+          entryId: entry.id,
+          clubId: args.clubId,
+          accountCode: transit.accountingAccount.code,
+          accountLabel: transit.accountingAccount.label,
+          side: AccountingLineSide.CREDIT,
+          debitCents: 0,
+          creditCents: args.amountCents,
+          sortOrder: 1,
+        },
+      });
+    });
+
+    this.logger.log(
+      `[payout] club ${args.clubId} — virement ${args.payoutId} de ${args.amountCents} cts soldé depuis le transit.`,
+    );
   }
 
   // ========================================================================

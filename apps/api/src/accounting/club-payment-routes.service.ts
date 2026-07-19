@@ -56,10 +56,20 @@ export class ClubPaymentRoutesService {
         clubId,
         method,
         financialAccountId,
-        isDefault: true,
+        // `isDefault` distingue une route POSÉE PAR LE SEED d'une route
+        // choisie par le club. Ce service n'est appelé que depuis la mutation
+        // d'administration : arriver ici est toujours un choix délibéré.
+        //
+        // Sans cette distinction, les reprises automatiques de routage (cf.
+        // repointStripeRouteToTransit) écraseraient silencieusement la
+        // décision du trésorier — et comme le seed tourne aussi sur les
+        // chemins de LECTURE, son choix disparaîtrait au rechargement de
+        // l'écran où il vient de le faire.
+        isDefault: false,
       },
       update: {
         financialAccountId,
+        isDefault: false,
       },
       include: {
         financialAccount: { include: { accountingAccount: true } },

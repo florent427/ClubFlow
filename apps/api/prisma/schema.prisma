@@ -1963,6 +1963,8 @@ enum AccountingEntrySource {
   AUTO_REFUND
   /// Split frais Stripe (512 net / 627 frais / 411 contrepartie).
   AUTO_STRIPE_FEES
+  /// Virement Stripe vers la banque du club : solde le compte de transit.
+  AUTO_STRIPE_PAYOUT
 }
 
 /// Côté comptable d'une ligne d'écriture. AUTO = dérivé à la création
@@ -2000,6 +2002,10 @@ model AccountingEntry {
   sponsorshipDealId        String?
   /// Si `source = OCR_AI`, trace l'extraction IA qui a généré cette entry.
   extractionId             String?
+  /// Si `source = AUTO_STRIPE_PAYOUT`, identifiant `po_xxx` du virement.
+  /// Sert de clé d'idempotence : un webhook rejoué ne peut pas créer deux
+  /// fois l'écriture de virement.
+  stripePayoutId           String?
   /// Contre-passation : si cette entry est une contre-passation, pointe vers
   /// l'entry originale. Si cette entry a été contre-passée, la relation inverse
   /// `contraEntryOf` liste les contre-passations qui la visent.
@@ -2066,6 +2072,10 @@ model AccountingEntry {
   sponsorshipInstallments SponsorshipInstallment[]
 
   @@index([clubId, occurredAt])
+  /// Idempotence du virement Stripe : deux livraisons du même `payout.paid`
+  /// ne peuvent pas produire deux écritures. Les NULL ne se heurtent pas
+  /// entre eux sous PostgreSQL, les autres écritures ne sont donc pas gênées.
+  @@unique([clubId, stripePayoutId])
   @@index([clubId, projectId])
   @@index([clubId, status])
   @@index([clubId, source])
