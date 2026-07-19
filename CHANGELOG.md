@@ -9,6 +9,20 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.23.0](https://github.com/florent427/ClubFlow/compare/v0.22.0...v0.23.0) (2026-07-19)
+
+
+### ✨ Features
+
+* **compta:** idempotence en base des écritures auto + réversion des virements rejetés ([99e6194](https://github.com/florent427/ClubFlow/commit/99e61944bb041d6a24316124c4c6f1ee49557241))
+
+
+### 🐛 Bug Fixes
+
+* **payments:** corriger les 5 constats majeurs de l'audit Phase 2 ([34d3f0a](https://github.com/florent427/ClubFlow/commit/34d3f0acdb0b01c5a6afe78b25cc1e0fdd00e71f))
+* **payments:** ne plus perdre définitivement l'écriture comptable des frais ([3b51ac4](https://github.com/florent427/ClubFlow/commit/3b51ac47f5091be269a6b7e037989b539e061b75))
+* **payments:** refuser un remboursement quand Stripe est illisible ([4d2df8b](https://github.com/florent427/ClubFlow/commit/4d2df8b56fb2e62265d25838199abc3bed8fb90e))
+
 ## [0.22.0](https://github.com/florent427/ClubFlow/compare/v0.21.0...v0.22.0) (2026-07-19)
 
 
