@@ -83,8 +83,13 @@ docs/
 6. **TOUJOURS** chercher dans `docs/memory/pitfalls/` avant de redébugger un truc
 7. **TOUJOURS** utiliser `"/c/Windows/System32/OpenSSH/ssh.exe"` pour SSH
    (cf. [ssh-windows.md](docs/knowledge/ssh-windows.md))
-8. **TOUJOURS** type-check (`npx tsc --noEmit`) avant un commit côté
-   `apps/api` ET `apps/admin`
+8. **TOUJOURS** type-check avant un commit via `npm run typecheck` dans
+   chaque app touchée (`api`, `admin`, `member-portal`, `vitrine`,
+   `landing` — mêmes apps que le workflow CI `typecheck.yml`).
+   **JAMAIS** `npx tsc --noEmit` seul dans `apps/admin` / `apps/member-portal` :
+   leur `tsconfig.json` est un fichier « solution » (`"files": []` +
+   `references`), donc la commande vérifie **0 fichier** et sort 0 quoi
+   qu'il arrive (cf. [pitfall](docs/memory/pitfalls/typecheck-noop-solution-tsconfig.md))
 
 ---
 
