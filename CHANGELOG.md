@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.23.1](https://github.com/florent427/ClubFlow/compare/v0.23.0...v0.23.1) (2026-07-19)
+
+
+### 🐛 Bug Fixes
+
+* **tooling:** le type-check de admin/member-portal ne vérifiait aucun fichier ([bcec62e](https://github.com/florent427/ClubFlow/commit/bcec62eb9430cc639b4904fd8f97bb7c9ad4d674))
+* **tooling:** type-check admin/member-portal ne vérifiait aucun fichier ([659fee3](https://github.com/florent427/ClubFlow/commit/659fee35e7b294395cdde9f4f0e3fdc75c00915c))
+
 ## [0.23.0](https://github.com/florent427/ClubFlow/compare/v0.22.0...v0.23.0) (2026-07-19)
 
 

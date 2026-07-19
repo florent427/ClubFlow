@@ -83,20 +83,13 @@ docs/
 6. **TOUJOURS** chercher dans `docs/memory/pitfalls/` avant de redébugger un truc
 7. **TOUJOURS** utiliser `"/c/Windows/System32/OpenSSH/ssh.exe"` pour SSH
    (cf. [ssh-windows.md](docs/knowledge/ssh-windows.md))
-8. **TOUJOURS** type-check avant un commit — mais **PAS** avec
-   `npx tsc --noEmit` côté front : le `tsconfig.json` d'`admin` et de
-   `member-portal` est un fichier de références (`"files": []`), donc cette
-   commande compile **zéro fichier** et sort toujours 0. Elle a « validé »
-   ces deux apps pendant des mois sans rien lire.
-   ```bash
-   cd apps/api           && npx tsc --noEmit   # 1 projet, la commande mord
-   cd apps/admin         && npm run typecheck  # tsc -b, 184 fichiers
-   cd apps/member-portal && npm run typecheck  # tsc -b,  81 fichiers
-   cd apps/mobile-admin  && npx tsc --noEmit   # 351 fichiers, mordait déjà
-   ```
-   Contrôle du contrôle : `npx tsc --noEmit --listFiles | grep -c /src/`
-   doit renvoyer un nombre **non nul**. Cf.
-   [pitfall](docs/memory/pitfalls/tsc-noemit-ne-compile-rien.md).
+8. **TOUJOURS** type-check avant un commit via `npm run typecheck` dans
+   chaque app touchée (`api`, `admin`, `member-portal`, `vitrine`,
+   `landing` — mêmes apps que le workflow CI `typecheck.yml`).
+   **JAMAIS** `npx tsc --noEmit` seul dans `apps/admin` / `apps/member-portal` :
+   leur `tsconfig.json` est un fichier « solution » (`"files": []` +
+   `references`), donc la commande vérifie **0 fichier** et sort 0 quoi
+   qu'il arrive (cf. [pitfall](docs/memory/pitfalls/typecheck-noop-solution-tsconfig.md))
 
 ---
 
@@ -187,9 +180,6 @@ a pas. Ce sont des motifs à reconnaître en écrivant, pas en débuggant :
 - **[Un test qui vérifie la forme au lieu du comportement](docs/memory/pitfalls/test-verifie-la-forme-pas-le-comportement.md)**
   — reste vert en certifiant un invariant que le code n'a pas. Seul le
   mutation testing le démasque.
-- **[Une revue adversariale qui réfute 100 % de ses constats](docs/memory/pitfalls/revue-adversariale-tout-refute.md)**
-  — un rapport tout vert ne prouve pas que le code est propre, seulement que
-  les réfuteurs font leur travail. Relire les constats écartés à 2/3.
 
 ---
 
