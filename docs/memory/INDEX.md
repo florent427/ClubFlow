@@ -39,6 +39,7 @@
 | [`garantie-derriere-effet-de-bord.md`](pitfalls/garantie-derriere-effet-de-bord.md) | Piège — une garantie placée derrière un effet de bord qui peut échouer |
 | [`gh-pr-create-no-commits.md`](pitfalls/gh-pr-create-no-commits.md) | Piège — `gh pr create` "No commits between" après squash merge |
 | [`gha-pr-permission.md`](pitfalls/gha-pr-permission.md) | Piège — GitHub Actions ne peut pas créer ou approuver de PRs |
+| [`github-token-ne-retrigger-pas.md`](pitfalls/github-token-ne-retrigger-pas.md) | Le tag de release n'est jamais coupé : GITHUB_TOKEN ne réveille aucun workflow |
 | [`gitignore-claude-trailing-slash-blocks-negation.md`](pitfalls/gitignore-claude-trailing-slash-blocks-negation.md) | Piège — `.gitignore` `.claude/` (trailing slash) bloque la négation `!.claude/skills/` |
 | [`nestjs-graphql-nullable-needs-explicit-type.md`](pitfalls/nestjs-graphql-nullable-needs-explicit-type.md) | Piège — `@Field({ nullable: true })` GraphQL crash sans type explicite |
 | [`nextjs-isr-cache-stale.md`](pitfalls/nextjs-isr-cache-stale.md) | Piège — Next.js ISR cache stale après insert DB |
@@ -89,7 +90,7 @@
 
 ---
 
-_Index généré le 2026-07-19 17:16 UTC par `bin/memory-index`._
+_Index généré le 2026-07-19 17:43 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`

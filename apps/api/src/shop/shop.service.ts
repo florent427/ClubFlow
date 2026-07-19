@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, ShopOrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
 import { ShopStockService } from './shop-stock.service';
 
 type ViewerIdentity = {
@@ -18,6 +19,7 @@ export class ShopService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly stock: ShopStockService,
+    private readonly purchases: ShopPurchaseOrdersService,
   ) {}
 
   // --- Products ---
@@ -28,7 +30,8 @@ export class ShopService {
       orderBy: [{ active: 'desc' }, { createdAt: 'desc' }],
       include: { variants: { orderBy: { createdAt: 'asc' } } },
     });
-    return rows.map((p) => this.shapeProduct(p, { withQuantities: true }));
+    const onOrder = await this.onOrderFor(clubId, rows);
+    return rows.map((p) => this.shapeProduct(p, { withQuantities: true, onOrder }));
   }
 
   async listProductsPublic(clubId: string) {
@@ -58,7 +61,25 @@ export class ShopService {
       where: { id, clubId },
       include: { variants: { orderBy: { createdAt: 'asc' } } },
     });
-    return this.shapeProduct(row, { withQuantities: true });
+    const onOrder = await this.onOrderFor(clubId, [row]);
+    return this.shapeProduct(row, { withQuantities: true, onOrder });
+  }
+
+  /**
+   * Encours fournisseur des déclinaisons affichées (ADR-0013 §4).
+   *
+   * Une seule requête pour tout l'écran : le calcul est DÉRIVÉ, donc il ne
+   * doit pas coûter une requête par ligne. Jamais appelé sur le chemin
+   * PUBLIC — l'acheteur n'a pas à connaître l'encours d'achat du club.
+   */
+  private onOrderFor(
+    clubId: string,
+    products: Array<{ variants: Array<{ id: string }> }>,
+  ) {
+    return this.purchases.onOrderByVariant(
+      clubId,
+      products.flatMap((p) => p.variants.map((v) => v.id)),
+    );
   }
 
   /**
@@ -70,7 +91,7 @@ export class ShopService {
    */
   private shapeProduct(
     p: Prisma.ShopProductGetPayload<{ include: { variants: true } }>,
-    opts: { withQuantities: boolean },
+    opts: { withQuantities: boolean; onOrder?: Map<string, number> },
   ) {
     const variants = p.variants;
     const tracked = variants.filter((v) => v.trackStock && v.active);
@@ -122,6 +143,9 @@ export class ShopService {
         available: opts.withQuantities ? v.available : null,
         onHand: opts.withQuantities ? v.onHand : null,
         reorderThreshold: opts.withQuantities ? v.reorderThreshold : null,
+        // Neutralisé hors administration comme `available` : « 20 arrivent »
+        // est une quantité, et l'encours d'achat n'a rien à faire au portail.
+        onOrder: opts.withQuantities ? opts.onOrder?.get(v.id) ?? 0 : null,
         inStock: !v.trackStock || v.available > 0,
         // Neutralisé hors administration au même titre que le reste : savoir
         // qu'une taille est « sous le seuil » revient à connaître à la fois la

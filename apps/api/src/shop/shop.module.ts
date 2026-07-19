@@ -7,6 +7,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { ShopAdminResolver, ShopViewerResolver } from './shop.resolver';
 import { ShopLowStockNotifierService } from './shop-low-stock-notifier.service';
 import { ShopService } from './shop.service';
+import { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
 import { ShopStockService } from './shop-stock.service';
 import { ShopStockSweepService } from './shop-stock-sweep.service';
 import { ShopVariantsService } from './shop-variants.service';
@@ -18,6 +19,7 @@ import { ShopVariantsService } from './shop-variants.service';
   providers: [
     ShopService,
     ShopStockService,
+    ShopPurchaseOrdersService,
     ShopVariantsService,
     ShopStockSweepService,
     ShopLowStockNotifierService,
@@ -26,6 +28,11 @@ import { ShopVariantsService } from './shop-variants.service';
     ClubModuleEnabledGuard,
     ViewerActiveProfileGuard,
   ],
-  exports: [ShopService, ShopStockService, ShopVariantsService],
+  exports: [
+    ShopService,
+    ShopStockService,
+    ShopVariantsService,
+    ShopPurchaseOrdersService,
+  ],
 })
 export class ShopModule {}

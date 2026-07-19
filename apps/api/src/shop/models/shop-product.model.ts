@@ -42,6 +42,20 @@ export class ShopProductVariantGraph {
   @Field(() => Int, { nullable: true })
   reorderThreshold!: number | null;
 
+  /**
+   * Quantité EN COMMANDE chez le fournisseur : somme des reliquats attendus
+   * sur les lignes non closes des commandes envoyées (ADR-0013 §4).
+   *
+   * DÉRIVÉE et jamais stockée. « Il reste 2 M, mais 20 arrivent » est ce qui
+   * évite de recommander deux fois. N'autorise JAMAIS une vente — seul
+   * `available` le fait ; ne pas confondre les deux.
+   *
+   * Réservée à l'ADMINISTRATION au même titre qu'`available` : l'encours
+   * fournisseur trahit une quantité et la politique d'achat du club.
+   */
+  @Field(() => Int, { nullable: true })
+  onOrder!: number | null;
+
   /** Vrai si la variante peut être commandée maintenant. */
   @Field()
   inStock!: boolean;

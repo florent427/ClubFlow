@@ -193,19 +193,41 @@ export class ShopStockService {
 
   /**
    * Réception fournisseur : les deux compteurs montent ensemble.
+   *
+   * PARAMÈTRE `tx` OPTIONNEL — ajouté pour la réception de commande
+   * fournisseur (ADR-0013 §5), et voici pourquoi ce choix plutôt qu'une
+   * extraction de la logique vers l'appelant :
+   *
+   *  - la réception écrit sa ligne, son mouvement et le cumul reçu dans UNE
+   *    transaction. Laisser `restock` ouvrir la sienne casserait cette
+   *    atomicité : un mouvement committé survivrait à l'annulation de la
+   *    réception qui le justifie, et le journal cesserait de se réconcilier ;
+   *  - extraire la logique ferait du moteur de stock un endroit de plus où
+   *    l'on écrit `onHand` / `available`, ce que l'ADR-0012 existe précisément
+   *    pour interdire — il doit y avoir UNE ligne à relire, pas deux.
+   *
+   * Le comportement à un seul argument est INCHANGÉ : sans `tx`, la méthode
+   * ouvre sa propre transaction exactement comme avant.
+   *
+   * Renvoie l'identifiant du mouvement archivé, pour que la ligne de réception
+   * puisse s'y rattacher. C'est CE rattachement qui rend le journal précis :
+   * « +17 reçu sur commande CF-2026-004 » au lieu de « +17 ».
    */
-  async restock(args: {
-    clubId: string;
-    variantId: string;
-    qty: number;
-    userId?: string | null;
-    reason?: string | null;
-  }): Promise<void> {
+  async restock(
+    args: {
+      clubId: string;
+      variantId: string;
+      qty: number;
+      userId?: string | null;
+      reason?: string | null;
+    },
+    tx?: Prisma.TransactionClient,
+  ): Promise<{ movementId: string }> {
     if (args.qty < 1) {
       throw new BadRequestException('La quantité reçue doit être positive.');
     }
-    await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.shopProductVariant.updateMany({
+    const run = async (t: Prisma.TransactionClient) => {
+      const updated = await t.shopProductVariant.updateMany({
         where: { id: args.variantId, clubId: args.clubId, trackStock: true },
         data: {
           onHand: { increment: args.qty },
@@ -218,7 +240,7 @@ export class ShopStockService {
           'Déclinaison introuvable ou stock non suivi.',
         );
       }
-      await tx.shopStockMovement.create({
+      const movement = await t.shopStockMovement.create({
         data: {
           clubId: args.clubId,
           variantId: args.variantId,
@@ -229,7 +251,9 @@ export class ShopStockService {
           userId: args.userId ?? null,
         },
       });
-    });
+      return { movementId: movement.id };
+    };
+    return tx ? run(tx) : this.prisma.$transaction(run);
   }
 
   /**

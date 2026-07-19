@@ -14,6 +14,14 @@ import { ModuleCode } from '../domain/module-registry/module-codes';
 import { CreateShopProductInput } from './dto/create-shop-product.input';
 import { PlaceShopOrderInput } from './dto/place-shop-order.input';
 import {
+  AddShopPurchaseOrderLineInput,
+  CreateShopPurchaseOrderInput,
+  CreateShopSupplierInput,
+  ReceiveShopPurchaseOrderInput,
+  RemoveShopPurchaseOrderLineInput,
+  UpdateShopSupplierInput,
+} from './dto/shop-purchase.input';
+import {
   AdjustShopVariantStockInput,
   RecordShopVariantShrinkageInput,
   RestockShopVariantInput,
@@ -24,12 +32,17 @@ import { UpdateShopProductInput } from './dto/update-shop-product.input';
 import { ShopOrderGraph } from './models/shop-order.model';
 import { ShopProductGraph } from './models/shop-product.model';
 import {
+  ShopPurchaseOrderGraph,
+  ShopSupplierGraph,
+} from './models/shop-purchase.model';
+import {
   ShopLowStockVariantGraph,
   ShopProductOptionGraph,
   ShopStockMovementGraph,
   ShopStockSweepReportGraph,
 } from './models/shop-stock.model';
 import { ShopService } from './shop.service';
+import { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
 import { ShopStockSweepService } from './shop-stock-sweep.service';
 import { ShopVariantsService } from './shop-variants.service';
 
@@ -46,6 +59,7 @@ export class ShopAdminResolver {
     private readonly service: ShopService,
     private readonly variants: ShopVariantsService,
     private readonly sweep: ShopStockSweepService,
+    private readonly purchases: ShopPurchaseOrdersService,
   ) {}
 
   @Query(() => [ShopProductGraph], { name: 'shopProducts' })
@@ -248,6 +262,154 @@ export class ShopAdminResolver {
     // déclenche jamais les alertes d'un autre tenant, et deux passages
     // concurrents ne peuvent pas doubler les envois.
     return this.sweep.triggerForClub(club.id);
+  }
+
+  // --- Approvisionnement : fournisseurs et commandes (ADR-0013) ---
+  //
+  // Ici et NULLE PART AILLEURS, pour la même raison que les déclinaisons :
+  // ce résolveur porte les quatre gardes et le gating de module. Le `clubId`
+  // vient de `@CurrentClub()`, jamais d'un argument GraphQL — un tenant
+  // passé par le client ne serait plus une frontière, mais une suggestion.
+
+  @Query(() => [ShopSupplierGraph], { name: 'shopSuppliers' })
+  shopSuppliers(
+    @CurrentClub() club: Club,
+    @Args('includeInactive', { type: () => Boolean, nullable: true })
+    includeInactive?: boolean,
+  ): Promise<ShopSupplierGraph[]> {
+    return this.purchases.listSuppliers(
+      club.id,
+      includeInactive === true,
+    ) as Promise<ShopSupplierGraph[]>;
+  }
+
+  @Mutation(() => ShopSupplierGraph)
+  createShopSupplier(
+    @CurrentClub() club: Club,
+    @Args('input') input: CreateShopSupplierInput,
+  ): Promise<ShopSupplierGraph> {
+    return this.purchases.createSupplier(
+      club.id,
+      input,
+    ) as Promise<ShopSupplierGraph>;
+  }
+
+  @Mutation(() => ShopSupplierGraph, {
+    description:
+      'Met à jour un fournisseur. `active: false` tient lieu de suppression : la clé étrangère des commandes est en Restrict.',
+  })
+  updateShopSupplier(
+    @CurrentClub() club: Club,
+    @Args('input') input: UpdateShopSupplierInput,
+  ): Promise<ShopSupplierGraph> {
+    const { supplierId, ...rest } = input;
+    return this.purchases.updateSupplier(
+      club.id,
+      supplierId,
+      rest,
+    ) as Promise<ShopSupplierGraph>;
+  }
+
+  @Query(() => [ShopPurchaseOrderGraph], { name: 'shopPurchaseOrders' })
+  shopPurchaseOrders(
+    @CurrentClub() club: Club,
+  ): Promise<ShopPurchaseOrderGraph[]> {
+    return this.purchases.listOrders(club.id) as unknown as Promise<
+      ShopPurchaseOrderGraph[]
+    >;
+  }
+
+  @Query(() => ShopPurchaseOrderGraph, { name: 'shopPurchaseOrder' })
+  shopPurchaseOrder(
+    @CurrentClub() club: Club,
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<ShopPurchaseOrderGraph> {
+    return this.purchases.getOrder(club.id, id) as unknown as Promise<
+      ShopPurchaseOrderGraph
+    >;
+  }
+
+  @Mutation(() => ShopPurchaseOrderGraph, {
+    description:
+      'Crée un BROUILLON. La référence (« CF-2026-004 ») est engendrée et arbitrée par la base.',
+  })
+  createShopPurchaseOrder(
+    @CurrentClub() club: Club,
+    @Args('input') input: CreateShopPurchaseOrderInput,
+  ): Promise<ShopPurchaseOrderGraph> {
+    return this.purchases.createOrder(club.id, input) as unknown as Promise<
+      ShopPurchaseOrderGraph
+    >;
+  }
+
+  @Mutation(() => ShopPurchaseOrderGraph, {
+    description: 'Ajoute une ligne. Refusé dès que la commande est envoyée.',
+  })
+  addShopPurchaseOrderLine(
+    @CurrentClub() club: Club,
+    @Args('input') input: AddShopPurchaseOrderLineInput,
+  ): Promise<ShopPurchaseOrderGraph> {
+    return this.purchases.addLine(club.id, input) as unknown as Promise<
+      ShopPurchaseOrderGraph
+    >;
+  }
+
+  @Mutation(() => ShopPurchaseOrderGraph)
+  removeShopPurchaseOrderLine(
+    @CurrentClub() club: Club,
+    @Args('input') input: RemoveShopPurchaseOrderLineInput,
+  ): Promise<ShopPurchaseOrderGraph> {
+    return this.purchases.removeLine(club.id, input) as unknown as Promise<
+      ShopPurchaseOrderGraph
+    >;
+  }
+
+  @Mutation(() => ShopPurchaseOrderGraph, {
+    description:
+      'Envoie la commande au fournisseur : DRAFT → ORDERED, avec l’arrivée attendue dérivée du délai habituel.',
+  })
+  sendShopPurchaseOrder(
+    @CurrentClub() club: Club,
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<ShopPurchaseOrderGraph> {
+    return this.purchases.sendOrder(club.id, id) as unknown as Promise<
+      ShopPurchaseOrderGraph
+    >;
+  }
+
+  @Mutation(() => ShopPurchaseOrderGraph, {
+    description: 'Abandonne la commande. Une commande reçue ne s’annule pas.',
+  })
+  cancelShopPurchaseOrder(
+    @CurrentClub() club: Club,
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<ShopPurchaseOrderGraph> {
+    return this.purchases.cancelOrder(club.id, id) as unknown as Promise<
+      ShopPurchaseOrderGraph
+    >;
+  }
+
+  @Mutation(() => ShopPurchaseOrderGraph, {
+    description:
+      'Enregistre une livraison : mouvements de stock rattachés, cumuls, statut recalculé. Un motif est OBLIGATOIRE dès que le cumul reçu diffère du commandé ; BACKORDER laisse la ligne ouverte, tous les autres motifs la soldent.',
+  })
+  receiveShopPurchaseOrder(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('input') input: ReceiveShopPurchaseOrderInput,
+  ): Promise<ShopPurchaseOrderGraph> {
+    return this.purchases.receiveOrder(club.id, {
+      orderId: input.orderId,
+      deliveryNote: input.deliveryNote ?? null,
+      notes: input.notes ?? null,
+      userId: user.userId,
+      lines: input.lines.map((l) => ({
+        orderLineId: l.orderLineId,
+        receivedQty: l.receivedQty,
+        discrepancyReason: l.discrepancyReason ?? null,
+        discrepancyNote: l.discrepancyNote ?? null,
+      })),
+    }) as unknown as Promise<ShopPurchaseOrderGraph>;
   }
 }
 
