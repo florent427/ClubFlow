@@ -667,7 +667,7 @@ export class PaymentsService {
       );
     }
 
-    await this.accounting.recordIncomeFromPayment(
+    await this.tryRecordIncome(
       clubId,
       payment.id,
       `Encaissement ${invoice.label}`,
@@ -1006,7 +1006,7 @@ export class PaymentsService {
       return p;
     });
 
-    await this.accounting.recordIncomeFromPayment(
+    await this.tryRecordIncome(
       clubId,
       payment.id,
       `Stripe — ${invoice.label}`,
@@ -1038,6 +1038,41 @@ export class PaymentsService {
    * exception. Une discipline d'appelé ne se vérifie pas au moment où elle
    * compte ; ce catch, si.
    */
+  /**
+   * Écriture de recette, isolée du sort de l'encaissement.
+   *
+   * L'encaissement est DÉJÀ commité quand on arrive ici : l'argent est chez le
+   * club et la facture est à jour. Laisser une erreur comptable remonter
+   * jusqu'au webhook libérerait la réservation d'idempotence, Stripe rejouerait,
+   * et le rejeu sortirait aussitôt sur le Payment déjà créé — succès apparent,
+   * écriture définitivement perdue, et 500 dans les statistiques de livraison.
+   * C'est exactement ce qui s'est produit sur staging.
+   *
+   * L'échec est journalisé en ERROR et non en WARN : une recette non
+   * comptabilisée fausse le résultat du club, ça n'est pas un incident mineur.
+   */
+  private async tryRecordIncome(
+    clubId: string,
+    paymentId: string,
+    label: string,
+    amountCents: number,
+  ): Promise<void> {
+    try {
+      await this.accounting.recordIncomeFromPayment(
+        clubId,
+        paymentId,
+        label,
+        amountCents,
+      );
+    } catch (err) {
+      this.logger.error(
+        `[compta] RECETTE NON COMPTABILISÉE pour le paiement ${paymentId} ` +
+          `(club ${clubId}, ${amountCents} cts) — ${(err as Error).message}. ` +
+          `L'encaissement est enregistré ; l'écriture est à reprendre à la main.`,
+      );
+    }
+  }
+
   private async trySyncFees(paymentId: string): Promise<void> {
     try {
       await this.stripeFees.syncFeesForPayment(paymentId);
