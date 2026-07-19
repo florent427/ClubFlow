@@ -231,14 +231,32 @@ export class StripeFeesService {
   }
 
   /**
-   * Balayage quotidien.
+   * Balayage HORAIRE.
    *
-   * 9h : après le run de prélèvement de 8h, pour que les frais des cartes
-   * débitées le matin même soient récupérés dans la foulée. Verrou distinct,
-   * pour ne jamais retarder un prélèvement.
+   * Quotidien à l'origine, ce qui faisait attendre jusqu'à un jour l'écriture
+   * de frais d'un encaissement — supportable tant qu'on croyait le balayage
+   * réservé au SEPA, intenable depuis qu'on sait qu'il est le chemin nominal
+   * pour tout le monde. Le résultat comptable est désormais juste à l'heure
+   * près.
+   *
+   * Le coût reste contenu : la requête exclut les encaissements dont les frais
+   * sont déjà connus, donc un passage ne traite que les NOUVEAUX. En régime
+   * établi, un passage horaire ne coûte que le nombre d'encaissements de
+   * l'heure écoulée, pas le plafond de 200.
+   *
+   * Réserve assumée : un encaissement qui ne résoudra JAMAIS (PaymentIntent
+   * supprimé, compte connecté déconnecté) est désormais réinterrogé chaque
+   * heure au lieu de chaque jour, jusqu'à la limite des 30 jours. Le gaspillage
+   * est borné et journalisé par le compteur d'abandons ; si ce cas devenait
+   * fréquent, il faudrait un compteur de tentatives plutôt qu'une simple
+   * fenêtre de temps.
+   *
+   * :15 pour ne croiser ni le prélèvement de 8h00 ni le rapprochement des
+   * remboursements de 9h30 — les verrous sont distincts, mais mieux vaut ne
+   * pas empiler trois jobs Stripe sur la même minute.
    */
-  @Cron('0 9 * * *', { timeZone: SCHEDULING_TIMEZONE })
-  async dailySweep(): Promise<void> {
+  @Cron('15 * * * *', { timeZone: SCHEDULING_TIMEZONE })
+  async hourlySweep(): Promise<void> {
     if (process.env.STRIPE_FEES_SWEEP_DISABLED === 'true') return;
     await this.lock.withLock(
       SCHEDULER_LOCK_KEYS.stripeFeesSweep,
@@ -247,7 +265,7 @@ export class StripeFeesService {
         const report = await this.sweepPendingFees();
         if (report.examined > 0) {
           this.logger.log(
-            `[frais] balayage quotidien : ${JSON.stringify(report)}`,
+            `[frais] balayage horaire : ${JSON.stringify(report)}`,
           );
         }
       },
