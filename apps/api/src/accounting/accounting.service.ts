@@ -249,6 +249,21 @@ export class AccountingService {
   ): Promise<void> {
     if (!(await this.isAccountingEnabled(clubId))) return;
 
+    // Le plan comptable doit exister AVANT de chercher un compte.
+    //
+    // Activer le module ne seedait rien : `seedIfEmpty` n'était appelé que
+    // depuis les écrans de comptabilité. Un club qui activait la compta puis
+    // encaissait sans jamais ouvrir ces écrans voyait donc `lookupAccount`
+    // lever, l'exception remonter jusqu'au webhook, la réservation
+    // d'idempotence être libérée, et Stripe rejouer — le rejeu trouvant le
+    // Payment déjà créé et sortant en succès. Résultat : argent enregistré,
+    // comptabilité absente, échec invisible. Constaté sur staging le
+    // 2026-07-19 (0 compte, 0 écriture, 11 % d'échecs de livraison webhook).
+    //
+    // Le seed est idempotent : l'appeler ici répare aussi les clubs déjà
+    // dans cet état, sans migration.
+    await this.seed.seedIfEmpty(clubId);
+
     // Idempotence
     const existing = await this.prisma.accountingEntry.findFirst({
       where: { clubId, paymentId, source: AccountingEntrySource.AUTO_MEMBER_PAYMENT },
@@ -400,6 +415,12 @@ export class AccountingService {
   async createContraEntryForCreditNote(
     clubId: string,
     creditNoteInvoiceId: string,
+    /**
+     * Encaissement précis que cet avoir rembourse. Fourni par le
+     * remboursement Stripe ; absent pour un avoir manuel, qui ne désigne
+     * aucun paiement en particulier.
+     */
+    sourcePaymentId?: string | null,
   ): Promise<void> {
     if (!(await this.isAccountingEnabled(clubId))) return;
 
@@ -408,23 +429,63 @@ export class AccountingService {
     });
     if (!creditNote || !creditNote.parentInvoiceId) return;
 
-    // Trouve l'entry originale (liée au premier paiement de la facture parente)
+    // Écriture de recette à contre-passer.
+    //
+    // Quand l'avoir rembourse un encaissement PRÉCIS, on cible celui-là. Une
+    // facture peut porter plusieurs encaissements — échéancier, acompte puis
+    // solde — et rien ne garantit qu'ils soient tombés sur le même compte : un
+    // prélèvement Stripe atterrit sur le transit, un règlement en espèces dans
+    // la caisse. Prendre « le plus récent » créditerait la caisse d'un argent
+    // repris par Stripe sur le transit : les deux comptes faux d'un coup.
     const originalEntry = await this.prisma.accountingEntry.findFirst({
       where: {
         clubId,
-        payment: { invoiceId: creditNote.parentInvoiceId },
+        ...(sourcePaymentId
+          ? { paymentId: sourcePaymentId }
+          : { payment: { invoiceId: creditNote.parentInvoiceId } }),
         source: AccountingEntrySource.AUTO_MEMBER_PAYMENT,
         cancelledAt: null,
       },
-      include: { lines: true },
+      include: {
+        lines: true,
+        financialAccount: { include: { accountingAccount: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
 
-    const bankCode = await this.mapping.resolveAccountCode(
-      clubId,
-      'BANK_ACCOUNT',
-    );
-    const bankAccount = await this.lookupAccount(clubId, bankCode);
+    // Aucune recette constatée : il n'y a rien à contre-passer.
+    //
+    // La comptabilité est tenue en ENCAISSEMENT — `createInvoice` n'écrit
+    // aucune écriture, seul le paiement en produit une. Une facture jamais
+    // réglée n'a donc pas d'écriture d'origine, et c'est le cas le plus
+    // courant de l'avoir manuel : l'adhérent annule avant d'avoir payé.
+    //
+    // Écrire quand même DÉBIT produit / CRÉDIT banque inventerait une sortie
+    // de trésorerie qui n'a jamais eu lieu : le rapprochement bancaire
+    // porterait un écart permanent, sans ligne de relevé en face, et cet écart
+    // se cumulerait à chaque annulation de la saison. L'avoir garde tout son
+    // effet côté facturation — `invoicePaymentTotals` le déduit du solde.
+    if (!originalEntry) {
+      this.logger.log(
+        `[avoir] ${creditNoteInvoiceId} sans encaissement d'origine — ` +
+          `aucune écriture comptable (facture jamais réglée).`,
+      );
+      return;
+    }
+
+    // Contrepartie de trésorerie : le compte où l'encaissement est RÉELLEMENT
+    // tombé, et non la banque générique.
+    //
+    // Un encaissement Stripe atterrit sur le compte de transit 512300, pas sur
+    // 512000 : créditer la banque rendrait l'argent depuis un compte qui ne
+    // l'a jamais reçu, et laisserait le transit débiteur du montant remboursé,
+    // indéfiniment. Le compte est déjà tranché et figé sur l'écriture de
+    // recette — on le reprend, exactement comme le fait la charge de frais.
+    const cashCode =
+      originalEntry.financialAccount?.accountingAccount.code ??
+      // Encaissement antérieur au multi-comptes : le compte n'a pas été figé.
+      (await this.mapping.resolveAccountCode(clubId, 'BANK_ACCOUNT'));
+    const bankAccount = await this.lookupAccount(clubId, cashCode);
     const revenueCode = await this.mapping.resolveAccountCode(
       clubId,
       'MEMBERSHIP_PRODUCT',
@@ -442,7 +503,7 @@ export class AccountingService {
           source: AccountingEntrySource.AUTO_REFUND,
           label: `Avoir — ${creditNote.label}`,
           amountCents,
-          contraEntryId: originalEntry?.id ?? null,
+          contraEntryId: originalEntry.id,
           occurredAt: creditNote.createdAt,
         },
       });
@@ -474,23 +535,33 @@ export class AccountingService {
         },
       });
 
-      // Marque l'entry originale comme cancelledAt si elle existe
-      if (originalEntry) {
-        await tx.accountingEntry.update({
-          where: { id: originalEntry.id },
-          data: {
-            cancelledAt: new Date(),
-            status: AccountingEntryStatus.CANCELLED,
-          },
-        });
-      }
+      // L'écriture d'origine reste POSTED, volontairement.
+      //
+      // Une contre-passation neutralise par ADDITION d'une écriture inverse,
+      // pas par suppression de l'originale : les deux mouvements ont eu lieu
+      // et doivent rester au journal. L'annuler EN PLUS de poster la contra
+      // comptait la neutralisation deux fois, puisque `summary` ignore les
+      // entries CANCELLED (cf. son commentaire) et additionne les POSTED.
+      //
+      // L'écart était double :
+      //  - avoir TOTAL de 100 € sur 100 € : produit 0 + charge 100 = −100 €,
+      //    au lieu de 0 € — le club paraissait avoir perdu ce qu'il a rendu ;
+      //  - avoir PARTIEL de 10 € sur 100 € : produit 0 + charge 10 = −110 €,
+      //    au lieu de −10 € — et 100 € de produit réellement encaissé
+      //    disparaissaient du résultat.
+      //
+      // Le lien entre les deux écritures reste porté par `contra.contraEntryId`
+      // ci-dessus. On ne pose PAS `contraEntryId` sur l'originale : ce champ
+      // sert de garde-fou « déjà contre-passée » à la contre-passation
+      // manuelle, et un avoir partiel ne doit pas interdire un geste ultérieur
+      // sur la même écriture.
     });
 
     await this.audit.log({
       clubId,
       userId: 'system',
       action: AccountingAuditAction.CONTRAPASS,
-      entryId: originalEntry?.id ?? null,
+      entryId: originalEntry.id,
       metadata: {
         source: 'AUTO_REFUND',
         creditNoteInvoiceId,
@@ -524,18 +595,33 @@ export class AccountingService {
 
     const feeCode = await this.mapping.resolveAccountCode(clubId, 'STRIPE_FEE');
     const feeAccount = await this.lookupAccount(clubId, feeCode);
-    // Important : les frais Stripe sortent du compte STRIPE_TRANSIT
-    // (compte sur lequel l'argent encaissé est tombé), pas de la banque
-    // physique finale. Le routage va donc préférer le compte Stripe si
-    // configuré, sinon fallback BANK.
-    const fin = await this.financialAccounts.resolveForPayment(
-      clubId,
-      payment.method,
-    );
-    const bankAccount = await this.lookupAccount(
-      clubId,
-      fin.accountingAccount.code,
-    );
+
+    // Les frais doivent sortir du compte où l'encaissement est RÉELLEMENT
+    // tombé, et ce compte est déjà tranché : il est figé sur l'écriture de
+    // recette. On le reprend au lieu de re-router.
+    //
+    // Re-résoudre la route ici ouvrirait un écart : en SEPA, les frais sont
+    // connus plusieurs jours après l'encaissement, et la route peut changer
+    // entre-temps — une reprise de routage suffit. On aurait alors le brut au
+    // débit d'un compte et les frais au crédit d'un autre : ni l'un ni l'autre
+    // ne se rapprocherait, de l'exact montant des frais.
+    const incomeEntry = await this.prisma.accountingEntry.findFirst({
+      where: {
+        clubId,
+        paymentId,
+        source: AccountingEntrySource.AUTO_MEMBER_PAYMENT,
+      },
+      include: { financialAccount: { include: { accountingAccount: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const cashAccountCode =
+      incomeEntry?.financialAccount?.accountingAccount.code ??
+      // Repli : encaissement antérieur au multi-comptes, ou écriture de
+      // recette absente (module compta activé après coup).
+      (await this.financialAccounts.resolveForPayment(clubId, payment.method))
+        .accountingAccount.code;
+    const bankAccount = await this.lookupAccount(clubId, cashAccountCode);
 
     await this.prisma.$transaction(async (tx) => {
       const entry = await tx.accountingEntry.create({
@@ -548,7 +634,8 @@ export class AccountingService {
           amountCents: feeAmountCents,
           paymentId,
           occurredAt: payment.createdAt,
-          financialAccountId: fin.id,
+          // Même compte financier que la recette qu'ils grèvent.
+          financialAccountId: incomeEntry?.financialAccountId ?? null,
         },
       });
       // Débit 627 (frais bancaires)
@@ -578,6 +665,104 @@ export class AccountingService {
         },
       });
     });
+  }
+
+  /**
+   * Virement Stripe vers la banque du club : solde le compte de transit.
+   *
+   * C'est la seconde moitié du dispositif de transit, et sans elle la
+   * première est nuisible. Les encaissements créditent 512300 au brut, les
+   * frais le débitent ; si rien ne constate le virement, le transit gonfle
+   * indéfiniment et la banque reste vide alors que l'argent y est arrivé.
+   *
+   * Écriture : DÉBIT banque (l'argent entre) / CRÉDIT transit (il en sort).
+   * Le montant est le NET viré par Stripe, ce qui fait naturellement tomber
+   * le transit à zéro une fois les frais de la période comptabilisés.
+   *
+   * Idempotent par `stripePayoutId` : Stripe rejoue ses webhooks, et une
+   * écriture de virement en double fausserait les deux comptes à la fois.
+   */
+  async recordStripePayout(args: {
+    clubId: string;
+    payoutId: string;
+    amountCents: number;
+    /** Date d'arrivée des fonds annoncée par Stripe. */
+    occurredAt: Date;
+  }): Promise<void> {
+    if (!(await this.isAccountingEnabled(args.clubId))) return;
+    if (args.amountCents <= 0) return;
+
+    const existing = await this.prisma.accountingEntry.findFirst({
+      where: { clubId: args.clubId, stripePayoutId: args.payoutId },
+      select: { id: true },
+    });
+    if (existing) return;
+
+    // Compte de transit du club. Absent = le club encaisse encore
+    // directement en banque : il n'y a alors rien à solder, et écrire ce
+    // virement créerait un doublon avec l'encaissement déjà porté en banque.
+    const transit = await this.prisma.clubFinancialAccount.findFirst({
+      where: { clubId: args.clubId, kind: 'STRIPE_TRANSIT' },
+      include: { accountingAccount: true },
+    });
+    if (!transit) {
+      this.logger.warn(
+        `[payout] club ${args.clubId} sans compte de transit — virement ${args.payoutId} non écrit.`,
+      );
+      return;
+    }
+
+    const bankCode = await this.mapping.resolveAccountCode(
+      args.clubId,
+      'BANK_ACCOUNT',
+    );
+    const bankAccount = await this.lookupAccount(args.clubId, bankCode);
+
+    await this.prisma.$transaction(async (tx) => {
+      const entry = await tx.accountingEntry.create({
+        data: {
+          clubId: args.clubId,
+          // Ni produit ni charge : un simple mouvement de trésorerie entre
+          // deux comptes d'actif. Le résultat du club n'en est pas affecté.
+          kind: AccountingEntryKind.TRANSFER,
+          status: AccountingEntryStatus.POSTED,
+          source: AccountingEntrySource.AUTO_STRIPE_PAYOUT,
+          label: `Virement Stripe — ${args.payoutId}`,
+          amountCents: args.amountCents,
+          stripePayoutId: args.payoutId,
+          occurredAt: args.occurredAt,
+          financialAccountId: transit.id,
+        },
+      });
+      await tx.accountingEntryLine.create({
+        data: {
+          entryId: entry.id,
+          clubId: args.clubId,
+          accountCode: bankAccount.code,
+          accountLabel: bankAccount.label,
+          side: AccountingLineSide.DEBIT,
+          debitCents: args.amountCents,
+          creditCents: 0,
+          sortOrder: 0,
+        },
+      });
+      await tx.accountingEntryLine.create({
+        data: {
+          entryId: entry.id,
+          clubId: args.clubId,
+          accountCode: transit.accountingAccount.code,
+          accountLabel: transit.accountingAccount.label,
+          side: AccountingLineSide.CREDIT,
+          debitCents: 0,
+          creditCents: args.amountCents,
+          sortOrder: 1,
+        },
+      });
+    });
+
+    this.logger.log(
+      `[payout] club ${args.clubId} — virement ${args.payoutId} de ${args.amountCents} cts soldé depuis le transit.`,
+    );
   }
 
   // ========================================================================

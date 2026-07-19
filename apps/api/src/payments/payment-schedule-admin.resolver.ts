@@ -9,6 +9,7 @@ import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.gua
 import { GqlJwtAuthGuard } from '../common/guards/gql-jwt-auth.guard';
 import { ModuleCode } from '../domain/module-registry/module-codes';
 import { PaymentScheduleEngineService } from './payment-schedule-engine.service';
+import { StripeFeesService } from './stripe-fees.service';
 
 /** Compte-rendu d'un passage du moteur de prélèvement. */
 @ObjectType()
@@ -29,6 +30,22 @@ export class PaymentScheduleRunReportGraph {
     description: 'Ignorées (déjà prises par un autre passage, ou incomplètes).',
   })
   skipped!: number;
+}
+
+/** Compte-rendu d'un balayage des frais Stripe. */
+@ObjectType()
+export class StripeFeesSweepReportGraph {
+  @Field(() => Int, { description: 'Encaissements repris.' })
+  examined!: number;
+
+  @Field(() => Int, { description: 'Frais désormais connus.' })
+  resolved!: number;
+
+  @Field(() => Int, {
+    description:
+      'Encaissements trop anciens, non repris — à examiner manuellement.',
+  })
+  abandoned!: number;
 }
 
 /**
@@ -54,7 +71,10 @@ export class PaymentScheduleRunReportGraph {
 )
 @RequireClubModule(ModuleCode.PAYMENT)
 export class PaymentScheduleAdminResolver {
-  constructor(private readonly engine: PaymentScheduleEngineService) {}
+  constructor(
+    private readonly engine: PaymentScheduleEngineService,
+    private readonly fees: StripeFeesService,
+  ) {}
 
   @Mutation(() => PaymentScheduleRunReportGraph, {
     name: 'triggerPaymentScheduleRun',
@@ -67,5 +87,18 @@ export class PaymentScheduleAdminResolver {
     // Scopé au club appelant : un admin ne déclenche jamais les prélèvements
     // d'un autre tenant.
     return this.engine.runDue({ clubId: club.id });
+  }
+
+  @Mutation(() => StripeFeesSweepReportGraph, {
+    name: 'triggerStripeFeesSweep',
+    description:
+      "Récupère immédiatement les frais Stripe des encaissements du club qui ne les connaissent pas encore. En SEPA, la charge se dénoue en plusieurs jours : le balayage quotidien fait ce travail, cette mutation permet de ne pas l'attendre.",
+  })
+  async triggerStripeFeesSweep(
+    @CurrentClub() club: Club,
+  ): Promise<StripeFeesSweepReportGraph> {
+    // Scopé au club appelant : un admin ne provoque jamais d'appels Stripe
+    // sur les comptes connectés d'autres tenants.
+    return this.fees.sweepPendingFees({ clubId: club.id });
   }
 }
