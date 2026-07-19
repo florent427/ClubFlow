@@ -68,7 +68,16 @@ export class PaymentScheduleEngineService {
    */
   @Cron('0 8 * * *', { timeZone: SCHEDULING_TIMEZONE })
   async dailyRun(): Promise<void> {
-    if (process.env.PAYMENT_SCHEDULE_CRON_DISABLED === 'true') return;
+    if (process.env.PAYMENT_SCHEDULE_CRON_DISABLED === 'true') {
+      // Un interrupteur d'urgence oublié ne se signale par rien d'autre, et
+      // celui-ci est le plus coûteux des trois : un prélèvement désactivé
+      // accumule des échéances en silence, que le club découvrira d'un coup.
+      this.logger.warn(
+        '[échéancier] prélèvement quotidien DÉSACTIVÉ par ' +
+          'PAYMENT_SCHEDULE_CRON_DISABLED — aucune échéance ne sera prélevée.',
+      );
+      return;
+    }
     await this.lock.withLock(
       SCHEDULER_LOCK_KEYS.paymentScheduleRun,
       15 * 60_000,

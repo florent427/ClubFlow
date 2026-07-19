@@ -8,6 +8,8 @@ import { ClubContextGuard } from '../common/guards/club-context.guard';
 import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.guard';
 import { GqlJwtAuthGuard } from '../common/guards/gql-jwt-auth.guard';
 import { ModuleCode } from '../domain/module-registry/module-codes';
+import { SCHEDULER_LOCK_KEYS } from '../scheduling/scheduling.constants';
+import { SchedulerLockService } from '../scheduling/scheduler-lock.service';
 import { PaymentScheduleEngineService } from './payment-schedule-engine.service';
 import { StripeFeesService } from './stripe-fees.service';
 
@@ -74,6 +76,7 @@ export class PaymentScheduleAdminResolver {
   constructor(
     private readonly engine: PaymentScheduleEngineService,
     private readonly fees: StripeFeesService,
+    private readonly lock: SchedulerLockService,
   ) {}
 
   @Mutation(() => PaymentScheduleRunReportGraph, {
@@ -92,13 +95,30 @@ export class PaymentScheduleAdminResolver {
   @Mutation(() => StripeFeesSweepReportGraph, {
     name: 'triggerStripeFeesSweep',
     description:
-      "Récupère immédiatement les frais Stripe des encaissements du club qui ne les connaissent pas encore. En SEPA, la charge se dénoue en plusieurs jours : le balayage quotidien fait ce travail, cette mutation permet de ne pas l'attendre.",
+      "Récupère immédiatement les frais Stripe des encaissements du club qui ne les connaissent pas encore. Le balayage horaire (à :15) fait ce travail ; cette mutation permet de ne pas l'attendre. Si un balayage est déjà en cours, renvoie un rapport vide plutôt que d'en lancer un second.",
   })
   async triggerStripeFeesSweep(
     @CurrentClub() club: Club,
   ): Promise<StripeFeesSweepReportGraph> {
+    // Verrou PARTAGÉ avec le balayage horaire, et non une clé par club.
+    //
+    // Sans lui, deux exécutions concurrentes étaient triviales à provoquer —
+    // un double-clic sur le bouton, ou un déclenchement tombant pendant le
+    // passage de :15 — et toutes deux interrogeaient Stripe puis écrivaient
+    // les mêmes frais. La contrainte `@@unique([clubId, paymentId, source])`
+    // sur AccountingEntry empêche désormais la double écriture ; ce verrou
+    // évite en amont les appels Stripe inutiles et la course elle-même.
+    //
     // Scopé au club appelant : un admin ne provoque jamais d'appels Stripe
     // sur les comptes connectés d'autres tenants.
-    return this.fees.sweepPendingFees({ clubId: club.id });
+    const report = await this.lock.withLock(
+      SCHEDULER_LOCK_KEYS.stripeFeesSweep,
+      10 * 60_000,
+      () => this.fees.sweepPendingFees({ clubId: club.id }),
+    );
+    // `withLock` renvoie null quand le bail est déjà tenu. Un rapport vide dit
+    // la vérité — rien n'a été examiné par CET appel — sans faire échouer une
+    // action d'administration dont le travail est de toute façon en cours.
+    return report ?? { examined: 0, resolved: 0, abandoned: 0 };
   }
 }

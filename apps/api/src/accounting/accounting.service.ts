@@ -327,7 +327,13 @@ export class AccountingService {
       }
     }
 
-    await this.prisma.$transaction(async (tx) => {
+    // Le `.catch` porte sur la contrainte `@@unique([clubId, paymentId,
+    // source])`. Le contrôle d'idempotence plus haut laisse passer deux
+    // exécutions concurrentes ; la base, elle, n'en accepte qu'une. Le perdant
+    // sort ici — sans écrire d'audit, puisque le gagnant l'a déjà fait, et
+    // surtout sans lever : on est dans le webhook Stripe.
+    const lostTheRace = await this.prisma
+      .$transaction(async (tx) => {
       const entry = await tx.accountingEntry.create({
         data: {
           clubId,
@@ -391,7 +397,18 @@ export class AccountingService {
         clubId,
         allocations,
       );
-    });
+      })
+      .then(() => false)
+      .catch((err: unknown) => {
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2002'
+        ) {
+          return true;
+        }
+        throw err;
+      });
+    if (lostTheRace) return;
 
     // Log silencieux, userId inconnu (système)
     await this.audit.log({
@@ -582,7 +599,11 @@ export class AccountingService {
     if (!(await this.isAccountingEnabled(clubId))) return;
     if (feeAmountCents <= 0) return;
 
-    // Idempotence
+    // Idempotence, premier niveau : évite l'aller-retour inutile en base dans
+    // le cas courant. Ce contrôle NE SUFFIT PAS — entre lui et le `create`
+    // final, une seconde exécution peut passer. La garantie est la contrainte
+    // `@@unique([clubId, paymentId, source])`, dont l'échec est rattrapé plus
+    // bas.
     const existing = await this.prisma.accountingEntry.findFirst({
       where: { clubId, paymentId, source: AccountingEntrySource.AUTO_STRIPE_FEES },
     });
@@ -623,48 +644,64 @@ export class AccountingService {
         .accountingAccount.code;
     const bankAccount = await this.lookupAccount(clubId, cashAccountCode);
 
-    await this.prisma.$transaction(async (tx) => {
-      const entry = await tx.accountingEntry.create({
-        data: {
-          clubId,
-          kind: AccountingEntryKind.EXPENSE,
-          status: AccountingEntryStatus.POSTED,
-          source: AccountingEntrySource.AUTO_STRIPE_FEES,
-          label: `Frais Stripe — ${payment.externalRef ?? paymentId}`,
-          amountCents: feeAmountCents,
-          paymentId,
-          occurredAt: payment.createdAt,
-          // Même compte financier que la recette qu'ils grèvent.
-          financialAccountId: incomeEntry?.financialAccountId ?? null,
-        },
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        const entry = await tx.accountingEntry.create({
+          data: {
+            clubId,
+            kind: AccountingEntryKind.EXPENSE,
+            status: AccountingEntryStatus.POSTED,
+            source: AccountingEntrySource.AUTO_STRIPE_FEES,
+            label: `Frais Stripe — ${payment.externalRef ?? paymentId}`,
+            amountCents: feeAmountCents,
+            paymentId,
+            occurredAt: payment.createdAt,
+            // Même compte financier que la recette qu'ils grèvent.
+            financialAccountId: incomeEntry?.financialAccountId ?? null,
+          },
+        });
+        // Débit 627 (frais bancaires)
+        await tx.accountingEntryLine.create({
+          data: {
+            entryId: entry.id,
+            clubId,
+            accountCode: feeAccount.code,
+            accountLabel: feeAccount.label,
+            side: AccountingLineSide.DEBIT,
+            debitCents: feeAmountCents,
+            creditCents: 0,
+            sortOrder: 0,
+          },
+        });
+        // Crédit 512 (banque, les frais sortent de la trésorerie)
+        await tx.accountingEntryLine.create({
+          data: {
+            entryId: entry.id,
+            clubId,
+            accountCode: bankAccount.code,
+            accountLabel: bankAccount.label,
+            side: AccountingLineSide.CREDIT,
+            debitCents: 0,
+            creditCents: feeAmountCents,
+            sortOrder: 1,
+          },
+        });
       });
-      // Débit 627 (frais bancaires)
-      await tx.accountingEntryLine.create({
-        data: {
-          entryId: entry.id,
-          clubId,
-          accountCode: feeAccount.code,
-          accountLabel: feeAccount.label,
-          side: AccountingLineSide.DEBIT,
-          debitCents: feeAmountCents,
-          creditCents: 0,
-          sortOrder: 0,
-        },
-      });
-      // Crédit 512 (banque, les frais sortent de la trésorerie)
-      await tx.accountingEntryLine.create({
-        data: {
-          entryId: entry.id,
-          clubId,
-          accountCode: bankAccount.code,
-          accountLabel: bankAccount.label,
-          side: AccountingLineSide.CREDIT,
-          debitCents: 0,
-          creditCents: feeAmountCents,
-          sortOrder: 1,
-        },
-      });
-    });
+    } catch (err) {
+      // P2002 sur (clubId, paymentId, source) : une exécution concurrente du
+      // balayage a déjà écrit ces frais. L'écriture existe, elle est juste,
+      // il n'y a rien à faire — et surtout rien à propager : cette méthode est
+      // appelée depuis le webhook Stripe, où une exception ferait libérer la
+      // réservation d'idempotence et rejouer inutilement (cf.
+      // docs/memory/pitfalls/compta-non-seedee-webhook-500.md).
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        return;
+      }
+      throw err;
+    }
   }
 
   /**
@@ -762,6 +799,140 @@ export class AccountingService {
 
     this.logger.log(
       `[payout] club ${args.clubId} — virement ${args.payoutId} de ${args.amountCents} cts soldé depuis le transit.`,
+    );
+  }
+
+  /**
+   * Virement Stripe RETOURNÉ par la banque : défait l'écriture de virement.
+   *
+   * Un virement passé en `paid` peut basculer en `failed` — IBAN clôturé,
+   * coordonnées obsolètes, rejet du correspondant — et les fonds retournent
+   * alors au solde Stripe. Sans cette réversion, l'écriture AUTO_STRIPE_PAYOUT
+   * reste postée : la banque affiche un encaissement qu'elle n'a jamais reçu,
+   * et le transit un solde inférieur de ce montant à ce que Stripe doit
+   * réellement au club. L'écart est permanent et aucun chemin ne le défait —
+   * `recordStripePayout` est purement additif.
+   *
+   * C'est précisément la divergence durable que le compte de transit existe
+   * pour rendre détectable (ADR-0010). La laisser s'installer retirerait au
+   * dispositif la propriété qui le justifie.
+   *
+   * Écriture MIROIR, et non annulation de l'originale : DÉBIT transit (l'argent
+   * y revient) / CRÉDIT banque (il en repart). On neutralise par ADDITION, ce
+   * qui préserve la trace des deux mouvements — le virement a réellement eu
+   * lieu avant d'être rejeté, et un grand livre doit le montrer.
+   *
+   * Idempotent par `stripePayoutId = "<payoutId>:reversed"` : la clé diffère de
+   * celle de l'écriture d'origine, donc la contrainte d'unicité ne s'y oppose
+   * pas, tout en interdisant deux réversions du même virement.
+   */
+  async reverseStripePayout(args: {
+    clubId: string;
+    payoutId: string;
+    /** Cause telle que rapportée par Stripe (`failure_message`, ou `canceled`). */
+    reason: string;
+    occurredAt: Date;
+  }): Promise<void> {
+    if (!(await this.isAccountingEnabled(args.clubId))) return;
+
+    const reversalKey = `${args.payoutId}:reversed`;
+
+    // L'originale est la SOURCE du montant : on ne fait pas confiance au
+    // montant porté par l'événement de rejet, qui pourrait différer de ce
+    // qu'on a effectivement écrit. Absente = il n'y a rien à défaire (club
+    // sans compta au moment du virement, ou virement jamais constaté).
+    const original = await this.prisma.accountingEntry.findFirst({
+      where: {
+        clubId: args.clubId,
+        stripePayoutId: args.payoutId,
+        source: AccountingEntrySource.AUTO_STRIPE_PAYOUT,
+      },
+      include: { financialAccount: { include: { accountingAccount: true } } },
+    });
+    if (!original) {
+      this.logger.warn(
+        `[payout] virement ${args.payoutId} rejeté, mais aucune écriture ` +
+          `d'origine pour le club ${args.clubId} — rien à contre-passer.`,
+      );
+      return;
+    }
+
+    const transitAccount = original.financialAccount?.accountingAccount;
+    if (!transitAccount) {
+      this.logger.error(
+        `[payout] virement ${args.payoutId} rejeté : écriture d'origine ` +
+          `${original.id} sans compte de transit — réversion impossible, ` +
+          `à traiter à la main (club ${args.clubId}).`,
+      );
+      return;
+    }
+
+    const bankCode = await this.mapping.resolveAccountCode(
+      args.clubId,
+      'BANK_ACCOUNT',
+    );
+    const bankAccount = await this.lookupAccount(args.clubId, bankCode);
+    const amountCents = original.amountCents;
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        const entry = await tx.accountingEntry.create({
+          data: {
+            clubId: args.clubId,
+            kind: AccountingEntryKind.TRANSFER,
+            status: AccountingEntryStatus.POSTED,
+            source: AccountingEntrySource.AUTO_STRIPE_PAYOUT,
+            label: `Virement Stripe rejeté — ${args.payoutId} (${args.reason})`,
+            amountCents,
+            stripePayoutId: reversalKey,
+            contraEntryId: original.id,
+            occurredAt: args.occurredAt,
+            financialAccountId: original.financialAccountId,
+          },
+        });
+        // DÉBIT transit : l'argent revient chez Stripe.
+        await tx.accountingEntryLine.create({
+          data: {
+            entryId: entry.id,
+            clubId: args.clubId,
+            accountCode: transitAccount.code,
+            accountLabel: transitAccount.label,
+            side: AccountingLineSide.DEBIT,
+            debitCents: amountCents,
+            creditCents: 0,
+            sortOrder: 0,
+          },
+        });
+        // CRÉDIT banque : elle n'a finalement rien reçu.
+        await tx.accountingEntryLine.create({
+          data: {
+            entryId: entry.id,
+            clubId: args.clubId,
+            accountCode: bankAccount.code,
+            accountLabel: bankAccount.label,
+            side: AccountingLineSide.CREDIT,
+            debitCents: 0,
+            creditCents: amountCents,
+            sortOrder: 1,
+          },
+        });
+      });
+    } catch (err) {
+      // P2002 : une autre livraison du même événement a déjà écrit la
+      // réversion. Rien à faire, et surtout rien à propager au webhook.
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        return;
+      }
+      throw err;
+    }
+
+    this.logger.warn(
+      `[payout] club ${args.clubId} — virement ${args.payoutId} de ` +
+        `${amountCents} cts REJETÉ (${args.reason}) : écriture contre-passée, ` +
+        `les fonds sont retournés au solde Stripe.`,
     );
   }
 

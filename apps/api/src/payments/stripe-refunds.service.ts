@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ClubPaymentMethod, Prisma } from '@prisma/client';
 import { Cron } from '@nestjs/schedule';
@@ -36,13 +37,30 @@ const REFUND_RECONCILE_DAYS = 45;
  *    la plateforme — d'où `Payment.stripeAccountId`, figé à l'encaissement
  *    précisément pour survivre à un changement de compte connecté.
  *
- * 2. UN REMBOURSEMENT S'ACCOMPAGNE TOUJOURS D'UN AVOIR. Ce n'est pas une
- *    commodité comptable, c'est ce qui empêche un second débit. Un
- *    remboursement se matérialise par un Payment négatif (convention de
- *    invoice-totals.ts), qui fait REMONTER le solde de la facture. Sans avoir
- *    du même montant pour l'absorber, la facture redeviendrait due, et le
- *    moteur de prélèvement reprélèverait l'adhérent qu'on vient de rembourser.
- *    L'avoir n'est donc pas un paramètre : il est structurel.
+ * 2. UN REMBOURSEMENT ÉTEINT LA CRÉANCE CORRESPONDANTE. C'est un choix
+ *    métier tranché, pas une commodité comptable (ADR-0011).
+ *
+ *    Un remboursement se matérialise par un Payment négatif (convention de
+ *    invoice-totals.ts), qui fait REMONTER le solde de la facture. L'avoir
+ *    émis en regard, TOUJOURS du montant remboursé, l'absorbe.
+ *
+ *    Sur une facture déjà soldée, l'avoir empêche un second débit : sans lui
+ *    la facture redeviendrait due et le moteur reprélèverait l'adhérent qu'on
+ *    vient de rembourser.
+ *
+ *    Sur une facture ENCORE DUE — un échéancier de 300 € dont la première
+ *    échéance de 100 € est remboursée — l'avoir fait davantage : il abandonne
+ *    100 € de créance, et l'adhérent paiera 200 € au total. Ce n'est PAS un
+ *    effet de bord, c'est l'invariant retenu : rendre l'argent éteint la
+ *    dette correspondante. L'alternative — ressusciter la dette — laisserait
+ *    100 € dus sans échéance pour les porter, donc un reliquat orphelin que
+ *    personne ne recouvrerait davantage. Si un jour il faut rembourser SANS
+ *    éteindre, ce sera un paramètre explicite de `refundClubPayment`, jamais
+ *    un comportement implicite.
+ *
+ *    L'invariant est verrouillé par un test sur une facture PARTIELLEMENT
+ *    réglée — le cas où il est faux si on se trompe. Un test sur facture
+ *    soldée ne prouverait rien : il y est vrai par construction.
  *
  * 3. Rien n'est écrit en base avant que Stripe ait confirmé. Enregistrer un
  *    remboursement qui n'a pas eu lieu créerait une créance fantôme au
@@ -120,13 +138,31 @@ export class StripeRefundsService {
     // croirait avoir rendu 20 €, l'adhérent n'en aurait reçu que 10.
     //
     // `charge.amount_refunded` est mis à jour immédiatement et fait autorité.
-    // On ne retombe sur notre base que si Stripe est illisible — auquel cas
-    // l'estimation est prudente, jamais permissive : elle ne peut que
-    // SOUS-estimer le déjà-remboursé, donc refuser un remboursement légitime
-    // plutôt qu'en autoriser un de trop.
-    const alreadyRefunded =
-      (await this.stripeAmountRefunded(stripe, payment)) ??
-      (await this.sumRefundedForPayment(payment.id));
+    //
+    // On NE SE REPLIE PAS sur notre base quand Stripe est illisible, et le
+    // commentaire qui vivait ici prétendait exactement l'inverse : il
+    // affirmait qu'un repli ne pouvait que sous-estimer le déjà-remboursé,
+    // donc « refuser un remboursement légitime plutôt qu'en autoriser un de
+    // trop ». Le raisonnement est inversé — sous-estimer le déjà-remboursé
+    // SUR-estime le remboursable (montant − déjà rendu), donc autorise plus.
+    //
+    // Le dommage n'est pas le dépassement, que Stripe refuse de toute façon,
+    // mais la CLÉ D'IDEMPOTENCE ci-dessous, qui intègre `alreadyRefunded`.
+    // Calculée sur une base en retard, elle rejoue la clé du remboursement
+    // précédent : Stripe renvoie alors le PREMIER remboursement au lieu d'en
+    // créer un second, et l'appel réussit. Le trésorier voit deux
+    // remboursements de 40 € réussis ; l'adhérent en a reçu un seul. C'est
+    // très exactement le scénario que cette lecture existe pour empêcher.
+    //
+    // Cette lecture n'est donc pas un accessoire dont on peut se passer :
+    // elle EST le plafond et la clé. Si elle échoue, on refuse.
+    const alreadyRefunded = await this.stripeAmountRefunded(stripe, payment);
+    if (alreadyRefunded === null) {
+      throw new ServiceUnavailableException(
+        'Montant déjà remboursé indisponible chez Stripe — remboursement ' +
+          'refusé par prudence. Réessayez dans un instant.',
+      );
+    }
     const refundable = payment.amountCents - alreadyRefunded;
     if (refundable <= 0) {
       throw new BadRequestException(
@@ -174,16 +210,26 @@ export class StripeRefundsService {
   }
 
   /**
-   * Montant déjà remboursé d'après Stripe, ou `null` s'il est illisible.
+   * Montant déjà remboursé d'après Stripe.
    *
-   * Volontairement tolérant : l'appelant retombe alors sur la base. Faire
-   * échouer un remboursement parce qu'une lecture accessoire a échoué serait
-   * disproportionné.
+   * `null` signifie STRICTEMENT « la lecture a échoué », et rien d'autre :
+   * l'appelant refuse alors le remboursement, cette valeur servant à la fois
+   * de plafond et de composante de la clé d'idempotence.
+   *
+   * La distinction compte, et elle a failli être manquée. Confondre « pas de
+   * charge » avec « illisible » rendrait impossible un remboursement
+   * parfaitement légitime dès que Stripe répond correctement mais que le
+   * PaymentIntent n'a pas de charge rattachée : ce n'est pas une panne, c'est
+   * un fait — rien n'a été remboursé. Le cas se règle plus loin, à la création
+   * du remboursement, où Stripe refusera clairement si l'encaissement n'est
+   * pas remboursable.
    */
   private async stripeAmountRefunded(
     stripe: Stripe,
     payment: { externalRef: string | null; stripeAccountId: string | null },
   ): Promise<number | null> {
+    // L'appelant garde déjà ces deux champs ; on ne peut simplement rien
+    // demander à Stripe sans eux.
     if (!payment.externalRef || !payment.stripeAccountId) return null;
     try {
       const pi = await stripe.paymentIntents.retrieve(
@@ -192,12 +238,23 @@ export class StripeRefundsService {
         { stripeAccount: payment.stripeAccountId },
       );
       const charge = pi.latest_charge;
-      if (!charge || typeof charge === 'string') return null;
+      // Charge absente : le PaymentIntent existe et Stripe a répondu. Rien
+      // n'a donc été remboursé — c'est une information, pas une panne.
+      if (!charge) return 0;
+      // Charge renvoyée comme simple identifiant : l'expansion n'a pas eu
+      // lieu, et on ignore le montant remboursé. Là, c'est bien illisible.
+      if (typeof charge === 'string') {
+        this.logger.warn(
+          `[remboursement] latest_charge non expansé pour ${payment.externalRef} — ` +
+            `montant déjà remboursé inconnu.`,
+        );
+        return null;
+      }
       return charge.amount_refunded ?? 0;
     } catch (err) {
       this.logger.warn(
         `[remboursement] montant déjà remboursé illisible chez Stripe pour ` +
-          `${payment.externalRef} — repli sur la base. ${(err as Error).message}`,
+          `${payment.externalRef} — remboursement refusé. ${(err as Error).message}`,
       );
       return null;
     }
@@ -453,7 +510,18 @@ export class StripeRefundsService {
    */
   @Cron('30 9 * * *', { timeZone: SCHEDULING_TIMEZONE })
   async dailyReconcile(): Promise<void> {
-    if (process.env.STRIPE_REFUND_RECONCILE_DISABLED === 'true') return;
+    if (process.env.STRIPE_REFUND_RECONCILE_DISABLED === 'true') {
+      // Un interrupteur d'urgence oublié ne se signale par rien d'autre.
+      // Ici l'oubli coûte cher : sans rapprochement, un webhook
+      // `charge.refunded` manqué laisse de l'argent parti du compte du club
+      // sans aucune trace en base.
+      this.logger.warn(
+        '[remboursements] rapprochement DÉSACTIVÉ par ' +
+          'STRIPE_REFUND_RECONCILE_DISABLED — les remboursements non ' +
+          'enregistrés ne seront pas rattrapés.',
+      );
+      return;
+    }
     await this.lock.withLock(
       SCHEDULER_LOCK_KEYS.stripeRefundReconcile,
       10 * 60_000,

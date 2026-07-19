@@ -271,18 +271,51 @@ describe('StripeRefundsService.refundPayment', () => {
     ).rejects.toThrow(/1000/);
   });
 
-  it('Stripe illisible : repli sur la base, jamais de blocage', async () => {
-    // Une lecture accessoire en échec ne doit pas empêcher un remboursement.
-    const { svc } = makeSvc({ alreadyRefundedCents: 3_000 });
-    retrieve.mockRejectedValue(new Error('Stripe down'));
+  it('PaymentIntent sans charge : ce n’est PAS une panne, le remboursement reste possible', async () => {
+    // Le pendant indispensable du test suivant. Refuser dès que Stripe ne
+    // renvoie pas de charge confondrait « rien n'a été remboursé » — un fait —
+    // avec « je n'ai pas pu lire » — une panne. Le premier cas doit laisser
+    // passer : c'est Stripe qui refusera plus loin si l'encaissement n'est
+    // pas remboursable, avec un message clair.
+    const { svc } = makeSvc({ alreadyRefundedCents: 0 });
+    retrieve.mockResolvedValue({ latest_charge: null });
+    create.mockResolvedValue({ id: 're_ok' });
 
     const res = await svc.refundPayment({
       clubId: 'club-1',
       paymentId: 'pay-1',
-      reason: 'Annulation',
+      amountCents: 2_000,
+      reason: 'x',
     });
 
-    expect(res.amountCents).toBe(7_000);
+    expect(res.amountCents).toBe(2_000);
+    // Déjà remboursé = 0, et la clé d'idempotence le reflète.
+    expect(create.mock.calls[0][1].idempotencyKey).toContain('-0-2000');
+  });
+
+  it('Stripe illisible : REFUSE le remboursement au lieu de se replier sur la base', async () => {
+    // Ce test asseyait auparavant le contraire — « repli sur la base, jamais
+    // de blocage » — au motif qu'une lecture en échec est accessoire. Elle ne
+    // l'est pas : elle fournit le plafond ET la clé d'idempotence.
+    //
+    // Le danger n'est pas le dépassement, que Stripe refuse de toute façon,
+    // mais la clé. Calculée sur une base en retard, elle rejoue celle du
+    // remboursement précédent : Stripe renvoie alors le PREMIER remboursement,
+    // l'appel réussit, le trésorier croit avoir rendu 40 € deux fois et
+    // l'adhérent n'en reçoit qu'un.
+    const { svc } = makeSvc({ alreadyRefundedCents: 3_000 });
+    retrieve.mockRejectedValue(new Error('Stripe down'));
+
+    await expect(
+      svc.refundPayment({
+        clubId: 'club-1',
+        paymentId: 'pay-1',
+        reason: 'Annulation',
+      }),
+    ).rejects.toThrow(/indisponible chez Stripe/);
+
+    // L'assertion qui mord vraiment : aucun euro n'a bougé.
+    expect(create).not.toHaveBeenCalled();
   });
 
 });
@@ -338,6 +371,51 @@ describe('StripeRefundsService.applyRefundConfirmed', () => {
       note.amountCents,
     );
     expect(balanceCents).toBe(0);
+  });
+
+  it('facture PARTIELLEMENT réglée : l’avoir éteint la créance remboursée (ADR-0011)', async () => {
+    // Le test précédent porte sur une facture INTÉGRALEMENT réglée, où
+    // l'invariant est vrai par construction : il ne prouve donc rien sur le
+    // cas où l'on peut se tromper. Celui-ci couvre ce cas.
+    //
+    // Échéancier de 300 €, première échéance de 100 € prélevée puis
+    // remboursée. Deux lectures s'affrontent :
+    //   — ressusciter la dette : solde 300 €, l'avoir vaudrait 0 ;
+    //   — l'éteindre : solde 200 €, l'avoir vaut les 100 € rendus.
+    // C'est la seconde qui est retenue (ADR-0011). Rendre l'argent éteint la
+    // dette correspondante ; l'adhérent paiera 200 € au total.
+    const { svc, created } = makeSvc({
+      payment: {
+        ...STRIPE_PAYMENT,
+        amountCents: 10_000,
+        invoice: {
+          id: 'inv-1',
+          label: 'Adhésion (échéancier)',
+          status: 'OPEN',
+          isCreditNote: false,
+        },
+      },
+    });
+
+    await svc.applyRefundConfirmed({
+      clubId: 'club-1',
+      paymentIntentId: 'pi_123',
+      refundId: 're_1',
+      amountCents: 10_000,
+      stripeAccountId: 'acct_1',
+    });
+
+    const note = created.find((c) => c.model === 'invoice')?.data as {
+      amountCents: number;
+    };
+
+    // L'avoir vaut le montant rendu, quel que soit le reste dû.
+    expect(note.amountCents).toBe(10_000);
+
+    // Facture 300 €, encaissé net 0 (100 € prélevés puis rendus), avoir 100 €
+    // → il reste 200 € à percevoir, et non 300 €.
+    const { balanceCents } = invoicePaymentTotals(30_000, 0, note.amountCents);
+    expect(balanceCents).toBe(20_000);
   });
 
   it('un webhook rejoué n’enregistre pas deux fois le remboursement', async () => {

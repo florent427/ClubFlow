@@ -850,6 +850,40 @@ export class PaymentsService {
       return;
     }
 
+    // La banque a REFUSÉ le virement, ou Stripe l'a annulé avant exécution :
+    // les fonds retournent au solde Stripe. L'écriture de virement, elle, est
+    // déjà postée — il faut la défaire, sans quoi la banque affiche un
+    // encaissement qu'elle n'a jamais reçu et le transit reste durablement
+    // en dessous de ce que Stripe doit au club (ADR-0010).
+    if (event.type === 'payout.failed' || event.type === 'payout.canceled') {
+      const payout = event.data.object as Stripe.Payout;
+      if (!eventAccount) return;
+      const club = await this.prisma.club.findFirst({
+        where: { stripeAccountId: eventAccount },
+        select: { id: true },
+      });
+      if (!club) {
+        this.logger.warn(
+          `[payout] rejet du virement ${payout.id} reçu du compte ${eventAccount} — aucun club rattaché.`,
+        );
+        return;
+      }
+      await this.accounting.reverseStripePayout({
+        clubId: club.id,
+        payoutId: payout.id,
+        reason:
+          event.type === 'payout.canceled'
+            ? 'annulé'
+            : (payout.failure_message ??
+              payout.failure_code ??
+              'rejet bancaire'),
+        // Le rejet est constaté MAINTENANT, pas à la date d'arrivée prévue :
+        // c'est la date à laquelle l'argent est effectivement reparti.
+        occurredAt: new Date(event.created * 1000),
+      });
+      return;
+    }
+
     // Le prélèvement off-session réclame une authentification forte.
     if (event.type === 'payment_intent.requires_action') {
       const pi = event.data.object as Stripe.PaymentIntent;
