@@ -1,0 +1,62 @@
+name: typecheck
+
+# Garde-fou type-check. Complète la règle 8 du CLAUDE.md côté CI, pour que
+# l'oubli d'un `npm run typecheck` local ne passe pas inaperçu.
+#
+# ⚠️ Ne PAS remplacer `npm run typecheck` par `npx tsc --noEmit` ici :
+# `apps/admin` et `apps/member-portal` ont un tsconfig « solution »
+# (`"files": []` + `references`) qui fait vérifier 0 fichier et sortir 0.
+# cf. docs/memory/pitfalls/typecheck-noop-solution-tsconfig.md
+
+on:
+  pull_request:
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - '.github/workflows/typecheck.yml'
+  push:
+    branches: [main, staging]
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - '.github/workflows/typecheck.yml'
+
+concurrency:
+  group: typecheck-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    name: typecheck (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [api, admin, member-portal, vitrine, landing]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/${{ matrix.app }}/package-lock.json
+
+      - name: Install
+        working-directory: apps/${{ matrix.app }}
+        run: npm ci
+
+      # Le client Prisma est généré, pas versionné : sans lui le type-check
+      # de l'API échoue sur les champs récents du schéma. Pas de postinstall
+      # dans apps/api, donc on le fait explicitement.
+      - name: Generate Prisma client
+        if: matrix.app == 'api'
+        working-directory: apps/api
+        env:
+          # `prisma generate` lit l'URL mais ne s'y connecte pas.
+          DATABASE_URL: postgresql://user:pass@localhost:5432/db
+        run: npx prisma generate
+
+      - name: Typecheck
+        working-directory: apps/${{ matrix.app }}
+        run: npm run typecheck
