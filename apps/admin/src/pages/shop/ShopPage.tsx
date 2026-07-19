@@ -46,6 +46,8 @@ import {
 import type { MatrixRowDraft } from '../../lib/shop-variant-matrix';
 import { useToast } from '../../components/ToastProvider';
 import { ConfirmModal, Drawer, EmptyState } from '../../components/ui';
+import { ProductImageField } from '../../components/ProductImageField';
+import { AiProductDescriptionPanel } from '../../components/AiProductDescriptionPanel';
 
 function fmtEuros(cents: number): string {
   return `${(cents / 100).toFixed(2).replace('.', ',')} €`;
@@ -549,6 +551,8 @@ function ProductsTab() {
    * pas à l'écran d'un trésorier qui vend un porte-clés.
    */
   const [withVariants, setWithVariants] = useState(false);
+  /** Panneau de rédaction IA de la description. Fermé par défaut. */
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
 
   const products = data?.shopProducts ?? [];
 
@@ -562,6 +566,7 @@ function ProductsTab() {
     setStockStr('');
     setActive(true);
     setWithVariants(false);
+    setAiPanelOpen(false);
     setDrawerOpen(true);
   }
   function openEdit(p: ShopProduct) {
@@ -574,6 +579,7 @@ function ProductsTab() {
     setStockStr(p.stock === null ? '' : String(p.stock));
     setActive(p.active);
     setWithVariants(p.hasVariants);
+    setAiPanelOpen(false);
     setDrawerOpen(true);
   }
 
@@ -842,16 +848,37 @@ function ProductsTab() {
               maxLength={4000}
             />
           </label>
-          <label className="cf-field">
-            <span className="cf-field__label">Image (URL)</span>
-            <input
-              type="url"
-              className="cf-input"
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              placeholder="https://…"
+          {/* Hors du <label> ci-dessus : un bouton dans un label renvoie le
+              clic au textarea. */}
+          {aiPanelOpen ? (
+            <AiProductDescriptionPanel
+              productName={name}
+              onApply={(texte) => {
+                setDescription(texte);
+                setAiPanelOpen(false);
+                showToast('Description appliquée — relisez avant d’enregistrer.', 'success');
+              }}
+              onClose={() => setAiPanelOpen(false)}
             />
-          </label>
+          ) : (
+            <div className="cf-form-actions">
+              <button
+                type="button"
+                className="cf-btn cf-btn--sm"
+                onClick={() => setAiPanelOpen(true)}
+              >
+                <span className="material-symbols-outlined" aria-hidden>
+                  auto_awesome
+                </span>
+                Rédiger avec l’IA
+              </button>
+            </div>
+          )}
+          <ProductImageField
+            value={imageUrl}
+            onChange={setImageUrl}
+            disabled={creating || updating}
+          />
           <div className="cf-grid-2">
             <label className="cf-field">
               <span className="cf-field__label">Prix (€)</span>

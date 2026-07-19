@@ -4,6 +4,7 @@ import { MediaModule } from '../media/media.module';
 import { VitrineModule } from '../vitrine/vitrine.module';
 import { OpenrouterService } from './openrouter.service';
 import { ArticleGeneratorService } from './article-generator.service';
+import { ShopDescriptionGeneratorService } from './shop-description-generator.service';
 import { ImageGeneratorService } from './image-generator.service';
 import { AiSettingsService } from './ai-settings.service';
 import { AiBudgetService } from './ai-budget.service';
@@ -17,6 +18,7 @@ import { AiResolver } from './ai.resolver';
   providers: [
     OpenrouterService,
     ArticleGeneratorService,
+    ShopDescriptionGeneratorService,
     ImageGeneratorService,
     AiSettingsService,
     AiBudgetService,
@@ -27,6 +29,7 @@ import { AiResolver } from './ai.resolver';
   ],
   exports: [
     ArticleGeneratorService,
+    ShopDescriptionGeneratorService,
     ImageGeneratorService,
     AiSettingsService,
     AiBudgetService,
