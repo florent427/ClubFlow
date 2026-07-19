@@ -13,6 +13,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { JwtService } from '@nestjs/jwt';
 import { AuthGuard } from '@nestjs/passport';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
@@ -24,17 +25,28 @@ import { MediaAssetsService } from './media-assets.service';
  * Endpoints REST pour le service média générique.
  *
  *  - POST   /media/upload       (auth admin) upload image ou document
- *  - GET    /media/:id          (public)     servir le fichier avec cache long
+ *  - GET    /media/:id          (mixte)      servir le fichier
  *  - DELETE /media/:id          (auth admin) supprimer
  *  - GET    /media              (auth admin) lister les médias du club
  *
- * Le GET est public pour permettre aux `<img src>` du site vitrine de charger
- * directement sans JWT. L'URL est non-devinable (UUID) et le nom de fichier
- * n'apparaît pas dans l'URL ; un attaquant doit donc connaître l'ID.
+ * Le GET reste ouvert AUX SEULS assets publics — ceux rattachés à une surface
+ * publique (vitrine, projets). Tout le reste — justificatifs comptables,
+ * documents de subvention, pièces jointes de messagerie, documents signés —
+ * exige un JWT valide dont le club correspond au propriétaire du fichier.
+ *
+ * Ce n'était pas le cas jusqu'au 2026-07-20 : `getPublic` faisait un
+ * `findUnique({ where: { id } })` SANS clubId, là où `delete()` filtrait bien
+ * sur `{ id, clubId }`. Tout média de tout club était donc lisible sans JWT
+ * par quiconque connaissait l'UUID. La seule protection était la
+ * non-devinabilité de l'identifiant — de la sécurité par obscurité, qui tombe
+ * dès que l'UUID apparaît dans un log de proxy, un `Referer` ou un mail.
  */
 @Controller('media')
 export class MediaController {
-  constructor(private readonly service: MediaAssetsService) {}
+  constructor(
+    private readonly service: MediaAssetsService,
+    private readonly jwt: JwtService,
+  ) {}
 
   private extractClubId(req: Request): string {
     const raw = req.headers['x-club-id'];
@@ -64,6 +76,7 @@ export class MediaController {
     @Query('kind') kind: 'image' | 'document' | 'video' | 'audio' | undefined,
     @Query('ownerKind') ownerKind: string | undefined,
     @Query('ownerId') ownerId: string | undefined,
+    @Query('visibility') visibility: string | undefined,
     @UploadedFile() file: Express.Multer.File | undefined,
   ) {
     const clubId = this.extractClubId(req);
@@ -122,6 +135,15 @@ export class MediaController {
           : kind === 'audio'
             ? await this.service.uploadAudio(clubId, userId, file, owner)
             : await this.service.uploadImage(clubId, userId, file, owner);
+    // Un fichier naît PRIVÉ. Le rendre public est une demande EXPLICITE de
+    // l'appelant — logo de club, photo de vitrine, image de produit — donc un
+    // geste tracé, et non un défaut subi. Les surfaces rattachées par clé
+    // étrangère n'ont pas besoin de le demander : le contrôle de lecture les
+    // voit par la relation.
+    if (visibility === 'public') {
+      await this.service.markPublic(clubId, row.id);
+    }
+
     return {
       id: row.id,
       clubId: row.clubId,
@@ -182,15 +204,55 @@ export class MediaController {
    * Inutile d'ajouter d'autres formats pour l'instant — PNG suffit pour
    * l'usage logo + galerie membre.
    */
+  /**
+   * Identité du demandeur, ou null s'il est anonyme.
+   *
+   * Volontairement SANS guard : la route doit rester ouverte pour les
+   * `<img src>` de la vitrine, qui ne portent aucun jeton. On vérifie donc le
+   * JWT à la main, et seulement pour décider si l'on a le droit de servir un
+   * fichier privé.
+   *
+   * L'en-tête `x-club-id` seul ne prouve RIEN — n'importe qui peut l'envoyer.
+   * C'est le jeton signé qui fait foi, et le club demandé doit être l'un de
+   * ceux qu'il porte.
+   */
+  private resolveClubId(req: Request): string | null {
+    const auth = req.headers.authorization;
+    if (!auth?.startsWith('Bearer ')) return null;
+    try {
+      const payload = this.jwt.verify<{ clubIds?: string[]; clubId?: string }>(
+        auth.slice(7),
+      );
+      const claimed = this.extractClubIdOrNull(req);
+      if (!claimed) return null;
+      const allowed = payload.clubIds ?? (payload.clubId ? [payload.clubId] : []);
+      return allowed.includes(claimed) ? claimed : null;
+    } catch {
+      // Jeton absent, expiré ou falsifié : on retombe en anonyme, donc sur
+      // les seuls assets publics. Pas d'erreur — une vitrine ne doit pas
+      // casser parce qu'un JWT périmé traîne dans un onglet.
+      return null;
+    }
+  }
+
+  private extractClubIdOrNull(req: Request): string | null {
+    const raw = req.headers['x-club-id'];
+    const v = Array.isArray(raw) ? raw[0] : raw;
+    return typeof v === 'string' && v.length > 0 ? v : null;
+  }
+
   @Get(':id')
   @Throttle({ default: { limit: 1000, ttl: 60_000 } })
   async download(
+    @Req() req: Request,
     @Param('id') id: string,
     @Query('format') format: string | undefined,
     @Query('w') widthParam: string | undefined,
     @Res() res: Response,
   ): Promise<void> {
-    const { row, stream } = await this.service.streamFor(id);
+    const { row, stream, isPublic } = await this.service.streamFor(id, {
+      clubId: this.resolveClubId(req),
+    });
 
     // ─── Branche conversion SVG → PNG ─────────────────────────────
     if (format === 'png' && row.mimeType === 'image/svg+xml') {
@@ -208,15 +270,12 @@ export class MediaController {
           .toBuffer();
         res.setHeader('Content-Type', 'image/png');
         res.setHeader('Content-Length', String(pngBuf.byteLength));
-        res.setHeader(
-          'Cache-Control',
-          'public, max-age=31536000, immutable',
-        );
+        applyCachePolicy(res, isPublic);
         res.setHeader(
           'ETag',
           `"${this.service.etag(row)}-png-${targetWidth}"`,
         );
-        applyOpenCors(res);
+        if (isPublic) applyOpenCors(res);
         res.end(pngBuf);
         return;
       } catch {
@@ -234,9 +293,9 @@ export class MediaController {
       `inline; filename="${row.fileName.replace(/"/g, '')}"; filename*=UTF-8''${encoded}`,
     );
     res.setHeader('Content-Length', String(row.sizeBytes));
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    applyCachePolicy(res, isPublic);
     res.setHeader('ETag', `"${this.service.etag(row)}"`);
-    applyOpenCors(res);
+    if (isPublic) applyOpenCors(res);
     stream.on('error', () => {
       if (!res.headersSent) res.status(500);
       res.end();
@@ -261,6 +320,23 @@ export class MediaController {
  * `/media/:id`. Voir docstring de la méthode `download()` pour la
  * justification (WebView mobile sans origin).
  */
+/**
+ * Cache long et partagé pour le public, cache PRIVÉ pour le reste.
+ *
+ * Servir un justificatif comptable avec `public, immutable` autoriserait tout
+ * cache intermédiaire — proxy d'entreprise, CDN, cache navigateur partagé —
+ * à le conserver et à le resservir. Le contrôle d'accès en amont ne servirait
+ * alors plus à rien : le fichier aurait déjà quitté le périmètre.
+ */
+function applyCachePolicy(res: Response, isPublic: boolean): void {
+  res.setHeader(
+    'Cache-Control',
+    isPublic
+      ? 'public, max-age=31536000, immutable'
+      : 'private, no-store, max-age=0',
+  );
+}
+
 function applyOpenCors(res: Response): void {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
