@@ -214,3 +214,7 @@ rien ; l'abonnement seul est inoffensif.
 ## Lié
 
 - [ADR-0008 — Stripe Connect Express](0008-stripe-connect-express.md)
+- [ADR-0010 — compte de transit Stripe 512300](0010-compte-transit-stripe.md)
+- [ADR-0011 — un remboursement éteint la créance](0011-remboursement-eteint-la-creance.md)
+  — décisif pour l'échéancier : rembourser une échéance abandonne la part
+  correspondante, et l'adhérent paiera d'autant moins au total

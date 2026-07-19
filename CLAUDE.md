@@ -175,6 +175,9 @@ a pas. Ce sont des motifs à reconnaître en écrivant, pas en débuggant :
 - **[Un test qui vérifie la forme au lieu du comportement](docs/memory/pitfalls/test-verifie-la-forme-pas-le-comportement.md)**
   — reste vert en certifiant un invariant que le code n'a pas. Seul le
   mutation testing le démasque.
+- **[Une revue adversariale qui réfute 100 % de ses constats](docs/memory/pitfalls/revue-adversariale-tout-refute.md)**
+  — un rapport tout vert ne prouve pas que le code est propre, seulement que
+  les réfuteurs font leur travail. Relire les constats écartés à 2/3.
 
 ---
 

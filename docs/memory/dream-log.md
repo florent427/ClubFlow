@@ -50,3 +50,26 @@
 - Refusés : workflow "onboarder club via signup self-service" (peut être créé manuellement plus tard, code parle de lui-même)
 - Doublons exclus : NestJS GraphQL nullable (déjà créé dream #4), bracketed paste / CF Zone ID / Caddy log perms / NextJS NEXT_PUBLIC_ / Caddy v2.10 on_demand / ClubMembership pas updatedAt / Windows scp CRLF (mergés dans PR #38 + PR #31 cette session)
 - Note : grosse session multi-tenant Phase 1 + ClubSwitcher. 3 pitfalls retenus = bloqueurs runtime (CSRF Apollo, CORS missing origin, signup verify email). Workflow + ADR jugés non critiques.
+
+## 2026-07-19 (7e session — marathon Stripe Phase 1 & 2 vers la prod)
+- Score : 119 (seuil 8) — **gonflé** : les 33 commits couvrent la session
+  entière depuis la veille, et l'essentiel avait DÉJÀ été capitalisé le jour
+  même par `/learn` (3 pitfalls + ADR-0010) et deux `/add-pitfall`
+  (ADR-0011, staging). Le score mesure l'activité, pas la matière restante.
+- Commits scannés (SHA, pour exclusion future) : 292d9fa, ef24af9, 94ece64, d0f8a42, 4d2df8b, 99e6194, 3b51ac4, 9837e31, 00f27c8, 5aade6b, 7c58dc2, 1221f52, d45b3b7, 625cf65, bd90ba6, a784308, a0748c4, 2948094, 4a84166, 67385a7, 80c710d, db465e4, 7d95e82, 0a07c8e, caf0d77, 425c73a, 16bffca, 8c5d38b, aa84cad, f8154d3, af8b254, 66217b7
+- Créés : `pitfalls/revue-adversariale-tout-refute.md`
+- Mis à jour : `pitfalls/release-please-no-trigger.md` (le correctif qu'il
+  prescrivait n'avait jamais été appliqué + conséquence non documentée :
+  le tag arrive un merge en retard), `.github/workflows/release-please.yml`
+  (`workflow_dispatch` enfin ajouté), liens croisés ADR-0011 ← 0009/0010,
+  CLAUDE.md (section « pièges sans symptôme »)
+- Refusés : `gh api -f` vs `-F` pour un booléen (déjà couvert dans
+  `staging-supprimee-au-merge.md`), workflow de promotion staging→main
+  (déjà `workflows/modif-locale-vers-prod.md`)
+- Health : 40 pitfalls · 11 ADR · 4 workflows · 0 stale · 8 orphelins
+  antérieurs restants (ADR-0011 résolu ce soir)
+- Note : la vraie valeur du cycle a été la DÉTECTION DE DOUBLONS, pas la
+  production. Deux des trois actions étaient des corrections d'entrées
+  existantes, dont un pitfall dont le correctif dormait depuis des mois —
+  un pitfall non appliqué donne l'illusion inverse : on se souvient d'avoir
+  traité le sujet.

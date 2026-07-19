@@ -3,6 +3,14 @@ name: release-please
 on:
   push:
     branches: [main]
+  # Rattrapage manuel, indispensable et pas seulement confortable.
+  #
+  # La PR de release est auto-mergée avec le `GITHUB_TOKEN`, et GitHub ne
+  # redéclenche AUCUN workflow sur un push signé de ce token — protection
+  # anti-boucle. release-please ne repasse donc pas sur son propre merge, et
+  # le tag n'est coupé qu'au merge SUIVANT. Sans ce trigger, impossible de
+  # rattraper autrement qu'en poussant un commit bidon.
+  workflow_dispatch:
 
 permissions:
   contents: write
