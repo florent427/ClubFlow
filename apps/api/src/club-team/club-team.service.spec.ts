@@ -144,7 +144,7 @@ class FakeDb {
   private client(ctx: { relachers: (() => void)[] }) {
     const self = this;
     return {
-      $queryRaw: async (strings: TemplateStringsArray, ...values: unknown[]) => {
+      $executeRaw: async (strings: TemplateStringsArray, ...values: unknown[]) => {
         const sql = strings.join('?');
         if (sql.includes('pg_advisory_xact_lock')) {
           const cle = `club-team::${String(values[0])}`;
@@ -504,14 +504,14 @@ describe('FakeDb — le faux mord', () => {
     const prisma = db.asPrisma() as unknown as {
       $transaction: (
         cb: (tx: {
-          $queryRaw: (s: TemplateStringsArray, ...v: unknown[]) => Promise<unknown>;
+          $executeRaw: (s: TemplateStringsArray, ...v: unknown[]) => Promise<unknown>;
         }) => Promise<unknown>,
       ) => Promise<unknown>;
     };
     const journal: string[] = [];
     const lock = async (nom: string) =>
       prisma.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('clubflow:club-team'), hashtext(${CLUB}))`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('clubflow:club-team'), hashtext(${CLUB}))`;
         journal.push(`${nom}:entre`);
         for (let i = 0; i < 20; i++) await Promise.resolve();
         journal.push(`${nom}:sort`);

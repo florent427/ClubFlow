@@ -298,7 +298,19 @@ export class ClubTeamService {
     tx: Prisma.TransactionClient,
     clubId: string,
   ): Promise<void> {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('clubflow:club-team'), hashtext(${clubId}))`;
+    // `$executeRaw` et NON `$queryRaw`, et ce n'est pas un détail de style :
+    // `pg_advisory_xact_lock()` renvoie `void`, un type que le pilote Prisma
+    // ne sait pas désérialiser. `$queryRaw` tentait de lire la colonne et
+    // levait « Failed to deserialize column of type 'void' » — à CHAQUE appel.
+    //
+    // Le verrou ne se posait donc jamais : tout retrait et tout changement de
+    // rôle échouaient. Les tests unitaires ne pouvaient pas le voir, leur faux
+    // Prisma simulant `$queryRaw` sans jamais toucher au vrai pilote. Seul un
+    // appel contre une vraie base l'a révélé.
+    //
+    // `$executeRaw` ne lit pas de résultat, il ne compte que les lignes
+    // affectées — c'est exactement ce qu'il faut pour un effet de bord.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('clubflow:club-team'), hashtext(${clubId}))`;
   }
 
   /**
