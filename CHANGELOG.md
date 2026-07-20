@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.27.2](https://github.com/florent427/ClubFlow/compare/v0.27.1...v0.27.2) (2026-07-20)
+
+
+### 🐛 Bug Fixes
+
+* **portail:** vider le cache Apollo à chaque changement d'identité ([f148b07](https://github.com/florent427/ClubFlow/commit/f148b07f9fdfb905332a72bbe2188dae590c479a))
+* **portail:** vider le cache Apollo à chaque changement d'identité ([0bbe53d](https://github.com/florent427/ClubFlow/commit/0bbe53dd259f0f99a53ea02c2ed65bba0d69deb9))
+
 ## [0.27.1](https://github.com/florent427/ClubFlow/compare/v0.27.0...v0.27.1) (2026-07-20)
 
 
