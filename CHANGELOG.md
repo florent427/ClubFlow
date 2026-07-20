@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.27.1](https://github.com/florent427/ClubFlow/compare/v0.27.0...v0.27.1) (2026-07-20)
+
+
+### 🐛 Bug Fixes
+
+* **web:** décoder le JWT en UTF-8 et en base64url, pas avec atob seul ([d3e1ae2](https://github.com/florent427/ClubFlow/commit/d3e1ae2838e6b33e99e8f6bf3b224144f2826d15))
+* **web:** décoder le JWT en UTF-8 et en base64url, pas avec atob seul ([2c6e019](https://github.com/florent427/ClubFlow/commit/2c6e0198f7d34347cefed9869ef1fd205e6472b0))
+
 ## [0.27.0](https://github.com/florent427/ClubFlow/compare/v0.26.0...v0.27.0) (2026-07-20)
 
 
