@@ -20,6 +20,13 @@ function variant(over: Partial<ShopProductVariant> = {}): ShopProductVariant {
     available: 10,
     onHand: 10,
     reorderThreshold: 3,
+    // Reporting d'approvisionnement (ADR-0013) : null = « pas de commande en
+    // cours » / « coût jamais renseigné ». La matrice ne s'en sert pas, mais
+    // le type l'exige — et null est la valeur honnête par défaut.
+    onOrder: null,
+    avgCostCents: null,
+    marginCents: null,
+    marginRate: null,
     inStock: true,
     belowThreshold: false,
     active: true,

@@ -806,13 +806,27 @@ export class ShopPurchaseOrdersService {
         throw new NotFoundException('Commande fournisseur introuvable.');
       }
 
+      // Le `OR` est une GARANTIE, pas une commodité : sans lui, rattacher une
+      // facture déjà liée à une AUTRE commande écrasait le lien existant. La
+      // première commande perdait son rapprochement en silence — pas d'erreur,
+      // pas de trace, et personne ne s'en apercevait avant un contrôle.
+      //
+      // Les deux branches disent : « non rattachée » ou « déjà rattachée À
+      // CELLE-CI ». La seconde rend l'opération idempotente (rejouer un lien
+      // identique ne doit pas échouer) ; la première interdit le vol. Tout est
+      // dans le WHERE, donc c'est la base qui arbitre, et `count` qui l'atteste.
       const linked = await tx.accountingEntry.updateMany({
-        where: { id: input.entryId, clubId, cancelledAt: null },
+        where: {
+          id: input.entryId,
+          clubId,
+          cancelledAt: null,
+          OR: [{ purchaseOrderId: null }, { purchaseOrderId: input.orderId }],
+        },
         data: { purchaseOrderId: input.orderId },
       });
       if (linked.count !== 1) {
         throw new BadRequestException(
-          'Écriture comptable introuvable, annulée, ou appartenant à un autre club.',
+          'Écriture comptable introuvable, annulée, appartenant à un autre club, ou déjà rattachée à une autre commande fournisseur.',
         );
       }
     });

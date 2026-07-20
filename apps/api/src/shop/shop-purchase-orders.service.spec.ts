@@ -143,6 +143,18 @@ function correspond(
   for (const [cle, attendu] of Object.entries(where)) {
     if (attendu === undefined) continue;
 
+    // `OR` : au moins une branche doit correspondre.
+    //
+    // Sans ce cas, la clé `OR` était comparée telle quelle à `row.OR`
+    // (undefined) et AUCUNE ligne ne correspondait jamais. Le double refusait
+    // alors tout, ce qui rendait verts les tests de refus pour une raison qui
+    // n'a rien à voir avec la garantie testée — le double, pas le code.
+    if (cle === 'OR') {
+      const branches = attendu as Array<Record<string, any>>;
+      if (!branches.some((b) => correspond(row, b, relations))) return false;
+      continue;
+    }
+
     if (cle === 'order') {
       const parent = relations.order?.(row);
       if (!parent) return false;
@@ -847,6 +859,42 @@ describe('linkInvoice — le lien, JAMAIS l’écriture', () => {
     ).rejects.toThrow(BadRequestException);
 
     expect(h.entries[0].purchaseOrderId).toBeNull();
+  });
+
+  it('REFUSE de VOLER une facture déjà rattachée à une autre commande', async () => {
+    // Le bug que ce test ferme : sans prédicat sur `purchaseOrderId`, le
+    // rattachement écrasait le lien existant. La commande po-2 perdait son
+    // rapprochement EN SILENCE — pas d'erreur, pas de trace, et l'écart ne se
+    // serait vu qu'au contrôle comptable, des mois plus tard.
+    const h = makeHarness({
+      orders: [ordre()],
+      lines: [ligne()],
+      entries: [ecriture({ purchaseOrderId: 'po-2' })],
+    });
+
+    await expect(
+      h.svc.linkInvoice(CLUB, { orderId: 'po-1', entryId: 'ae-1' }),
+    ).rejects.toThrow(BadRequestException);
+
+    // L'essentiel : le lien d'origine est INTACT.
+    expect(h.entries[0].purchaseOrderId).toBe('po-2');
+  });
+
+  it('TOLÈRE de rejouer un rattachement identique', async () => {
+    // Le pendant du test précédent : interdire le vol ne doit pas rendre
+    // l'opération non idempotente. Un double clic ou un rejeu réseau ferait
+    // voir une erreur au trésorier là où il n'y a rien à corriger.
+    const h = makeHarness({
+      orders: [ordre()],
+      lines: [ligne()],
+      entries: [ecriture({ purchaseOrderId: 'po-1' })],
+    });
+
+    await expect(
+      h.svc.linkInvoice(CLUB, { orderId: 'po-1', entryId: 'ae-1' }),
+    ).resolves.toBeDefined();
+
+    expect(h.entries[0].purchaseOrderId).toBe('po-1');
   });
 
   it('REFUSE la commande d’un AUTRE club', async () => {

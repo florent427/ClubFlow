@@ -1927,6 +1927,10 @@ const SHOP_PRODUCT_VARIANT_FIELDS = `
   available
   onHand
   reorderThreshold
+  onOrder
+  avgCostCents
+  marginCents
+  marginRate
   inStock
   belowThreshold
   active
@@ -1949,6 +1953,7 @@ const SHOP_PRODUCT_FIELDS = `
   hasVariants
   priceFromCents
   variantsBelowThreshold
+  stockValueCents
   variants {
     ${SHOP_PRODUCT_VARIANT_FIELDS}
   }
@@ -2149,6 +2154,197 @@ export const TRIGGER_SHOP_STOCK_SWEEP = gql`
       alerted
       rearmed
       failed
+    }
+  }
+`;
+
+// ---------------------------------------------------------------------------
+// Approvisionnement : fournisseurs, commandes, réception (ADR-0013)
+//
+// Toutes ces opérations vivent sur ShopAdminResolver, qui porte les quatre
+// gardes et le gating de module.
+//
+// Chaque mutation de commande renvoie la COMMANDE ENTIÈRE, statut compris.
+// Le statut étant CALCULÉ côté serveur (ADR-0013 §3), le lire dans la réponse
+// est la seule façon de ne pas afficher un état faux : ne jamais le déduire
+// côté client.
+// ---------------------------------------------------------------------------
+
+const SHOP_SUPPLIER_FIELDS = `
+  id
+  name
+  contactName
+  email
+  phone
+  accountRef
+  leadTimeDays
+  notes
+  active
+  createdAt
+`;
+
+const SHOP_PURCHASE_ORDER_FIELDS = `
+  id
+  clubId
+  supplierId
+  supplier {
+    ${SHOP_SUPPLIER_FIELDS}
+  }
+  reference
+  status
+  orderedAt
+  expectedAt
+  closedAt
+  notes
+  lines {
+    id
+    variantId
+    orderedQty
+    receivedQty
+    unitCostCents
+    closed
+  }
+  receptions {
+    id
+    receivedAt
+    deliveryNote
+    userId
+    notes
+    lines {
+      id
+      orderLineId
+      receivedQty
+      discrepancyReason
+      discrepancyNote
+      movementId
+    }
+  }
+  accountingEntries {
+    id
+    label
+    amountCents
+    occurredAt
+    invoiceNumber
+  }
+  createdAt
+  updatedAt
+`;
+
+export const SHOP_SUPPLIERS = gql`
+  query ShopSuppliers($includeInactive: Boolean) {
+    shopSuppliers(includeInactive: $includeInactive) {
+      ${SHOP_SUPPLIER_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_SHOP_SUPPLIER = gql`
+  mutation CreateShopSupplier($input: CreateShopSupplierInput!) {
+    createShopSupplier(input: $input) {
+      ${SHOP_SUPPLIER_FIELDS}
+    }
+  }
+`;
+
+export const UPDATE_SHOP_SUPPLIER = gql`
+  mutation UpdateShopSupplier($input: UpdateShopSupplierInput!) {
+    updateShopSupplier(input: $input) {
+      ${SHOP_SUPPLIER_FIELDS}
+    }
+  }
+`;
+
+export const SHOP_PURCHASE_ORDERS = gql`
+  query ShopPurchaseOrders {
+    shopPurchaseOrders {
+      ${SHOP_PURCHASE_ORDER_FIELDS}
+    }
+  }
+`;
+
+export const SHOP_PURCHASE_ORDER = gql`
+  query ShopPurchaseOrder($id: ID!) {
+    shopPurchaseOrder(id: $id) {
+      ${SHOP_PURCHASE_ORDER_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_SHOP_PURCHASE_ORDER = gql`
+  mutation CreateShopPurchaseOrder($input: CreateShopPurchaseOrderInput!) {
+    createShopPurchaseOrder(input: $input) {
+      ${SHOP_PURCHASE_ORDER_FIELDS}
+    }
+  }
+`;
+
+export const ADD_SHOP_PURCHASE_ORDER_LINE = gql`
+  mutation AddShopPurchaseOrderLine($input: AddShopPurchaseOrderLineInput!) {
+    addShopPurchaseOrderLine(input: $input) {
+      ${SHOP_PURCHASE_ORDER_FIELDS}
+    }
+  }
+`;
+
+export const REMOVE_SHOP_PURCHASE_ORDER_LINE = gql`
+  mutation RemoveShopPurchaseOrderLine(
+    $input: RemoveShopPurchaseOrderLineInput!
+  ) {
+    removeShopPurchaseOrderLine(input: $input) {
+      ${SHOP_PURCHASE_ORDER_FIELDS}
+    }
+  }
+`;
+
+export const SEND_SHOP_PURCHASE_ORDER = gql`
+  mutation SendShopPurchaseOrder($id: ID!) {
+    sendShopPurchaseOrder(id: $id) {
+      ${SHOP_PURCHASE_ORDER_FIELDS}
+    }
+  }
+`;
+
+export const CANCEL_SHOP_PURCHASE_ORDER = gql`
+  mutation CancelShopPurchaseOrder($id: ID!) {
+    cancelShopPurchaseOrder(id: $id) {
+      ${SHOP_PURCHASE_ORDER_FIELDS}
+    }
+  }
+`;
+
+export const RECEIVE_SHOP_PURCHASE_ORDER = gql`
+  mutation ReceiveShopPurchaseOrder($input: ReceiveShopPurchaseOrderInput!) {
+    receiveShopPurchaseOrder(input: $input) {
+      ${SHOP_PURCHASE_ORDER_FIELDS}
+    }
+  }
+`;
+
+export const SHOP_PURCHASE_INVOICE_ACCOUNT = gql`
+  query ShopPurchaseInvoiceAccount {
+    shopPurchaseInvoiceAccount {
+      code
+      label
+    }
+  }
+`;
+
+export const LINK_SHOP_PURCHASE_ORDER_INVOICE = gql`
+  mutation LinkShopPurchaseOrderInvoice(
+    $input: ShopPurchaseOrderInvoiceInput!
+  ) {
+    linkShopPurchaseOrderInvoice(input: $input) {
+      ${SHOP_PURCHASE_ORDER_FIELDS}
+    }
+  }
+`;
+
+export const UNLINK_SHOP_PURCHASE_ORDER_INVOICE = gql`
+  mutation UnlinkShopPurchaseOrderInvoice(
+    $input: ShopPurchaseOrderInvoiceInput!
+  ) {
+    unlinkShopPurchaseOrderInvoice(input: $input) {
+      ${SHOP_PURCHASE_ORDER_FIELDS}
     }
   }
 `;
