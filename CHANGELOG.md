@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.28.0](https://github.com/florent427/ClubFlow/compare/v0.27.2...v0.28.0) (2026-07-20)
+
+
+### ✨ Features
+
+* **membres:** rattacher une fiche à un compte, et rendre le conflit visible ([c5e2829](https://github.com/florent427/ClubFlow/commit/c5e2829b6334bce6c6aa9e9f12143f211d2b1329))
+* **membres:** rattacher une fiche à un compte, et rendre le conflit visible ([9dd0e01](https://github.com/florent427/ClubFlow/commit/9dd0e0159103d7bb1cb58d347df65fc8a1d28a3c))
+
 ## [0.27.2](https://github.com/florent427/ClubFlow/compare/v0.27.1...v0.27.2) (2026-07-20)
 
 
