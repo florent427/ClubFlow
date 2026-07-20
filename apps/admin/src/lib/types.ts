@@ -1063,6 +1063,21 @@ export type ShopProductVariant = {
   available: number | null;
   onHand: number | null;
   reorderThreshold: number | null;
+  /**
+   * Quantité EN COMMANDE chez le fournisseur (ADR-0013 §4). DÉRIVÉE.
+   * Null hors administration — et n'autorise JAMAIS une vente.
+   */
+  onOrder: number | null;
+  /**
+   * Coût moyen pondéré, en centimes. NULL = coût jamais renseigné (aucune
+   * réception valorisée). À afficher « — », JAMAIS 0 € : « gratuit » et
+   * « on ne sait pas » ne sont pas la même information.
+   */
+  avgCostCents: number | null;
+  /** Marge unitaire. Null dès que le coût est inconnu — jamais « 100 % ». */
+  marginCents: number | null;
+  /** Taux de marge (0–1). Null si coût inconnu OU prix de vente nul. */
+  marginRate: number | null;
   inStock: boolean;
   belowThreshold: boolean;
   active: boolean;
@@ -1086,6 +1101,12 @@ export type ShopProduct = {
   hasVariants: boolean;
   priceFromCents: number;
   variantsBelowThreshold: number;
+  /**
+   * Valeur du stock au coût moyen pondéré (ADR-0013 §1). C'est un PLANCHER,
+   * pas une estimation : les déclinaisons au coût inconnu comptent pour ZÉRO.
+   * L'écran doit le dire — sinon le trésorier lit une valorisation.
+   */
+  stockValueCents: number | null;
   variants: ShopProductVariant[];
   active: boolean;
   createdAt: string;
@@ -1217,6 +1238,153 @@ export type ShopLowStockVariantsQueryData = {
 };
 export type TriggerShopStockSweepMutationData = {
   triggerShopStockSweep: ShopStockSweepReport;
+};
+
+// ---------------------------------------------------------------------------
+// Approvisionnement (ADR-0013)
+// ---------------------------------------------------------------------------
+
+export type ShopSupplier = {
+  id: string;
+  name: string;
+  contactName: string | null;
+  email: string | null;
+  phone: string | null;
+  accountRef: string | null;
+  /** Délai de livraison habituel, en jours. Date l'arrivée attendue. */
+  leadTimeDays: number | null;
+  notes: string | null;
+  /** Faux tient lieu de suppression : la FK des commandes est en Restrict. */
+  active: boolean;
+  createdAt: string;
+};
+
+/**
+ * Statut CALCULÉ après chaque réception, jamais saisi (ADR-0013 §3).
+ * Ne le recalculez pas côté client : lisez celui que renvoie le serveur.
+ */
+export type ShopPurchaseOrderStatusGql =
+  | 'DRAFT'
+  | 'ORDERED'
+  | 'PARTIALLY_RECEIVED'
+  | 'RECEIVED'
+  | 'CANCELLED';
+
+/**
+ * Motif d'écart. CE N'EST PAS UN CHAMP DÉCORATIF : il pilote la machine à
+ * états (ADR-0013 §2). `BACKORDER` laisse la ligne OUVERTE, tous les autres
+ * la SOLDENT — définitivement.
+ */
+export type ShopReceiptDiscrepancyReasonGql =
+  | 'BACKORDER'
+  | 'SUPPLIER_SHORTAGE'
+  | 'DAMAGED_IN_TRANSIT'
+  | 'PICKING_ERROR'
+  | 'OVER_DELIVERY'
+  | 'OTHER';
+
+export type ShopPurchaseOrderLine = {
+  id: string;
+  variantId: string;
+  orderedQty: number;
+  /** Cumul des réceptions. Maintenu par le moteur, jamais saisi. */
+  receivedQty: number;
+  /** Prix d'achat unitaire HT en CENTIMES. Nourrit le coût moyen pondéré. */
+  unitCostCents: number;
+  /** Soldée : plus rien n'est attendu, que la quantité soit atteinte ou non. */
+  closed: boolean;
+};
+
+export type ShopPurchaseReceptionLine = {
+  id: string;
+  orderLineId: string;
+  receivedQty: number;
+  discrepancyReason: ShopReceiptDiscrepancyReasonGql | null;
+  discrepancyNote: string | null;
+  movementId: string | null;
+};
+
+export type ShopPurchaseReception = {
+  id: string;
+  receivedAt: string;
+  deliveryNote: string | null;
+  userId: string | null;
+  notes: string | null;
+  lines: ShopPurchaseReceptionLine[];
+};
+
+/** Une facture fournisseur RAPPROCHÉE — une écriture du grand livre. */
+export type ShopPurchaseOrderInvoice = {
+  id: string;
+  label: string;
+  amountCents: number;
+  occurredAt: string;
+  invoiceNumber: string | null;
+};
+
+export type ShopPurchaseInvoiceAccount = {
+  code: string;
+  label: string;
+};
+
+export type ShopPurchaseOrder = {
+  id: string;
+  clubId: string;
+  supplierId: string;
+  supplier: ShopSupplier | null;
+  /** Référence lisible engendrée par la base (« CF-2026-004 »). */
+  reference: string;
+  status: ShopPurchaseOrderStatusGql;
+  orderedAt: string | null;
+  expectedAt: string | null;
+  closedAt: string | null;
+  notes: string | null;
+  lines: ShopPurchaseOrderLine[];
+  receptions: ShopPurchaseReception[];
+  accountingEntries: ShopPurchaseOrderInvoice[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ShopSuppliersQueryData = { shopSuppliers: ShopSupplier[] };
+export type CreateShopSupplierMutationData = {
+  createShopSupplier: ShopSupplier;
+};
+export type UpdateShopSupplierMutationData = {
+  updateShopSupplier: ShopSupplier;
+};
+export type ShopPurchaseOrdersQueryData = {
+  shopPurchaseOrders: ShopPurchaseOrder[];
+};
+export type ShopPurchaseOrderQueryData = {
+  shopPurchaseOrder: ShopPurchaseOrder;
+};
+export type CreateShopPurchaseOrderMutationData = {
+  createShopPurchaseOrder: ShopPurchaseOrder;
+};
+export type AddShopPurchaseOrderLineMutationData = {
+  addShopPurchaseOrderLine: ShopPurchaseOrder;
+};
+export type RemoveShopPurchaseOrderLineMutationData = {
+  removeShopPurchaseOrderLine: ShopPurchaseOrder;
+};
+export type SendShopPurchaseOrderMutationData = {
+  sendShopPurchaseOrder: ShopPurchaseOrder;
+};
+export type CancelShopPurchaseOrderMutationData = {
+  cancelShopPurchaseOrder: ShopPurchaseOrder;
+};
+export type ReceiveShopPurchaseOrderMutationData = {
+  receiveShopPurchaseOrder: ShopPurchaseOrder;
+};
+export type ShopPurchaseInvoiceAccountQueryData = {
+  shopPurchaseInvoiceAccount: ShopPurchaseInvoiceAccount;
+};
+export type LinkShopPurchaseOrderInvoiceMutationData = {
+  linkShopPurchaseOrderInvoice: ShopPurchaseOrder;
+};
+export type UnlinkShopPurchaseOrderInvoiceMutationData = {
+  unlinkShopPurchaseOrderInvoice: ShopPurchaseOrder;
 };
 
 export type SponsorshipDealStatusGql =

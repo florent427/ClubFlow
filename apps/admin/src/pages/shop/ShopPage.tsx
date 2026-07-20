@@ -48,21 +48,17 @@ import { useToast } from '../../components/ToastProvider';
 import { ConfirmModal, Drawer, EmptyState } from '../../components/ui';
 import { ProductImageField } from '../../components/ProductImageField';
 import { AiProductDescriptionPanel } from '../../components/AiProductDescriptionPanel';
+import { SuppliersTab } from './SuppliersTab';
+import { PurchaseOrdersTab } from './PurchaseOrdersTab';
+import {
+  fmtCostOrUnknown,
+  fmtDate,
+  fmtDelta,
+  fmtEuros,
+  fmtMarginRate,
+  variantDisplay,
+} from './shop-format';
 
-function fmtEuros(cents: number): string {
-  return `${(cents / 100).toFixed(2).replace('.', ',')} €`;
-}
-function fmtDate(iso: string | null): string {
-  if (!iso) return '—';
-  try {
-    return new Date(iso).toLocaleString('fr-FR', {
-      dateStyle: 'short',
-      timeStyle: 'short',
-    });
-  } catch {
-    return '—';
-  }
-}
 function orderStatusPill(s: ShopOrder['status']): {
   label: string;
   cls: 'ok' | 'warn' | 'muted';
@@ -70,11 +66,6 @@ function orderStatusPill(s: ShopOrder['status']): {
   if (s === 'PAID') return { label: 'Payée', cls: 'ok' };
   if (s === 'CANCELLED') return { label: 'Annulée', cls: 'muted' };
   return { label: 'En attente', cls: 'warn' };
-}
-
-/** « Produit — L / Rouge », ou le seul nom du produit si pas de déclinaison. */
-function variantDisplay(productName: string, label: string | null): string {
-  return label ? `${productName} — ${label}` : productName;
 }
 
 const MOVEMENT_LABELS: Record<ShopStockMovementKindGql, string> = {
@@ -85,12 +76,6 @@ const MOVEMENT_LABELS: Record<ShopStockMovementKindGql, string> = {
   ADJUSTMENT: 'Correction d’inventaire',
   SHRINKAGE: 'Perte / casse / vol',
 };
-
-/** Delta signé, « — » quand le compteur n'a pas bougé. */
-function fmtDelta(n: number): string {
-  if (n === 0) return '—';
-  return n > 0 ? `+${n}` : String(n);
-}
 
 // ===========================================================================
 // Sous-écran des déclinaisons
@@ -400,6 +385,9 @@ function VariantsDrawer({
                     <th>Prix (€)</th>
                     <th>Stock compté</th>
                     <th>Vendable</th>
+                    <th>En commande</th>
+                    <th>Coût moyen</th>
+                    <th>Marge</th>
                     <th>Seuil d’alerte</th>
                   </tr>
                 </thead>
@@ -471,6 +459,43 @@ function VariantsDrawer({
                             ? v.available
                             : '∞'}
                         </td>
+                        {/*
+                          Encours fournisseur : « il reste 2 M, mais 20
+                          arrivent » est ce qui évite de recommander deux fois
+                          (ADR-0013 §4). N'autorise jamais une vente.
+                        */}
+                        <td className="cf-muted">
+                          {v.onOrder === null || v.onOrder === 0
+                            ? '—'
+                            : `+${v.onOrder} attendus`}
+                        </td>
+                        {/*
+                          Coût moyen et marge : NULL veut dire « jamais
+                          renseigné », pas « zéro ». Afficher « 0 € » et
+                          « 100 % » ferait croire à une marge totale sur un
+                          article dont on ignore le prix d'achat.
+                        */}
+                        <td className="cf-muted">
+                          {v.avgCostCents === null ? (
+                            <span title="Aucune réception valorisée : le coût d’achat de cette déclinaison n’est pas connu.">
+                              coût non renseigné
+                            </span>
+                          ) : (
+                            fmtCostOrUnknown(v.avgCostCents)
+                          )}
+                        </td>
+                        <td className="cf-muted">
+                          {v.marginCents === null ? (
+                            '—'
+                          ) : (
+                            <>
+                              {fmtEuros(v.marginCents)}
+                              {v.marginRate === null
+                                ? null
+                                : ` (${fmtMarginRate(v.marginRate)})`}
+                            </>
+                          )}
+                        </td>
                         <td>
                           <input
                             type="number"
@@ -494,6 +519,13 @@ function VariantsDrawer({
               « Stock compté » est ce que vous avez physiquement dans le
               placard ; « Vendable » en retire ce qui est déjà réservé par une
               commande en attente. Un prix laissé vide reprend celui du produit.
+            </span>
+            <span className="cf-field__hint">
+              « Coût non renseigné » n’est pas un coût de zéro : c’est une
+              déclinaison qu’aucune réception valorisée n’a encore touchée. Sa
+              marge est donc inconnue, et elle compte pour <strong>0</strong>{' '}
+              dans la valeur du stock affichée sur la fiche produit — laquelle
+              est pour cette raison un minimum, jamais une estimation.
             </span>
             <div className="cf-form-actions">
               <button
@@ -780,6 +812,21 @@ function ProductsTab() {
                     </>
                   ) : null}
                 </p>
+                {/*
+                  Valeur du stock : c'est un PLANCHER, pas une estimation
+                  (ADR-0013 §1). Les déclinaisons dont le coût d'achat n'a
+                  jamais été saisi comptent pour ZÉRO. Afficher le chiffre nu
+                  le ferait lire comme une valorisation — d'où la mention
+                  « au moins », toujours accolée.
+                */}
+                {p.stockValueCents !== null ? (
+                  <p
+                    className="cf-muted"
+                    title="Somme des quantités physiques × coût moyen pondéré. Les articles au coût d’achat inconnu comptent pour 0 : le vrai total est supérieur ou égal."
+                  >
+                    Valeur du stock : au moins {fmtEuros(p.stockValueCents)}
+                  </p>
+                ) : null}
                 <div className="cf-product-card__actions">
                   <button
                     type="button"
@@ -1478,15 +1525,23 @@ function RestockTab() {
   );
 }
 
-type ShopTab = 'products' | 'orders' | 'movements' | 'restock';
+type ShopTab =
+  | 'products'
+  | 'orders'
+  | 'movements'
+  | 'restock'
+  | 'suppliers'
+  | 'purchases';
 
 export function ShopPage() {
   const [tab, setTab] = useState<ShopTab>('products');
   const tabs: Array<{ key: ShopTab; label: string }> = [
     { key: 'products', label: 'Produits' },
-    { key: 'orders', label: 'Commandes' },
+    { key: 'orders', label: 'Commandes membres' },
     { key: 'movements', label: 'Mouvements de stock' },
     { key: 'restock', label: 'À réapprovisionner' },
+    { key: 'suppliers', label: 'Fournisseurs' },
+    { key: 'purchases', label: 'Commandes fournisseur' },
   ];
   return (
     <div className="cf-page">
@@ -1514,6 +1569,8 @@ export function ShopPage() {
       {tab === 'orders' ? <OrdersTab /> : null}
       {tab === 'movements' ? <MovementsTab /> : null}
       {tab === 'restock' ? <RestockTab /> : null}
+      {tab === 'suppliers' ? <SuppliersTab /> : null}
+      {tab === 'purchases' ? <PurchaseOrdersTab /> : null}
     </div>
   );
 }
