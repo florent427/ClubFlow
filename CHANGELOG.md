@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.27.0](https://github.com/florent427/ClubFlow/compare/v0.26.0...v0.27.0) (2026-07-20)
+
+
+### ✨ Features
+
+* **appro:** écrans fournisseurs, commandes et réception ([202bf1e](https://github.com/florent427/ClubFlow/commit/202bf1ea811097e2c7118ca6c06d1079eca7abcd))
+* **appro:** écrans fournisseurs, commandes et réception ([da8c924](https://github.com/florent427/ClubFlow/commit/da8c924e4f69344d0924125502fd8aced979a8c9))
+
 ## [0.26.0](https://github.com/florent427/ClubFlow/compare/v0.25.0...v0.26.0) (2026-07-20)
 
 
