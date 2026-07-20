@@ -125,6 +125,41 @@ export class ShopPurchaseReceptionGraph {
   lines!: ShopPurchaseReceptionLineGraph[];
 }
 
+/**
+ * Une facture fournisseur RAPPROCHÉE de la commande (ADR-0013 §1).
+ *
+ * C'est une écriture du grand livre, saisie par le trésorier au paiement du
+ * fournisseur — la réception n'en crée AUCUNE. On n'en ramène ici que de quoi
+ * la reconnaître ; elle se consulte, et se modifie, côté comptabilité.
+ */
+@ObjectType()
+export class ShopPurchaseOrderInvoiceGraph {
+  @Field(() => ID)
+  id!: string;
+
+  @Field()
+  label!: string;
+
+  @Field(() => Int)
+  amountCents!: number;
+
+  @Field()
+  occurredAt!: Date;
+
+  @Field(() => String, { nullable: true })
+  invoiceNumber!: string | null;
+}
+
+/** Compte d'achat proposé par défaut au trésorier qui saisit sa facture. */
+@ObjectType()
+export class ShopPurchaseInvoiceAccountGraph {
+  @Field()
+  code!: string;
+
+  @Field()
+  label!: string;
+}
+
 @ObjectType()
 export class ShopPurchaseOrderGraph {
   @Field(() => ID)
@@ -164,6 +199,13 @@ export class ShopPurchaseOrderGraph {
   /** Les livraisons, de la plus récente à la plus ancienne (ADR-0013 §5). */
   @Field(() => [ShopPurchaseReceptionGraph])
   receptions!: ShopPurchaseReceptionGraph[];
+
+  /**
+   * Les factures fournisseur rapprochées. PLUSIEURS : une commande livrée en
+   * trois fois se facture volontiers en trois fois.
+   */
+  @Field(() => [ShopPurchaseOrderInvoiceGraph])
+  accountingEntries!: ShopPurchaseOrderInvoiceGraph[];
 
   @Field()
   createdAt!: Date;

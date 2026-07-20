@@ -204,6 +204,25 @@ export class RemoveShopPurchaseOrderLineInput {
   lineId!: string;
 }
 
+/**
+ * Rapprochement d'une facture fournisseur DÉJÀ SAISIE avec sa commande.
+ *
+ * Sert aussi bien à poser le lien qu'à le retirer : les deux mutations
+ * demandent exactement les deux mêmes identifiants, et un second DTO jumeau
+ * n'apporterait qu'une occasion de les faire diverger.
+ */
+@InputType()
+export class ShopPurchaseOrderInvoiceInput {
+  @Field(() => ID)
+  @IsUUID()
+  orderId!: string;
+
+  /** L'écriture comptable du grand livre. JAMAIS créée ici (ADR-0013 §1). */
+  @Field(() => ID)
+  @IsUUID()
+  entryId!: string;
+}
+
 /** Ce qui est réellement arrivé sur une ligne, pour cette livraison-là. */
 @InputType()
 export class ReceiveShopPurchaseOrderLineInput {

@@ -23,6 +23,10 @@ export class AccountingMappingService {
     MEMBERSHIP_PRODUCT: '706100',
     MEMBERSHIP_ONE_TIME_FEE: '708000',
     SHOP_PRODUCT: '708000',
+    // Facture FOURNISSEUR de la boutique (ADR-0013 §1). Proposé au trésorier
+    // qui saisit sa facture, jamais posé par la réception : celle-ci n'écrit
+    // aucune écriture, et il n'existe volontairement pas de 401000 au plan.
+    SHOP_PURCHASE: '607000',
     SUBSIDY: '740000',
     SPONSORSHIP_CASH: '754000',
     SPONSORSHIP_IN_KIND: '871000',

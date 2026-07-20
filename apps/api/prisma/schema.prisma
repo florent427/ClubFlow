@@ -2086,6 +2086,13 @@ model AccountingEntry {
   /// soit valider quand même (override) soit annuler. Ne crée PAS de
   /// contrainte hard — laisse le choix.
   duplicateOfEntryId       String?
+  /// Rapprochement FACTURE / COMMANDE FOURNISSEUR (ADR-0013 §1).
+  ///
+  /// Nullable, et posé par le TRÉSORIER au moment où il saisit sa facture —
+  /// jamais par la réception, qui ne produit aucune écriture. Le grand livre
+  /// reste en trésorerie de bout en bout : c'est ce lien, et non une écriture
+  /// d'engagement `607 / 401`, qui donne le rapprochement.
+  purchaseOrderId          String?
   occurredAt               DateTime              @default(now())
   createdAt                DateTime              @default(now())
   updatedAt                DateTime              @default(now()) @updatedAt
@@ -2099,6 +2106,10 @@ model AccountingEntry {
   contraEntry      AccountingEntry?      @relation("AccountingEntryContra", fields: [contraEntryId], references: [id], onDelete: SetNull)
   contraEntryOf    AccountingEntry[]     @relation("AccountingEntryContra")
   financialAccount ClubFinancialAccount? @relation(fields: [financialAccountId], references: [id], onDelete: SetNull)
+  /// `SetNull` et non `Cascade` : supprimer une commande fournisseur ne doit
+  /// jamais emporter l'écriture comptable qui la référence — l'argent est
+  /// sorti, le grand livre doit continuer de le dire.
+  purchaseOrder    ShopPurchaseOrder?    @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
 
   lines                   AccountingEntryLine[]
   documents               AccountingDocument[]
@@ -2131,6 +2142,8 @@ model AccountingEntry {
   @@index([clubId, source])
   @@index([clubId, financialAccountId])
   @@index([clubId, invoiceNumber, amountCents])
+  /// Sert le rapprochement : « quelles factures pour cette commande ? »
+  @@index([clubId, purchaseOrderId])
 }
 
 /// Cycle de vie complet d'une demande de subvention :
@@ -2688,6 +2701,21 @@ model ShopProductVariant {
   /// (ADR-0003). Ce prédicat doit rester trivialement correct.
   available Int @default(0)
 
+  /// Coût moyen pondéré d'acquisition, en CENTIMES. REPORTING SEULEMENT
+  /// (ADR-0013 §1) : la réception ne produit aucune écriture, ce chiffre ne
+  /// sert qu'à la marge et à la valeur du stock.
+  ///
+  /// NON NULLABLE avec défaut 0, pour la même raison qu'`available` : le
+  /// compare-and-set qui le met à jour porte `avgCostCents` dans son WHERE, et
+  /// en SQL `NULL = NULL` vaut UNKNOWN — un coût nullable ferait échouer
+  /// silencieusement toutes les mises à jour de la première réception.
+  /// Zéro se lit donc « coût inconnu », pas « gratuit ».
+  ///
+  /// Mis à jour À LA RÉCEPTION, dans la MÊME transaction que le mouvement de
+  /// stock et le cumul reçu : un coût committé qui survivrait à l'annulation
+  /// de la réception qui le justifie serait un chiffre que rien n'explique.
+  avgCostCents Int @default(0)
+
   /// Sous ce seuil, le balayage quotidien alerte. Null = jamais d'alerte.
   /// Sur la VARIANTE et non le produit : on est en rupture de M bien avant
   /// d'être en rupture de t-shirt.
@@ -2808,6 +2836,11 @@ model ShopPurchaseOrder {
   supplier   ShopSupplier             @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   lines      ShopPurchaseOrderLine[]
   receptions ShopPurchaseReception[]
+  /// Les factures fournisseur rapprochées de cette commande. PLUSIEURS :
+  /// une commande livrée en trois fois se facture volontiers en trois fois.
+  /// Aucune n'est créée par la réception (ADR-0013 §1) — le trésorier les
+  /// saisit puis les lie.
+  accountingEntries AccountingEntry[]
 
   @@unique([clubId, reference])
   @@index([clubId, status])

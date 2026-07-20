@@ -9,6 +9,7 @@ import {
   ShopPurchaseOrderStatus,
   ShopReceiptDiscrepancyReason,
 } from '@prisma/client';
+import { AccountingMappingService } from '../accounting/accounting-mapping.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ShopStockService } from './shop-stock.service';
 
@@ -56,6 +57,24 @@ const CANCELLABLE: ShopPurchaseOrderStatus[] = [
  */
 const REFERENCE_ATTEMPTS = 8;
 
+/**
+ * Clé de résolution du compte d'achat proposé au trésorier. Le mapping du club
+ * l'emporte ; à défaut, `AccountingMappingService` retombe sur `607000`.
+ */
+const SHOP_PURCHASE_SOURCE = 'SHOP_PURCHASE';
+
+/**
+ * Ce qu'on ramène d'une facture rapprochée : de quoi la reconnaître à l'écran,
+ * rien de plus. La facture reste un objet du grand livre, pas de la boutique.
+ */
+const INVOICE_SELECT = {
+  id: true,
+  label: true,
+  amountCents: true,
+  occurredAt: true,
+  invoiceNumber: true,
+} as const;
+
 export type ReceiveLineInput = {
   orderLineId: string;
   receivedQty: number;
@@ -70,6 +89,7 @@ export class ShopPurchaseOrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly stock: ShopStockService,
+    private readonly mapping: AccountingMappingService,
   ) {}
 
   // ------------------------------------------------------------------
@@ -193,6 +213,10 @@ export class ShopPurchaseOrdersService {
           orderBy: { receivedAt: 'desc' },
           include: { lines: true },
         },
+        accountingEntries: {
+          orderBy: { occurredAt: 'desc' },
+          select: INVOICE_SELECT,
+        },
       },
     });
   }
@@ -206,6 +230,10 @@ export class ShopPurchaseOrdersService {
         receptions: {
           orderBy: { receivedAt: 'desc' },
           include: { lines: true },
+        },
+        accountingEntries: {
+          orderBy: { occurredAt: 'desc' },
+          select: INVOICE_SELECT,
         },
       },
     });
@@ -598,6 +626,15 @@ export class ShopPurchaseOrdersService {
             tx,
           );
           movementId = done.movementId;
+
+          // Le coût moyen pondéré, DANS la même transaction (ADR-0013 §1).
+          await this.bumpAverageCost(
+            tx,
+            clubId,
+            line.variantId,
+            entry.receivedQty,
+            line.unitCostCents,
+          );
         }
 
         await tx.shopPurchaseReceptionLine.create({
@@ -656,6 +693,164 @@ export class ShopPurchaseOrdersService {
     });
 
     return this.getOrder(clubId, input.orderId);
+  }
+
+  /**
+   * Coût moyen pondéré de la déclinaison, après une entrée de `qty` unités
+   * payées `unitCostCents` pièce.
+   *
+   *   nouveauCoût = (onHandAvant × avgAvant + qty × unitCost) / (onHandAvant + qty)
+   *
+   * OÙ EST LU `onHandAvant`, ET POURQUOI ICI
+   *
+   * La lecture arrive APRÈS `restock`, jamais avant. `restock` incrémente
+   * `onHand` par un `updateMany` : sous READ COMMITTED, PostgreSQL pose alors
+   * sur la ligne un verrou d'écriture qu'il conserve JUSQU'AU COMMIT de notre
+   * transaction. Toute lecture postérieure, dans la même transaction, porte
+   * donc sur une ligne que personne d'autre ne peut plus modifier — et
+   * `onHandAvant` se retrouve par soustraction (`onHand − qty`) au lieu d'être
+   * lu avant le verrou, où il aurait été un check-then-act ordinaire.
+   *
+   * Deux réceptions concurrentes sur la même déclinaison ne s'écrasent donc
+   * pas : la seconde ATTEND au `restock`, puis lit le `onHand` et l'`avgCost`
+   * que la première vient de committer, et pondère à partir de là.
+   *
+   * Le `updateMany` final reste malgré tout CONDITIONNEL sur les deux valeurs
+   * lues (`onHand`, `avgCostCents`). Ce n'est pas une ceinture décorative :
+   * c'est ce qui fait que la garantie tient sans avoir à SUPPOSER la
+   * sémantique du verrou. Si l'hypothèse est fausse un jour, le `count` vaut
+   * 0, la levée annule toute la réception, et l'on ne committe pas un coût
+   * faux — au lieu de le committer en silence.
+   *
+   * DEUX RÉSERVES, énoncées plutôt que masquées :
+   *  - une ligne laissée à `unitCostCents = 0` (coût non saisi) DILUE la
+   *    moyenne vers le bas. Le champ vaut « inconnu », pas « gratuit », mais la
+   *    formule ne sait pas faire la différence ;
+   *  - une déclinaison NON SUIVIE n'a pas de coût moyen : `restock` la refuse
+   *    en amont, donc on n'arrive jamais ici.
+   */
+  private async bumpAverageCost(
+    tx: Prisma.TransactionClient,
+    clubId: string,
+    variantId: string,
+    qty: number,
+    unitCostCents: number,
+  ) {
+    const current = await tx.shopProductVariant.findFirst({
+      where: { id: variantId, clubId },
+      select: { onHand: true, avgCostCents: true },
+    });
+    if (!current) return;
+
+    const onHandApres = current.onHand;
+    const onHandAvant = onHandApres - qty;
+
+    // Division par zéro : `onHandApres` est le dénominateur, et il vaut
+    // `onHandAvant + qty`. Un stock corrigé à la baisse pendant que la
+    // marchandise arrivait peut le laisser à zéro ou en dessous — auquel cas
+    // il n'existe aucune moyenne à pondérer, et l'on ne touche à rien.
+    if (onHandApres <= 0 || onHandAvant < 0) return;
+
+    const suivant = Math.round(
+      (onHandAvant * current.avgCostCents + qty * unitCostCents) / onHandApres,
+    );
+
+    const written = await tx.shopProductVariant.updateMany({
+      where: {
+        id: variantId,
+        clubId,
+        onHand: onHandApres,
+        avgCostCents: current.avgCostCents,
+      },
+      data: { avgCostCents: suivant },
+    });
+    if (written.count !== 1) {
+      throw new BadRequestException(
+        'Le stock de cette déclinaison a changé pendant la réception : recommencez.',
+      );
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // E. Rapprochement facture / commande
+  // ------------------------------------------------------------------
+
+  /**
+   * Rattache une écriture comptable DÉJÀ SAISIE à une commande fournisseur.
+   *
+   * LA LIGNE À NE PAS FRANCHIR (ADR-0013 §1) : rien ici ne CRÉE d'écriture.
+   * Le grand livre est en trésorerie ; l'écriture naît au paiement du
+   * fournisseur, saisie par le trésorier. Cette méthode ne fait que poser le
+   * lien qui donne le rapprochement.
+   *
+   * DEUX ÉCRITURES, DEUX FRONTIÈRES DE TENANT, aucune lecture arbitrale :
+   *  - le `updateMany` sur la commande PROUVE qu'elle appartient au club (son
+   *    `count` le dit) et pose le verrou de ligne ;
+   *  - celui sur l'écriture porte `clubId` dans son propre WHERE. Une écriture
+   *    d'un autre club ne peut donc pas être rattachée à cette commande, même
+   *    si son identifiant est connu.
+   *
+   * `cancelledAt: null` dans le prédicat : rapprocher une facture annulée
+   * ferait mentir le total rapproché de la commande.
+   */
+  async linkInvoice(
+    clubId: string,
+    input: { orderId: string; entryId: string },
+  ) {
+    await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.shopPurchaseOrder.updateMany({
+        where: { id: input.orderId, clubId },
+        data: { updatedAt: new Date() },
+      });
+      if (claimed.count !== 1) {
+        throw new NotFoundException('Commande fournisseur introuvable.');
+      }
+
+      const linked = await tx.accountingEntry.updateMany({
+        where: { id: input.entryId, clubId, cancelledAt: null },
+        data: { purchaseOrderId: input.orderId },
+      });
+      if (linked.count !== 1) {
+        throw new BadRequestException(
+          'Écriture comptable introuvable, annulée, ou appartenant à un autre club.',
+        );
+      }
+    });
+    return this.getOrder(clubId, input.orderId);
+  }
+
+  /**
+   * Détache une facture. Tout le prédicat est dans le WHERE — club, écriture,
+   * et commande d'origine : on ne peut pas détacher d'une commande une facture
+   * qui n'y était pas rattachée.
+   */
+  async unlinkInvoice(
+    clubId: string,
+    input: { orderId: string; entryId: string },
+  ) {
+    const unlinked = await this.prisma.accountingEntry.updateMany({
+      where: { id: input.entryId, clubId, purchaseOrderId: input.orderId },
+      data: { purchaseOrderId: null },
+    });
+    if (unlinked.count !== 1) {
+      throw new NotFoundException(
+        'Cette écriture n’est pas rattachée à cette commande.',
+      );
+    }
+    return this.getOrder(clubId, input.orderId);
+  }
+
+  /**
+   * Compte d'achat PROPOSÉ au trésorier qui saisit sa facture fournisseur.
+   *
+   * Passe par le mécanisme de résolution DÉJÀ EN PLACE
+   * (`AccountingMappingService`), qui laisse un club remplacer le défaut par
+   * son propre mapping. Le fallback est `607000 Achats de marchandises`,
+   * ajouté au plan seedé pour cet usage. Rien de neuf n'est inventé : c'est
+   * une PROPOSITION, le trésorier reste libre de son compte.
+   */
+  proposedInvoiceAccount(clubId: string) {
+    return this.mapping.resolveAccountWithLabel(clubId, SHOP_PURCHASE_SOURCE);
   }
 
   // ------------------------------------------------------------------

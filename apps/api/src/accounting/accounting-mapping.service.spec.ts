@@ -168,6 +168,13 @@ describe('AccountingMappingService', () => {
       expect(code).toBe('606800');
     });
 
+    it('resolves a supplier invoice to 607000 — never to a 401 (ADR-0013 §1)', async () => {
+      // Sans ce défaut, la facture fournisseur retomberait sur 606800
+      // « fournitures » et l'achat de marchandises serait invisible au bilan.
+      const code = await svc.resolveAccountCode(clubId, 'SHOP_PURCHASE');
+      expect(code).toBe('607000');
+    });
+
     it('resolves Stripe fees to 627000', async () => {
       const code = await svc.resolveAccountCode(clubId, 'STRIPE_FEE');
       expect(code).toBe('627000');
