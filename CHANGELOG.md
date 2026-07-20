@@ -9,6 +9,19 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.29.0](https://github.com/florent427/ClubFlow/compare/v0.28.0...v0.29.0) (2026-07-20)
+
+
+### ✨ Features
+
+* **equipe:** gérer les accès back-office d'un club ([a04386d](https://github.com/florent427/ClubFlow/commit/a04386da9dbd152af031003ca7718d1b9be8a416))
+* **equipe:** gérer les accès back-office d'un club ([dbafc60](https://github.com/florent427/ClubFlow/commit/dbafc60ee8687bdc5ef11201f61aac86d113b39a))
+
+
+### 🐛 Bug Fixes
+
+* **equipe:** le verrou consultatif levait à chaque appel ([f71b46f](https://github.com/florent427/ClubFlow/commit/f71b46f3b397a4e67b54ede108abc4dafddb9122))
+
 ## [0.28.0](https://github.com/florent427/ClubFlow/compare/v0.27.2...v0.28.0) (2026-07-20)
 
 
