@@ -19,6 +19,7 @@ import {
   CreateShopSupplierInput,
   ReceiveShopPurchaseOrderInput,
   RemoveShopPurchaseOrderLineInput,
+  ShopPurchaseOrderInvoiceInput,
   UpdateShopSupplierInput,
 } from './dto/shop-purchase.input';
 import {
@@ -32,6 +33,7 @@ import { UpdateShopProductInput } from './dto/update-shop-product.input';
 import { ShopOrderGraph } from './models/shop-order.model';
 import { ShopProductGraph } from './models/shop-product.model';
 import {
+  ShopPurchaseInvoiceAccountGraph,
   ShopPurchaseOrderGraph,
   ShopSupplierGraph,
 } from './models/shop-purchase.model';
@@ -410,6 +412,47 @@ export class ShopAdminResolver {
         discrepancyNote: l.discrepancyNote ?? null,
       })),
     }) as unknown as Promise<ShopPurchaseOrderGraph>;
+  }
+
+  // ------------------------------------------------------------------
+  // Rapprochement facture / commande (ADR-0013 §1)
+  // ------------------------------------------------------------------
+
+  @Query(() => ShopPurchaseInvoiceAccountGraph, {
+    name: 'shopPurchaseInvoiceAccount',
+    description:
+      'Compte d’achat PROPOSÉ pour une facture fournisseur — « 607000 Achats de marchandises » sauf mapping propre au club. Une proposition, pas une contrainte.',
+  })
+  shopPurchaseInvoiceAccount(
+    @CurrentClub() club: Club,
+  ): Promise<ShopPurchaseInvoiceAccountGraph> {
+    return this.purchases.proposedInvoiceAccount(club.id);
+  }
+
+  @Mutation(() => ShopPurchaseOrderGraph, {
+    description:
+      'Rapproche une écriture comptable DÉJÀ SAISIE de cette commande. Ne crée AUCUNE écriture : le grand livre est en trésorerie, l’écriture naît au paiement du fournisseur (ADR-0013 §1).',
+  })
+  linkShopPurchaseOrderInvoice(
+    @CurrentClub() club: Club,
+    @Args('input') input: ShopPurchaseOrderInvoiceInput,
+  ): Promise<ShopPurchaseOrderGraph> {
+    return this.purchases.linkInvoice(club.id, input) as unknown as Promise<
+      ShopPurchaseOrderGraph
+    >;
+  }
+
+  @Mutation(() => ShopPurchaseOrderGraph, {
+    description:
+      'Détache une facture rapprochée par erreur. L’écriture comptable est INTACTE — seul le lien disparaît.',
+  })
+  unlinkShopPurchaseOrderInvoice(
+    @CurrentClub() club: Club,
+    @Args('input') input: ShopPurchaseOrderInvoiceInput,
+  ): Promise<ShopPurchaseOrderGraph> {
+    return this.purchases.unlinkInvoice(club.id, input) as unknown as Promise<
+      ShopPurchaseOrderGraph
+    >;
   }
 }
 

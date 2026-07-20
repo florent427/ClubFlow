@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AccountingModule } from '../accounting/accounting.module';
 import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.guard';
 import { ViewerActiveProfileGuard } from '../common/guards/viewer-active-profile.guard';
 import { FamiliesModule } from '../families/families.module';
@@ -15,7 +16,10 @@ import { ShopVariantsService } from './shop-variants.service';
 // `SchedulerLockService` vient de `SchedulingModule`, qui est @Global : le
 // balayage des seuils l'injecte sans réimport.
 @Module({
-  imports: [PrismaModule, FamiliesModule, MailModule],
+  // `AccountingModule` pour le SEUL `AccountingMappingService` : proposer le
+  // compte d'achat 607000 au trésorier. La boutique n'écrit toujours AUCUNE
+  // écriture comptable (ADR-0013 §1) — elle pose et lit un lien, rien de plus.
+  imports: [PrismaModule, FamiliesModule, MailModule, AccountingModule],
   providers: [
     ShopService,
     ShopStockService,

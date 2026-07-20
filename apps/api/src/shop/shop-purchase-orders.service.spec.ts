@@ -4,6 +4,7 @@ import {
   ShopReceiptDiscrepancyReason,
   ShopStockMovementKind,
 } from '@prisma/client';
+import type { AccountingMappingService } from '../accounting/accounting-mapping.service';
 import { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
 import { ShopStockService } from './shop-stock.service';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -53,7 +54,19 @@ type VariantRow = {
   trackStock: boolean;
   onHand: number;
   available: number;
+  avgCostCents: number;
   lowStockAlertedAt: Date | null;
+};
+
+type EntryRow = {
+  id: string;
+  clubId: string;
+  label: string;
+  amountCents: number;
+  occurredAt: Date;
+  invoiceNumber: string | null;
+  cancelledAt: Date | null;
+  purchaseOrderId: string | null;
 };
 
 const CLUB = 'club-1';
@@ -97,7 +110,22 @@ function variante(over: Partial<VariantRow> = {}): VariantRow {
     trackStock: true,
     onHand: 0,
     available: 0,
+    avgCostCents: 0,
     lowStockAlertedAt: null,
+    ...over,
+  };
+}
+
+function ecriture(over: Partial<EntryRow> = {}): EntryRow {
+  return {
+    id: 'ae-1',
+    clubId: CLUB,
+    label: 'Facture Décathlon Pro',
+    amountCents: 18_000,
+    occurredAt: new Date('2026-07-15'),
+    invoiceNumber: 'F-2026-118',
+    cancelledAt: null,
+    purchaseOrderId: null,
     ...over,
   };
 }
@@ -159,6 +187,7 @@ function makeHarness(seed: {
     active: boolean;
     leadTimeDays: number | null;
   }>;
+  entries?: EntryRow[];
 }) {
   const orders = seed.orders ?? [];
   const lines = seed.lines ?? [];
@@ -166,6 +195,7 @@ function makeHarness(seed: {
   const suppliers = seed.suppliers ?? [
     { id: 'sup-1', clubId: CLUB, active: true, leadTimeDays: 7 },
   ];
+  const entries = seed.entries ?? [];
   const receptions: Array<Record<string, any>> = [];
   const receptionLines: Array<Record<string, any>> = [];
   const movements: Array<Record<string, any>> = [];
@@ -237,6 +267,7 @@ function makeHarness(seed: {
     shopSupplier: table(suppliers, 'sup'),
     shopProductVariant: table(variants, 'v'),
     shopStockMovement: table(movements, 'mv'),
+    accountingEntry: table(entries, 'ae'),
   };
 
   const prisma = {
@@ -247,9 +278,17 @@ function makeHarness(seed: {
   };
 
   const stock = new ShopStockService(prisma as unknown as PrismaService);
+  // Le compte d'achat proposé passe par le mécanisme de mapping DÉJÀ en place ;
+  // ce lot n'en invente aucun, il ajoute seulement le défaut 607000.
+  const mapping = {
+    resolveAccountWithLabel: jest
+      .fn()
+      .mockResolvedValue({ code: '607000', label: 'Achats de marchandises' }),
+  };
   const svc = new ShopPurchaseOrdersService(
     prisma as unknown as PrismaService,
     stock,
+    mapping as unknown as AccountingMappingService,
   );
   return {
     svc,
@@ -259,6 +298,8 @@ function makeHarness(seed: {
     receptions,
     receptionLines,
     movements,
+    entries,
+    mapping,
   };
 }
 
@@ -598,6 +639,286 @@ describe('receiveOrder — statut calculé, jamais saisi', () => {
     expect(h.lines[0].receivedQty).toBe(22);
     expect(h.variants[0].onHand).toBe(22);
     expect(h.orders[0].status).toBe(ShopPurchaseOrderStatus.RECEIVED);
+  });
+});
+
+// ====================================================================
+// Coût moyen pondéré
+// ====================================================================
+
+describe('avgCostCents — pondéré à la réception, dans la même transaction', () => {
+  it('pose le coût d’une PREMIÈRE entrée sur un stock vide', async () => {
+    // 0 × 0 + 10 × 900, sur 10 unités : le coût moyen EST le coût d'achat.
+    const h = makeHarness({
+      orders: [ordre()],
+      lines: [ligne({ orderedQty: 10, unitCostCents: 900 })],
+    });
+
+    await h.svc.receiveOrder(CLUB, {
+      orderId: 'po-1',
+      lines: [{ orderLineId: 'pol-1', receivedQty: 10 }],
+    });
+
+    expect(h.variants[0].avgCostCents).toBe(900);
+  });
+
+  it('PONDÈRE une seconde entrée plus chère avec le stock existant', async () => {
+    // 10 à 900 déjà en stock, 10 arrivent à 1100 :
+    //   (10 × 900 + 10 × 1100) / 20 = 1000.
+    // Une simple écrasure donnerait 1100, une moyenne non pondérée aussi —
+    // les deux se distinguent ici.
+    const h = makeHarness({
+      orders: [ordre()],
+      lines: [ligne({ orderedQty: 10, unitCostCents: 1100 })],
+      variants: [variante({ onHand: 10, available: 10, avgCostCents: 900 })],
+    });
+
+    await h.svc.receiveOrder(CLUB, {
+      orderId: 'po-1',
+      lines: [{ orderLineId: 'pol-1', receivedQty: 10 }],
+    });
+
+    expect(h.variants[0].avgCostCents).toBe(1000);
+  });
+
+  it('PONDÈRE par les QUANTITÉS, pas par le nombre de réceptions', async () => {
+    // 30 à 900, puis 10 à 1300 : (30×900 + 10×1300) / 40 = 1000.
+    // Une moyenne arithmétique des deux coûts donnerait 1100.
+    const h = makeHarness({
+      orders: [ordre()],
+      lines: [ligne({ orderedQty: 10, unitCostCents: 1300 })],
+      variants: [variante({ onHand: 30, available: 30, avgCostCents: 900 })],
+    });
+
+    await h.svc.receiveOrder(CLUB, {
+      orderId: 'po-1',
+      lines: [{ orderLineId: 'pol-1', receivedQty: 10 }],
+    });
+
+    expect(h.variants[0].avgCostCents).toBe(1000);
+  });
+
+  it('deux réceptions successives se CUMULENT au lieu de s’écraser', async () => {
+    // 7 à 1000 puis 3 à 2000 : (7×1000 + 3×2000) / 10 = 1300.
+    // Si la seconde relisait un `onHand` d'avant la première, elle poserait
+    // 2000 — le chiffre de la dernière livraison, pas la moyenne.
+    const h = makeHarness({
+      orders: [ordre()],
+      lines: [
+        ligne({ id: 'pol-1', orderedQty: 7, unitCostCents: 1000 }),
+        ligne({
+          id: 'pol-2',
+          variantId: 'v-1',
+          orderedQty: 3,
+          unitCostCents: 2000,
+        }),
+      ],
+    });
+
+    await h.svc.receiveOrder(CLUB, {
+      orderId: 'po-1',
+      lines: [{ orderLineId: 'pol-1', receivedQty: 7 }],
+    });
+    expect(h.variants[0].avgCostCents).toBe(1000);
+
+    await h.svc.receiveOrder(CLUB, {
+      orderId: 'po-1',
+      lines: [{ orderLineId: 'pol-2', receivedQty: 3 }],
+    });
+
+    expect(h.variants[0].onHand).toBe(10);
+    expect(h.variants[0].avgCostCents).toBe(1300);
+  });
+
+  it('ne touche PAS au coût pour une ligne reçue à ZÉRO', async () => {
+    // Rien n'est entré : pondérer par zéro unité ne dirait rien, et une
+    // division par (onHand + 0) sur un stock vide diviserait par zéro.
+    const h = makeHarness({
+      orders: [ordre()],
+      lines: [ligne({ orderedQty: 20, unitCostCents: 1500 })],
+      variants: [variante({ onHand: 0, available: 0, avgCostCents: 0 })],
+    });
+
+    await h.svc.receiveOrder(CLUB, {
+      orderId: 'po-1',
+      lines: [
+        {
+          orderLineId: 'pol-1',
+          receivedQty: 0,
+          discrepancyReason: ShopReceiptDiscrepancyReason.SUPPLIER_SHORTAGE,
+        },
+      ],
+    });
+
+    expect(h.variants[0].avgCostCents).toBe(0);
+    expect(h.variants[0].onHand).toBe(0);
+  });
+
+  it('n’écrit AUCUN coût si la réception est REFUSÉE', async () => {
+    // La garantie tient parce que le coût est écrit DANS la transaction du
+    // mouvement : un coût committé qui survivrait à l'annulation de la
+    // réception serait un chiffre que plus rien n'explique.
+    const h = makeHarness({
+      orders: [ordre({ status: ShopPurchaseOrderStatus.CANCELLED })],
+      lines: [ligne({ orderedQty: 10, unitCostCents: 900 })],
+      variants: [variante({ onHand: 5, available: 5, avgCostCents: 700 })],
+    });
+
+    await expect(
+      h.svc.receiveOrder(CLUB, {
+        orderId: 'po-1',
+        lines: [{ orderLineId: 'pol-1', receivedQty: 10 }],
+      }),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(h.variants[0].avgCostCents).toBe(700);
+  });
+
+  it('pondère chaque DÉCLINAISON séparément', async () => {
+    const h = makeHarness({
+      orders: [ordre()],
+      lines: [
+        ligne({ id: 'pol-1', variantId: 'v-1', orderedQty: 4, unitCostCents: 500 }),
+        ligne({ id: 'pol-2', variantId: 'v-2', orderedQty: 4, unitCostCents: 2500 }),
+      ],
+      variants: [variante({ id: 'v-1' }), variante({ id: 'v-2' })],
+    });
+
+    await h.svc.receiveOrder(CLUB, {
+      orderId: 'po-1',
+      lines: [
+        { orderLineId: 'pol-1', receivedQty: 4 },
+        { orderLineId: 'pol-2', receivedQty: 4 },
+      ],
+    });
+
+    expect(h.variants[0].avgCostCents).toBe(500);
+    expect(h.variants[1].avgCostCents).toBe(2500);
+  });
+});
+
+// ====================================================================
+// Rapprochement facture / commande — ADR-0013 §1
+// ====================================================================
+
+describe('linkInvoice — le lien, JAMAIS l’écriture', () => {
+  it('rattache une écriture DÉJÀ SAISIE à la commande', async () => {
+    const h = makeHarness({
+      orders: [ordre()],
+      lines: [ligne()],
+      entries: [ecriture()],
+    });
+
+    await h.svc.linkInvoice(CLUB, { orderId: 'po-1', entryId: 'ae-1' });
+
+    expect(h.entries[0].purchaseOrderId).toBe('po-1');
+  });
+
+  it('ne CRÉE aucune écriture comptable — ni au lien, ni à la réception', async () => {
+    // LA ligne à ne pas franchir (ADR-0013 §1). Le grand livre est en
+    // trésorerie : l'écriture naît au paiement du fournisseur, saisie par le
+    // trésorier. Ni la réception ni le rapprochement n'en fabriquent une.
+    const h = makeHarness({
+      orders: [ordre()],
+      lines: [ligne({ orderedQty: 10, unitCostCents: 900 })],
+      entries: [ecriture()],
+    });
+
+    await h.svc.receiveOrder(CLUB, {
+      orderId: 'po-1',
+      lines: [{ orderLineId: 'pol-1', receivedQty: 10 }],
+    });
+    await h.svc.linkInvoice(CLUB, { orderId: 'po-1', entryId: 'ae-1' });
+
+    expect(h.entries).toHaveLength(1); // celle du fixture, et rien d'autre
+  });
+
+  it('REFUSE l’écriture d’un AUTRE club, et ne la rattache pas', async () => {
+    // Le clubId est dans l'écriture conditionnelle, pas dans une lecture :
+    // connaître l'identifiant d'une écriture voisine ne suffit pas.
+    const h = makeHarness({
+      orders: [ordre()],
+      lines: [ligne()],
+      entries: [ecriture({ clubId: 'club-2' })],
+    });
+
+    await expect(
+      h.svc.linkInvoice(CLUB, { orderId: 'po-1', entryId: 'ae-1' }),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(h.entries[0].purchaseOrderId).toBeNull();
+  });
+
+  it('REFUSE la commande d’un AUTRE club', async () => {
+    const h = makeHarness({
+      orders: [ordre({ clubId: 'club-2' })],
+      lines: [ligne({ clubId: 'club-2' })],
+      entries: [ecriture()],
+    });
+
+    await expect(
+      h.svc.linkInvoice(CLUB, { orderId: 'po-1', entryId: 'ae-1' }),
+    ).rejects.toThrow(NotFoundException);
+
+    expect(h.entries[0].purchaseOrderId).toBeNull();
+  });
+
+  it('REFUSE une écriture ANNULÉE', async () => {
+    // Rapprocher une facture annulée ferait mentir le total rapproché.
+    const h = makeHarness({
+      orders: [ordre()],
+      lines: [ligne()],
+      entries: [ecriture({ cancelledAt: new Date('2026-07-16') })],
+    });
+
+    await expect(
+      h.svc.linkInvoice(CLUB, { orderId: 'po-1', entryId: 'ae-1' }),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(h.entries[0].purchaseOrderId).toBeNull();
+  });
+
+  it('détache, et laisse l’écriture INTACTE', async () => {
+    const h = makeHarness({
+      orders: [ordre()],
+      lines: [ligne()],
+      entries: [ecriture({ purchaseOrderId: 'po-1' })],
+    });
+
+    await h.svc.unlinkInvoice(CLUB, { orderId: 'po-1', entryId: 'ae-1' });
+
+    expect(h.entries).toHaveLength(1);
+    expect(h.entries[0].purchaseOrderId).toBeNull();
+    expect(h.entries[0].amountCents).toBe(18_000);
+  });
+
+  it('REFUSE de détacher d’une commande à laquelle l’écriture n’était PAS liée', async () => {
+    const h = makeHarness({
+      orders: [
+        ordre({ id: 'po-1' }),
+        ordre({ id: 'po-2', reference: 'CF-2026-005' }),
+      ],
+      lines: [ligne()],
+      entries: [ecriture({ purchaseOrderId: 'po-2' })],
+    });
+
+    await expect(
+      h.svc.unlinkInvoice(CLUB, { orderId: 'po-1', entryId: 'ae-1' }),
+    ).rejects.toThrow(NotFoundException);
+
+    expect(h.entries[0].purchaseOrderId).toBe('po-2');
+  });
+
+  it('propose 607000 via le mécanisme de mapping DÉJÀ en place', async () => {
+    const h = makeHarness({ orders: [], lines: [] });
+
+    const compte = await h.svc.proposedInvoiceAccount(CLUB);
+
+    expect(compte.code).toBe('607000');
+    expect(h.mapping.resolveAccountWithLabel).toHaveBeenCalledWith(
+      CLUB,
+      'SHOP_PURCHASE',
+    );
   });
 });
 

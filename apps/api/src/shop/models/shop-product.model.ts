@@ -1,4 +1,4 @@
-import { Field, ID, Int, ObjectType } from '@nestjs/graphql';
+import { Field, Float, ID, Int, ObjectType } from '@nestjs/graphql';
 
 /** Une déclinaison vendable : c'est elle qui porte le stock (ADR-0012). */
 @ObjectType()
@@ -55,6 +55,29 @@ export class ShopProductVariantGraph {
    */
   @Field(() => Int, { nullable: true })
   onOrder!: number | null;
+
+  /**
+   * Coût moyen pondéré d'acquisition, en CENTIMES (ADR-0013 §1).
+   *
+   * ADMINISTRATION SEULEMENT, comme `available` — et pour une raison de plus :
+   * c'est le PRIX D'ACHAT du club. Un adhérent qui le lit sait combien son
+   * club marge sur lui ; un fournisseur concurrent sait à combien s'aligner.
+   *
+   * Zéro se lit « coût jamais saisi », pas « gratuit ».
+   */
+  @Field(() => Int, { nullable: true })
+  avgCostCents!: number | null;
+
+  /** Marge unitaire = `unitPriceCents − avgCostCents`. Admin seulement. */
+  @Field(() => Int, { nullable: true })
+  marginCents!: number | null;
+
+  /**
+   * Taux de marge = marge / prix de vente. Null si le prix est nul — un
+   * article offert n'a pas un taux infini, il n'en a pas. Admin seulement.
+   */
+  @Field(() => Float, { nullable: true })
+  marginRate!: number | null;
 
   /** Vrai si la variante peut être commandée maintenant. */
   @Field()
@@ -117,6 +140,17 @@ export class ShopProductGraph {
   /** Prix le plus bas parmi les déclinaisons — « à partir de X € ». */
   @Field(() => Int)
   priceFromCents!: number;
+
+  /**
+   * Valeur du stock au coût moyen pondéré : somme des `onHand × avgCostCents`
+   * des déclinaisons SUIVIES (ADR-0013 §1).
+   *
+   * REPORTING seulement : aucun compte de stock `3xx` n'existe au plan
+   * comptable, et il ne doit pas en apparaître pour ce chiffre. Neutralisé
+   * hors administration au même titre que `stock` — il en dérive.
+   */
+  @Field(() => Int, { nullable: true })
+  stockValueCents!: number | null;
 
   /** Nombre de déclinaisons sous leur seuil de réapprovisionnement. */
   @Field(() => Int)

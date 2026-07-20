@@ -119,6 +119,19 @@ export class ShopService {
         !opts.withQuantities || tracked.length === 0
           ? null
           : tracked.reduce((sum, v) => sum + v.available, 0),
+      // Valeur du stock au coût moyen pondéré (ADR-0013 §1) — REPORTING, pas
+      // grand livre : aucun compte de stock 3xx n'existe au plan.
+      //
+      // NEUTRALISÉ HORS ADMINISTRATION comme tout le reste, et pour une raison
+      // de plus : ce champ est dérivé d'une quantité ET d'un PRIX D'ACHAT. Un
+      // adhérent qui le lit connaît la marge que son club fait sur lui.
+      //
+      // SOUS-ÉVALUE volontairement : une variante au coût inconnu (0) compte
+      // pour rien plutôt que d'inventer une valeur. Le total est donc un
+      // PLANCHER, pas une estimation — à présenter comme tel à l'écran.
+      stockValueCents: opts.withQuantities
+        ? tracked.reduce((sum, v) => sum + v.onHand * v.avgCostCents, 0)
+        : null,
       hasVariants: variants.some((v) => !v.isDefault),
       priceFromCents:
         variants.length === 0
@@ -132,34 +145,78 @@ export class ShopService {
               v.reorderThreshold !== null && v.available <= v.reorderThreshold,
           ).length
         : 0,
-      variants: variants.map((v) => ({
-        id: v.id,
-        productId: v.productId,
-        isDefault: v.isDefault,
-        label: v.label,
-        sku: v.sku,
-        unitPriceCents: priceOf(v),
-        trackStock: v.trackStock,
-        available: opts.withQuantities ? v.available : null,
-        onHand: opts.withQuantities ? v.onHand : null,
-        reorderThreshold: opts.withQuantities ? v.reorderThreshold : null,
-        // Neutralisé hors administration comme `available` : « 20 arrivent »
-        // est une quantité, et l'encours d'achat n'a rien à faire au portail.
-        onOrder: opts.withQuantities ? opts.onOrder?.get(v.id) ?? 0 : null,
-        inStock: !v.trackStock || v.available > 0,
-        // Neutralisé hors administration au même titre que le reste : savoir
-        // qu'une taille est « sous le seuil » revient à connaître à la fois la
-        // quantité restante et la politique de réappro du club.
-        belowThreshold:
-          opts.withQuantities &&
-          v.trackStock &&
-          v.reorderThreshold !== null &&
-          v.available <= v.reorderThreshold,
-        active: v.active,
-      })),
+      variants: variants.map((v) => this.shapeVariant(v, priceOf(v), opts)),
       active: p.active,
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
+    };
+  }
+
+  /**
+   * Projette une déclinaison. Extrait de `shapeProduct` parce que le bloc de
+   * NEUTRALISATION y est désormais la partie la plus longue, et que ce qui
+   * porte une garantie mérite de se relire d'un bloc.
+   */
+  private shapeVariant(
+    v: Prisma.ShopProductVariantGetPayload<object>,
+    unitPriceCents: number,
+    opts: { withQuantities: boolean; onOrder?: Map<string, number> },
+  ) {
+    // Coût d'achat, marge, taux de marge : trois champs DÉRIVÉS du coût
+    // d'acquisition, donc trois fuites potentielles du prix fournisseur.
+    //
+    // Ils suivent EXACTEMENT le sort d'`available` (ADR-0012, et la régression
+    // corrigée en urgence sur `stock`) : masquer les quantités une par une ne
+    // suffit pas, il faut masquer aussi tout ce qui s'en déduit. Un adhérent
+    // qui lit `marginCents` connaît le prix d'achat de son club, et un
+    // fournisseur concurrent aussi.
+    //
+    // ZÉRO SIGNIFIE « COÛT INCONNU », PAS « GRATUIT ». Une variante jamais
+    // réceptionnée, ou reçue sur une ligne dont le prix d'achat n'a pas été
+    // saisi, garde `avgCostCents` à 0. En déduire une marge donnerait le prix
+    // de vente entier — soit 100 % de marge affichée sur tout ce que le club
+    // n'a pas encore chiffré, et le trésorier arbitrerait là-dessus.
+    //
+    // On rend donc les trois champs null dans ce cas. Un article réellement
+    // gratuit est indiscernable d'un article non chiffré tant que la colonne
+    // n'est pas nullable ; afficher « pas d'information » sur les deux est
+    // honnête, afficher « marge totale » sur les deux ne l'est pas.
+    const costKnown = opts.withQuantities && v.avgCostCents > 0;
+    const avgCostCents = costKnown ? v.avgCostCents : null;
+    const marginCents =
+      avgCostCents === null ? null : unitPriceCents - avgCostCents;
+    const marginRate =
+      marginCents === null || unitPriceCents === 0
+        ? null // un prix nul n'a pas de taux de marge, il a une division par zéro
+        : marginCents / unitPriceCents;
+
+    return {
+      id: v.id,
+      productId: v.productId,
+      isDefault: v.isDefault,
+      label: v.label,
+      sku: v.sku,
+      unitPriceCents,
+      trackStock: v.trackStock,
+      available: opts.withQuantities ? v.available : null,
+      onHand: opts.withQuantities ? v.onHand : null,
+      reorderThreshold: opts.withQuantities ? v.reorderThreshold : null,
+      // Neutralisé hors administration comme `available` : « 20 arrivent »
+      // est une quantité, et l'encours d'achat n'a rien à faire au portail.
+      onOrder: opts.withQuantities ? opts.onOrder?.get(v.id) ?? 0 : null,
+      avgCostCents,
+      marginCents,
+      marginRate,
+      inStock: !v.trackStock || v.available > 0,
+      // Neutralisé hors administration au même titre que le reste : savoir
+      // qu'une taille est « sous le seuil » revient à connaître à la fois la
+      // quantité restante et la politique de réappro du club.
+      belowThreshold:
+        opts.withQuantities &&
+        v.trackStock &&
+        v.reorderThreshold !== null &&
+        v.available <= v.reorderThreshold,
+      active: v.active,
     };
   }
 

@@ -29,6 +29,13 @@ const INTERDITS = [
   // ADR-0013 §4 : « 20 arrivent » est une quantité comme une autre, et
   // l'encours d'achat trahit en plus la politique de réappro du club.
   'onOrder',
+  // ADR-0013 §1 : les trois champs de COÛT et la valeur du stock. Pires que
+  // les quantités — un adhérent qui lit `marginCents` connaît le prix d'achat
+  // de son club, et sait exactement combien celui-ci marge sur lui.
+  'avgCostCents',
+  'marginCents',
+  'marginRate',
+  'stockValueCents',
 ];
 
 /** Remonte tout chemin portant une valeur numérique ou vraie sur une clé interdite. */
@@ -75,6 +82,12 @@ function makeSvc() {
         trackStock: true,
         onHand: 12,
         available: 2,
+        // NON NUL, et c'est essentiel : un coût à zéro rendrait vert le test
+        // de fuite quoi qu'il arrive, puisque `0` ne trahit rien. Même défaut
+        // que l'encours stubé à zéro (pitfalls/test-verifie-la-forme…).
+        // 900 cts d'achat pour 1800 de vente : marge 900, taux 0,5, valeur du
+        // stock 12 × 900 = 10 800 — quatre chiffres tous non nuls.
+        avgCostCents: 900,
         reorderThreshold: 5,
         reorderTargetQty: 20,
         lowStockAlertedAt: null,
@@ -162,6 +175,54 @@ describe('listProductsAdmin — ce que voit le trésorier', () => {
     const [p] = await svc.listProductsAdmin('club-1');
 
     expect(p.variants[0].onOrder).toBe(20);
+  });
+
+  it('voit LE COÛT, LA MARGE et LA VALEUR DU STOCK — sinon le reporting est aveugle', async () => {
+    // Le pendant indispensable du test de fuite : neutraliser ces champs
+    // PARTOUT le passerait aussi, et le trésorier perdrait précisément ce que
+    // l'ADR-0013 §1 lui promet en échange de l'absence d'écriture comptable.
+    const { svc } = makeSvc();
+
+    const [p] = await svc.listProductsAdmin('club-1');
+
+    expect(p.variants[0].avgCostCents).toBe(900);
+    expect(p.variants[0].marginCents).toBe(900); // 1800 − 900
+    expect(p.variants[0].marginRate).toBeCloseTo(0.5);
+    expect(p.stockValueCents).toBe(10_800); // 12 en stock × 900
+  });
+
+  it('n’a pas de taux de marge sur un article OFFERT, au lieu d’une division par zéro', async () => {
+    const { svc, produit } = makeSvc();
+    produit.priceCents = 0;
+
+    const [p] = await svc.listProductsAdmin('club-1');
+
+    expect(p.variants[0].unitPriceCents).toBe(0);
+    expect(p.variants[0].marginRate).toBeNull();
+    // La marge, elle, reste calculable : offrir un article coûte 900 cts.
+    expect(p.variants[0].marginCents).toBe(-900);
+  });
+
+  it('n’INVENTE PAS de marge sur une variante au coût inconnu', async () => {
+    // Le cas de loin le plus fréquent en vrai : un article saisi à la main,
+    // jamais réceptionné, donc `avgCostCents` resté à 0.
+    //
+    // Sans ce garde-fou, la marge vaudrait le prix de vente entier — 100 % de
+    // marge affichée sur tout ce que le club n'a pas encore chiffré. Le
+    // trésorier arbitrerait ses prix là-dessus, et le chiffre le conforterait
+    // d'autant plus qu'il est flatteur. Zéro veut dire « on ne sait pas », pas
+    // « c'est gratuit ».
+    const { svc, produit } = makeSvc();
+    produit.variants[0].avgCostCents = 0;
+
+    const [p] = await svc.listProductsAdmin('club-1');
+
+    expect(p.variants[0].avgCostCents).toBeNull();
+    expect(p.variants[0].marginCents).toBeNull();
+    expect(p.variants[0].marginRate).toBeNull();
+    // La valeur du stock, elle, tombe à zéro plutôt que d'inventer : c'est un
+    // PLANCHER assumé, pas une estimation.
+    expect(p.stockValueCents).toBe(0);
   });
 
   it('n’interroge JAMAIS l’encours d’achat sur le chemin public', async () => {
