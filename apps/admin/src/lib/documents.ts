@@ -3265,3 +3265,42 @@ export const REMOVE_VITRINE_DOMAIN = gql`
     }
   }
 `;
+
+// =====================================================================
+// Équipe du club — accès à l'espace d'administration (ClubMembership)
+// =====================================================================
+
+export const CLUB_TEAM_MEMBERS = gql`
+  query ClubTeamMembers {
+    clubTeamMembers {
+      membershipId
+      userId
+      email
+      displayName
+      role
+      createdAt
+      isSelf
+      isLastAdmin
+    }
+  }
+`;
+
+export const INVITE_CLUB_TEAM_MEMBER = gql`
+  mutation InviteClubTeamMember($input: InviteClubTeamMemberInput!) {
+    inviteClubTeamMember(input: $input) {
+      membershipId
+    }
+  }
+`;
+
+export const SET_CLUB_TEAM_MEMBER_ROLE = gql`
+  mutation SetClubTeamMemberRole($input: SetClubTeamMemberRoleInput!) {
+    setClubTeamMemberRole(input: $input)
+  }
+`;
+
+export const REMOVE_CLUB_TEAM_MEMBER = gql`
+  mutation RemoveClubTeamMember($membershipId: ID!) {
+    removeClubTeamMember(membershipId: $membershipId)
+  }
+`;

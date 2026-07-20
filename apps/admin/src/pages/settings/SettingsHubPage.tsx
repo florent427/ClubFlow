@@ -61,6 +61,14 @@ export function SettingsHubPage() {
           <ul className="settings-hub-cards">
             <li>
               <SettingsHubCard
+                to="/settings/equipe"
+                modules={[]}
+                title="Équipe"
+                desc="Qui a accès à cet espace d’administration : inviter, changer de rôle, retirer."
+              />
+            </li>
+            <li>
+              <SettingsHubCard
                 to="/settings/member-fields"
                 modules={['MEMBERS']}
                 title="Fiche adhérent"
