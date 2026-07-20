@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.26.0](https://github.com/florent427/ClubFlow/compare/v0.25.0...v0.26.0) (2026-07-20)
+
+
+### ✨ Features
+
+* **appro:** coût moyen pondéré, marge et rapprochement facture/commande ([682873d](https://github.com/florent427/ClubFlow/commit/682873d48f8e45b3cf03d834bf1f742a1b66ce48))
+* **appro:** coût moyen pondéré, marge et rapprochement facture/commande ([7ac71ae](https://github.com/florent427/ClubFlow/commit/7ac71aeccddaa062a648d90c37c203e56b53d3b7))
+
 ## [0.25.0](https://github.com/florent427/ClubFlow/compare/v0.24.0...v0.25.0) (2026-07-20)
 
 
