@@ -10,6 +10,7 @@ import { VIEWER_PROFILES } from '../lib/documents';
 import { apolloClient } from '../lib/apollo';
 import { navigateToMemberPortal } from '../lib/member-portal-switch';
 import type { ViewerProfilesQueryData } from '../lib/types';
+import { decodeJwtIdentity } from '../lib/jwt';
 import { clearSession, getClubId, getToken, hasActiveClub } from '../lib/storage';
 import {
   ADMIN_FOOTER_ITEMS,
@@ -22,22 +23,8 @@ import {
 
 const LS_KEY_COLLAPSED = 'cf-nav-collapsed-sections';
 
-function decodeJwtIdentity(token: string): {
-  email: string | null;
-  displayName: string | null;
-} {
-  try {
-    const part = token.split('.')[1];
-    if (!part) return { email: null, displayName: null };
-    const json = JSON.parse(atob(part)) as {
-      email?: string;
-      displayName?: string;
-    };
-    return { email: json.email ?? null, displayName: json.displayName ?? null };
-  } catch {
-    return { email: null, displayName: null };
-  }
-}
+// Décodage déporté dans lib/jwt : `atob` seul rendait du Latin-1 (« Admin
+// dÃ©mo ») et levait sur les jetons contenant « - » ou « _ ».
 
 /**
  * Nom affiché : displayName du JWT en priorité (vrai nom saisi au signup),

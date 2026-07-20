@@ -12,18 +12,16 @@ import type {
   DashboardQueryData,
   DynamicGroupsQueryData,
 } from '../lib/types';
+import { decodeJwtIdentity } from '../lib/jwt';
 import { getToken } from '../lib/storage';
 import { DashboardTrendsPanel } from './DashboardTrendsPanel';
 import { QueryError } from '../components/QueryError';
 
+// Même décodeur que la barre du haut : `atob` seul rendait du Latin-1, donc le
+// greeting affichait « Bonjour Admin dÃ©mo » exactement comme l'en-tête.
 function decodeJwt(token: string): { email?: string; displayName?: string } {
-  try {
-    const part = token.split('.')[1];
-    if (!part) return {};
-    return JSON.parse(atob(part)) as { email?: string; displayName?: string };
-  } catch {
-    return {};
-  }
+  const { email, displayName } = decodeJwtIdentity(token);
+  return { email: email ?? undefined, displayName: displayName ?? undefined };
 }
 
 /**

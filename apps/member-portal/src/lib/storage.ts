@@ -1,3 +1,5 @@
+import { decodeJwtPayload } from './jwt';
+
 /** Clés distinctes de l’admin pour éviter les collisions sur le même origine. */
 const TOKEN_KEY = 'clubflow_member_token';
 const CLUB_ID_KEY = 'clubflow_member_club_id';
@@ -62,11 +64,12 @@ export function hasMemberSession(): boolean {
 export function isTokenValid(): boolean {
   const token = getToken();
   if (!token) return false;
-  try {
-    const payload = JSON.parse(atob(token.split('.')[1])) as { exp?: number };
-    if (typeof payload.exp !== 'number') return true;
-    return payload.exp * 1000 > Date.now() + 30_000;
-  } catch {
-    return false;
-  }
+  // `atob` seul levait sur les jetons base64url (« - » ou « _ » dans la charge
+  // utile), et l'exception était lue comme « jeton invalide » : le membre se
+  // retrouvait déconnecté alors que sa session était valide, de manière
+  // intermittente puisque cela dépend des octets du jeton.
+  const payload = decodeJwtPayload<{ exp?: number }>(token);
+  if (!payload) return false;
+  if (typeof payload.exp !== 'number') return true;
+  return payload.exp * 1000 > Date.now() + 30_000;
 }
