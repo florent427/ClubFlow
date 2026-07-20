@@ -6,7 +6,12 @@ import {
 } from '@apollo/client';
 import { onError } from '@apollo/client/link/error';
 import { CombinedGraphQLErrors, ServerError } from '@apollo/client/errors';
-import { clearAuth, getClubId, getToken } from './storage';
+import {
+  clearAuth,
+  getClubId,
+  getToken,
+  SESSION_CHANGED_EVENT,
+} from './storage';
 
 const uri =
   import.meta.env.VITE_GRAPHQL_HTTP ?? 'http://localhost:3000/graphql';
@@ -63,3 +68,23 @@ export const apolloClient = new ApolloClient({
     query: { fetchPolicy: 'network-only' },
   },
 });
+
+/**
+ * Vide le cache à chaque changement d'identité — connexion, déconnexion,
+ * changement de profil (cf. SESSION_CHANGED_EVENT dans storage.ts).
+ *
+ * L'admin faisait déjà ce nettoyage, pas le portail. Les `fetchPolicy:
+ * 'network-only'` ci-dessus limitent l'exposition, mais ne l'annulent pas :
+ * ils ne valent que pour les requêtes passant par ces défauts. Un composant
+ * qui lit le cache directement, un fragment déjà normalisé, ou une requête
+ * posant sa propre policy resservirait les données du compte précédent.
+ *
+ * `clearStore` et non `resetStore` : on ne veut PAS refetcher les requêtes de
+ * l'utilisateur qui vient de partir — elles échoueraient, et sur la mauvaise
+ * identité. Les écrans qui se montent après referont leurs requêtes seuls.
+ */
+if (typeof window !== 'undefined') {
+  window.addEventListener(SESSION_CHANGED_EVENT, () => {
+    void apolloClient.clearStore();
+  });
+}
