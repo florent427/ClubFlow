@@ -13,6 +13,8 @@ export type MainTabParamList = {
   Documents: undefined;
   /** Panier d'adhésion — saison active, pendingItems, validation. */
   Panier: undefined;
+  /** Boutique du club — catalogue, déclinaisons, commande (ADR-0012). */
+  Boutique: undefined;
   /** Overflow menu — modules secondaires (Documents, Actus, Profil…). */
   Plus: undefined;
 };

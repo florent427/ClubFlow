@@ -20,6 +20,10 @@ import {
   VIEWER_DOCUMENTS_TO_SIGN,
   type ViewerDocumentsToSignData,
 } from '../lib/documents-graphql';
+import {
+  VIEWER_CLUB_MODULES,
+  type ViewerClubModulesData,
+} from '../lib/shop-documents';
 import type { ViewerMeData } from '../lib/viewer-types';
 import { palette, radius, shadow, spacing, typography } from '../lib/theme';
 import type { MainTabParamList } from '../types/navigation';
@@ -62,8 +66,21 @@ export function MoreMenuScreen() {
     VIEWER_DOCUMENTS_TO_SIGN,
     { errorPolicy: 'all', fetchPolicy: 'cache-and-network' },
   );
+  const { data: modulesData } = useQuery<ViewerClubModulesData>(
+    VIEWER_CLUB_MODULES,
+    { errorPolicy: 'all', fetchPolicy: 'cache-and-network' },
+  );
   const hideMemberModules = meData?.viewerMe?.hideMemberModules === true;
   const docsToSignCount = docsData?.viewerDocumentsToSign?.length ?? 0;
+
+  // Masquée tant que la réponse n'est pas arrivée : afficher d'abord puis
+  // retirer ferait sauter la grille, et surtout proposerait une vignette
+  // que `ClubModuleEnabledGuard` refuse côté API. Après le premier
+  // chargement la réponse vient du cache Apollo — l'attente est invisible.
+  const shopEnabled =
+    modulesData?.clubModules?.some(
+      (m) => m.moduleCode === 'SHOP' && m.enabled,
+    ) === true;
 
   const canManageMembershipCart =
     meData?.viewerMe?.canManageMembershipCart === true;
@@ -77,6 +94,17 @@ export function MoreMenuScreen() {
             icon: 'basket-outline',
             target: 'Panier',
             tone: 'primary',
+          },
+        ] as Tile[])
+      : []),
+    ...(shopEnabled
+      ? ([
+          {
+            key: 'boutique',
+            label: 'Boutique',
+            icon: 'storefront-outline',
+            target: 'Boutique',
+            tone: 'warm',
           },
         ] as Tile[])
       : []),

@@ -18,6 +18,7 @@ import { PanierAdhesionScreen } from '../screens/PanierAdhesionScreen';
 import { PlanningScreen } from '../screens/PlanningScreen';
 import { ProgressionScreen } from '../screens/ProgressionScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
+import { ShopScreen } from '../screens/ShopScreen';
 import { VIEWER_ME } from '../lib/viewer-documents';
 import type { ViewerMeData } from '../lib/viewer-types';
 import { palette, typography } from '../lib/theme';
@@ -188,6 +189,22 @@ export function MemberTabsNavigator() {
         component={PanierAdhesionScreen}
         options={{
           title: 'Panier d’adhésion',
+          tabBarButton: () => null,
+          tabBarItemStyle: { display: 'none' },
+        }}
+      />
+
+      {/* ─── BOUTIQUE (caché — accessible via tile MoreMenu) ───────── */}
+      {/* Enregistrée inconditionnellement : la vignette du MoreMenu est,
+          elle, gatée sur le module SHOP du club. Le gating d'affichage
+          vit à UN seul endroit — dupliquer la condition ici ferait
+          diverger les deux à la première évolution. */}
+      <MemberTab.Screen
+        name="Boutique"
+        component={ShopScreen}
+        options={{
+          headerShown: false,
+          title: 'Boutique',
           tabBarButton: () => null,
           tabBarItemStyle: { display: 'none' },
         }}
