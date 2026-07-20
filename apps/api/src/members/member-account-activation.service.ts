@@ -6,6 +6,24 @@ import { PrismaService } from '../prisma/prisma.service';
 import { normalizeMemberEmail } from './member-email-family-rule';
 
 /**
+ * Résultat d'une tentative d'activation.
+ *
+ * `conflict` n'est renseigné QUE pour `reason === 'link-conflict'` : c'est le
+ * signal exploitable côté admin. Sans lui, l'échec restait un simple booléen
+ * `false` indiscernable d'un « rien à faire » — et c'est précisément ce qui a
+ * rendu l'incident de production invisible.
+ */
+export type MemberAccountActivationResult = {
+  activationSent: boolean;
+  reason: string;
+  conflict?: {
+    userId: string;
+    heldByMemberId: string | null;
+    heldByMemberName: string | null;
+  };
+};
+
+/**
  * Service qui prend en charge l'activation du compte portail d'un Member
  * (typiquement un enfant) lorsque son adresse e-mail vient d'être
  * renseignée pour la première fois avec une adresse perso.
@@ -50,7 +68,7 @@ export class MemberAccountActivationService {
     memberId: string;
     previousEmail: string | null;
     newEmail: string;
-  }): Promise<{ activationSent: boolean; reason: string }> {
+  }): Promise<MemberAccountActivationResult> {
     const next = normalizeMemberEmail(args.newEmail);
     const prev = normalizeMemberEmail(args.previousEmail ?? '');
     if (!next) {
@@ -132,18 +150,62 @@ export class MemberAccountActivationService {
       });
       user = created;
     }
-    // Rattachement Member ↔ User (la contrainte unique
-    // [clubId, userId] empêche les doublons).
+    // Rattachement Member ↔ User.
+    //
+    // LA GARANTIE EST DANS LE WHERE : `clubId` (frontière multi-tenant) et
+    // `userId: null` (on ne remplace jamais un lien existant). `count` atteste
+    // du résultat — pas une lecture préalable.
+    //
+    // ⚠️ CE BLOC EST LA CAUSE RACINE D'UN INCIDENT DE PRODUCTION. Il échouait
+    // SILENCIEUSEMENT : l'index `@@unique([clubId, userId])` interdit qu'un
+    // compte soit lié à deux fiches du même club, donc quand la place était
+    // déjà prise par une vieille fiche (« Compte Portail démo »), le
+    // rattachement partait en P2002, était avalé par un `warn` anonyme, et
+    // le propriétaire du club se connectait au portail sur la mauvaise fiche.
+    // Personne ne l'a su pendant deux mois.
+    //
+    // Désormais : le conflit est DÉTECTÉ, la fiche qui squatte est NOMMÉE
+    // dans un `log.error`, et son identité remonte à l'appelant via
+    // `conflict` — de quoi proposer le déplacement depuis l'admin.
+    let linked: { count: number };
     try {
-      await this.prisma.member.update({
-        where: { id: member.id },
+      linked = await this.prisma.member.updateMany({
+        where: { id: member.id, clubId: args.clubId, userId: null },
         data: { userId: user.id },
       });
-    } catch (e) {
-      this.log.warn(
-        `[member-activation] Impossible de rattacher Member ${member.id} au User ${user.id} : ${(e as Error).message}`,
+    } catch {
+      linked = { count: 0 };
+    }
+    if (linked.count !== 1) {
+      // Lecture DIAGNOSTIQUE (après coup, jamais arbitrale) : qui détient la
+      // place ? C'est CE nom qui manquait pour comprendre l'incident.
+      const squatteur = await this.prisma.member.findFirst({
+        where: { clubId: args.clubId, userId: user.id },
+        select: { id: true, firstName: true, lastName: true, email: true },
+      });
+      const nomSquatteur = squatteur
+        ? `${`${squatteur.firstName} ${squatteur.lastName}`.trim()} (${squatteur.id})`
+        : 'inconnue';
+      this.log.error(
+        `[member-activation] CONFLIT DE RATTACHEMENT — le compte ${next} ` +
+          `(User ${user.id}) est déjà rattaché à la fiche ${nomSquatteur} ` +
+          `dans le club ${args.clubId} : la fiche ` +
+          `${`${member.firstName} ${member.lastName}`.trim()} (${member.id}) ` +
+          `NE SERA PAS rattachée et son titulaire verra la mauvaise fiche au ` +
+          `portail. Résolution : rattacher le compte à la bonne fiche depuis ` +
+          `l'admin (action « Rattacher à un compte », déplacement confirmé).`,
       );
-      return { activationSent: false, reason: 'link-conflict' };
+      return {
+        activationSent: false,
+        reason: 'link-conflict',
+        conflict: {
+          userId: user.id,
+          heldByMemberId: squatteur?.id ?? null,
+          heldByMemberName: squatteur
+            ? `${squatteur.firstName} ${squatteur.lastName}`.trim()
+            : null,
+        },
+      };
     }
 
     // Si l'utilisateur a DÉJÀ un mot de passe, ne pas en redemander.

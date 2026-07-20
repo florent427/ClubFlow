@@ -37,6 +37,7 @@ import type {
 } from '../../lib/types';
 import { SYSTEM_SET_MEMBER_ADMIN_ROLE } from '../../lib/documents';
 import { BUILTIN_ROLE_OPTIONS, roleLabel } from './members-constants';
+import { MemberAccountLinkPanel } from './MemberAccountLinkPanel';
 import { MemberAdhesionPanels } from './MemberAdhesionPanels';
 import { MemberPhotoField } from './MemberPhotoField';
 
@@ -957,6 +958,13 @@ export function MemberDetailDrawer({
             value={photoUrl}
             onChange={setPhotoUrl}
           />
+          {member ? (
+            <MemberAccountLinkPanel
+              key={memberId}
+              memberId={memberId}
+              memberName={`${member.firstName} ${member.lastName}`.trim()}
+            />
+          ) : null}
           {commEnabled ? (
             <div
               className="member-telegram-panel"

@@ -881,6 +881,54 @@ export const FINALIZE_MEMBERSHIP_INVOICE = gql`
   }
 `;
 
+export const CLUB_MEMBER_ACCOUNT_LINK = gql`
+  query ClubMemberAccountLink($memberId: ID!) {
+    clubMemberAccountLink(memberId: $memberId) {
+      memberId
+      userId
+      userEmail
+      userDisplayName
+    }
+  }
+`;
+
+/**
+ * `heldByMemberId/Name` est ce qui permet d'AVERTIR avant d'agir : l'admin
+ * doit comprendre qu'il DÉPLACE un lien, pas qu'il en ajoute un.
+ */
+export const CLUB_MEMBER_ACCOUNT_CANDIDATES = gql`
+  query ClubMemberAccountCandidates($memberId: ID!, $search: String) {
+    clubMemberAccountCandidates(memberId: $memberId, search: $search) {
+      userId
+      email
+      displayName
+      heldByMemberId
+      heldByMemberName
+      emailMatchesMember
+    }
+  }
+`;
+
+export const LINK_CLUB_MEMBER_ACCOUNT = gql`
+  mutation LinkClubMemberAccount($input: LinkMemberAccountInput!) {
+    linkClubMemberAccount(input: $input) {
+      id
+      userId
+      systemRole
+    }
+  }
+`;
+
+export const UNLINK_CLUB_MEMBER_ACCOUNT = gql`
+  mutation UnlinkClubMemberAccount($memberId: ID!) {
+    unlinkClubMemberAccount(memberId: $memberId) {
+      id
+      userId
+      systemRole
+    }
+  }
+`;
+
 export const CLUB_MEMBER_EMAIL_DUPLICATE_INFO = gql`
   query ClubMemberEmailDuplicateInfo($email: String!) {
     clubMemberEmailDuplicateInfo(email: $email) {

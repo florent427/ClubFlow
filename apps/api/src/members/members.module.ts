@@ -9,6 +9,7 @@ import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.gua
 import { ClubContactsResolver } from './club-contacts.resolver';
 import { ClubContactsService } from './club-contacts.service';
 import { MemberAccountActivationService } from './member-account-activation.service';
+import { MemberAccountLinkService } from './member-account-link.service';
 import { MemberFieldConfigService } from './member-field-config.service';
 import { MemberGraphResolver } from './member-graph.resolver';
 import { MembersResolver } from './members.resolver';
@@ -28,6 +29,7 @@ import { MembersService } from './members.service';
     MembersService,
     ClubContactsService,
     MemberAccountActivationService,
+    MemberAccountLinkService,
     MemberGraphResolver,
     MembersResolver,
     ClubContactsResolver,
@@ -38,6 +40,7 @@ import { MembersService } from './members.service';
     MemberFieldConfigService,
     ClubContactsService,
     MemberAccountActivationService,
+    MemberAccountLinkService,
   ],
 })
 export class MembersModule {}

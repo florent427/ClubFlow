@@ -140,6 +140,29 @@ export type ClubMemberTelegramQueryData = {
   };
 };
 
+export type MemberAccountLinkQueryData = {
+  clubMemberAccountLink: {
+    memberId: string;
+    userId: string | null;
+    userEmail: string | null;
+    userDisplayName: string | null;
+  };
+};
+
+export type MemberAccountCandidate = {
+  userId: string;
+  email: string;
+  displayName: string;
+  /** Fiche du club qui détient DÉJÀ ce compte — sert à avertir AVANT d'agir. */
+  heldByMemberId: string | null;
+  heldByMemberName: string | null;
+  emailMatchesMember: boolean;
+};
+
+export type MemberAccountCandidatesQueryData = {
+  clubMemberAccountCandidates: MemberAccountCandidate[];
+};
+
 export type MembersQueryData = {
   clubMembers: {
     id: string;
