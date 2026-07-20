@@ -1,5 +1,6 @@
 import { ShopService } from './shop.service';
 import type { PrismaService } from '../prisma/prisma.service';
+import type { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
 import type { ShopStockService } from './shop-stock.service';
 
 /**
@@ -25,6 +26,9 @@ const INTERDITS = [
   'variantsBelowThreshold',
   'belowThreshold',
   'lowStockAlertedAt',
+  // ADR-0013 §4 : « 20 arrivent » est une quantité comme une autre, et
+  // l'encours d'achat trahit en plus la politique de réappro du club.
+  'onOrder',
 ];
 
 /** Remonte tout chemin portant une valeur numérique ou vraie sur une clé interdite. */
@@ -84,11 +88,19 @@ function makeSvc() {
   const prisma = {
     shopProduct: { findMany: jest.fn().mockResolvedValue([produit]) },
   };
+  // Le double d'approvisionnement renvoie un encours NON NUL : un stub à zéro
+  // rendrait le test de fuite vert quoi qu'il arrive, puisque `0` ne trahit
+  // rien. C'est exactement le défaut décrit par
+  // pitfalls/test-verifie-la-forme-pas-le-comportement.md.
+  const purchases = {
+    onOrderByVariant: jest.fn().mockResolvedValue(new Map([['v-1', 20]])),
+  };
   const svc = new ShopService(
     prisma as unknown as PrismaService,
     {} as unknown as ShopStockService,
+    purchases as unknown as ShopPurchaseOrdersService,
   );
-  return { svc, produit };
+  return { svc, produit, purchases };
 }
 
 describe('listProductsPublic — ce que voit un adhérent', () => {
@@ -140,5 +152,23 @@ describe('listProductsAdmin — ce que voit le trésorier', () => {
     expect(p.variants[0].reorderThreshold).toBe(5);
     expect(p.variants[0].belowThreshold).toBe(true);
     expect(p.variantsBelowThreshold).toBe(1);
+  });
+
+  it('voit l’encours fournisseur — « il reste 2, mais 20 arrivent »', async () => {
+    // Le pendant du test de fuite : sans lui, neutraliser `onOrder` PARTOUT
+    // passerait les deux, et l'admin recommanderait deux fois (ADR-0013 §4).
+    const { svc } = makeSvc();
+
+    const [p] = await svc.listProductsAdmin('club-1');
+
+    expect(p.variants[0].onOrder).toBe(20);
+  });
+
+  it('n’interroge JAMAIS l’encours d’achat sur le chemin public', async () => {
+    const { svc, purchases } = makeSvc();
+
+    await svc.listProductsPublic('club-1');
+
+    expect(purchases.onOrderByVariant).not.toHaveBeenCalled();
   });
 });
