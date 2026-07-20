@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.25.0](https://github.com/florent427/ClubFlow/compare/v0.24.0...v0.25.0) (2026-07-20)
+
+
+### ✨ Features
+
+* **appro:** moteur de réception, rapprochement et encours fournisseur ([d0017ec](https://github.com/florent427/ClubFlow/commit/d0017ec98f606449453eaebda4caa66499fd244b))
+* **appro:** moteur de réception, rapprochement et encours fournisseur ([0c94361](https://github.com/florent427/ClubFlow/commit/0c943615c3a14d89a44122eeafc3d26754bcd2b8))
+
 ## [0.24.0](https://github.com/florent427/ClubFlow/compare/v0.23.1...v0.24.0) (2026-07-19)
 
 
