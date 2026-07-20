@@ -14,6 +14,7 @@ import { CreateDynamicGroupInput } from './dto/create-dynamic-group.input';
 import { CreateGradeLevelInput } from './dto/create-grade-level.input';
 import { CreateMemberCustomFieldDefinitionInput } from './dto/create-member-custom-field-definition.input';
 import { CreateMemberInput } from './dto/create-member.input';
+import { LinkMemberAccountInput } from './dto/link-member-account.input';
 import { UpsertClubMemberCatalogFieldSettingInput } from './dto/upsert-club-member-catalog-field-settings.input';
 import { UpdateClubRoleDefinitionInput } from './dto/update-club-role-definition.input';
 import { UpdateDynamicGroupInput } from './dto/update-dynamic-group.input';
@@ -29,6 +30,11 @@ import { MemberCatalogFieldSettingGraph } from './models/member-catalog-field-se
 import { MemberCustomFieldDefinitionGraph } from './models/member-custom-field-definition.model';
 import { ClubMemberEmailDuplicateInfoGraph } from './models/club-member-email-duplicate-info.model';
 import { MemberGraph } from './models/member.model';
+import {
+  MemberAccountCandidateGraph,
+  MemberAccountLinkStateGraph,
+} from './models/member-account-link.model';
+import { MemberAccountLinkService } from './member-account-link.service';
 import { MemberFieldConfigService } from './member-field-config.service';
 import { MembersService } from './members.service';
 
@@ -44,6 +50,7 @@ export class MembersResolver {
   constructor(
     private readonly members: MembersService,
     private readonly memberFieldConfig: MemberFieldConfigService,
+    private readonly accountLink: MemberAccountLinkService,
   ) {}
 
   @Query(() => ClubMemberFieldLayoutGraph, { name: 'clubMemberFieldLayout' })
@@ -205,6 +212,62 @@ export class MembersResolver {
     @Args('status', { type: () => MemberStatus }) status: MemberStatus,
   ): Promise<MemberGraph> {
     return this.members.setMemberStatus(club.id, id, status);
+  }
+
+  // ------------------------------------------------------------------
+  // Rattachement fiche ↔ compte utilisateur
+  //
+  // Ces opérations vivent SUR CE RESOLVER, et pas ailleurs : c'est lui qui
+  // porte les quatre gardes (JWT, contexte club, rôle admin, module activé)
+  // et le `@RequireClubModule(MEMBERS)`. Les déplacer perdrait le contrôle
+  // de rôle SILENCIEUSEMENT — un simple membre pourrait s'attribuer la fiche
+  // de quelqu'un d'autre.
+  // ------------------------------------------------------------------
+
+  @Query(() => MemberAccountLinkStateGraph, {
+    name: 'clubMemberAccountLink',
+    description: 'Compte utilisateur actuellement rattaché à cette fiche.',
+  })
+  clubMemberAccountLink(
+    @CurrentClub() club: Club,
+    @Args('memberId', { type: () => ID }) memberId: string,
+  ): Promise<MemberAccountLinkStateGraph> {
+    return this.accountLink.getLinkState(club.id, memberId);
+  }
+
+  @Query(() => [MemberAccountCandidateGraph], {
+    name: 'clubMemberAccountCandidates',
+    description:
+      'Comptes proposables pour cette fiche, avec la fiche qui les détient déjà (permet d’avertir AVANT d’agir).',
+  })
+  clubMemberAccountCandidates(
+    @CurrentClub() club: Club,
+    @Args('memberId', { type: () => ID }) memberId: string,
+    @Args('search', { type: () => String, nullable: true })
+    search?: string | null,
+  ): Promise<MemberAccountCandidateGraph[]> {
+    return this.accountLink.listCandidates(club.id, memberId, search);
+  }
+
+  @Mutation(() => MemberGraph, {
+    description:
+      'Rattache une fiche à un compte. Si le compte est déjà pris par une autre fiche du club, échoue tant que `confirmMove` n’est pas true.',
+  })
+  async linkClubMemberAccount(
+    @CurrentClub() club: Club,
+    @Args('input') input: LinkMemberAccountInput,
+  ): Promise<MemberGraph> {
+    await this.accountLink.link(club.id, input);
+    return this.members.getMember(club.id, input.memberId);
+  }
+
+  @Mutation(() => MemberGraph)
+  async unlinkClubMemberAccount(
+    @CurrentClub() club: Club,
+    @Args('memberId', { type: () => ID }) memberId: string,
+  ): Promise<MemberGraph> {
+    await this.accountLink.unlink(club.id, memberId);
+    return this.members.getMember(club.id, memberId);
   }
 
   @Query(() => [DynamicGroupGraph], { name: 'clubDynamicGroups' })
