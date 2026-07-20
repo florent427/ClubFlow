@@ -7,6 +7,7 @@ import { AuthModule } from '../auth/auth.module';
 import { CatalogModule } from '../modules/catalog/catalog.module';
 import { ClubModulesModule } from '../modules/club-modules.module';
 import { ClubsModule } from '../clubs/clubs.module';
+import { ClubTeamModule } from '../club-team/club-team.module';
 import { AccountingModule } from '../accounting/accounting.module';
 import { CommsModule } from '../comms/comms.module';
 import { TelegramModule } from '../telegram/telegram.module';
@@ -126,6 +127,7 @@ import '../documents/dto/sign-club-document.input';
     AuthModule,
     CatalogModule,
     ClubsModule,
+    ClubTeamModule,
     DashboardModule,
     ClubModulesModule,
     MembersModule,

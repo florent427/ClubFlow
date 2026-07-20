@@ -2042,3 +2042,24 @@ export type VerifyVitrineDomainMutationData = {
 export type RemoveVitrineDomainMutationData = {
   removeVitrineDomain: VitrineDomainState;
 };
+
+// =====================================================================
+// Équipe du club — accès à l'espace d'administration
+// =====================================================================
+
+export type ClubTeamMemberRow = {
+  membershipId: string;
+  userId: string;
+  email: string;
+  displayName: string;
+  role: MembershipRoleStr;
+  createdAt: string;
+  /** L'accès de la personne connectée. */
+  isSelf: boolean;
+  /** Seul administrateur du club — indication d'affichage, l'API refuse aussi. */
+  isLastAdmin: boolean;
+};
+
+export type ClubTeamMembersQueryData = {
+  clubTeamMembers: ClubTeamMemberRow[];
+};

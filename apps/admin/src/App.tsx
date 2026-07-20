@@ -36,6 +36,7 @@ import { SettingsLayout } from './pages/settings/SettingsLayout';
 import { SettingsHubPage } from './pages/settings/SettingsHubPage';
 import { MemberFieldsSettingsPage } from './pages/settings/MemberFieldsSettingsPage';
 import { SystemAdminsPage } from './pages/settings/SystemAdminsPage';
+import { ClubTeamPage } from './pages/settings/ClubTeamPage';
 import { AdhesionSettingsPage } from './pages/settings/AdhesionSettingsPage';
 import { PricingRulesPage } from './pages/settings/PricingRulesPage';
 import { MailDomainSettingsPage } from './pages/settings/MailDomainSettingsPage';
@@ -177,6 +178,7 @@ export default function App() {
                 path="adhesion-pricing-rules"
                 element={<AdhesionPricingRulesPage />}
               />
+              <Route path="equipe" element={<ClubTeamPage />} />
               <Route path="administrateurs" element={<SystemAdminsPage />} />
               {/* Cible de la `return_url` d'onboarding Stripe (?stripe=return). */}
               <Route path="payments" element={<PaymentsSettingsPage />} />
