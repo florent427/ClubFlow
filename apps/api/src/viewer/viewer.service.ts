@@ -139,6 +139,8 @@ export class ViewerService {
     viewerUserId: string;
     /** 1 = paiement comptant. 3 = échelonnement Stripe (carte 3 fois). */
     installmentsCount?: number;
+    /** Retour via lien profond `clubflow://` (app mobile) plutôt que https. */
+    nativeApp?: boolean;
   }): Promise<{ url: string; sessionId: string; paymentReturnUrl: string }> {
     const where = await this.payerScope.resolvePayerInvoiceWhere({
       clubId: args.clubId,
@@ -182,13 +184,14 @@ export class ViewerService {
       clubId: args.clubId,
       paidByMemberId: args.activeProfile.memberId ?? null,
       installmentsCount: installments,
+      nativeApp: args.nativeApp,
     });
-    // `successUrl` = l'URL de retour posée sur la session (`/facturation?paid=1`) ;
-    // le mobile la surveille pour revenir dans l'app (cf. ViewerCheckoutSessionGraph).
+    // `paymentReturnUrl` = ce que le client surveille pour revenir : l'URL https
+    // de succès sur le web, le lien profond `clubflow://` sur mobile.
     return {
       url: session.url,
       sessionId: session.sessionId,
-      paymentReturnUrl: session.successUrl,
+      paymentReturnUrl: session.paymentReturnUrl,
     };
   }
 
@@ -2316,6 +2319,8 @@ export class ViewerService {
     clubId: string;
     activeProfile: { memberId: string | null; contactId: string | null };
     wantsInstallments: boolean;
+    /** Retour via lien profond `clubflow://` (app mobile) plutôt que https. */
+    nativeApp?: boolean;
   }): Promise<{
     orderId: string;
     invoiceId: string;
@@ -2339,6 +2344,7 @@ export class ViewerService {
       installmentsCount: checkout.installmentsCount,
       // Retour vers la boutique, pas vers Facturation (réservée aux payeurs).
       returnPath: '/boutique',
+      nativeApp: args.nativeApp,
     });
     return {
       orderId: checkout.orderId,
@@ -2346,7 +2352,7 @@ export class ViewerService {
       totalCents: checkout.totalCents,
       installmentsCount: checkout.installmentsCount,
       stripeCheckoutUrl: session.url,
-      paymentReturnUrl: session.successUrl,
+      paymentReturnUrl: session.paymentReturnUrl,
     };
   }
 
@@ -2375,6 +2381,8 @@ export class ViewerService {
     activeProfile: { memberId: string | null; contactId: string | null };
     orderId: string;
     wantsInstallments: boolean;
+    /** Retour via lien profond `clubflow://` (app mobile) plutôt que https. */
+    nativeApp?: boolean;
   }): Promise<{
     orderId: string;
     invoiceId: string;
@@ -2465,6 +2473,7 @@ export class ViewerService {
       paidByMemberId: null,
       installmentsCount,
       returnPath: '/boutique',
+      nativeApp: args.nativeApp,
     });
 
     return {
@@ -2473,7 +2482,7 @@ export class ViewerService {
       totalCents: order.totalCents,
       installmentsCount,
       stripeCheckoutUrl: session.url,
-      paymentReturnUrl: session.successUrl,
+      paymentReturnUrl: session.paymentReturnUrl,
     };
   }
 

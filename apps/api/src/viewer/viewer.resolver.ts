@@ -456,6 +456,8 @@ export class ViewerResolver {
     @Args('invoiceId') invoiceId: string,
     @Args('installmentsCount', { type: () => Int, nullable: true })
     installmentsCount?: number,
+    @Args('nativeApp', { type: () => Boolean, nullable: true })
+    nativeApp?: boolean,
   ): Promise<ViewerCheckoutSessionGraph> {
     return this.viewer.viewerCreateInvoiceCheckoutSession({
       clubId: club.id,
@@ -466,6 +468,7 @@ export class ViewerResolver {
       },
       viewerUserId: user.userId,
       installmentsCount: installmentsCount ?? undefined,
+      nativeApp: nativeApp ?? false,
     });
   }
 
@@ -767,6 +770,8 @@ export class ViewerResolver {
     @CurrentClub() club: Club,
     @Args('wantsInstallments', { type: () => Boolean, nullable: true })
     wantsInstallments?: boolean,
+    @Args('nativeApp', { type: () => Boolean, nullable: true })
+    nativeApp?: boolean,
   ): Promise<ShopCartCheckoutGraph> {
     return this.viewer.viewerCheckoutShopCart({
       clubId: club.id,
@@ -775,6 +780,7 @@ export class ViewerResolver {
         contactId: user.activeProfileContactId ?? null,
       },
       wantsInstallments: wantsInstallments === true,
+      nativeApp: nativeApp ?? false,
     });
   }
 
@@ -791,6 +797,8 @@ export class ViewerResolver {
     @Args('orderId', { type: () => ID }) orderId: string,
     @Args('wantsInstallments', { type: () => Boolean, nullable: true })
     wantsInstallments?: boolean,
+    @Args('nativeApp', { type: () => Boolean, nullable: true })
+    nativeApp?: boolean,
   ): Promise<ShopCartCheckoutGraph> {
     return this.viewer.viewerRepayShopOrder({
       clubId: club.id,
@@ -800,6 +808,7 @@ export class ViewerResolver {
       },
       orderId,
       wantsInstallments: wantsInstallments === true,
+      nativeApp: nativeApp ?? false,
     });
   }
 

@@ -192,7 +192,7 @@ const VIEWER_SHOP_CART_CHECKOUT_FIELDS = `
  */
 export const VIEWER_CHECKOUT_SHOP_CART = gql`
   mutation ViewerCheckoutShopCart($wantsInstallments: Boolean) {
-    viewerCheckoutShopCart(wantsInstallments: $wantsInstallments) {
+    viewerCheckoutShopCart(wantsInstallments: $wantsInstallments, nativeApp: true) {
       ${VIEWER_SHOP_CART_CHECKOUT_FIELDS}
     }
   }
@@ -207,7 +207,7 @@ export const VIEWER_CHECKOUT_SHOP_CART = gql`
  */
 export const VIEWER_REPAY_SHOP_ORDER = gql`
   mutation ViewerRepayShopOrder($orderId: ID!, $wantsInstallments: Boolean) {
-    viewerRepayShopOrder(orderId: $orderId, wantsInstallments: $wantsInstallments) {
+    viewerRepayShopOrder(orderId: $orderId, wantsInstallments: $wantsInstallments, nativeApp: true) {
       ${VIEWER_SHOP_CART_CHECKOUT_FIELDS}
     }
   }

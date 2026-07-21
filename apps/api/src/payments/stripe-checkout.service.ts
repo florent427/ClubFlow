@@ -36,28 +36,46 @@ export class StripeCheckoutService {
   }
 
   /**
-   * `returnPath` paramétrable, `/facturation` par défaut.
-   *
-   * Une facture ramène vers l'espace Facturation ; une commande boutique doit
-   * ramener vers `/boutique`. Sans ce paramètre, l'acheteur retombait sur la
-   * page Facturation, réservée aux payeurs du foyer — un membre acheteur
-   * non-payeur y voyait « accès réservé » APRÈS avoir payé. Le défaut préserve
-   * strictement le comportement des factures.
+   * Lien profond que l'app mobile surveille pour se refermer après paiement.
+   * `openAuthSessionAsync(stripeUrl, APP_RETURN_DEEP_LINK)` : le navigateur
+   * intégré se ferme dès que Stripe → page-relais → ce scheme.
    */
-  private successAndCancelUrls(
+  private static readonly APP_RETURN_DEEP_LINK = 'clubflow://payment-return';
+
+  /**
+   * URLs de retour Stripe, selon la cible.
+   *
+   * WEB (`nativeApp=false`) : URL https classique vers l'espace concerné
+   * (`/facturation` par défaut, `/boutique` pour la boutique). Le champ
+   * `paymentReturnUrl` renvoyé au client vaut cette URL de succès.
+   *
+   * APP (`nativeApp=true`) : Stripe n'accepte que du https, mais l'app ne peut
+   * être rappelée que par un LIEN PROFOND. On envoie donc Stripe vers la
+   * page-relais statique `/app-return.html` (portail), qui rebondit aussitôt sur
+   * `clubflow://payment-return`. Le client surveille CE scheme, pas l'URL https :
+   * `paymentReturnUrl` vaut alors le lien profond. Sans ça, le navigateur
+   * chargeait la page web et ne rendait jamais la main à l'app.
+   */
+  private returnUrls(
     clubSlug: string | null,
-    returnPath = '/facturation',
-  ): {
-    successUrl: string;
-    cancelUrl: string;
-  } {
-    const base =
-      process.env.MEMBER_PORTAL_ORIGIN ?? 'http://localhost:5174';
+    returnPath: string,
+    nativeApp: boolean,
+  ): { successUrl: string; cancelUrl: string; paymentReturnUrl: string } {
+    const base = process.env.MEMBER_PORTAL_ORIGIN ?? 'http://localhost:5174';
+    if (nativeApp) {
+      return {
+        successUrl: `${base}/app-return.html?paid=1`,
+        cancelUrl: `${base}/app-return.html?canceled=1`,
+        paymentReturnUrl: StripeCheckoutService.APP_RETURN_DEEP_LINK,
+      };
+    }
     const slug = clubSlug ?? '';
     const qs = slug ? `?club=${encodeURIComponent(slug)}` : '';
+    const successUrl = `${base}${returnPath}${qs}${qs ? '&' : '?'}paid=1`;
     return {
-      successUrl: `${base}${returnPath}${qs}${qs ? '&' : '?'}paid=1`,
+      successUrl,
       cancelUrl: `${base}${returnPath}${qs}${qs ? '&' : '?'}canceled=1`,
+      paymentReturnUrl: successUrl,
     };
   }
 
@@ -85,7 +103,14 @@ export class StripeCheckoutService {
      * l'espace Facturation réservé aux payeurs.
      */
     returnPath?: string;
-  }): Promise<{ url: string; sessionId: string; successUrl: string }> {
+    /**
+     * Appel depuis l'app mobile : le retour Stripe passe par la page-relais
+     * `/app-return.html` qui rebondit sur le lien profond `clubflow://`, et le
+     * `paymentReturnUrl` renvoyé est ce lien profond (à surveiller par
+     * `openAuthSessionAsync`). Défaut `false` = web, comportement inchangé.
+     */
+    nativeApp?: boolean;
+  }): Promise<{ url: string; sessionId: string; paymentReturnUrl: string }> {
     const invoice = await this.prisma.invoice.findFirst({
       where: {
         id: args.invoiceId,
@@ -133,9 +158,10 @@ export class StripeCheckoutService {
       where: { id: args.clubId },
       select: { slug: true, name: true },
     });
-    const { successUrl, cancelUrl } = this.successAndCancelUrls(
+    const { successUrl, cancelUrl, paymentReturnUrl } = this.returnUrls(
       club?.slug ?? null,
-      args.returnPath,
+      args.returnPath ?? '/facturation',
+      args.nativeApp ?? false,
     );
 
     const metadata: Record<string, string> = {
@@ -212,6 +238,6 @@ export class StripeCheckoutService {
     // Stripe exige un `success_url` https, un scheme `clubflow://` serait
     // rejeté. On expose donc l'URL déjà posée, sans la modifier ; le web
     // l'ignore.
-    return { url: session.url, sessionId: session.id, successUrl };
+    return { url: session.url, sessionId: session.id, paymentReturnUrl };
   }
 }

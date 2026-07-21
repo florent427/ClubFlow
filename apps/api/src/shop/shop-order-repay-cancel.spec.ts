@@ -380,7 +380,9 @@ describe('viewerRepayShopOrder — reprise de paiement', () => {
     createInvoiceCheckoutSession: jest.fn(async () => ({
       url: 'https://checkout.stripe.test/sess_1',
       sessionId: 'sess_1',
-      successUrl: 'http://localhost:5174/boutique?club=dojo&paid=1',
+      // Nouveau contrat : `createInvoiceCheckoutSession` renvoie directement
+      // `paymentReturnUrl` (l'URL à surveiller — https web ou lien profond).
+      paymentReturnUrl: 'http://localhost:5174/boutique?club=dojo&paid=1',
     })),
   });
 

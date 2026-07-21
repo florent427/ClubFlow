@@ -412,6 +412,11 @@ function InvoiceCard({
           'Votre paiement est en cours de confirmation.',
         );
         await client.refetchQueries({ include: [VIEWER_ALL_FAMILY_BILLING] });
+        // Le webhook Stripe solde la facture quelques secondes plus tard : un
+        // second refetch différé rattrape le statut sans action de l'adhérent.
+        setTimeout(() => {
+          void client.refetchQueries({ include: [VIEWER_ALL_FAMILY_BILLING] });
+        }, 3500);
       } else if (outcome === 'canceled') {
         Alert.alert('Paiement annulé', 'Votre facture reste à régler.');
       }

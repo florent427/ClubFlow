@@ -40,6 +40,12 @@ export function useStripePayment() {
         await client.refetchQueries({
           include: [VIEWER_SHOP_ORDERS, VIEWER_SHOP_CART],
         });
+        // Le webhook Stripe bascule PENDING→PAID quelques secondes plus tard.
+        // Un second refetch différé rattrape ce statut SANS que l'adhérent ait
+        // à fermer/rouvrir l'app — c'est ce qui rendait la mise à jour manuelle.
+        setTimeout(() => {
+          void client.refetchQueries({ include: [VIEWER_SHOP_ORDERS] });
+        }, 3500);
       }
       return outcome;
     },
