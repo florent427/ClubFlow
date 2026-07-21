@@ -61,15 +61,32 @@ const SOURCES_PUBLIQUES: Array<{
         (r) => r.imageUrl,
       ),
   },
+  {
+    // `coverMediaAssetId` est déjà l'UUID de l'asset (pas une URL) — accepté
+    // tel quel par `extraireId`. Manquait au rattrapage initial : les images
+    // d'événement s'affichaient donc en 404 sur la vitrine publique.
+    libelle: 'ClubEvent.coverMediaAssetId',
+    charger: async () =>
+      (
+        await prisma.clubEvent.findMany({ select: { coverMediaAssetId: true } })
+      ).map((r) => r.coverMediaAssetId),
+  },
 ];
 
-/** Extrait l'UUID d'une URL `.../media/<uuid>`, ou null. */
-function extraireId(url: string | null): string | null {
-  if (!url) return null;
-  const m = url.match(
-    /\/media\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i,
-  );
-  return m ? m[1] : null;
+const UUID_RE = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+
+/**
+ * Extrait l'UUID d'une URL `.../media/<uuid>`, OU accepte un UUID déjà nu.
+ *
+ * Les colonnes-URL (`logoUrl`…) portent l'id dans une URL ; mais
+ * `ClubEvent.coverMediaAssetId` est déjà l'id lui-même. On accepte donc les
+ * deux formes plutôt que de dupliquer la boucle.
+ */
+function extraireId(valeur: string | null): string | null {
+  if (!valeur) return null;
+  const dansUrl = valeur.match(new RegExp(`/media/(${UUID_RE})`, 'i'));
+  if (dansUrl) return dansUrl[1];
+  return new RegExp(`^${UUID_RE}$`, 'i').test(valeur) ? valeur : null;
 }
 
 async function main(): Promise<void> {

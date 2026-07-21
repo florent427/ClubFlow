@@ -10,6 +10,7 @@ import { randomUUID } from 'crypto';
 import {
   ClubEventRegistrationStatus,
   ClubEventStatus,
+  MediaVisibility,
   MemberStatus,
   Prisma,
 } from '@prisma/client';
@@ -111,11 +112,25 @@ export class EventsService {
     coverMediaAssetId: string | null | undefined,
   ): Promise<void> {
     if (!coverMediaAssetId) return;
-    const asset = await this.prisma.mediaAsset.findFirst({
+    // Valide ET publie en une seule écriture conditionnelle.
+    //
+    // Une couverture d'événement s'affiche sur la vitrine PUBLIQUE, mais un
+    // MediaAsset naît `PRIVATE` (défaut) et `ClubEvent.coverMediaAssetId` est
+    // une simple chaîne, invisible à toute relation : rien ne la rendait donc
+    // publique, et la vitrine anonyme recevait un 404 — images cassées en prod.
+    // Comme le logo de club et la couverture d'article, c'est `visibility` qui
+    // couvre ce cas ; on la pose ici, à l'attache, plutôt que de compter sur un
+    // paramètre d'upload qui a précisément manqué.
+    //
+    // Le `clubId` est DANS l'écriture (frontière tenant) et le prédicat
+    // `kind: 'IMAGE'` interdit de pointer un PDF (<img src=pdf> cassé). Le
+    // `count` arbitre : aucune ligne touchée = asset d'un autre club, ou PDF,
+    // ou inexistant → on refuse, sans lecture préalable.
+    const claimed = await this.prisma.mediaAsset.updateMany({
       where: { id: coverMediaAssetId, clubId, kind: 'IMAGE' },
-      select: { id: true },
+      data: { visibility: MediaVisibility.PUBLIC },
     });
-    if (!asset) {
+    if (claimed.count !== 1) {
       throw new BadRequestException("Image d'illustration invalide.");
     }
   }
