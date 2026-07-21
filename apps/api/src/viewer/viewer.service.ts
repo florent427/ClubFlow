@@ -139,7 +139,7 @@ export class ViewerService {
     viewerUserId: string;
     /** 1 = paiement comptant. 3 = échelonnement Stripe (carte 3 fois). */
     installmentsCount?: number;
-  }): Promise<{ url: string; sessionId: string }> {
+  }): Promise<{ url: string; sessionId: string; paymentReturnUrl: string }> {
     const where = await this.payerScope.resolvePayerInvoiceWhere({
       clubId: args.clubId,
       activeProfile: args.activeProfile,
@@ -177,12 +177,19 @@ export class ViewerService {
         installmentsCount: installments,
       },
     });
-    return this.stripeCheckout.createInvoiceCheckoutSession({
+    const session = await this.stripeCheckout.createInvoiceCheckoutSession({
       invoiceId: invoice.id,
       clubId: args.clubId,
       paidByMemberId: args.activeProfile.memberId ?? null,
       installmentsCount: installments,
     });
+    // `successUrl` = l'URL de retour posée sur la session (`/facturation?paid=1`) ;
+    // le mobile la surveille pour revenir dans l'app (cf. ViewerCheckoutSessionGraph).
+    return {
+      url: session.url,
+      sessionId: session.sessionId,
+      paymentReturnUrl: session.successUrl,
+    };
   }
 
   /**

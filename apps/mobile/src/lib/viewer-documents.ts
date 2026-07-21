@@ -330,6 +330,7 @@ export const VIEWER_CREATE_INVOICE_CHECKOUT_SESSION = gql`
     ) {
       url
       sessionId
+      paymentReturnUrl
     }
   }
 `;

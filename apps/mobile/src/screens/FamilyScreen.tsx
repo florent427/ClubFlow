@@ -1,16 +1,17 @@
-import { useMutation, useQuery } from '@apollo/client/react';
+import { useApolloClient, useMutation, useQuery } from '@apollo/client/react';
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
-  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import { interpretStripeReturn } from '../lib/shop-payment';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   Card,
@@ -36,6 +37,7 @@ type ViewerCreateInvoiceCheckoutSessionData = {
   viewerCreateInvoiceCheckoutSession: {
     url: string;
     sessionId: string;
+    paymentReturnUrl: string;
   };
 };
 
@@ -375,6 +377,7 @@ function InvoiceCard({
   // non-cliquable (juste de la lecture des paiements passés).
   const payable = inv.balanceCents > 0 && inv.status !== 'DRAFT';
 
+  const client = useApolloClient();
   const [createCheckout, { loading: starting }] =
     useMutation<ViewerCreateInvoiceCheckoutSessionData>(
       VIEWER_CREATE_INVOICE_CHECKOUT_SESSION,
@@ -385,23 +388,34 @@ function InvoiceCard({
       const { data } = await createCheckout({
         variables: { invoiceId: inv.id, installmentsCount },
       });
-      const url = data?.viewerCreateInvoiceCheckoutSession?.url;
-      if (!url) {
+      const payload = data?.viewerCreateInvoiceCheckoutSession;
+      if (!payload?.url) {
         Alert.alert(
           'Indisponible',
           'Impossible d\'initier le paiement. Réessayez plus tard.',
         );
         return;
       }
-      const supported = await Linking.canOpenURL(url);
-      if (!supported) {
+      // Navigateur INTÉGRÉ qui se ferme dès que Stripe redirige vers
+      // `paymentReturnUrl` — on revient DANS l'app, pas sur le web déconnecté.
+      // Même mécanique que le paiement boutique (interpretStripeReturn partagé).
+      const res = await WebBrowser.openAuthSessionAsync(
+        payload.url,
+        payload.paymentReturnUrl,
+      );
+      const outcome = interpretStripeReturn(res);
+      if (outcome === 'paid') {
+        // « reçu », pas « payé » : le webhook Stripe (asynchrone) bascule le
+        // vrai statut. On rafraîchit la facturation, qui le reflétera.
         Alert.alert(
-          'Navigateur introuvable',
-          'Aucune application ne peut ouvrir le lien de paiement Stripe.',
+          'Paiement reçu',
+          'Votre paiement est en cours de confirmation.',
         );
-        return;
+        await client.refetchQueries({ include: [VIEWER_ALL_FAMILY_BILLING] });
+      } else if (outcome === 'canceled') {
+        Alert.alert('Paiement annulé', 'Votre facture reste à régler.');
       }
-      await Linking.openURL(url);
+      // 'dismissed' (fermeture manuelle) : pas de message.
     } catch (err) {
       Alert.alert(
         'Erreur',
