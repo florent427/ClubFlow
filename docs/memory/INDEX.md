@@ -45,6 +45,7 @@
 | [`nestjs-graphql-nullable-needs-explicit-type.md`](pitfalls/nestjs-graphql-nullable-needs-explicit-type.md) | Piège — `@Field({ nullable: true })` GraphQL crash sans type explicite |
 | [`nextjs-isr-cache-stale.md`](pitfalls/nextjs-isr-cache-stale.md) | Piège — Next.js ISR cache stale après insert DB |
 | [`nextjs-public-env-vars-not-bundled.md`](pitfalls/nextjs-public-env-vars-not-bundled.md) | Piège — Next.js : `process.env.X` côté client n'a QUE les `NEXT_PUBLIC_*` |
+| [`nextjs-route-force-dynamic-headers-cookies.md`](pitfalls/nextjs-route-force-dynamic-headers-cookies.md) | Piège — une route Next.js reste 100% dynamique malgré un refactor headers()/cookies() |
 | [`ovh-a-parasite-185-158.md`](pitfalls/ovh-a-parasite-185-158.md) | Piège — Record A parasite OVH `185.158.133.1` (welcome page) |
 | [`pdf-parse-v2-conflict.md`](pitfalls/pdf-parse-v2-conflict.md) | Piège — `pdf-parse v2` casse à cause de conflit `pdfjs-dist` avec `pdf-to-img` |
 | [`powershell-auto-converts-urls-to-markdown.md`](pitfalls/powershell-auto-converts-urls-to-markdown.md) | Piège — PowerShell terminal convertit auto les URLs en markdown littéral |
@@ -57,6 +58,7 @@
 | [`revue-adversariale-tout-refute.md`](pitfalls/revue-adversariale-tout-refute.md) | Piège — une revue adversariale qui réfute 100 % de ses constats |
 | [`safety-blocks-shared-infra-mcp.md`](pitfalls/safety-blocks-shared-infra-mcp.md) | Piège — Safety bloque les modifs d'infra partagée via Chrome MCP |
 | [`signup-unverified-email-blocks-login.md`](pitfalls/signup-unverified-email-blocks-login.md) | Piège — Signup self-service : compte créé mais bloqué au login (email pas vérifié) |
+| [`souin-respects-origin-no-store.md`](pitfalls/souin-respects-origin-no-store.md) | Piège — Souin (cache-handler Caddy) refuse de cacher malgré default_cache_control |
 | [`ssh-passphrase-non-tty.md`](pitfalls/ssh-passphrase-non-tty.md) | Piège — SSH `Permission denied` quand la clé a une passphrase |
 | [`staging-supprimee-au-merge.md`](pitfalls/staging-supprimee-au-merge.md) | Piège — `staging` disparaît à chaque promotion vers `main` |
 | [`test-verifie-la-forme-pas-le-comportement.md`](pitfalls/test-verifie-la-forme-pas-le-comportement.md) | Piège — un test vert qui certifie un invariant que le code n'a pas |
@@ -92,7 +94,7 @@
 
 ---
 
-_Index généré le 2026-07-21 07:10 UTC par `bin/memory-index`._
+_Index généré le 2026-07-21 14:22 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`
