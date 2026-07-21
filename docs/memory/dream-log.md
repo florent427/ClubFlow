@@ -73,3 +73,20 @@
   existantes, dont un pitfall dont le correctif dormait depuis des mois —
   un pitfall non appliqué donne l'illusion inverse : on se souvient d'avoir
   traité le sujet.
+
+## 2026-07-21 (soir)
+- Score : 81 (seuil 8 → analyse complète)
+- Commits scannés (SHA, pour exclusion future) : f2eadb7, 1ccd4ba, 373d81f,
+  34c81f6, 0831dff, e185267, 1728033, bfe7294, 64445ad, 19415e1, c576fdb,
+  f84ddc0, 2bad276, 1d63820, 2c24157, 123edb1, 8b23b47, 940b803
+- Créés : `pitfalls/prisma-executeraw-pour-retour-void.md`,
+  `pitfalls/openauthsession-exige-scheme-custom.md`,
+  `pitfalls/atob-latin1-et-base64url.md`,
+  `pitfalls/module-natif-ne-passe-pas-par-metro.md`,
+  `pitfalls/eas-build-view-non-interactive.md`,
+  `workflows/promouvoir-une-branche-partagee.md`
+- Mis à jour : `pitfalls/github-token-ne-retrigger-pas.md` (une seule passe
+  suffit en général — l'annonce de « deux lancements » était fausse), CLAUDE.md
+- Refusés : aucun (« all »)
+- Note : session boutique/paiement/mobile + promotion en prod v0.31.0. Trois
+  des cinq pièges ont été signalés par Florent, pas détectés par moi.
