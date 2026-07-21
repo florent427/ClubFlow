@@ -54,18 +54,31 @@ describe('interpretStripeReturn', () => {
 });
 
 describe('canPayShopOrder / canCancelShopOrder', () => {
-  it('autorise payer + annuler UNIQUEMENT en attente (PENDING)', () => {
-    expect(canPayShopOrder('PENDING')).toBe(true);
+  it('« Payer » : en attente ET payable en ligne (facture présente)', () => {
+    expect(canPayShopOrder({ status: 'PENDING', payableOnline: true })).toBe(
+      true,
+    );
+    expect(canCancelShopOrder('PENDING')).toBe(true);
+  });
+
+  it('« Payer » FAUX sur une commande « sur place » (PENDING sans facture)', () => {
+    // On annule toujours, mais on ne « paie » pas en ligne une commande qui
+    // n'a pas de facture : le repay Stripe échouerait.
+    expect(canPayShopOrder({ status: 'PENDING', payableOnline: false })).toBe(
+      false,
+    );
     expect(canCancelShopOrder('PENDING')).toBe(true);
   });
 
   it('refuse payer + annuler sur une commande payée', () => {
-    expect(canPayShopOrder('PAID')).toBe(false);
+    expect(canPayShopOrder({ status: 'PAID', payableOnline: true })).toBe(false);
     expect(canCancelShopOrder('PAID')).toBe(false);
   });
 
   it('refuse payer + annuler sur une commande annulée', () => {
-    expect(canPayShopOrder('CANCELLED')).toBe(false);
+    expect(canPayShopOrder({ status: 'CANCELLED', payableOnline: true })).toBe(
+      false,
+    );
     expect(canCancelShopOrder('CANCELLED')).toBe(false);
   });
 });

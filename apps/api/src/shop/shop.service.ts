@@ -871,6 +871,26 @@ export class ShopService {
     ]);
     const memberById = new Map(members.map((m) => [m.id, m]));
     const contactById = new Map(contacts.map((c) => [c.id, c]));
+
+    // Une commande est « payable en ligne » si elle porte une facture OUVERTE.
+    // Les commandes « réglées sur place » (checkoutOnSite) n'ont PAS de facture :
+    // c'est ce booléen — et non le seul statut PENDING — qui permet aux écrans
+    // de n'afficher « Payer » que là où le repay en ligne aboutira.
+    const orderIds = orders.map((o) => o.id);
+    const openInvoices =
+      orderIds.length > 0
+        ? await this.prisma.invoice.findMany({
+            where: {
+              shopOrderId: { in: orderIds },
+              status: InvoiceStatus.OPEN,
+            },
+            select: { shopOrderId: true },
+          })
+        : [];
+    const payableOnlineOrderIds = new Set(
+      openInvoices.map((i) => i.shopOrderId).filter((v): v is string => !!v),
+    );
+
     return orders.map((o) => {
       let first: string | null = null;
       let last: string | null = null;
@@ -894,6 +914,7 @@ export class ShopService {
         createdAt: o.createdAt,
         updatedAt: o.updatedAt,
         paidAt: o.paidAt,
+        payableOnline: payableOnlineOrderIds.has(o.id),
         lines: o.lines.map((l) => ({
           id: l.id,
           orderId: l.orderId,

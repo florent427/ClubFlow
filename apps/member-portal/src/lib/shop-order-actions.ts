@@ -14,14 +14,38 @@ import type { ViewerShopOrderStatus } from './viewer-types';
  * appel voué à l'erreur.
  */
 
-/** Peut-on reprendre le paiement de cette commande (bouton « Payer ») ? */
-export function canRepayOrder(status: ViewerShopOrderStatus): boolean {
-  return status === 'PENDING';
+/**
+ * Peut-on reprendre le paiement EN LIGNE de cette commande (bouton « Payer ») ?
+ *
+ * Deux conditions : la commande est EN ATTENTE, ET elle porte une facture
+ * (`payableOnline`). Une commande « réglée sur place » est PENDING mais SANS
+ * facture — le repay Stripe échouerait. On ne propose donc « Payer » que là où
+ * il aboutira ; « Annuler », lui, reste offert sur toute commande en attente.
+ */
+export function canRepayOrder(order: {
+  status: ViewerShopOrderStatus;
+  payableOnline: boolean;
+}): boolean {
+  return order.status === 'PENDING' && order.payableOnline;
 }
 
 /** Peut-on annuler cette commande (bouton « Annuler ») ? */
 export function canCancelOrder(status: ViewerShopOrderStatus): boolean {
   return status === 'PENDING';
+}
+
+/**
+ * Peut-on proposer « Régler sur place » dans la modale de règlement ?
+ *
+ * Oui UNIQUEMENT à la validation du panier, jamais à la reprise de paiement
+ * d'une commande déjà passée. Deux raisons concordantes : `viewerCheckout
+ * ShopCartOnSite` opère sur le panier courant (sans argument) et non sur une
+ * commande précise ; et une commande PENDING a déjà arbitré son mode à sa
+ * création — la reprise ne concerne que le paiement Stripe de sa facture. La
+ * modale distingue les deux cas par la présence d'un `orderId` (mode repay).
+ */
+export function canPayOnSiteAtCheckout(orderId?: string | null): boolean {
+  return orderId == null;
 }
 
 export type OrderStatusBadge = {

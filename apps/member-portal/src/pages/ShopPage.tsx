@@ -466,7 +466,7 @@ export function ShopPage() {
             {orders.map((o) => {
               const pill = orderStatusBadge(o.status);
               const showActions =
-                canRepayOrder(o.status) || canCancelOrder(o.status);
+                canRepayOrder(o) || canCancelOrder(o.status);
               return (
                 <li key={o.id} className="mp-order-card">
                   <div className="mp-order-card__head">
@@ -496,7 +496,7 @@ export function ShopPage() {
                       Une commande payée ou annulée n'en propose aucune. */}
                   {showActions ? (
                     <div className="mp-order-card__actions">
-                      {canRepayOrder(o.status) ? (
+                      {canRepayOrder(o) ? (
                         <button
                           type="button"
                           className="mp-btn mp-btn-primary"
@@ -534,6 +534,15 @@ export function ShopPage() {
       {checkoutOpen ? (
         <ShopCheckoutModal
           totalCents={cart.totalCents}
+          onOnSitePlaced={() => {
+            // « Régler sur place » : commande créée en PENDING, panier vidé
+            // côté serveur. On lâche l'état local du panier (le serveur fait
+            // autorité), on referme, puis on resynchronise panier + commandes.
+            setCheckoutOpen(false);
+            setLocalCart(null);
+            void cartRefetch();
+            void ordRefetch();
+          }}
           onClose={() => {
             setCheckoutOpen(false);
             // Le checkout a pu échouer (rupture, 3× refusé) : on resynchronise

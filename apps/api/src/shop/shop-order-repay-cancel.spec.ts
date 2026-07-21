@@ -152,6 +152,19 @@ function makeStore(opts: {
         });
         return { count: hit.length };
       }),
+      // Sert `payableOnline` dans hydrateBuyers : les factures OUVERTES des
+      // commandes affichées.
+      findMany: jest.fn(async ({ where }: any) => {
+        const ids: string[] = where?.shopOrderId?.in ?? [];
+        return invoices
+          .filter(
+            (i) =>
+              i.shopOrderId != null &&
+              ids.includes(i.shopOrderId) &&
+              (!where?.status || i.status === where.status),
+          )
+          .map((i) => ({ shopOrderId: i.shopOrderId }));
+      }),
     },
     shopProductVariant: {
       updateMany: jest.fn(async ({ where, data }: any) => {

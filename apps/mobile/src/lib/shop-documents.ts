@@ -58,6 +58,7 @@ const VIEWER_SHOP_ORDER_FIELDS = `
   note
   createdAt
   paidAt
+  payableOnline
   lines {
     id
     productId
@@ -199,6 +200,24 @@ export const VIEWER_CHECKOUT_SHOP_CART = gql`
 `;
 
 /**
+ * Validation « régler sur place » : transforme le panier en commande PENDING et
+ * RÉSERVE le stock (même réservation atomique que le checkout Stripe), mais SANS
+ * paiement en ligne — aucune facture ni session Stripe. Aucun argument.
+ * L'adhérent règlera au club (espèces/chèque) ; le club marquera la commande
+ * payée plus tard. Le panier est vidé côté serveur. Renvoie la commande créée
+ * (`status: PENDING`), même forme que `viewerShopOrders`. Porté par
+ * `ShopViewerResolver.viewerCheckoutShopCartOnSite` (gardes viewer + gating
+ * SHOP), jamais admin.
+ */
+export const VIEWER_CHECKOUT_SHOP_CART_ON_SITE = gql`
+  mutation ViewerCheckoutShopCartOnSite {
+    viewerCheckoutShopCartOnSite {
+      ${VIEWER_SHOP_ORDER_FIELDS}
+    }
+  }
+`;
+
+/**
  * Reprise de paiement d'une commande restée EN ATTENTE (PENDING) dont la
  * facture est encore ouverte : crée une NOUVELLE session Stripe sur la facture
  * EXISTANTE (ni recréation de commande, ni re-réservation de stock). Même forme
@@ -295,6 +314,8 @@ export type ViewerShopOrder = {
   note: string | null;
   createdAt: string;
   paidAt: string | null;
+  /** Vrai si la commande porte une facture ouverte (payable en ligne). */
+  payableOnline: boolean;
   lines: ViewerShopOrderLine[];
 };
 
@@ -367,6 +388,9 @@ export type ViewerRemoveShopCartItemData = {
 export type ViewerClearShopCartData = { viewerClearShopCart: ShopCart };
 export type ViewerCheckoutShopCartData = {
   viewerCheckoutShopCart: ViewerShopCartCheckout;
+};
+export type ViewerCheckoutShopCartOnSiteData = {
+  viewerCheckoutShopCartOnSite: ViewerShopOrder;
 };
 export type ViewerRepayShopOrderData = {
   viewerRepayShopOrder: ViewerShopCartCheckout;

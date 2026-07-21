@@ -460,7 +460,7 @@ export function ShopCatalogScreen() {
               const pill = statusPill(o.status);
               const busyThis = actioningOrderId === o.id;
               const showActions =
-                canPayShopOrder(o.status) || canCancelShopOrder(o.status);
+                canPayShopOrder(o) || canCancelShopOrder(o.status);
               return (
                 <View key={o.id} style={styles.orderCard}>
                   <View style={styles.orderHead}>
@@ -487,7 +487,7 @@ export function ShopCatalogScreen() {
                       commande payée ou annulée n'en a aucune. */}
                   {showActions ? (
                     <View style={styles.orderActions}>
-                      {canPayShopOrder(o.status) ? (
+                      {canPayShopOrder(o) ? (
                         <Button
                           label="Payer"
                           icon="card-outline"

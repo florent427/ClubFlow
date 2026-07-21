@@ -56,11 +56,16 @@ export function interpretStripeReturn(
 }
 
 /**
- * Une commande peut être réglée / reprise (bouton « Payer ») uniquement tant
- * qu'elle est EN ATTENTE. PAID et CANCELLED n'ont pas d'action de paiement.
+ * Une commande n'est réglable / reprenable EN LIGNE (bouton « Payer ») que si
+ * elle est EN ATTENTE ET porte une facture (`payableOnline`). Une commande
+ * « réglée sur place » est PENDING mais SANS facture : le repay Stripe
+ * échouerait, donc on ne propose pas « Payer », seulement « Annuler ».
  */
-export function canPayShopOrder(status: ViewerShopOrderStatus): boolean {
-  return status === 'PENDING';
+export function canPayShopOrder(order: {
+  status: ViewerShopOrderStatus;
+  payableOnline: boolean;
+}): boolean {
+  return order.status === 'PENDING' && order.payableOnline;
 }
 
 /**

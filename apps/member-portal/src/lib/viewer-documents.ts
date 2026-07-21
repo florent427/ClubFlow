@@ -514,6 +514,7 @@ const VIEWER_SHOP_ORDER_FIELDS = `
   note
   createdAt
   paidAt
+  payableOnline
   buyerFirstName
   buyerLastName
   lines {
@@ -629,6 +630,22 @@ export const VIEWER_CHECKOUT_SHOP_CART = gql`
       totalCents
       installmentsCount
       stripeCheckoutUrl
+    }
+  }
+`;
+
+/**
+ * Validation « sur place » : crée la commande et RÉSERVE le stock SANS paiement
+ * en ligne — ni facture, ni session Stripe. La commande reste EN ATTENTE
+ * (PENDING) jusqu'à ce que le club la marque payée quand l'adhérent règle au
+ * club ; le panier est vidé côté serveur. Aucun argument : opère sur le panier
+ * courant du viewer. Le 3× ne concerne QUE le paiement par carte — il n'a aucun
+ * sens ici. Renvoie la commande créée (même forme que « Mes commandes »).
+ */
+export const VIEWER_CHECKOUT_SHOP_CART_ON_SITE = gql`
+  mutation ViewerCheckoutShopCartOnSite {
+    viewerCheckoutShopCartOnSite {
+      ${VIEWER_SHOP_ORDER_FIELDS}
     }
   }
 `;

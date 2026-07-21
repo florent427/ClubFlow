@@ -13,6 +13,7 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
+  Button,
   Card,
   EmptyState,
   GradientButton,
@@ -27,6 +28,7 @@ import {
 } from '../../lib/shop-cart';
 import {
   VIEWER_CHECKOUT_SHOP_CART,
+  VIEWER_CHECKOUT_SHOP_CART_ON_SITE,
   VIEWER_CLEAR_SHOP_CART,
   VIEWER_REMOVE_SHOP_CART_ITEM,
   VIEWER_SET_SHOP_CART_ITEM_QUANTITY,
@@ -34,6 +36,7 @@ import {
   VIEWER_SHOP_ORDERS,
   type ShopCartItem,
   type ViewerCheckoutShopCartData,
+  type ViewerCheckoutShopCartOnSiteData,
   type ViewerClearShopCartData,
   type ViewerRemoveShopCartItemData,
   type ViewerSetShopCartItemQuantityData,
@@ -88,10 +91,24 @@ export function ShopCartScreen() {
         { query: VIEWER_SHOP_ORDERS },
       ],
     });
+  // « Régler sur place » : crée la commande PENDING + réserve le stock, SANS
+  // Stripe. Le panier est vidé côté serveur : on refetch les deux (panier vide +
+  // nouvelle commande PENDING qui apparaît dans « Mes commandes »).
+  const [checkoutOnSite, { loading: checkingOutOnSite }] =
+    useMutation<ViewerCheckoutShopCartOnSiteData>(
+      VIEWER_CHECKOUT_SHOP_CART_ON_SITE,
+      {
+        refetchQueries: [
+          { query: VIEWER_SHOP_CART },
+          { query: VIEWER_SHOP_ORDERS },
+        ],
+      },
+    );
 
   const runStripePayment = useStripePayment();
 
-  const busy = settingQty || removing || clearing || checkingOut;
+  const busy =
+    settingQty || removing || clearing || checkingOut || checkingOutOnSite;
 
   async function changeQty(item: ShopCartItem, next: number) {
     try {
@@ -219,14 +236,57 @@ export function ShopCartScreen() {
     // reste visible et reprenable dans « Mes commandes ».
   }
 
-  function openCheckoutChoice() {
+  /**
+   * Paiement par CARTE (Stripe). Le choix 1× / 3× ne concerne QUE ce mode : le
+   * serveur arbitre le 3× (refus sous le seuil / 3× désactivé) et son message
+   * remonte tel quel.
+   */
+  function openCardPaymentChoice() {
     if (!cart) return;
     Alert.alert(
-      'Régler ma commande',
+      'Payer par carte',
       `Total : ${formatEuroCents(cart.totalCents)}\nChoisissez le mode de règlement. Le paiement en 3× n’est proposé qu’au-delà du montant fixé par le club.`,
       [
         { text: 'Payer en 1 fois', onPress: () => void doCheckout(false) },
         { text: 'Payer en 3 fois', onPress: () => void doCheckout(true) },
+        { text: 'Annuler', style: 'cancel' },
+      ],
+      { cancelable: true },
+    );
+  }
+
+  /**
+   * « Régler sur place » : valide le panier SANS paiement en ligne. La commande
+   * part en PENDING et le stock est réservé ; l'adhérent règlera au club. Pas de
+   * 3× ici (le 3× ne concerne que la carte). Le refus serveur (panier vide,
+   * article épuisé au moment de réserver) est affiché TEL QUEL.
+   */
+  async function doCheckoutOnSite() {
+    try {
+      await checkoutOnSite();
+    } catch (err) {
+      Alert.alert(
+        'Validation impossible',
+        err instanceof Error ? err.message : 'Erreur inconnue.',
+      );
+      return;
+    }
+    // Le panier est vidé et la commande PENDING créée côté serveur (refetchée) :
+    // on repart au catalogue, où elle apparaît dans « Mes commandes ».
+    navigation.navigate('ShopCatalog');
+    Alert.alert(
+      'Commande validée',
+      'Réglez sur place au club — elle sera confirmée après paiement.',
+    );
+  }
+
+  function confirmOnSite() {
+    if (!cart) return;
+    Alert.alert(
+      'Régler sur place',
+      `Total : ${formatEuroCents(cart.totalCents)}\nVotre commande sera validée et les articles réservés. Vous réglerez directement au club (espèces ou chèque) ; elle sera confirmée par le club après paiement. Aucun paiement en ligne.`,
+      [
+        { text: 'Valider la commande', onPress: () => void doCheckoutOnSite() },
         { text: 'Annuler', style: 'cancel' },
       ],
       { cancelable: true },
@@ -409,19 +469,34 @@ export function ShopCartScreen() {
                   {formatEuroCents(cart?.totalCents ?? 0)}
                 </Text>
               </View>
-              <View style={{ marginTop: spacing.md }}>
+              {/* Deux modes de règlement, présentés côte à côte AVANT de
+                  valider. Le 3× ne concerne que la carte (arbitré au checkout
+                  Stripe) ; « sur place » crée une commande PENDING sans
+                  paiement en ligne. */}
+              <Text style={styles.choiceLabel}>Mode de règlement</Text>
+              <View style={{ marginTop: spacing.sm, gap: spacing.sm }}>
                 <GradientButton
-                  label="Régler ma commande"
+                  label="Payer par carte"
                   icon="card-outline"
-                  onPress={openCheckoutChoice}
+                  onPress={openCardPaymentChoice}
                   loading={checkingOut}
+                  disabled={!checkoutable || busy}
+                  fullWidth
+                />
+                <Button
+                  label="Régler sur place"
+                  icon="cash-outline"
+                  variant="ghost"
+                  onPress={confirmOnSite}
+                  loading={checkingOutOnSite}
                   disabled={!checkoutable || busy}
                   fullWidth
                 />
               </View>
               <Text style={styles.hint}>
-                Paiement sécurisé par Stripe. Vous serez redirigé vers une page
-                de paiement hébergée.
+                Par carte : paiement sécurisé par Stripe (page hébergée). Sur
+                place : votre commande est réservée et réglée au club (espèces
+                ou chèque) ; elle sera confirmée après paiement.
               </Text>
             </Card>
           </>
@@ -517,6 +592,11 @@ const styles = StyleSheet.create({
   },
   totalLabel: { ...typography.bodyStrong, color: palette.body },
   totalValue: { ...typography.h2, color: palette.ink },
+  choiceLabel: {
+    ...typography.smallStrong,
+    color: palette.body,
+    marginTop: spacing.md,
+  },
   hint: {
     ...typography.small,
     color: palette.muted,
