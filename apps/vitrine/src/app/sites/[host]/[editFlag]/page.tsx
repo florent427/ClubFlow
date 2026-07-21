@@ -6,6 +6,14 @@ interface RouteParams {
   params: Promise<{ host: string; editFlag: string }>;
 }
 
+// Sans generateStaticParams, ce segment reste 100% dynamique (aucun cache)
+// même sans headers()/cookies() — cf. pitfall vitrine lente. Un tableau
+// vide suffit à activer le fallback "rendu au 1er hit, mis en cache par
+// combinaison (host, editFlag) ensuite".
+export async function generateStaticParams() {
+  return [];
+}
+
 export async function generateMetadata({
   params,
 }: RouteParams): Promise<Metadata> {

@@ -24,6 +24,10 @@ interface RouteParams {
   params: Promise<{ host: string; editFlag: string }>;
 }
 
+export async function generateStaticParams() {
+  return [];
+}
+
 export async function generateMetadata(): Promise<Metadata> {
   return {
     title: 'Politique de confidentialité',
