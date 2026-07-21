@@ -633,6 +633,39 @@ export const VIEWER_CHECKOUT_SHOP_CART = gql`
   }
 `;
 
+/**
+ * Reprise de paiement d'une commande boutique restée EN ATTENTE (PENDING) dont
+ * la facture est encore ouverte : crée une NOUVELLE session Stripe sur la
+ * facture EXISTANTE, sans recréer commande/facture ni re-réserver le stock.
+ * Même forme que le checkout (dont `stripeCheckoutUrl`, seul champ utile côté
+ * web). `wantsInstallments` DEMANDE le 3× ; le serveur le REFUSE (erreur) sous
+ * le seuil du club — on affiche son message tel quel.
+ */
+export const VIEWER_REPAY_SHOP_ORDER = gql`
+  mutation ViewerRepayShopOrder($orderId: ID!, $wantsInstallments: Boolean) {
+    viewerRepayShopOrder(orderId: $orderId, wantsInstallments: $wantsInstallments) {
+      orderId
+      invoiceId
+      totalCents
+      installmentsCount
+      stripeCheckoutUrl
+    }
+  }
+`;
+
+/**
+ * Annule une commande boutique EN ATTENTE (PENDING) appartenant au viewer et
+ * LIBÈRE le stock réservé côté serveur (facture liée → VOID). Renvoie la
+ * commande avec son nouveau `status`. Idempotent côté serveur.
+ */
+export const VIEWER_CANCEL_SHOP_ORDER = gql`
+  mutation ViewerCancelShopOrder($orderId: ID!) {
+    viewerCancelShopOrder(orderId: $orderId) {
+      ${VIEWER_SHOP_ORDER_FIELDS}
+    }
+  }
+`;
+
 export const VIEWER_CREATE_INVOICE_CHECKOUT_SESSION = gql`
   mutation ViewerCreateInvoiceCheckoutSession(
     $invoiceId: String!

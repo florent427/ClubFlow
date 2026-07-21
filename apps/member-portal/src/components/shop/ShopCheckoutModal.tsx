@@ -1,20 +1,34 @@
 import { useMemo, useState } from 'react';
 import { useMutation } from '@apollo/client/react';
-import { VIEWER_CHECKOUT_SHOP_CART } from '../../lib/viewer-documents';
-import type { ViewerCheckoutShopCartData } from '../../lib/viewer-types';
+import {
+  VIEWER_CHECKOUT_SHOP_CART,
+  VIEWER_REPAY_SHOP_ORDER,
+} from '../../lib/viewer-documents';
+import type {
+  ViewerCheckoutShopCartData,
+  ViewerRepayShopOrderData,
+} from '../../lib/viewer-types';
 import { formatEuroCents } from '../../lib/format';
 import { installmentsPreview } from '../../lib/shop-cart';
 import { useToast } from '../ToastProvider';
 
 interface Props {
-  /** Total TTC vendable du panier (fourni par le serveur). */
+  /** Total TTC dû (panier vendable au checkout, ou total commande au repay). */
   totalCents: number;
+  /**
+   * Reprise de paiement d'une commande EN ATTENTE : quand renseigné, la modale
+   * appelle `viewerRepayShopOrder(orderId)` au lieu du checkout panier. Sinon
+   * (undefined) c'est le checkout du panier courant.
+   */
+  orderId?: string;
   /** Fermeture sans payer. */
   onClose: () => void;
 }
 
 /**
- * Choix du règlement de la commande boutique, puis redirection Stripe.
+ * Choix du règlement de la commande boutique, puis redirection Stripe. Sert le
+ * checkout du panier ET la reprise de paiement d'une commande EN ATTENTE
+ * (prop `orderId`) : même UI 1×/3×, même redirection, seule la mutation change.
  *
  * Deux points de discipline imposés par le cahier des charges :
  *
@@ -27,17 +41,19 @@ interface Props {
  *     le texte serveur, jamais remplacé par un générique.
  *
  * Redirection identique au paiement de facture (`BillingPage.handlePay`) :
- * `window.location.assign(stripeCheckoutUrl)`. Le retour est géré par la page
- * de facturation via `?paid=1` / `?canceled=1` (URL fixée côté serveur,
- * partagée avec le paiement de facture).
+ * `window.location.assign(stripeCheckoutUrl)`. Le retour `?paid=1` /
+ * `?canceled=1` sur `/boutique` est géré par `ShopPage` (URL fixée côté
+ * serveur) — il marche à l'identique pour le repay.
  */
-export function ShopCheckoutModal({ totalCents, onClose }: Props) {
+export function ShopCheckoutModal({ totalCents, orderId, onClose }: Props) {
   const { showToast } = useToast();
   const [installments, setInstallments] = useState<1 | 3>(1);
   const [serverError, setServerError] = useState<string | null>(null);
-  const [checkout, { loading }] = useMutation<ViewerCheckoutShopCartData>(
-    VIEWER_CHECKOUT_SHOP_CART,
-  );
+  const [checkout, { loading: checkoutLoading }] =
+    useMutation<ViewerCheckoutShopCartData>(VIEWER_CHECKOUT_SHOP_CART);
+  const [repay, { loading: repayLoading }] =
+    useMutation<ViewerRepayShopOrderData>(VIEWER_REPAY_SHOP_ORDER);
+  const loading = checkoutLoading || repayLoading;
 
   const preview = useMemo(() => installmentsPreview(totalCents), [totalCents]);
 
@@ -45,17 +61,23 @@ export function ShopCheckoutModal({ totalCents, onClose }: Props) {
     if (loading) return;
     setServerError(null);
     try {
-      const res = await checkout({
-        variables: { wantsInstallments: installments === 3 },
-      });
-      const data = res.data?.viewerCheckoutShopCart;
-      if (!data?.stripeCheckoutUrl) {
+      const wantsInstallments = installments === 3;
+      // Repay quand une commande est visée ; sinon checkout du panier. Les deux
+      // renvoient la même forme, on ne lit que `stripeCheckoutUrl`.
+      const stripeCheckoutUrl = orderId
+        ? (
+            await repay({ variables: { orderId, wantsInstallments } })
+          ).data?.viewerRepayShopOrder.stripeCheckoutUrl
+        : (
+            await checkout({ variables: { wantsInstallments } })
+          ).data?.viewerCheckoutShopCart.stripeCheckoutUrl;
+      if (!stripeCheckoutUrl) {
         throw new Error(
           'URL de paiement Stripe indisponible. Réessayez plus tard.',
         );
       }
       showToast('Redirection vers le paiement sécurisé…', 'success');
-      window.location.assign(data.stripeCheckoutUrl);
+      window.location.assign(stripeCheckoutUrl);
     } catch (e) {
       // Message SERVEUR tel quel (rupture, 3× sous le seuil, Stripe indispo).
       const msg = e instanceof Error ? e.message : 'Paiement indisponible.';

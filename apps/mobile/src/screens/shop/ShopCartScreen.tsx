@@ -4,7 +4,6 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   Alert,
   Image,
-  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -41,6 +40,7 @@ import {
   type ViewerShopCartData,
 } from '../../lib/shop-documents';
 import { palette, radius, spacing, typography } from '../../lib/theme';
+import { useStripePayment } from '../../lib/useStripePayment';
 import type { ShopStackParamList } from '../../types/navigation';
 
 /**
@@ -88,6 +88,8 @@ export function ShopCartScreen() {
         { query: VIEWER_SHOP_ORDERS },
       ],
     });
+
+  const runStripePayment = useStripePayment();
 
   const busy = settingQty || removing || clearing || checkingOut;
 
@@ -152,31 +154,16 @@ export function ShopCartScreen() {
     );
   }
 
-  /** Lance le checkout puis ouvre l'URL Stripe hébergée. */
+  /**
+   * Lance le checkout puis ouvre Stripe dans un navigateur INTÉGRÉ qui se
+   * referme dès le retour vers `paymentReturnUrl` — l'adhérent revient DANS
+   * l'app, plus sur le portail web déconnecté.
+   */
   async function doCheckout(wantsInstallments: boolean) {
+    let checkoutRes;
     try {
       const { data: res } = await checkout({ variables: { wantsInstallments } });
-      const url = res?.viewerCheckoutShopCart?.stripeCheckoutUrl;
-      if (!url) {
-        Alert.alert(
-          'Indisponible',
-          'Impossible d’initier le paiement. Réessayez plus tard.',
-        );
-        return;
-      }
-      const supported = await Linking.canOpenURL(url);
-      if (!supported) {
-        Alert.alert(
-          'Navigateur introuvable',
-          'Aucune application ne peut ouvrir le lien de paiement Stripe.',
-        );
-        return;
-      }
-      // Commande créée + panier vidé côté serveur : on revient au catalogue,
-      // où la commande apparaît en « En attente » jusqu'au retour du webhook
-      // Stripe. Le tunnel de paiement se déroule hors-app.
-      await Linking.openURL(url);
-      navigation.navigate('ShopCatalog');
+      checkoutRes = res?.viewerCheckoutShopCart;
     } catch (err) {
       // Cœur de l'exigence : le refus vient du SERVEUR (3× sous le seuil, 3×
       // désactivé, rupture au moment de réserver le stock). On l'affiche tel
@@ -186,7 +173,50 @@ export function ShopCartScreen() {
         'Paiement impossible',
         err instanceof Error ? err.message : 'Erreur inconnue.',
       );
+      return;
     }
+
+    if (!checkoutRes?.stripeCheckoutUrl || !checkoutRes.paymentReturnUrl) {
+      Alert.alert(
+        'Indisponible',
+        'Impossible d’initier le paiement. Réessayez plus tard.',
+      );
+      return;
+    }
+
+    // La commande est créée (PENDING) et le panier vidé côté serveur : quoi
+    // qu'il arrive on repart au catalogue, où la commande apparaît. Le tunnel
+    // Stripe s'ouvre en navigateur intégré et se referme tout seul au retour.
+    let outcome;
+    try {
+      outcome = await runStripePayment(checkoutRes);
+    } catch {
+      // Échec d'ouverture du navigateur : la commande PENDING existe déjà,
+      // l'adhérent pourra la reprendre depuis « Mes commandes ».
+      navigation.navigate('ShopCatalog');
+      Alert.alert(
+        'Paiement à finaliser',
+        'La commande a été créée mais le paiement n’a pas pu s’ouvrir. Retrouvez-la dans « Mes commandes » pour la régler ou l’annuler.',
+      );
+      return;
+    }
+
+    navigation.navigate('ShopCatalog');
+    if (outcome === 'paid') {
+      // ⚠️ « paid » = Stripe a accepté, PAS « payée en base ». La bascule PAID
+      // est faite par le webhook (asynchrone) : on ne l'affirme donc pas.
+      Alert.alert(
+        'Paiement reçu',
+        'Votre commande est en cours de confirmation. Son statut se mettra à jour dans « Mes commandes ».',
+      );
+    } else if (outcome === 'canceled') {
+      Alert.alert(
+        'Paiement annulé',
+        'Vous pourrez reprendre le règlement depuis « Mes commandes ».',
+      );
+    }
+    // 'dismissed' (fermeture sans finir) : pas de pop-up superflue, la commande
+    // reste visible et reprenable dans « Mes commandes ».
   }
 
   function openCheckoutChoice() {

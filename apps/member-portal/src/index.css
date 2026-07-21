@@ -3551,6 +3551,12 @@ a:focus-visible {
   font-weight: 700;
   text-align: right;
 }
+.mp-order-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
 .mp-pill {
   padding: 2px 8px;
   border-radius: 12px;

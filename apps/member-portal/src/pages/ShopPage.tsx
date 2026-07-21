@@ -3,9 +3,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useToast } from '../components/ToastProvider';
 import { ShopCheckoutModal } from '../components/shop/ShopCheckoutModal';
+import { ConfirmModal } from '../components/ui';
 import { formatEuroCents } from '../lib/format';
 import {
   VIEWER_ADD_SHOP_CART_ITEM,
+  VIEWER_CANCEL_SHOP_ORDER,
   VIEWER_CLEAR_SHOP_CART,
   VIEWER_REMOVE_SHOP_CART_ITEM,
   VIEWER_SET_SHOP_CART_ITEM_QUANTITY,
@@ -14,8 +16,14 @@ import {
   VIEWER_SHOP_PRODUCTS,
 } from '../lib/viewer-documents';
 import { canCheckout, countCartUnits, partitionCart } from '../lib/shop-cart';
+import {
+  canCancelOrder,
+  canRepayOrder,
+  orderStatusBadge,
+} from '../lib/shop-order-actions';
 import type {
   ViewerAddShopCartItemData,
+  ViewerCancelShopOrderData,
   ViewerClearShopCartData,
   ViewerRemoveShopCartItemData,
   ViewerSetShopCartItemQuantityData,
@@ -40,15 +48,6 @@ function fmtDate(iso: string | null): string {
   } catch {
     return '—';
   }
-}
-
-function statusLabel(s: ViewerShopOrder['status']): {
-  label: string;
-  cls: 'ok' | 'warn' | 'muted';
-} {
-  if (s === 'PAID') return { label: 'Payée', cls: 'ok' };
-  if (s === 'CANCELLED') return { label: 'Annulée', cls: 'muted' };
-  return { label: 'En attente', cls: 'warn' };
 }
 
 /** Libellé affiché pour une déclinaison, jamais vide. */
@@ -129,12 +128,20 @@ export function ShopPage() {
     useMutation<ViewerRemoveShopCartItemData>(VIEWER_REMOVE_SHOP_CART_ITEM);
   const [clearCart, { loading: clearing }] =
     useMutation<ViewerClearShopCartData>(VIEWER_CLEAR_SHOP_CART);
+  const [cancelOrder, { loading: cancelling }] =
+    useMutation<ViewerCancelShopOrderData>(VIEWER_CANCEL_SHOP_ORDER);
 
   const cartBusy = adding || settingQty || removing || clearing;
 
   /** Déclinaison choisie par produit. Vide = on retombe sur defaultVariantOf. */
   const [picked, setPicked] = useState<Map<string, string>>(new Map());
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  /** Commande dont on reprend le paiement (ouvre la modale en mode repay). */
+  const [repayOrder, setRepayOrder] = useState<ViewerShopOrder | null>(null);
+  /** Commande en attente de confirmation d'annulation. */
+  const [cancelTarget, setCancelTarget] = useState<ViewerShopOrder | null>(
+    null,
+  );
 
   const products = useMemo(
     () => prodData?.viewerShopProducts ?? [],
@@ -191,6 +198,26 @@ export function ShopPage() {
       if (res.data) setLocalCart(res.data.viewerClearShopCart);
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
+
+  /**
+   * Annule la commande confirmée : le serveur libère le stock réservé et passe
+   * la facture en VOID. On rafraîchit ensuite la liste des commandes pour
+   * refléter le nouveau statut. Message serveur affiché tel quel en cas de
+   * refus (ex. commande déjà payée).
+   */
+  async function onConfirmCancel() {
+    const target = cancelTarget;
+    if (!target) return;
+    try {
+      await cancelOrder({ variables: { orderId: target.id } });
+      showToast('Commande annulée. Le stock a été libéré.', 'success');
+      setCancelTarget(null);
+      void ordRefetch();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+      setCancelTarget(null);
     }
   }
 
@@ -437,7 +464,9 @@ export function ShopPage() {
         ) : (
           <ul className="mp-order-list">
             {orders.map((o) => {
-              const pill = statusLabel(o.status);
+              const pill = orderStatusBadge(o.status);
+              const showActions =
+                canRepayOrder(o.status) || canCancelOrder(o.status);
               return (
                 <li key={o.id} className="mp-order-card">
                   <div className="mp-order-card__head">
@@ -461,6 +490,40 @@ export function ShopPage() {
                   <p className="mp-order-card__total">
                     Total : {formatEuroCents(o.totalCents)}
                   </p>
+
+                  {/* Actions réservées aux commandes EN ATTENTE : reprendre le
+                      paiement (repay → Stripe) ou annuler (libère le stock).
+                      Une commande payée ou annulée n'en propose aucune. */}
+                  {showActions ? (
+                    <div className="mp-order-card__actions">
+                      {canRepayOrder(o.status) ? (
+                        <button
+                          type="button"
+                          className="mp-btn mp-btn-primary"
+                          disabled={cancelling}
+                          onClick={() => setRepayOrder(o)}
+                        >
+                          <span
+                            className="material-symbols-outlined"
+                            aria-hidden="true"
+                          >
+                            credit_card
+                          </span>
+                          Payer
+                        </button>
+                      ) : null}
+                      {canCancelOrder(o.status) ? (
+                        <button
+                          type="button"
+                          className="mp-btn mp-btn-outline"
+                          disabled={cancelling}
+                          onClick={() => setCancelTarget(o)}
+                        >
+                          Annuler
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </li>
               );
             })}
@@ -479,6 +542,32 @@ export function ShopPage() {
           }}
         />
       ) : null}
+
+      {/* Reprise de paiement d'une commande EN ATTENTE : même modale, en mode
+          repay (prop `orderId`). Le retour Stripe `?paid=1`/`?canceled=1` est
+          géré par l'effet en haut de page, identique au checkout panier. */}
+      {repayOrder ? (
+        <ShopCheckoutModal
+          totalCents={repayOrder.totalCents}
+          orderId={repayOrder.id}
+          onClose={() => {
+            setRepayOrder(null);
+            void ordRefetch();
+          }}
+        />
+      ) : null}
+
+      <ConfirmModal
+        open={cancelTarget !== null}
+        title="Annuler cette commande ?"
+        message="Les articles réservés seront remis en stock. Cette action est définitive ; vous pourrez recommander plus tard."
+        confirmLabel="Annuler la commande"
+        cancelLabel="Revenir"
+        danger
+        loading={cancelling}
+        onConfirm={() => void onConfirmCancel()}
+        onCancel={() => setCancelTarget(null)}
+      />
     </div>
   );
 }

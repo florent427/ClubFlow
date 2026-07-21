@@ -517,3 +517,22 @@ export type ViewerCheckoutShopCartData = {
     stripeCheckoutUrl: string;
   };
 };
+
+/**
+ * Résultat de la reprise de paiement. Même forme que le checkout : on ne lit
+ * que `stripeCheckoutUrl` côté web, vers lequel on redirige comme au checkout.
+ */
+export type ViewerRepayShopOrderData = {
+  viewerRepayShopOrder: {
+    orderId: string;
+    invoiceId: string;
+    totalCents: number;
+    installmentsCount: number;
+    stripeCheckoutUrl: string;
+  };
+};
+
+/** Résultat de l'annulation viewer : la commande avec son statut mis à jour. */
+export type ViewerCancelShopOrderData = {
+  viewerCancelShopOrder: ViewerShopOrder;
+};
