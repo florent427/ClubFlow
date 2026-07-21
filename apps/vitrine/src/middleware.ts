@@ -20,8 +20,12 @@ export function middleware(req: NextRequest): NextResponse {
     process.env.VITRINE_EDIT_COOKIE_NAME ?? 'clubflow_vitrine_edit';
   const editFlag = req.cookies.get(cookieName)?.value ? '1' : '0';
 
+  // ⚠️ "sites" et non "_sites" : Next.js App Router traite tout dossier
+  // préfixé par `_` comme un "private folder" exclu du routing — un piège
+  // vécu en direct sur ce refactor (0 route enregistrée, 404 sur tout,
+  // build "réussi" sans erreur). cf. pitfall vitrine lente.
   const url = req.nextUrl.clone();
-  url.pathname = `/_sites/${encodeURIComponent(host)}/${editFlag}${req.nextUrl.pathname}`;
+  url.pathname = `/sites/${encodeURIComponent(host)}/${editFlag}${req.nextUrl.pathname}`;
   return NextResponse.rewrite(url);
 }
 
