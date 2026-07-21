@@ -4,6 +4,7 @@ import { resolveCurrentClub } from './club-resolution';
 import { fetchVitrinePage } from './vitrine-page';
 
 export interface PageSeoOptions {
+  host: string;
   pageSlug: string;
   fallbackTitle: string;
   fallbackDescription?: string;
@@ -17,7 +18,7 @@ export async function buildPageMetadata(
   opts: PageSeoOptions,
 ): Promise<Metadata> {
   try {
-    const club = await resolveCurrentClub();
+    const club = await resolveCurrentClub(opts.host);
     const page = await fetchVitrinePage(club.slug, opts.pageSlug);
     const title = page?.seoTitle ?? opts.fallbackTitle;
     const description =

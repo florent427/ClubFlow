@@ -11,12 +11,19 @@ import {
  *   --font-sans  → Inter
  *   --font-jp    → Shippori Mincho
  */
+// Seul Inter (sans) est preload : c'est la police de chrome (nav, footer,
+// corps de texte) présente sur toutes les pages. Cormorant et Shippori sont
+// utilisées mais pas garanties above-the-fold sur toutes les pages/clubs ;
+// avec display:'swap' elles restent chargées normalement (juste sans le
+// <Link rel=preload> haute priorité), ce qui évite de préchoisir ~40 fichiers
+// woff2 inutiles sur chaque requête (cf. docs/memory/pitfalls — vitrine lente).
 export const fontSerif = Cormorant_Garamond({
   subsets: ['latin'],
   weight: ['300', '400', '500', '600', '700'],
   style: ['normal', 'italic'],
   variable: '--font-serif',
   display: 'swap',
+  preload: false,
 });
 
 export const fontSans = Inter({
@@ -31,6 +38,7 @@ export const fontJp = Shippori_Mincho({
   weight: ['400', '500', '600', '700', '800'],
   variable: '--font-jp',
   display: 'swap',
+  preload: false,
 });
 
 export const fontClassNames = [
