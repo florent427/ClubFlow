@@ -625,6 +625,33 @@ export class ShopViewerResolver {
   }
 
   @Mutation(() => ShopOrderGraph, {
+    name: 'viewerCheckoutShopCartOnSite',
+    description:
+      'Valide le panier SANS paiement en ligne (« régler sur place ») : crée la commande et RÉSERVE le stock, mais aucune facture ni session Stripe. La commande reste EN ATTENTE (PENDING) jusqu’à ce que le club la marque payée quand l’adhérent règle au club. Le panier est vidé. L’adhérent peut annuler (le stock est alors libéré).',
+  })
+  async viewerCheckoutShopCartOnSite(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+  ): Promise<ShopOrderGraph> {
+    const viewer = {
+      memberId: user.activeProfileMemberId,
+      contactId: user.activeProfileContactId,
+    };
+    const { orderId } = await this.cart.checkoutOnSite(club.id, viewer);
+    // Recharge la commande mise en forme (avec ses lignes + l'acheteur) via le
+    // chemin existant, plutôt que d'exposer un second point de mise en forme.
+    const orders = (await this.service.listOrdersForViewer(
+      club.id,
+      viewer,
+    )) as ShopOrderGraph[];
+    const created = orders.find((o) => o.id === orderId);
+    if (!created) {
+      throw new Error('Commande introuvable après validation sur place.');
+    }
+    return created;
+  }
+
+  @Mutation(() => ShopOrderGraph, {
     name: 'viewerCancelShopOrder',
     description:
       'Annule une commande boutique EN ATTENTE (PENDING) appartenant au viewer et LIBÈRE le stock réservé. La facture liée passe à VOID. Idempotent : réannuler ne relâche pas le stock une seconde fois. Ne s’applique PAS aux commandes payées.',
