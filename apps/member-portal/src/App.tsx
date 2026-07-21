@@ -111,6 +111,11 @@ export default function App() {
               <Route path="/famille" element={<FamilyPage />} />
               <Route path="/adhesion" element={<AdhesionPage />} />
               <Route path="/factures" element={<BillingPage />} />
+              {/* Alias : Stripe renvoie sur `/facturation?paid=1|canceled=1`
+                  (URL fixée côté serveur, partagée par le paiement de facture
+                  ET le checkout boutique). Sans cette route, le retour de
+                  paiement tombait sur le catch-all `*` et perdait le toast. */}
+              <Route path="/facturation" element={<BillingPage />} />
               <Route
                 path="/documents-a-signer"
                 element={<DocumentsToSignPage />}

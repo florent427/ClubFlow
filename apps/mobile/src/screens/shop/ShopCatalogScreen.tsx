@@ -1,4 +1,6 @@
 import { useMutation, useQuery } from '@apollo/client/react';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useMemo, useState } from 'react';
 import {
   Alert,
@@ -18,22 +20,25 @@ import {
   Pill,
   ScreenHero,
   Skeleton,
-  TextField,
-} from '../components/ui';
-import { absolutizeMediaUrl } from '../lib/absolutize-url';
-import { formatEuroCents } from '../lib/format';
+} from '../../components/ui';
+import { absolutizeMediaUrl } from '../../lib/absolutize-url';
+import { formatEuroCents } from '../../lib/format';
+import { shopCartItemCount } from '../../lib/shop-cart';
 import {
-  VIEWER_PLACE_SHOP_ORDER,
+  VIEWER_ADD_SHOP_CART_ITEM,
+  VIEWER_SHOP_CART,
   VIEWER_SHOP_ORDERS,
   VIEWER_SHOP_PRODUCTS,
-  type ViewerPlaceShopOrderData,
+  type ViewerAddShopCartItemData,
+  type ViewerShopCartData,
   type ViewerShopOrder,
   type ViewerShopOrdersData,
   type ViewerShopProduct,
   type ViewerShopProductsData,
   type ViewerShopVariant,
-} from '../lib/shop-documents';
-import { palette, radius, shadow, spacing, typography } from '../lib/theme';
+} from '../../lib/shop-documents';
+import { palette, radius, shadow, spacing, typography } from '../../lib/theme';
+import type { ShopStackParamList } from '../../types/navigation';
 
 /** Libellé affiché pour une déclinaison, jamais vide. */
 function variantLabel(v: ViewerShopVariant): string {
@@ -42,8 +47,7 @@ function variantLabel(v: ViewerShopVariant): string {
 
 /**
  * Déclinaison proposée par défaut : la première disponible, sinon la
- * première tout court. Présélectionner une taille épuisée forcerait
- * l'adhérent à comprendre le sélecteur avant de pouvoir acheter.
+ * première tout court.
  */
 function defaultVariantOf(p: ViewerShopProduct): ViewerShopVariant | null {
   return p.variants.find((v) => v.inStock) ?? p.variants[0] ?? null;
@@ -52,10 +56,7 @@ function defaultVariantOf(p: ViewerShopProduct): ViewerShopVariant | null {
 function frDateTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString('fr-FR', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
+  return d.toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 function statusPill(status: ViewerShopOrder['status']): {
@@ -68,22 +69,23 @@ function statusPill(status: ViewerShopOrder['status']): {
 }
 
 /**
- * Boutique mobile — parité fonctionnelle avec
- * `apps/member-portal/src/pages/ShopPage.tsx`, en version smartphone-first
- * (cards verticales, chips de déclinaison plutôt qu'un `<select>`, CTA
- * pleine largeur).
+ * Catalogue boutique mobile (ADR-0012) — étape 1 du parcours PANIER.
  *
- * ── Stock : « Disponible » / « Épuisé », jamais un chiffre ──────────────
- * La seule information de stock manipulée par cet écran est le booléen
- * `inStock` de la déclinaison (ADR-0012). Le stepper « + » n'a donc PAS de
- * plafond numérique : quand `inStock` est faux, c'est le stepper entier qui
- * disparaît au profit du message d'épuisement. Le vrai plafond est tenu par
- * le `updateMany` conditionnel du serveur, qui refuse la commande et dont
- * l'erreur remonte dans l'Alert. Un plafond arbitraire côté client
- * (« ?? 99 ») ne bornerait rien et trahirait une quantité.
+ * ── On ajoute au panier via un BOUTON, pas via un stepper ────────────────
+ * La déclinaison (taille / couleur) se choisit d'abord par chips, puis le
+ * bouton « Ajouter au panier » pousse UNE unité au panier serveur
+ * (`viewerAddShopCartItem`, qui CUMULE côté serveur). La quantité se règle
+ * ensuite dans l'écran panier dédié. Le bouton disparaît au profit du message
+ * d'épuisement quand `inStock` est faux — jamais un chiffre de stock.
+ *
+ * ── Confidentialité ──────────────────────────────────────────────────────
+ * La seule info de stock manipulée est le booléen `inStock`. Aucun plafond
+ * numérique côté client : le serveur arbitre la survente au checkout.
  */
-export function ShopScreen() {
+export function ShopCatalogScreen() {
   const insets = useSafeAreaInsets();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<ShopStackParamList>>();
 
   const {
     data: prodData,
@@ -92,116 +94,69 @@ export function ShopScreen() {
   } = useQuery<ViewerShopProductsData>(VIEWER_SHOP_PRODUCTS, {
     fetchPolicy: 'cache-and-network',
   });
-  const { data: ordData, refetch: refetchOrders } =
-    useQuery<ViewerShopOrdersData>(VIEWER_SHOP_ORDERS, {
-      fetchPolicy: 'cache-and-network',
-      errorPolicy: 'all',
-    });
-  const [placeOrder, { loading: placing }] =
-    useMutation<ViewerPlaceShopOrderData>(VIEWER_PLACE_SHOP_ORDER);
+  const { data: ordData } = useQuery<ViewerShopOrdersData>(VIEWER_SHOP_ORDERS, {
+    fetchPolicy: 'cache-and-network',
+    errorPolicy: 'all',
+  });
+  const { data: cartData } = useQuery<ViewerShopCartData>(VIEWER_SHOP_CART, {
+    fetchPolicy: 'cache-and-network',
+    errorPolicy: 'all',
+  });
 
-  // Mémoïsé : `?? []` fabriquerait un tableau neuf à chaque rendu, donc
-  // reconstruirait l'index des déclinaisons et le total pour rien.
+  // Le panier serveur renvoyé par la mutation a le même id + __typename : la
+  // requête VIEWER_SHOP_CART se met à jour, mais l'id passe de "" (panier
+  // jamais matérialisé) à un vrai id lors du 1er ajout — deux entités
+  // distinctes pour Apollo. On refetch donc explicitement pour garantir que le
+  // badge « panier » reflète l'état réel après chaque ajout.
+  const [addItem, { loading: adding }] =
+    useMutation<ViewerAddShopCartItemData>(VIEWER_ADD_SHOP_CART_ITEM, {
+      refetchQueries: [{ query: VIEWER_SHOP_CART }],
+    });
+
   const products = useMemo(
     () => prodData?.viewerShopProducts ?? [],
     [prodData],
   );
   const orders = ordData?.viewerShopOrders ?? [];
+  const cart = cartData?.viewerShopCart ?? null;
+  const cartCount = shopCartItemCount(cart);
 
-  /**
-   * Panier indexé par DÉCLINAISON, pas par produit (ADR-0012) : c'est la
-   * déclinaison qui porte le prix et la disponibilité, et deux tailles du
-   * même t-shirt sont deux lignes distinctes. Volatile — quitter l'écran
-   * le vide, exactement comme le portail.
-   */
-  const [cart, setCart] = useState<Map<string, number>>(new Map());
   /** Déclinaison choisie par produit. Absente = `defaultVariantOf`. */
   const [picked, setPicked] = useState<Map<string, string>>(new Map());
-  const [note, setNote] = useState('');
-
-  /**
-   * Index déclinaison → (produit, déclinaison). Point de résolution unique
-   * du panier : le total, l'affichage des lignes et l'envoi de la commande
-   * le partagent, donc ils ne peuvent pas diverger.
-   */
-  const byVariantId = useMemo(() => {
-    const idx = new Map<
-      string,
-      { product: ViewerShopProduct; variant: ViewerShopVariant }
-    >();
-    for (const product of products) {
-      for (const variant of product.variants) {
-        idx.set(variant.id, { product, variant });
-      }
-    }
-    return idx;
-  }, [products]);
-
-  const total = useMemo(() => {
-    let sum = 0;
-    for (const [variantId, qty] of cart.entries()) {
-      const hit = byVariantId.get(variantId);
-      if (hit) sum += hit.variant.unitPriceCents * qty;
-    }
-    return sum;
-  }, [cart, byVariantId]);
-
-  function setQty(variantId: string, quantity: number) {
-    setCart((prev) => {
-      const next = new Map(prev);
-      if (quantity <= 0) next.delete(variantId);
-      else next.set(variantId, quantity);
-      return next;
-    });
-  }
+  /** variantId récemment ajouté → feedback « Ajouté ✓ » transitoire. */
+  const [justAdded, setJustAdded] = useState<string | null>(null);
+  const [addingVariantId, setAddingVariantId] = useState<string | null>(null);
 
   function pickVariant(productId: string, variantId: string) {
     setPicked((prev) => new Map(prev).set(productId, variantId));
   }
 
-  async function handlePlaceOrder() {
-    // Une déclinaison disparue du catalogue entre l'ajout au panier et la
-    // validation ne part pas au serveur : on n'envoie que ce qu'on sait
-    // encore résoudre.
-    const lines = Array.from(cart.entries())
-      .filter(([variantId]) => byVariantId.has(variantId))
-      .map(([variantId, quantity]) => ({ variantId, quantity }));
-    if (lines.length === 0) return;
+  async function handleAdd(variant: ViewerShopVariant) {
+    setAddingVariantId(variant.id);
     try {
-      await placeOrder({
-        variables: { input: { lines, note: note.trim() || undefined } },
-      });
-      setCart(new Map());
-      setNote('');
-      await refetchOrders();
-      Alert.alert(
-        'Commande enregistrée',
-        'Votre club a bien reçu votre commande.',
-      );
+      await addItem({ variables: { input: { variantId: variant.id, quantity: 1 } } });
+      setJustAdded(variant.id);
+      setTimeout(() => {
+        setJustAdded((cur) => (cur === variant.id ? null : cur));
+      }, 1600);
     } catch (err) {
-      // Le refus de survente arrive ici : le serveur est seul juge de la
-      // disponibilité, et son message est plus juste que tout ce que cet
-      // écran pourrait deviner.
+      // Refus serveur (ex. « Cet article est épuisé. ») affiché tel quel :
+      // c'est lui qui connaît la disponibilité réelle.
       Alert.alert(
-        'Commande impossible',
+        'Ajout impossible',
         err instanceof Error ? err.message : 'Erreur inconnue.',
       );
+    } finally {
+      setAddingVariantId((cur) => (cur === variant.id ? null : cur));
     }
   }
-
-  const cartLines = Array.from(cart.entries())
-    .map(([variantId, qty]) => {
-      const hit = byVariantId.get(variantId);
-      return hit ? { variantId, qty, ...hit } : null;
-    })
-    .filter((l): l is NonNullable<typeof l> => l !== null);
 
   return (
     <View style={styles.flex}>
       <ScreenHero
         eyebrow="BOUTIQUE"
         title="Boutique"
-        subtitle="Commandez les articles proposés par votre club."
+        subtitle="Composez votre panier puis réglez en ligne."
         gradient="hero"
         compact
       />
@@ -212,8 +167,31 @@ export function ShopScreen() {
           { paddingBottom: insets.bottom + spacing.xxxl },
         ]}
         showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
       >
+        {/* Accès au panier dédié — visible dès qu'il contient un article. */}
+        {cartCount > 0 ? (
+          <Pressable
+            onPress={() => navigation.navigate('ShopCart')}
+            accessibilityRole="button"
+            accessibilityLabel={`Voir mon panier, ${cartCount} article${
+              cartCount > 1 ? 's' : ''
+            }, total ${formatEuroCents(cart?.totalCents ?? 0)}`}
+            style={({ pressed }) => [
+              styles.cartBar,
+              pressed && { opacity: 0.85 },
+            ]}
+          >
+            <Ionicons name="bag-handle-outline" size={22} color="#ffffff" />
+            <Text style={styles.cartBarText}>
+              Mon panier · {cartCount} article{cartCount > 1 ? 's' : ''}
+            </Text>
+            <Text style={styles.cartBarTotal}>
+              {formatEuroCents(cart?.totalCents ?? 0)}
+            </Text>
+            <Ionicons name="chevron-forward" size={20} color="#ffffff" />
+          </Pressable>
+        ) : null}
+
         {prodLoading && products.length === 0 ? (
           <View style={{ gap: spacing.md }}>
             <Skeleton height={120} borderRadius={radius.xl} />
@@ -240,9 +218,6 @@ export function ShopScreen() {
               (pickedId ? p.variants.find((v) => v.id === pickedId) : null) ??
               defaultVariantOf(p);
 
-            // Un produit actif dont toutes les déclinaisons ont été
-            // désactivées n'a plus rien de vendable : il n'y a pas
-            // d'identité à mettre dans le panier.
             if (!variant) {
               return (
                 <Card key={p.id}>
@@ -253,7 +228,8 @@ export function ShopScreen() {
             }
 
             const img = absolutizeMediaUrl(p.imageUrl);
-            const qty = cart.get(variant.id) ?? 0;
+            const isAdded = justAdded === variant.id;
+            const isAddingThis = adding && addingVariantId === variant.id;
 
             return (
               <Card key={p.id} style={styles.productCard}>
@@ -271,9 +247,6 @@ export function ShopScreen() {
                   <Text style={styles.productDesc}>{p.description}</Text>
                 ) : null}
 
-                {/* Le sélecteur n'apparaît QUE pour un produit qui a de
-                    vraies déclinaisons. Un porte-clés reste la carte
-                    d'avant (ADR-0012 §1). */}
                 {p.hasVariants ? (
                   <View style={styles.variantBlock}>
                     <Text style={styles.variantTitle}>Déclinaison</Text>
@@ -315,8 +288,6 @@ export function ShopScreen() {
                 ) : null}
 
                 <View style={styles.priceRow}>
-                  {/* Prix de la déclinaison choisie : il peut varier d'une
-                      taille à l'autre (ADR-0012 §6). */}
                   <Text style={styles.price}>
                     {formatEuroCents(variant.unitPriceCents)}
                   </Text>
@@ -338,80 +309,23 @@ export function ShopScreen() {
                       : 'Rupture de stock'}
                   </Text>
                 ) : (
-                  <View style={styles.stepper}>
-                    <Pressable
-                      onPress={() => setQty(variant.id, qty - 1)}
-                      disabled={qty === 0}
-                      accessibilityRole="button"
-                      accessibilityLabel="Retirer un article"
-                      style={({ pressed }) => [
-                        styles.stepBtn,
-                        qty === 0 && styles.stepBtnDisabled,
-                        pressed && styles.stepBtnPressed,
-                      ]}
-                    >
-                      <Ionicons
-                        name="remove"
-                        size={20}
-                        color={qty === 0 ? palette.mutedSoft : palette.primary}
-                      />
-                    </Pressable>
-                    <Text style={styles.stepQty}>{qty}</Text>
-                    <Pressable
-                      onPress={() => setQty(variant.id, qty + 1)}
-                      accessibilityRole="button"
-                      accessibilityLabel="Ajouter un article"
-                      style={({ pressed }) => [
-                        styles.stepBtn,
-                        pressed && styles.stepBtnPressed,
-                      ]}
-                    >
-                      <Ionicons name="add" size={20} color={palette.primary} />
-                    </Pressable>
+                  <View style={{ marginTop: spacing.xs }}>
+                    <GradientButton
+                      label={isAdded ? 'Ajouté au panier ✓' : 'Ajouter au panier'}
+                      icon={isAdded ? 'checkmark-circle-outline' : 'add-outline'}
+                      onPress={() => void handleAdd(variant)}
+                      loading={isAddingThis}
+                      disabled={adding}
+                      gradient={isAdded ? 'cool' : 'primary'}
+                      glow={isAdded ? 'none' : 'primary'}
+                      fullWidth
+                    />
                   </View>
                 )}
               </Card>
             );
           })
         )}
-
-        {cartLines.length > 0 ? (
-          <Card title="Votre panier">
-            {cartLines.map((l) => (
-              <View key={l.variantId} style={styles.cartLine}>
-                <Text style={styles.cartLineLabel} numberOfLines={2}>
-                  {l.qty} × {l.product.name}
-                  {l.product.hasVariants
-                    ? ` — ${variantLabel(l.variant)}`
-                    : ''}
-                </Text>
-                <Text style={styles.cartLineAmount}>
-                  {formatEuroCents(l.variant.unitPriceCents * l.qty)}
-                </Text>
-              </View>
-            ))}
-            <TextField
-              label="Commentaire (optionnel)"
-              value={note}
-              onChangeText={setNote}
-              multiline
-              maxLength={500}
-              placeholder="Une précision pour le club ?"
-            />
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Total</Text>
-              <Text style={styles.totalValue}>{formatEuroCents(total)}</Text>
-            </View>
-            <GradientButton
-              label="Passer commande"
-              icon="bag-check-outline"
-              onPress={() => void handlePlaceOrder()}
-              loading={placing}
-              disabled={placing}
-              fullWidth
-            />
-          </Card>
-        ) : null}
 
         <Card title="Mes commandes">
           {orders.length === 0 ? (
@@ -431,9 +345,6 @@ export function ShopScreen() {
                     </Text>
                     <Pill label={pill.label} tone={pill.tone} />
                   </View>
-                  {/* `label` a figé le libellé (déclinaison comprise) à la
-                      commande : l'historique reste juste même si le produit
-                      est renommé ou la déclinaison retirée. */}
                   {o.lines.map((line) => (
                     <View key={line.id} style={styles.orderLine}>
                       <Text style={styles.orderLineLabel} numberOfLines={2}>
@@ -464,6 +375,18 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     gap: spacing.md,
   },
+  cartBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: palette.primary,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    ...shadow.sm,
+  },
+  cartBarText: { ...typography.bodyStrong, color: '#ffffff', flex: 1 },
+  cartBarTotal: { ...typography.bodyStrong, color: '#ffffff' },
   productCard: { gap: spacing.sm },
   productImage: {
     width: '100%',
@@ -502,47 +425,6 @@ const styles = StyleSheet.create({
   },
   price: { ...typography.h3, color: palette.ink },
   oos: { ...typography.small, color: palette.muted },
-  stepper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.lg,
-    alignSelf: 'flex-start',
-    marginTop: spacing.xs,
-  },
-  stepBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: palette.primaryTint,
-    borderWidth: 1,
-    borderColor: palette.primaryLight,
-  },
-  stepBtnDisabled: {
-    backgroundColor: palette.bgAlt,
-    borderColor: palette.border,
-  },
-  stepBtnPressed: { opacity: 0.7 },
-  stepQty: { ...typography.h3, color: palette.ink, minWidth: 24, textAlign: 'center' },
-  cartLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  cartLineLabel: { ...typography.body, color: palette.body, flex: 1 },
-  cartLineAmount: { ...typography.bodyStrong, color: palette.ink },
-  totalRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  totalLabel: { ...typography.bodyStrong, color: palette.body },
-  totalValue: { ...typography.h2, color: palette.ink },
   orderCard: {
     backgroundColor: palette.surfaceAlt,
     borderRadius: radius.lg,

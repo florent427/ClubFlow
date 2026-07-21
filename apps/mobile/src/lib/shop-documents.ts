@@ -92,6 +92,101 @@ export const VIEWER_PLACE_SHOP_ORDER = gql`
 `;
 
 /**
+ * ─────────────────────────────────────────────────────────────────────
+ * PANIER BOUTIQUE — opérations ADHÉRENT (ADR-0012)
+ * ─────────────────────────────────────────────────────────────────────
+ * Cinq opérations panier + le checkout. Toutes portées par des résolveurs
+ * VIEWER, jamais admin :
+ *   - `viewerShopCart`, `viewerAddShopCartItem`,
+ *     `viewerSetShopCartItemQuantity`, `viewerRemoveShopCartItem`,
+ *     `viewerClearShopCart` vivent sur `ShopViewerResolver`
+ *     (`shop.resolver.ts`), gardé par `GqlJwtAuthGuard + ClubContextGuard +
+ *     ViewerActiveProfileGuard + ClubModuleEnabledGuard` (+ gating SHOP).
+ *   - `viewerCheckoutShopCart` vit sur `ViewerResolver`
+ *     (`viewer.resolver.ts`), mêmes gardes viewer (+ gating SHOP), car le
+ *     checkout a besoin de Stripe côté couche viewer.
+ * Aucune n'est gardée par `ClubAdminRoleGuard`.
+ *
+ * CONFIDENTIALITÉ DU STOCK — on ne sélectionne AUCUN compteur. La ligne
+ * expose `inStock` (booléen) et `unavailable` (booléen). Jamais une
+ * quantité. « Disponible » / « Épuisé », jamais « il en reste 2 ».
+ */
+const VIEWER_SHOP_CART_FIELDS = `
+  id
+  totalCents
+  items {
+    id
+    variantId
+    productId
+    label
+    imageUrl
+    quantity
+    unitPriceCents
+    lineTotalCents
+    inStock
+    unavailable
+  }
+`;
+
+export const VIEWER_SHOP_CART = gql`
+  query ViewerShopCart {
+    viewerShopCart {
+      ${VIEWER_SHOP_CART_FIELDS}
+    }
+  }
+`;
+
+export const VIEWER_ADD_SHOP_CART_ITEM = gql`
+  mutation ViewerAddShopCartItem($input: AddShopCartItemInput!) {
+    viewerAddShopCartItem(input: $input) {
+      ${VIEWER_SHOP_CART_FIELDS}
+    }
+  }
+`;
+
+export const VIEWER_SET_SHOP_CART_ITEM_QUANTITY = gql`
+  mutation ViewerSetShopCartItemQuantity($input: SetShopCartItemQuantityInput!) {
+    viewerSetShopCartItemQuantity(input: $input) {
+      ${VIEWER_SHOP_CART_FIELDS}
+    }
+  }
+`;
+
+export const VIEWER_REMOVE_SHOP_CART_ITEM = gql`
+  mutation ViewerRemoveShopCartItem($itemId: ID!) {
+    viewerRemoveShopCartItem(itemId: $itemId) {
+      ${VIEWER_SHOP_CART_FIELDS}
+    }
+  }
+`;
+
+export const VIEWER_CLEAR_SHOP_CART = gql`
+  mutation ViewerClearShopCart {
+    viewerClearShopCart {
+      ${VIEWER_SHOP_CART_FIELDS}
+    }
+  }
+`;
+
+/**
+ * Checkout : transforme le panier en commande + facture et renvoie l'URL
+ * Stripe hébergée. `wantsInstallments=true` DEMANDE le 3× — le serveur le
+ * REFUSE (BadRequest) si le total est sous le seuil du club, ou si le 3× est
+ * désactivé. `installmentsCount` reflète ce que le serveur a ACCORDÉ (1 ou 3).
+ */
+export const VIEWER_CHECKOUT_SHOP_CART = gql`
+  mutation ViewerCheckoutShopCart($wantsInstallments: Boolean) {
+    viewerCheckoutShopCart(wantsInstallments: $wantsInstallments) {
+      orderId
+      invoiceId
+      totalCents
+      installmentsCount
+      stripeCheckoutUrl
+    }
+  }
+`;
+
+/**
  * Modules activés du club. Query `clubModules`, gardée seulement par
  * `GqlJwtAuthGuard + ClubContextGuard` (`club-modules.resolver.ts:21`) :
  * accessible à un adhérent. Sert à masquer l'entrée « Boutique » du menu
@@ -172,4 +267,56 @@ export type ViewerPlaceShopOrderData = {
 
 export type ViewerClubModulesData = {
   clubModules: Array<{ moduleCode: string; enabled: boolean }>;
+};
+
+/**
+ * Ligne de panier vue par l'adhérent. `available`, `onHand`, etc. ne sont
+ * volontairement PAS typés : le chemin viewer les renvoie null et les
+ * déclarer inviterait à afficher une quantité. Seuls `inStock` et
+ * `unavailable` (booléens) informent sur la disponibilité.
+ */
+export type ShopCartItem = {
+  id: string;
+  variantId: string;
+  productId: string;
+  /** Libellé figé « Produit — Taille / Couleur ». */
+  label: string;
+  imageUrl: string | null;
+  quantity: number;
+  unitPriceCents: number;
+  lineTotalCents: number;
+  /** Seule information de stock transmise : « Disponible » / « Épuisé ». */
+  inStock: boolean;
+  /** Produit ou déclinaison désactivé après l'ajout au panier. */
+  unavailable: boolean;
+};
+
+export type ShopCart = {
+  /** Chaîne vide tant que le panier n'a jamais été matérialisé en base. */
+  id: string;
+  totalCents: number;
+  items: ShopCartItem[];
+};
+
+/** Résultat du checkout : commande + facture + URL Stripe hébergée. */
+export type ViewerShopCartCheckout = {
+  orderId: string;
+  invoiceId: string;
+  totalCents: number;
+  /** Ce que le SERVEUR a accordé (1 ou 3), pas ce qui a été demandé. */
+  installmentsCount: number;
+  stripeCheckoutUrl: string;
+};
+
+export type ViewerShopCartData = { viewerShopCart: ShopCart };
+export type ViewerAddShopCartItemData = { viewerAddShopCartItem: ShopCart };
+export type ViewerSetShopCartItemQuantityData = {
+  viewerSetShopCartItemQuantity: ShopCart;
+};
+export type ViewerRemoveShopCartItemData = {
+  viewerRemoveShopCartItem: ShopCart;
+};
+export type ViewerClearShopCartData = { viewerClearShopCart: ShopCart };
+export type ViewerCheckoutShopCartData = {
+  viewerCheckoutShopCart: ViewerShopCartCheckout;
 };
