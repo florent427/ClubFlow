@@ -5,6 +5,7 @@
   "version": "54.0.44",
   "main": "index.ts",
   "scripts": {
+    "test": "vitest run",
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
@@ -28,6 +29,7 @@
     "expo-audio": "~55.0.14",
     "expo-blur": "^55.0.14",
     "expo-clipboard": "^55.0.13",
+    "expo-dev-client": "~55.0.37",
     "expo-document-picker": "~55.0.13",
     "expo-font": "^55.0.6",
     "expo-haptics": "^55.0.14",
@@ -36,6 +38,7 @@
     "expo-linking": "^55.0.14",
     "expo-splash-screen": "~55.0.19",
     "expo-status-bar": "~55.0.5",
+    "expo-updates": "~55.0.26",
     "graphql": "^16.13.2",
     "react": "19.2.0",
     "react-native": "0.83.6",
@@ -48,6 +51,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.10",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "vitest": "^3.2.7"
   }
 }

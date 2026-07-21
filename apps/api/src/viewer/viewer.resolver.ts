@@ -29,6 +29,7 @@ import {
 } from './dto/viewer-membership-cart.input';
 import { ViewerUpdateMyProfileInput } from './dto/viewer-update-my-profile.input';
 import { ViewerUpdateMyPseudoInput } from './dto/viewer-update-my-pseudo.input';
+import { ShopCartCheckoutGraph } from '../shop/models/shop-cart.model';
 import { ViewerCourseSlotGraph } from './models/viewer-course-slot.model';
 import { ViewerCheckoutSessionGraph } from './models/viewer-checkout-session.model';
 import { ViewerInvoicePaymentChoiceGraph } from './models/viewer-invoice-payment-choice.model';
@@ -752,6 +753,29 @@ export class ViewerResolver {
     const { preview, productsById, clubOneTimeFees } =
       await this.membershipCart.getCartFullForGraph(club.id, cart.id);
     return toMembershipCartGraph(cart, preview, productsById, clubOneTimeFees);
+  }
+
+  @Mutation(() => ShopCartCheckoutGraph, {
+    name: 'viewerCheckoutShopCart',
+    description:
+      'Transforme le panier boutique en commande (réservation de stock atomique) + facture, puis crée la session Stripe Checkout et renvoie l’URL. `wantsInstallments=true` demande le 3× — le serveur le REFUSE si le total est sous le seuil configuré par le club (ou si le 3× est désactivé).',
+  })
+  @RequireClubModule(ModuleCode.SHOP)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  viewerCheckoutShopCart(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('wantsInstallments', { type: () => Boolean, nullable: true })
+    wantsInstallments?: boolean,
+  ): Promise<ShopCartCheckoutGraph> {
+    return this.viewer.viewerCheckoutShopCart({
+      clubId: club.id,
+      activeProfile: {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      wantsInstallments: wantsInstallments === true,
+    });
   }
 
   @Mutation(() => ViewerPendingRegistrationResultGraph, {

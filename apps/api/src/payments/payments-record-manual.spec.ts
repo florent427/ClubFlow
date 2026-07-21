@@ -11,6 +11,7 @@ import { StripeConnectService } from './stripe-connect.service';
 import { StripeFeesService } from './stripe-fees.service';
 import { StripeRefundsService } from './stripe-refunds.service';
 import { CreditNotesService } from './credit-notes.service';
+import { ShopService } from '../shop/shop.service';
 
 describe('PaymentsService / encaissements manuels', () => {
   let service: PaymentsService;
@@ -88,6 +89,7 @@ describe('PaymentsService / encaissements manuels', () => {
             sumInFlightForInvoice: sumInFlight,
           },
         },
+        { provide: ShopService, useValue: { fulfillPaidShopOrderInTx: jest.fn() } },
       ],
     }).compile();
 

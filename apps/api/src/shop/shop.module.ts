@@ -6,6 +6,7 @@ import { FamiliesModule } from '../families/families.module';
 import { MailModule } from '../mail/mail.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ShopAdminResolver, ShopViewerResolver } from './shop.resolver';
+import { ShopCartService } from './shop-cart.service';
 import { ShopLowStockNotifierService } from './shop-low-stock-notifier.service';
 import { ShopService } from './shop.service';
 import { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
@@ -22,6 +23,7 @@ import { ShopVariantsService } from './shop-variants.service';
   imports: [PrismaModule, FamiliesModule, MailModule, AccountingModule],
   providers: [
     ShopService,
+    ShopCartService,
     ShopStockService,
     ShopPurchaseOrdersService,
     ShopVariantsService,
@@ -34,6 +36,7 @@ import { ShopVariantsService } from './shop-variants.service';
   ],
   exports: [
     ShopService,
+    ShopCartService,
     ShopStockService,
     ShopVariantsService,
     ShopPurchaseOrdersService,

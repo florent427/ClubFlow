@@ -26,3 +26,10 @@ staging-test-accounts.local.md
 # Scripts SQL opérationnels : contiennent des noms réels, des identifiants
 # utilisateur et des manipulations de base. Le dépôt est PUBLIC.
 bin/*.sql
+
+# Clé de compte de service Google Play (publication mobile).
+# JAMAIS dans le dépôt : elle autorise à publier sous l'identité de l'éditeur.
+# Référencée par chemin absolu depuis eas.json (serviceAccountKeyPath).
+google-play-service-account*.json
+**/google-play-service-account*.json
+play-store-key*.json

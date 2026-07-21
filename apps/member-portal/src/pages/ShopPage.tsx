@@ -1,12 +1,26 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useToast } from '../components/ToastProvider';
+import { ShopCheckoutModal } from '../components/shop/ShopCheckoutModal';
+import { formatEuroCents } from '../lib/format';
 import {
-  VIEWER_PLACE_SHOP_ORDER,
+  VIEWER_ADD_SHOP_CART_ITEM,
+  VIEWER_CLEAR_SHOP_CART,
+  VIEWER_REMOVE_SHOP_CART_ITEM,
+  VIEWER_SET_SHOP_CART_ITEM_QUANTITY,
+  VIEWER_SHOP_CART,
   VIEWER_SHOP_ORDERS,
   VIEWER_SHOP_PRODUCTS,
 } from '../lib/viewer-documents';
+import { canCheckout, countCartUnits, partitionCart } from '../lib/shop-cart';
 import type {
+  ViewerAddShopCartItemData,
+  ViewerClearShopCartData,
+  ViewerRemoveShopCartItemData,
+  ViewerSetShopCartItemQuantityData,
+  ViewerShopCart,
+  ViewerShopCartData,
   ViewerShopOrder,
   ViewerShopOrdersData,
   ViewerShopProduct,
@@ -14,9 +28,8 @@ import type {
   ViewerShopVariant,
 } from '../lib/viewer-types';
 
-function fmtEuros(cents: number): string {
-  return `${(cents / 100).toFixed(2).replace('.', ',')} €`;
-}
+const EMPTY_CART: ViewerShopCart = { id: '', totalCents: 0, items: [] };
+
 function fmtDate(iso: string | null): string {
   if (!iso) return '—';
   try {
@@ -28,6 +41,7 @@ function fmtDate(iso: string | null): string {
     return '—';
   }
 }
+
 function statusLabel(s: ViewerShopOrder['status']): {
   label: string;
   cls: 'ok' | 'warn' | 'muted';
@@ -45,7 +59,7 @@ function variantLabel(v: ViewerShopVariant): string {
 /**
  * Déclinaison proposée par défaut : la première disponible, sinon la première
  * tout court. Choisir d'emblée une taille épuisée forcerait l'adhérent à
- * comprendre le sélecteur avant de pouvoir acheter quoi que ce soit.
+ * comprendre le sélecteur avant de pouvoir ajouter quoi que ce soit.
  */
 function defaultVariantOf(p: ViewerShopProduct): ViewerShopVariant | null {
   return p.variants.find((v) => v.inStock) ?? p.variants[0] ?? null;
@@ -53,95 +67,128 @@ function defaultVariantOf(p: ViewerShopProduct): ViewerShopVariant | null {
 
 export function ShopPage() {
   const { showToast } = useToast();
+
   const { data: prodData, loading: prodLoading } =
     useQuery<ViewerShopProductsData>(VIEWER_SHOP_PRODUCTS, {
       fetchPolicy: 'cache-and-network',
     });
   const {
-    data: ordData,
-    refetch: ordRefetch,
-  } = useQuery<ViewerShopOrdersData>(VIEWER_SHOP_ORDERS, {
+    data: cartData,
+    loading: cartLoading,
+    refetch: cartRefetch,
+  } = useQuery<ViewerShopCartData>(VIEWER_SHOP_CART, {
     fetchPolicy: 'cache-and-network',
   });
-  const [place, { loading: placing }] = useMutation(VIEWER_PLACE_SHOP_ORDER);
+  const { data: ordData, refetch: ordRefetch } = useQuery<ViewerShopOrdersData>(
+    VIEWER_SHOP_ORDERS,
+    { fetchPolicy: 'cache-and-network' },
+  );
 
-  // Mémoïsé : le `?? []` fabriquerait un tableau neuf à chaque rendu, donc
-  // reconstruirait l'index des déclinaisons et le total pour rien.
+  /**
+   * Le panier vit CÔTÉ SERVEUR (viewerShopCart). Chaque mutation renvoie le
+   * panier complet et fait autorité : on garde donc le dernier état renvoyé en
+   * local, et il l'emporte sur la requête initiale. Pas de plafond client sur
+   * les quantités : le serveur arbitre la disponibilité (le type panier n'a
+   * même pas de champ de stock à borner — confidentialité ADR-0012).
+   */
+  const [localCart, setLocalCart] = useState<ViewerShopCart | null>(null);
+  const cart = localCart ?? cartData?.viewerShopCart ?? EMPTY_CART;
+
+  // Retour de Stripe : la boutique ramène ici (et non sur Facturation, réservée
+  // aux payeurs du foyer — un acheteur non-payeur y voyait « accès réservé »
+  // APRÈS avoir payé). On confirme, on rafraîchit la commande et le panier
+  // (vidé côté serveur au checkout), puis on nettoie l'URL.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const paid = searchParams.get('paid');
+    const canceled = searchParams.get('canceled');
+    if (paid === '1') {
+      showToast('Paiement enregistré. Votre commande est confirmée.', 'success');
+      setLocalCart(null);
+      void cartRefetch();
+      void ordRefetch();
+    } else if (canceled === '1') {
+      showToast('Paiement annulé. Votre panier est conservé.', 'info');
+    }
+    if (paid || canceled) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('paid');
+      next.delete('canceled');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams, showToast, cartRefetch, ordRefetch]);
+
+  const [addItem, { loading: adding }] = useMutation<ViewerAddShopCartItemData>(
+    VIEWER_ADD_SHOP_CART_ITEM,
+  );
+  const [setItemQty, { loading: settingQty }] =
+    useMutation<ViewerSetShopCartItemQuantityData>(
+      VIEWER_SET_SHOP_CART_ITEM_QUANTITY,
+    );
+  const [removeItem, { loading: removing }] =
+    useMutation<ViewerRemoveShopCartItemData>(VIEWER_REMOVE_SHOP_CART_ITEM);
+  const [clearCart, { loading: clearing }] =
+    useMutation<ViewerClearShopCartData>(VIEWER_CLEAR_SHOP_CART);
+
+  const cartBusy = adding || settingQty || removing || clearing;
+
+  /** Déclinaison choisie par produit. Vide = on retombe sur defaultVariantOf. */
+  const [picked, setPicked] = useState<Map<string, string>>(new Map());
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+
   const products = useMemo(
     () => prodData?.viewerShopProducts ?? [],
     [prodData],
   );
   const orders = ordData?.viewerShopOrders ?? [];
 
-  /**
-   * Le panier est indexé par DÉCLINAISON, pas par produit (ADR-0012) : c'est
-   * la déclinaison qui porte le prix et le stock, et deux tailles du même
-   * t-shirt sont deux lignes distinctes. Volatile et non persisté — rien à
-   * migrer, un rechargement le vide comme avant.
-   */
-  const [cart, setCart] = useState<Map<string, number>>(new Map());
-  /** Déclinaison choisie par produit. Vide = on retombe sur `defaultVariantOf`. */
-  const [picked, setPicked] = useState<Map<string, string>>(new Map());
-  const [note, setNote] = useState('');
-
-  /**
-   * Index déclinaison → (produit, déclinaison). C'est LE point de résolution
-   * du panier : le total, l'affichage des lignes et l'envoi de la commande le
-   * partagent, donc ils ne peuvent plus diverger.
-   */
-  const byVariantId = useMemo(() => {
-    const idx = new Map<
-      string,
-      { product: ViewerShopProduct; variant: ViewerShopVariant }
-    >();
-    for (const product of products) {
-      for (const variant of product.variants) {
-        idx.set(variant.id, { product, variant });
-      }
-    }
-    return idx;
-  }, [products]);
-
-  const total = useMemo(() => {
-    let sum = 0;
-    for (const [variantId, qty] of cart.entries()) {
-      const hit = byVariantId.get(variantId);
-      if (hit) sum += hit.variant.unitPriceCents * qty;
-    }
-    return sum;
-  }, [cart, byVariantId]);
-
-  function setQty(variantId: string, quantity: number) {
-    setCart((prev) => {
-      const next = new Map(prev);
-      if (quantity <= 0) next.delete(variantId);
-      else next.set(variantId, quantity);
-      return next;
-    });
-  }
+  const { unavailable } = useMemo(
+    () => partitionCart(cart.items),
+    [cart.items],
+  );
+  const unitCount = countCartUnits(cart.items);
 
   function pickVariant(productId: string, variantId: string) {
     setPicked((prev) => new Map(prev).set(productId, variantId));
   }
 
-  async function onPlaceOrder() {
-    // Une déclinaison disparue du catalogue entre l'ajout au panier et la
-    // validation ne part pas au serveur : on ne lui envoie que ce qu'on sait
-    // encore résoudre.
-    const lines = Array.from(cart.entries())
-      .filter(([variantId]) => byVariantId.has(variantId))
-      .map(([variantId, quantity]) => ({ variantId, quantity }));
-    if (lines.length === 0) return;
+  async function onAddToCart(variantId: string, productName: string) {
     try {
-      await place({
-        variables: {
-          input: { lines, note: note.trim() || undefined },
-        },
+      const res = await addItem({
+        variables: { input: { variantId, quantity: 1 } },
       });
-      showToast('Commande enregistrée', 'success');
-      setCart(new Map());
-      setNote('');
-      await ordRefetch();
+      if (res.data) setLocalCart(res.data.viewerAddShopCartItem);
+      showToast(`${productName} ajouté au panier`, 'success');
+    } catch (err) {
+      // Message serveur tel quel (« Cet article est épuisé. », etc.).
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
+
+  async function onSetQty(itemId: string, quantity: number) {
+    try {
+      const res = await setItemQty({
+        variables: { input: { itemId, quantity } },
+      });
+      if (res.data) setLocalCart(res.data.viewerSetShopCartItemQuantity);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
+
+  async function onRemove(itemId: string) {
+    try {
+      const res = await removeItem({ variables: { itemId } });
+      if (res.data) setLocalCart(res.data.viewerRemoveShopCartItem);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
+
+  async function onClear() {
+    try {
+      const res = await clearCart();
+      if (res.data) setLocalCart(res.data.viewerClearShopCart);
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Erreur', 'error');
     }
@@ -152,7 +199,7 @@ export function ShopPage() {
       <header className="mp-page-header">
         <h1 className="mp-page-title">Boutique</h1>
         <p className="mp-page-subtitle">
-          Commandez les articles proposés par votre club.
+          Ajoutez des articles à votre panier, puis réglez en ligne par carte.
         </p>
       </header>
 
@@ -169,9 +216,8 @@ export function ShopPage() {
               (pickedId ? p.variants.find((v) => v.id === pickedId) : null) ??
               fallback;
 
-            // Un produit actif dont toutes les déclinaisons ont été
-            // désactivées n'a plus rien de vendable : il n'y a pas d'identité
-            // à mettre dans le panier.
+            // Un produit actif dont toutes les déclinaisons ont été désactivées
+            // n'a plus rien de vendable : pas d'identité à mettre au panier.
             if (!variant) {
               return (
                 <li key={p.id} className="mp-product-card">
@@ -182,8 +228,6 @@ export function ShopPage() {
                 </li>
               );
             }
-
-            const qty = cart.get(variant.id) ?? 0;
 
             return (
               <li key={p.id} className="mp-product-card">
@@ -200,9 +244,8 @@ export function ShopPage() {
                     <p className="mp-product-card__desc">{p.description}</p>
                   ) : null}
 
-                  {/* Le sélecteur n'apparaît QUE pour un produit qui a de
-                      vraies déclinaisons. Un porte-clés reste exactement la
-                      carte d'avant (ADR-0012 §1). */}
+                  {/* Sélecteur affiché UNIQUEMENT pour un produit à vraies
+                      déclinaisons (ADR-0012 §1). */}
                   {p.hasVariants ? (
                     <label className="mp-product-card__variants">
                       <span className="mp-product-card__variants-label">
@@ -223,12 +266,15 @@ export function ShopPage() {
                     </label>
                   ) : null}
 
-                  {/* Le prix affiché est celui de la déclinaison choisie : il
-                      peut varier d'une taille à l'autre (ADR-0012 §6). */}
+                  {/* Prix de la déclinaison choisie (peut varier par taille). */}
                   <p className="mp-product-card__price">
-                    {fmtEuros(variant.unitPriceCents)}
+                    {formatEuroCents(variant.unitPriceCents)}
                   </p>
 
+                  {/* Ajout au panier via un BOUTON — jamais en modifiant une
+                      quantité sur la grille. Désactivé si épuisé : la seule
+                      info de stock connue du portail est le booléen `inStock`,
+                      aucun compteur n'est exposé. */}
                   {!variant.inStock ? (
                     <p className="mp-product-card__oos">
                       {p.hasVariants
@@ -236,36 +282,20 @@ export function ShopPage() {
                         : 'Rupture de stock'}
                     </p>
                   ) : (
-                    <div className="mp-product-card__qty">
-                      <button
-                        type="button"
-                        className="mp-qty-btn"
-                        onClick={() => setQty(variant.id, qty - 1)}
-                        disabled={qty === 0}
-                        aria-label="Retirer"
+                    <button
+                      type="button"
+                      className="mp-btn mp-btn-primary mp-product-card__add"
+                      disabled={adding}
+                      onClick={() => void onAddToCart(variant.id, p.name)}
+                    >
+                      <span
+                        className="material-symbols-outlined"
+                        aria-hidden="true"
                       >
-                        −
-                      </button>
-                      <span>{qty}</span>
-                      {/* Le « + » est borné par la SEULE disponibilité que le
-                          portail connaisse : `inStock`. Quand il est faux,
-                          c'est ce bloc entier qui disparaît au profit du
-                          message d'épuisement — d'où l'absence de plafond
-                          numérique ici. L'ancien `p.stock ?? 99` ne bornait
-                          rien (99 est arbitraire) et exposait un compteur que
-                          l'adhérent ne doit pas voir ; le vrai plafond est
-                          tenu par le `updateMany` conditionnel du serveur, qui
-                          refuse la commande et renvoie l'erreur affichée en
-                          toast. */}
-                      <button
-                        type="button"
-                        className="mp-qty-btn"
-                        onClick={() => setQty(variant.id, qty + 1)}
-                        aria-label="Ajouter"
-                      >
-                        +
-                      </button>
-                    </div>
+                        add_shopping_cart
+                      </span>
+                      Ajouter au panier
+                    </button>
                   )}
                 </div>
               </li>
@@ -274,47 +304,130 @@ export function ShopPage() {
         </ul>
       )}
 
-      {cart.size > 0 ? (
+      {cart.items.length > 0 ? (
         <section className="mp-cart">
-          <h2 className="mp-cart__title">Votre panier</h2>
+          <h2 className="mp-cart__title">
+            Votre panier
+            {unitCount > 0
+              ? ` — ${unitCount} article${unitCount > 1 ? 's' : ''}`
+              : ''}
+          </h2>
+
           <ul className="mp-cart__lines">
-            {Array.from(cart.entries()).map(([variantId, qty]) => {
-              const hit = byVariantId.get(variantId);
-              if (!hit) return null;
-              const { product, variant } = hit;
-              return (
-                <li key={variantId}>
-                  <span>
-                    {qty} × {product.name}
-                    {product.hasVariants ? ` — ${variantLabel(variant)}` : ''}
+            {cart.items.map((it) => (
+              <li
+                key={it.id}
+                style={{
+                  alignItems: 'center',
+                  gap: 12,
+                  opacity: it.unavailable ? 0.6 : 1,
+                }}
+              >
+                <span style={{ flex: 1 }}>
+                  <strong>{it.label}</strong>
+                  {it.unavailable ? (
+                    <span
+                      className="mp-pill mp-pill--muted"
+                      style={{ marginLeft: 8 }}
+                    >
+                      Indisponible
+                    </span>
+                  ) : !it.inStock ? (
+                    <span
+                      className="mp-pill mp-pill--warn"
+                      style={{ marginLeft: 8 }}
+                    >
+                      Épuisé
+                    </span>
+                  ) : null}
+                  <br />
+                  <small className="mp-hint">
+                    {formatEuroCents(it.unitPriceCents)} l'unité
+                  </small>
+                </span>
+
+                {/* Sélecteur de quantité SANS plafond client : le « + » n'est
+                    borné par aucun stock (le portail n'en connaît pas le
+                    nombre) ; le serveur refuse au checkout si nécessaire. */}
+                <span className="mp-product-card__qty" style={{ margin: 0 }}>
+                  <button
+                    type="button"
+                    className="mp-qty-btn"
+                    onClick={() => void onSetQty(it.id, it.quantity - 1)}
+                    disabled={cartBusy || it.unavailable}
+                    aria-label="Diminuer la quantité"
+                  >
+                    −
+                  </button>
+                  <span aria-live="polite">{it.quantity}</span>
+                  <button
+                    type="button"
+                    className="mp-qty-btn"
+                    onClick={() => void onSetQty(it.id, it.quantity + 1)}
+                    disabled={cartBusy || it.unavailable}
+                    aria-label="Augmenter la quantité"
+                  >
+                    +
+                  </button>
+                </span>
+
+                <span style={{ minWidth: 72, textAlign: 'right' }}>
+                  {formatEuroCents(it.lineTotalCents)}
+                </span>
+
+                <button
+                  type="button"
+                  className="mp-qty-btn"
+                  onClick={() => void onRemove(it.id)}
+                  disabled={cartBusy}
+                  aria-label={`Retirer ${it.label}`}
+                  title="Retirer"
+                >
+                  <span
+                    className="material-symbols-outlined"
+                    aria-hidden="true"
+                    style={{ fontSize: '1.1rem' }}
+                  >
+                    delete
                   </span>
-                  <span>{fmtEuros(variant.unitPriceCents * qty)}</span>
-                </li>
-              );
-            })}
+                </button>
+              </li>
+            ))}
           </ul>
-          <label className="mp-field">
-            <span className="mp-field__label">Commentaire (optionnel)</span>
-            <textarea
-              className="mp-input mp-textarea"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              rows={2}
-              maxLength={500}
-            />
-          </label>
+
+          {unavailable.length > 0 ? (
+            <p className="mp-hint" style={{ marginTop: 0 }}>
+              Les articles indisponibles ne sont pas facturés et ne peuvent pas
+              partir au paiement. Retirez-les pour continuer.
+            </p>
+          ) : null}
+
           <div className="mp-cart__foot">
-            <strong>Total : {fmtEuros(total)}</strong>
-            <button
-              type="button"
-              className="mp-btn mp-btn--primary"
-              onClick={() => void onPlaceOrder()}
-              disabled={placing}
-            >
-              Passer commande
-            </button>
+            <div>
+              <button
+                type="button"
+                className="mp-btn mp-btn-outline"
+                onClick={() => void onClear()}
+                disabled={cartBusy}
+              >
+                Vider le panier
+              </button>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <strong>Total : {formatEuroCents(cart.totalCents)}</strong>
+              <button
+                type="button"
+                className="mp-btn mp-btn-primary"
+                onClick={() => setCheckoutOpen(true)}
+                disabled={cartBusy || !canCheckout(cart.items)}
+              >
+                Payer
+              </button>
+            </div>
           </div>
         </section>
+      ) : cartLoading ? (
+        <p className="mp-muted">Chargement du panier…</p>
       ) : null}
 
       <section className="mp-orders">
@@ -334,20 +447,19 @@ export function ShopPage() {
                     </span>
                   </div>
                   <ul className="mp-order-lines">
-                    {/* `label` a figé le libellé (déclinaison comprise) à la
-                        commande : l'historique reste juste même si le produit
-                        est renommé ou la déclinaison supprimée. */}
                     {o.lines.map((l) => (
                       <li key={l.id}>
                         <span>
                           {l.quantity} × {l.label}
                         </span>
-                        <span>{fmtEuros(l.unitPriceCents * l.quantity)}</span>
+                        <span>
+                          {formatEuroCents(l.unitPriceCents * l.quantity)}
+                        </span>
                       </li>
                     ))}
                   </ul>
                   <p className="mp-order-card__total">
-                    Total : {fmtEuros(o.totalCents)}
+                    Total : {formatEuroCents(o.totalCents)}
                   </p>
                 </li>
               );
@@ -355,6 +467,18 @@ export function ShopPage() {
           </ul>
         )}
       </section>
+
+      {checkoutOpen ? (
+        <ShopCheckoutModal
+          totalCents={cart.totalCents}
+          onClose={() => {
+            setCheckoutOpen(false);
+            // Le checkout a pu échouer (rupture, 3× refusé) : on resynchronise
+            // les commandes au cas où une réservation aurait bougé côté serveur.
+            void ordRefetch();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

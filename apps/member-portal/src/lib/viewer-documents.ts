@@ -549,6 +549,90 @@ export const VIEWER_PLACE_SHOP_ORDER = gql`
   }
 `;
 
+/**
+ * Champs du panier boutique visibles par un ADHÉRENT (ShopCart côté API).
+ *
+ * Confidentialité (ADR-0012) : on ne sélectionne AUCUN compteur de stock — ni
+ * `available`, ni `onHand`, ni `stock`, ni `belowThreshold`. Le type panier
+ * n'expose de toute façon que `inStock` (booléen) et `unavailable` ; c'est la
+ * seule information de disponibilité transmise. Le sélecteur de quantité au
+ * panier n'a donc pas de plafond client — le serveur arbitre la disponibilité.
+ */
+const VIEWER_SHOP_CART_FIELDS = `
+  id
+  totalCents
+  items {
+    id
+    variantId
+    productId
+    label
+    imageUrl
+    quantity
+    unitPriceCents
+    lineTotalCents
+    inStock
+    unavailable
+  }
+`;
+
+export const VIEWER_SHOP_CART = gql`
+  query ViewerShopCart {
+    viewerShopCart {
+      ${VIEWER_SHOP_CART_FIELDS}
+    }
+  }
+`;
+
+export const VIEWER_ADD_SHOP_CART_ITEM = gql`
+  mutation ViewerAddShopCartItem($input: AddShopCartItemInput!) {
+    viewerAddShopCartItem(input: $input) {
+      ${VIEWER_SHOP_CART_FIELDS}
+    }
+  }
+`;
+
+export const VIEWER_SET_SHOP_CART_ITEM_QUANTITY = gql`
+  mutation ViewerSetShopCartItemQuantity($input: SetShopCartItemQuantityInput!) {
+    viewerSetShopCartItemQuantity(input: $input) {
+      ${VIEWER_SHOP_CART_FIELDS}
+    }
+  }
+`;
+
+export const VIEWER_REMOVE_SHOP_CART_ITEM = gql`
+  mutation ViewerRemoveShopCartItem($itemId: ID!) {
+    viewerRemoveShopCartItem(itemId: $itemId) {
+      ${VIEWER_SHOP_CART_FIELDS}
+    }
+  }
+`;
+
+export const VIEWER_CLEAR_SHOP_CART = gql`
+  mutation ViewerClearShopCart {
+    viewerClearShopCart {
+      ${VIEWER_SHOP_CART_FIELDS}
+    }
+  }
+`;
+
+/**
+ * Checkout panier → commande + facture + session Stripe. `wantsInstallments`
+ * DEMANDE le 3× ; le serveur le REFUSE (erreur) si le total est sous le seuil
+ * du club ou si le 3× est désactivé. On redirige ensuite vers
+ * `stripeCheckoutUrl` (même pattern que le paiement de facture).
+ */
+export const VIEWER_CHECKOUT_SHOP_CART = gql`
+  mutation ViewerCheckoutShopCart($wantsInstallments: Boolean) {
+    viewerCheckoutShopCart(wantsInstallments: $wantsInstallments) {
+      orderId
+      invoiceId
+      totalCents
+      installmentsCount
+      stripeCheckoutUrl
+    }
+  }
+`;
+
 export const VIEWER_CREATE_INVOICE_CHECKOUT_SESSION = gql`
   mutation ViewerCreateInvoiceCheckoutSession(
     $invoiceId: String!

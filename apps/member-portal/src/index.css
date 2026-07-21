@@ -3473,6 +3473,15 @@ a:focus-visible {
   opacity: 0.4;
   cursor: not-allowed;
 }
+/* Bouton « Ajouter au panier » : pleine largeur, collé en bas de la carte
+   pour aligner les cartes de hauteurs inégales. */
+.mp-product-card__add {
+  margin-top: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
 .mp-cart {
   margin-top: 20px;
   padding: 16px;

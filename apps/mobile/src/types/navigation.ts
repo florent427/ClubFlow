@@ -13,6 +13,8 @@ export type MainTabParamList = {
   Documents: undefined;
   /** Panier d'adhésion — saison active, pendingItems, validation. */
   Panier: undefined;
+  /** Boutique du club — catalogue, déclinaisons, commande (ADR-0012). */
+  Boutique: undefined;
   /** Overflow menu — modules secondaires (Documents, Actus, Profil…). */
   Plus: undefined;
 };
@@ -24,6 +26,18 @@ export type ContactTabParamList = {
   Documents: undefined;
   /** Panier d'adhésion — accessible aussi depuis l'espace contact pur. */
   Panier: undefined;
+};
+
+/**
+ * Stack interne au tab "Boutique" — flux à 2 écrans :
+ *  1. **ShopCatalog** — catalogue : déclinaison + bouton « Ajouter au panier »
+ *  2. **ShopCart** — panier dédié : quantités, retrait, checkout Stripe
+ *
+ * Navigable via `navigation.navigate('Boutique')` (atterrit sur ShopCatalog).
+ */
+export type ShopStackParamList = {
+  ShopCatalog: undefined;
+  ShopCart: undefined;
 };
 
 /**

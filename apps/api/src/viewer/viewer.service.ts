@@ -27,6 +27,7 @@ import {
 import { memberMatchesMembershipProduct } from '../membership/membership-eligibility';
 import { MembershipService } from '../membership/membership.service';
 import { MembershipCartService } from '../membership/membership-cart.service';
+import { ShopCartService } from '../shop/shop-cart.service';
 import { ViewerMembershipFormulaGraph } from './models/viewer-membership-formula.model';
 import { resolveAdminWorkspaceClubId } from '../common/club-back-office-role';
 import { buildInvoiceWhereForHouseholdGroup } from '../families/household-billing.scope';
@@ -88,6 +89,7 @@ export class ViewerService {
     private readonly clubContacts: ClubContactsService,
     private readonly membership: MembershipService,
     private readonly membershipCart: MembershipCartService,
+    private readonly shopCart: ShopCartService,
     private readonly stripeCheckout: StripeCheckoutService,
     private readonly payerScope: InvoicePayerScopeService,
     private readonly memberActivation: MemberAccountActivationService,
@@ -2282,6 +2284,59 @@ export class ViewerService {
       installmentsCount: installments,
       stripeCheckoutUrl: null,
       instructions,
+    };
+  }
+
+  /**
+   * Checkout du panier boutique : transforme le panier en commande + facture
+   * (chemin atomique existant, réservation de stock incluse), puis crée la
+   * session Stripe Checkout et renvoie l'URL hébergée.
+   *
+   * Orchestré ICI, dans la couche viewer, et non dans `ShopCartService` :
+   *  - c'est le seul endroit qui connaît à la fois le panier (module boutique)
+   *    ET `StripeCheckoutService` (module paiements) ;
+   *  - garder le module boutique indépendant du module paiements évite la
+   *    dépendance circulaire avec le webhook, qui lui appelle la boutique.
+   *
+   * `paidByMemberId` est délibérément laissé à `null` dans la session : la
+   * facture boutique n'a ni foyer ni groupe, et le contrôle
+   * `assertPaidByMemberAllowedForInvoice` du webhook rejetterait un membre
+   * payeur faute de foyer. La traçabilité de l'acheteur reste portée par la
+   * commande (`ShopOrder.memberId` / `contactId`).
+   */
+  async viewerCheckoutShopCart(args: {
+    clubId: string;
+    activeProfile: { memberId: string | null; contactId: string | null };
+    wantsInstallments: boolean;
+  }): Promise<{
+    orderId: string;
+    invoiceId: string;
+    totalCents: number;
+    installmentsCount: number;
+    stripeCheckoutUrl: string;
+  }> {
+    const checkout = await this.shopCart.checkout(
+      args.clubId,
+      {
+        memberId: args.activeProfile.memberId,
+        contactId: args.activeProfile.contactId,
+      },
+      args.wantsInstallments,
+    );
+    const session = await this.stripeCheckout.createInvoiceCheckoutSession({
+      invoiceId: checkout.invoiceId,
+      clubId: args.clubId,
+      paidByMemberId: null,
+      installmentsCount: checkout.installmentsCount,
+      // Retour vers la boutique, pas vers Facturation (réservée aux payeurs).
+      returnPath: '/boutique',
+    });
+    return {
+      orderId: checkout.orderId,
+      invoiceId: checkout.invoiceId,
+      totalCents: checkout.totalCents,
+      installmentsCount: checkout.installmentsCount,
+      stripeCheckoutUrl: session.url,
     };
   }
 

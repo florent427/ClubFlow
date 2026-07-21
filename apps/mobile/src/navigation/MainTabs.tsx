@@ -18,6 +18,7 @@ import { PanierAdhesionScreen } from '../screens/PanierAdhesionScreen';
 import { PlanningScreen } from '../screens/PlanningScreen';
 import { ProgressionScreen } from '../screens/ProgressionScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
+import { ShopNavigator } from '../screens/shop/ShopNavigator';
 import { VIEWER_ME } from '../lib/viewer-documents';
 import type { ViewerMeData } from '../lib/viewer-types';
 import { palette, typography } from '../lib/theme';
@@ -190,6 +191,29 @@ export function MemberTabsNavigator() {
           title: 'Panier d’adhésion',
           tabBarButton: () => null,
           tabBarItemStyle: { display: 'none' },
+        }}
+      />
+
+      {/* ─── BOUTIQUE (caché — accessible via tile MoreMenu) ───────── */}
+      {/* Enregistrée inconditionnellement : la vignette du MoreMenu est,
+          elle, gatée sur le module SHOP du club. Le gating d'affichage
+          vit à UN seul endroit — dupliquer la condition ici ferait
+          diverger les deux à la première évolution. */}
+      <MemberTab.Screen
+        name="Boutique"
+        component={ShopNavigator}
+        options={({ route }) => {
+          // Sur l'écran panier (sous-route du stack Boutique), on masque la
+          // tab bar pour laisser toute la place au récapitulatif + checkout.
+          const focused = getFocusedRouteNameFromRoute(route) ?? 'ShopCatalog';
+          const hideTabBar = focused === 'ShopCart';
+          return {
+            headerShown: false,
+            title: 'Boutique',
+            tabBarButton: () => null,
+            tabBarItemStyle: { display: 'none' },
+            tabBarStyle: hideTabBar ? { display: 'none' } : undefined,
+          };
         }}
       />
 

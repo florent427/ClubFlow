@@ -461,3 +461,59 @@ export type ViewerShopOrdersData = { viewerShopOrders: ViewerShopOrder[] };
 export type ViewerPlaceShopOrderData = {
   viewerPlaceShopOrder: ViewerShopOrder;
 };
+
+/**
+ * Ligne de panier boutique telle que la voit l'ADHÉRENT (ShopCartItem côté
+ * API). Confidentialité stricte (ADR-0012) : AUCUN champ de quantité de stock
+ * n'est typé ici — ni `available`, ni `onHand`, ni `stock`. La seule
+ * information de disponibilité est le booléen `inStock` (« en stock / épuisé »).
+ * Les typer inviterait à les afficher et trahirait le stock exact du club.
+ */
+export type ViewerShopCartItem = {
+  id: string;
+  variantId: string;
+  productId: string;
+  /** Libellé figé « Produit — Déclinaison » (ou juste le produit). */
+  label: string;
+  imageUrl: string | null;
+  /** Quantité COMMANDÉE par le membre — jamais une quantité de stock. */
+  quantity: number;
+  unitPriceCents: number;
+  lineTotalCents: number;
+  /** Seule info de stock : « en stock » / « épuisé ». Jamais un chiffre. */
+  inStock: boolean;
+  /** Produit ou déclinaison devenu indisponible après l'ajout au panier. */
+  unavailable: boolean;
+};
+
+export type ViewerShopCart = {
+  /** Chaîne vide tant que le panier n'a jamais été matérialisé en base. */
+  id: string;
+  totalCents: number;
+  items: ViewerShopCartItem[];
+};
+
+export type ViewerShopCartData = { viewerShopCart: ViewerShopCart };
+export type ViewerAddShopCartItemData = { viewerAddShopCartItem: ViewerShopCart };
+export type ViewerSetShopCartItemQuantityData = {
+  viewerSetShopCartItemQuantity: ViewerShopCart;
+};
+export type ViewerRemoveShopCartItemData = {
+  viewerRemoveShopCartItem: ViewerShopCart;
+};
+export type ViewerClearShopCartData = { viewerClearShopCart: ViewerShopCart };
+
+/**
+ * Résultat du checkout panier. `installmentsCount` reflète ce que le SERVEUR a
+ * accordé (1 ou 3), pas ce que le client a demandé : un 3× sous le seuil du
+ * club est refusé côté serveur (erreur), jamais silencieusement ramené à 1×.
+ */
+export type ViewerCheckoutShopCartData = {
+  viewerCheckoutShopCart: {
+    orderId: string;
+    invoiceId: string;
+    totalCents: number;
+    installmentsCount: number;
+    stripeCheckoutUrl: string;
+  };
+};

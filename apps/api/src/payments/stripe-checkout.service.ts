@@ -35,7 +35,19 @@ export class StripeCheckoutService {
     return new Stripe(key);
   }
 
-  private successAndCancelUrls(clubSlug: string | null): {
+  /**
+   * `returnPath` paramétrable, `/facturation` par défaut.
+   *
+   * Une facture ramène vers l'espace Facturation ; une commande boutique doit
+   * ramener vers `/boutique`. Sans ce paramètre, l'acheteur retombait sur la
+   * page Facturation, réservée aux payeurs du foyer — un membre acheteur
+   * non-payeur y voyait « accès réservé » APRÈS avoir payé. Le défaut préserve
+   * strictement le comportement des factures.
+   */
+  private successAndCancelUrls(
+    clubSlug: string | null,
+    returnPath = '/facturation',
+  ): {
     successUrl: string;
     cancelUrl: string;
   } {
@@ -44,8 +56,8 @@ export class StripeCheckoutService {
     const slug = clubSlug ?? '';
     const qs = slug ? `?club=${encodeURIComponent(slug)}` : '';
     return {
-      successUrl: `${base}/facturation${qs}${qs ? '&' : '?'}paid=1`,
-      cancelUrl: `${base}/facturation${qs}${qs ? '&' : '?'}canceled=1`,
+      successUrl: `${base}${returnPath}${qs}${qs ? '&' : '?'}paid=1`,
+      cancelUrl: `${base}${returnPath}${qs}${qs ? '&' : '?'}canceled=1`,
     };
   }
 
@@ -67,6 +79,12 @@ export class StripeCheckoutService {
      * resolver pour que le club voie le choix dans son back-office.
      */
     installmentsCount?: number;
+    /**
+     * Chemin de retour après paiement (défaut `/facturation`). La boutique
+     * passe `/boutique` pour que l'acheteur revienne à sa commande et non à
+     * l'espace Facturation réservé aux payeurs.
+     */
+    returnPath?: string;
   }): Promise<{ url: string; sessionId: string }> {
     const invoice = await this.prisma.invoice.findFirst({
       where: {
@@ -117,6 +135,7 @@ export class StripeCheckoutService {
     });
     const { successUrl, cancelUrl } = this.successAndCancelUrls(
       club?.slug ?? null,
+      args.returnPath,
     );
 
     const metadata: Record<string, string> = {

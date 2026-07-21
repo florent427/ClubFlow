@@ -50,6 +50,7 @@ import { ProductImageField } from '../../components/ProductImageField';
 import { AiProductDescriptionPanel } from '../../components/AiProductDescriptionPanel';
 import { SuppliersTab } from './SuppliersTab';
 import { PurchaseOrdersTab } from './PurchaseOrdersTab';
+import { ShopSettingsTab } from './ShopSettingsTab';
 import {
   fmtCostOrUnknown,
   fmtDate,
@@ -1531,7 +1532,8 @@ type ShopTab =
   | 'movements'
   | 'restock'
   | 'suppliers'
-  | 'purchases';
+  | 'purchases'
+  | 'settings';
 
 export function ShopPage() {
   const [tab, setTab] = useState<ShopTab>('products');
@@ -1542,6 +1544,7 @@ export function ShopPage() {
     { key: 'restock', label: 'À réapprovisionner' },
     { key: 'suppliers', label: 'Fournisseurs' },
     { key: 'purchases', label: 'Commandes fournisseur' },
+    { key: 'settings', label: 'Réglages' },
   ];
   return (
     <div className="cf-page">
@@ -1571,6 +1574,7 @@ export function ShopPage() {
       {tab === 'restock' ? <RestockTab /> : null}
       {tab === 'suppliers' ? <SuppliersTab /> : null}
       {tab === 'purchases' ? <PurchaseOrdersTab /> : null}
+      {tab === 'settings' ? <ShopSettingsTab /> : null}
     </div>
   );
 }
