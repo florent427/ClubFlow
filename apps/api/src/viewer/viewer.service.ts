@@ -12,6 +12,7 @@ import {
   MemberCivility,
   MemberClubRole,
   MemberStatus,
+  ShopOrderStatus,
   SubscriptionBillingRhythm,
   type Prisma,
 } from '@prisma/client';
@@ -2314,6 +2315,7 @@ export class ViewerService {
     totalCents: number;
     installmentsCount: number;
     stripeCheckoutUrl: string;
+    paymentReturnUrl: string;
   }> {
     const checkout = await this.shopCart.checkout(
       args.clubId,
@@ -2337,6 +2339,134 @@ export class ViewerService {
       totalCents: checkout.totalCents,
       installmentsCount: checkout.installmentsCount,
       stripeCheckoutUrl: session.url,
+      paymentReturnUrl: session.successUrl,
+    };
+  }
+
+  /**
+   * Reprend le paiement d'une commande boutique restée PENDING (paiement
+   * échoué/abandonné) dont la facture est encore OPEN : crée une NOUVELLE
+   * session Stripe Checkout sur la facture EXISTANTE. Ne recrée NI commande,
+   * NI facture, et ne re-réserve PAS le stock (déjà réservé au checkout).
+   *
+   * Appartenance — CHOIX DU PRÉDICAT. Le repay ne fait AUCUNE transition d'état
+   * sur la commande (elle reste PENDING) ; il ne peut donc pas s'appuyer sur un
+   * `updateMany` conditionnel dont le `count` arbitrerait. L'autorisation
+   * repose alors sur une LECTURE — mais pour qu'elle ne rouvre pas un
+   * check-then-act exploitable, TOUT le prédicat d'autorisation entre dans le
+   * `where` de cette lecture unique : `clubId` + identité viewer
+   * (`memberId` XOR `contactId`) + `status = PENDING`. On ne lit JAMAIS la
+   * commande par son seul `id` pour comparer l'appartenance en JS ensuite (ça
+   * exposerait l'existence d'une commande d'autrui et laisserait un `if`
+   * neutralisable). Le seul « acte » qui suit est la création d'une session
+   * Stripe, qui ne MUTE aucun état protégé : `createInvoiceCheckoutSession`
+   * revalide de son côté que la facture est OPEN, non soldée et sans échéancier
+   * actif, et refuse sinon. Il n'y a donc pas de fenêtre TOCTOU à refermer.
+   */
+  async viewerRepayShopOrder(args: {
+    clubId: string;
+    activeProfile: { memberId: string | null; contactId: string | null };
+    orderId: string;
+    wantsInstallments: boolean;
+  }): Promise<{
+    orderId: string;
+    invoiceId: string;
+    totalCents: number;
+    installmentsCount: number;
+    stripeCheckoutUrl: string;
+    paymentReturnUrl: string;
+  }> {
+    const memberId = args.activeProfile.memberId ?? null;
+    const contactId = args.activeProfile.contactId ?? null;
+    if (!memberId && !contactId) {
+      throw new ForbiddenException('Profil requis pour reprendre un paiement.');
+    }
+
+    // Lecture-autorisation : le prédicat COMPLET est dans le where. Un membre a
+    // toujours priorité sur un contactId (un profil portail est l'un XOR
+    // l'autre).
+    const order = await this.prisma.shopOrder.findFirst({
+      where: {
+        id: args.orderId,
+        clubId: args.clubId,
+        status: ShopOrderStatus.PENDING,
+        ...(memberId ? { memberId } : { contactId }),
+      },
+      select: {
+        id: true,
+        totalCents: true,
+        invoice: { select: { id: true } },
+      },
+    });
+
+    if (!order) {
+      // La lecture d'autorisation n'a rien rendu. Cette SECONDE lecture, elle
+      // aussi scopée par club + viewer (pour ne pas divulguer la commande d'un
+      // autre), arrive APRÈS et n'arbitre rien : elle ne sert qu'à NOMMER le
+      // refus au lieu de le taire (cf. echec-silencieux-chemin-erreur).
+      const existing = await this.prisma.shopOrder.findFirst({
+        where: {
+          id: args.orderId,
+          clubId: args.clubId,
+          ...(memberId ? { memberId } : { contactId }),
+        },
+        select: { status: true },
+      });
+      if (!existing) {
+        throw new NotFoundException('Commande introuvable.');
+      }
+      const label =
+        existing.status === ShopOrderStatus.PAID
+          ? 'déjà payée'
+          : 'déjà annulée';
+      throw new BadRequestException(
+        `Impossible de reprendre le paiement de cette commande : elle est ${label}.`,
+      );
+    }
+
+    if (!order.invoice) {
+      // Une commande créée à la main par l'admin n'a pas de facture en ligne.
+      throw new BadRequestException(
+        "Cette commande n'a pas de facture à régler en ligne.",
+      );
+    }
+
+    // 3× arbitré par le SERVEUR contre le seuil du club — MÊME règle que le
+    // checkout, jamais la confiance au client. Un 3× demandé sous le seuil (ou
+    // seuil non configuré) LÈVE avant toute création de session.
+    const club = await this.prisma.club.findUnique({
+      where: { id: args.clubId },
+      select: { shopInstallmentThresholdCents: true },
+    });
+    const thresholdCents = club?.shopInstallmentThresholdCents ?? null;
+    let installmentsCount = 1;
+    if (args.wantsInstallments) {
+      if (thresholdCents === null || order.totalCents < thresholdCents) {
+        throw new BadRequestException(
+          'Le paiement en 3× n’est pas disponible pour ce montant.',
+        );
+      }
+      installmentsCount = 3;
+    }
+
+    // Session sur la facture EXISTANTE. `createInvoiceCheckoutSession` refuse
+    // (NotFound/BadRequest) si la facture n'est plus OPEN, est soldée, ou est
+    // couverte par un échéancier actif — le refus reste explicite.
+    const session = await this.stripeCheckout.createInvoiceCheckoutSession({
+      invoiceId: order.invoice.id,
+      clubId: args.clubId,
+      paidByMemberId: null,
+      installmentsCount,
+      returnPath: '/boutique',
+    });
+
+    return {
+      orderId: order.id,
+      invoiceId: order.invoice.id,
+      totalCents: order.totalCents,
+      installmentsCount,
+      stripeCheckoutUrl: session.url,
+      paymentReturnUrl: session.successUrl,
     };
   }
 

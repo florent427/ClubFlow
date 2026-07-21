@@ -1,5 +1,5 @@
 import { BadRequestException, UseGuards } from '@nestjs/common';
-import { Args, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Args, ID, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Throttle } from '@nestjs/throttler';
 import { ClubPaymentMethod, type Club } from '@prisma/client';
 import { CurrentClub } from '../common/decorators/current-club.decorator';
@@ -774,6 +774,31 @@ export class ViewerResolver {
         memberId: user.activeProfileMemberId ?? null,
         contactId: user.activeProfileContactId ?? null,
       },
+      wantsInstallments: wantsInstallments === true,
+    });
+  }
+
+  @Mutation(() => ShopCartCheckoutGraph, {
+    name: 'viewerRepayShopOrder',
+    description:
+      'Reprend le paiement d’une commande boutique restée en attente (PENDING) dont la facture est encore OUVERTE : crée une NOUVELLE session Stripe Checkout sur la facture EXISTANTE, sans recréer commande/facture ni re-réserver le stock. `wantsInstallments=true` demande le 3× — le serveur le REFUSE si le total est sous le seuil du club. Renvoie la même forme que le checkout (dont `paymentReturnUrl`).',
+  })
+  @RequireClubModule(ModuleCode.SHOP)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  viewerRepayShopOrder(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('orderId', { type: () => ID }) orderId: string,
+    @Args('wantsInstallments', { type: () => Boolean, nullable: true })
+    wantsInstallments?: boolean,
+  ): Promise<ShopCartCheckoutGraph> {
+    return this.viewer.viewerRepayShopOrder({
+      clubId: club.id,
+      activeProfile: {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      orderId,
       wantsInstallments: wantsInstallments === true,
     });
   }

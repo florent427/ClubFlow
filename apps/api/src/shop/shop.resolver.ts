@@ -623,4 +623,24 @@ export class ShopViewerResolver {
       contactId: user.activeProfileContactId,
     });
   }
+
+  @Mutation(() => ShopOrderGraph, {
+    name: 'viewerCancelShopOrder',
+    description:
+      'Annule une commande boutique EN ATTENTE (PENDING) appartenant au viewer et LIBÈRE le stock réservé. La facture liée passe à VOID. Idempotent : réannuler ne relâche pas le stock une seconde fois. Ne s’applique PAS aux commandes payées.',
+  })
+  viewerCancelShopOrder(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('orderId', { type: () => ID }) orderId: string,
+  ): Promise<ShopOrderGraph> {
+    return this.service.cancelOrderForViewer(
+      club.id,
+      {
+        memberId: user.activeProfileMemberId,
+        contactId: user.activeProfileContactId,
+      },
+      orderId,
+    ) as Promise<ShopOrderGraph>;
+  }
 }

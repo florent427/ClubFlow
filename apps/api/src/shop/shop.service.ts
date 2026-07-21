@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, ShopOrderStatus } from '@prisma/client';
+import { InvoiceStatus, Prisma, ShopOrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
 import { ShopStockService } from './shop-stock.service';
@@ -698,6 +698,124 @@ export class ShopService {
       return row;
     });
     return (await this.hydrateBuyers([updated]))[0];
+  }
+
+  /**
+   * PENDING → CANCELLED déclenché par LE PROPRIÉTAIRE de la commande (viewer),
+   * qui libère le stock réservé et met la facture liée à VOID.
+   *
+   * MÊME logique que `cancelOrder` (admin), mais l'appartenance viewer entre
+   * DANS le `where` de l'écriture conditionnelle : `id` + `clubId` + `status`
+   * PENDING + (`memberId` XOR `contactId`). C'est le `count` de l'`updateMany`
+   * qui arbitre — pas un `findFirst` lu hors transaction. Un membre ne peut
+   * donc pas annuler la commande d'un autre : le prédicat ne mord pas, count=0,
+   * on refuse.
+   *
+   * IDEMPOTENT : un second appel voit la commande déjà CANCELLED, l'`updateMany`
+   * conditionnel renvoie count=0 et l'on n'atteint JAMAIS la libération de
+   * stock — le stock n'est donc relâché qu'une fois. Cette garantie est portée
+   * par le WHERE de la base (db push : ni CHECK ni trigger — ADR-0003), pas par
+   * un `if` applicatif.
+   *
+   * La facture liée passe à VOID dans la MÊME transaction : sans cela, une
+   * facture OPEN survivrait à une commande annulée (et un paiement tardif la
+   * solderait). Voidée conditionnellement (status OPEN dans le where) pour ne
+   * jamais rétrograder une facture déjà payée.
+   */
+  async cancelOrderForViewer(
+    clubId: string,
+    viewer: ViewerIdentity,
+    orderId: string,
+  ) {
+    const memberId = viewer.memberId ?? null;
+    const contactId = viewer.contactId ?? null;
+    if (!memberId && !contactId) {
+      throw new ForbiddenException('Profil requis pour annuler une commande.');
+    }
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.shopOrder.updateMany({
+        where: {
+          id: orderId,
+          clubId,
+          status: ShopOrderStatus.PENDING,
+          ...(memberId ? { memberId } : { contactId }),
+        },
+        data: {
+          status: ShopOrderStatus.CANCELLED,
+          cancelledAt: new Date(),
+        },
+      });
+      if (claimed.count !== 1) {
+        await this.assertViewerCancelRefused(tx, clubId, viewer, orderId);
+      }
+
+      const row = await tx.shopOrder.findFirstOrThrow({
+        where: { id: orderId, clubId },
+        include: { lines: true },
+      });
+
+      // Libère la réservation faite au checkout. `available` remonte, `onHand`
+      // n'a jamais bougé (la marchandise n'était que réservée).
+      for (const line of row.lines) {
+        if (!line.variantId) continue;
+        await this.stock.release(tx, {
+          clubId,
+          variantId: line.variantId,
+          qty: line.quantity,
+          orderId: row.id,
+          orderLineId: line.id,
+        });
+      }
+
+      // Facture liée → VOID, dans la MÊME transaction. Scopée par
+      // `shopOrderId` + `clubId` + `status OPEN` : une facture déjà PAID n'est
+      // pas rétrogradée (le cas ne peut d'ailleurs pas se produire, la commande
+      // n'aurait pas été PENDING).
+      await tx.invoice.updateMany({
+        where: {
+          shopOrderId: row.id,
+          clubId,
+          status: InvoiceStatus.OPEN,
+        },
+        data: {
+          status: InvoiceStatus.VOID,
+          voidReason: 'Commande annulée par le membre.',
+        },
+      });
+
+      return row;
+    });
+    return (await this.hydrateBuyers([updated]))[0];
+  }
+
+  /**
+   * Explique POURQUOI l'annulation viewer a été refusée, une fois qu'elle l'a
+   * été. Scopée par `clubId` + identité viewer pour ne pas divulguer la
+   * commande d'un autre. Arrive APRÈS l'échec de l'écriture conditionnelle :
+   * elle n'arbitre rien, elle ne fait que nommer le refus.
+   */
+  private async assertViewerCancelRefused(
+    tx: Prisma.TransactionClient,
+    clubId: string,
+    viewer: ViewerIdentity,
+    orderId: string,
+  ): Promise<never> {
+    const memberId = viewer.memberId ?? null;
+    const contactId = viewer.contactId ?? null;
+    const current = await tx.shopOrder.findFirst({
+      where: {
+        id: orderId,
+        clubId,
+        ...(memberId ? { memberId } : { contactId }),
+      },
+      select: { status: true },
+    });
+    if (!current) throw new NotFoundException('Commande introuvable');
+    const label =
+      current.status === ShopOrderStatus.PAID ? 'déjà payée' : 'déjà annulée';
+    throw new BadRequestException(
+      `Impossible d’annuler cette commande : elle est ${label}.`,
+    );
   }
 
   /**

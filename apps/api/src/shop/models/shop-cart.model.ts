@@ -76,4 +76,15 @@ export class ShopCartCheckoutGraph {
 
   @Field(() => String)
   stripeCheckoutUrl!: string;
+
+  /**
+   * URL de SUCCÈS réellement posée sur la session Stripe
+   * (`MEMBER_PORTAL_ORIGIN/boutique?paid=1`). Ce n'est PAS l'URL à ouvrir
+   * (c'est `stripeCheckoutUrl`) : c'est le préfixe que le client mobile
+   * surveille pour refermer le navigateur intégré une fois le paiement fait
+   * (`WebBrowser.openAuthSessionAsync(stripeCheckoutUrl, paymentReturnUrl)`).
+   * Le web l'ignore. Renseigné à l'identique par le checkout ET le repay.
+   */
+  @Field(() => String)
+  paymentReturnUrl!: string;
 }

@@ -85,7 +85,7 @@ export class StripeCheckoutService {
      * l'espace Facturation réservé aux payeurs.
      */
     returnPath?: string;
-  }): Promise<{ url: string; sessionId: string }> {
+  }): Promise<{ url: string; sessionId: string; successUrl: string }> {
     const invoice = await this.prisma.invoice.findFirst({
       where: {
         id: args.invoiceId,
@@ -204,6 +204,14 @@ export class StripeCheckoutService {
         'Impossible de créer la session de paiement Stripe.',
       );
     }
-    return { url: session.url, sessionId: session.id };
+    // `successUrl` est REMONTÉ à l'appelant en plus de l'URL Stripe : c'est
+    // l'URL de succès réellement posée sur la session (redirection après
+    // paiement). Le client mobile ouvre Stripe avec
+    // `WebBrowser.openAuthSessionAsync(url, returnPrefix)` et a besoin de
+    // connaître ce préfixe pour savoir QUAND refermer le navigateur intégré :
+    // Stripe exige un `success_url` https, un scheme `clubflow://` serait
+    // rejeté. On expose donc l'URL déjà posée, sans la modifier ; le web
+    // l'ignore.
+    return { url: session.url, sessionId: session.id, successUrl };
   }
 }
