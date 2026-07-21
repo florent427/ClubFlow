@@ -9,6 +9,22 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.30.0](https://github.com/florent427/ClubFlow/compare/v0.29.0...v0.30.0) (2026-07-21)
+
+
+### ✨ Features
+
+* **boutique:** panier serveur, paiement Stripe et 3× au-delà d'un seuil ([123edb1](https://github.com/florent427/ClubFlow/commit/123edb1e27ec5d5b8d9cfa01b64df9c439367f23))
+* **boutique:** réglage du seuil 3× (admin) et page de retour Stripe dédiée ([1d63820](https://github.com/florent427/ClubFlow/commit/1d63820db91fc6a64db1c3ed1aec82fb81a7fedf))
+* **boutique:** vrai panier + paiement Stripe sur mobile et portail web ([2c24157](https://github.com/florent427/ClubFlow/commit/2c2415778d41de4af012a4083ab5806add1b413a))
+* **mobile:** boutique adhérent avec déclinaisons ([0df32b7](https://github.com/florent427/ClubFlow/commit/0df32b781119196dd7d563f5bc90096f89581db6))
+
+
+### 🐛 Bug Fixes
+
+* **media:** publier la couverture d'événement, invisible sur la vitrine ([2bad276](https://github.com/florent427/ClubFlow/commit/2bad276174907f175a2d3f4938145fce0b2b674e))
+* **mobile:** l'erreur de connexion ne doit plus disparaître aussitôt affichée ([8b23b47](https://github.com/florent427/ClubFlow/commit/8b23b4767ac4b76d89a63ff72759e8a6409ce57f))
+
 ## [0.29.0](https://github.com/florent427/ClubFlow/compare/v0.28.0...v0.29.0) (2026-07-20)
 
 
