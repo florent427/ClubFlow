@@ -164,6 +164,8 @@ deploy-staging.yml. Détails → [runbooks/release.md](docs/runbooks/release.md)
 | `staging` n'existe plus après un merge vers main | `delete_branch_on_merge` | [pitfall](docs/memory/pitfalls/staging-supprimee-au-merge.md) |
 | `staging` a perdu des commits / déploie du code plus ancien que la prod | recréée depuis une réf locale périmée | [pitfall](docs/memory/pitfalls/staging-supprimee-au-merge.md) |
 | Écritures comptables absentes malgré module activé | plan jamais seedé | [pitfall](docs/memory/pitfalls/compta-non-seedee-webhook-500.md) |
+| Vitrine `Cache-Control: no-store` sur toutes les pages, site perçu comme lent | `headers()`/`cookies()` appelés partout dans le render path | [pitfall](docs/memory/pitfalls/nextjs-route-force-dynamic-headers-cookies.md) |
+| Souin (`Cache-Status`) reste `PRIVATE-OR-AUTHENTICATED-RESPONSE`, jamais `hit` | `default_cache_control` n'override pas un `no-store` déjà présent | [pitfall](docs/memory/pitfalls/souin-respects-origin-no-store.md) |
 | Taux d'erreur non nul sur une destination webhook Stripe | échec masqué par le rejeu | [pitfall](docs/memory/pitfalls/compta-non-seedee-webhook-500.md) |
 
 Pour tout autre symptôme : grep dans `docs/memory/pitfalls/` ou demander
