@@ -2328,6 +2328,8 @@ export class ViewerService {
       clubId: args.clubId,
       paidByMemberId: null,
       installmentsCount: checkout.installmentsCount,
+      // Retour vers la boutique, pas vers Facturation (réservée aux payeurs).
+      returnPath: '/boutique',
     });
     return {
       orderId: checkout.orderId,

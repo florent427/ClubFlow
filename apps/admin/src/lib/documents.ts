@@ -2206,6 +2206,18 @@ export const TRIGGER_SHOP_STOCK_SWEEP = gql`
   }
 `;
 
+export const SHOP_INSTALLMENT_THRESHOLD = gql`
+  query ShopInstallmentThreshold {
+    shopInstallmentThresholdCents
+  }
+`;
+
+export const SET_SHOP_INSTALLMENT_THRESHOLD = gql`
+  mutation SetShopInstallmentThreshold($thresholdCents: Int) {
+    setShopInstallmentThreshold(thresholdCents: $thresholdCents)
+  }
+`;
+
 // ---------------------------------------------------------------------------
 // Approvisionnement : fournisseurs, commandes, réception (ADR-0013)
 //

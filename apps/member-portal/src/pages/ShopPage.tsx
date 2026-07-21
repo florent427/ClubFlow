@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useToast } from '../components/ToastProvider';
 import { ShopCheckoutModal } from '../components/shop/ShopCheckoutModal';
 import { formatEuroCents } from '../lib/format';
@@ -71,10 +72,13 @@ export function ShopPage() {
     useQuery<ViewerShopProductsData>(VIEWER_SHOP_PRODUCTS, {
       fetchPolicy: 'cache-and-network',
     });
-  const { data: cartData, loading: cartLoading } = useQuery<ViewerShopCartData>(
-    VIEWER_SHOP_CART,
-    { fetchPolicy: 'cache-and-network' },
-  );
+  const {
+    data: cartData,
+    loading: cartLoading,
+    refetch: cartRefetch,
+  } = useQuery<ViewerShopCartData>(VIEWER_SHOP_CART, {
+    fetchPolicy: 'cache-and-network',
+  });
   const { data: ordData, refetch: ordRefetch } = useQuery<ViewerShopOrdersData>(
     VIEWER_SHOP_ORDERS,
     { fetchPolicy: 'cache-and-network' },
@@ -89,6 +93,30 @@ export function ShopPage() {
    */
   const [localCart, setLocalCart] = useState<ViewerShopCart | null>(null);
   const cart = localCart ?? cartData?.viewerShopCart ?? EMPTY_CART;
+
+  // Retour de Stripe : la boutique ramène ici (et non sur Facturation, réservée
+  // aux payeurs du foyer — un acheteur non-payeur y voyait « accès réservé »
+  // APRÈS avoir payé). On confirme, on rafraîchit la commande et le panier
+  // (vidé côté serveur au checkout), puis on nettoie l'URL.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const paid = searchParams.get('paid');
+    const canceled = searchParams.get('canceled');
+    if (paid === '1') {
+      showToast('Paiement enregistré. Votre commande est confirmée.', 'success');
+      setLocalCart(null);
+      void cartRefetch();
+      void ordRefetch();
+    } else if (canceled === '1') {
+      showToast('Paiement annulé. Votre panier est conservé.', 'info');
+    }
+    if (paid || canceled) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('paid');
+      next.delete('canceled');
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams, showToast, cartRefetch, ordRefetch]);
 
   const [addItem, { loading: adding }] = useMutation<ViewerAddShopCartItemData>(
     VIEWER_ADD_SHOP_CART_ITEM,
