@@ -9,6 +9,26 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.31.0](https://github.com/florent427/ClubFlow/compare/v0.30.0...v0.31.0) (2026-07-21)
+
+
+### ✨ Features
+
+* **boutique:** choix « régler sur place » au checkout (mobile + web) + payableOnline ([e185267](https://github.com/florent427/ClubFlow/commit/e18526772af5d2bcdfa0860904ca0368b14ef6b4))
+* **boutique:** régler sur place — valider le panier sans paiement en ligne ([1728033](https://github.com/florent427/ClubFlow/commit/172803300d1c26e37959588654063f215ca841e9))
+* **boutique:** reprendre le paiement et annuler une commande (membre) ([c576fdb](https://github.com/florent427/ClubFlow/commit/c576fdb262c7268f635a5be395d8deba44868b5c))
+* **boutique:** retour dans l'app après paiement + actions Payer/Annuler ([19415e1](https://github.com/florent427/ClubFlow/commit/19415e1a64dc2fc8dba27fb324947dfeb5ceea52))
+* **mobile:** retour dans l'app après paiement de FACTURE aussi ([64445ad](https://github.com/florent427/ClubFlow/commit/64445ada00a0111d46987ef5f45e48c1932b436b))
+
+
+### 🐛 Bug Fixes
+
+* **paiement:** vrai retour dans l'app mobile via lien profond (boutique + facture) ([bfe7294](https://github.com/florent427/ClubFlow/commit/bfe72943e1b51df1c2572d2f7b141d7427e1b192))
+* **vitrine:** ajoute generateStaticParams (vide) sur toutes les pages ([373d81f](https://github.com/florent427/ClubFlow/commit/373d81f1a9351a66063c0a805c77260eb9f9f4f9))
+* **vitrine:** la vitrine était rendue en dynamique sur 100% des requêtes ([0831dff](https://github.com/florent427/ClubFlow/commit/0831dffd0add0fbd01076d055575e3644871816c))
+* **vitrine:** renomme _sites → sites (private folder Next.js) ([34c81f6](https://github.com/florent427/ClubFlow/commit/34c81f6fe84622dcdd062e5bb238e21575a721a4))
+* **vitrine:** revalidate explicite sur le layout par tenant ([1ccd4ba](https://github.com/florent427/ClubFlow/commit/1ccd4baf552fa3a9839470f099312332f49394b8))
+
 ## [0.30.0](https://github.com/florent427/ClubFlow/compare/v0.29.0...v0.30.0) (2026-07-21)
 
 
