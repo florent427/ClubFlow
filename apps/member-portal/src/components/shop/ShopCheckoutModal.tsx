@@ -1,20 +1,43 @@
 import { useMemo, useState } from 'react';
 import { useMutation } from '@apollo/client/react';
-import { VIEWER_CHECKOUT_SHOP_CART } from '../../lib/viewer-documents';
-import type { ViewerCheckoutShopCartData } from '../../lib/viewer-types';
+import {
+  VIEWER_CHECKOUT_SHOP_CART,
+  VIEWER_CHECKOUT_SHOP_CART_ON_SITE,
+  VIEWER_REPAY_SHOP_ORDER,
+} from '../../lib/viewer-documents';
+import type {
+  ViewerCheckoutShopCartData,
+  ViewerCheckoutShopCartOnSiteData,
+  ViewerRepayShopOrderData,
+} from '../../lib/viewer-types';
 import { formatEuroCents } from '../../lib/format';
 import { installmentsPreview } from '../../lib/shop-cart';
+import { canPayOnSiteAtCheckout } from '../../lib/shop-order-actions';
 import { useToast } from '../ToastProvider';
 
 interface Props {
-  /** Total TTC vendable du panier (fourni par le serveur). */
+  /** Total TTC dû (panier vendable au checkout, ou total commande au repay). */
   totalCents: number;
+  /**
+   * Reprise de paiement d'une commande EN ATTENTE : quand renseigné, la modale
+   * appelle `viewerRepayShopOrder(orderId)` au lieu du checkout panier. Sinon
+   * (undefined) c'est le checkout du panier courant.
+   */
+  orderId?: string;
+  /**
+   * Appelé après une validation « Régler sur place » réussie (commande créée
+   * en PENDING, panier vidé côté serveur). Le parent y rafraîchit commandes +
+   * panier et ferme la modale. Ignoré en mode repay (le bouton n'apparaît pas).
+   */
+  onOnSitePlaced?: () => void;
   /** Fermeture sans payer. */
   onClose: () => void;
 }
 
 /**
- * Choix du règlement de la commande boutique, puis redirection Stripe.
+ * Choix du règlement de la commande boutique, puis redirection Stripe. Sert le
+ * checkout du panier ET la reprise de paiement d'une commande EN ATTENTE
+ * (prop `orderId`) : même UI 1×/3×, même redirection, seule la mutation change.
  *
  * Deux points de discipline imposés par le cahier des charges :
  *
@@ -27,17 +50,35 @@ interface Props {
  *     le texte serveur, jamais remplacé par un générique.
  *
  * Redirection identique au paiement de facture (`BillingPage.handlePay`) :
- * `window.location.assign(stripeCheckoutUrl)`. Le retour est géré par la page
- * de facturation via `?paid=1` / `?canceled=1` (URL fixée côté serveur,
- * partagée avec le paiement de facture).
+ * `window.location.assign(stripeCheckoutUrl)`. Le retour `?paid=1` /
+ * `?canceled=1` sur `/boutique` est géré par `ShopPage` (URL fixée côté
+ * serveur) — il marche à l'identique pour le repay.
  */
-export function ShopCheckoutModal({ totalCents, onClose }: Props) {
+export function ShopCheckoutModal({
+  totalCents,
+  orderId,
+  onOnSitePlaced,
+  onClose,
+}: Props) {
   const { showToast } = useToast();
   const [installments, setInstallments] = useState<1 | 3>(1);
   const [serverError, setServerError] = useState<string | null>(null);
-  const [checkout, { loading }] = useMutation<ViewerCheckoutShopCartData>(
-    VIEWER_CHECKOUT_SHOP_CART,
-  );
+  const [checkout, { loading: checkoutLoading }] =
+    useMutation<ViewerCheckoutShopCartData>(VIEWER_CHECKOUT_SHOP_CART);
+  const [repay, { loading: repayLoading }] =
+    useMutation<ViewerRepayShopOrderData>(VIEWER_REPAY_SHOP_ORDER);
+  const [checkoutOnSite, { loading: onSiteLoading }] =
+    useMutation<ViewerCheckoutShopCartOnSiteData>(
+      VIEWER_CHECKOUT_SHOP_CART_ON_SITE,
+    );
+  // Le libellé « Redirection… » ne concerne QUE la carte ; on distingue donc le
+  // chargement Stripe de celui du « sur place » pour ne pas mentir sur l'action.
+  const stripeLoading = checkoutLoading || repayLoading;
+  const loading = stripeLoading || onSiteLoading;
+
+  // « Régler sur place » : proposé à la validation du panier, jamais en reprise
+  // de paiement (mode repay = `orderId` renseigné). Cf. canPayOnSiteAtCheckout.
+  const showOnSite = canPayOnSiteAtCheckout(orderId);
 
   const preview = useMemo(() => installmentsPreview(totalCents), [totalCents]);
 
@@ -45,20 +86,50 @@ export function ShopCheckoutModal({ totalCents, onClose }: Props) {
     if (loading) return;
     setServerError(null);
     try {
-      const res = await checkout({
-        variables: { wantsInstallments: installments === 3 },
-      });
-      const data = res.data?.viewerCheckoutShopCart;
-      if (!data?.stripeCheckoutUrl) {
+      const wantsInstallments = installments === 3;
+      // Repay quand une commande est visée ; sinon checkout du panier. Les deux
+      // renvoient la même forme, on ne lit que `stripeCheckoutUrl`.
+      const stripeCheckoutUrl = orderId
+        ? (
+            await repay({ variables: { orderId, wantsInstallments } })
+          ).data?.viewerRepayShopOrder.stripeCheckoutUrl
+        : (
+            await checkout({ variables: { wantsInstallments } })
+          ).data?.viewerCheckoutShopCart.stripeCheckoutUrl;
+      if (!stripeCheckoutUrl) {
         throw new Error(
           'URL de paiement Stripe indisponible. Réessayez plus tard.',
         );
       }
       showToast('Redirection vers le paiement sécurisé…', 'success');
-      window.location.assign(data.stripeCheckoutUrl);
+      window.location.assign(stripeCheckoutUrl);
     } catch (e) {
       // Message SERVEUR tel quel (rupture, 3× sous le seuil, Stripe indispo).
       const msg = e instanceof Error ? e.message : 'Paiement indisponible.';
+      setServerError(msg);
+      showToast(msg, 'error');
+    }
+  }
+
+  /**
+   * « Régler sur place » : valide le panier SANS paiement en ligne. La commande
+   * est créée en PENDING et le stock réservé ; aucune redirection Stripe. On
+   * délègue au parent le rafraîchissement (commandes + panier vidé) et la
+   * fermeture. L'échéancier 1×/3× est ignoré — il ne concerne que la carte. Le
+   * message serveur de refus (panier vide, article épuisé) est affiché tel quel.
+   */
+  async function handlePayOnSite(): Promise<void> {
+    if (loading) return;
+    setServerError(null);
+    try {
+      await checkoutOnSite();
+      showToast(
+        'Commande validée. Réglez sur place au club — elle sera confirmée après paiement.',
+        'success',
+      );
+      onOnSitePlaced?.();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Validation impossible.';
       setServerError(msg);
       showToast(msg, 'error');
     }
@@ -85,8 +156,9 @@ export function ShopCheckoutModal({ totalCents, onClose }: Props) {
           Total dû : <strong>{formatEuroCents(totalCents)}</strong>
           <br />
           <small>
-            Paiement sécurisé par carte (Stripe). Votre commande et sa facture
-            sont créées dès la validation du paiement.
+            {showOnSite
+              ? 'Payez en ligne par carte (Stripe), ou réglez sur place au club : dans ce cas votre commande est validée et le stock réservé, et le club la confirmera une fois le paiement reçu.'
+              : 'Paiement sécurisé par carte (Stripe). Votre commande et sa facture sont créées dès la validation du paiement.'}
           </small>
         </p>
 
@@ -155,6 +227,19 @@ export function ShopCheckoutModal({ totalCents, onClose }: Props) {
           >
             Annuler
           </button>
+          {showOnSite ? (
+            <button
+              type="button"
+              className="mp-btn mp-btn-outline"
+              disabled={loading}
+              onClick={() => void handlePayOnSite()}
+            >
+              <span className="material-symbols-outlined" aria-hidden="true">
+                storefront
+              </span>
+              {onSiteLoading ? 'Validation…' : 'Régler sur place'}
+            </button>
+          ) : null}
           <button
             type="button"
             className="mp-btn mp-btn-primary"
@@ -164,7 +249,7 @@ export function ShopCheckoutModal({ totalCents, onClose }: Props) {
             <span className="material-symbols-outlined" aria-hidden="true">
               credit_card
             </span>
-            {loading ? 'Redirection…' : 'Payer par carte'}
+            {stripeLoading ? 'Redirection…' : 'Payer par carte'}
           </button>
         </div>
       </div>

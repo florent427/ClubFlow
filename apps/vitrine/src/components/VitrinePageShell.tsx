@@ -6,7 +6,7 @@ import {
   fetchArticles,
   fetchGalleryPhotos,
 } from '@/lib/page-fetchers';
-import { getEditJwt, isEditModeActive } from '@/lib/edit-mode';
+import { getEditJwt, isEditFlagActive } from '@/lib/edit-mode';
 import type { EditContext } from '@/lib/edit-context';
 import { VitrinePageRenderer } from './VitrinePageRenderer';
 import { EditHistoryProvider } from './edit/EditHistoryProvider';
@@ -14,6 +14,8 @@ import { UndoRedoBar } from './edit/UndoRedoBar';
 import { PublishPageButton } from './edit/PublishPageButton';
 
 interface Props {
+  host: string;
+  editFlag: string;
   slug:
     | 'index'
     | 'club'
@@ -32,8 +34,13 @@ interface Props {
   };
 }
 
-export async function VitrinePageShell({ slug, include }: Props) {
-  const club = await resolveCurrentClub();
+export async function VitrinePageShell({
+  host,
+  editFlag,
+  slug,
+  include,
+}: Props) {
+  const club = await resolveCurrentClub(host);
   const page = await fetchVitrinePage(club.slug, slug);
   if (!page) {
     notFound();
@@ -54,8 +61,9 @@ export async function VitrinePageShell({ slug, include }: Props) {
     dynamicData.galleryPhotos = await fetchGalleryPhotos(club.slug);
   }
 
-  // Edit context — résolu côté serveur depuis le cookie admin.
-  const editModeOn = await isEditModeActive();
+  // Edit context — editFlag vient du middleware (cookie déjà vérifié),
+  // le JWT n'est lu que si l'édition est active.
+  const editModeOn = isEditFlagActive(editFlag);
   const editJwt = editModeOn ? await getEditJwt() : null;
   const apiUrl =
     process.env.VITRINE_PUBLIC_API_URL ??

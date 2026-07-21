@@ -35,6 +35,7 @@
 | [`compta-non-seedee-webhook-500.md`](pitfalls/compta-non-seedee-webhook-500.md) | Piège — module comptable activé mais plan comptable jamais seedé |
 | [`cors-admin-web-origin-missing-domain.md`](pitfalls/cors-admin-web-origin-missing-domain.md) | Piège — Login admin "Failed to fetch" : nouveau sous-domaine pas dans ADMIN_WEB_ORIGIN |
 | [`cors-no-origin-prod.md`](pitfalls/cors-no-origin-prod.md) | Piège — CORS API en `NODE_ENV=production` bloque les appels SSR |
+| [`echec-silencieux-chemin-erreur.md`](pitfalls/echec-silencieux-chemin-erreur.md) | L'échec qui ne dit rien : un chemin d'erreur muet se lit comme « rien ne s'est passé » |
 | [`env-production-perdus-reset-hard.md`](pitfalls/env-production-perdus-reset-hard.md) | Piège — `.env.production` perdus après `git reset --hard` |
 | [`garantie-derriere-effet-de-bord.md`](pitfalls/garantie-derriere-effet-de-bord.md) | Piège — une garantie placée derrière un effet de bord qui peut échouer |
 | [`gh-pr-create-no-commits.md`](pitfalls/gh-pr-create-no-commits.md) | Piège — `gh pr create` "No commits between" après squash merge |
@@ -51,6 +52,7 @@
 | [`prisma-clubmembership-no-updatedat.md`](pitfalls/prisma-clubmembership-no-updatedat.md) | Piège — `ClubMembership` n'a PAS de `updatedAt` (contrairement aux autres modèles) |
 | [`prisma-generate-eperm-windows.md`](pitfalls/prisma-generate-eperm-windows.md) | Piège — `prisma generate` fail EPERM sur Windows (DLL lockée) |
 | [`prisma-migration-order-broken.md`](pitfalls/prisma-migration-order-broken.md) | Piège — Migrations Prisma dans le mauvais ordre |
+| [`rattrapage-de-securite-incomplet.md`](pitfalls/rattrapage-de-securite-incomplet.md) | Ce qui était public ne s'affiche plus après un durcissement : cherche l'oubli du rattrapage |
 | [`rclone-config-root-vs-user.md`](pitfalls/rclone-config-root-vs-user.md) | Piège — `rclone` config absente côté root → backups script v2 fail |
 | [`release-please-no-trigger.md`](pitfalls/release-please-no-trigger.md) | Piège — release-please ne se déclenche pas (pas de `workflow_dispatch`) |
 | [`revue-adversariale-tout-refute.md`](pitfalls/revue-adversariale-tout-refute.md) | Piège — une revue adversariale qui réfute 100 % de ses constats |
@@ -92,7 +94,7 @@
 
 ---
 
-_Index généré le 2026-07-21 13:18 UTC par `bin/memory-index`._
+_Index généré le 2026-07-21 14:22 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`

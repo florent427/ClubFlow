@@ -61,6 +61,14 @@ export class ShopOrderGraph {
   @Field(() => Date, { nullable: true })
   paidAt!: Date | null;
 
+  /**
+   * Vrai si la commande porte une facture OUVERTE, donc payable en ligne
+   * (bouton « Payer » / reprise de paiement). Faux pour une commande « réglée
+   * sur place » (sans facture) : les écrans ne doivent y proposer qu'« Annuler ».
+   */
+  @Field()
+  payableOnline!: boolean;
+
   @Field(() => [ShopOrderLineGraph])
   lines!: ShopOrderLineGraph[];
 

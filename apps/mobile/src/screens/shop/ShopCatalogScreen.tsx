@@ -14,6 +14,7 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
+  Button,
   Card,
   EmptyState,
   GradientButton,
@@ -24,12 +25,17 @@ import {
 import { absolutizeMediaUrl } from '../../lib/absolutize-url';
 import { formatEuroCents } from '../../lib/format';
 import { shopCartItemCount } from '../../lib/shop-cart';
+import { canCancelShopOrder, canPayShopOrder } from '../../lib/shop-payment';
 import {
   VIEWER_ADD_SHOP_CART_ITEM,
+  VIEWER_CANCEL_SHOP_ORDER,
+  VIEWER_REPAY_SHOP_ORDER,
   VIEWER_SHOP_CART,
   VIEWER_SHOP_ORDERS,
   VIEWER_SHOP_PRODUCTS,
   type ViewerAddShopCartItemData,
+  type ViewerCancelShopOrderData,
+  type ViewerRepayShopOrderData,
   type ViewerShopCartData,
   type ViewerShopOrder,
   type ViewerShopOrdersData,
@@ -38,6 +44,7 @@ import {
   type ViewerShopVariant,
 } from '../../lib/shop-documents';
 import { palette, radius, shadow, spacing, typography } from '../../lib/theme';
+import { useStripePayment } from '../../lib/useStripePayment';
 import type { ShopStackParamList } from '../../types/navigation';
 
 /** Libellé affiché pour une déclinaison, jamais vide. */
@@ -113,6 +120,22 @@ export function ShopCatalogScreen() {
       refetchQueries: [{ query: VIEWER_SHOP_CART }],
     });
 
+  // Reprise de paiement d'une commande PENDING : NE change PAS l'état de la
+  // commande (elle reste PENDING), le refetch est géré par `runStripePayment`
+  // au retour « paid ». Pas de refetchQueries ici.
+  const [repayOrder] = useMutation<ViewerRepayShopOrderData>(
+    VIEWER_REPAY_SHOP_ORDER,
+  );
+  // Annulation : bascule la commande en CANCELLED et libère le stock — on
+  // refetch la liste pour refléter le nouveau statut (et le stock rouvert).
+  const [cancelOrder] = useMutation<ViewerCancelShopOrderData>(
+    VIEWER_CANCEL_SHOP_ORDER,
+    { refetchQueries: [{ query: VIEWER_SHOP_ORDERS }] },
+  );
+  const runStripePayment = useStripePayment();
+  /** Commande en cours d'action (repay/cancel) → boutons désactivés. */
+  const [actioningOrderId, setActioningOrderId] = useState<string | null>(null);
+
   const products = useMemo(
     () => prodData?.viewerShopProducts ?? [],
     [prodData],
@@ -149,6 +172,104 @@ export function ShopCatalogScreen() {
     } finally {
       setAddingVariantId((cur) => (cur === variant.id ? null : cur));
     }
+  }
+
+  /**
+   * Reprend le paiement d'une commande PENDING via Stripe (navigateur intégré
+   * qui se referme au retour). Même flux que le checkout ; le serveur arbitre
+   * le 3× et son refus est affiché tel quel.
+   */
+  async function doRepay(order: ViewerShopOrder, wantsInstallments: boolean) {
+    setActioningOrderId(order.id);
+    try {
+      let res;
+      try {
+        const { data } = await repayOrder({
+          variables: { orderId: order.id, wantsInstallments },
+        });
+        res = data?.viewerRepayShopOrder;
+      } catch (err) {
+        // Refus serveur (3× sous le seuil, commande déjà payée/annulée,
+        // facture non réglable en ligne…) affiché tel quel.
+        Alert.alert(
+          'Paiement impossible',
+          err instanceof Error ? err.message : 'Erreur inconnue.',
+        );
+        return;
+      }
+      if (!res?.stripeCheckoutUrl || !res.paymentReturnUrl) {
+        Alert.alert(
+          'Indisponible',
+          'Impossible de reprendre le paiement. Réessayez plus tard.',
+        );
+        return;
+      }
+      let outcome;
+      try {
+        outcome = await runStripePayment(res);
+      } catch {
+        Alert.alert(
+          'Paiement non ouvert',
+          'Le paiement n’a pas pu s’ouvrir. Réessayez plus tard.',
+        );
+        return;
+      }
+      if (outcome === 'paid') {
+        // ⚠️ « paid » = Stripe a accepté, PAS « payée en base » : c'est le
+        // webhook (asynchrone) qui bascule le statut. On ne l'affirme pas.
+        Alert.alert(
+          'Paiement reçu',
+          'Votre commande est en cours de confirmation. Son statut se mettra à jour ici même.',
+        );
+      } else if (outcome === 'canceled') {
+        Alert.alert(
+          'Paiement annulé',
+          'La commande reste en attente, vous pourrez la régler plus tard.',
+        );
+      }
+    } finally {
+      setActioningOrderId((cur) => (cur === order.id ? null : cur));
+    }
+  }
+
+  function openRepayChoice(order: ViewerShopOrder) {
+    Alert.alert(
+      'Régler ma commande',
+      `Total : ${formatEuroCents(order.totalCents)}\nChoisissez le mode de règlement. Le paiement en 3× n’est proposé qu’au-delà du montant fixé par le club.`,
+      [
+        { text: 'Payer en 1 fois', onPress: () => void doRepay(order, false) },
+        { text: 'Payer en 3 fois', onPress: () => void doRepay(order, true) },
+        { text: 'Annuler', style: 'cancel' },
+      ],
+      { cancelable: true },
+    );
+  }
+
+  function confirmCancelOrder(order: ViewerShopOrder) {
+    Alert.alert(
+      'Annuler cette commande ?',
+      'Le stock réservé sera libéré. Cette action est définitive.',
+      [
+        { text: 'Retour', style: 'cancel' },
+        {
+          text: 'Annuler la commande',
+          style: 'destructive',
+          onPress: async () => {
+            setActioningOrderId(order.id);
+            try {
+              await cancelOrder({ variables: { orderId: order.id } });
+            } catch (err) {
+              Alert.alert(
+                'Annulation impossible',
+                err instanceof Error ? err.message : 'Erreur inconnue.',
+              );
+            } finally {
+              setActioningOrderId((cur) => (cur === order.id ? null : cur));
+            }
+          },
+        },
+      ],
+    );
   }
 
   return (
@@ -337,6 +458,9 @@ export function ShopCatalogScreen() {
           ) : (
             orders.map((o) => {
               const pill = statusPill(o.status);
+              const busyThis = actioningOrderId === o.id;
+              const showActions =
+                canPayShopOrder(o) || canCancelShopOrder(o.status);
               return (
                 <View key={o.id} style={styles.orderCard}>
                   <View style={styles.orderHead}>
@@ -358,6 +482,35 @@ export function ShopCatalogScreen() {
                   <Text style={styles.orderTotal}>
                     Total : {formatEuroCents(o.totalCents)}
                   </Text>
+
+                  {/* Actions réservées aux commandes EN ATTENTE (PENDING). Une
+                      commande payée ou annulée n'en a aucune. */}
+                  {showActions ? (
+                    <View style={styles.orderActions}>
+                      {canPayShopOrder(o) ? (
+                        <Button
+                          label="Payer"
+                          icon="card-outline"
+                          size="sm"
+                          onPress={() => openRepayChoice(o)}
+                          disabled={busyThis}
+                          loading={busyThis}
+                          style={styles.orderActionBtn}
+                        />
+                      ) : null}
+                      {canCancelShopOrder(o.status) ? (
+                        <Button
+                          label="Annuler"
+                          icon="close-circle-outline"
+                          variant="ghost"
+                          size="sm"
+                          onPress={() => confirmCancelOrder(o)}
+                          disabled={busyThis}
+                          style={styles.orderActionBtn}
+                        />
+                      ) : null}
+                    </View>
+                  ) : null}
                 </View>
               );
             })
@@ -456,4 +609,10 @@ const styles = StyleSheet.create({
     color: palette.ink,
     marginTop: spacing.xs,
   },
+  orderActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  orderActionBtn: { flex: 1 },
 });

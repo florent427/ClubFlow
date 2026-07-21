@@ -37,7 +37,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }));
 
   try {
-    const club = await resolveCurrentClub();
+    const club = await resolveCurrentClub(host);
     const articles = await fetchArticles(club.slug, 100);
     const articleEntries: MetadataRoute.Sitemap = articles.map((a) => ({
       url: `${baseUrl}/blog/${a.slug}`,

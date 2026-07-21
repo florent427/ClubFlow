@@ -391,6 +391,8 @@ export type ViewerShopOrder = {
   note: string | null;
   createdAt: string;
   paidAt: string | null;
+  /** Vrai si la commande porte une facture ouverte (payable en ligne). */
+  payableOnline: boolean;
   buyerFirstName: string | null;
   buyerLastName: string | null;
   lines: ViewerShopOrderLine[];
@@ -516,4 +518,32 @@ export type ViewerCheckoutShopCartData = {
     installmentsCount: number;
     stripeCheckoutUrl: string;
   };
+};
+
+/**
+ * Résultat de la validation « sur place » : la commande créée, EN ATTENTE
+ * (PENDING), telle qu'elle apparaîtra dans « Mes commandes ». Aucune session
+ * Stripe — le règlement se fera au club, qui marquera la commande payée.
+ */
+export type ViewerCheckoutShopCartOnSiteData = {
+  viewerCheckoutShopCartOnSite: ViewerShopOrder;
+};
+
+/**
+ * Résultat de la reprise de paiement. Même forme que le checkout : on ne lit
+ * que `stripeCheckoutUrl` côté web, vers lequel on redirige comme au checkout.
+ */
+export type ViewerRepayShopOrderData = {
+  viewerRepayShopOrder: {
+    orderId: string;
+    invoiceId: string;
+    totalCents: number;
+    installmentsCount: number;
+    stripeCheckoutUrl: string;
+  };
+};
+
+/** Résultat de l'annulation viewer : la commande avec son statut mis à jour. */
+export type ViewerCancelShopOrderData = {
+  viewerCancelShopOrder: ViewerShopOrder;
 };

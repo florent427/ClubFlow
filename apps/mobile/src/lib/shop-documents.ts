@@ -58,6 +58,7 @@ const VIEWER_SHOP_ORDER_FIELDS = `
   note
   createdAt
   paidAt
+  payableOnline
   lines {
     id
     productId
@@ -169,6 +170,22 @@ export const VIEWER_CLEAR_SHOP_CART = gql`
 `;
 
 /**
+ * Champs communs au checkout ET au repay : les deux renvoient un
+ * `ShopCartCheckout`. `paymentReturnUrl` est le préfixe d'URL de SUCCÈS posé
+ * sur la session Stripe (`…/boutique?paid=1`) : ce N'EST PAS l'URL à ouvrir
+ * (`stripeCheckoutUrl`), c'est celle que `WebBrowser.openAuthSessionAsync`
+ * surveille pour refermer le navigateur intégré dès le retour de Stripe.
+ */
+const VIEWER_SHOP_CART_CHECKOUT_FIELDS = `
+  orderId
+  invoiceId
+  totalCents
+  installmentsCount
+  stripeCheckoutUrl
+  paymentReturnUrl
+`;
+
+/**
  * Checkout : transforme le panier en commande + facture et renvoie l'URL
  * Stripe hébergée. `wantsInstallments=true` DEMANDE le 3× — le serveur le
  * REFUSE (BadRequest) si le total est sous le seuil du club, ou si le 3× est
@@ -176,12 +193,55 @@ export const VIEWER_CLEAR_SHOP_CART = gql`
  */
 export const VIEWER_CHECKOUT_SHOP_CART = gql`
   mutation ViewerCheckoutShopCart($wantsInstallments: Boolean) {
-    viewerCheckoutShopCart(wantsInstallments: $wantsInstallments) {
-      orderId
-      invoiceId
-      totalCents
-      installmentsCount
-      stripeCheckoutUrl
+    viewerCheckoutShopCart(wantsInstallments: $wantsInstallments, nativeApp: true) {
+      ${VIEWER_SHOP_CART_CHECKOUT_FIELDS}
+    }
+  }
+`;
+
+/**
+ * Validation « régler sur place » : transforme le panier en commande PENDING et
+ * RÉSERVE le stock (même réservation atomique que le checkout Stripe), mais SANS
+ * paiement en ligne — aucune facture ni session Stripe. Aucun argument.
+ * L'adhérent règlera au club (espèces/chèque) ; le club marquera la commande
+ * payée plus tard. Le panier est vidé côté serveur. Renvoie la commande créée
+ * (`status: PENDING`), même forme que `viewerShopOrders`. Porté par
+ * `ShopViewerResolver.viewerCheckoutShopCartOnSite` (gardes viewer + gating
+ * SHOP), jamais admin.
+ */
+export const VIEWER_CHECKOUT_SHOP_CART_ON_SITE = gql`
+  mutation ViewerCheckoutShopCartOnSite {
+    viewerCheckoutShopCartOnSite {
+      ${VIEWER_SHOP_ORDER_FIELDS}
+    }
+  }
+`;
+
+/**
+ * Reprise de paiement d'une commande restée EN ATTENTE (PENDING) dont la
+ * facture est encore ouverte : crée une NOUVELLE session Stripe sur la facture
+ * EXISTANTE (ni recréation de commande, ni re-réservation de stock). Même forme
+ * de retour que le checkout, même arbitrage serveur du 3×. Porté par
+ * `ViewerResolver.viewerRepayShopOrder` (gardes viewer + gating SHOP).
+ */
+export const VIEWER_REPAY_SHOP_ORDER = gql`
+  mutation ViewerRepayShopOrder($orderId: ID!, $wantsInstallments: Boolean) {
+    viewerRepayShopOrder(orderId: $orderId, wantsInstallments: $wantsInstallments, nativeApp: true) {
+      ${VIEWER_SHOP_CART_CHECKOUT_FIELDS}
+    }
+  }
+`;
+
+/**
+ * Annule une commande EN ATTENTE (PENDING) du viewer et LIBÈRE le stock
+ * réservé (la facture liée passe à VOID, idempotent). Renvoie la commande avec
+ * son nouveau `status` (CANCELLED). Porté par
+ * `ShopViewerResolver.viewerCancelShopOrder` (gardes viewer + gating SHOP).
+ */
+export const VIEWER_CANCEL_SHOP_ORDER = gql`
+  mutation ViewerCancelShopOrder($orderId: ID!) {
+    viewerCancelShopOrder(orderId: $orderId) {
+      ${VIEWER_SHOP_ORDER_FIELDS}
     }
   }
 `;
@@ -254,6 +314,8 @@ export type ViewerShopOrder = {
   note: string | null;
   createdAt: string;
   paidAt: string | null;
+  /** Vrai si la commande porte une facture ouverte (payable en ligne). */
+  payableOnline: boolean;
   lines: ViewerShopOrderLine[];
 };
 
@@ -305,7 +367,14 @@ export type ViewerShopCartCheckout = {
   totalCents: number;
   /** Ce que le SERVEUR a accordé (1 ou 3), pas ce qui a été demandé. */
   installmentsCount: number;
+  /** URL Stripe hébergée à OUVRIR. */
   stripeCheckoutUrl: string;
+  /**
+   * Préfixe d'URL de succès posé sur la session (`…/boutique?paid=1`). Ce
+   * n'est PAS l'URL à ouvrir : c'est celle que `openAuthSessionAsync` surveille
+   * pour refermer le navigateur intégré et ramener dans l'app.
+   */
+  paymentReturnUrl: string;
 };
 
 export type ViewerShopCartData = { viewerShopCart: ShopCart };
@@ -319,4 +388,13 @@ export type ViewerRemoveShopCartItemData = {
 export type ViewerClearShopCartData = { viewerClearShopCart: ShopCart };
 export type ViewerCheckoutShopCartData = {
   viewerCheckoutShopCart: ViewerShopCartCheckout;
+};
+export type ViewerCheckoutShopCartOnSiteData = {
+  viewerCheckoutShopCartOnSite: ViewerShopOrder;
+};
+export type ViewerRepayShopOrderData = {
+  viewerRepayShopOrder: ViewerShopCartCheckout;
+};
+export type ViewerCancelShopOrderData = {
+  viewerCancelShopOrder: ViewerShopOrder;
 };

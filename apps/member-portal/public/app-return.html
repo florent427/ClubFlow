@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Retour à l'application…</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        display: flex;
+        min-height: 100vh;
+        margin: 0;
+        align-items: center;
+        justify-content: center;
+        background: #f4f5f7;
+        color: #1a2233;
+        text-align: center;
+        padding: 24px;
+      }
+      a {
+        display: inline-block;
+        margin-top: 16px;
+        padding: 12px 20px;
+        background: #1a2233;
+        color: #fff;
+        border-radius: 10px;
+        text-decoration: none;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      Page-relais du retour de paiement mobile.
+
+      Stripe exige une URL de retour https ; l'application, elle, ne peut être
+      rappelée que par un LIEN PROFOND (`clubflow://`). Cette page fait le pont :
+      chargée dans le navigateur intégré (openAuthSessionAsync), elle rebondit
+      aussitôt vers le scheme de l'app, ce qui referme le navigateur et rend la
+      main à l'écran de paiement.
+
+      Le scheme cible est FIXE (`clubflow://payment-return`) et le seul paramètre
+      propagé est `paid` ou `canceled` (valeur `1`) : aucune redirection
+      arbitraire, aucune donnée de l'URL réinjectée telle quelle.
+    -->
+    <main>
+      <p>Paiement traité. Retour à l'application ClubFlow…</p>
+      <a id="fallback" href="clubflow://payment-return">Ouvrir l'application</a>
+    </main>
+    <script>
+      (function () {
+        var q = new URLSearchParams(window.location.search);
+        var status = q.get('paid') === '1' ? 'paid=1'
+          : q.get('canceled') === '1' ? 'canceled=1'
+          : '';
+        var target = 'clubflow://payment-return' + (status ? '?' + status : '');
+        document.getElementById('fallback').setAttribute('href', target);
+        // Rebond immédiat : le navigateur intégré intercepte le scheme et se ferme.
+        window.location.replace(target);
+      })();
+    </script>
+  </body>
+</html>

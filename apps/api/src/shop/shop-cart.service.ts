@@ -407,4 +407,41 @@ export class ShopCartService {
 
     return result;
   }
+
+  /**
+   * Validation du panier SANS paiement en ligne : « régler sur place ».
+   *
+   * La commande est créée et le stock RÉSERVÉ (même chemin atomique que le
+   * checkout Stripe), mais AUCUNE facture ni session Stripe n'est produite : la
+   * commande reste PENDING jusqu'à ce que le club la marque payée
+   * (`markShopOrderPaid`) quand l'adhérent règle en espèces/chèque au club.
+   *
+   * La réservation est identique au checkout en ligne — un article validé « sur
+   * place » n'est donc pas revendable en double —, et le panier est vidé dans la
+   * même transaction. L'annulation par l'adhérent (`viewerCancelShopOrder`)
+   * libère le stock, exactement comme pour une commande en ligne abandonnée.
+   */
+  async checkoutOnSite(
+    clubId: string,
+    viewer: ViewerIdentity,
+  ): Promise<{ orderId: string }> {
+    const owner = this.assertViewer(viewer);
+    const cart = await this.prisma.shopCart.findFirst({
+      where: this.ownerWhere(clubId, owner),
+      include: { items: true },
+    });
+    if (!cart || cart.items.length === 0) {
+      throw new BadRequestException('Votre panier est vide.');
+    }
+    const lines = cart.items.map((i) => ({
+      variantId: i.variantId,
+      quantity: i.quantity,
+    }));
+
+    return this.prisma.$transaction(async (tx) => {
+      const order = await this.shop.placeOrderInTx(tx, clubId, owner, { lines });
+      await tx.shopCartItem.deleteMany({ where: { cartId: cart.id, clubId } });
+      return { orderId: order.id };
+    });
+  }
 }

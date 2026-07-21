@@ -327,9 +327,11 @@ export const VIEWER_CREATE_INVOICE_CHECKOUT_SESSION = gql`
     viewerCreateInvoiceCheckoutSession(
       invoiceId: $invoiceId
       installmentsCount: $installmentsCount
+      nativeApp: true
     ) {
       url
       sessionId
+      paymentReturnUrl
     }
   }
 `;

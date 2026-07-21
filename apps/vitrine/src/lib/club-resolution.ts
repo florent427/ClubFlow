@@ -1,5 +1,4 @@
 import 'server-only';
-import { headers } from 'next/headers';
 import { fetchGraphQL } from './graphql-client';
 
 /**
@@ -13,8 +12,10 @@ import { fetchGraphQL } from './graphql-client';
  *    monclub.fr) → lookup `publicClubByDomain(domain)`.
  * 3. **Env legacy** : `VITRINE_DEFAULT_CLUB_SLUG` (mono-club, MVP Phase 1).
  *
- * Le middleware vitrine (`middleware.ts`) injecte le header `x-vitrine-host`
- * à chaque requête pour que les RSC puissent lire le hostname côté serveur.
+ * Le host est fourni par l'appelant (issu de `params.host`, lui-même posé
+ * par `middleware.ts` via `NextResponse.rewrite`) plutôt que lu via
+ * `headers()` ici : `headers()` désactiverait le cache statique/ISR de
+ * toute route qui appelle cette fonction (cf. pitfall vitrine lente).
  */
 
 export interface ClubInfo {
@@ -103,10 +104,7 @@ function isCustomDomain(host: string | null): boolean {
   return cleaned.includes('.');
 }
 
-export async function resolveCurrentClub(): Promise<ClubInfo> {
-  const hdrs = await headers();
-  const host = hdrs.get('x-vitrine-host') ?? hdrs.get('host');
-
+export async function resolveCurrentClub(host: string): Promise<ClubInfo> {
   // 1. Subdomain wildcard <slug>.clubflow.topdigital.re
   const subdomainSlug = slugFromSubdomain(host);
   if (subdomainSlug) {

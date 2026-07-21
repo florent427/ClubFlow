@@ -66,7 +66,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const club = await resolveCurrentClub();
+    // Route Handler : le host vient directement de `req.headers`, pas de
+    // `headers()` (l'API RSC qui désactiverait le cache des pages — sans
+    // objet ici, un Route Handler est déjà par-requête par nature).
+    const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? '';
+    const club = await resolveCurrentClub(host);
 
     const data = await fetchGraphQL<MutationResult>(
       REGISTER_MUTATION,
