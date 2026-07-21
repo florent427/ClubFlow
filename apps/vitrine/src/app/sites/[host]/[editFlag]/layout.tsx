@@ -23,6 +23,12 @@ interface LayoutParams {
   params: Promise<{ host: string; editFlag: string }>;
 }
 
+// Explicite plutôt qu'hérité des `revalidate` posés sur les fetch
+// individuels : sans ça, malgré generateStaticParams + le marqueur SSG
+// au build, la route restait servie avec Cache-Control: no-store en
+// conditions réelles (constaté sur staging).
+export const revalidate = 60;
+
 export async function generateMetadata({
   params,
 }: LayoutParams): Promise<Metadata> {
