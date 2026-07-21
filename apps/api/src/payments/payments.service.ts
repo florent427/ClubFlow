@@ -17,6 +17,7 @@ import { AccountingService } from '../accounting/accounting.service';
 import { DocumentsGatingService } from '../documents/documents-gating.service';
 import { ModuleCode } from '../domain/module-registry/module-codes';
 import { PrismaService } from '../prisma/prisma.service';
+import { ShopService } from '../shop/shop.service';
 import { PaymentScheduleEngineService } from './payment-schedule-engine.service';
 import { PaymentScheduleService } from './payment-schedule.service';
 import { StripeConnectService } from './stripe-connect.service';
@@ -62,6 +63,7 @@ export class PaymentsService {
     private readonly stripeFees: StripeFeesService,
     private readonly stripeRefunds: StripeRefundsService,
     private readonly creditNotes: CreditNotesService,
+    private readonly shop: ShopService,
   ) {}
 
   /**
@@ -1037,6 +1039,17 @@ export class PaymentsService {
           stripePaymentIntentId: paymentIntentId,
         },
       });
+
+      // Facture d'une commande boutique soldée : la marchandise quitte le
+      // placard. La sortie de stock est une GARANTIE (pas un accessoire) : elle
+      // vit DANS la transaction de l'encaissement — si elle échoue, le Payment
+      // n'est pas commité et Stripe rejouera proprement, plutôt que de retomber
+      // sur un garde d'idempotence qui laisserait la sortie définitivement
+      // perdue (cf. pitfall garantie-derriere-effet-de-bord). Le fulfill est
+      // lui-même idempotent : PENDING → PAID conditionnel, aucune double sortie.
+      if (fullyPaid && invoice.shopOrderId) {
+        await this.shop.fulfillPaidShopOrderInTx(tx, clubId, invoice.shopOrderId);
+      }
       return p;
     });
 

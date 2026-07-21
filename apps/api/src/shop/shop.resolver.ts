@@ -11,6 +11,10 @@ import { GqlJwtAuthGuard } from '../common/guards/gql-jwt-auth.guard';
 import { ViewerActiveProfileGuard } from '../common/guards/viewer-active-profile.guard';
 import type { RequestUser } from '../common/types/request-user';
 import { ModuleCode } from '../domain/module-registry/module-codes';
+import {
+  AddShopCartItemInput,
+  SetShopCartItemQuantityInput,
+} from './dto/shop-cart.input';
 import { CreateShopProductInput } from './dto/create-shop-product.input';
 import { PlaceShopOrderInput } from './dto/place-shop-order.input';
 import {
@@ -30,6 +34,7 @@ import {
   UpdateShopProductVariantInput,
 } from './dto/shop-variant.input';
 import { UpdateShopProductInput } from './dto/update-shop-product.input';
+import { ShopCartGraph } from './models/shop-cart.model';
 import { ShopOrderGraph } from './models/shop-order.model';
 import { ShopProductGraph } from './models/shop-product.model';
 import {
@@ -44,6 +49,7 @@ import {
   ShopStockSweepReportGraph,
 } from './models/shop-stock.model';
 import { ShopService } from './shop.service';
+import { ShopCartService } from './shop-cart.service';
 import { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
 import { ShopStockSweepService } from './shop-stock-sweep.service';
 import { ShopVariantsService } from './shop-variants.service';
@@ -120,6 +126,41 @@ export class ShopAdminResolver {
     @Args('id', { type: () => ID }) id: string,
   ): Promise<ShopOrderGraph> {
     return this.service.cancelOrder(club.id, id) as Promise<ShopOrderGraph>;
+  }
+
+  // --- Configuration du 3× boutique ---
+  //
+  // ICI, sur le résolveur ADMIN (ClubAdminRoleGuard) : le seuil est un
+  // paramètre de club, pas une donnée membre. Le poser sur le résolveur viewer
+  // perdrait le contrôle de rôle EN SILENCE.
+
+  @Query(() => Int, {
+    name: 'shopInstallmentThresholdCents',
+    nullable: true,
+    description:
+      'Seuil (centimes) à partir duquel le 3× est proposé en boutique. NULL = 3× désactivé.',
+  })
+  shopInstallmentThresholdCents(
+    @CurrentClub() club: Club,
+  ): Promise<number | null> {
+    return this.service.getInstallmentThreshold(club.id);
+  }
+
+  @Mutation(() => Int, {
+    name: 'setShopInstallmentThreshold',
+    nullable: true,
+    description:
+      'Fixe le seuil (centimes) du 3× boutique. Passer `null` désactive le 3×. Renvoie le seuil enregistré.',
+  })
+  setShopInstallmentThreshold(
+    @CurrentClub() club: Club,
+    @Args('thresholdCents', { type: () => Int, nullable: true })
+    thresholdCents?: number | null,
+  ): Promise<number | null> {
+    return this.service.setInstallmentThreshold(
+      club.id,
+      thresholdCents ?? null,
+    );
   }
 
   // --- Déclinaisons (ADR-0012) ---
@@ -465,7 +506,10 @@ export class ShopAdminResolver {
 )
 @RequireClubModule(ModuleCode.SHOP)
 export class ShopViewerResolver {
-  constructor(private readonly service: ShopService) {}
+  constructor(
+    private readonly service: ShopService,
+    private readonly cart: ShopCartService,
+  ) {}
 
   @Query(() => [ShopProductGraph], { name: 'viewerShopProducts' })
   viewerShopProducts(@CurrentClub() club: Club): Promise<ShopProductGraph[]> {
@@ -497,5 +541,86 @@ export class ShopViewerResolver {
       },
       input,
     ) as Promise<ShopOrderGraph>;
+  }
+
+  // --- Panier boutique (VIEWER) ---
+  //
+  // Gestion du panier ici, sur le résolveur VIEWER (ViewerActiveProfileGuard +
+  // gating SHOP). Le checkout — qui a besoin de Stripe — vit sur le résolveur
+  // viewer principal, car le module boutique ne dépend pas du module paiements.
+
+  @Query(() => ShopCartGraph, { name: 'viewerShopCart' })
+  viewerShopCart(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+  ): Promise<ShopCartGraph> {
+    return this.cart.getCart(club.id, {
+      memberId: user.activeProfileMemberId,
+      contactId: user.activeProfileContactId,
+    });
+  }
+
+  @Mutation(() => ShopCartGraph, { name: 'viewerAddShopCartItem' })
+  viewerAddShopCartItem(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('input') input: AddShopCartItemInput,
+  ): Promise<ShopCartGraph> {
+    return this.cart.addItem(
+      club.id,
+      {
+        memberId: user.activeProfileMemberId,
+        contactId: user.activeProfileContactId,
+      },
+      input.variantId,
+      input.quantity,
+    );
+  }
+
+  @Mutation(() => ShopCartGraph, {
+    name: 'viewerSetShopCartItemQuantity',
+    description: 'Fixe la quantité d’une ligne. 0 (ou moins) retire la ligne.',
+  })
+  viewerSetShopCartItemQuantity(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('input') input: SetShopCartItemQuantityInput,
+  ): Promise<ShopCartGraph> {
+    return this.cart.setItemQuantity(
+      club.id,
+      {
+        memberId: user.activeProfileMemberId,
+        contactId: user.activeProfileContactId,
+      },
+      input.itemId,
+      input.quantity,
+    );
+  }
+
+  @Mutation(() => ShopCartGraph, { name: 'viewerRemoveShopCartItem' })
+  viewerRemoveShopCartItem(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('itemId', { type: () => ID }) itemId: string,
+  ): Promise<ShopCartGraph> {
+    return this.cart.removeItem(
+      club.id,
+      {
+        memberId: user.activeProfileMemberId,
+        contactId: user.activeProfileContactId,
+      },
+      itemId,
+    );
+  }
+
+  @Mutation(() => ShopCartGraph, { name: 'viewerClearShopCart' })
+  viewerClearShopCart(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+  ): Promise<ShopCartGraph> {
+    return this.cart.clearCart(club.id, {
+      memberId: user.activeProfileMemberId,
+      contactId: user.activeProfileContactId,
+    });
   }
 }

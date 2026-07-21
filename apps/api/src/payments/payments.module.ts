@@ -6,6 +6,7 @@ import { DocumentsModule } from '../documents/documents.module';
 import { FamiliesModule } from '../families/families.module';
 import { MailModule } from '../mail/mail.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { ShopModule } from '../shop/shop.module';
 import { InvoicePayerScopeService } from './invoice-payer-scope.service';
 import { InvoiceRemindersService } from './invoice-reminders.service';
 import { PaymentsResolver } from './payments.resolver';
@@ -31,6 +32,11 @@ import { StripeWebhookController } from './stripe-webhook.controller';
     DocumentsModule,
     // Périmètre payeur (InvoicePayerScopeService) + ViewerActiveProfileGuard.
     FamiliesModule,
+    // Le webhook « facture payée » solde la commande boutique et sort le stock
+    // via `ShopService.fulfillPaidShopOrderInTx`. Sens unique : le module
+    // boutique ne dépend PAS du module paiements (le checkout panier est
+    // orchestré dans la couche viewer), donc aucun cycle.
+    ShopModule,
   ],
   controllers: [StripeWebhookController],
   providers: [

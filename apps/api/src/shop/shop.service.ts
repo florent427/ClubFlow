@@ -427,6 +427,32 @@ export class ShopService {
       note?: string;
     },
   ) {
+    const order = await this.prisma.$transaction((tx) =>
+      this.placeOrderInTx(tx, clubId, viewer, input),
+    );
+    return (await this.hydrateBuyers([order]))[0];
+  }
+
+  /**
+   * Cœur atomique du passage de commande : agrégation, tarification,
+   * création de la commande PENDING et RÉSERVATION du stock — le tout DANS la
+   * transaction fournie. Extrait de `placeOrder` pour que le checkout panier
+   * puisse créer la commande ET sa facture dans une seule transaction, sans
+   * dupliquer la garantie anti-survente (`ShopStockService.reserve`) ni ouvrir
+   * une fenêtre où une commande existerait sans facture (ou l'inverse).
+   *
+   * Public pour être réutilisable par `ShopCartService.checkout` ; ne DOIT
+   * être appelé que depuis un `$transaction`.
+   */
+  async placeOrderInTx(
+    tx: Prisma.TransactionClient,
+    clubId: string,
+    viewer: ViewerIdentity,
+    input: {
+      lines: Array<{ variantId: string; quantity: number }>;
+      note?: string;
+    },
+  ): Promise<Prisma.ShopOrderGetPayload<{ include: { lines: true } }>> {
     if (!viewer.memberId && !viewer.contactId) {
       throw new ForbiddenException('Profil requis pour commander.');
     }
@@ -448,7 +474,7 @@ export class ShopService {
       wanted.set(l.variantId, (wanted.get(l.variantId) ?? 0) + l.quantity);
     }
 
-    const variants = await this.prisma.shopProductVariant.findMany({
+    const variants = await tx.shopProductVariant.findMany({
       where: {
         id: { in: Array.from(wanted.keys()) },
         clubId,
@@ -480,48 +506,121 @@ export class ShopService {
     // un incident impossible à reproduire en développement.
     const orderedIds = Array.from(wanted.keys()).sort();
 
-    const order = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.shopOrder.create({
-        data: {
-          clubId,
-          memberId: viewer.memberId ?? null,
-          contactId: viewer.memberId ? null : viewer.contactId ?? null,
-          status: ShopOrderStatus.PENDING,
-          totalCents,
-          note: input.note ?? null,
-          lines: {
-            create: orderedIds.map((variantId) => {
-              const v = byVariantId.get(variantId)!;
-              return {
-                productId: v.productId,
-                variantId: v.id,
-                quantity: wanted.get(variantId)!,
-                unitPriceCents: unitPriceOf(v),
-                // Libellé FIGÉ : il survit au renommage du produit.
-                label: labelOf(v),
-              };
-            }),
-          },
+    const created = await tx.shopOrder.create({
+      data: {
+        clubId,
+        memberId: viewer.memberId ?? null,
+        contactId: viewer.memberId ? null : viewer.contactId ?? null,
+        status: ShopOrderStatus.PENDING,
+        totalCents,
+        note: input.note ?? null,
+        lines: {
+          create: orderedIds.map((variantId) => {
+            const v = byVariantId.get(variantId)!;
+            return {
+              productId: v.productId,
+              variantId: v.id,
+              quantity: wanted.get(variantId)!,
+              unitPriceCents: unitPriceOf(v),
+              // Libellé FIGÉ : il survit au renommage du produit.
+              label: labelOf(v),
+            };
+          }),
         },
-        include: { lines: true },
-      });
-
-      // La réservation lève si le stock manque, ce qui annule TOUTE la
-      // transaction — pas de commande sans stock pris, pas de stock pris sans
-      // commande.
-      for (const line of created.lines) {
-        await this.stock.reserve(tx, {
-          clubId,
-          variantId: line.variantId!,
-          qty: line.quantity,
-          orderId: created.id,
-          orderLineId: line.id,
-        });
-      }
-      return created;
+      },
+      include: { lines: true },
     });
 
-    return (await this.hydrateBuyers([order]))[0];
+    // La réservation lève si le stock manque, ce qui annule TOUTE la
+    // transaction — pas de commande sans stock pris, pas de stock pris sans
+    // commande.
+    for (const line of created.lines) {
+      await this.stock.reserve(tx, {
+        clubId,
+        variantId: line.variantId!,
+        qty: line.quantity,
+        orderId: created.id,
+        orderLineId: line.id,
+      });
+    }
+    return created;
+  }
+
+  /**
+   * Passe une commande PENDING → PAID et SORT le stock, de façon IDEMPOTENTE,
+   * DANS la transaction fournie. C'est le point d'entrée du webhook « facture
+   * payée » (imité du branchement facture→adhésion).
+   *
+   * Différence avec `markOrderPaid` (admin) : ici on ne LÈVE PAS si la
+   * commande n'est plus PENDING. Le webhook Stripe peut se rejouer ; un second
+   * passage doit être un no-op silencieux, pas une erreur qui ferait répondre
+   * 500 et boucler le rejeu. L'idempotence est portée par la BASE : la sortie
+   * de stock n'a lieu que si le `updateMany` conditionnel a réellement fait
+   * basculer la commande (count === 1). Un rejeu retrouve la commande déjà
+   * PAID, `count === 0`, et ne décompte rien une seconde fois.
+   *
+   * C'est le motif garantie-derrière-effet-de-bord : la sortie de stock EST la
+   * garantie. Elle vit donc dans la même transaction que l'encaissement — si
+   * elle échoue, le Payment n'est pas commité et Stripe rejouera proprement.
+   */
+  async fulfillPaidShopOrderInTx(
+    tx: Prisma.TransactionClient,
+    clubId: string,
+    orderId: string,
+  ): Promise<void> {
+    const claimed = await tx.shopOrder.updateMany({
+      where: { id: orderId, clubId, status: ShopOrderStatus.PENDING },
+      data: { status: ShopOrderStatus.PAID, paidAt: new Date() },
+    });
+    // count 0 = déjà PAID (rejeu) ou CANCELLED : rien à sortir, et surtout pas
+    // une exception qui casserait le webhook.
+    if (claimed.count !== 1) return;
+
+    const row = await tx.shopOrder.findFirstOrThrow({
+      where: { id: orderId, clubId },
+      include: { lines: true },
+    });
+    for (const line of row.lines) {
+      if (!line.variantId) continue; // ligne antérieure aux variantes
+      await this.stock.fulfill(tx, {
+        clubId,
+        variantId: line.variantId,
+        qty: line.quantity,
+        orderId: row.id,
+        orderLineId: line.id,
+      });
+    }
+  }
+
+  // --- Configuration du 3× boutique (admin) ---
+
+  /**
+   * Seuil (centimes) à partir duquel le 3× est proposé en boutique. NULL = 3×
+   * désactivé. Le `clubId` est dans le WHERE de l'écriture.
+   */
+  async setInstallmentThreshold(
+    clubId: string,
+    thresholdCents: number | null,
+  ): Promise<number | null> {
+    if (thresholdCents !== null && (!Number.isInteger(thresholdCents) || thresholdCents < 0)) {
+      throw new BadRequestException(
+        'Le seuil doit être un montant positif en centimes, ou nul pour désactiver.',
+      );
+    }
+    const updated = await this.prisma.club.update({
+      where: { id: clubId },
+      data: { shopInstallmentThresholdCents: thresholdCents },
+      select: { shopInstallmentThresholdCents: true },
+    });
+    return updated.shopInstallmentThresholdCents;
+  }
+
+  async getInstallmentThreshold(clubId: string): Promise<number | null> {
+    const club = await this.prisma.club.findUnique({
+      where: { id: clubId },
+      select: { shopInstallmentThresholdCents: true },
+    });
+    return club?.shopInstallmentThresholdCents ?? null;
   }
 
   /**

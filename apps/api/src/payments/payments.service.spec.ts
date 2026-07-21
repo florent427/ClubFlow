@@ -12,6 +12,7 @@ import { StripeConnectService } from './stripe-connect.service';
 import { StripeFeesService } from './stripe-fees.service';
 import { StripeRefundsService } from './stripe-refunds.service';
 import { CreditNotesService } from './credit-notes.service';
+import { ShopService } from '../shop/shop.service';
 
 describe('PaymentsService / Stripe webhook', () => {
   let service: PaymentsService;
@@ -31,6 +32,7 @@ describe('PaymentsService / Stripe webhook', () => {
   let stripeConnect: { applyAccountUpdated: jest.Mock };
   let paymentSchedules: { applySetupCompleted: jest.Mock };
   let scheduleEngine: { markInstallmentPaid: jest.Mock };
+  let shop: { fulfillPaidShopOrderInTx: jest.Mock };
 
   beforeEach(async () => {
     process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_secret';
@@ -46,6 +48,7 @@ describe('PaymentsService / Stripe webhook', () => {
     stripeConnect = { applyAccountUpdated: jest.fn().mockResolvedValue(undefined) };
     paymentSchedules = { applySetupCompleted: jest.fn().mockResolvedValue(undefined) };
     scheduleEngine = { markInstallmentPaid: jest.fn().mockResolvedValue(undefined) };
+    shop = { fulfillPaidShopOrderInTx: jest.fn().mockResolvedValue(undefined) };
     prisma = {
       stripeWebhookEvent: {
         findUnique: jest.fn().mockResolvedValue(null),
@@ -103,6 +106,8 @@ describe('PaymentsService / Stripe webhook', () => {
         { provide: CreditNotesService, useValue: {} },
         { provide: PaymentScheduleService, useValue: paymentSchedules },
         { provide: PaymentScheduleEngineService, useValue: scheduleEngine },
+        // Boutique : le webhook peut solder une commande.
+        { provide: ShopService, useValue: shop },
       ],
     }).compile();
 
@@ -244,6 +249,81 @@ describe('PaymentsService / Stripe webhook', () => {
     // La réservation d'idempotence NE doit pas être libérée : le traitement a
     // réussi, seul l'accessoire a échoué.
     expect(prisma.stripeWebhookEvent.delete).not.toHaveBeenCalled();
+  });
+
+  it('solde la commande boutique quand la facture soldée la finance', async () => {
+    // Facture liée à une commande boutique (`shopOrderId`). Une fois soldée,
+    // le webhook doit sortir le stock DANS la transaction de l'encaissement.
+    prisma.invoice.findFirst.mockResolvedValueOnce({
+      id: 'inv-shop',
+      clubId: 'club-1',
+      familyId: null,
+      householdGroupId: null,
+      status: InvoiceStatus.OPEN,
+      amountCents: 5000,
+      label: 'Commande boutique',
+      shopOrderId: 'so-1',
+    });
+    prisma.stripeWebhookEvent.create.mockResolvedValueOnce({ id: 'evt_shop' });
+
+    const payload = {
+      id: 'evt_shop',
+      object: 'event',
+      type: 'payment_intent.succeeded',
+      data: {
+        object: {
+          id: 'pi_shop',
+          object: 'payment_intent',
+          metadata: { invoiceId: 'inv-shop', clubId: 'club-1' },
+          amount_received: 5000,
+          amount: 5000,
+        },
+      },
+    };
+    const raw = JSON.stringify(payload);
+    const header = Stripe.webhooks.generateTestHeaderString({
+      payload: raw,
+      secret: process.env.STRIPE_WEBHOOK_SECRET!,
+    });
+
+    await service.handleStripeWebhook(Buffer.from(raw), header);
+
+    expect(shop.fulfillPaidShopOrderInTx).toHaveBeenCalledWith(
+      expect.anything(), // la transaction
+      'club-1',
+      'so-1',
+    );
+  });
+
+  it('ne touche PAS la boutique pour une facture hors boutique', async () => {
+    // La facture par défaut (adhésion) n'a pas de `shopOrderId` : aucun appel
+    // boutique. Sans cette assertion, un fulfill déclenché à tort passerait
+    // inaperçu.
+    prisma.stripeWebhookEvent.create.mockResolvedValueOnce({ id: 'evt_no_shop' });
+
+    const payload = {
+      id: 'evt_no_shop',
+      object: 'event',
+      type: 'payment_intent.succeeded',
+      data: {
+        object: {
+          id: 'pi_no_shop',
+          object: 'payment_intent',
+          metadata: { invoiceId: 'inv-1', clubId: 'club-1' },
+          amount_received: 5000,
+          amount: 5000,
+        },
+      },
+    };
+    const raw = JSON.stringify(payload);
+    const header = Stripe.webhooks.generateTestHeaderString({
+      payload: raw,
+      secret: process.env.STRIPE_WEBHOOK_SECRET!,
+    });
+
+    await service.handleStripeWebhook(Buffer.from(raw), header);
+
+    expect(shop.fulfillPaidShopOrderInTx).not.toHaveBeenCalled();
   });
 
 });

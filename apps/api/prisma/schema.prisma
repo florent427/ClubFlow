@@ -89,6 +89,8 @@ model Club {
   contacts                        Contact[]
   chatRooms                       ChatRoom[]
   membershipCarts                 MembershipCart[]
+  shopCarts                       ShopCart[]
+  shopCartItems                   ShopCartItem[]
   /// À partir du n-ième bulletin d’adhésion (OPEN/PAID) pour le foyer sur la saison — null = désactivé
   membershipFamilyDiscountFromNth Int?
   membershipFamilyAdjustmentType  PricingAdjustmentType           @default(NONE)
@@ -101,6 +103,12 @@ model Club {
   /// s'applique. Default = 3 (les 3 premiers mois plein tarif).
   /// 0 = prorata dès le 1er mois (ancien comportement).
   membershipFullPriceFirstMonths Int @default(3)
+
+  /// Seuil (en centimes) à partir duquel le paiement en 3× est proposé pour
+  /// une commande boutique. NULL = 3× désactivé pour la boutique de ce club
+  /// (paiement comptant uniquement). Le serveur REFUSE un 3× demandé sous ce
+  /// seuil — le choix vient du membre mais n'est jamais arbitré par le client.
+  shopInstallmentThresholdCents Int?
 
   /// Domaine personnalisé pour le site vitrine public (ex. www.mondojo.fr).
   /// CNAME à poser vers le serveur Next.js ; HTTPS géré par le reverse-proxy.
@@ -1551,6 +1559,12 @@ model Invoice {
   installmentsCount     Int                @default(1)
   dueAt                 DateTime?
   stripePaymentIntentId String?            @unique
+  /// Commande boutique que cette facture finance, s'il y en a une. @unique :
+  /// une facture par commande, une commande par facture. C'est CE lien que le
+  /// webhook « facture payée » suit pour passer la commande PAID et sortir le
+  /// stock (imité du branchement facture→adhésion). NULL = facture hors
+  /// boutique (cotisation, frais divers…).
+  shopOrderId           String?            @unique
   /// Dernière date d'envoi d'un e-mail de relance pour cette facture.
   lastRemindedAt        DateTime?
   createdAt             DateTime           @default(now())
@@ -1575,6 +1589,7 @@ model Invoice {
   payments        Payment[]
   paymentSchedule PaymentSchedule?
   membershipCart  MembershipCart?
+  shopOrder       ShopOrder?       @relation(fields: [shopOrderId], references: [id], onDelete: SetNull)
 
   parentInvoice Invoice?  @relation("InvoiceCreditNotes", fields: [parentInvoiceId], references: [id], onDelete: SetNull)
   creditNotes   Invoice[] @relation("InvoiceCreditNotes")
@@ -1617,10 +1632,10 @@ model Payment {
   /// Ne compte que les frais Stripe proprement dits (`fee_details` de type
   /// `stripe_fee`), à l'exclusion d'une éventuelle commission plateforme
   /// ClubFlow, qui n'aurait rien à faire dans les frais bancaires du club.
-  stripeFeeCents     Int?
+  stripeFeeCents             Int?
   /// Devise des frais, telle que renvoyée par Stripe. Peut différer de celle
   /// de l'encaissement sur un compte multidevise.
-  stripeFeeCurrency  String?
+  stripeFeeCurrency          String?
   /// `txn_xxx` — pièce justificative côté Stripe, et clé d'idempotence
   /// naturelle si l'on doit un jour rapprocher ou rejouer.
   stripeBalanceTransactionId String?
@@ -1628,12 +1643,12 @@ model Payment {
   /// qu'elle rembourse. Une facture peut porter plusieurs encaissements
   /// Stripe (acompte puis solde, échéancier) : sans ce rattachement, on ne
   /// saurait pas lequel a déjà été remboursé et de combien.
-  refundedPaymentId  String?
+  refundedPaymentId          String?
   /// `re_xxx` du remboursement Stripe que cette ligne matérialise.
   /// Champ DÉDIÉ plutôt qu'une contrainte sur `externalRef`, qui porte aussi
   /// des numéros de chèque et des références de virement — deux clubs peuvent
   /// légitimement saisir le même. Ici l'unicité est garantie par Stripe.
-  stripeRefundId     String?
+  stripeRefundId             String?
 
   /// Date de récupération effective des frais. Null = pas encore connus.
   /// C'est le cas NOMINAL d'un prélèvement SEPA : la balance transaction
@@ -1641,7 +1656,7 @@ model Payment {
   /// Sert de critère de reprise au balayage quotidien.
   stripeFeesSyncedAt DateTime?
 
-  createdAt          DateTime          @default(now())
+  createdAt DateTime @default(now())
 
   club                    Club                        @relation(fields: [clubId], references: [id], onDelete: Cascade)
   invoice                 Invoice                     @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
@@ -1655,6 +1670,10 @@ model Payment {
   refundedPayment         Payment?                    @relation("PaymentRefunds", fields: [refundedPaymentId], references: [id], onDelete: SetNull)
   refunds                 Payment[]                   @relation("PaymentRefunds")
 
+  /// Idempotence du remboursement, garantie par la BASE et non par un
+  /// check-then-create : deux livraisons concurrentes du même webhook ne
+  /// peuvent pas enregistrer deux fois le même remboursement.
+  @@unique([clubId, stripeRefundId])
   @@index([clubId, createdAt])
   @@index([invoiceId])
   @@index([paidByMemberId])
@@ -1664,10 +1683,6 @@ model Payment {
   @@index([stripeFeesSyncedAt, createdAt])
   /// Somme déjà remboursée sur un encaissement donné.
   @@index([refundedPaymentId])
-  /// Idempotence du remboursement, garantie par la BASE et non par un
-  /// check-then-create : deux livraisons concurrentes du même webhook ne
-  /// peuvent pas enregistrer deux fois le même remboursement.
-  @@unique([clubId, stripeRefundId])
 }
 
 /// Moyen de prélèvement d'un échéancier (cf. ADR-0009).
@@ -2117,7 +2132,6 @@ model AccountingEntry {
   grantInstallments       GrantInstallment[]
   sponsorshipInstallments SponsorshipInstallment[]
 
-  @@index([clubId, occurredAt])
   /// Idempotence du virement Stripe : deux livraisons du même `payout.paid`
   /// ne peuvent pas produire deux écritures. Les NULL ne se heurtent pas
   /// entre eux sous PostgreSQL, les autres écritures ne sont donc pas gênées.
@@ -2137,6 +2151,7 @@ model AccountingEntry {
   /// `paymentId` nul, que PostgreSQL ne fait pas se heurter. La recette et les
   /// frais d'un même encaissement cohabitent puisque `source` les distingue.
   @@unique([clubId, paymentId, source])
+  @@index([clubId, occurredAt])
   @@index([clubId, projectId])
   @@index([clubId, status])
   @@index([clubId, source])
@@ -2624,8 +2639,8 @@ model ShopProductOption {
   /// Ordre d'affichage dans le sélecteur du portail.
   position  Int    @default(0)
 
-  club    Club                    @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  product ShopProduct             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  club    Club                     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  product ShopProduct              @relation(fields: [productId], references: [id], onDelete: Cascade)
   values  ShopProductOptionValue[]
 
   /// Deux axes homonymes rendraient la signature de variante ambiguë.
@@ -2719,9 +2734,9 @@ model ShopProductVariant {
   /// Sous ce seuil, le balayage quotidien alerte. Null = jamais d'alerte.
   /// Sur la VARIANTE et non le produit : on est en rupture de M bien avant
   /// d'être en rupture de t-shirt.
-  reorderThreshold Int?
+  reorderThreshold  Int?
   /// Quantité à recommander, purement informative pour le trésorier.
-  reorderTargetQty Int?
+  reorderTargetQty  Int?
   /// Marqueur d'alerte déjà envoyée, RÉCLAMÉ par updateMany conditionnel avant
   /// tout envoi — l'anti-spam est tenu par la base, pas par un `if`. Remis à
   /// null à la remontée du stock ET au changement de seuil, sans quoi un seuil
@@ -2732,11 +2747,12 @@ model ShopProductVariant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  club      Club                @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  product   ShopProduct         @relation(fields: [productId], references: [id], onDelete: Cascade)
-  movements ShopStockMovement[]
-  orderLines ShopOrderLine[]
+  club          Club                    @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  product       ShopProduct             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  movements     ShopStockMovement[]
+  orderLines    ShopOrderLine[]
   purchaseLines ShopPurchaseOrderLine[]
+  cartItems     ShopCartItem[]
 
   @@unique([productId, optionSignature])
   @@index([clubId, productId, active])
@@ -2786,9 +2802,9 @@ enum ShopReceiptDiscrepancyReason {
 /// on recommande toujours aux mêmes, et les fautes de frappe fragmenteraient
 /// l'historique.
 model ShopSupplier {
-  id      String  @id @default(uuid())
-  clubId  String
-  name    String  @db.VarChar(160)
+  id           String  @id @default(uuid())
+  clubId       String
+  name         String  @db.VarChar(160)
   contactName  String? @db.VarChar(160)
   email        String? @db.VarChar(200)
   phone        String? @db.VarChar(40)
@@ -2832,10 +2848,10 @@ model ShopPurchaseOrder {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  club       Club                     @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  supplier   ShopSupplier             @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  lines      ShopPurchaseOrderLine[]
-  receptions ShopPurchaseReception[]
+  club              Club                    @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  supplier          ShopSupplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  lines             ShopPurchaseOrderLine[]
+  receptions        ShopPurchaseReception[]
   /// Les factures fournisseur rapprochées de cette commande. PLUSIEURS :
   /// une commande livrée en trois fois se facture volontiers en trois fois.
   /// Aucune n'est créée par la réception (ADR-0013 §1) — le trésorier les
@@ -2870,9 +2886,9 @@ model ShopPurchaseOrderLine {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  club    Club                        @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  order   ShopPurchaseOrder           @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  variant ShopProductVariant          @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  club         Club                        @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  order        ShopPurchaseOrder           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant      ShopProductVariant          @relation(fields: [variantId], references: [id], onDelete: Restrict)
   receiptLines ShopPurchaseReceptionLine[]
 
   /// Une déclinaison n'apparaît qu'une fois par commande : deux lignes pour
@@ -2885,15 +2901,15 @@ model ShopPurchaseOrderLine {
 /// réception unique forcerait à écraser la précédente, donc à perdre
 /// l'historique des livraisons partielles — précisément ce qu'on documente.
 model ShopPurchaseReception {
-  id         String   @id @default(uuid())
-  clubId     String
-  orderId    String
-  receivedAt DateTime @default(now())
+  id           String   @id @default(uuid())
+  clubId       String
+  orderId      String
+  receivedAt   DateTime @default(now())
   /// Bon de livraison du fournisseur.
-  deliveryNote String? @db.VarChar(80)
+  deliveryNote String?  @db.VarChar(80)
   /// Qui a réceptionné. Null = réception système (import, reprise).
-  userId     String?
-  notes      String?  @db.VarChar(500)
+  userId       String?
+  notes        String?  @db.VarChar(500)
 
   createdAt DateTime @default(now())
 
@@ -2966,8 +2982,8 @@ model ShopStockMovement {
 
   occurredAt DateTime @default(now())
 
-  club    Club               @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  variant ShopProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  club          Club                       @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  variant       ShopProductVariant         @relation(fields: [variantId], references: [id], onDelete: Cascade)
   /// Réception qui a engendré ce mouvement, s'il vient d'une commande.
   receptionLine ShopPurchaseReceptionLine?
 
@@ -2977,23 +2993,27 @@ model ShopStockMovement {
 }
 
 model ShopOrder {
-  id         String          @id @default(uuid())
-  clubId     String
-  memberId   String?
-  contactId  String?
-  status     ShopOrderStatus @default(PENDING)
-  totalCents Int
-  note       String?         @db.VarChar(500)
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @updatedAt
-  paidAt     DateTime?
+  id          String          @id @default(uuid())
+  clubId      String
+  memberId    String?
+  contactId   String?
+  status      ShopOrderStatus @default(PENDING)
+  totalCents  Int
+  note        String?         @db.VarChar(500)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  paidAt      DateTime?
   /// Horodatage de l'annulation. Sert à distinguer une commande jamais
   /// annulée d'une commande annulée puis rouverte — ce dernier cas n'existe
   /// pas, la machine à états ne permettant aucune transition depuis CANCELLED.
   cancelledAt DateTime?
 
-  club  Club            @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  lines ShopOrderLine[]
+  club    Club            @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  lines   ShopOrderLine[]
+  /// Facture qui finance cette commande (paiement en ligne). Back-relation du
+  /// lien porté par `Invoice.shopOrderId`. NULL tant qu'aucune facture n'a été
+  /// émise — une commande créée à la main par l'admin n'en a pas.
+  invoice Invoice?
 
   @@index([clubId, status])
   @@index([memberId])
@@ -3001,7 +3021,7 @@ model ShopOrder {
 }
 
 model ShopOrderLine {
-  id             String @id @default(uuid())
+  id             String  @id @default(uuid())
   orderId        String
   /// Conservé : les lignes antérieures aux variantes restent résolvables, et
   /// la FK Restrict qui protège l'historique reste intacte.
@@ -3022,6 +3042,55 @@ model ShopOrderLine {
 
   @@index([orderId])
   @@index([variantId])
+}
+
+/// Panier boutique d'un VIEWER (membre OU contact) pour un club. Imité de
+/// MembershipCart, mais rattaché au profil viewer et non au foyer : la
+/// boutique s'achète pour soi.
+///
+/// LE PANIER NE RÉSERVE PAS LE STOCK. Réserver à l'ajout tiendrait des
+/// unités pour des paniers jamais validés — c'est le membre indécis qui
+/// mettrait le club en rupture. La réservation atomique (`ShopStockService
+/// .reserve`, seule garantie anti-survente) reste au passage de commande. Le
+/// panier ne fait que constater la disponibilité (`inStock`) à l'ajout, puis
+/// de nouveau au checkout : deux constats, aucun verrou.
+model ShopCart {
+  id        String   @id @default(uuid())
+  clubId    String
+  /// Propriétaire du panier. Exactement un des deux est non-null (appli).
+  memberId  String?
+  contactId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  club  Club           @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  items ShopCartItem[]
+
+  @@index([clubId, memberId])
+  @@index([clubId, contactId])
+}
+
+model ShopCartItem {
+  id        String   @id @default(uuid())
+  /// Dénormalisé depuis le panier pour que chaque écriture (maj quantité,
+  /// retrait) porte le clubId DANS son WHERE — la frontière multi-tenant est
+  /// tenue par la requête, jamais par un findFirst préalable.
+  clubId    String
+  cartId    String
+  variantId String
+  quantity  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  club    Club               @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  cart    ShopCart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variant ShopProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  /// Une seule ligne par déclinaison dans un panier : ré-ajouter une variante
+  /// déjà présente CUMULE la quantité au lieu de créer un doublon.
+  @@unique([cartId, variantId])
+  @@index([cartId])
+  @@index([clubId, variantId])
 }
 
 model BlogPost {
@@ -3454,9 +3523,9 @@ enum MediaVisibility {
 }
 
 model MediaAsset {
-  id               String         @id @default(uuid())
+  id               String          @id @default(uuid())
   clubId           String
-  kind             MediaAssetKind @default(IMAGE)
+  kind             MediaAssetKind  @default(IMAGE)
   /// PRIVÉ PAR DÉFAUT, et c'est tout le montage : un fichier dont personne
   /// n'a déclaré la nature ne doit pas être lisible par le monde.
   ///
@@ -3484,7 +3553,7 @@ model MediaAsset {
   /// Nullable pour permettre un backfill progressif des assets existants.
   sha256           String?
   uploadedByUserId String?
-  createdAt        DateTime       @default(now())
+  createdAt        DateTime        @default(now())
 
   club                  Club                    @relation(fields: [clubId], references: [id], onDelete: Cascade)
   galleryPhotos         VitrineGalleryPhoto[]   @relation("VitrineGalleryPhotoAsset")
