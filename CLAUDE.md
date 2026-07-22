@@ -174,7 +174,7 @@ deploy-staging.yml. Détails → [runbooks/release.md](docs/runbooks/release.md)
 Pour tout autre symptôme : grep dans `docs/memory/pitfalls/` ou demander
 à `/learn`.
 
-### Trois pièges SANS symptôme
+### Quatre pièges SANS symptôme
 
 Ceux-là ne se trouvent pas par `grep` sur un message d'erreur — il n'y en
 a pas. Ce sont des motifs à reconnaître en écrivant, pas en débuggant :
@@ -188,6 +188,9 @@ a pas. Ce sont des motifs à reconnaître en écrivant, pas en débuggant :
 - **[`$queryRaw` sur une fonction qui retourne `void`](docs/memory/pitfalls/prisma-executeraw-pour-retour-void.md)**
   — lève à chaque appel, donc la fonctionnalité est morte, et 12 mutations
   restaient vertes. Seul l'E2E sur la vraie base l'a démasqué.
+- **[Un verdict rendu sur un signal dont on n'a pas vérifié le sens](docs/memory/pitfalls/juge-non-fiable-verdict-sans-valeur.md)**
+  — faux vert ET faux rouge. A failli faire « corriger » du code correct.
+  Avant de conclure : ce signal discrimine-t-il vraiment succès et échec ?
 
 ---
 
