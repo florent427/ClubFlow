@@ -45,6 +45,7 @@ import { ViewerService } from './viewer.service';
 import { MembershipCartGraph } from '../membership/models/membership-cart.model';
 import { toMembershipCartGraph } from '../membership/membership-cart.mapper';
 import { MembershipCartService } from '../membership/membership-cart.service';
+import { ShopOrderGraph } from '../shop/models/shop-order.model';
 
 @Resolver()
 @UseGuards(
@@ -810,6 +811,28 @@ export class ViewerResolver {
       wantsInstallments: wantsInstallments === true,
       nativeApp: nativeApp ?? false,
     });
+  }
+
+  @Mutation(() => ShopOrderGraph, {
+    name: 'viewerCancelShopOrder',
+    description:
+      'Annule une commande boutique EN ATTENTE (PENDING) appartenant au viewer et LIBÈRE le stock réservé. La facture liée passe à VOID et la session Stripe encore ouverte est EXPIRÉE (sans quoi un onglet resté ouvert permettrait d’encaisser une commande annulée). Idempotent : réannuler ne relâche pas le stock une seconde fois. Ne s’applique PAS aux commandes payées.',
+  })
+  @RequireClubModule(ModuleCode.SHOP)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  viewerCancelShopOrder(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('orderId', { type: () => ID }) orderId: string,
+  ): Promise<ShopOrderGraph> {
+    return this.viewer.viewerCancelShopOrder({
+      clubId: club.id,
+      activeProfile: {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      orderId,
+    }) as Promise<ShopOrderGraph>;
   }
 
   @Mutation(() => ViewerPendingRegistrationResultGraph, {

@@ -167,11 +167,14 @@ deploy-staging.yml. Détails → [runbooks/release.md](docs/runbooks/release.md)
 | Vitrine `Cache-Control: no-store` sur toutes les pages, site perçu comme lent | `headers()`/`cookies()` appelés partout dans le render path | [pitfall](docs/memory/pitfalls/nextjs-route-force-dynamic-headers-cookies.md) |
 | Souin (`Cache-Status`) reste `PRIVATE-OR-AUTHENTICATED-RESPONSE`, jamais `hit` | `default_cache_control` n'override pas un `no-store` déjà présent | [pitfall](docs/memory/pitfalls/souin-respects-origin-no-store.md) |
 | Taux d'erreur non nul sur une destination webhook Stripe | échec masqué par le rejeu | [pitfall](docs/memory/pitfalls/compta-non-seedee-webhook-500.md) |
+| Retour de paiement mobile atterrit sur le portail web au lieu de l'app | `openAuthSessionAsync` exige un schéma custom | [pitfall](docs/memory/pitfalls/openauthsession-exige-scheme-custom.md) |
+| Mojibake `dÃ©mo` **ou** déconnexions membres intermittentes | `atob()` Latin-1 + base64url | [pitfall](docs/memory/pitfalls/atob-latin1-et-base64url.md) |
+| `Cannot find native module 'Expo…'` après un `npm install` | module natif absent du dev-client | [pitfall](docs/memory/pitfalls/module-natif-ne-passe-pas-par-metro.md) |
 
 Pour tout autre symptôme : grep dans `docs/memory/pitfalls/` ou demander
 à `/learn`.
 
-### Deux pièges SANS symptôme
+### Trois pièges SANS symptôme
 
 Ceux-là ne se trouvent pas par `grep` sur un message d'erreur — il n'y en
 a pas. Ce sont des motifs à reconnaître en écrivant, pas en débuggant :
@@ -182,6 +185,9 @@ a pas. Ce sont des motifs à reconnaître en écrivant, pas en débuggant :
 - **[Un test qui vérifie la forme au lieu du comportement](docs/memory/pitfalls/test-verifie-la-forme-pas-le-comportement.md)**
   — reste vert en certifiant un invariant que le code n'a pas. Seul le
   mutation testing le démasque.
+- **[`$queryRaw` sur une fonction qui retourne `void`](docs/memory/pitfalls/prisma-executeraw-pour-retour-void.md)**
+  — lève à chaque appel, donc la fonctionnalité est morte, et 12 mutations
+  restaient vertes. Seul l'E2E sur la vraie base l'a démasqué.
 
 ---
 

@@ -1559,6 +1559,19 @@ model Invoice {
   installmentsCount     Int                @default(1)
   dueAt                 DateTime?
   stripePaymentIntentId String?            @unique
+  /// Dernière session Stripe Checkout ouverte pour régler cette facture.
+  /// Mémorisée pour pouvoir l'EXPIRER quand la facture cesse d'être due
+  /// (commande annulée, facture passée en VOID) : sans ça, un onglet Stripe
+  /// resté ouvert permet d'encaisser pour une facture qui n'attend plus rien
+  /// — l'argent tombe sur le compte du club et il faut rembourser à la main.
+  /// Non unique : une facture peut avoir plusieurs sessions successives
+  /// (abandon puis reprise du paiement), seule la dernière est expirable.
+  stripeCheckoutSessionId String?
+  /// Compte connecté sur lequel la session ci-dessus a été ouverte, figé à la
+  /// création. Une session ne s'expire que depuis SON compte : si le club
+  /// rebranche un autre compte Stripe entre-temps, se fier au compte courant
+  /// viserait à côté. Même raison que `Payment.stripeAccountId` (ADR-0008).
+  stripeCheckoutAccountId String?
   /// Commande boutique que cette facture finance, s'il y en a une. @unique :
   /// une facture par commande, une commande par facture. C'est CE lien que le
   /// webhook « facture payée » suit pour passer la commande PAID et sortir le

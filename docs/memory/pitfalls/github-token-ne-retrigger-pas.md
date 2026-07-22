@@ -45,6 +45,32 @@ le seul recours serait un commit vide sur `main` pour provoquer un push.
 Ne pas le retirer en croyant simplifier (cf.
 [release-please-no-trigger.md](release-please-no-trigger.md)).
 
+### Combien de lancements ? Une seule passe suffit en général
+
+⚠️ **Ne pas annoncer deux lancements par réflexe.** Le nombre dépend de
+l'état au moment où on lance :
+
+- **Aucune PR de release ouverte** (cas courant après une promotion) → un
+  seul `workflow run` suffit : il ouvre la PR, l'auto-merge la fusionne, et
+  le tag est coupé dans la foulée. La chaîne n'est pas coupée puisque c'est
+  le dispatch manuel qui la porte.
+- **PR de release déjà fusionnée sans tag** (le symptôme décrit plus haut)
+  → un lancement, qui ne fait que publier.
+
+Vérifier l'état plutôt que supposer :
+
+```bash
+gh release list --limit 1
+git show "origin/main:.release-please-manifest.json"
+gh pr list --state open --search "chore(main): release"
+```
+
+Puis contrôler le résultat — si le manifeste et la dernière release
+concordent, c'est fini, inutile de relancer.
+
+Constaté le 2026-07-21 (v0.31.0) : une seule passe, alors que j'avais
+annoncé deux à Florent.
+
 **Correctif de fond** si le manuel devient pénible : auto-fusionner avec
 un PAT ou un GitHub App token au lieu de `GITHUB_TOKEN`. Un push signé par
 l'un de ces deux-là déclenche bien les workflows.

@@ -651,23 +651,9 @@ export class ShopViewerResolver {
     return created;
   }
 
-  @Mutation(() => ShopOrderGraph, {
-    name: 'viewerCancelShopOrder',
-    description:
-      'Annule une commande boutique EN ATTENTE (PENDING) appartenant au viewer et LIBÈRE le stock réservé. La facture liée passe à VOID. Idempotent : réannuler ne relâche pas le stock une seconde fois. Ne s’applique PAS aux commandes payées.',
-  })
-  viewerCancelShopOrder(
-    @CurrentClub() club: Club,
-    @CurrentUser() user: RequestUser,
-    @Args('orderId', { type: () => ID }) orderId: string,
-  ): Promise<ShopOrderGraph> {
-    return this.service.cancelOrderForViewer(
-      club.id,
-      {
-        memberId: user.activeProfileMemberId,
-        contactId: user.activeProfileContactId,
-      },
-      orderId,
-    ) as Promise<ShopOrderGraph>;
-  }
+  // `viewerCancelShopOrder` a déménagé dans `ViewerResolver` : l'annulation
+  // doit désormais EXPIRER la session Stripe de la facture, ce qui exige
+  // `StripeCheckoutService` — inaccessible depuis le module boutique, qui ne
+  // dépend pas du module paiements (même raison que `checkout`, qui ne crée pas
+  // lui-même la session). Mutation GraphQL inchangée pour les clients.
 }

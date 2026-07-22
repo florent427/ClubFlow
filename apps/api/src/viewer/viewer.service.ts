@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
@@ -29,6 +30,7 @@ import { memberMatchesMembershipProduct } from '../membership/membership-eligibi
 import { MembershipService } from '../membership/membership.service';
 import { MembershipCartService } from '../membership/membership-cart.service';
 import { ShopCartService } from '../shop/shop-cart.service';
+import { ShopService } from '../shop/shop.service';
 import { ViewerMembershipFormulaGraph } from './models/viewer-membership-formula.model';
 import { resolveAdminWorkspaceClubId } from '../common/club-back-office-role';
 import { buildInvoiceWhereForHouseholdGroup } from '../families/household-billing.scope';
@@ -82,6 +84,8 @@ function safeTrim(v: string | null | undefined): string | null | undefined {
 
 @Injectable()
 export class ViewerService {
+  private readonly logger = new Logger(ViewerService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly planning: PlanningService,
@@ -91,6 +95,7 @@ export class ViewerService {
     private readonly membership: MembershipService,
     private readonly membershipCart: MembershipCartService,
     private readonly shopCart: ShopCartService,
+    private readonly shop: ShopService,
     private readonly stripeCheckout: StripeCheckoutService,
     private readonly payerScope: InvoicePayerScopeService,
     private readonly memberActivation: MemberAccountActivationService,
@@ -2484,6 +2489,79 @@ export class ViewerService {
       stripeCheckoutUrl: session.url,
       paymentReturnUrl: session.paymentReturnUrl,
     };
+  }
+
+  /**
+   * Annule une commande boutique EN ATTENTE, puis ferme la session Stripe
+   * restée ouverte sur sa facture.
+   *
+   * ── Pourquoi l'annulation vit ICI et non dans le module boutique ──────────
+   * Le module boutique ne dépend pas du module paiements (c'est le sens de
+   * dépendance retenu : c'est déjà pour ça que `ShopCartService.checkout` ne
+   * crée pas lui-même la session Stripe). L'annulation devant désormais TOUCHER
+   * Stripe, elle rejoint le checkout et la reprise de paiement dans la couche
+   * viewer, seule à connaître `StripeCheckoutService`. La mutation GraphQL ne
+   * change ni de nom, ni d'arguments, ni de type de retour.
+   *
+   * ── L'ordre des deux étapes est délibéré ──────────────────────────────────
+   * 1. `cancelOrderForViewer` est la GARANTIE : commande CANCELLED, stock
+   *    relâché, facture VOID, le tout dans une transaction. Elle doit aboutir
+   *    même si Stripe est injoignable — sinon un incident Stripe empêcherait de
+   *    libérer du stock, ce qui est pire que le trou qu'on ferme.
+   * 2. L'expiration de la session est un effet de bord distant, APRÈS commit.
+   *    Elle ne peut donc pas faire échouer le 1. Elle ne se tait pas pour
+   *    autant : `expireCheckoutSessionForInvoice` journalise chaque échec, et
+   *    signale à part la session déjà consommée (argent probablement encaissé).
+   *
+   * Conséquence assumée : entre le commit et l'expiration subsiste une fenêtre
+   * de quelques centaines de millisecondes où la session reste payable. Un
+   * paiement qui s'y glisserait ne serait pas enregistré (la facture n'est plus
+   * OPEN) et ressortirait en ENCAISSEMENT ORPHELIN côté webhook — détecté, donc,
+   * pas perdu. Fermer cette fenêtre exigerait d'appeler Stripe DANS la
+   * transaction, ce que le pitfall garantie-derriere-effet-de-bord proscrit.
+   */
+  async viewerCancelShopOrder(args: {
+    clubId: string;
+    activeProfile: { memberId: string | null; contactId: string | null };
+    orderId: string;
+  }) {
+    // Récupéré AVANT l'annulation : après, la facture est VOID mais toujours
+    // liée à la commande, donc l'id reste lisible — on le lit tout de même en
+    // amont pour ne pas dépendre de cet ordre.
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { shopOrderId: args.orderId, clubId: args.clubId },
+      select: { id: true },
+    });
+
+    const cancelled = await this.shop.cancelOrderForViewer(
+      args.clubId,
+      args.activeProfile,
+      args.orderId,
+    );
+
+    if (invoice) {
+      // Filet de sécurité EN PLUS de celui de `expireCheckoutSessionForInvoice`
+      // (qui avale déjà les échecs Stripe). Il ne fait pas doublon : là-bas le
+      // `catch` n'entoure que les appels Stripe, pas les lectures/écritures
+      // Prisma. Faire reposer une garantie déjà commitée sur la promesse
+      // « cette méthode ne lève jamais », tenue dans un autre fichier, c'est
+      // exactement le couplage qui se rompt à la première évolution.
+      try {
+        await this.stripeCheckout.expireCheckoutSessionForInvoice(
+          args.clubId,
+          invoice.id,
+        );
+      } catch (err) {
+        this.logger.error(
+          `[boutique] Commande ${args.orderId} bien annulée (club ${args.clubId}), ` +
+            `mais la fermeture de la session Stripe de la facture ${invoice.id} a ` +
+            `échoué : ${err instanceof Error ? err.message : String(err)}. La ` +
+            `session peut rester PAYABLE.`,
+        );
+      }
+    }
+
+    return cancelled;
   }
 
   private async assertViewerItemOwnership(
