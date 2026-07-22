@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InvoiceStatus, PaymentScheduleStatus } from '@prisma/client';
@@ -20,6 +21,8 @@ import { StripeConnectService } from './stripe-connect.service';
  */
 @Injectable()
 export class StripeCheckoutService {
+  private readonly logger = new Logger(StripeCheckoutService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly connect: StripeConnectService,
@@ -230,6 +233,21 @@ export class StripeCheckoutService {
         'Impossible de créer la session de paiement Stripe.',
       );
     }
+
+    // Mémorise la session AVANT de rendre la main : c'est le seul moyen de
+    // pouvoir l'expirer si la facture cesse d'être due (commande annulée).
+    // Sans cette trace, un onglet Stripe resté ouvert encaisse pour une
+    // commande annulée et il faut rembourser à la main.
+    //
+    // Le compte est figé ici, pas relu plus tard : une session ne s'expire que
+    // depuis le compte qui la porte.
+    await this.prisma.invoice.updateMany({
+      where: { id: invoice.id, clubId: args.clubId },
+      data: {
+        stripeCheckoutSessionId: session.id,
+        stripeCheckoutAccountId: stripeAccount,
+      },
+    });
     // `successUrl` est REMONTÉ à l'appelant en plus de l'URL Stripe : c'est
     // l'URL de succès réellement posée sur la session (redirection après
     // paiement). Le client mobile ouvre Stripe avec
@@ -239,5 +257,88 @@ export class StripeCheckoutService {
     // rejeté. On expose donc l'URL déjà posée, sans la modifier ; le web
     // l'ignore.
     return { url: session.url, sessionId: session.id, paymentReturnUrl };
+  }
+
+  /**
+   * Expire la session Checkout encore ouverte d'une facture qui n'est plus due.
+   *
+   * ── Pourquoi ça existe ────────────────────────────────────────────────────
+   * Annuler une commande relâche le stock et passe la facture en VOID, mais ne
+   * touche pas à Stripe : la session reste PAYABLE. Un onglet laissé ouvert
+   * suffit alors à encaisser pour une commande annulée. L'argent tombe sur le
+   * compte du club, aucun Payment n'est créé (la facture n'est plus OPEN) —
+   * `applyStripePaymentSuccess` le journalise en ENCAISSEMENT ORPHELIN — et il
+   * faut rembourser à la main. Expirer la session ferme la porte en amont.
+   *
+   * ── Best-effort ASSUMÉ, mais jamais muet ──────────────────────────────────
+   * L'appel est un effet de bord distant qui peut échouer (Stripe indisponible,
+   * session déjà consommée). Il ne doit donc JAMAIS faire échouer l'annulation
+   * elle-même, qui est la garantie : le stock doit être relâché même si Stripe
+   * ne répond pas (cf. pitfall garantie-derriere-effet-de-bord). D'où : appelé
+   * APRÈS commit, ne lève jamais.
+   *
+   * « Ne lève jamais » n'est pas « se tait » : chaque échec est journalisé, et
+   * le cas « session déjà complétée » est signalé à part car il signifie que de
+   * l'argent est probablement déjà tombé (cf. pitfall
+   * echec-silencieux-chemin-erreur).
+   *
+   * @returns ce qui s'est réellement passé — testable, contrairement à un void.
+   */
+  async expireCheckoutSessionForInvoice(
+    clubId: string,
+    invoiceId: string,
+  ): Promise<'expired' | 'none' | 'already-consumed' | 'failed'> {
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id: invoiceId, clubId },
+      select: { stripeCheckoutSessionId: true, stripeCheckoutAccountId: true },
+    });
+    const sessionId = invoice?.stripeCheckoutSessionId;
+    const stripeAccount = invoice?.stripeCheckoutAccountId;
+    // Aucune session ouverte pour cette facture (paiement sur place, facture
+    // jamais présentée à Stripe) : rien à fermer, ce n'est pas un échec.
+    if (!sessionId || !stripeAccount) return 'none';
+
+    const stripe = this.getStripe();
+    try {
+      // On LIT l'état avant d'agir, plutôt que de tenter l'expiration et de
+      // deviner la cause du refus : Stripe n'expire que les sessions `open`,
+      // et le code d'erreur renvoyé sinon n'est pas un contrat stable. Lire le
+      // statut permet en prime de distinguer le cas qui coûte de l'argent
+      // (`payment_status === 'paid'`) de la simple expiration naturelle.
+      const session = await stripe.checkout.sessions.retrieve(sessionId, {
+        stripeAccount,
+      });
+      if (session.status !== 'open') {
+        if (session.payment_status === 'paid') {
+          // Le cas qui coûte : l'adhérent a payé une facture qui n'est plus
+          // due. Aucun Payment ne sera créé (facture non OPEN) — le webhook le
+          // journalise en ENCAISSEMENT ORPHELIN. On le redit ici, au moment de
+          // l'annulation, pour que les deux bouts du problème soient tracés.
+          this.logger.error(
+            `[stripe] Session ${sessionId} de la facture ${invoiceId} (club ${clubId}) ` +
+              `déjà PAYÉE au moment de l'annulation — un remboursement est dû. ` +
+              `Compte connecté ${stripeAccount}.`,
+          );
+        }
+        return 'already-consumed';
+      }
+      await stripe.checkout.sessions.expire(sessionId, { stripeAccount });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `[stripe] Échec de l'expiration de la session ${sessionId} ` +
+          `(facture ${invoiceId}, club ${clubId}) : ${message}. La session reste ` +
+          `PAYABLE — encaissement possible sur une facture qui n'est plus due.`,
+      );
+      return 'failed';
+    }
+
+    // Session bien close : on efface la trace pour ne pas retenter une session
+    // morte au prochain passage.
+    await this.prisma.invoice.updateMany({
+      where: { id: invoiceId, clubId },
+      data: { stripeCheckoutSessionId: null, stripeCheckoutAccountId: null },
+    });
+    return 'expired';
   }
 }
