@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.31.1](https://github.com/florent427/ClubFlow/compare/v0.31.0...v0.31.1) (2026-07-22)
+
+
+### 🐛 Bug Fixes
+
+* **paiement:** expire la session Stripe quand une commande est annulée ([5012c7f](https://github.com/florent427/ClubFlow/commit/5012c7f7c0d9be7d8731b62b3c6dca1e00322101))
+
 ## [0.31.0](https://github.com/florent427/ClubFlow/compare/v0.30.0...v0.31.0) (2026-07-21)
 
 
