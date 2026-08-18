@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.31.2](https://github.com/florent427/ClubFlow/compare/v0.31.1...v0.31.2) (2026-08-18)
+
+
+### 🐛 Bug Fixes
+
+* **adhesion:** auto-inscription membre sans panier ni page de paiement ([b559d36](https://github.com/florent427/ClubFlow/commit/b559d3671377e139b276e6eb5d891da55c568a0d))
+
 ## [0.31.1](https://github.com/florent427/ClubFlow/compare/v0.31.0...v0.31.1) (2026-07-22)
 
 
