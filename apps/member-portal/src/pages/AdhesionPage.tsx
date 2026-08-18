@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from '@apollo/client/react';
 import { Fragment, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   VIEWER_ACTIVE_CART,
   VIEWER_MEMBERSHIP_CARTS,
@@ -39,6 +39,7 @@ interface RegisterSelfResponse {
 export function AdhesionPage() {
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [selfOpen, setSelfOpen] = useState<boolean>(false);
   const [childOpen, setChildOpen] = useState<boolean>(false);
   // Pending item ouvert en édition (null = aucun en cours d'édition).
@@ -95,6 +96,20 @@ export function AdhesionPage() {
   const canManageMembershipCart =
     meData?.viewerMe?.canManageMembershipCart === true;
   const cart: Cart | null = data?.viewerActiveMembershipCart ?? null;
+
+  // Deep link `/adhesion?inscription=moi` — utilisé par le CTA
+  // « M'inscrire comme membre » de l'accueil contact / dashboard. On ouvre
+  // directement la modale d'auto-inscription, même sans panier existant :
+  // `viewerRegisterSelfAsMember` ouvre le panier au besoin. Le paramètre est
+  // consommé une seule fois pour ne pas ré-ouvrir la modale après fermeture.
+  useEffect(() => {
+    if (searchParams.get('inscription') !== 'moi') return;
+    if (!isContactOnly) return;
+    setSelfOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('inscription');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, isContactOnly]);
 
   async function handleOpen(): Promise<void> {
     try {
