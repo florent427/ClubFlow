@@ -28,6 +28,7 @@ describe('MembershipCartService.reopenCart — refus si un règlement existe', (
     invoice: { findFirst: jest.Mock; updateMany: jest.Mock };
     payment: { aggregate: jest.Mock };
     membershipCart: { update: jest.Mock };
+    membershipCartItem: { delete: jest.Mock; deleteMany: jest.Mock };
     $transaction: jest.Mock;
   };
 
@@ -51,6 +52,10 @@ describe('MembershipCartService.reopenCart — refus si un règlement existe', (
       },
       payment: {
         aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: null } }),
+      },
+      membershipCartItem: {
+        delete: jest.fn(),
+        deleteMany: jest.fn(),
       },
       membershipCart: {
         update: jest.fn().mockResolvedValue({
@@ -168,6 +173,13 @@ describe('MembershipCartService.reopenCart — refus si un règlement existe', (
         data: expect.objectContaining({ status: InvoiceStatus.VOID }),
       }),
     );
+    // ⚠️ Le contenu du panier DOIT survivre : c'est tout l'intérêt de la
+    // réouverture — le payeur retrouve sa sélection pré-remplie, la
+    // corrige, puis relance le paiement. Un panier vidé le renverrait à
+    // zéro et rendrait le bouton inutile.
+    expect(prisma.membershipCartItem.delete).not.toHaveBeenCalled();
+    expect(prisma.membershipCartItem.deleteMany).not.toHaveBeenCalled();
+
     // Le panier redevient modifiable et se détache de la facture morte.
     expect(prisma.membershipCart.update).toHaveBeenCalledWith(
       expect.objectContaining({
