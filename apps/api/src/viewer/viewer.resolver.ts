@@ -545,6 +545,27 @@ export class ViewerResolver {
     return toMembershipCartGraph(full, preview, productsById, clubOneTimeFees);
   }
 
+  @Query(() => MembershipCartGraph, {
+    name: 'viewerReopenableMembershipCart',
+    nullable: true,
+    description:
+      "Panier d'adhésion VALIDÉ de la saison que le payeur peut encore reprendre (aucun règlement encaissé), ou null. Distinct de viewerActiveMembershipCart, qui ne voit que les paniers OPEN et alimente les badges « panier en cours ».",
+  })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  async viewerReopenableMembershipCart(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+  ): Promise<MembershipCartGraph | null> {
+    const cart = await this.viewer.viewerReopenableMembershipCart(club.id, {
+      memberId: user.activeProfileMemberId ?? null,
+      contactId: user.activeProfileContactId ?? null,
+    });
+    if (!cart) return null;
+    const { cart: full, preview, productsById, clubOneTimeFees } =
+      await this.membershipCart.getCartFullForGraph(club.id, cart.id);
+    return toMembershipCartGraph(full, preview, productsById, clubOneTimeFees);
+  }
+
   @Mutation(() => MembershipCartGraph, {
     name: 'viewerOpenMembershipCart',
     description:

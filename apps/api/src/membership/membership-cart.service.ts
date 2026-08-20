@@ -1243,6 +1243,83 @@ export class MembershipCartService {
     });
   }
 
+  /**
+   * Panier VALIDÉ de la saison encore récupérable par le payeur, ou
+   * `null`.
+   *
+   * Pourquoi une lecture à part : `findOpenCartForFamily` — qui alimente
+   * `viewerActiveMembershipCart` — ne renvoie QUE les paniers OPEN, et
+   * cette requête pilote aussi les badges « panier en cours » du
+   * tableau de bord et des layouts. L'élargir ferait clignoter un panier
+   * déjà validé comme s'il restait à composer. On expose donc le panier
+   * récupérable par un canal dédié, que seuls les écrans d'adhésion
+   * lisent.
+   *
+   * On applique ici les MÊMES conditions que `reopenCart` : inutile
+   * d'afficher un bouton « Modifier » qui échouerait au clic parce
+   * qu'un règlement est déjà passé.
+   */
+  async findReopenableCartForFamily(
+    clubId: string,
+    familyId: string,
+    seasonId: string,
+  ) {
+    const cart = await this.prisma.membershipCart.findFirst({
+      where: {
+        clubId,
+        familyId,
+        clubSeasonId: seasonId,
+        status: MembershipCartStatus.VALIDATED,
+      },
+      include: {
+        items: { include: { member: true, product: true } },
+        payerContact: true,
+        payerMember: true,
+        clubSeason: true,
+      },
+      orderBy: { validatedAt: 'desc' },
+    });
+    if (!cart) return null;
+    if (await this.reopenBlockedReason(clubId, cart.invoiceId)) return null;
+    return cart;
+  }
+
+  /**
+   * Rien d'encaissé sur la facture du panier ? Source unique partagée
+   * par la lecture (`findReopenableCartForFamily`) et l'écriture
+   * (`reopenCart`), pour que le bouton affiché et l'action autorisée ne
+   * puissent pas diverger.
+   */
+  private async reopenBlockedReason(
+    clubId: string,
+    invoiceId: string | null,
+  ): Promise<string | null> {
+    if (!invoiceId) return null;
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id: invoiceId, clubId },
+      include: { paymentSchedule: { select: { status: true } } },
+    });
+    if (!invoice) return null;
+    if (invoice.status === InvoiceStatus.PAID) {
+      return 'Cette adhésion est déjà réglée. Contactez le club pour toute modification.';
+    }
+    const paidAgg = await this.prisma.payment.aggregate({
+      where: { invoiceId: invoice.id },
+      _sum: { amountCents: true },
+    });
+    if ((paidAgg._sum.amountCents ?? 0) > 0) {
+      return 'Un règlement a déjà été encaissé sur cette adhésion. Contactez le club pour la modifier.';
+    }
+    const scheduleStatus = invoice.paymentSchedule?.status;
+    if (
+      scheduleStatus === PaymentScheduleStatus.ACTIVE ||
+      scheduleStatus === PaymentScheduleStatus.PENDING_SETUP
+    ) {
+      return 'Cette adhésion est réglée par un échéancier. Annulez-le avant de modifier le panier.';
+    }
+    return null;
+  }
+
   async findOpenCartForFamily(
     clubId: string,
     familyId: string,
@@ -1827,36 +1904,11 @@ export class MembershipCartService {
       );
     }
 
-    if (cart.invoiceId) {
-      const invoice = await this.prisma.invoice.findFirst({
-        where: { id: cart.invoiceId, clubId },
-        include: { paymentSchedule: { select: { status: true } } },
-      });
-      if (invoice) {
-        if (invoice.status === InvoiceStatus.PAID) {
-          throw new BadRequestException(
-            'Cette adhésion est déjà réglée. Contactez le club pour toute modification.',
-          );
-        }
-        const paidAgg = await this.prisma.payment.aggregate({
-          where: { invoiceId: invoice.id },
-          _sum: { amountCents: true },
-        });
-        if ((paidAgg._sum.amountCents ?? 0) > 0) {
-          throw new BadRequestException(
-            'Un règlement a déjà été encaissé sur cette adhésion. Contactez le club pour la modifier.',
-          );
-        }
-        const scheduleStatus = invoice.paymentSchedule?.status;
-        if (
-          scheduleStatus === PaymentScheduleStatus.ACTIVE ||
-          scheduleStatus === PaymentScheduleStatus.PENDING_SETUP
-        ) {
-          throw new BadRequestException(
-            'Cette adhésion est réglée par un échéancier. Annulez-le avant de modifier le panier.',
-          );
-        }
-      }
+    // Même source que `findReopenableCartForFamily` : le bouton affiché et
+    // l'action autorisée ne peuvent pas diverger.
+    const blocked = await this.reopenBlockedReason(clubId, cart.invoiceId);
+    if (blocked) {
+      throw new BadRequestException(blocked);
     }
 
     return this.prisma.$transaction(async (tx) => {

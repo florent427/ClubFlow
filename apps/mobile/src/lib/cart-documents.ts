@@ -90,6 +90,15 @@ export const VIEWER_ACTIVE_CART = gql`
   ${MEMBERSHIP_CART_FIELDS}
 `;
 
+export const VIEWER_REOPENABLE_CART = gql`
+  query ViewerReopenableCart {
+    viewerReopenableMembershipCart {
+      ...MembershipCartFields
+    }
+  }
+  ${MEMBERSHIP_CART_FIELDS}
+`;
+
 export const VIEWER_OPEN_CART = gql`
   mutation ViewerOpenMembershipCart {
     viewerOpenMembershipCart {
@@ -268,4 +277,8 @@ export type Cart = {
 
 export type ViewerActiveCartData = {
   viewerActiveMembershipCart: Cart | null;
+};
+
+export type ViewerReopenableCartData = {
+  viewerReopenableMembershipCart: Cart | null;
 };

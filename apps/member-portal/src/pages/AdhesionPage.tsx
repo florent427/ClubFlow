@@ -8,9 +8,11 @@ import {
   VIEWER_REGISTER_SELF_AS_MEMBER,
   VIEWER_REMOVE_CART_PENDING_ITEM,
   VIEWER_REOPEN_CART,
+  VIEWER_REOPENABLE_CART,
   type Cart,
   type CartPendingItem,
   type ViewerActiveCartData,
+  type ViewerReopenableCartData,
 } from '../lib/cart-documents';
 import {
   VIEWER_ELIGIBLE_MEMBERSHIP_FORMULAS,
@@ -55,6 +57,17 @@ export function AdhesionPage() {
     { fetchPolicy: 'cache-and-network' },
   );
 
+  // `viewerActiveMembershipCart` ne renvoie QUE les paniers OPEN — elle
+  // alimente aussi les badges « panier en cours » du dashboard et des
+  // layouts, qu'un panier déjà validé ferait clignoter à tort. Le panier
+  // validé encore récupérable arrive donc par une requête dédiée, sans
+  // quoi cet écran affiche « Aucun panier en cours » juste après une
+  // validation et le payeur n'a plus aucun moyen de revenir dessus.
+  const { data: reopenableData, refetch: refetchReopenable } =
+    useQuery<ViewerReopenableCartData>(VIEWER_REOPENABLE_CART, {
+      fetchPolicy: 'cache-and-network',
+    });
+
   const [openCart, { loading: opening }] = useMutation(VIEWER_OPEN_CART, {
     refetchQueries: [{ query: VIEWER_ACTIVE_CART }],
     awaitRefetchQueries: true,
@@ -93,6 +106,9 @@ export function AdhesionPage() {
     }
     try {
       await reopenCart({ variables: { cartId } });
+      // Le panier n'est plus « récupérable » mais « actif » : on
+      // resynchronise les deux sources pour basculer sur la vue éditable.
+      await Promise.all([refetch(), refetchReopenable()]);
       showToast('Panier rouvert. Vous pouvez le modifier puis le revalider.', 'success');
     } catch (err) {
       showToast(
@@ -130,7 +146,10 @@ export function AdhesionPage() {
   const isContactOnly = meData?.viewerMe?.isContactProfile === true;
   const canManageMembershipCart =
     meData?.viewerMe?.canManageMembershipCart === true;
-  const cart: Cart | null = data?.viewerActiveMembershipCart ?? null;
+  const cart: Cart | null =
+    data?.viewerActiveMembershipCart ??
+    reopenableData?.viewerReopenableMembershipCart ??
+    null;
 
   // Deep link `/adhesion?inscription=moi` — utilisé par le CTA
   // « M'inscrire comme membre » de l'accueil contact / dashboard. On ouvre

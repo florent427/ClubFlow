@@ -27,10 +27,12 @@ import {
   VIEWER_OPEN_CART,
   VIEWER_REMOVE_CART_PENDING_ITEM,
   VIEWER_REOPEN_CART,
+  VIEWER_REOPENABLE_CART,
   VIEWER_VALIDATE_CART,
   type Cart,
   type CartPendingItem,
   type ViewerActiveCartData,
+  type ViewerReopenableCartData,
 } from '../lib/cart-documents';
 import { VIEWER_ME } from '../lib/viewer-documents';
 import type { ViewerMeData } from '../lib/viewer-types';
@@ -73,7 +75,20 @@ export function PanierAdhesionScreen() {
     VIEWER_ACTIVE_CART,
     { fetchPolicy: 'cache-and-network', skip: !canManageMembershipCart },
   );
-  const cart: Cart | null = data?.viewerActiveMembershipCart ?? null;
+  // `viewerActiveMembershipCart` ne renvoie QUE les paniers OPEN : après
+  // une validation, cet écran affichait « Aucun panier » et le payeur
+  // n'avait plus aucun moyen de revenir sur sa sélection. Le panier validé
+  // encore récupérable arrive par une requête dédiée, pour ne pas élargir
+  // la requête qui alimente les badges « panier en cours » de l'accueil.
+  const { data: reopenableData, refetch: refetchReopenable } =
+    useQuery<ViewerReopenableCartData>(VIEWER_REOPENABLE_CART, {
+      fetchPolicy: 'cache-and-network',
+      skip: !canManageMembershipCart,
+    });
+  const cart: Cart | null =
+    data?.viewerActiveMembershipCart ??
+    reopenableData?.viewerReopenableMembershipCart ??
+    null;
 
   const [openCart, { loading: opening }] = useMutation(VIEWER_OPEN_CART, {
     refetchQueries: [{ query: VIEWER_ACTIVE_CART }],
@@ -116,6 +131,10 @@ export function PanierAdhesionScreen() {
           onPress: async () => {
             try {
               await reopenCart({ variables: { cartId: cart.id } });
+              // Le panier passe de « récupérable » à « actif » : on
+              // resynchronise les deux sources pour basculer sur la vue
+              // éditable.
+              await Promise.all([refetch(), refetchReopenable()]);
               Alert.alert(
                 'Panier rouvert',
                 'Modifiez votre panier puis validez-le à nouveau.',

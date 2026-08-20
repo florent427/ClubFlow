@@ -1951,6 +1951,37 @@ export class ViewerService {
     );
   }
 
+  /**
+   * Panier validé encore récupérable, pour proposer « Modifier mon
+   * adhésion » tant que rien n'est payé. Volontairement distinct de
+   * `viewerActiveMembershipCart`, qui doit continuer à ne voir que les
+   * paniers OPEN (badges du dashboard et des layouts).
+   */
+  async viewerReopenableMembershipCart(
+    clubId: string,
+    activeProfile: { memberId: string | null; contactId: string | null },
+    seasonId?: string | null,
+  ) {
+    if (!(await this.computeCanManageMembershipCart(clubId, activeProfile))) {
+      return null;
+    }
+    const familyId = await this.resolveViewerFamilyId(clubId, activeProfile);
+    if (!familyId) return null;
+    const targetSeasonId =
+      seasonId ??
+      (await this.prisma.clubSeason.findFirst({
+        where: { clubId, isActive: true },
+        select: { id: true },
+      }))?.id ??
+      null;
+    if (!targetSeasonId) return null;
+    return this.membershipCart.findReopenableCartForFamily(
+      clubId,
+      familyId,
+      targetSeasonId,
+    );
+  }
+
   async viewerEnsureOpenMembershipCart(
     clubId: string,
     activeProfile: { memberId: string | null; contactId: string | null },

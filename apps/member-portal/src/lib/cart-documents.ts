@@ -88,6 +88,15 @@ export const VIEWER_ACTIVE_CART = gql`
   ${MEMBERSHIP_CART_FIELDS}
 `;
 
+export const VIEWER_REOPENABLE_CART = gql`
+  query ViewerReopenableCart {
+    viewerReopenableMembershipCart {
+      ...MembershipCartFields
+    }
+  }
+  ${MEMBERSHIP_CART_FIELDS}
+`;
+
 export const VIEWER_MEMBERSHIP_CARTS = gql`
   query ViewerMembershipCarts {
     viewerMembershipCarts {
@@ -310,6 +319,10 @@ export type Cart = {
 
 export type ViewerActiveCartData = {
   viewerActiveMembershipCart: Cart | null;
+};
+
+export type ViewerReopenableCartData = {
+  viewerReopenableMembershipCart: Cart | null;
 };
 
 export type ViewerCartsData = {

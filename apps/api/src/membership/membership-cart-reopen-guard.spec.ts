@@ -27,7 +27,7 @@ describe('MembershipCartService.reopenCart — refus si un règlement existe', (
   let prisma: {
     invoice: { findFirst: jest.Mock; updateMany: jest.Mock };
     payment: { aggregate: jest.Mock };
-    membershipCart: { update: jest.Mock };
+    membershipCart: { update: jest.Mock; findFirst: jest.Mock };
     membershipCartItem: { delete: jest.Mock; deleteMany: jest.Mock };
     $transaction: jest.Mock;
   };
@@ -58,6 +58,7 @@ describe('MembershipCartService.reopenCart — refus si un règlement existe', (
         deleteMany: jest.fn(),
       },
       membershipCart: {
+        findFirst: jest.fn().mockResolvedValue(validatedCart),
         update: jest.fn().mockResolvedValue({
           ...validatedCart,
           status: MembershipCartStatus.OPEN,
@@ -191,5 +192,40 @@ describe('MembershipCartService.reopenCart — refus si un règlement existe', (
         }),
       }),
     );
+  });
+
+  /**
+   * Le bouton « Modifier mon adhésion » ne s'affiche que si l'écran
+   * reçoit un panier récupérable. Lecture et écriture partagent le même
+   * `reopenBlockedReason` : proposer une action qui échouerait au clic
+   * serait pire que ne rien proposer.
+   */
+  describe('findReopenableCartForFamily — ce que l’écran a le droit d’afficher', () => {
+    it('expose le panier validé quand rien n’a été encaissé', async () => {
+      prisma.invoice.findFirst.mockResolvedValue({
+        id: INVOICE_ID,
+        status: InvoiceStatus.OPEN,
+        paymentSchedule: null,
+      });
+
+      await expect(
+        service.findReopenableCartForFamily(CLUB_ID, 'family-1', 'season-1'),
+      ).resolves.toMatchObject({ id: CART_ID });
+    });
+
+    it('n’expose rien dès qu’un règlement est encaissé', async () => {
+      prisma.invoice.findFirst.mockResolvedValue({
+        id: INVOICE_ID,
+        status: InvoiceStatus.OPEN,
+        paymentSchedule: null,
+      });
+      prisma.payment.aggregate.mockResolvedValue({
+        _sum: { amountCents: 1 },
+      });
+
+      await expect(
+        service.findReopenableCartForFamily(CLUB_ID, 'family-1', 'season-1'),
+      ).resolves.toBeNull();
+    });
   });
 });
