@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.32.0](https://github.com/florent427/ClubFlow/compare/v0.31.2...v0.32.0) (2026-08-20)
+
+
+### ✨ Features
+
+* **adhesion:** reprendre un paiement échoué et changer de mode de règlement ([524e6cb](https://github.com/florent427/ClubFlow/commit/524e6cb9918d5a67e95676c08fb6db1b519ba276))
+
 ## [0.31.2](https://github.com/florent427/ClubFlow/compare/v0.31.1...v0.31.2) (2026-08-18)
 
 
