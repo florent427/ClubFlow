@@ -26,6 +26,7 @@ import {
   VIEWER_ACTIVE_CART,
   VIEWER_OPEN_CART,
   VIEWER_REMOVE_CART_PENDING_ITEM,
+  VIEWER_REOPEN_CART,
   VIEWER_VALIDATE_CART,
   type Cart,
   type CartPendingItem,
@@ -92,6 +93,44 @@ export function PanierAdhesionScreen() {
       awaitRefetchQueries: true,
     },
   );
+
+  const [reopenCart, { loading: reopening }] = useMutation(VIEWER_REOPEN_CART, {
+    refetchQueries: [{ query: VIEWER_ACTIVE_CART }],
+    awaitRefetchQueries: true,
+  });
+
+  // Reprise après un règlement qui n'a pas abouti : on rend la main sur le
+  // panier au lieu de laisser le payeur devant une facture qu'il ne peut
+  // ni corriger ni régler autrement. L'API refuse si un règlement a déjà
+  // été encaissé.
+  function confirmReopen() {
+    if (!cart) return;
+    Alert.alert(
+      'Reprendre mon adhésion ?',
+      'La facture en cours sera annulée et vous pourrez modifier le panier (rythme, membres) puis choisir un autre mode de règlement.',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Reprendre',
+          style: 'default',
+          onPress: async () => {
+            try {
+              await reopenCart({ variables: { cartId: cart.id } });
+              Alert.alert(
+                'Panier rouvert',
+                'Modifiez votre panier puis validez-le à nouveau.',
+              );
+            } catch (err) {
+              Alert.alert(
+                'Réouverture impossible',
+                err instanceof Error ? err.message : 'Erreur inconnue.',
+              );
+            }
+          },
+        },
+      ],
+    );
+  }
 
   async function handleOpen() {
     try {
@@ -264,6 +303,18 @@ export function PanierAdhesionScreen() {
                 label="Voir mes factures"
                 icon="receipt-outline"
                 onPress={() => navigation.navigate('Famille' as never)}
+                fullWidth
+              />
+              <GradientButton
+                label={
+                  reopening
+                    ? 'Réouverture…'
+                    : 'Modifier / changer de règlement'
+                }
+                icon="create-outline"
+                onPress={() => confirmReopen()}
+                disabled={reopening}
+                gradient="dark"
                 fullWidth
               />
               <GradientButton

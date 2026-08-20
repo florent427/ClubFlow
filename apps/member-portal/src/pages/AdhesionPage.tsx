@@ -7,6 +7,7 @@ import {
   VIEWER_OPEN_CART,
   VIEWER_REGISTER_SELF_AS_MEMBER,
   VIEWER_REMOVE_CART_PENDING_ITEM,
+  VIEWER_REOPEN_CART,
   type Cart,
   type CartPendingItem,
   type ViewerActiveCartData,
@@ -68,6 +69,40 @@ export function AdhesionPage() {
       awaitRefetchQueries: true,
     },
   );
+
+  const [reopenCart, { loading: reopening }] = useMutation(VIEWER_REOPEN_CART, {
+    refetchQueries: [
+      { query: VIEWER_ACTIVE_CART },
+      { query: VIEWER_MEMBERSHIP_CARTS },
+    ],
+    awaitRefetchQueries: true,
+  });
+
+  // Reprise après un paiement qui n'a pas abouti : on redonne la main sur
+  // le panier (rythme, membres, mode de règlement) plutôt que de laisser
+  // le payeur devant une facture qu'il ne peut ni payer autrement ni
+  // corriger. L'API refuse si un règlement a déjà été encaissé.
+  async function handleReopen(cartId: string): Promise<void> {
+    if (reopening) return;
+    if (
+      !window.confirm(
+        'Reprendre votre adhésion ? La facture en cours sera annulée et vous pourrez modifier le panier avant de le revalider. Aucun règlement déjà encaissé ne peut être repris ici.',
+      )
+    ) {
+      return;
+    }
+    try {
+      await reopenCart({ variables: { cartId } });
+      showToast('Panier rouvert. Vous pouvez le modifier puis le revalider.', 'success');
+    } catch (err) {
+      showToast(
+        err instanceof Error
+          ? err.message
+          : 'Impossible de rouvrir le panier.',
+        'error',
+      );
+    }
+  }
 
   async function handleRemovePending(
     pendingItemId: string,
@@ -236,6 +271,16 @@ export function AdhesionPage() {
                 Voir la facture
               </button>
             ) : null}
+            <button
+              type="button"
+              className="mp-btn mp-btn-outline"
+              disabled={reopening}
+              onClick={() => void handleReopen(cart.id)}
+            >
+              {reopening
+                ? 'Réouverture…'
+                : 'Modifier mon adhésion / changer de règlement'}
+            </button>
             <button
               type="button"
               className="mp-btn mp-btn-outline"

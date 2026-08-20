@@ -108,6 +108,15 @@ export const VIEWER_REMOVE_CART_PENDING_ITEM = gql`
   ${MEMBERSHIP_CART_FIELDS}
 `;
 
+export const VIEWER_REOPEN_CART = gql`
+  mutation ViewerReopenMembershipCart($cartId: String!) {
+    viewerReopenMembershipCart(cartId: $cartId) {
+      ...MembershipCartFields
+    }
+  }
+  ${MEMBERSHIP_CART_FIELDS}
+`;
+
 export const VIEWER_VALIDATE_CART = gql`
   mutation ViewerValidateMembershipCart($cartId: String!) {
     viewerValidateMembershipCart(cartId: $cartId) {

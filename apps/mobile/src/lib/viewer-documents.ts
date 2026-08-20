@@ -319,6 +319,25 @@ export const CLUB = gql`
  * viewer. Le `url` retourné est ouvert dans le navigateur via
  * `Linking.openURL` — Stripe gère le tunnel paiement hors-app.
  */
+export const VIEWER_LOCK_INVOICE_PAYMENT_CHOICE = gql`
+  mutation ViewerLockInvoicePaymentChoice(
+    $invoiceId: String!
+    $method: ClubPaymentMethod!
+    $installmentsCount: Int
+  ) {
+    viewerLockInvoicePaymentChoice(
+      invoiceId: $invoiceId
+      method: $method
+      installmentsCount: $installmentsCount
+    ) {
+      invoiceId
+      method
+      installmentsCount
+      instructions
+    }
+  }
+`;
+
 export const VIEWER_CREATE_INVOICE_CHECKOUT_SESSION = gql`
   mutation ViewerCreateInvoiceCheckoutSession(
     $invoiceId: String!

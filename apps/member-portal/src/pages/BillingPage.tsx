@@ -16,6 +16,7 @@ import { ErrorState } from '../components/ui/ErrorState';
 import { useToast } from '../components/ToastProvider';
 import { DocumentsToSignBanner } from '../components/DocumentsToSignBanner';
 import { InvoicePaymentSchedule } from '../components/billing/InvoicePaymentSchedule';
+import { InvoiceManualPaymentChoice } from '../components/billing/InvoiceManualPaymentChoice';
 
 type StatusFilter = 'ALL' | 'OPEN' | 'PAID' | 'DRAFT';
 
@@ -368,6 +369,12 @@ export function BillingPage() {
                         </p>
                       </div>
                     ) : null}
+                    {/* Repli hors ligne : virement / chèque / espèces. */}
+                    <InvoiceManualPaymentChoice
+                      invoiceId={inv.id}
+                      balanceCents={inv.balanceCents}
+                      invoiceStatus={inv.status}
+                    />
                     {/* Échéancier : proposé à côté du paiement comptant. */}
                     <InvoicePaymentSchedule
                       invoiceId={inv.id}

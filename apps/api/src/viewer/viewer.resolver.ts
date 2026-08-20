@@ -738,6 +738,31 @@ export class ViewerResolver {
     });
   }
 
+  @Mutation(() => MembershipCartGraph, {
+    name: 'viewerReopenMembershipCart',
+    description:
+      "Rouvre le panier d'adhésion validé du foyer quand aucun règlement n'a été encaissé : la facture passe en VOID et le panier redevient modifiable (rythme, membres, mode de règlement). Sert notamment quand le paiement CB n'a pas abouti.",
+  })
+  @RequireClubModule(ModuleCode.MEMBERS)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  async viewerReopenMembershipCart(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('cartId') cartId: string,
+  ): Promise<MembershipCartGraph> {
+    const cart = await this.viewer.viewerReopenMembershipCart(
+      club.id,
+      {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      cartId,
+    );
+    const { preview, productsById, clubOneTimeFees } =
+      await this.membershipCart.getCartFullForGraph(club.id, cart.id);
+    return toMembershipCartGraph(cart, preview, productsById, clubOneTimeFees);
+  }
+
   @Mutation(() => MembershipCartGraph, { name: 'viewerValidateMembershipCart' })
   @RequireClubModule(ModuleCode.MEMBERS)
   async viewerValidateMembershipCart(

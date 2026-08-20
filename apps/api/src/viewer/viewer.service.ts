@@ -2190,6 +2190,34 @@ export class ViewerService {
   }
 
   /**
+   * Rouvre le panier validé du foyer pour le corriger puis le re-payer.
+   * Le garde-fou "rien d'encaissé" vit dans `MembershipCartService.reopenCart`
+   * — ici on ne contrôle que le périmètre (payeur + foyer du viewer).
+   */
+  async viewerReopenMembershipCart(
+    clubId: string,
+    activeProfile: { memberId: string | null; contactId: string | null },
+    cartId: string,
+  ) {
+    await this.assertViewerCanManageMembershipCart(clubId, activeProfile);
+    const familyId = await this.resolveViewerFamilyId(clubId, activeProfile);
+    const cart = await this.membershipCart['getCartById'].call(
+      this.membershipCart,
+      clubId,
+      cartId,
+    );
+    if (!familyId || cart.familyId !== familyId) {
+      throw new BadRequestException('Projet d’adhésion hors de votre foyer.');
+    }
+    await this.membershipCart.reopenCart(clubId, cartId);
+    return this.membershipCart['getCartById'].call(
+      this.membershipCart,
+      clubId,
+      cartId,
+    );
+  }
+
+  /**
    * Validation atomique du panier + verrouillage du mode de règlement
    * en une seule transaction visible côté front.
    *

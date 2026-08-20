@@ -13,6 +13,7 @@ import {
   MembershipCartStatus,
   MembershipOneTimeFeeKind,
   MembershipRole,
+  PaymentScheduleStatus,
   Prisma,
   SubscriptionBillingRhythm,
 } from '@prisma/client';
@@ -1794,6 +1795,94 @@ export class MembershipCartService {
         status: MembershipCartStatus.CANCELLED,
         cancelledReason: reason.trim() || null,
       },
+    });
+  }
+
+  /**
+   * Rouvre un panier VALIDÉ pour que le payeur puisse le corriger
+   * (changer annuel/mensuel, retirer un membre, reprendre un autre mode
+   * de règlement) puis le re-valider via le parcours de checkout normal.
+   *
+   * Cas d'usage : le paiement CB n'aboutit pas. Sans ça, le panier est
+   * un cul-de-sac — `validateCart` refuse un panier non-OPEN et
+   * `cancelCart` refuse un panier non-OPEN aussi : le payeur ne peut
+   * plus ni payer autrement, ni corriger sa sélection.
+   *
+   * ⚠️ GARANTIE : on ne rouvre QUE si rien n'a été encaissé. Un paiement
+   * même partiel, ou un échéancier en cours, rend la facture vivante —
+   * la rouvrir produirait un encaissement orphelin. Le contrôle est ici,
+   * dans le service, et non dans le resolver : c'est le point de passage
+   * commun au portail, au mobile et à tout futur client.
+   *
+   * La facture est passée en VOID (traçabilité back-office) et détachée
+   * du panier, jamais supprimée. Les `Member` créés à la validation
+   * restent — ce sont des adhérents réels ; le payeur retire leur ligne
+   * du panier s'il ne veut plus les inscrire.
+   */
+  async reopenCart(clubId: string, cartId: string, reason?: string | null) {
+    const cart = await this.getCartById(clubId, cartId);
+    if (cart.status !== MembershipCartStatus.VALIDATED) {
+      throw new BadRequestException(
+        'Seul un panier validé peut être rouvert.',
+      );
+    }
+
+    if (cart.invoiceId) {
+      const invoice = await this.prisma.invoice.findFirst({
+        where: { id: cart.invoiceId, clubId },
+        include: { paymentSchedule: { select: { status: true } } },
+      });
+      if (invoice) {
+        if (invoice.status === InvoiceStatus.PAID) {
+          throw new BadRequestException(
+            'Cette adhésion est déjà réglée. Contactez le club pour toute modification.',
+          );
+        }
+        const paidAgg = await this.prisma.payment.aggregate({
+          where: { invoiceId: invoice.id },
+          _sum: { amountCents: true },
+        });
+        if ((paidAgg._sum.amountCents ?? 0) > 0) {
+          throw new BadRequestException(
+            'Un règlement a déjà été encaissé sur cette adhésion. Contactez le club pour la modifier.',
+          );
+        }
+        const scheduleStatus = invoice.paymentSchedule?.status;
+        if (
+          scheduleStatus === PaymentScheduleStatus.ACTIVE ||
+          scheduleStatus === PaymentScheduleStatus.PENDING_SETUP
+        ) {
+          throw new BadRequestException(
+            'Cette adhésion est réglée par un échéancier. Annulez-le avant de modifier le panier.',
+          );
+        }
+      }
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      if (cart.invoiceId) {
+        await tx.invoice.updateMany({
+          where: {
+            id: cart.invoiceId,
+            clubId,
+            status: { in: [InvoiceStatus.DRAFT, InvoiceStatus.OPEN] },
+          },
+          data: {
+            status: InvoiceStatus.VOID,
+            voidReason:
+              reason?.trim() ||
+              'Panier d’adhésion rouvert par le payeur avant règlement.',
+          },
+        });
+      }
+      return tx.membershipCart.update({
+        where: { id: cart.id },
+        data: {
+          status: MembershipCartStatus.OPEN,
+          validatedAt: null,
+          invoiceId: null,
+        },
+      });
     });
   }
 

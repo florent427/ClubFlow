@@ -108,6 +108,20 @@ export function MoreMenuScreen() {
           },
         ] as Tile[])
       : []),
+    // Les factures vivent dans l'onglet Famille : sans cette entrée, un
+    // payeur cherchant à régler (ou à reprendre un paiement CB qui n'a pas
+    // abouti) n'a aucun repère nommé « Factures » dans l'app.
+    ...(canManageMembershipCart
+      ? ([
+          {
+            key: 'factures',
+            label: 'Factures',
+            icon: 'receipt-outline',
+            target: 'Famille',
+            tone: 'cool',
+          },
+        ] as Tile[])
+      : []),
     {
       key: 'docs',
       label: 'Documents',

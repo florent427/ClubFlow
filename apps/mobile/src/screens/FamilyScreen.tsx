@@ -25,6 +25,7 @@ import { absolutizeMediaUrl } from '../lib/absolutize-url';
 import {
   VIEWER_ALL_FAMILY_BILLING,
   VIEWER_CREATE_INVOICE_CHECKOUT_SESSION,
+  VIEWER_LOCK_INVOICE_PAYMENT_CHOICE,
 } from '../lib/viewer-documents';
 import type {
   ViewerAllFamilyBillingData,
@@ -32,6 +33,15 @@ import type {
 } from '../lib/viewer-types';
 import { formatEuroCents } from '../lib/format';
 import { palette, radius, shadow, spacing, typography } from '../lib/theme';
+
+type ViewerLockInvoicePaymentChoiceData = {
+  viewerLockInvoicePaymentChoice: {
+    invoiceId: string;
+    method: string;
+    installmentsCount: number;
+    instructions: string;
+  };
+};
 
 type ViewerCreateInvoiceCheckoutSessionData = {
   viewerCreateInvoiceCheckoutSession: {
@@ -382,6 +392,51 @@ function InvoiceCard({
     useMutation<ViewerCreateInvoiceCheckoutSessionData>(
       VIEWER_CREATE_INVOICE_CHECKOUT_SESSION,
     );
+  const [lockChoice] = useMutation<ViewerLockInvoicePaymentChoiceData>(
+    VIEWER_LOCK_INVOICE_PAYMENT_CHOICE,
+  );
+
+  // Repli hors ligne quand la carte n'aboutit pas : le payeur verrouille un
+  // mode manuel et reçoit les modalités du club. Sans ça la seule issue
+  // était de réessayer la même carte ou d'appeler le club.
+  async function chooseManual(
+    method: 'MANUAL_TRANSFER' | 'MANUAL_CHECK' | 'MANUAL_CASH',
+  ) {
+    try {
+      const { data } = await lockChoice({
+        variables: { invoiceId: inv.id, method, installmentsCount: 1 },
+      });
+      const instructions =
+        data?.viewerLockInvoicePaymentChoice?.instructions ??
+        'Votre choix a été transmis au club.';
+      Alert.alert('Mode de règlement enregistré', instructions);
+      await client.refetchQueries({ include: [VIEWER_ALL_FAMILY_BILLING] });
+    } catch (err) {
+      Alert.alert(
+        'Erreur',
+        err instanceof Error
+          ? err.message
+          : 'Impossible d’enregistrer ce mode de règlement.',
+      );
+    }
+  }
+
+  function promptManual() {
+    Alert.alert(
+      'Régler autrement',
+      'Le club recevra votre choix et vous transmettra les modalités.',
+      [
+        {
+          text: 'Virement bancaire',
+          onPress: () => void chooseManual('MANUAL_TRANSFER'),
+        },
+        { text: 'Chèque', onPress: () => void chooseManual('MANUAL_CHECK') },
+        { text: 'Espèces', onPress: () => void chooseManual('MANUAL_CASH') },
+        { text: 'Annuler', style: 'cancel' },
+      ],
+      { cancelable: true },
+    );
+  }
 
   async function startPayment(installmentsCount?: number) {
     try {
@@ -446,6 +501,10 @@ function InvoiceCard({
         {
           text: 'Payer en 3 fois',
           onPress: () => void startPayment(3),
+        },
+        {
+          text: 'Régler autrement (virement, chèque, espèces)',
+          onPress: () => promptManual(),
         },
         { text: 'Annuler', style: 'cancel' },
       ],

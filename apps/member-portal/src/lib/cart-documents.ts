@@ -106,6 +106,15 @@ export const VIEWER_OPEN_CART = gql`
   ${MEMBERSHIP_CART_FIELDS}
 `;
 
+export const VIEWER_REOPEN_CART = gql`
+  mutation ViewerReopenMembershipCart($cartId: String!) {
+    viewerReopenMembershipCart(cartId: $cartId) {
+      ...MembershipCartFields
+    }
+  }
+  ${MEMBERSHIP_CART_FIELDS}
+`;
+
 export const VIEWER_UPDATE_CART_ITEM = gql`
   mutation ViewerUpdateCartItem($input: ViewerUpdateCartItemInput!) {
     viewerUpdateCartItem(input: $input) {
