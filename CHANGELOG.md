@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.32.3](https://github.com/florent427/ClubFlow/compare/v0.32.2...v0.32.3) (2026-08-24)
+
+
+### 🐛 Bug Fixes
+
+* **admin:** rendre le portail d'administration utilisable sur mobile ([9437b98](https://github.com/florent427/ClubFlow/commit/9437b980c17d552c5bbc8b2e1699aad5297e1a0d))
+* **admin:** rendre le portail d'administration utilisable sur mobile ([292cf84](https://github.com/florent427/ClubFlow/commit/292cf84491e318ddaa5eecb9964307ef87004a5a))
+
 ## [0.32.2](https://github.com/florent427/ClubFlow/compare/v0.32.1...v0.32.2) (2026-08-24)
 
 
