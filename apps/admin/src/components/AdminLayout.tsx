@@ -240,6 +240,35 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
     : 'Aucun profil membre lié à ce compte. Contactez votre club.';
 
   /**
+   * Drawer de navigation mobile. Sous 900px la sidenav sort du flux et
+   * devient un panneau off-canvas : elle n'est plus empilée au-dessus du
+   * contenu (ancien comportement, ~15 écrans de nav avant le premier
+   * pixel utile).
+   */
+  const [navOpen, setNavOpen] = useState(false);
+
+  // Toute navigation referme le drawer — sinon on reste sur le panneau
+  // après avoir cliqué un lien.
+  useEffect(() => {
+    setNavOpen(false);
+  }, [location.pathname]);
+
+  // Drawer ouvert : Échap referme, et on verrouille le scroll du fond pour
+  // que le geste de scroll agisse sur la nav, pas sur la page derrière.
+  useEffect(() => {
+    if (!navOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setNavOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    document.body.classList.add('cf-scroll-lock');
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.classList.remove('cf-scroll-lock');
+    };
+  }, [navOpen]);
+
+  /**
    * État collapse par section. Clé = section.id, valeur = true si collapsed.
    * Persisté dans localStorage. Au mount, on auto-déplie la section
    * contenant le path courant même si elle était collapsed dans le storage,
@@ -328,7 +357,11 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
 
   return (
     <div className="cf-shell">
-      <aside className="cf-sidenav" aria-label="Navigation principale">
+      <aside
+        id="cf-sidenav"
+        className={`cf-sidenav${navOpen ? ' cf-sidenav--open' : ''}`}
+        aria-label="Navigation principale"
+      >
         <div className="cf-sidenav__brand">
           <span
             className="material-symbols-outlined cf-sidenav__brand-icon"
@@ -337,6 +370,16 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
             analytics
           </span>
           <span className="cf-sidenav__brand-text">ClubFlow</span>
+          <button
+            type="button"
+            className="cf-sidenav__close"
+            aria-label="Fermer la navigation"
+            onClick={() => setNavOpen(false)}
+          >
+            <span className="material-symbols-outlined" aria-hidden>
+              close
+            </span>
+          </button>
         </div>
 
         <nav className="cf-sidenav__nav" aria-label="Modules">
@@ -436,7 +479,28 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
         </div>
       </aside>
 
+      {navOpen ? (
+        <button
+          type="button"
+          className="cf-nav-backdrop"
+          aria-label="Fermer la navigation"
+          onClick={() => setNavOpen(false)}
+        />
+      ) : null}
+
       <header className="cf-topbar">
+        <button
+          type="button"
+          className="cf-topbar__burger"
+          aria-label="Ouvrir la navigation"
+          aria-expanded={navOpen}
+          aria-controls="cf-sidenav"
+          onClick={() => setNavOpen(true)}
+        >
+          <span className="material-symbols-outlined" aria-hidden>
+            menu
+          </span>
+        </button>
         <GlobalSearchBar />
         <div className="cf-topbar__actions">
           <ClubSwitcher />
