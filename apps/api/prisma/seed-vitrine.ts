@@ -536,7 +536,7 @@ const TARIFS_SECTIONS: Section[] = [
     title: 'Tarifs &',
     titleEm: 'inscription.',
     subtitle:
-      'Tarifs mensuels accessibles, remise famille −10 %, paiement en 4× sans frais. Adhésion sécurisée via HelloAsso.',
+      'Tarifs mensuels accessibles, remise famille −10 %, paiement en 4× sans frais. Adhésion 100 % en ligne depuis l'application du club.',
   }),
   sec('sksrTarifs', {
     label: 'Cotisations · Saison 2025–26',
@@ -555,8 +555,8 @@ const TARIFS_SECTIONS: Section[] = [
           'Approche ludique et psychomotrice',
           'Remise famille −10 %',
         ],
-        ctaLabel: 'Adhérer (HelloAsso)',
-        ctaHref: '/contact',
+        ctaLabel: 'Adhérer en ligne',
+        ctaHref: 'https://portail.clubflow.topdigital.re/register?club=sksr',
       },
       {
         kanji: '少',
@@ -571,8 +571,8 @@ const TARIFS_SECTIONS: Section[] = [
           'Passages de grade & compétitions',
           'Remise famille −10 %',
         ],
-        ctaLabel: 'Adhérer (HelloAsso)',
-        ctaHref: '/contact',
+        ctaLabel: 'Adhérer en ligne',
+        ctaHref: 'https://portail.clubflow.topdigital.re/register?club=sksr',
         featured: true,
       },
       {
@@ -588,8 +588,8 @@ const TARIFS_SECTIONS: Section[] = [
           'Karaté traditionnel et moderne',
           'Remise famille −10 %',
         ],
-        ctaLabel: 'Adhérer (HelloAsso)',
-        ctaHref: '/contact',
+        ctaLabel: 'Adhérer en ligne',
+        ctaHref: 'https://portail.clubflow.topdigital.re/register?club=sksr',
       },
       {
         kanji: '鍛',
@@ -603,8 +603,8 @@ const TARIFS_SECTIONS: Section[] = [
           'Entraînement fonctionnel quotidien 8h15',
           '+ 60 € licence & inscription / an',
         ],
-        ctaLabel: 'Adhérer (HelloAsso)',
-        ctaHref: '/contact',
+        ctaLabel: 'Adhérer en ligne',
+        ctaHref: 'https://portail.clubflow.topdigital.re/register?club=sksr',
       },
     ],
   }),
@@ -618,7 +618,7 @@ const TARIFS_SECTIONS: Section[] = [
       {
         title: 'Paiement en 4× sans frais',
         text:
-          'Règlement possible en 4 fois sans frais via HelloAsso. Adhésion 100 % en ligne, sécurisée, pour la saison 2025–2026.',
+          "Règlement possible en 4 fois sans frais. Adhésion 100 % en ligne, sécurisée, directement depuis l'application du club, pour la saison 2025–2026.",
       },
       {
         title: "Séance d'essai gratuite",
@@ -1048,7 +1048,7 @@ const CONTACT_SECTIONS: Section[] = [
     stamp: '地図',
     links: [
       { label: 'Itinéraire Google Maps', href: 'https://maps.google.com/?q=L%27%C3%89tang-Sal%C3%A9+13+bis+rue+du+stade' },
-      { label: 'Adhérer via HelloAsso', href: 'https://www.helloasso.com/' },
+      { label: 'Adhérer en ligne', href: 'https://portail.clubflow.topdigital.re/register?club=sksr' },
     ],
   }),
 ];
@@ -1092,7 +1092,7 @@ const PAGES: Array<{
     slug: 'tarifs',
     seoTitle: 'Tarifs & inscription — SKSR',
     seoDescription:
-      'Tarifs mensuels accessibles, remise famille −10 %, paiement en 4× sans frais. Adhésion sécurisée via HelloAsso.',
+      'Tarifs mensuels accessibles, remise famille −10 %, paiement en 4× sans frais. Adhésion 100 % en ligne depuis l'application du club.',
     sections: TARIFS_SECTIONS,
   },
   {

@@ -81,7 +81,7 @@ export function Footer({ clubName, content }: FooterProps) {
                   target="_blank"
                   rel="noopener"
                   style={
-                    link.href.includes('helloasso')
+                    link.href.includes('/register')
                       ? { color: 'var(--accent)' }
                       : undefined
                   }
