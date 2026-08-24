@@ -601,32 +601,181 @@ code {
   opacity: 0.85;
 }
 
-@media (max-width: 991px) {
+/* ────────── Chrome mobile du shell ──────────
+ * Burger (top-bar), bouton de fermeture (sidenav) et backdrop n'existent
+ * que sous le breakpoint drawer. En desktop la sidenav est permanente,
+ * donc ces trois éléments restent hors écran.
+ */
+.cf-topbar__burger,
+.cf-sidenav__close {
+  display: none;
+  flex: 0 0 auto;
+  padding: 0.4rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #191c1d;
+  cursor: pointer;
+}
+.cf-topbar__burger:hover,
+.cf-sidenav__close:hover {
+  background: rgba(0, 6, 102, 0.06);
+}
+
+.cf-nav-backdrop {
+  display: none;
+}
+
+/* Drawer ouvert : le fond ne doit pas scroller sous le doigt. */
+body.cf-scroll-lock {
+  overflow: hidden;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * MOBILE / TABLETTE ÉTROITE (< 900px) — shell en mode drawer
+ *
+ * Avant : la sidenav (17rem, fixed) repassait `position: relative` et
+ * empilait ~15 écrans de navigation AU-DESSUS du contenu, la top-bar
+ * gardait `width: calc(100% - 17rem)` et `.cf-main` sa marge de 17rem.
+ * Résultat : débord horizontal systématique et contenu inatteignable.
+ * Maintenant : nav off-canvas + top-bar plein écran + paddings compacts.
+ * ══════════════════════════════════════════════════════════════════ */
+@media (max-width: 899.98px) {
+  /* ── Sidenav = drawer off-canvas ── */
   .cf-sidenav {
-    position: relative;
-    width: 100%;
-    height: auto;
-    border-right: none;
-    border-bottom: 1px solid #e2e8f0;
+    top: 0;
+    bottom: 0;
+    z-index: 60;
+    width: min(19rem, 86vw);
+    height: 100dvh;
+    max-height: none;
+    padding: 1rem 0.85rem 1.25rem;
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition:
+      transform 0.22s ease,
+      visibility 0.22s ease;
+  }
+  .cf-sidenav--open {
+    transform: translateX(0);
+    visibility: visible;
+    box-shadow: 0 18px 48px rgba(15, 23, 42, 0.28);
+  }
+  .cf-sidenav__brand {
+    margin-bottom: 1.25rem;
+  }
+  .cf-sidenav__close {
+    display: inline-flex;
+    margin-left: auto;
   }
 
-  .cf-sidenav__nav {
-    flex-direction: row;
-    flex-wrap: wrap;
+  .cf-nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    border: none;
+    background: rgba(15, 23, 42, 0.45);
   }
 
-  .cf-sidenav__user {
-    margin-top: 1rem;
-  }
-
+  /* ── Top-bar : plein écran, collante, burger à gauche ── */
   .cf-topbar {
-    position: relative;
+    position: sticky;
+    top: 0;
     width: 100%;
+    height: 3.5rem;
+    gap: 0.5rem;
+    padding: 0 0.75rem;
+  }
+  .cf-topbar__burger {
+    display: inline-flex;
+  }
+  .cf-topbar__actions {
+    gap: 0.4rem;
+  }
+  .cf-topbar__search {
+    max-width: none;
+  }
+  /* Bascule Admin/Personnel et bloc profil : redondants avec la nav
+   * (déconnexion + identité y sont déjà) et coûteux en largeur. */
+  .cf-role-toggle,
+  .cf-topbar__profile {
+    display: none;
   }
 
-  .cf-main,
+  /* ── Contenu ── */
+  .cf-main {
+    margin-left: 0;
+    min-width: 0;
+    padding: 1rem 0.9rem 2.5rem;
+  }
   .cf-footer {
     margin-left: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 1rem 0.9rem;
+  }
+
+  /* Tout conteneur direct d'un tableau devient scrollable
+   * horizontalement : les 39 tableaux de l'admin n'ont pas de wrapper
+   * dédié, et sans ça c'est la page entière qui part en débord. */
+  .cf-main :is(div, section, article):has(> table) {
+    overflow-x: auto;
+  }
+
+  /* Les éléments collants calés sous la top-bar desktop (4rem) doivent
+   * suivre sa nouvelle hauteur mobile (3.5rem). */
+  .article-editor__stickybar {
+    top: 3.5rem;
+  }
+  .tiptap-toolbar {
+    top: calc(3.5rem + var(--article-editor-stickybar-h, 76px));
+  }
+  .editor-topbar {
+    top: 3.5rem;
+  }
+  .article-editor__side {
+    position: static;
+  }
+
+  /* Colonnes latérales collantes : en une seule colonne, `sticky` fige
+   * un panneau au milieu du flux. */
+  .grades-form-panel,
+  .roles-sidebar {
+    position: static;
+  }
+
+  /* Barres d'onglets : défilement horizontal plutôt que débord de page. */
+  .cf-tabs {
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  /* Actions de formulaire alignées à droite : sur 375px deux boutons
+   * côte à côte débordent, on autorise le retour à la ligne. */
+  .cf-form-actions,
+  .cf-modal-actions {
+    flex-wrap: wrap;
+  }
+  .cf-toolbar {
+    padding: 0.75rem 0.85rem;
+  }
+
+  /* Widget Aïko : styles inline dans le composant, d'où les !important.
+   * Bulle plus petite et panneau pleine largeur moins les gouttières. */
+  .cf-aiko-bubble {
+    right: 16px !important;
+    bottom: 16px !important;
+    width: 52px !important;
+    height: 52px !important;
+  }
+  .cf-aiko-panel {
+    right: 12px !important;
+    left: 12px !important;
+    bottom: 80px !important;
+    width: auto !important;
+    max-height: calc(100dvh - 140px) !important;
   }
 }
 
@@ -8827,26 +8976,6 @@ a:focus-visible {
 .cf-sidenav__link-chevron:focus-visible {
   outline: 2px solid var(--cf-secondary);
   outline-offset: 2px;
-}
-
-/* Responsive : sidebar en dessous de 900px devient un drawer (v2).
- * Pour v1 on se contente de la cacher sur très petits écrans. */
-@media (max-width: 768px) {
-  .cf-sidenav {
-    width: 100%;
-    position: relative;
-    height: auto;
-    max-height: 60vh;
-  }
-  .cf-topbar {
-    position: relative;
-    width: 100%;
-    margin-left: 0 !important;
-  }
-  .cf-main,
-  .cf-footer {
-    margin-left: 0 !important;
-  }
 }
 
 /* ╔══════════════════════════════════════════════════════════════════╗
