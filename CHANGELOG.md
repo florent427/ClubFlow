@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.32.2](https://github.com/florent427/ClubFlow/compare/v0.32.1...v0.32.2) (2026-08-24)
+
+
+### 🐛 Bug Fixes
+
+* **vitrine:** retirer les références HelloAsso du site SKSR ([452c73e](https://github.com/florent427/ClubFlow/commit/452c73efb7a3d15a9ebdd3022aef10b6583bf4a9))
+
 ## [0.32.1](https://github.com/florent427/ClubFlow/compare/v0.32.0...v0.32.1) (2026-08-20)
 
 
