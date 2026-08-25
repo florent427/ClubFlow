@@ -46,6 +46,17 @@ function makeSvc(assets: Asset[]) {
 
   const prisma = {
     mediaAsset: {
+      // `markPublic` écrit avec un `where` scopé au club : le double
+      // applique ce filtre pour de vrai, sinon le test ne dirait rien du
+      // cloisonnement multi-tenant.
+      updateMany: jest.fn(
+        async ({ where, data }: { where: any; data: any }) => {
+          const a = byId.get(where.id);
+          if (!a || a.clubId !== where.clubId) return { count: 0 };
+          a.visibility = data.visibility;
+          return { count: 1 };
+        },
+      ),
       findUnique: jest.fn(
         async ({ where, select }: { where: any; select?: any }) => {
           const a = byId.get(where.id);
@@ -235,5 +246,80 @@ describe('isPubliclyReadable — refus par défaut', () => {
     // erreur de lecture ouvre un fichier.
     const { svc } = makeSvc([]);
     await expect(svc.isPubliclyReadable('a-inconnu')).resolves.toBe(false);
+  });
+});
+
+/**
+ * Un asset désigné par une section de page vitrine n'est relié à la page par
+ * AUCUNE clé étrangère : c'est une URL en texte dans `sectionsJson`. Seul
+ * `visibility` peut le couvrir. Constaté en prod le 2026-08-25 — la photo du
+ * sensei sur sksr.re/equipe s'affichait en mode édition (JWT présent) et
+ * sortait en 404 chez le visiteur.
+ */
+describe('markPublic — rattrapage d’un asset déjà uploadé', () => {
+  const SECTION_VITRINE = (): Asset => ({
+    id: 'a-section',
+    clubId: 'club-1',
+    storagePath: 'p/sensei.jpg',
+    publicRefs: 0, // aucune FK : l'URL vit dans sectionsJson
+    visibility: 'PRIVATE',
+  });
+
+  it('un asset sans FK publique sort en 404 chez le visiteur', async () => {
+    const { svc, storage } = makeSvc([SECTION_VITRINE()]);
+
+    await expect(svc.streamFor('a-section', { clubId: null })).rejects.toThrow(
+      NotFoundException,
+    );
+    expect(storage.getObjectStream).not.toHaveBeenCalled();
+  });
+
+  it('après markPublic, le même asset se sert sans jeton', async () => {
+    const { svc } = makeSvc([SECTION_VITRINE()]);
+
+    await expect(svc.markPublic('club-1', 'a-section')).resolves.toBe(true);
+
+    const r = await svc.streamFor('a-section', { clubId: null });
+    expect(r.isPublic).toBe(true);
+  });
+
+  it('un autre club ne rend pas public le fichier d’autrui', async () => {
+    const asset = SECTION_VITRINE();
+    const { svc, storage } = makeSvc([asset]);
+
+    await expect(svc.markPublic('club-2', 'a-section')).resolves.toBe(false);
+
+    // Ce que le booléen seul ne dit pas : rien n'a bougé côté lecture.
+    await expect(svc.streamFor('a-section', { clubId: null })).rejects.toThrow(
+      NotFoundException,
+    );
+    expect(storage.getObjectStream).not.toHaveBeenCalled();
+  });
+
+  it('un asset inconnu renvoie false, sans rien créer', async () => {
+    const { svc } = makeSvc([]);
+    await expect(svc.markPublic('club-1', 'a-inconnu')).resolves.toBe(false);
+  });
+
+  it('rendre public ne rouvre pas une pièce rattachée à une facture', async () => {
+    // La précédence du privé doit survivre à un markPublic : un trésorier qui
+    // choisit comme image de section un fichier déjà attaché à un
+    // justificatif ne doit pas ouvrir la facture au monde.
+    const MIXTE: Asset = {
+      id: 'a-mixte-2',
+      clubId: 'club-1',
+      storagePath: 'p/facture-et-photo.jpg',
+      publicRefs: 0,
+      privateRefs: 1,
+      visibility: 'PRIVATE',
+    };
+    const { svc, storage } = makeSvc([MIXTE]);
+
+    await expect(svc.markPublic('club-1', 'a-mixte-2')).resolves.toBe(true);
+
+    await expect(svc.streamFor('a-mixte-2', { clubId: null })).rejects.toThrow(
+      NotFoundException,
+    );
+    expect(storage.getObjectStream).not.toHaveBeenCalled();
   });
 });

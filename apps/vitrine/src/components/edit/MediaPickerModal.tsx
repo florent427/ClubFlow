@@ -25,6 +25,14 @@ interface Props {
  *
  * Authentifié avec l'edit JWT (même secret que les JWT admin, accepté par
  * la stratégie JWT de l'API).
+ *
+ * ⚠️ L'image choisie ici finit dans `sectionsJson` **sous forme d'URL en
+ * texte** : aucune clé étrangère ne la relie à la page. Le contrôle de
+ * lecture des médias ne peut donc pas déduire qu'elle est publique — c'est
+ * `visibility` seul qui la couvre, et un média naît PRIVÉ. D'où les deux
+ * précautions ci-dessous : upload en `visibility=public`, et `ensurePublic`
+ * sur un asset préexistant. Sans elles, l'image s'affiche en mode édition
+ * (JWT présent) et sort en 404 chez le visiteur.
  */
 export function MediaPickerModal({ open, onClose, onPick, edit }: Props) {
   const [assets, setAssets] = useState<MediaAssetLite[]>([]);
@@ -34,6 +42,44 @@ export function MediaPickerModal({ open, onClose, onPick, edit }: Props) {
 
   const restBase = edit.apiUrl.replace(/\/graphql.*$/, '');
   const clubId = extractClubIdFromJwt(edit.editJwt) ?? '';
+
+  /**
+   * Rend l'asset public avant de l'insérer dans la page. Idempotent, et
+   * sans effet visible s'il l'était déjà.
+   */
+  const ensurePublic = useCallback(
+    async (assetId: string): Promise<void> => {
+      const res = await fetch(`${restBase}/media/${assetId}/public`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${edit.editJwt}`,
+          'X-Club-Id': clubId,
+        },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    },
+    [restBase, edit.editJwt, clubId],
+  );
+
+  /** Insère l'asset dans la page, après s'être assuré qu'il est public. */
+  const pick = useCallback(
+    async (asset: MediaAssetLite): Promise<void> => {
+      setError(null);
+      try {
+        await ensurePublic(asset.id);
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? `Image non rendue publique : ${err.message}`
+            : 'Image non rendue publique',
+        );
+        return;
+      }
+      onPick(asset);
+      onClose();
+    },
+    [ensurePublic, onPick, onClose],
+  );
 
   const load = useCallback(async (): Promise<void> => {
     setLoading(true);
@@ -67,14 +113,17 @@ export function MediaPickerModal({ open, onClose, onPick, edit }: Props) {
     try {
       const form = new FormData();
       form.append('file', file);
-      const res = await fetch(`${restBase}/media/upload?kind=image`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${edit.editJwt}`,
-          'X-Club-Id': clubId,
+      const res = await fetch(
+        `${restBase}/media/upload?kind=image&visibility=public`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${edit.editJwt}`,
+            'X-Club-Id': clubId,
+          },
+          body: form,
         },
-        body: form,
-      });
+      );
       if (!res.ok) {
         const text = await res.text();
         throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
@@ -197,10 +246,7 @@ export function MediaPickerModal({ open, onClose, onPick, edit }: Props) {
               <button
                 key={a.id}
                 type="button"
-                onClick={() => {
-                  onPick(a);
-                  onClose();
-                }}
+                onClick={() => void pick(a)}
                 style={{
                   background: 'transparent',
                   border: '1px solid var(--line)',
