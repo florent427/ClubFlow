@@ -43,6 +43,7 @@ import { ClubMemberFieldLayoutGraph } from './models/club-member-field-layout.mo
 import { ClubMemberEmailDuplicateInfoGraph } from './models/club-member-email-duplicate-info.model';
 import { MemberGraph } from './models/member.model';
 import { MemberPseudoService } from '../messaging/member-pseudo.service';
+import { stripMediaSignature } from '../media/media-url-signer.service';
 
 type FamilyMemberWithNames = {
   member: { lastName: string | null; firstName: string | null } | null;
@@ -648,7 +649,7 @@ export class MembersService {
           postalCode: input.postalCode ?? null,
           city: input.city ?? null,
           birthDate: input.birthDate ? new Date(input.birthDate) : null,
-          photoUrl: input.photoUrl ?? null,
+          photoUrl: stripMediaSignature(input.photoUrl),
           medicalCertExpiresAt: input.medicalCertExpiresAt
             ? new Date(input.medicalCertExpiresAt)
             : null,
@@ -805,7 +806,11 @@ export class MembersService {
           ? new Date(input.birthDate as string)
           : null;
       }
-      if (input.photoUrl !== undefined) patch.photoUrl = input.photoUrl;
+      if (input.photoUrl !== undefined) {
+        // Un formulaire peut renvoyer l'URL signée qu'il a lue : on ne
+        // persiste que la forme canonique. Cf. stripMediaSignature.
+        patch.photoUrl = stripMediaSignature(input.photoUrl);
+      }
       if (input.medicalCertExpiresAt !== undefined) {
         patch.medicalCertExpiresAt = input.medicalCertExpiresAt
           ? new Date(input.medicalCertExpiresAt)

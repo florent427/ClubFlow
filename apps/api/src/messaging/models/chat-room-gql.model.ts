@@ -5,6 +5,7 @@ import {
   ChatRoomMemberRole,
   ChatRoomPermissionTarget,
 } from '@prisma/client';
+import { SignedPhotoField } from '../../media/signed-photo-field.decorator';
 
 @ObjectType()
 export class ChatMemberSnippetGraph {
@@ -20,12 +21,11 @@ export class ChatMemberSnippetGraph {
   @Field(() => String)
   lastName!: string;
 
-  @Field(() => String, {
-    nullable: true,
-    description:
-      'URL de la photo de profil — affichée comme avatar dans la liste des ' +
-      'salons (notamment pour les chats DIRECT 1-on-1 où on veut voir le peer).',
-  })
+  @SignedPhotoField(
+    'URL SIGNÉE de la photo de profil — affichée comme avatar dans la liste ' +
+      'des salons (notamment pour les chats DIRECT 1-on-1 où on veut voir le ' +
+      'peer). Expire — ne pas persister.',
+  )
   photoUrl!: string | null;
 }
 

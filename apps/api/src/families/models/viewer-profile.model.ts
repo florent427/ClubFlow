@@ -1,4 +1,5 @@
 import { Field, ID, ObjectType } from '@nestjs/graphql';
+import { SignedPhotoField } from '../../media/signed-photo-field.decorator';
 
 /** Profil affichable pour l’utilisateur connecté (type Netflix / Phase C). */
 @ObjectType()
@@ -40,13 +41,11 @@ export class ViewerProfileGraph {
   })
   householdGroupId!: string | null;
 
-  @Field(() => String, {
-    nullable: true,
-    description:
-      'URL de la photo de profil (Member.photoUrl ou Contact.photoUrl). ' +
+  @SignedPhotoField(
+    'URL SIGNÉE de la photo de profil (Member.photoUrl ou Contact.photoUrl). ' +
       'Utilisé par le sélecteur de profil mobile pour afficher un avatar ' +
-      'au lieu d\'une simple chip avec initiales.',
-  })
+      'au lieu des seules initiales. Expire — ne pas persister.',
+  )
   photoUrl!: string | null;
 
   /**

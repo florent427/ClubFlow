@@ -9,6 +9,7 @@ import {
 import { ClubRoleDefinitionGraph } from './club-role-definition.model';
 import { GradeLevelGraph } from './grade-level.model';
 import { MemberCustomFieldValueGraph } from './member-custom-field-value.model';
+import { SignedPhotoField } from '../../media/signed-photo-field.decorator';
 
 @ObjectType()
 export class MemberFamilySummaryGraph {
@@ -81,7 +82,7 @@ export class MemberGraph {
   @Field(() => Date, { nullable: true })
   birthDate!: Date | null;
 
-  @Field(() => String, { nullable: true })
+  @SignedPhotoField()
   photoUrl!: string | null;
 
   @Field(() => Date, { nullable: true })

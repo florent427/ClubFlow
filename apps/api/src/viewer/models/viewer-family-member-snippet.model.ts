@@ -1,4 +1,5 @@
 import { Field, ID, ObjectType } from '@nestjs/graphql';
+import { SignedPhotoField } from '../../media/signed-photo-field.decorator';
 
 @ObjectType()
 export class ViewerFamilyMemberSnippetGraph {
@@ -11,6 +12,6 @@ export class ViewerFamilyMemberSnippetGraph {
   @Field(() => String)
   lastName!: string;
 
-  @Field(() => String, { nullable: true })
+  @SignedPhotoField()
   photoUrl!: string | null;
 }

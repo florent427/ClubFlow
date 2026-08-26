@@ -1,5 +1,6 @@
 import { Field, ID, ObjectType } from '@nestjs/graphql';
 import { MemberCivility } from '@prisma/client';
+import { SignedPhotoField } from '../../media/signed-photo-field.decorator';
 
 @ObjectType()
 export class ViewerMemberGraph {
@@ -18,7 +19,7 @@ export class ViewerMemberGraph {
   })
   pseudo!: string | null;
 
-  @Field(() => String, { nullable: true })
+  @SignedPhotoField()
   photoUrl!: string | null;
 
   @Field(() => String, { nullable: true })

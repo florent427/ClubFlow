@@ -4,6 +4,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { FilesystemStorageAdapter } from './filesystem-storage.adapter';
 import { MediaAssetsService } from './media-assets.service';
 import { MediaController } from './media.controller';
+import { MediaUrlSignerService } from './media-url-signer.service';
 import { MEDIA_STORAGE } from './media-storage.interface';
 
 @Module({
@@ -21,6 +22,7 @@ import { MEDIA_STORAGE } from './media-storage.interface';
   controllers: [MediaController],
   providers: [
     MediaAssetsService,
+    MediaUrlSignerService,
     {
       provide: MEDIA_STORAGE,
       // Phase 1 : disque local. Phase 2 : swap à S3StorageAdapter via env
@@ -28,6 +30,6 @@ import { MEDIA_STORAGE } from './media-storage.interface';
       useClass: FilesystemStorageAdapter,
     },
   ],
-  exports: [MediaAssetsService],
+  exports: [MediaAssetsService, MediaUrlSignerService],
 })
 export class MediaModule {}
