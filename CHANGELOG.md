@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.35.1](https://github.com/florent427/ClubFlow/compare/v0.35.0...v0.35.1) (2026-08-26)
+
+
+### 🐛 Bug Fixes
+
+* **adhesion:** une formule inéligible par l'âge entrait dans le panier ([5e50858](https://github.com/florent427/ClubFlow/commit/5e50858a0ca8b22f280e80596bee4c430647bcb4))
+* **adhesion:** une formule inéligible par l'âge entrait dans le panier ([1cd1c68](https://github.com/florent427/ClubFlow/commit/1cd1c68fc26f4df668bd9ae6c531860c448a441a))
+
 ## [0.35.0](https://github.com/florent427/ClubFlow/compare/v0.34.0...v0.35.0) (2026-08-26)
 
 
