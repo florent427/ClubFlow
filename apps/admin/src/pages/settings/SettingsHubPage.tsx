@@ -63,8 +63,8 @@ export function SettingsHubPage() {
               <SettingsHubCard
                 to="/settings/equipe"
                 modules={[]}
-                title="Équipe"
-                desc="Qui a accès à cet espace d’administration : inviter, changer de rôle, retirer."
+                title="Équipe &amp; accès admin"
+                desc="Donner à quelqu’un l’accès à cet espace : administrateur du club, bureau, trésorerie… Sans rapport avec « Administrateurs système », qui gère les rôles globaux ClubFlow."
               />
             </li>
             <li>

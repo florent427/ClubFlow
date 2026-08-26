@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@apollo/client/react';
 import {
   CLUB_TEAM_MEMBERS,
@@ -79,7 +80,11 @@ export function ClubTeamPage() {
   );
   const [remove, { loading: removing }] = useMutation(REMOVE_CLUB_TEAM_MEMBER);
 
-  const [email, setEmail] = useState('');
+  // `?email=` : la fiche adhérent envoie ici avec l'adresse du compte
+  // rattaché déjà remplie. Lu à l'initialisation seulement — l'admin doit
+  // pouvoir corriger la valeur sans qu'elle se remette toute seule.
+  const [searchParams] = useSearchParams();
+  const [email, setEmail] = useState(() => searchParams.get('email') ?? '');
   const [role, setRoleValue] = useState<MembershipRoleStr>('BOARD');
 
   const rows = data?.clubTeamMembers ?? [];
@@ -145,10 +150,14 @@ export function ClubTeamPage() {
     <div className="members-loom">
       <header className="members-loom__hero members-loom__hero--nested">
         <p className="members-loom__eyebrow">Administration</p>
-        <h1 className="members-loom__title">Équipe</h1>
+        <h1 className="members-loom__title">Équipe &amp; accès admin</h1>
         <p className="members-loom__lede">
-          Qui peut entrer dans l’espace d’administration de ce club. Deux
-          règles ne peuvent jamais être contournées :{' '}
+          Qui peut entrer dans l’espace d’administration de ce club —{' '}
+          <strong>c’est ici que l’on nomme un administrateur du club</strong>,
+          et non dans « Administrateurs système », qui gère les rôles globaux
+          ClubFlow. Être adhérent d’un club ne donne aucun accès à son
+          administration : il faut un accès accordé ici. Deux règles ne
+          peuvent jamais être contournées :{' '}
           <strong>le dernier administrateur ne peut être ni retiré ni
           rétrogradé</strong>, et <strong>personne n’agit sur son propre
           accès</strong> — sans quoi le club se retrouverait sans personne pour

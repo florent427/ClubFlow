@@ -256,4 +256,14 @@ export const ADMIN_FOOTER_ITEMS: NavItem[] = [
     icon: 'settings',
     end: true,
   },
+  // Sorti du hub Paramètres : c'est le SEUL endroit où l'on donne à
+  // quelqu'un l'accès à l'administration du club, et il était indevinable —
+  // sous le nom « Équipe », dans une carte parmi douze, pendant que
+  // « Administrateurs système » (rôles globaux ClubFlow, sans rapport)
+  // sautait aux yeux.
+  {
+    to: '/settings/equipe',
+    label: 'Équipe & accès admin',
+    icon: 'admin_panel_settings',
+  },
 ];
