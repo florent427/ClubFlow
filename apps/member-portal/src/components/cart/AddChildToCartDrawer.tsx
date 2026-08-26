@@ -148,7 +148,12 @@ export function AddChildToCartDrawer({ open, onClose }: Props) {
             lastName: lastName.trim(),
             civility,
             birthDate,
-            membershipProductIds: selectedProductIds,
+            // On n'envoie QUE des formules effectivement proposées pour
+            // cet âge : `selectedFormulas` est l'intersection avec la
+            // liste éligible. Ceinture et bretelles avec la remise à zéro
+            // sur changement de date — l'API refuse de toute façon, mais
+            // autant ne pas lui envoyer une sélection qu'on sait fausse.
+            membershipProductIds: selectedFormulas.map((f) => f.id),
             billingRhythm,
           },
         },
@@ -247,7 +252,18 @@ export function AddChildToCartDrawer({ open, onClose }: Props) {
           <input
             type="date"
             value={birthDate}
-            onChange={(e) => setBirthDate(e.target.value)}
+            onChange={(e) => {
+              // La sélection est REMISE À ZÉRO à chaque changement de date.
+              // Sans ça, l'id d'une formule devenue inéligible survivait dans
+              // `selectedProductIds` — sa case n'était plus affichée, donc
+              // invisible — et partait quand même au serveur. C'est comme ça
+              // qu'un enfant de 13 ans s'est retrouvé avec « Cotisation
+              // Adulte » EN PLUS de « Cotisation Enfant ». La pré-sélection
+              // automatique reprend derrière, puisqu'elle ne s'arme que sur
+              // une sélection vide.
+              setBirthDate(e.target.value);
+              setSelectedProductIds([]);
+            }}
             disabled={loading}
           />
         </label>
