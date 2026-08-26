@@ -12,6 +12,7 @@ interface MediaAsset {
   publicUrl: string;
   ownerKind: string | null;
   ownerId: string | null;
+  visibility: 'PUBLIC' | 'PRIVATE';
   createdAt: string;
 }
 
@@ -34,6 +35,13 @@ function apiBase(): string {
  * Upload via `POST /media/upload` (multipart, JWT + X-Club-Id).
  * Liste via `GET /media`.
  * Ajout à la galerie : mutation GraphQL dédiée (non encore exposée dans l'UI).
+ *
+ * Un fichier uploadé ici naît PRIVÉ : il s'affiche dans cette page (JWT
+ * présent) mais sort en 404 chez un visiteur. Tant qu'il est rattaché à une
+ * surface publique par clé étrangère — photo de galerie, couverture
+ * d'article — le contrôle de lecture le voit par la relation. Rattaché par
+ * URL EN TEXTE (section de page vitrine, logo, image produit), rien ne le
+ * voit : d'où le badge « Privée » et le bouton de rattrapage.
  */
 export function MediaLibraryPage() {
   const { showToast } = useToast();
@@ -133,6 +141,28 @@ export function MediaLibraryPage() {
     }
   }
 
+  async function handleMakePublic(id: string): Promise<void> {
+    const token = getToken();
+    const clubId = getClubId();
+    if (!token || !clubId) return;
+    try {
+      const res = await fetch(`${apiBase()}/media/${id}/public`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-Club-Id': clubId,
+        },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setAssets((prev) =>
+        prev.map((a) => (a.id === id ? { ...a, visibility: 'PUBLIC' } : a)),
+      );
+      showToast('Fichier rendu public.', 'success');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Échec', 'error');
+    }
+  }
+
   async function copyToClipboard(text: string): Promise<void> {
     try {
       await navigator.clipboard.writeText(text);
@@ -154,8 +184,10 @@ export function MediaLibraryPage() {
               Bibliothèque média ({assets.length})
             </h1>
             <p className="muted">
-              Uploadez images et documents. Les fichiers sont servis en public
-              via <code>/media/:id</code>.
+              Uploadez images et documents, servis via <code>/media/:id</code>.
+              Un fichier naît <strong>privé</strong> : il ne s'affiche sur le
+              site public qu'une fois rattaché à une galerie ou à un article,
+              ou rendu public explicitement.
             </p>
           </div>
         </div>
@@ -245,7 +277,20 @@ export function MediaLibraryPage() {
                 >
                   {a.fileName}
                 </div>
-                <div className="muted">{formatBytes(a.sizeBytes)}</div>
+                <div className="muted">
+                  {formatBytes(a.sizeBytes)}
+                  {a.visibility === 'PRIVATE' ? (
+                    <>
+                      {' · '}
+                      <span
+                        title="Ce fichier renvoie 404 chez un visiteur, sauf s'il est rattaché à une galerie ou à un article."
+                        style={{ color: 'var(--cf-warning, #b45309)' }}
+                      >
+                        Privée
+                      </span>
+                    </>
+                  ) : null}
+                </div>
                 <div
                   style={{
                     display: 'flex',
@@ -261,6 +306,16 @@ export function MediaLibraryPage() {
                   >
                     Copier URL
                   </button>
+                  {a.visibility === 'PRIVATE' ? (
+                    <button
+                      type="button"
+                      className="btn btn-tight btn-ghost"
+                      onClick={() => void handleMakePublic(a.id)}
+                      title="Autoriser l'affichage sur le site public"
+                    >
+                      Rendre public
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="btn btn-tight btn-ghost"

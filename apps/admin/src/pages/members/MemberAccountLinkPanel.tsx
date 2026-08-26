@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from '@apollo/client/react';
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   CLUB_MEMBERS,
   CLUB_MEMBER_ACCOUNT_CANDIDATES,
@@ -185,19 +186,37 @@ export function MemberAccountLinkPanel({
             <strong>{state.userEmail ?? state.userId}</strong>
             {state.userDisplayName ? ` (${state.userDisplayName})` : ''}.
           </p>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            disabled={unlinking}
-            onClick={onUnlink}
+          <div
+            style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}
           >
-            Détacher
-          </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={unlinking}
+              onClick={onUnlink}
+            >
+              Détacher
+            </button>
+            {/* Le rattachement ci-dessus ouvre le PORTAIL MEMBRE, pas
+             * l'administration. Rien ne le disait, et rien ne menait à
+             * l'écran qui accorde l'accès admin : on le nomme et on y
+             * emmène, e-mail pré-rempli. */}
+            {state.userEmail ? (
+              <Link
+                className="btn btn-ghost"
+                to={`/settings/equipe?email=${encodeURIComponent(state.userEmail)}`}
+                title="Accorder l’accès à l’espace d’administration du club"
+              >
+                Donner l’accès à l’administration
+              </Link>
+            ) : null}
+          </div>
         </>
       ) : (
         <p className="muted" style={{ margin: '0.5rem 0' }}>
           Aucun compte rattaché — le titulaire de cette fiche ne peut pas la
-          voir au portail membre.
+          voir au portail membre, ni recevoir d’accès à l’administration du
+          club.
         </p>
       )}
 

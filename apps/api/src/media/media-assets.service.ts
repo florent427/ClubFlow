@@ -605,16 +605,24 @@ export class MediaAssetsService {
   /**
    * Déclare un asset public. Appelé quand on le rattache à une surface qui
    * n'a pas de clé étrangère vers lui — logo de club, couverture de billet,
-   * photo de produit.
+   * photo de produit, image d'une section de page vitrine.
+   *
+   * Appelable à l'upload (`POST /media/upload?visibility=public`) ET après
+   * coup (`POST /media/:id/public`) : une section de page peut désigner un
+   * asset choisi dans la médiathèque longtemps après son upload.
+   *
+   * Retourne `false` si aucune ligne n'a bougé — asset inexistant OU
+   * appartenant à un autre club, indistinctement.
    *
    * Scopé par `clubId` DANS l'écriture : un club ne rend pas public le
    * fichier d'un autre.
    */
-  async markPublic(clubId: string, assetId: string): Promise<void> {
-    await this.prisma.mediaAsset.updateMany({
+  async markPublic(clubId: string, assetId: string): Promise<boolean> {
+    const { count } = await this.prisma.mediaAsset.updateMany({
       where: { id: assetId, clubId },
       data: { visibility: MediaVisibility.PUBLIC },
     });
+    return count > 0;
   }
 
   /**

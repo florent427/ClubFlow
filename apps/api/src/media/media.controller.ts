@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  NotFoundException,
   Param,
   Post,
   Query,
@@ -26,6 +27,7 @@ import { MediaAssetsService } from './media-assets.service';
  *
  *  - POST   /media/upload       (auth admin) upload image ou document
  *  - GET    /media/:id          (mixte)      servir le fichier
+ *  - POST   /media/:id/public   (auth admin) rendre public un asset existant
  *  - DELETE /media/:id          (auth admin) supprimer
  *  - GET    /media              (auth admin) lister les médias du club
  *
@@ -181,6 +183,9 @@ export class MediaController {
       publicUrl: r.publicUrl,
       ownerKind: r.ownerKind,
       ownerId: r.ownerId,
+      // Exposé pour que la médiathèque distingue un fichier réellement
+      // servable en public d'un fichier qui sortira en 404 chez le visiteur.
+      visibility: r.visibility,
       createdAt: r.createdAt.toISOString(),
     }));
   }
@@ -301,6 +306,34 @@ export class MediaController {
       res.end();
     });
     stream.pipe(res);
+  }
+
+  /**
+   * Rend public un asset déjà uploadé. Idempotent.
+   *
+   * Un média naît PRIVÉ et, jusqu'ici, `visibility=public` ne pouvait se
+   * demander qu'à l'upload. Or les surfaces rattachées par URL EN TEXTE —
+   * sections de page vitrine, logo de club, image produit — peuvent désigner
+   * un asset **choisi dans la médiathèque** bien après son upload. Aucune
+   * relation ne les voit, `visibility` reste PRIVATE, et l'image sort en 404
+   * chez le visiteur : c'est exactement ce qui est arrivé à la photo du
+   * sensei sur sksr.re/equipe.
+   *
+   * Écriture scopée au club dans `markPublic` : on ne rend pas public le
+   * fichier d'un autre club. 404 quand rien n'a bougé — asset inexistant ou
+   * d'un autre club, indistinctement, pour ne pas transformer l'endpoint en
+   * oracle d'existence.
+   */
+  @Post(':id/public')
+  @UseGuards(AuthGuard('jwt'))
+  async makePublic(
+    @Req() req: Request,
+    @Param('id') id: string,
+  ): Promise<{ id: string; visibility: 'PUBLIC' }> {
+    const clubId = this.extractClubId(req);
+    const changed = await this.service.markPublic(clubId, id);
+    if (!changed) throw new NotFoundException('Asset introuvable');
+    return { id, visibility: 'PUBLIC' };
   }
 
   @Delete(':id')
