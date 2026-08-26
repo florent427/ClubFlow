@@ -9,6 +9,18 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.33.0](https://github.com/florent427/ClubFlow/compare/v0.32.3...v0.33.0) (2026-08-26)
+
+
+### ✨ Features
+
+* **admin:** rendre trouvable l'écran qui nomme un administrateur de club ([8d215c2](https://github.com/florent427/ClubFlow/commit/8d215c270c1c3584c4d4e17f4195392ed3c69f8e))
+
+
+### 🐛 Bug Fixes
+
+* **media:** une image posée dans une section vitrine naissait privée ([52a32f6](https://github.com/florent427/ClubFlow/commit/52a32f6e816ffa47527b5d1370a048a43a0af976))
+
 ## [0.32.3](https://github.com/florent427/ClubFlow/compare/v0.32.2...v0.32.3) (2026-08-24)
 
 
