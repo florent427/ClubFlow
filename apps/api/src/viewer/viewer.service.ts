@@ -10,6 +10,7 @@ import {
   ClubPaymentMethod,
   FamilyMemberLinkRole,
   InvoiceStatus,
+  MemberCatalogFieldKey,
   MemberCivility,
   MemberClubRole,
   MemberStatus,
@@ -18,6 +19,8 @@ import {
   type Prisma,
 } from '@prisma/client';
 import { DocumentsGatingService } from '../documents/documents-gating.service';
+import { catalogFieldLabelFr } from '../members/member-field-helpers';
+import { MemberFieldConfigService } from '../members/member-field-config.service';
 import { ModuleCode } from '../domain/module-registry/module-codes';
 import { FamiliesService } from '../families/families.service';
 import { ClubContactsService } from '../members/club-contacts.service';
@@ -101,6 +104,7 @@ export class ViewerService {
     private readonly payerScope: InvoicePayerScopeService,
     private readonly memberActivation: MemberAccountActivationService,
     private readonly documentsGating: DocumentsGatingService,
+    private readonly fieldConfig: MemberFieldConfigService,
   ) {}
 
   /**
@@ -645,6 +649,11 @@ export class ViewerService {
       photoUrl: m.photoUrl,
       email: m.email ?? null,
       phone: m.phone ?? null,
+      addressLine: m.addressLine ?? null,
+      postalCode: m.postalCode ?? null,
+      city: m.city ?? null,
+      birthDate: m.birthDate ?? null,
+      editableProfileFields: await this.editableProfileFields(clubId),
       civility: m.civility,
       medicalCertExpiresAt: m.medicalCertExpiresAt,
       gradeLevelId: m.gradeLevelId,
@@ -718,6 +727,13 @@ export class ViewerService {
       photoUrl: c.photoUrl ?? null,
       email: c.user?.email ?? null,
       phone: c.phone ?? null,
+      // `Contact` n'a pas de colonnes postales : rien à exposer, et rien à
+      // proposer à la saisie. La liste vide n'est pas un oubli.
+      addressLine: null,
+      postalCode: null,
+      city: null,
+      birthDate: null,
+      editableProfileFields: [],
       civility: MemberCivility.MR,
       medicalCertExpiresAt: null,
       gradeLevelId: null,
@@ -1680,6 +1696,10 @@ export class ViewerService {
       email?: string | null;
       phone?: string | null;
       photoUrl?: string | null;
+      addressLine?: string | null;
+      postalCode?: string | null;
+      city?: string | null;
+      birthDate?: string | null;
     },
   ): Promise<ViewerMemberGraph> {
     const m = await this.prisma.member.findFirst({
@@ -1705,13 +1725,61 @@ export class ViewerService {
     if (firstNameTrim !== undefined) data.firstName = firstNameTrim ?? '';
     const lastNameTrim = safeTrim(patch.lastName);
     if (lastNameTrim !== undefined) data.lastName = lastNameTrim ?? '';
-    const phoneTrim = safeTrim(patch.phone);
-    if (phoneTrim !== undefined) data.phone = phoneTrim || null;
     // Le portail relit `photoUrl` (signée) dans l'état du formulaire et la
     // renvoie au submit : on ne persiste que la forme canonique, sans quoi
     // la photo casserait définitivement à l'expiration.
     const photoUrlTrim = stripMediaSignature(safeTrim(patch.photoUrl));
     if (patch.photoUrl !== undefined) data.photoUrl = photoUrlTrim || null;
+
+    // ── Coordonnées, sous le contrôle du catalogue du club ───────────
+    //
+    // Le portail n'affiche que les champs exposés, mais l'écran peut être
+    // périmé et l'API est appelable directement : le refus est prononcé
+    // ICI. Deux règles, symétriques de celles du formulaire admin — un
+    // champ masqué n'est pas écrivable, un champ obligatoire n'est pas
+    // effaçable.
+    const catalogue = await this.fieldConfig.getCatalogSettingsMap(clubId);
+    const appliquerChamp = (
+      key: MemberCatalogFieldKey,
+      valeur: string | null | undefined,
+      poser: (v: string | null) => void,
+    ): void => {
+      if (valeur === undefined) return;
+      const reglage = catalogue.get(key);
+      if (reglage && !reglage.showOnForm) {
+        throw new BadRequestException(
+          `Le champ « ${catalogFieldLabelFr(key)} » n’est pas proposé par votre club.`,
+        );
+      }
+      // `|| null` et non `?? null` : `safeTrim('   ')` rend '', qu'il faut
+      // stocker comme ABSENCE de valeur. Une chaîne vide en base ferait
+      // passer le champ pour renseigné dans les relances de complétion.
+      const trim = safeTrim(valeur) || null;
+      if (reglage?.required && !trim) {
+        throw new BadRequestException(
+          `Le champ « ${catalogFieldLabelFr(key)} » est obligatoire.`,
+        );
+      }
+      poser(trim);
+    };
+
+    appliquerChamp(MemberCatalogFieldKey.PHONE, patch.phone, (v) => {
+      data.phone = v;
+    });
+    appliquerChamp(MemberCatalogFieldKey.ADDRESS_LINE, patch.addressLine, (v) => {
+      data.addressLine = v;
+    });
+    appliquerChamp(MemberCatalogFieldKey.POSTAL_CODE, patch.postalCode, (v) => {
+      data.postalCode = v;
+    });
+    appliquerChamp(MemberCatalogFieldKey.CITY, patch.city, (v) => {
+      data.city = v;
+    });
+    appliquerChamp(MemberCatalogFieldKey.BIRTH_DATE, patch.birthDate, (v) => {
+      // `IsDateString` a déjà validé la forme ; `new Date` d'une chaîne
+      // vide donnerait Invalid Date, d'où le passage explicite par null.
+      data.birthDate = v ? new Date(v) : null;
+    });
     let nextEmail: string | null = null;
     // L'email est traité à part : il déclenche l'activation de compte
     // (mail au Member). NB : `Member.email` est non-nullable en DB
@@ -1863,6 +1931,41 @@ export class ViewerService {
    * Les Contacts (payeurs sans fiche adhérent) sont adultes par construction
    * (création de compte portail réservée aux adultes).
    */
+  /**
+   * Champs de coordonnées que le club expose à la saisie, dans l'ordre du
+   * formulaire.
+   *
+   * Source unique : le catalogue de fiche adhérent du club — le MÊME que
+   * le formulaire admin. Un club qui masque la date de naissance ne doit
+   * pas la voir réapparaître par le portail.
+   *
+   * `PHOTO_URL` est écarté : la photo a son propre bloc (upload + aperçu),
+   * pas un champ texte. `MEDICAL_CERT_EXPIRES_AT` et `GRADE_LEVEL` le sont
+   * aussi — ils sont constatés par le club, pas déclarés par l'adhérent.
+   */
+  private static readonly CHAMPS_PROFIL_PORTAIL: MemberCatalogFieldKey[] = [
+    MemberCatalogFieldKey.PHONE,
+    MemberCatalogFieldKey.ADDRESS_LINE,
+    MemberCatalogFieldKey.POSTAL_CODE,
+    MemberCatalogFieldKey.CITY,
+    MemberCatalogFieldKey.BIRTH_DATE,
+  ];
+
+  private async editableProfileFields(
+    clubId: string,
+  ): Promise<
+    { key: MemberCatalogFieldKey; label: string; required: boolean }[]
+  > {
+    const map = await this.fieldConfig.getCatalogSettingsMap(clubId);
+    return ViewerService.CHAMPS_PROFIL_PORTAIL.filter(
+      (key) => map.get(key)?.showOnForm ?? true,
+    ).map((key) => ({
+      key,
+      label: catalogFieldLabelFr(key),
+      required: map.get(key)?.required ?? false,
+    }));
+  }
+
   private async computeCanManageMembershipCart(
     clubId: string,
     activeProfile: { memberId: string | null; contactId: string | null },

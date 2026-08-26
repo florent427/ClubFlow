@@ -409,6 +409,18 @@ export class ViewerResolver {
       );
     }
     if (user.activeProfileContactId) {
+      // `Contact` n'a pas de colonnes postales. On REFUSE plutôt que de
+      // laisser tomber les champs en silence : un appel qui répond 200 en
+      // n'enregistrant rien est le pire des deux mondes.
+      const postaux = (
+        ['addressLine', 'postalCode', 'city', 'birthDate'] as const
+      ).filter((k) => input[k] !== undefined);
+      if (postaux.length > 0) {
+        throw new BadRequestException(
+          'Un profil payeur ne porte pas de coordonnées postales ' +
+            `(${postaux.join(', ')}) : elles se saisissent sur la fiche adhérent.`,
+        );
+      }
       return this.viewer.updateMyProfileAsContact(
         club.id,
         user.activeProfileContactId,

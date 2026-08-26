@@ -20,6 +20,15 @@ export const VIEWER_ME = gql`
       photoUrl
       email
       phone
+      addressLine
+      postalCode
+      city
+      birthDate
+      editableProfileFields {
+        key
+        label
+        required
+      }
       civility
       medicalCertExpiresAt
       gradeLevelId
@@ -806,6 +815,10 @@ export const VIEWER_UPDATE_MY_PROFILE = gql`
       email
       phone
       photoUrl
+      addressLine
+      postalCode
+      city
+      birthDate
     }
   }
 `;
