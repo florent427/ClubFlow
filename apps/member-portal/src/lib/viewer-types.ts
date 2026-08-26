@@ -1,3 +1,10 @@
+export type EditableProfileFieldKey =
+  | 'PHONE'
+  | 'ADDRESS_LINE'
+  | 'POSTAL_CODE'
+  | 'CITY'
+  | 'BIRTH_DATE';
+
 export type ViewerAdminSwitchData = {
   viewerAdminSwitch: {
     canAccessClubBackOffice: boolean;
@@ -14,6 +21,20 @@ export type ViewerMeData = {
     photoUrl: string | null;
     email: string | null;
     phone: string | null;
+    addressLine: string | null;
+    postalCode: string | null;
+    city: string | null;
+    birthDate: string | null;
+    /**
+     * Champs de coordonnées que CE club expose. Le formulaire ne rend que
+     * ceux-là : un club qui masque la date de naissance ne doit pas la voir
+     * réapparaître ici. Vide sur un profil payeur-contact.
+     */
+    editableProfileFields: {
+      key: EditableProfileFieldKey;
+      label: string;
+      required: boolean;
+    }[];
     civility: string;
     medicalCertExpiresAt: string | null;
     gradeLevelId: string | null;
