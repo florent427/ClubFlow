@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.34.0](https://github.com/florent427/ClubFlow/compare/v0.33.0...v0.34.0) (2026-08-26)
+
+
+### ✨ Features
+
+* **media:** URLs signées pour les photos de profil d'adhérent ([eb40107](https://github.com/florent427/ClubFlow/commit/eb40107e23fb9a0917b443fd6eb698d84dc34361))
+* **media:** URLs signées pour les photos de profil d'adhérent ([bec26cb](https://github.com/florent427/ClubFlow/commit/bec26cbd01e5dde1882a5e1f5973c903cbbc75a1))
+
 ## [0.33.0](https://github.com/florent427/ClubFlow/compare/v0.32.3...v0.33.0) (2026-08-26)
 
 
