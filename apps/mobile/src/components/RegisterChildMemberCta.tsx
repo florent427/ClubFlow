@@ -119,7 +119,13 @@ export function RegisterChildMemberCta({
   function onPickerChange(event: DateTimePickerEvent, selected?: Date) {
     if (Platform.OS !== 'ios') setShowPicker(false);
     if (event.type === 'set' && selected) {
+      // Changer la date remet la formule à zéro : sinon l'id choisi pour
+      // l'âge précédent survit — sa pastille n'est plus affichée, donc
+      // invisible — et part au serveur. C'est ainsi qu'un enfant de 5 ans
+      // s'est retrouvé sur « Cotisation Enfant » (6–13) au lieu de
+      // « Cotisation Baby », facturé 30 € au lieu de 25 €.
       setBirthDate(toIsoDate(selected));
+      setFormulaId('');
     }
   }
 

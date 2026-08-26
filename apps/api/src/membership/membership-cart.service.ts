@@ -13,6 +13,7 @@ import {
   MembershipCartStatus,
   MembershipOneTimeFeeKind,
   MembershipRole,
+  MemberStatus,
   PaymentScheduleStatus,
   Prisma,
   SubscriptionBillingRhythm,
@@ -205,6 +206,85 @@ export class MembershipCartService {
       }
     }
     return null;
+  }
+
+  /**
+   * Valide les formules choisies pour une identité : appartenance au club,
+   * absence de doublon, et ÉLIGIBILITÉ PAR L'ÂGE.
+   *
+   * POURQUOI CE CONTRÔLE EXISTE
+   *
+   * Le chemin de LECTURE (`viewerEligibleMembershipFormulas`) filtre déjà
+   * par âge : l'écran ne propose que des formules valides. Le chemin
+   * d'ÉCRITURE, lui, ne vérifiait que l'appartenance au club — donc toute
+   * sélection périmée passait sans un mot.
+   *
+   * Ce n'est pas théorique. En production le 2026-08-26 :
+   *   - Joachim Morel, 13 ans, portait « Cotisation Adulte » (14+) EN PLUS
+   *     de « Cotisation Enfant » — 65 €/mois de cotisation pour une seule
+   *     personne ;
+   *   - Rhayan Poticadou, 5 ans, portait « Cotisation Enfant » (6–13) au
+   *     lieu de « Cotisation Baby » — facturé 30 € au lieu de 25 €, et
+   *     rien ne le signalait.
+   *
+   * Cause côté écran : la sélection n'était pas remise à zéro quand la
+   * date de naissance changeait. Corrigé aussi côté portail, mais l'écran
+   * ne peut pas être la garantie — il peut être périmé, et la mutation est
+   * appelable directement.
+   *
+   * NB : on ne refuse PAS deux formules par principe. Un club
+   * multi-disciplines peut légitimement en vendre deux à la même personne
+   * (karaté + cross training). Ce qui est impossible, c'est d'en cumuler
+   * deux dont l'âge exclut l'une — et c'est le contrôle d'âge, appliqué
+   * formule par formule, qui l'interdit.
+   */
+  private async assertProductsSelectableForAge(
+    clubId: string,
+    birthDate: Date,
+    productIds: string[],
+    identityLabel: string,
+    refDate?: Date | null,
+  ): Promise<void> {
+    const uniques = new Set(productIds);
+    if (uniques.size !== productIds.length) {
+      throw new BadRequestException(
+        'Une même formule a été sélectionnée plusieurs fois.',
+      );
+    }
+
+    const products = await this.prisma.membershipProduct.findMany({
+      where: { id: { in: productIds }, clubId, archivedAt: null },
+      include: { gradeFilters: true },
+    });
+    if (products.length !== uniques.size) {
+      throw new BadRequestException(
+        'Une ou plusieurs formules sélectionnées sont invalides.',
+      );
+    }
+
+    const reference = refDate ?? new Date();
+    const inadaptees = products.filter(
+      (p) =>
+        !memberMatchesMembershipProduct(
+          { status: MemberStatus.ACTIVE, birthDate, gradeLevelId: null },
+          {
+            minAge: p.minAge,
+            maxAge: p.maxAge,
+            // L'âge est le seul critère arbitré ici : les filtres de grade
+            // ne s'appliquent pas à une inscription qui n'a pas encore de
+            // fiche, donc pas de grade.
+            gradeLevelIds: [],
+          },
+          reference,
+        ),
+    );
+    if (inadaptees.length > 0) {
+      const noms = inadaptees.map((p) => `« ${p.label} »`).join(', ');
+      throw new BadRequestException(
+        `${identityLabel} n’a pas l’âge requis pour ${noms}. ` +
+          'Rouvrez le formulaire pour choisir une formule adaptée.',
+      );
+    }
   }
 
   // ------------------------------------------------------------------
@@ -447,17 +527,15 @@ export class MembershipCartService {
       );
     }
 
-    // Validation : tous les MembershipProduct existent et appartiennent à
-    // ce club (anti-tampering depuis l'UI).
-    const products = await this.prisma.membershipProduct.findMany({
-      where: { id: { in: input.membershipProductIds }, clubId },
-      select: { id: true },
-    });
-    if (products.length !== input.membershipProductIds.length) {
-      throw new BadRequestException(
-        'Une ou plusieurs formules sélectionnées sont invalides.',
-      );
-    }
+    // Appartenance au club, absence de doublon, et éligibilité par l'âge.
+    // Ce dernier point manquait : l'écran filtrait, le serveur non.
+    await this.assertProductsSelectableForAge(
+      clubId,
+      input.birthDate,
+      input.membershipProductIds,
+      `${input.firstName} ${input.lastName}`,
+      season.startsOn,
+    );
 
     const cart = await this.getOrOpenCart(clubId, familyId, season.id, {
       payerContactId: input.contactId ?? null,
@@ -697,9 +775,16 @@ export class MembershipCartService {
         'Au moins une formule d’adhésion est requise.',
       );
     }
-    // Vérifie que toutes les formules existent dans le club et qu'elles
-    // ne sont pas archivées (évite qu'un payeur sauvegarde un panier
-    // pointant vers une formule supprimée par l'admin).
+    // Existence, non-archivage, absence de doublon et éligibilité par
+    // l'âge — mêmes règles qu'à la création. L'édition est un chemin
+    // d'écriture à part entière : le contrôle doit y être aussi, sinon
+    // une sélection périmée rentre par la porte de derrière.
+    await this.assertProductsSelectableForAge(
+      clubId,
+      item.birthDate,
+      patch.membershipProductIds,
+      `${item.firstName} ${item.lastName}`,
+    );
     const products = await this.prisma.membershipProduct.findMany({
       where: {
         clubId,
@@ -708,11 +793,6 @@ export class MembershipCartService {
       },
       select: { id: true, monthlyAmountCents: true },
     });
-    if (products.length !== patch.membershipProductIds.length) {
-      throw new BadRequestException(
-        'Une ou plusieurs formules sélectionnées sont indisponibles.',
-      );
-    }
     if (
       patch.billingRhythm === SubscriptionBillingRhythm.MONTHLY &&
       products.some((p) => p.monthlyAmountCents <= 0)
