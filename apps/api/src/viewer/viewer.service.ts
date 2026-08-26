@@ -55,6 +55,7 @@ import {
 import { ViewerFamilyJoinResultGraph } from './models/viewer-family-join-result.model';
 import { ViewerMemberGraph } from './models/viewer-member.model';
 import { MemberPseudoService } from '../messaging/member-pseudo.service';
+import { stripMediaSignature } from '../media/media-url-signer.service';
 
 /**
  * Réduit un input arbitraire au seul ensemble des échéanciers supportés
@@ -1706,8 +1707,11 @@ export class ViewerService {
     if (lastNameTrim !== undefined) data.lastName = lastNameTrim ?? '';
     const phoneTrim = safeTrim(patch.phone);
     if (phoneTrim !== undefined) data.phone = phoneTrim || null;
-    const photoUrlTrim = safeTrim(patch.photoUrl);
-    if (photoUrlTrim !== undefined) data.photoUrl = photoUrlTrim || null;
+    // Le portail relit `photoUrl` (signée) dans l'état du formulaire et la
+    // renvoie au submit : on ne persiste que la forme canonique, sans quoi
+    // la photo casserait définitivement à l'expiration.
+    const photoUrlTrim = stripMediaSignature(safeTrim(patch.photoUrl));
+    if (patch.photoUrl !== undefined) data.photoUrl = photoUrlTrim || null;
     let nextEmail: string | null = null;
     // L'email est traité à part : il déclenche l'activation de compte
     // (mail au Member). NB : `Member.email` est non-nullable en DB
@@ -1796,8 +1800,9 @@ export class ViewerService {
     if (phoneTrim !== undefined) {
       data.phone = phoneTrim || null;
     }
-    const photoUrlTrim = safeTrim(patch.photoUrl);
-    if (photoUrlTrim !== undefined) {
+    // Idem côté Contact : jamais d'URL signée en base.
+    const photoUrlTrim = stripMediaSignature(safeTrim(patch.photoUrl));
+    if (patch.photoUrl !== undefined) {
       data.photoUrl = photoUrlTrim || null;
     }
 

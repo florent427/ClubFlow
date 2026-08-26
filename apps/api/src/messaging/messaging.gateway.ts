@@ -11,6 +11,7 @@ import {
 import type { Server, Socket } from 'socket.io';
 import { PrismaService } from '../prisma/prisma.service';
 import type { JwtPayload } from '../auth/jwt.strategy';
+import { MediaUrlSignerService } from '../media/media-url-signer.service';
 
 export type ChatSocketData = {
   userId: string;
@@ -35,6 +36,7 @@ export class MessagingGateway implements OnGatewayConnection {
   constructor(
     private readonly jwt: JwtService,
     private readonly prisma: PrismaService,
+    private readonly signer: MediaUrlSignerService,
   ) {}
 
   handleConnection(client: Socket): void {
@@ -119,7 +121,17 @@ export class MessagingGateway implements OnGatewayConnection {
       }>;
     },
   ): void {
-    this.server.to(roomChannel(roomId)).emit('chat:message', payload);
+    // L'avatar part vers un `<img>` / `<Image>` client, qui n'enverra aucun
+    // en-tête : il lui faut une URL signée, comme sur le chemin GraphQL.
+    // Le middleware de champ ne voit pas ce payload — il ne traverse aucun
+    // modèle GraphQL —, d'où la signature explicite ici.
+    this.server.to(roomChannel(roomId)).emit('chat:message', {
+      ...payload,
+      sender: {
+        ...payload.sender,
+        photoUrl: this.signer.signUrl(payload.sender.photoUrl),
+      },
+    });
   }
 
   /**

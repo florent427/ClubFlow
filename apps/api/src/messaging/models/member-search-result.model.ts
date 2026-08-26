@@ -1,4 +1,5 @@
 import { Field, ID, ObjectType } from '@nestjs/graphql';
+import { SignedPhotoField } from '../../media/signed-photo-field.decorator';
 
 /**
  * Résultat d'une recherche d'adhérent pour démarrer un chat 1-on-1.
@@ -17,19 +18,9 @@ export class MemberSearchResultGraph {
   @Field()
   lastName!: string;
 
-  @Field(() => String, {
-    nullable: true,
-    description:
-      "Pseudo public (Member.pseudo). Permet l'affichage anonymisé dans les " +
-      'salons quand le membre a choisi un pseudo. Null sinon.',
-  })
-  pseudo!: string | null;
-
-  @Field(() => String, {
-    nullable: true,
-    description:
-      'URL de la photo de profil (utilisée pour afficher un avatar dans la ' +
-      'liste de résultats). Null si pas de photo.',
-  })
+  @SignedPhotoField(
+    'URL SIGNÉE de la photo de profil (utilisée pour afficher un avatar dans ' +
+      'la liste de résultats). Null si pas de photo. Expire — ne pas persister.',
+  )
   photoUrl!: string | null;
 }

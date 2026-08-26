@@ -630,6 +630,17 @@ export class MediaAssetsService {
    *
    * `clubId` absent = requête anonyme : seuls les assets publics passent.
    * `clubId` présent = requête authentifiée : le club doit être PROPRIÉTAIRE.
+   * `signed` = l'URL portait une signature valide et non expirée. Elle vaut
+   * droit de lecture À ELLE SEULE : une balise `<img>` n'envoie aucun
+   * en-tête, c'est tout l'objet du mécanisme. La signature n'est frappée
+   * que par un chemin de lecture déjà authentifié et scopé au club — cf.
+   * `MediaUrlSignerService`.
+   *
+   * `isPublic` reste FAUX pour un accès signé : il ne décrit pas le droit
+   * accordé mais la nature de l'asset, et il pilote la politique de cache.
+   * Servir une photo d'adhérent en `public, immutable` la déposerait dans
+   * les caches partagés, ce que l'expiration de la signature ne
+   * rattraperait pas.
    *
    * Le contrôle est ici et non dans le contrôleur pour qu'il n'existe qu'un
    * seul chemin de lecture — `delete()` filtrait déjà sur `{ id, clubId }`
@@ -638,7 +649,7 @@ export class MediaAssetsService {
    */
   async streamFor(
     assetId: string,
-    opts?: { clubId?: string | null },
+    opts?: { clubId?: string | null; signed?: boolean },
   ): Promise<{
     row: MediaAsset;
     stream: Readable;
@@ -647,7 +658,7 @@ export class MediaAssetsService {
     const row = await this.getPublic(assetId);
     const isPublic = await this.isPubliclyReadable(assetId);
 
-    if (!isPublic) {
+    if (!isPublic && !opts?.signed) {
       const clubId = opts?.clubId ?? null;
       if (!clubId || clubId !== row.clubId) {
         // 404 et non 403 : répondre « interdit » confirmerait l'existence de

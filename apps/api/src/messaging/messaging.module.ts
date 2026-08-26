@@ -5,6 +5,7 @@ import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.gua
 import { GqlThrottlerGuard } from '../common/guards/gql-throttler.guard';
 import { ViewerActiveProfileGuard } from '../common/guards/viewer-active-profile.guard';
 import { FamiliesModule } from '../families/families.module';
+import { MediaModule } from '../media/media.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { MemberPseudoService } from './member-pseudo.service';
 import { MessagingAdminResolver } from './messaging-admin.resolver';
@@ -17,6 +18,9 @@ import { MessagingService } from './messaging.service';
   imports: [
     PrismaModule,
     FamiliesModule,
+    // Pour MediaUrlSignerService : les avatars poussés en WebSocket sont
+    // signés à la main (aucun modèle GraphQL sur ce chemin).
+    MediaModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET ?? 'change-me-in-development',
     }),

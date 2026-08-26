@@ -11,6 +11,7 @@ import {
   ProjectSectionKind,
   ProjectStatus,
 } from '@prisma/client';
+import { SignedPhotoField } from '../../media/signed-photo-field.decorator';
 
 registerEnumType(ProjectStatus, { name: 'ProjectStatus' });
 registerEnumType(ProjectLivePhaseState, { name: 'ProjectLivePhaseState' });
@@ -205,7 +206,7 @@ export class ProjectContributorGraph {
   @Field(() => String, { nullable: true })
   displayName!: string | null;
 
-  @Field(() => String, { nullable: true })
+  @SignedPhotoField()
   photoUrl!: string | null;
 }
 

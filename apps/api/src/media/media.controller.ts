@@ -21,6 +21,7 @@ import type { Request, Response } from 'express';
 import { memoryStorage } from 'multer';
 import sharp from 'sharp';
 import { MediaAssetsService } from './media-assets.service';
+import { MediaUrlSignerService } from './media-url-signer.service';
 
 /**
  * Endpoints REST pour le service média générique.
@@ -28,6 +29,11 @@ import { MediaAssetsService } from './media-assets.service';
  *  - POST   /media/upload       (auth admin) upload image ou document
  *  - GET    /media/:id          (mixte)      servir le fichier
  *  - POST   /media/:id/public   (auth admin) rendre public un asset existant
+ *
+ * `GET /media/:id` accepte aussi une URL SIGNÉE (`?exp=&sig=`) : elle vaut
+ * droit de lecture temporaire sur un asset privé, pour les surfaces
+ * affichées par `<img src>` qui ne peuvent porter aucun en-tête — photos de
+ * profil d'adhérent en tête. Cf. `MediaUrlSignerService`.
  *  - DELETE /media/:id          (auth admin) supprimer
  *  - GET    /media              (auth admin) lister les médias du club
  *
@@ -48,6 +54,7 @@ export class MediaController {
   constructor(
     private readonly service: MediaAssetsService,
     private readonly jwt: JwtService,
+    private readonly signer: MediaUrlSignerService,
   ) {}
 
   private extractClubId(req: Request): string {
@@ -253,10 +260,16 @@ export class MediaController {
     @Param('id') id: string,
     @Query('format') format: string | undefined,
     @Query('w') widthParam: string | undefined,
+    @Query('exp') exp: string | undefined,
+    @Query('sig') sig: string | undefined,
     @Res() res: Response,
   ): Promise<void> {
+    // URL signée : le droit de lecture voyage dans l'URL, parce qu'une
+    // balise `<img>` n'envoie aucun en-tête. Cf. MediaUrlSignerService.
+    const signed = this.signer.verify(id, exp, sig);
     const { row, stream, isPublic } = await this.service.streamFor(id, {
       clubId: this.resolveClubId(req),
+      signed,
     });
 
     // ─── Branche conversion SVG → PNG ─────────────────────────────
@@ -275,7 +288,7 @@ export class MediaController {
           .toBuffer();
         res.setHeader('Content-Type', 'image/png');
         res.setHeader('Content-Length', String(pngBuf.byteLength));
-        applyCachePolicy(res, isPublic);
+        applyCachePolicy(res, isPublic, signed ? exp : undefined);
         res.setHeader(
           'ETag',
           `"${this.service.etag(row)}-png-${targetWidth}"`,
@@ -298,7 +311,7 @@ export class MediaController {
       `inline; filename="${row.fileName.replace(/"/g, '')}"; filename*=UTF-8''${encoded}`,
     );
     res.setHeader('Content-Length', String(row.sizeBytes));
-    applyCachePolicy(res, isPublic);
+    applyCachePolicy(res, isPublic, signed ? exp : undefined);
     res.setHeader('ETag', `"${this.service.etag(row)}"`);
     if (isPublic) applyOpenCors(res);
     stream.on('error', () => {
@@ -361,11 +374,27 @@ export class MediaController {
  * à le conserver et à le resservir. Le contrôle d'accès en amont ne servirait
  * alors plus à rien : le fichier aurait déjà quitté le périmètre.
  */
-function applyCachePolicy(res: Response, isPublic: boolean): void {
+function applyCachePolicy(
+  res: Response,
+  isPublic: boolean,
+  signedExp?: string,
+): void {
+  if (isPublic) {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    return;
+  }
+  // Accès signé : cache PRIVÉ borné à ce qui reste de validité. Sans ça,
+  // `no-store` refait un aller-retour par avatar à chaque rendu — un
+  // annuaire de 200 adhérents en paie le prix à chaque tri. Le cache est
+  // sûr parce qu'il est indexé sur l'URL, et que l'URL change à chaque
+  // nouvelle signature.
+  const restant = signedExp
+    ? Math.floor(Number(signedExp) - Date.now() / 1000)
+    : 0;
   res.setHeader(
     'Cache-Control',
-    isPublic
-      ? 'public, max-age=31536000, immutable'
+    restant > 0
+      ? `private, max-age=${restant}`
       : 'private, no-store, max-age=0',
   );
 }
