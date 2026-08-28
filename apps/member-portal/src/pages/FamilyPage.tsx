@@ -1,5 +1,6 @@
 import { useQuery } from '@apollo/client/react';
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { InviteFamilyMemberCta } from '../components/InviteFamilyMemberCta';
 import { JoinFamilyByPayerEmailCta } from '../components/JoinFamilyByPayerEmailCta';
 import { VIEWER_ALL_FAMILY_BILLING } from '../lib/viewer-documents';
@@ -471,6 +472,7 @@ function InvoicesTableAndCards({
               <th className="mp-num">Montant</th>
               <th className="mp-num">Payé</th>
               <th className="mp-num">Solde</th>
+              <th />
             </tr>
           </thead>
           <tbody>
@@ -500,6 +502,21 @@ function InvoicesTableAndCards({
                 </td>
                 <td className="mp-num">
                   {formatEuroCents(inv.balanceCents)}
+                </td>
+                <td className="mp-num">
+                  {/* Cette page n'a JAMAIS porté d'action de paiement : la
+                    * pastille « À payer » y est un simple libellé. Des
+                    * adhérents cliquaient dessus en attendant que le
+                    * paiement démarre. On mène désormais à l'écran qui
+                    * paie, facture déjà dépliée. */}
+                  {inv.balanceCents > 0 ? (
+                    <Link
+                      to={`/factures?facture=${inv.id}`}
+                      className="mp-invoice-pay-link"
+                    >
+                      Payer
+                    </Link>
+                  ) : null}
                 </td>
               </tr>
             ))}
@@ -531,6 +548,17 @@ function InvoicesTableAndCards({
                 Solde : {formatEuroCents(inv.balanceCents)}
               </span>
             </div>
+            {inv.balanceCents > 0 ? (
+              <Link
+                to={`/factures?facture=${inv.id}`}
+                className="mp-invoice-pay-link mp-invoice-pay-link--block"
+              >
+                <span className="material-symbols-outlined" aria-hidden>
+                  credit_card
+                </span>
+                Payer {formatEuroCents(inv.balanceCents)}
+              </Link>
+            ) : null}
             {inv.payments?.length ? (
               <ul className="mp-invoice-card__payments">
                 {inv.payments.map((p) => (

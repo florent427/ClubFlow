@@ -66,7 +66,13 @@ export function BillingPage() {
   );
 
   const [filter, setFilter] = useState<StatusFilter>('ALL');
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  // `?facture=<id>` : la page Famille et le tableau de bord envoient ici
+  // avec la facture déjà dépliée, pour que le bouton « Payer en ligne »
+  // soit visible d'emblée. Sans ça on atterrissait sur une liste repliée,
+  // et il fallait deviner qu'il faut cliquer la ligne.
+  const [expandedId, setExpandedId] = useState<string | null>(
+    () => new URLSearchParams(window.location.search).get('facture'),
+  );
   const [payingId, setPayingId] = useState<string | null>(null);
   const { showToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -232,9 +238,17 @@ export function BillingPage() {
               : 'Aucune facture pour ce filtre'
           }
           message={
-            invoices.length === 0
-              ? 'Les factures du club apparaissent ici dès qu’une cotisation est générée.'
-              : 'Essayez un autre onglet pour voir d’autres factures.'
+            invoices.length > 0
+              ? 'Essayez un autre onglet pour voir d’autres factures.'
+              : // Un adhérent qui n'est pas le payeur de son foyer ne voit
+                // aucune facture : le périmètre est calculé côté serveur sur
+                // le rôle PAYER. Lui afficher « aucune facture » sans autre
+                // explication laisse croire à un bug — c'est justement ce qui
+                // a été remonté.
+                'Les factures de votre foyer sont adressées à son payeur ' +
+                'désigné, qui seul peut les régler en ligne. Si vous devez ' +
+                'les payer vous-même, demandez au club de vous désigner ' +
+                'payeur de votre foyer.'
           }
         />
       ) : (

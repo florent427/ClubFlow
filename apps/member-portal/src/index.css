@@ -2199,6 +2199,36 @@ a.mp-pill-link:hover {
   color: #ba1a1a;
 }
 
+/* Lien de paiement des factures de la page Famille (tableau et cartes).
+ * Cette page listait les factures sans AUCUNE action : la pastille
+ * « À payer » n'y est qu'un libellé, et des adhérents cliquaient dessus en
+ * attendant que le paiement démarre. Classe dédiée plutôt que `.mp-btn` :
+ * celle-ci impose `width: 100%`, ce qui déformerait la cellule du tableau.
+ */
+.mp-invoice-pay-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: 0.5rem;
+  background: #000666;
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.mp-invoice-pay-link:hover {
+  filter: brightness(1.12);
+}
+
+.mp-invoice-pay-link--block {
+  width: 100%;
+  margin-top: 0.6rem;
+}
+
 .mp-invoice-card__amount {
   font-size: 1.15rem;
   font-weight: 900;
