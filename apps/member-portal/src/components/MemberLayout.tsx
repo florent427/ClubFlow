@@ -10,8 +10,17 @@ import type {
 } from '../lib/auth-types';
 import type { ClubQueryData } from '../lib/viewer-types';
 import { getClubId } from '../lib/storage';
-import { CLUB, VIEWER_ADMIN_SWITCH, VIEWER_ME } from '../lib/viewer-documents';
-import type { ViewerAdminSwitchData, ViewerMeData } from '../lib/viewer-types';
+import {
+  CLUB,
+  VIEWER_ADMIN_SWITCH,
+  VIEWER_FAMILY_BILLING,
+  VIEWER_ME,
+} from '../lib/viewer-documents';
+import type {
+  ViewerAdminSwitchData,
+  ViewerBillingData,
+  ViewerMeData,
+} from '../lib/viewer-types';
 import { ModuleGatedNavLink } from './ModuleGatedNavLink';
 import { PendingFamilyInvitesBanner } from './PendingFamilyInvitesBanner';
 import { PinGate } from './PinGate';
@@ -78,6 +87,25 @@ export function MemberLayout() {
       nextFetchPolicy: 'cache-first',
     },
   );
+  // Onglet « Factures » : il était conditionné au seul `canManageCart`
+  // (adulte ET payeur désigné). Un adhérent non payeur ne voyait donc
+  // AUCUN accès à ses factures — son seul point de contact était la
+  // pastille « À payer » de /famille, qui n'est pas une action. On ouvre
+  // l'onglet dès qu'il y a quelque chose à y voir ; la page explique
+  // elle-même le cas « vous n'êtes pas le payeur » quand la liste est
+  // vide.
+  const { data: billingData } = useQuery<ViewerBillingData>(
+    VIEWER_FAMILY_BILLING,
+    {
+      skip: !clubId || canManageCart,
+      fetchPolicy: 'cache-first',
+      errorPolicy: 'all',
+    },
+  );
+  const aDesFactures =
+    (billingData?.viewerFamilyBillingSummary?.invoices?.length ?? 0) > 0;
+  const voitLesFactures = canManageCart || aDesFactures;
+
   const activeCart = activeCartData?.viewerActiveMembershipCart ?? null;
   const cartItemCount =
     activeCart && activeCart.status === 'OPEN'
@@ -164,7 +192,7 @@ export function MemberLayout() {
               ) : null}
             </NavLink>
           ) : null}
-          {canManageMembershipCart ? (
+          {voitLesFactures ? (
             <NavLink to="/factures" className={navClass}>
               <span className="mp-ico material-symbols-outlined">
                 receipt_long

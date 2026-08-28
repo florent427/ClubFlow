@@ -202,11 +202,14 @@ export function DashboardPage() {
       ) : null}
 
       {/* KPIs payeur (Reste à payer / Déjà réglé) — cliquables vers
-          /famille. Affichés uniquement si l'utilisateur est PAYER. */}
+          /factures. Affichés uniquement si l'utilisateur est PAYER.
+          Ils menaient à /famille, qui liste les factures SANS aucune action
+          de paiement : le parcours naturel depuis « Reste à payer »
+          aboutissait donc à un écran où l'on ne peut pas payer. */}
       {isPayer ? (
         <div className="mp-kpi-row">
           <Link
-            to="/famille"
+            to="/factures"
             className={`mp-kpi-tile${totalBalance > 0 ? ' mp-kpi-tile--warm' : ''}`}
           >
             <span
@@ -222,7 +225,7 @@ export function DashboardPage() {
                 : formatEuroCents(totalBalance)}
             </span>
           </Link>
-          <Link to="/famille" className="mp-kpi-tile mp-kpi-tile--cool">
+          <Link to="/factures" className="mp-kpi-tile mp-kpi-tile--cool">
             <span
               className="material-symbols-outlined mp-kpi-tile__ico"
               aria-hidden="true"
