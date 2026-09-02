@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.35.2](https://github.com/florent427/ClubFlow/compare/v0.35.1...v0.35.2) (2026-08-28)
+
+
+### 🐛 Bug Fixes
+
+* **portail:** la pastille « À payer » de la page Famille ne menait nulle part ([e72df58](https://github.com/florent427/ClubFlow/commit/e72df581a8dee93c0715f98c3de1534c377285a6))
+* **portail:** la pastille « À payer » de la page Famille ne menait nulle part ([15ae9cb](https://github.com/florent427/ClubFlow/commit/15ae9cb5940794b0702b6f6234cbc8d006e99ab7))
+
 ## [0.35.1](https://github.com/florent427/ClubFlow/compare/v0.35.0...v0.35.1) (2026-08-26)
 
 
