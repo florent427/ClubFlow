@@ -1005,6 +1005,15 @@ export const UPDATE_CLUB_MEMBER = gql`
   }
 `;
 
+export const SET_CLUB_MEMBER_STATUS = gql`
+  mutation SetClubMemberStatus($id: ID!, $status: MemberStatus!) {
+    setClubMemberStatus(id: $id, status: $status) {
+      id
+      status
+    }
+  }
+`;
+
 export const DELETE_CLUB_MEMBER = gql`
   mutation DeleteClubMember($id: ID!) {
     deleteClubMember(id: $id)
