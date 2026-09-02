@@ -15,6 +15,7 @@ import {
   ISSUE_TELEGRAM_MEMBER_LINK,
   CREATE_CLUB_FAMILY,
   DELETE_CLUB_MEMBER,
+  SET_CLUB_MEMBER_STATUS,
   REMOVE_CLUB_MEMBER_FROM_FAMILY,
   SET_CLUB_FAMILY_PAYER,
   TRANSFER_CLUB_MEMBER_TO_FAMILY,
@@ -24,6 +25,7 @@ import {
 import { MEMBER_CATALOG_FIELD_LABELS } from '../../lib/member-field-labels';
 import type {
   DeleteMemberMutationData,
+  SetMemberStatusMutationData,
   FamiliesQueryData,
   GradeLevelsQueryData,
   MemberFieldLayoutQueryData,
@@ -498,6 +500,31 @@ export function MemberDetailDrawer({
     },
   });
 
+  /**
+   * Désactivation d'une fiche.
+   *
+   * C'est le seul geste possible sur un doublon déjà facturé : la suppression
+   * est refusée par l'API dès qu'une facture émise ou payée référence le
+   * membre, et c'est voulu — elle emporterait la ligne de facture, donc la
+   * trace comptable du paiement et de son éventuel avoir.
+   */
+  const [setMemberStatus, { loading: settingStatus }] =
+    useMutation<SetMemberStatusMutationData>(SET_CLUB_MEMBER_STATUS, {
+      onCompleted: (d) => {
+        showToast(
+          d.setClubMemberStatus.status === 'ACTIVE'
+            ? 'Fiche réactivée.'
+            : 'Fiche désactivée.',
+          'success',
+        );
+        refetchAll();
+      },
+      onError: (e) => {
+        setFormError(e.message);
+        showToast(e.message, 'error');
+      },
+    });
+
   const [removeFromFamily, { loading: removingFamily }] = useMutation(
     REMOVE_CLUB_MEMBER_FROM_FAMILY,
     {
@@ -716,6 +743,22 @@ export function MemberDetailDrawer({
       return;
     }
     await deleteMember({ variables: { id: member.id } });
+  }
+
+  async function onToggleStatus() {
+    if (!member) return;
+    const next = member.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    if (
+      next === 'INACTIVE' &&
+      !window.confirm(
+        `Désactiver la fiche de « ${member.firstName} ${member.lastName} » ? ` +
+          'Elle reste consultable et conserve son historique de facturation, ' +
+          'mais sort des listes filtrées sur les membres actifs.',
+      )
+    ) {
+      return;
+    }
+    await setMemberStatus({ variables: { id: member.id, status: next } });
   }
 
   async function onDetachFamily() {
@@ -1390,6 +1433,23 @@ export function MemberDetailDrawer({
               disabled={updating}
             >
               {updating ? 'Enregistrement…' : 'Enregistrer'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={settingStatus}
+              onClick={() => void onToggleStatus()}
+              title={
+                member.status === 'ACTIVE'
+                  ? 'Sortir cette fiche des membres actifs sans rien perdre de son historique'
+                  : 'Remettre cette fiche parmi les membres actifs'
+              }
+            >
+              {settingStatus
+                ? 'Enregistrement…'
+                : member.status === 'ACTIVE'
+                  ? 'Désactiver la fiche'
+                  : 'Réactiver la fiche'}
             </button>
             <button
               type="button"

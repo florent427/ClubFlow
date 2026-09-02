@@ -247,6 +247,10 @@ export type UpdateMemberMutationData = {
   };
 };
 
+export type SetMemberStatusMutationData = {
+  setClubMemberStatus: { id: string; status: 'ACTIVE' | 'INACTIVE' };
+};
+
 export type DeleteMemberMutationData = {
   deleteClubMember: boolean;
 };
