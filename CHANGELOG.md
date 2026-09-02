@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.37.0](https://github.com/florent427/ClubFlow/compare/v0.36.0...v0.37.0) (2026-09-02)
+
+
+### ✨ Features
+
+* **membres:** désactiver ou réactiver une fiche depuis son drawer ([2dbf361](https://github.com/florent427/ClubFlow/commit/2dbf36133bdea187b4343abf13dcbececa15aac8))
+* **membres:** désactiver ou réactiver une fiche depuis son drawer ([9cba87c](https://github.com/florent427/ClubFlow/commit/9cba87c0d0f9a91b90650cebb8e73c6f7a228192))
+
 ## [0.36.0](https://github.com/florent427/ClubFlow/compare/v0.35.2...v0.36.0) (2026-09-02)
 
 
