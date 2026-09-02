@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.36.0](https://github.com/florent427/ClubFlow/compare/v0.35.2...v0.36.0) (2026-09-02)
+
+
+### ✨ Features
+
+* **facturation:** rembourser un encaissement Stripe depuis le drawer de facture ([6454c53](https://github.com/florent427/ClubFlow/commit/6454c53e792df36b4beddf709df42960be6c85f7))
+* **facturation:** rembourser un encaissement Stripe depuis le drawer de facture ([e37402e](https://github.com/florent427/ClubFlow/commit/e37402ecc3eee28f2420bb7d0554dda47c14ee3d))
+
 ## [0.35.2](https://github.com/florent427/ClubFlow/compare/v0.35.1...v0.35.2) (2026-08-28)
 
 
