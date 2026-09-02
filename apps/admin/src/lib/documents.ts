@@ -806,7 +806,25 @@ export const CLUB_INVOICE_DETAIL = gql`
         paidByFirstName
         paidByLastName
         createdAt
+        refundedPaymentId
       }
+    }
+  }
+`;
+
+export const REFUND_CLUB_PAYMENT = gql`
+  mutation RefundClubPayment(
+    $paymentId: String!
+    $reason: String!
+    $amountCents: Int
+  ) {
+    refundClubPayment(
+      paymentId: $paymentId
+      reason: $reason
+      amountCents: $amountCents
+    ) {
+      refundId
+      amountCents
     }
   }
 `;
