@@ -5,6 +5,7 @@ import {
   CREATE_CLUB_CREDIT_NOTE,
   ISSUE_CLUB_INVOICE,
   RECORD_CLUB_MANUAL_PAYMENT,
+  REFUND_CLUB_PAYMENT,
   VOID_CLUB_INVOICE,
 } from '../../lib/documents';
 import type {
@@ -15,8 +16,10 @@ import type {
   InvoiceStatusStr,
   IssueClubInvoiceMutationData,
   RecordClubManualPaymentMutationData,
+  RefundClubPaymentMutationData,
   VoidClubInvoiceMutationData,
 } from '../../lib/types';
+import { computeRefundableByPaymentId } from '../../lib/refundable-payments';
 import { Drawer } from '../../components/ui/Drawer';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
 import { LoadingState } from '../../components/ui/LoadingState';
@@ -151,6 +154,8 @@ export function InvoiceDetailDrawer({
     useMutation<RecordClubManualPaymentMutationData>(RECORD_CLUB_MANUAL_PAYMENT);
   const [createCreditNote, creditNoteState] =
     useMutation<CreateClubCreditNoteMutationData>(CREATE_CLUB_CREDIT_NOTE);
+  const [refundPayment, refundState] =
+    useMutation<RefundClubPaymentMutationData>(REFUND_CLUB_PAYMENT);
 
   const [confirmKind, setConfirmKind] = useState<ConfirmKind>(null);
   const [voidReason, setVoidReason] = useState('');
@@ -159,6 +164,13 @@ export function InvoiceDetailDrawer({
   const [payMethod, setPayMethod] = useState<ClubPaymentMethodStr>('MANUAL_CASH');
   const [payRef, setPayRef] = useState('');
   const [payError, setPayError] = useState<string | null>(null);
+
+  // Remboursement Stripe : l'encaissement ciblé, null = formulaire fermé.
+  const [refundPaymentId, setRefundPaymentId] = useState<string | null>(null);
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundReason, setRefundReason] = useState('');
+  const [refundError, setRefundError] = useState<string | null>(null);
+  const [refundNotice, setRefundNotice] = useState<string | null>(null);
 
   const [creditOpen, setCreditOpen] = useState(false);
   const [creditReason, setCreditReason] = useState('');
@@ -182,6 +194,18 @@ export function InvoiceDetailDrawer({
     !!inv && !isCreditNote && (inv.status === 'OPEN' || inv.status === 'PAID');
   // Téléchargement PDF : dès qu'un document existe (même brouillon, utile pour prévisualiser)
   const canDownloadPdf = !!inv;
+
+  const refundableByPaymentId = useMemo(
+    () => computeRefundableByPaymentId(inv?.payments ?? []),
+    [inv],
+  );
+
+  // Un avoir manuel sur une facture encaissée par carte ne rend PAS l'argent :
+  // on le signale plutôt que de laisser le trésorier le découvrir plus tard.
+  const hasRefundableStripePayment = useMemo(
+    () => [...refundableByPaymentId.values()].some((c) => c > 0),
+    [refundableByPaymentId],
+  );
 
   const totalAdjustments = useMemo(() => {
     if (!inv) return 0;
@@ -282,8 +306,69 @@ export function InvoiceDetailDrawer({
     }
   }
 
+  function handleOpenRefundForm(paymentId: string) {
+    const remaining = refundableByPaymentId.get(paymentId) ?? 0;
+    // Les deux formulaires visent le même geste par deux chemins opposés :
+    // les afficher ensemble inviterait à faire les deux.
+    setCreditOpen(false);
+    setRefundPaymentId(paymentId);
+    setRefundAmount((remaining / 100).toFixed(2));
+    setRefundReason('');
+    setRefundError(null);
+    setRefundNotice(null);
+  }
+
+  async function handleRefund(e: React.FormEvent) {
+    e.preventDefault();
+    if (!refundPaymentId) return;
+    const reasonTrim = refundReason.trim();
+    if (!reasonTrim) {
+      setRefundError('Motif obligatoire.');
+      return;
+    }
+    const remaining = refundableByPaymentId.get(refundPaymentId) ?? 0;
+    const normalized = refundAmount.replace(',', '.').trim();
+    const cents = Math.round(Number(normalized) * 100);
+    if (!Number.isFinite(cents) || cents <= 0) {
+      setRefundError('Montant invalide.');
+      return;
+    }
+    if (cents > remaining) {
+      setRefundError(
+        `Le montant dépasse le solde remboursable (${formatEuros(remaining)}).`,
+      );
+      return;
+    }
+    setRefundError(null);
+    try {
+      const res = await refundPayment({
+        variables: {
+          paymentId: refundPaymentId,
+          reason: reasonTrim,
+          amountCents: cents,
+        },
+      });
+      const rendered = res.data?.refundClubPayment.amountCents ?? cents;
+      setRefundPaymentId(null);
+      // L'enregistrement en base (paiement négatif + avoir) est fait par le
+      // webhook Stripe, pas par la mutation : le refetch qui suit peut donc
+      // ne rien montrer encore. On le dit, sinon le trésorier croit à un
+      // échec et relance le remboursement.
+      setRefundNotice(
+        `${formatEuros(rendered)} remboursés sur la carte. ` +
+          "L'avoir correspondant apparaîtra ici dès la confirmation de Stripe " +
+          '(quelques secondes).',
+      );
+      await refetch();
+      onChanged();
+    } catch (err) {
+      setRefundError(err instanceof Error ? err.message : 'Erreur');
+    }
+  }
+
   function handleOpenCreditForm() {
     if (!inv) return;
+    setRefundPaymentId(null);
     setCreditReason('');
     // Par défaut on propose un avoir total = montant facture
     setCreditAmount((inv.amountCents / 100).toFixed(2));
@@ -630,17 +715,34 @@ export function InvoiceDetailDrawer({
                       p.paidByFirstName || p.paidByLastName
                         ? `${p.paidByFirstName ?? ''} ${p.paidByLastName ?? ''}`.trim()
                         : null;
+                    const refundable = refundableByPaymentId.get(p.id) ?? 0;
+                    const isRefund = p.amountCents < 0;
                     return (
                       <li key={p.id} className="cf-invoice-payment">
                         <div>
                           <div className="cf-invoice-payment__method">
+                            {isRefund ? 'Remboursement · ' : ''}
                             {METHOD_LABELS[p.method]}
                             {p.externalRef ? ` · ${p.externalRef}` : ''}
                           </div>
                           <div className="cf-invoice-payment__meta">
                             {formatDateTime(p.createdAt)}
                             {payer ? ` · ${payer}` : ''}
+                            {refundable > 0 && refundable < p.amountCents
+                              ? ` · ${formatEuros(refundable)} encore remboursables`
+                              : ''}
                           </div>
+                          {refundable > 0 ? (
+                            <button
+                              type="button"
+                              className="btn-ghost"
+                              onClick={() => handleOpenRefundForm(p.id)}
+                              disabled={refundState.loading}
+                              title="Rembourser cet encaissement sur la carte de l’adhérent"
+                            >
+                              Rembourser
+                            </button>
+                          ) : null}
                         </div>
                         <div className="cf-invoice-payment__amount">
                           {formatEuros(p.amountCents)}
@@ -745,6 +847,78 @@ export function InvoiceDetailDrawer({
               </form>
             ) : null}
 
+            {refundNotice ? (
+              <p className="cf-invoice-detail__empty" role="status">
+                {refundNotice}
+              </p>
+            ) : null}
+
+            {refundPaymentId ? (
+              <form className="cf-invoice-pay-form" onSubmit={handleRefund}>
+                <h3 className="cf-invoice-detail__section-title">
+                  Rembourser sur la carte
+                </h3>
+                <p
+                  className="cf-invoice-detail__empty"
+                  style={{ marginTop: 0 }}
+                >
+                  L’argent est rendu à l’adhérent via Stripe, et l’avoir
+                  correspondant est émis automatiquement. Inutile d’en créer
+                  un à la main.
+                </p>
+                <label className="cf-field">
+                  <span className="cf-field__label">Motif *</span>
+                  <textarea
+                    className="cf-field__input"
+                    value={refundReason}
+                    onChange={(e) => setRefundReason(e.target.value)}
+                    rows={2}
+                    maxLength={500}
+                    placeholder="Inscription annulée, erreur de montant…"
+                    required
+                  />
+                </label>
+                <label className="cf-field">
+                  <span className="cf-field__label">
+                    Montant (€) — max{' '}
+                    {formatEuros(
+                      refundableByPaymentId.get(refundPaymentId) ?? 0,
+                    )}
+                  </span>
+                  <input
+                    className="cf-field__input"
+                    type="text"
+                    inputMode="decimal"
+                    value={refundAmount}
+                    onChange={(e) => setRefundAmount(e.target.value)}
+                    required
+                  />
+                </label>
+                {refundError ? (
+                  <p className="cf-form-error" role="alert">
+                    {refundError}
+                  </p>
+                ) : null}
+                <div className="cf-form-actions">
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => setRefundPaymentId(null)}
+                    disabled={refundState.loading}
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn-primary"
+                    disabled={refundState.loading}
+                  >
+                    {refundState.loading ? 'Remboursement…' : 'Rembourser'}
+                  </button>
+                </div>
+              </form>
+            ) : null}
+
             {creditOpen ? (
               <form
                 className="cf-invoice-pay-form"
@@ -760,6 +934,15 @@ export function InvoiceDetailDrawer({
                   Un avoir constate un remboursement ou une annulation partielle
                   sans toucher à la facture d’origine.
                 </p>
+                {hasRefundableStripePayment ? (
+                  <p className="cf-form-error" role="alert">
+                    Cette facture a été réglée par carte : un avoir ne rend PAS
+                    l’argent à l’adhérent. Pour le rembourser réellement,
+                    fermez ce formulaire et utilisez « Rembourser » sur
+                    l’encaissement concerné — l’avoir sera émis
+                    automatiquement.
+                  </p>
+                ) : null}
                 <label className="cf-field">
                   <span className="cf-field__label">Motif *</span>
                   <textarea

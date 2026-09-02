@@ -43,6 +43,15 @@ export class InvoicePaymentGraph {
   @Field(() => String, { nullable: true }) paidByFirstName!: string | null;
   @Field(() => String, { nullable: true }) paidByLastName!: string | null;
   @Field(() => Date) createdAt!: Date;
+
+  @Field(() => ID, {
+    nullable: true,
+    description:
+      "Encaissement que cette ligne rembourse, quand elle est un remboursement " +
+      "(montant négatif) — sinon null. Permet de calculer le solde encore " +
+      "remboursable d'un encaissement sans interroger Stripe.",
+  })
+  refundedPaymentId!: string | null;
 }
 
 @ObjectType()

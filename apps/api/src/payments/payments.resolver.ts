@@ -279,6 +279,7 @@ export class PaymentsResolver {
         paidByLastName:
           p.paidByMember?.lastName ?? p.paidByContact?.lastName ?? null,
         createdAt: p.createdAt,
+        refundedPaymentId: p.refundedPaymentId ?? null,
       })),
       isCreditNote: inv.isCreditNote,
       parentInvoiceId: inv.parentInvoiceId ?? null,

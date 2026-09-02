@@ -604,6 +604,8 @@ export type ClubInvoiceDetailQueryData = {
       paidByFirstName: string | null;
       paidByLastName: string | null;
       createdAt: string;
+      /** Encaissement remboursé par cette ligne, si c'en est un. */
+      refundedPaymentId: string | null;
     }[];
   };
 };
@@ -614,6 +616,10 @@ export type IssueClubInvoiceMutationData = {
 
 export type VoidClubInvoiceMutationData = {
   voidClubInvoice: { id: string; status: InvoiceStatusStr; label: string };
+};
+
+export type RefundClubPaymentMutationData = {
+  refundClubPayment: { refundId: string; amountCents: number };
 };
 
 export type CreateClubCreditNoteMutationData = {
