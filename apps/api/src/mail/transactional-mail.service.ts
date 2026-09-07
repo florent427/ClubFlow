@@ -327,6 +327,101 @@ export class TransactionalMailService {
     });
   }
 
+  /**
+   * Notification au club d'un message reçu via le formulaire de contact du
+   * site vitrine. Destinataire : `Club.contactEmail`. Le Reply-To pointe
+   * sur le visiteur pour que le bureau réponde d'un simple « Répondre ».
+   *
+   * Fallback sender plateforme (même choix que la confirmation d'inscription
+   * à un événement public) : le message d'un visiteur ne doit pas se perdre
+   * parce que le club n'a pas encore validé son domaine d'envoi.
+   */
+  async sendVitrineContactMessage(
+    clubId: string,
+    to: string,
+    options: {
+      clubName: string;
+      visitorName: string;
+      visitorEmail: string;
+      visitorPhone: string | null;
+      message: string;
+    },
+  ): Promise<void> {
+    const trimmed = to.trim();
+    if (!trimmed || !trimmed.includes('@')) {
+      throw new BadRequestException('Adresse e-mail invalide');
+    }
+    const profile = await this.domains.getAuthMailProfile(clubId);
+    const { clubName, visitorEmail, visitorPhone, message } = options;
+    // Le nom part dans l'en-tête Subject : pas de retour à la ligne, taille bornée.
+    const visitorName =
+      options.visitorName.replace(/[\r\n\t]+/g, ' ').trim() || 'Visiteur';
+    const safeClub = escapeHtml(clubName);
+    const safeName = escapeHtml(visitorName);
+    const safeEmail = escapeHtml(visitorEmail);
+    const safePhone = visitorPhone ? escapeHtml(visitorPhone) : null;
+    const safeMessage = escapeHtml(message);
+    const subject = `${clubName} — Nouveau message de ${visitorName.slice(0, 80)} via le site`;
+    const phoneRow = safePhone
+      ? `<tr><td style="padding:2px 12px 2px 0;color:#64748b;">Téléphone</td><td style="padding:2px 0;">${safePhone}</td></tr>`
+      : '';
+    const html = `
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
+<body style="margin:0;padding:0;background:#f4f6f8;font-family:Georgia,'Times New Roman',serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f6f8;padding:24px 12px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(15,23,42,0.08);">
+        <tr><td style="background:linear-gradient(135deg,#b45309 0%,#78350f 100%);padding:28px 24px;text-align:center;">
+          <p style="margin:0;font-size:13px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.85);">ClubFlow</p>
+          <h1 style="margin:8px 0 0;font-size:22px;line-height:1.25;color:#ffffff;font-weight:600;">${safeClub}</h1>
+        </td></tr>
+        <tr><td style="padding:28px 24px 8px;color:#1e293b;font-size:16px;line-height:1.6;">
+          <p style="margin:0 0 16px;">Nouveau message reçu via le formulaire de contact du site.</p>
+          <table role="presentation" cellspacing="0" cellpadding="0" style="font-size:15px;color:#1e293b;">
+            <tr><td style="padding:2px 12px 2px 0;color:#64748b;">Nom</td><td style="padding:2px 0;"><strong>${safeName}</strong></td></tr>
+            <tr><td style="padding:2px 12px 2px 0;color:#64748b;">E-mail</td><td style="padding:2px 0;"><a href="mailto:${safeEmail}" style="color:#b45309;">${safeEmail}</a></td></tr>
+            ${phoneRow}
+          </table>
+        </td></tr>
+        <tr><td style="padding:8px 24px 24px;">
+          <div style="white-space:pre-wrap;padding:16px;background:#f8fafc;border-left:4px solid #b45309;border-radius:6px;color:#1e293b;font-size:15px;line-height:1.6;">${safeMessage}</div>
+        </td></tr>
+        <tr><td style="padding:0 24px 24px;color:#64748b;font-size:13px;line-height:1.5;border-top:1px solid #e2e8f0;">
+          <p style="margin:16px 0 0;">Répondez directement à cet e-mail pour joindre ${safeName} (${safeEmail}).</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`.trim();
+    const text = [
+      `Nouveau message reçu via le formulaire de contact du site ${clubName}.`,
+      '',
+      `Nom : ${visitorName}`,
+      `E-mail : ${visitorEmail}`,
+      visitorPhone ? `Téléphone : ${visitorPhone}` : null,
+      '',
+      'Message :',
+      message,
+      '',
+      `Répondez directement à cet e-mail pour joindre ${visitorName}.`,
+    ]
+      .filter((line) => line !== null)
+      .join('\n');
+    await this.transport.sendEmail({
+      clubId,
+      kind: 'transactional',
+      from: profile.from,
+      to: trimmed,
+      replyTo: visitorEmail,
+      subject,
+      html,
+      text,
+    });
+  }
+
   async sendTestEmail(clubId: string, to: string): Promise<void> {
     const trimmed = to.trim();
     if (!trimmed || !trimmed.includes('@')) {

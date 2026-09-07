@@ -1,9 +1,11 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { TransactionalMailService } from '../mail/transactional-mail.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -11,16 +13,25 @@ import { PrismaService } from '../prisma/prisma.service';
  *
  * Comportement :
  *  - cherche ou crée un `User` avec l'e-mail (emailVerifiedAt reste null)
- *  - crée un `Contact` scopé au club si inexistant
- *  - journalise le message dans `Contact.createdAt` + met à jour le
- *    `displayName` du User avec prénom+nom si fourni
+ *  - crée un `Contact` scopé au club si inexistant (téléphone inclus)
+ *  - transmet le message par e-mail à `Club.contactEmail`, Reply-To sur
+ *    l'adresse du visiteur
  *  - retourne un résultat générique (pas de fuite d'info sur l'existence)
+ *
+ * Ordre volontaire : le prospect est écrit AVANT l'envoi. Un échec SMTP ne
+ * doit pas faire perdre la fiche, et le visiteur qui réessaie retombe sur
+ * des upserts idempotents.
  *
  * Rate-limit : imposé côté resolver via `@Throttle` (10/min/IP).
  */
 @Injectable()
 export class VitrineContactService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly log = new Logger(VitrineContactService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mail: TransactionalMailService,
+  ) {}
 
   async submit(input: {
     clubSlug: string;
@@ -41,12 +52,13 @@ export class VitrineContactService {
 
     const club = await this.prisma.club.findUnique({
       where: { slug: input.clubSlug },
-      select: { id: true, name: true },
+      select: { id: true, name: true, contactEmail: true },
     });
     if (!club) throw new NotFoundException('Club introuvable.');
 
     const firstName = (input.firstName ?? '').trim();
     const lastName = (input.lastName ?? '').trim();
+    const phone = input.phone?.trim() || null;
     const displayName =
       `${firstName} ${lastName}`.trim() || email.split('@')[0] || 'Visiteur';
 
@@ -72,23 +84,51 @@ export class VitrineContactService {
         clubId: club.id,
         firstName: firstName || user.displayName.split(' ')[0] || 'Visiteur',
         lastName: lastName || 'Prospect',
+        phone,
       },
       update: {
         // Pas d'écrasement si déjà existant
       },
     });
 
-    // TODO(phase 2) : persister le message dans une table dédiée
-    // `VitrineContactMessage` avec clubId, contactId, body, phone, createdAt.
-    // En Phase 1, on se contente de créer/mettre à jour le contact : le
-    // staff club voit le prospect dans l'annuaire et peut déclencher une
-    // prise de contact manuelle. Le `message` est loggé pour audit :
-    console.log(
-      `[vitrine.contact] club=${club.id} email=${email} phone=${
-        input.phone ?? ''
-      } message_len=${message.length}`,
-    );
+    if (!club.contactEmail) {
+      // Explicite à dessein : sans adresse de contact, le message du visiteur
+      // n'est transmis nulle part. Seule la fiche prospect reste visible dans
+      // l'annuaire du club.
+      this.log.warn(
+        `[vitrine.contact] club=${club.id} : message de ${email} reçu mais ` +
+          `aucun e-mail de contact configuré — le bureau n'est pas averti ` +
+          `(prospect créé seulement).`,
+      );
+      return { success: true, message: null };
+    }
 
+    try {
+      await this.mail.sendVitrineContactMessage(club.id, club.contactEmail, {
+        clubName: club.name,
+        visitorName: `${firstName} ${lastName}`.trim(),
+        visitorEmail: email,
+        visitorPhone: phone,
+        message,
+      });
+    } catch (err) {
+      // Le prospect est déjà écrit ; on le dit au visiteur pour qu'il
+      // réessaie plutôt que de croire son message parti.
+      this.log.error(
+        `[vitrine.contact] message NON TRANSMIS club=${club.id} from=${email} ` +
+          `to=${club.contactEmail} : ${(err as Error).message}`,
+      );
+      return {
+        success: false,
+        message:
+          'Votre message n’a pas pu être transmis. Réessayez dans quelques minutes.',
+      };
+    }
+
+    this.log.log(
+      `[vitrine.contact] transmis club=${club.id} from=${email} ` +
+        `to=${club.contactEmail} message_len=${message.length}`,
+    );
     return { success: true, message: null };
   }
 }

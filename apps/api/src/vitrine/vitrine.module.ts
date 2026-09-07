@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { GqlThrottlerGuard } from '../common/guards/gql-throttler.guard';
 import { PrismaModule } from '../prisma/prisma.module';
 import { MediaModule } from '../media/media.module';
+import { MailModule } from '../mail/mail.module';
 import { AiModule } from '../ai/ai.module';
 import { VitrineAdminResolver } from './vitrine-admin.resolver';
 import { VitrineCategoryService } from './vitrine-category.service';
@@ -18,6 +19,7 @@ import { VitrineSettingsService } from './vitrine-settings.service';
   imports: [
     PrismaModule,
     MediaModule,
+    MailModule,
     forwardRef(() => AiModule),
     JwtModule.register({
       secret: process.env.JWT_SECRET ?? 'change-me-in-development',
