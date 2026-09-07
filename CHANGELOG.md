@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.38.0](https://github.com/florent427/ClubFlow/compare/v0.37.0...v0.38.0) (2026-09-07)
+
+
+### ✨ Features
+
+* **vitrine:** transmettre le formulaire de contact par e-mail au club ([291a44e](https://github.com/florent427/ClubFlow/commit/291a44e059434c7425e648e232e2ef5a8b104c85))
+* **vitrine:** transmettre le formulaire de contact par e-mail au club ([670bd5b](https://github.com/florent427/ClubFlow/commit/670bd5b451233b2a88358e1ae2c2595f86550e48))
+
 ## [0.37.0](https://github.com/florent427/ClubFlow/compare/v0.36.0...v0.37.0) (2026-09-02)
 
 
