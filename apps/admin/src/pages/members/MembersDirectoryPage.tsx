@@ -1,8 +1,10 @@
 import { useQuery } from '@apollo/client/react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { QuickMessageModal } from '../../components/QuickMessageModal';
 import { QueryError } from '../../components/QueryError';
+import { CardList, CardListItem } from '../../components/ui/CardList';
+import { useIsMobile } from '../../lib/use-media-query';
 import {
   CLUB_DYNAMIC_GROUPS,
   CLUB_GRADE_LEVELS,
@@ -61,9 +63,53 @@ function selectionHint(count: number): string {
   return `${count} sélectionné${count > 1 ? 's' : ''}`;
 }
 
+function initialsOf(firstName: string, lastName: string): string {
+  return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+}
+
+/**
+ * Sur mobile, la grille de filtres (grade, âge, rôle, statut) repousserait
+ * l'annuaire sous la ligne de flottaison : elle se replie derrière un bouton
+ * qui affiche le nombre de filtres actifs. Sur desktop, rendu tel quel.
+ */
+function FiltersDisclosure({
+  mobile,
+  activeCount,
+  children,
+}: {
+  mobile: boolean;
+  activeCount: number;
+  children: ReactNode;
+}) {
+  if (!mobile) return <>{children}</>;
+  return (
+    <details className="cf-filters-disclosure" open={activeCount > 0}>
+      <summary>
+        <span className="cf-filters-disclosure__label">
+          <span className="material-symbols-outlined" aria-hidden>
+            tune
+          </span>
+          Filtres
+          {activeCount > 0 ? (
+            <span className="cf-filters-disclosure__count">{activeCount}</span>
+          ) : null}
+        </span>
+        <span
+          className="material-symbols-outlined cf-filters-disclosure__chevron"
+          aria-hidden
+        >
+          expand_more
+        </span>
+      </summary>
+      {children}
+    </details>
+  );
+}
+
 export function MembersDirectoryPage() {
   const { drawerMemberId, setDrawerMemberId } = useMembersUi();
   const commEnabled = useClubCommunicationEnabled();
+  const isMobile = useIsMobile();
   const [directorySearch, setDirectorySearch] = useState('');
   const [filterGradeIds, setFilterGradeIds] = useState<string[]>([]);
   const [filterAgeMin, setFilterAgeMin] = useState('');
@@ -119,12 +165,14 @@ export function MembersDirectoryPage() {
   // section du bas (doublon avec la sidebar / sous-menu /members/dynamic-groups).
   void groups;
 
-  const hasActiveFilters =
-    filterGradeIds.length > 0 ||
-    filterAgeMin.trim() !== '' ||
-    filterAgeMax.trim() !== '' ||
-    filterRoleKeys.length > 0 ||
-    filterStatuses.length > 0;
+  const activeFilterCount = [
+    filterGradeIds.length > 0,
+    filterAgeMin.trim() !== '',
+    filterAgeMax.trim() !== '',
+    filterRoleKeys.length > 0,
+    filterStatuses.length > 0,
+  ].filter(Boolean).length;
+  const hasActiveFilters = activeFilterCount > 0;
 
   const filteredMembers = useMemo(() => {
     let rows = members;
@@ -285,6 +333,7 @@ export function MembersDirectoryPage() {
               autoComplete="off"
             />
           </label>
+          <FiltersDisclosure mobile={isMobile} activeCount={activeFilterCount}>
           <div className="members-directory__filters" aria-label="Filtres annuaire">
             <div className="field members-filter-dropdown">
               <span>Grade</span>
@@ -426,6 +475,7 @@ export function MembersDirectoryPage() {
               </div>
             ) : null}
           </div>
+          </FiltersDisclosure>
           {loading ? (
             <p className="muted">Chargement…</p>
           ) : error ? (
@@ -436,6 +486,93 @@ export function MembersDirectoryPage() {
             <p className="muted">
               Aucun membre ne correspond à la recherche ou aux filtres.
             </p>
+          ) : isMobile ? (
+            <CardList ariaLabel="Annuaire des membres">
+              {filteredMembers.map((m) => (
+                <CardListItem
+                  key={m.id}
+                  id={`member-row-${m.id}`}
+                  leading={
+                    m.photoUrl ? (
+                      <img
+                        src={m.photoUrl}
+                        alt=""
+                        className="cf-cardlist__avatar"
+                        width={40}
+                        height={40}
+                        draggable={false}
+                      />
+                    ) : (
+                      <span className="cf-cardlist__avatar" aria-hidden>
+                        {initialsOf(m.firstName, m.lastName)}
+                      </span>
+                    )
+                  }
+                  title={`${m.firstName} ${m.lastName}`}
+                  subtitle={
+                    m.email ??
+                    (m.birthDate ? `Né(e) le ${formatDate(m.birthDate)}` : undefined)
+                  }
+                  meta={m.gradeLevel?.label}
+                  footer={
+                    <>
+                      <span
+                        className={
+                          m.status === 'ACTIVE'
+                            ? 'members-status members-status--ok'
+                            : 'members-status'
+                        }
+                      >
+                        {m.status === 'ACTIVE' ? 'Actif' : 'Inactif'}
+                      </span>
+                      {m.roles.map((r) => (
+                        <span key={r} className="members-pill">
+                          {r}
+                        </span>
+                      ))}
+                      {m.customRoles.map((r) => (
+                        <span key={r.id} className="members-pill members-pill--soft">
+                          {r.label}
+                        </span>
+                      ))}
+                      {m.family ? (
+                        <span
+                          className={
+                            m.familyLink?.linkRole === 'PAYER'
+                              ? 'members-pill'
+                              : 'members-pill members-pill--soft'
+                          }
+                        >
+                          {m.familyLink?.linkRole === 'PAYER' ? 'Payeur' : 'Foyer'}
+                          {' · '}
+                          {m.family.label ?? 'Sans nom'}
+                        </span>
+                      ) : null}
+                    </>
+                  }
+                  trailing={
+                    commEnabled ? (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-tight members-table__quick-msg-btn"
+                        aria-label={`Message à ${m.firstName} ${m.lastName}`}
+                        onClick={() =>
+                          setQuickMember({
+                            id: m.id,
+                            label: `${m.firstName} ${m.lastName}`,
+                          })
+                        }
+                      >
+                        <span className="material-symbols-outlined" aria-hidden>
+                          mail
+                        </span>
+                      </button>
+                    ) : undefined
+                  }
+                  onOpen={() => setDrawerMemberId(m.id)}
+                />
+              ))}
+            </CardList>
           ) : (
             <div className="members-table-wrap">
               <table className="members-table">

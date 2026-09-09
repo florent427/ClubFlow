@@ -124,6 +124,15 @@ export function ClubSwitcher() {
       </button>
 
       {open ? (
+        // Voile sous le menu : invisible en desktop, il assombrit la page
+        // derrière la feuille basse sur mobile et la referme au tap.
+        <div
+          className="cf-club-switcher__scrim"
+          aria-hidden
+          onClick={() => setOpen(false)}
+        />
+      ) : null}
+      {open ? (
         <div className="cf-club-switcher__menu" role="listbox">
           <p className="cf-club-switcher__menu-label">Mes clubs</p>
           <ul>
@@ -329,6 +338,45 @@ function SwitcherStyles() {
         text-decoration: none;
       }
       .cf-club-switcher__create:hover { text-decoration: underline; }
+      .cf-club-switcher__scrim { display: none; }
+
+      /* Mobile (< 900px, aligné sur mobile.css) : bouton compact dans la
+       * top-bar, menu en feuille basse sous un voile. */
+      @media (max-width: 899.98px) {
+        .cf-club-switcher--solo,
+        .cf-club-switcher__btn {
+          max-width: 46vw;
+          min-height: 2.5rem;
+          padding: 0.3rem 0.5rem;
+        }
+        .cf-club-switcher__name { max-width: none; }
+        .cf-club-switcher__scrim {
+          display: block;
+          position: fixed;
+          inset: 0;
+          z-index: 110;
+          background: rgba(15, 23, 42, 0.35);
+        }
+        .cf-club-switcher__menu {
+          position: fixed;
+          top: auto;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          z-index: 120;
+          min-width: 0;
+          max-width: none;
+          border-radius: 18px 18px 0 0;
+          padding-bottom: env(safe-area-inset-bottom, 0px);
+          box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.25);
+        }
+        .cf-club-switcher__menu ul { max-height: 50vh; }
+        .cf-club-switcher__option {
+          min-height: 3rem;
+          padding: 0.75rem 1rem;
+        }
+        .cf-club-switcher__create { padding: 0.5rem 0; }
+      }
     `}</style>
   );
 }

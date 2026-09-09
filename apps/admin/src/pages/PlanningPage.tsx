@@ -33,6 +33,7 @@ import {
   usePlanningCalendarSearchParams,
   type PlanningView,
 } from '../planning/usePlanningCalendarSearchParams';
+import { useIsMobile } from '../lib/use-media-query';
 
 /**
  * Recommandation UX #7 — Duplication de créneaux
@@ -58,6 +59,9 @@ function toLocalDatetime(iso: string): string {
 
 export function PlanningPage() {
   const { showToast } = useToast();
+  // Sur mobile, sept colonnes de créneaux sur 375px sont illisibles : la
+  // page s'ouvre sur la journée, l'URL garde la main si elle précise une vue.
+  const isMobile = useIsMobile();
   const {
     view,
     pivotDate,
@@ -66,7 +70,7 @@ export function PlanningPage() {
     goNext,
     goPrev,
     goToday,
-  } = usePlanningCalendarSearchParams();
+  } = usePlanningCalendarSearchParams(isMobile ? 'day' : 'week');
 
   const [venueName, setVenueName] = useState('');
   const [venueAddress, setVenueAddress] = useState('');

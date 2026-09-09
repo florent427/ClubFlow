@@ -141,6 +141,8 @@ export function AgentChatPage() {
       </header>
 
       <div
+        // mobile.css empile les deux colonnes sous 900px via cette classe.
+        className="cf-agent-layout"
         style={{
           display: 'grid',
           gridTemplateColumns: '280px 1fr',

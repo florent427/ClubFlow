@@ -13,6 +13,8 @@ import type {
 import { useMembersUi } from '../members/members-ui-context';
 import { ContactDetailDrawer } from './ContactDetailDrawer';
 import { QueryError } from '../../components/QueryError';
+import { CardList, CardListItem } from '../../components/ui/CardList';
+import { useIsMobile } from '../../lib/use-media-query';
 
 type VerifiedFilter = 'all' | 'yes' | 'no';
 type LinkFilter = 'unlinked' | 'linked' | 'all';
@@ -21,6 +23,7 @@ type SortKey = 'lastName' | 'firstName' | 'email';
 export function ContactsPage() {
   const navigate = useNavigate();
   const { setDrawerMemberId } = useMembersUi();
+  const isMobile = useIsMobile();
   const [drawerContactId, setDrawerContactId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [verified, setVerified] = useState<VerifiedFilter>('all');
@@ -269,6 +272,50 @@ export function ContactsPage() {
             <p className="muted">Aucun contact pour ce club.</p>
           ) : filtered.length === 0 ? (
             <p className="muted">Aucun résultat.</p>
+          ) : isMobile ? (
+            <CardList ariaLabel="Contacts">
+              {filtered.map((c) => (
+                <CardListItem
+                  key={c.id}
+                  title={`${c.lastName} ${c.firstName}`}
+                  subtitle={c.email}
+                  footer={
+                    <>
+                      {c.emailVerified ? (
+                        <span className="cf-badge cf-badge--success">
+                          <span className="material-symbols-outlined" aria-hidden>
+                            verified
+                          </span>
+                          Vérifié
+                        </span>
+                      ) : (
+                        <span className="cf-badge cf-badge--neutral">
+                          Non vérifié
+                        </span>
+                      )}
+                      {c.linkedMemberId ? (
+                        <span className="cf-badge cf-badge--info">Fiche membre</span>
+                      ) : null}
+                    </>
+                  }
+                  trailing={
+                    c.linkedMemberId ? (
+                      <button
+                        type="button"
+                        className="cf-btn cf-btn--sm cf-btn--ghost"
+                        aria-label="Ouvrir la fiche membre"
+                        onClick={() => openLinkedMember(c)}
+                      >
+                        <span className="material-symbols-outlined" aria-hidden>
+                          open_in_new
+                        </span>
+                      </button>
+                    ) : undefined
+                  }
+                  onOpen={() => setDrawerContactId(c.id)}
+                />
+              ))}
+            </CardList>
           ) : (
             <div className="members-table-wrap">
               <table className="members-table">
