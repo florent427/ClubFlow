@@ -27,12 +27,19 @@ export interface DepositSlipData {
 }
 
 const PAGE_WIDTH = 595.28;
+const PAGE_HEIGHT = 841.89;
 const MARGIN = 48;
 const LEFT = MARGIN;
 const RIGHT = PAGE_WIDTH - MARGIN;
 const ROW_HEIGHT = 18;
 /** Au-delà, on change de page avant d'écrire la ligne suivante. */
 const PAGE_BREAK_Y = 720;
+/**
+ * Pied de page DANS la zone imprimable : pdfkit ajoute une page dès qu'un
+ * texte dépasse la marge basse, et le bordereau sortait avec une seconde
+ * page blanche (vu sur staging le 2026-09-10).
+ */
+const FOOTER_Y = PAGE_HEIGHT - MARGIN - 12;
 
 const euro = new Intl.NumberFormat('fr-FR', {
   style: 'currency',
@@ -139,7 +146,7 @@ export class ChequeDepositPdfService {
     doc.text(
       `Généré par ClubFlow le ${frDate(new Date())}${data.deposit.cancelled ? ' — REMISE ANNULÉE' : ''}`,
       LEFT,
-      800,
+      FOOTER_Y,
       { width: RIGHT - LEFT, align: 'center', lineBreak: false },
     );
 
