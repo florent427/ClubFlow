@@ -12,6 +12,7 @@ import {
   MemberStatus,
   Prisma,
 } from '@prisma/client';
+import { resolveDynamicGroupsMemberIds } from '../members/dynamic-group-membership';
 import { PrismaService } from '../prisma/prisma.service';
 import { MessagingService, type ScopeTarget } from './messaging.service';
 
@@ -173,11 +174,13 @@ export class MessagingAdminService {
       .filter((s) => s.dynamicGroupId)
       .map((s) => s.dynamicGroupId!) as string[];
     if (groupIds.length > 0) {
-      const rows = await this.prisma.memberDynamicGroup.findMany({
-        where: { dynamicGroupId: { in: groupIds }, member: { clubId } },
-        select: { memberId: true },
-      });
-      for (const r of rows) memberIds.add(r.memberId);
+      // Critères OU affectation manuelle (définition partagée).
+      const inGroups = await resolveDynamicGroupsMemberIds(
+        this.prisma,
+        clubId,
+        groupIds,
+      );
+      for (const id of inGroups) memberIds.add(id);
     }
 
     // 2. MemberClubRole (STUDENT/COACH/BOARD).

@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { CourseSlotBookingStatus } from '@prisma/client';
+import { memberBelongsToDynamicGroup } from '../members/dynamic-group-membership';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -100,11 +101,15 @@ export class BookingService {
     if (!slot.bookingEnabled) {
       throw new BadRequestException('Ce créneau n’est pas ouvert à la réservation.');
     }
-    // verify dynamicGroup access if any
+    // Créneau réservé à un groupe : critères OU affectation manuelle
+    // (définition partagée, cf. members/dynamic-group-membership.ts).
     if (slot.dynamicGroupId) {
-      const allowed = await this.prisma.memberDynamicGroup.findFirst({
-        where: { dynamicGroupId: slot.dynamicGroupId, memberId },
-      });
+      const allowed = await memberBelongsToDynamicGroup(
+        this.prisma,
+        clubId,
+        memberId,
+        slot.dynamicGroupId,
+      );
       if (!allowed) {
         throw new ForbiddenException('Créneau réservé à un groupe.');
       }

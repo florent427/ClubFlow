@@ -439,11 +439,38 @@ export const CLUB_DYNAMIC_GROUPS = gql`
       minAge
       maxAge
       matchingActiveMembersCount
+      manuallyAssignedCount
       gradeFilters {
         id
         label
       }
     }
+  }
+`;
+
+export const DYNAMIC_GROUP_MEMBERS = gql`
+  query DynamicGroupMembers($dynamicGroupId: ID!) {
+    dynamicGroupMembers(dynamicGroupId: $dynamicGroupId) {
+      memberId
+      firstName
+      lastName
+      gradeLabel
+      source
+    }
+  }
+`;
+
+export const ADD_MEMBERS_TO_DYNAMIC_GROUP = gql`
+  mutation AddMembersToDynamicGroup($input: AddMembersToDynamicGroupInput!) {
+    addMembersToDynamicGroup(input: $input)
+  }
+`;
+
+export const REMOVE_MEMBER_FROM_DYNAMIC_GROUP = gql`
+  mutation RemoveMemberFromDynamicGroup(
+    $input: RemoveMemberFromDynamicGroupInput!
+  ) {
+    removeMemberFromDynamicGroup(input: $input)
   }
 `;
 

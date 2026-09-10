@@ -12751,3 +12751,115 @@ body[data-overlay-active='true'] .cf-aiko-panel {
 .qm__actions {
   padding-top: 0.25rem;
 }
+
+/* ────────── Groupes dynamiques : membres du groupe (tiroir) ────────── */
+.dyn-group-card__count-manual {
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: rgba(255, 107, 53, 0.14);
+  color: #8a3f10;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.dyn-group-members__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.dyn-group-members__head .family-drawer__h {
+  margin: 0;
+}
+.dyn-group-members__hint {
+  margin: 0.35rem 0 0.85rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+.dyn-group-members__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.dyn-group-members__row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 2.75rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--cf-border);
+  border-radius: 10px;
+  background: #fff;
+}
+.dyn-group-members__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dyn-group-members__source {
+  flex: 0 0 auto;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: rgba(0, 6, 102, 0.06);
+  color: var(--cf-primary);
+}
+.dyn-group-members__source--manual,
+.dyn-group-members__source--both {
+  background: rgba(255, 107, 53, 0.14);
+  color: #8a3f10;
+}
+.dyn-group-members__remove {
+  flex: 0 0 auto;
+  padding: 0.3rem;
+  color: #b42318;
+}
+.dyn-group-picker {
+  margin: 0 0 1rem;
+  padding: 0.85rem;
+  border-radius: 12px;
+  background: rgba(26, 35, 126, 0.04);
+  border: 1px solid rgba(25, 28, 29, 0.06);
+}
+.dyn-group-picker__search {
+  margin-bottom: 0.6rem;
+}
+.dyn-group-picker__list {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  max-height: 16rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.dyn-group-picker__row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 2.5rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.dyn-group-picker__row:hover {
+  background: rgba(0, 86, 197, 0.06);
+}
+.dyn-group-picker__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.9rem;
+}
+.dyn-group-picker__meta {
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+}

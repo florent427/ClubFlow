@@ -20,10 +20,8 @@ import { ClubSendingDomainService } from '../mail/club-sending-domain.service';
 import { MAIL_TRANSPORT } from '../mail/mail.constants';
 import type { MailTransport } from '../mail/mail-transport.interface';
 import { MediaAssetsService } from '../media/media-assets.service';
-import {
-  memberMatchesDynamicGroup,
-  type DynamicGroupCriteria,
-} from '../members/dynamic-group-matcher';
+import type { DynamicGroupCriteria } from '../members/dynamic-group-matcher';
+import { resolveDynamicGroupsMemberIds } from '../members/dynamic-group-membership';
 import { PrismaService } from '../prisma/prisma.service';
 import type { SendEventConvocationInput } from './dto/send-event-convocation.input';
 import { EventConvocationMode } from './enums/event-convocation-mode.enum';
@@ -1255,30 +1253,19 @@ export class EventsService {
       if (!criteria) {
         throw new BadRequestException('Groupe dynamique inconnu');
       }
+      // Critères OU affectation manuelle (définition partagée).
+      const inGroup = await resolveDynamicGroupsMemberIds(this.prisma, clubId, [
+        input.dynamicGroupId,
+      ]);
       const members = await this.prisma.member.findMany({
-        where: { clubId, status: MemberStatus.ACTIVE },
-        select: {
-          email: true,
-          status: true,
-          birthDate: true,
-          gradeLevelId: true,
+        where: {
+          clubId,
+          status: MemberStatus.ACTIVE,
+          id: { in: [...inGroup] },
         },
+        select: { email: true },
       });
-      const now = new Date();
       for (const m of members) {
-        if (
-          !memberMatchesDynamicGroup(
-            {
-              status: m.status,
-              birthDate: m.birthDate,
-              gradeLevelId: m.gradeLevelId,
-            },
-            criteria,
-            now,
-          )
-        ) {
-          continue;
-        }
         const e = (m.email ?? '').trim();
         if (e) emails.add(e);
       }
