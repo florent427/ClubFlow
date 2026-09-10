@@ -1,31 +1,23 @@
-import { useMutation, useQuery } from '@apollo/client/react';
+import { useMutation } from '@apollo/client/react';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  PUSH_VAPID_PUBLIC_KEY,
-  REGISTER_PUSH_SUBSCRIPTION,
   SEND_MY_PUSH_TEST,
   UNREGISTER_PUSH_SUBSCRIPTION,
-  type PushVapidPublicKeyData,
 } from '../lib/push-documents';
-import {
-  getCurrentSubscription,
-  isIosDevice,
-  isPushSupported,
-  isStandalone,
-  subscribeToPush,
-  subscriptionToPayload,
-} from '../lib/push';
+import { getCurrentSubscription, isIosDevice, isStandalone } from '../lib/push';
+import { usePushEnable } from '../lib/use-push-enable';
 import { useToast } from './ToastProvider';
 
 /**
  * Carte « Notifications » de la page Paramètres : active ou coupe les
  * notifications Web Push pour CET appareil, et permet d'en envoyer une de
- * test. L'autorisation navigateur est demandée depuis le clic (obligatoire
- * sur mobile : hors geste utilisateur, la demande est ignorée).
+ * test. L'activation (autorisation navigateur demandée depuis le clic,
+ * abonnement, enregistrement) est partagée avec l'invitation affichée à
+ * l'ouverture du portail : `usePushEnable`.
  */
 export function PushNotificationsCard() {
   const { showToast } = useToast();
-  const supported = useMemo(() => isPushSupported(), []);
+  const { supported, keyLoading, serverReady, enable: enablePush } = usePushEnable();
   // Safari iOS n'expose PushManager que dans un portail ajouté à l'écran
   // d'accueil : sans cela, « non pris en charge » serait un faux diagnostic.
   const iosNeedsInstall = useMemo(
@@ -33,11 +25,6 @@ export function PushNotificationsCard() {
     [supported],
   );
 
-  const { data: keyData, loading: keyLoading } = useQuery<PushVapidPublicKeyData>(
-    PUSH_VAPID_PUBLIC_KEY,
-    { skip: !supported },
-  );
-  const [registerSub] = useMutation(REGISTER_PUSH_SUBSCRIPTION);
   const [unregisterSub] = useMutation(UNREGISTER_PUSH_SUBSCRIPTION);
   const [sendTest] = useMutation<{ sendMyPushTest: boolean }>(SEND_MY_PUSH_TEST);
 
@@ -58,32 +45,25 @@ export function PushNotificationsCard() {
     };
   }, [supported]);
 
-  const serverKey = keyData?.pushVapidPublicKey ?? null;
-  const serverReady = !keyLoading && serverKey !== null;
-
   async function enable() {
-    if (!serverKey) return;
     setBusy(true);
     try {
-      const perm = await Notification.requestPermission();
-      setPermission(perm);
-      if (perm !== 'granted') {
-        showToast(
-          perm === 'denied'
-            ? 'Le navigateur bloque les notifications pour ce site. Réautorisez-les dans ses réglages.'
-            : 'Autorisation non accordée.',
-          'info',
-        );
+      const result = await enablePush();
+      if (result.status === 'error') {
+        showToast(result.message, 'error');
         return;
       }
-      const sub = await subscribeToPush(serverKey);
-      await registerSub({ variables: { input: subscriptionToPayload(sub) } });
-      setSubscribed(true);
-      showToast('Notifications activées sur cet appareil.', 'success');
-    } catch (err) {
+      setPermission(result.status);
+      if (result.status === 'granted') {
+        setSubscribed(true);
+        showToast('Notifications activées sur cet appareil.', 'success');
+        return;
+      }
       showToast(
-        err instanceof Error ? err.message : 'Activation impossible.',
-        'error',
+        result.status === 'denied'
+          ? 'Le navigateur bloque les notifications pour ce site. Réautorisez-les dans ses réglages.'
+          : 'Autorisation non accordée.',
+        'info',
       );
     } finally {
       setBusy(false);
@@ -151,7 +131,7 @@ export function PushNotificationsCard() {
         </p>
       ) : keyLoading ? (
         <p className="mp-hint">Vérification…</p>
-      ) : !serverReady ? (
+      ) : serverReady !== true ? (
         <p className="mp-hint">
           Les notifications ne sont pas configurées sur ce serveur.
         </p>
