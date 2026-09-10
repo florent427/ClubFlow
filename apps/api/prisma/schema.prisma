@@ -75,6 +75,7 @@ model Club {
   payments                        Payment[]
   paymentSchedules                PaymentSchedule[]
   messageCampaigns                MessageCampaign[]
+  userNotifications               UserNotification[]
   accountingEntries               AccountingEntry[]
   grantApplications               GrantApplication[]
   sponsorshipDeals                SponsorshipDeal[]
@@ -430,6 +431,7 @@ model User {
   emailVerificationTokens EmailVerificationToken[]
   passwordResetTokens     PasswordResetToken[]
   pushSubscriptions       PushSubscription[]
+  notifications           UserNotification[]
 }
 
 enum OAuthProvider {
@@ -520,6 +522,37 @@ model PushSubscription {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+enum UserNotificationKind {
+  /// Message rapide envoyé par un admin (canal push).
+  QUICK_MESSAGE
+  /// Campagne de communication (canal push).
+  CAMPAIGN
+  /// Notification technique (test, système).
+  SYSTEM
+}
+
+/// Centre de notifications du portail : trace persistante, par compte et par
+/// club, de ce que le club a envoyé en push. Créée même sans navigateur
+/// abonné — la notification système est éphémère, celle-ci reste lisible.
+model UserNotification {
+  id        String               @id @default(uuid())
+  userId    String
+  clubId    String
+  kind      UserNotificationKind
+  title     String
+  body      String               @db.Text
+  /// Chemin relatif au portail ouvert au clic (facultatif).
+  url       String?
+  readAt    DateTime?
+  createdAt DateTime             @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@index([userId, clubId, createdAt])
+  @@index([userId, clubId, readAt])
 }
 
 model ClubMembership {

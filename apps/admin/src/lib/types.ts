@@ -870,7 +870,11 @@ export type DeleteMessageCampaignMutationData = {
 export type QuickMessageRecipientTypeStr = 'MEMBER' | 'CONTACT';
 
 export type SendClubQuickMessageMutationData = {
-  sendClubQuickMessage: { success: boolean };
+  sendClubQuickMessage: {
+    success: boolean;
+    /** Canal push : appareils ayant reçu la notification ; null si non demandé. */
+    pushDelivered: number | null;
+  };
 };
 
 export type ClubAnnouncement = {

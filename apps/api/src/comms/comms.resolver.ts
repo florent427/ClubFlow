@@ -85,7 +85,7 @@ export class CommsResolver {
   async sendClubQuickMessage(
     @CurrentClub() club: Club,
     @Args('input') input: SendQuickMessageInput,
-  ): Promise<{ success: boolean }> {
+  ): Promise<SendQuickMessageResult> {
     return this.comms.sendQuickMessage(club.id, input);
   }
 }

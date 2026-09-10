@@ -21,6 +21,7 @@ import { VIEWER_ME } from '../lib/viewer-documents';
 import type { ViewerMeData } from '../lib/viewer-types';
 import { PendingFamilyInvitesBanner } from './PendingFamilyInvitesBanner';
 import { PinGate } from './PinGate';
+import { NotificationBell } from './NotificationBell';
 import {
   VIEWER_ACTIVE_CART,
   type ViewerActiveCartData,
@@ -186,6 +187,7 @@ export function ContactLayout() {
             <span className="mp-bc-muted">Espace contact</span>
           </div>
           <div className="mp-topbar-actions">
+            <NotificationBell />
             {showSwitcher ? (
               <div
                 className="mp-profile-chips"
