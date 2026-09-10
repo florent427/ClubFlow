@@ -181,7 +181,9 @@ function QuickMessageDialog({
 
         <form className="qm__form" onSubmit={(e) => void onSubmit(e)}>
           <fieldset className="qm__channels">
-            <legend className="cf-field__label">Envoyer par</legend>
+            <legend className="cf-field__label">
+              Envoyer par (un ou plusieurs canaux)
+            </legend>
             <label
               className={`qm__channel${channels.EMAIL ? ' qm__channel--on' : ''}${
                 hasEmail ? '' : ' qm__channel--off'
@@ -200,6 +202,9 @@ function QuickMessageDialog({
                 <strong>E-mail</strong>
                 <small>{hasEmail ? email : 'Pas d’adresse sur la fiche'}</small>
               </span>
+              <span className="qm__check" aria-hidden>
+                <span className="material-symbols-outlined">check</span>
+              </span>
             </label>
             <label
               className={`qm__channel${channels.PUSH ? ' qm__channel--on' : ''}`}
@@ -216,7 +221,19 @@ function QuickMessageDialog({
                 <strong>Notification push</strong>
                 <small>Si l’adhérent l’a activée sur le portail</small>
               </span>
+              <span className="qm__check" aria-hidden>
+                <span className="material-symbols-outlined">check</span>
+              </span>
             </label>
+            <p className="qm__channels-hint">
+              {selected.length === 0
+                ? 'Touchez un canal pour le sélectionner.'
+                : selected.length === 2
+                  ? 'Le message partira par e-mail et en notification.'
+                  : channels.EMAIL
+                    ? 'Le message partira par e-mail.'
+                    : 'Le message partira en notification sur le portail.'}
+            </p>
           </fieldset>
 
           <label className="cf-field">
@@ -265,7 +282,15 @@ function QuickMessageDialog({
               <span className="material-symbols-outlined" aria-hidden>
                 send
               </span>
-              {loading ? 'Envoi…' : 'Envoyer'}
+              {loading
+                ? 'Envoi…'
+                : selected.length === 0
+                  ? 'Choisir un canal'
+                  : selected.length === 2
+                    ? 'Envoyer par e-mail et push'
+                    : channels.EMAIL
+                      ? 'Envoyer par e-mail'
+                      : 'Envoyer la notification'}
             </button>
           </div>
         </form>

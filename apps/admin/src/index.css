@@ -12648,7 +12648,9 @@ body[data-overlay-active='true'] .cf-aiko-panel {
   opacity: 0;
   pointer-events: none;
 }
-.qm__channel:focus-within {
+/* Anneau de focus au clavier seulement : après un tap, il brouillait la
+ * lecture « sélectionné / non sélectionné ». */
+.qm__channel:has(input:focus-visible) {
   outline: 2px solid rgba(0, 86, 197, 0.35);
   outline-offset: 1px;
 }
@@ -12672,21 +12674,79 @@ body[data-overlay-active='true'] .cf-aiko-panel {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Coche à droite : vide (cercle gris) ou pleine (bleu, check blanc) —
+ * l'état choisi se lit d'un coup d'œil, pas seulement à la teinte du fond. */
+.qm__check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.6rem;
+  height: 1.6rem;
+  margin-left: auto;
+  border: 2px solid #c6c5d4;
+  border-radius: 50%;
+  background: #fff;
+  color: transparent;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+.qm__check .material-symbols-outlined {
+  font-size: 1.05rem !important;
+  color: inherit;
+  font-variation-settings:
+    'FILL' 0,
+    'wght' 700,
+    'GRAD' 0,
+    'opsz' 24;
+}
+.qm__channel:not(.qm__channel--on) .qm__channel-text strong,
+.qm__channel:not(.qm__channel--on) .material-symbols-outlined {
+  color: var(--cf-text-muted);
+}
+/* Cercle vide quand non sélectionné : la coche reste invisible. */
+.qm__channel:not(.qm__channel--on) .qm__check .material-symbols-outlined {
+  color: transparent;
+}
 .qm__channel--on {
   border-color: var(--cf-secondary);
-  background: rgba(0, 86, 197, 0.06);
+  background: rgba(0, 86, 197, 0.08);
+  box-shadow: 0 0 0 1px var(--cf-secondary) inset;
 }
+.qm__channel--on .qm__channel-text strong,
 .qm__channel--on .material-symbols-outlined {
   color: var(--cf-secondary);
+}
+.qm__channel--on .qm__channel-text strong {
+  color: var(--cf-primary-deep);
+}
+.qm__channel--on > .material-symbols-outlined {
   font-variation-settings:
     'FILL' 1,
     'wght' 400,
     'GRAD' 0,
     'opsz' 24;
 }
+.qm__channel--on .qm__check {
+  background: var(--cf-secondary);
+  border-color: var(--cf-secondary);
+  color: #fff;
+}
+/* Plus spécifique que `.qm__channel--on .material-symbols-outlined`, sinon
+ * la coche prend le bleu du fond et disparaît. */
+.qm__channel--on .qm__check .material-symbols-outlined {
+  color: #fff;
+}
 .qm__channel--off {
   opacity: 0.55;
   cursor: not-allowed;
+}
+.qm__channels-hint {
+  grid-column: 1 / -1;
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+  color: var(--cf-text-muted);
 }
 .qm__actions {
   padding-top: 0.25rem;
