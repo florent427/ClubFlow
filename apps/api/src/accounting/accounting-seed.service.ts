@@ -172,16 +172,28 @@ export class AccountingSeedService {
     let cohortsCreated = 0;
     let mappingsCreated = 0;
 
-    // 1. Cohortes — upsert par (clubId, code)
+    // Ce seed tourne sur les chemins de LECTURE, et l'écran Paramètres →
+    // Comptabilité lance trois requêtes au montage qui l'appellent chacune.
+    // Deux seeds CONCURRENTS lisent donc le même plan, voient les mêmes codes
+    // manquants, et tentent les mêmes insertions : avec un `create` par
+    // ligne, le perdant levait P2002 et sa requête entière échouait — l'écran
+    // affichait « Comptes (0) » sur un club qui en a trois (staging,
+    // 2026-09-10, et déjà le 2026-07-20). `createMany({ skipDuplicates })` se
+    // traduit en ON CONFLICT DO NOTHING : le doublon est ignoré, `count` ne
+    // compte que les lignes réellement insérées.
+
+    // 1. Cohortes — par (clubId, code)
     const existingCohorts = await this.prisma.accountingCohort.findMany({
       where: { clubId },
       select: { code: true },
     });
     const existingCohortCodes = new Set(existingCohorts.map((c) => c.code));
-    for (const c of AccountingSeedService.DEFAULT_COHORTS) {
-      if (existingCohortCodes.has(c.code)) continue;
-      await this.prisma.accountingCohort.create({
-        data: {
+    const missingCohorts = AccountingSeedService.DEFAULT_COHORTS.filter(
+      (c) => !existingCohortCodes.has(c.code),
+    );
+    if (missingCohorts.length > 0) {
+      const { count } = await this.prisma.accountingCohort.createMany({
+        data: missingCohorts.map((c) => ({
           clubId,
           code: c.code,
           label: c.label,
@@ -189,21 +201,24 @@ export class AccountingSeedService {
           maxAge: c.maxAge,
           sortOrder: c.sortOrder,
           isDefault: true,
-        },
+        })),
+        skipDuplicates: true,
       });
-      cohortsCreated++;
+      cohortsCreated = count;
     }
 
-    // 2. Plan comptable — upsert par (clubId, code)
+    // 2. Plan comptable — par (clubId, code)
     const existingAccounts = await this.prisma.accountingAccount.findMany({
       where: { clubId },
       select: { code: true },
     });
     const existingCodes = new Set(existingAccounts.map((a) => a.code));
-    for (const a of AccountingSeedService.DEFAULT_ACCOUNTS) {
-      if (existingCodes.has(a.code)) continue;
-      await this.prisma.accountingAccount.create({
-        data: {
+    const missingAccounts = AccountingSeedService.DEFAULT_ACCOUNTS.filter(
+      (a) => !existingCodes.has(a.code),
+    );
+    if (missingAccounts.length > 0) {
+      const { count } = await this.prisma.accountingAccount.createMany({
+        data: missingAccounts.map((a) => ({
           clubId,
           code: a.code,
           label: a.label,
@@ -211,9 +226,10 @@ export class AccountingSeedService {
           sortOrder: a.sortOrder,
           isDefault: true,
           isActive: true,
-        },
+        })),
+        skipDuplicates: true,
       });
-      accountsCreated++;
+      accountsCreated = count;
     }
 
     // 3. Mappings — par (clubId, sourceType, sourceId=null)
