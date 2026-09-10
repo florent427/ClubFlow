@@ -9,6 +9,21 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.44.0](https://github.com/florent427/ClubFlow/compare/v0.43.0...v0.44.0) (2026-09-10)
+
+
+### ✨ Features
+
+* **accounting:** clôture sur l'exercice du club, réglages d'exercice et soldes d'ouverture ([ce1984b](https://github.com/florent427/ClubFlow/commit/ce1984bf31d50baf63643d68968d6ad55b4092b0))
+* **accounting:** exercice comptable, reprise et soldes d'ouverture (lot 0) + seed concurrent ([fd49a71](https://github.com/florent427/ClubFlow/commit/fd49a716481eca2983b3110a3611e0e996628e5c))
+* **admin:** onglet Exercice dans les paramètres comptables ([3d1ecfe](https://github.com/florent427/ClubFlow/commit/3d1ecfef9b033cb3086f497793780d7d5156c2e8))
+* **db:** exercice comptable, date de reprise et soldes d'ouverture ([631f05d](https://github.com/florent427/ClubFlow/commit/631f05da10b3a4d61fcd8d2b625bc38abe307a99))
+
+
+### 🐛 Bug Fixes
+
+* **accounting:** seed du plan comptable tolérant aux exécutions concurrentes ([087ef26](https://github.com/florent427/ClubFlow/commit/087ef261e2d38637df98144a895ad17cd266e71f))
+
 ## [0.43.0](https://github.com/florent427/ClubFlow/compare/v0.42.1...v0.43.0) (2026-09-10)
 
 
