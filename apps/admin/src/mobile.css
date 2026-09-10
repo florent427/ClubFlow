@@ -1144,6 +1144,16 @@
 
   /* ────────── Divers ────────── */
 
+  .qm__channels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .qm__form {
+    padding: 1rem 1rem 0.5rem;
+  }
+  .qm__head {
+    padding: 1rem 1rem 0.85rem;
+  }
+
   .cf-club-switcher--solo,
   .cf-club-switcher__btn {
     max-width: 44vw;

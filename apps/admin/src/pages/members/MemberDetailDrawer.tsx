@@ -1712,6 +1712,7 @@ export function MemberDetailDrawer({
           recipientType="MEMBER"
           recipientId={memberId}
           recipientLabel={`${member.firstName} ${member.lastName}`}
+          recipientEmail={member.email}
         />
       ) : null}
     </div>

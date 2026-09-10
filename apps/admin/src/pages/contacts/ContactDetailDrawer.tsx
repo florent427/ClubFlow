@@ -413,6 +413,7 @@ export function ContactDetailDrawer({
           recipientType="CONTACT"
           recipientId={c.id}
           recipientLabel={`${c.firstName} ${c.lastName}`}
+          recipientEmail={c.email}
         />
       ) : null}
     </>
