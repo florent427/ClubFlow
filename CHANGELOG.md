@@ -9,6 +9,18 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.42.0](https://github.com/florent427/ClubFlow/compare/v0.41.0...v0.42.0) (2026-09-10)
+
+
+### ✨ Features
+
+* **portail:** centre de notifications persistant ([89a5161](https://github.com/florent427/ClubFlow/commit/89a516195fcd01234ad40ae3d9243467522cbd18))
+
+
+### 🐛 Bug Fixes
+
+* **portail:** la boîte de notifications est celle du compte, tous clubs confondus ([72a593c](https://github.com/florent427/ClubFlow/commit/72a593c35118fbda38970e8ae8041f5ee4b890be))
+
 ## [0.41.0](https://github.com/florent427/ClubFlow/compare/v0.40.0...v0.41.0) (2026-09-10)
 
 
