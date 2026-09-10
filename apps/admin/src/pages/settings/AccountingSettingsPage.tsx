@@ -20,8 +20,9 @@ import type {
 } from '../../lib/types';
 import { useToast } from '../../components/ToastProvider';
 import { ConfirmModal, Drawer } from '../../components/ui';
+import { FiscalYearSettingsTab } from './accounting/FiscalYearSettingsTab';
 
-type TabKey = 'ACCOUNTS' | 'ROUTES';
+type TabKey = 'ACCOUNTS' | 'ROUTES' | 'FISCAL';
 
 const KIND_LABELS: Record<ClubFinancialAccountKindGql, string> = {
   BANK: 'Banque',
@@ -258,6 +259,19 @@ export default function AccountingSettingsPage() {
           >
             Routage paiements
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'FISCAL'}
+            className={
+              tab === 'FISCAL'
+                ? 'cf-segmented__btn cf-segmented__btn--active'
+                : 'cf-segmented__btn'
+            }
+            onClick={() => setTab('FISCAL')}
+          >
+            Exercice
+          </button>
         </div>
         {tab === 'ACCOUNTS' ? (
           <button
@@ -428,6 +442,13 @@ export default function AccountingSettingsPage() {
             </tbody>
           </table>
         </section>
+      ) : null}
+
+      {tab === 'FISCAL' ? (
+        <FiscalYearSettingsTab
+          accounts={accounts}
+          onAccountsChanged={() => refetchAccounts()}
+        />
       ) : null}
 
       <Drawer

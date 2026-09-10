@@ -1789,10 +1789,53 @@ export type ClubFinancialAccount = {
   isActive: boolean;
   sortOrder: number;
   notes: string | null;
+  /** Solde d'ouverture à la date de reprise, en centimes. Null = non renseigné. */
+  openingBalanceCents: number | null;
+  /** « YYYY-MM-DD ». */
+  openingBalanceOn: string | null;
 };
 
 export type ClubFinancialAccountsData = {
   clubFinancialAccounts: ClubFinancialAccount[];
+};
+
+export type AccountingFiscalSettings = {
+  fiscalYearStartMonth: number;
+  fiscalYearStartDay: number;
+  /** « YYYY-MM-DD », null = reprise non définie. */
+  accountingStartsOn: string | null;
+  /** Année de DÉBUT de l'exercice en cours. */
+  currentFiscalYear: number;
+  currentFiscalYearLabel: string;
+  currentFiscalYearStartsOn: string;
+  currentFiscalYearEndsOn: string;
+};
+
+export type AccountingFiscalSettingsData = {
+  clubAccountingFiscalSettings: AccountingFiscalSettings;
+};
+
+export type AccountingPeriodLock = {
+  month: string;
+  lockedAt: string;
+  lockedByUserId: string;
+};
+
+export type AccountingPeriodLocksData = {
+  clubAccountingPeriodLocks: AccountingPeriodLock[];
+};
+
+export type AccountingFiscalYearClose = {
+  year: number;
+  label: string;
+  startsOn: string;
+  endsOn: string;
+  closedAt: string;
+  closedByUserId: string;
+};
+
+export type AccountingFiscalYearClosesData = {
+  clubAccountingFiscalYearCloses: AccountingFiscalYearClose[];
 };
 
 export type ClubPaymentRoute = {

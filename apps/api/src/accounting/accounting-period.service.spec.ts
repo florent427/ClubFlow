@@ -1,4 +1,8 @@
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  AccountingFiscalYearService,
+  parseIsoDate,
+} from './accounting-fiscal-year.service';
 import { AccountingPeriodService } from './accounting-period.service';
 import type { PrismaService } from '../prisma/prisma.service';
 
@@ -27,13 +31,26 @@ describe('AccountingPeriodService', () => {
     amountCents: number;
     occurredAt: Date;
   }>;
+  let settings: {
+    fiscalYearStartMonth: number;
+    fiscalYearStartDay: number;
+    accountingStartsOn: Date | null;
+  };
   let svc: AccountingPeriodService;
 
   beforeEach(() => {
     locks = [];
     closures = [];
     entries = [];
+    settings = {
+      fiscalYearStartMonth: 1,
+      fiscalYearStartDay: 1,
+      accountingStartsOn: null,
+    };
     const prisma = {
+      club: {
+        findUnique: jest.fn(async () => ({ ...settings })),
+      },
       accountingPeriodLock: {
         findUnique: jest.fn(
           async ({
@@ -167,7 +184,10 @@ describe('AccountingPeriodService', () => {
         ),
       },
     } as unknown as PrismaService;
-    svc = new AccountingPeriodService(prisma);
+    svc = new AccountingPeriodService(
+      prisma,
+      new AccountingFiscalYearService(prisma),
+    );
   });
 
   describe('toMonthCode', () => {
@@ -265,7 +285,12 @@ describe('AccountingPeriodService', () => {
 
   describe('closeFiscalYear', () => {
     it('locks all 12 months of the year', async () => {
-      await svc.closeFiscalYear(clubId, 2026, 'user-1');
+      await svc.closeFiscalYear(
+        clubId,
+        2026,
+        'user-1',
+        parseIsoDate('2027-01-15'),
+      );
       expect(locks).toHaveLength(12);
       expect(locks.map((l) => l.month).sort()).toEqual([
         '2026-01',
@@ -310,7 +335,12 @@ describe('AccountingPeriodService', () => {
           occurredAt: new Date('2026-06-01'),
         },
       ];
-      await svc.closeFiscalYear(clubId, 2026, 'user-1');
+      await svc.closeFiscalYear(
+        clubId,
+        2026,
+        'user-1',
+        parseIsoDate('2027-01-15'),
+      );
       const snapshot = closures[0].snapshotJson as {
         revenuesCents: number;
         expensesCents: number;
@@ -328,9 +358,118 @@ describe('AccountingPeriodService', () => {
         closedAt: new Date('2026-01-15'),
         snapshotJson: { revenuesCents: 1 },
       });
-      await svc.closeFiscalYear(clubId, 2025, 'user-new');
+      await svc.closeFiscalYear(
+        clubId,
+        2025,
+        'user-new',
+        parseIsoDate('2026-09-10'),
+      );
       expect(closures).toHaveLength(1);
       expect(closures[0].closedByUserId).toBe('user-original');
+    });
+  });
+
+  describe('exercice décalé (début au 1er septembre, ADR-0014 §1)', () => {
+    const NOW = parseIsoDate('2026-09-10');
+
+    beforeEach(() => {
+      settings = {
+        fiscalYearStartMonth: 9,
+        fiscalYearStartDay: 1,
+        accountingStartsOn: null,
+      };
+    });
+
+    it('closeFiscalYear verrouille les 12 mois de l’EXERCICE, pas de l’année civile', async () => {
+      await svc.closeFiscalYear(clubId, 2025, 'user-1', NOW);
+      expect(locks.map((l) => l.month).sort()).toEqual([
+        '2025-09',
+        '2025-10',
+        '2025-11',
+        '2025-12',
+        '2026-01',
+        '2026-02',
+        '2026-03',
+        '2026-04',
+        '2026-05',
+        '2026-06',
+        '2026-07',
+        '2026-08',
+      ]);
+    });
+
+    it('le snapshot ne compte que les écritures de l’exercice et fige ses bornes', async () => {
+      const base = { clubId, kind: 'INCOME', status: 'POSTED' };
+      entries = [
+        { ...base, id: 'avant', amountCents: 1, occurredAt: parseIsoDate('2025-08-31') },
+        { ...base, id: 'dedans-1', amountCents: 100, occurredAt: parseIsoDate('2025-09-01') },
+        { ...base, id: 'dedans-2', amountCents: 1000, occurredAt: parseIsoDate('2026-08-31') },
+        { ...base, id: 'apres', amountCents: 10000, occurredAt: parseIsoDate('2026-09-01') },
+      ];
+      await svc.closeFiscalYear(clubId, 2025, 'user-1', NOW);
+      const snapshot = closures[0].snapshotJson as {
+        revenuesCents: number;
+        label: string;
+        startsOn: string;
+        endsOn: string;
+      };
+      expect(snapshot.revenuesCents).toBe(1100);
+      expect(snapshot.label).toBe('2025-2026');
+      expect(snapshot.startsOn).toBe('2025-09-01');
+      expect(snapshot.endsOn).toBe('2026-08-31');
+    });
+
+    it('refuse de clôturer l’exercice en cours', async () => {
+      await expect(
+        svc.closeFiscalYear(clubId, 2026, 'user-1', NOW),
+      ).rejects.toThrow(BadRequestException);
+      expect(closures).toHaveLength(0);
+      expect(locks).toHaveLength(0);
+    });
+
+    it('isDateLocked suit l’exercice clos : mars 2026 appartient à l’exercice 2025', async () => {
+      closures.push({
+        id: 'close-2025',
+        clubId,
+        year: 2025,
+        closedByUserId: 'user-1',
+        closedAt: new Date(),
+        snapshotJson: null,
+      });
+      expect(await svc.isDateLocked(clubId, parseIsoDate('2026-03-01'))).toBe(
+        true,
+      );
+      expect(await svc.isDateLocked(clubId, parseIsoDate('2025-08-31'))).toBe(
+        false,
+      );
+      expect(await svc.isDateLocked(clubId, parseIsoDate('2026-09-01'))).toBe(
+        false,
+      );
+    });
+
+    it('listClosures garde les bornes figées même si le club change ensuite son exercice', async () => {
+      await svc.closeFiscalYear(clubId, 2025, 'user-1', NOW);
+      settings = {
+        fiscalYearStartMonth: 1,
+        fiscalYearStartDay: 1,
+        accountingStartsOn: null,
+      };
+      const [closure] = await svc.listClosures(clubId);
+      expect(closure.label).toBe('2025-2026');
+      expect(closure.startsOn).toBe('2025-09-01');
+      expect(closure.endsOn).toBe('2026-08-31');
+    });
+  });
+
+  describe('lockMonth — format', () => {
+    it('refuse un code de mois mal formé', async () => {
+      await expect(svc.lockMonth(clubId, '2026-13', 'u')).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(svc.lockMonth(clubId, '2026/04', 'u')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(locks).toHaveLength(0);
     });
   });
 });

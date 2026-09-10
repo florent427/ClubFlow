@@ -49,4 +49,12 @@ export class ClubFinancialAccountGraph {
 
   @Field(() => String, { nullable: true })
   notes!: string | null;
+
+  /** Solde d'ouverture à la date de reprise (ADR-0014 §1). Null = non renseigné. */
+  @Field(() => Int, { nullable: true })
+  openingBalanceCents!: number | null;
+
+  /** « YYYY-MM-DD ». */
+  @Field(() => String, { nullable: true })
+  openingBalanceOn!: string | null;
 }
