@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.42.1](https://github.com/florent427/ClubFlow/compare/v0.42.0...v0.42.1) (2026-09-10)
+
+
+### 🐛 Bug Fixes
+
+* **membres:** un groupe dynamique compte aussi ses membres ajoutés à la main ([2da2a48](https://github.com/florent427/ClubFlow/commit/2da2a48d9c98820df8d0534b4ad81f7e0d6b84ae))
+* **membres:** un groupe dynamique compte aussi ses membres ajoutés à la main ([bb9040a](https://github.com/florent427/ClubFlow/commit/bb9040ac94468a8bcd9f6177bfc706eb02fe02ad))
+
 ## [0.42.0](https://github.com/florent427/ClubFlow/compare/v0.41.0...v0.42.0) (2026-09-10)
 
 
