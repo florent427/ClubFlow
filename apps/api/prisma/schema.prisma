@@ -215,6 +215,8 @@ model Club {
   accountingAuditLogs        AccountingAuditLog[]
   financialAccounts          ClubFinancialAccount[]
   paymentRoutes              ClubPaymentRoute[]
+  cheques                    Cheque[]
+  chequeDeposits             ChequeDeposit[]
 
   documents       ClubDocument[]
   signedDocuments ClubSignedDocument[]
@@ -1444,6 +1446,10 @@ enum ClubFinancialAccountKind {
   CASH
   STRIPE_TRANSIT
   OTHER_TRANSIT
+  /// Chèques reçus, en portefeuille jusqu'à la remise (511200, ADR-0015).
+  /// Même mécanique que le transit Stripe : l'encaissement y tombe, la
+  /// remise le solde vers la banque.
+  CHEQUE_TRANSIT
 }
 
 /// Compte financier réel d'un club (banque, caisse, transit Stripe…).
@@ -1487,9 +1493,10 @@ model ClubFinancialAccount {
   club              Club              @relation(fields: [clubId], references: [id], onDelete: Cascade)
   accountingAccount AccountingAccount @relation(fields: [accountingAccountId], references: [id], onDelete: Restrict)
 
-  paymentRoutes ClubPaymentRoute[]
-  entries       AccountingEntry[]
-  payments      Payment[]
+  paymentRoutes  ClubPaymentRoute[]
+  entries        AccountingEntry[]
+  payments       Payment[]
+  chequeDeposits ChequeDeposit[]
 
   /// Empêche 2 comptes financiers liés au même compte PCG (un compte PCG
   /// ne peut représenter qu'un compte réel).
@@ -1516,6 +1523,93 @@ model ClubPaymentRoute {
 
   @@unique([clubId, method])
   @@index([clubId, method])
+}
+
+/// Statut d'un chèque reçu (ADR-0015). PENDING = en portefeuille (compte
+/// 511200), DEPOSITED = remis en banque, BOUNCED = impayé (prévu, non livré),
+/// CANCELLED = saisie annulée avant remise.
+enum ChequeStatus {
+  PENDING
+  DEPOSITED
+  BOUNCED
+  CANCELLED
+}
+
+enum ChequeDepositStatus {
+  DEPOSITED
+  /// Rapprochée avec la ligne du relevé bancaire (lot 1 du rapprochement).
+  RECONCILED
+  CANCELLED
+}
+
+/// Chèque reçu par le club (ADR-0015). Rattaché SOIT à un paiement de
+/// facture (`paymentId`, un chèque = un paiement), SOIT à une écriture de
+/// produit libre (`entryId` : sponsor, subvention, remboursement
+/// fournisseur…). Dans les deux cas la contrepartie de trésorerie est
+/// 511200 « Chèques à encaisser » jusqu'à la remise, qui la passe en banque.
+model Cheque {
+  id              String       @id @default(uuid())
+  clubId          String
+  /// Numéro imprimé sur le chèque (7 chiffres en France), libre.
+  number          String?
+  /// Nom porté sur le chèque : payeur, sponsor, collectivité…
+  drawerName      String
+  bankName        String?
+  amountCents     Int
+  receivedOn      DateTime     @db.Date
+  status          ChequeStatus @default(PENDING)
+  paymentId       String?      @unique
+  /// Écriture de produit d'un chèque HORS facture. Null pour un chèque de
+  /// facture : sa recette est l'écriture AUTO_MEMBER_PAYMENT du paiement.
+  entryId         String?
+  depositId       String?
+  /// Photo du chèque (MediaAsset privé), archivée avec la remise.
+  imageAssetId    String?
+  notes           String?
+  createdByUserId String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  club    Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  payment Payment?         @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  entry   AccountingEntry? @relation(fields: [entryId], references: [id], onDelete: SetNull)
+  deposit ChequeDeposit?   @relation(fields: [depositId], references: [id], onDelete: SetNull)
+  image   MediaAsset?      @relation("ChequeImage", fields: [imageAssetId], references: [id], onDelete: SetNull)
+
+  @@index([clubId, status])
+  @@index([clubId, depositId])
+  @@index([clubId, receivedOn])
+}
+
+/// Remise de chèques en banque (ADR-0015) : N chèques, UNE écriture
+/// DÉBIT 512x / CRÉDIT 511200 du total, datée du dépôt, et un bordereau
+/// PDF archivé. Numéro séquentiel par club et par exercice : « R-2026-0007 ».
+model ChequeDeposit {
+  id                 String              @id @default(uuid())
+  clubId             String
+  number             String
+  financialAccountId String
+  depositedOn        DateTime            @db.Date
+  totalCents         Int
+  chequeCount        Int
+  status             ChequeDepositStatus @default(DEPOSITED)
+  entryId            String?             @unique
+  /// Bordereau PDF généré (MediaAsset privé). Null si la génération a
+  /// échoué : `generateChequeDepositSlip` le (re)crée.
+  slipAssetId        String?
+  notes              String?
+  createdByUserId    String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  club             Club                 @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  financialAccount ClubFinancialAccount @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
+  entry            AccountingEntry?     @relation(fields: [entryId], references: [id], onDelete: SetNull)
+  slip             MediaAsset?          @relation("ChequeDepositSlip", fields: [slipAssetId], references: [id], onDelete: SetNull)
+  cheques          Cheque[]
+
+  @@unique([clubId, number])
+  @@index([clubId, depositedOn])
 }
 
 enum PricingAdjustmentType {
@@ -1756,6 +1850,8 @@ model Payment {
   scheduleInstallment     PaymentScheduleInstallment?
   refundedPayment         Payment?                    @relation("PaymentRefunds", fields: [refundedPaymentId], references: [id], onDelete: SetNull)
   refunds                 Payment[]                   @relation("PaymentRefunds")
+  /// Le chèque qui règle ce paiement, si `method = MANUAL_CHECK` (ADR-0015).
+  cheque                  Cheque?
 
   /// Idempotence du remboursement, garantie par la BASE et non par un
   /// check-then-create : deux livraisons concurrentes du même webhook ne
@@ -2102,6 +2198,9 @@ enum AccountingEntrySource {
   AUTO_STRIPE_FEES
   /// Virement Stripe vers la banque du club : solde le compte de transit.
   AUTO_STRIPE_PAYOUT
+  /// Remise de chèques en banque (ADR-0015) : DÉBIT 512x / CRÉDIT 511200 du
+  /// total de la remise, et son annulation par contre-passation.
+  CHEQUE_DEPOSIT
 }
 
 /// Côté comptable d'une ligne d'écriture. AUTO = dérivé à la création
@@ -2218,6 +2317,10 @@ model AccountingEntry {
   auditLogs               AccountingAuditLog[]
   grantInstallments       GrantInstallment[]
   sponsorshipInstallments SponsorshipInstallment[]
+  /// Chèques HORS facture dont cette écriture est la recette (ADR-0015).
+  cheques                 Cheque[]
+  /// Remise de chèques dont cette écriture est le virement 511200 → 512x.
+  chequeDeposit           ChequeDeposit?
 
   /// Idempotence du virement Stripe : deux livraisons du même `payout.paid`
   /// ne peuvent pas produire deux écritures. Les NULL ne se heurtent pas
@@ -3658,6 +3761,8 @@ model MediaAsset {
   clubSignedDocuments   ClubSignedDocument[]    @relation("ClubSignedDocumentRendered")
   chatAttachments       ChatMessageAttachment[] @relation("ChatAttachmentAsset")
   chatThumbnails        ChatMessageAttachment[] @relation("ChatAttachmentThumbnail")
+  chequeImages          Cheque[]                @relation("ChequeImage")
+  chequeDepositSlips    ChequeDeposit[]         @relation("ChequeDepositSlip")
 
   @@index([clubId, ownerKind, ownerId])
   @@index([clubId, sha256])
@@ -4077,6 +4182,8 @@ enum AccountingAuditAction {
   CONTRAPASS
   EXPORT
   FISCAL_YEAR_CLOSE
+  CHEQUE_DEPOSIT
+  CHEQUE_DEPOSIT_CANCEL
 }
 
 /// Plan comptable curated par club (~30 comptes PCG associatif seedés à
