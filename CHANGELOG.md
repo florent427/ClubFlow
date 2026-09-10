@@ -9,6 +9,19 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.43.0](https://github.com/florent427/ClubFlow/compare/v0.42.1...v0.43.0) (2026-09-10)
+
+
+### ✨ Features
+
+* **portail:** inviter à installer l'application et à accepter les notifications ([bf4b2b7](https://github.com/florent427/ClubFlow/commit/bf4b2b783b340819dd0f8233a1a50d51a7c0aba9))
+* **portail:** inviter à installer l'application et à accepter les notifications ([0a38446](https://github.com/florent427/ClubFlow/commit/0a3844623b3bfec4a348a3ea8f4816173d00ad76))
+
+
+### 🐛 Bug Fixes
+
+* **portail:** redemander les notifications à chaque ouverture tant que rien n'est décidé ([f7abbcd](https://github.com/florent427/ClubFlow/commit/f7abbcd334a8e2c1fd6f08ba5046440c7aed2921))
+
 ## [0.42.1](https://github.com/florent427/ClubFlow/compare/v0.42.0...v0.42.1) (2026-09-10)
 
 
