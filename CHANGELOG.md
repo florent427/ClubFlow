@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.41.0](https://github.com/florent427/ClubFlow/compare/v0.40.0...v0.41.0) (2026-09-10)
+
+
+### ✨ Features
+
+* **admin:** canaux du message rapide bien visibles, panneau Telegram retiré de la fiche ([8e5bae9](https://github.com/florent427/ClubFlow/commit/8e5bae98a276b108bc417148b27cf9ad35f9495a))
+* **admin:** refonte du message rapide, sans Telegram ([354b24d](https://github.com/florent427/ClubFlow/commit/354b24d3cd301b56c35ac2f91a494eaf5ab7ed63))
+
 ## [0.40.0](https://github.com/florent427/ClubFlow/compare/v0.39.0...v0.40.0) (2026-09-10)
 
 
