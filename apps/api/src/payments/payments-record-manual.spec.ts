@@ -318,11 +318,64 @@ describe('PaymentsService / encaissements manuels', () => {
       paidByContactId: 'c-1',
     });
   });
+
+  it('chèque : la fiche naît DANS la transaction du paiement, avec des défauts sûrs (ADR-0015)', async () => {
+    prisma.invoice.findFirst.mockResolvedValue(openInvoice);
+    prisma.payment.aggregate.mockResolvedValue({ _sum: { amountCents: null } });
+    const tx = makeTx('pay-chq', 2500);
+    prisma.$transaction.mockImplementation(async (fn: (t: InvoiceTx) => Promise<unknown>) => {
+      const result = await fn(tx);
+      // Créée pendant le callback, donc annulée avec le paiement si celui-ci
+      // échoue : un paiement par chèque sans fiche serait invisible à la remise.
+      expect(tx.cheque.create).toHaveBeenCalledTimes(1);
+      return result;
+    });
+
+    await service.recordManualPayment(
+      'club-1',
+      {
+        invoiceId: 'inv-1',
+        amountCents: 2500,
+        method: ClubPaymentMethod.MANUAL_CHECK,
+        externalRef: ' 1234567 ',
+      },
+      'user-1',
+    );
+
+    expect(tx.cheque.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        clubId: 'club-1',
+        paymentId: 'pay-chq',
+        number: '1234567', // la référence du paiement fait office de n° de chèque
+        drawerName: 'Cotisation', // sans payeur connu : le libellé de la facture
+        amountCents: 2500,
+        createdByUserId: 'user-1',
+      }),
+    });
+    const data = tx.cheque.create.mock.calls[0][0].data as { receivedOn: Date };
+    expect(data.receivedOn).toBeInstanceOf(Date);
+  });
+
+  it('espèces ou virement : aucune fiche de chèque', async () => {
+    prisma.invoice.findFirst.mockResolvedValue(openInvoice);
+    prisma.payment.aggregate.mockResolvedValue({ _sum: { amountCents: null } });
+    const tx = makeTx();
+    prisma.$transaction.mockImplementation(async (fn: (t: InvoiceTx) => Promise<unknown>) => fn(tx));
+
+    await service.recordManualPayment('club-1', {
+      invoiceId: 'inv-1',
+      amountCents: 1000,
+      method: ClubPaymentMethod.MANUAL_TRANSFER,
+    });
+
+    expect(tx.cheque.create).not.toHaveBeenCalled();
+  });
 });
 
 type InvoiceTx = {
   payment: { create: jest.Mock };
   invoice: { update: jest.Mock };
+  cheque: { create: jest.Mock };
 };
 
 function makeTx(payId = 'pay-1', amount = 4000): InvoiceTx {
@@ -335,5 +388,6 @@ function makeTx(payId = 'pay-1', amount = 4000): InvoiceTx {
       }),
     },
     invoice: { update: jest.fn().mockResolvedValue({}) },
+    cheque: { create: jest.fn().mockResolvedValue({}) },
   };
 }

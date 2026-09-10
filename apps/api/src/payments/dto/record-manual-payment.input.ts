@@ -1,14 +1,53 @@
 import { Field, ID, InputType, Int } from '@nestjs/graphql';
 import { ClubPaymentMethod } from '@prisma/client';
+import { Type } from 'class-transformer';
 import {
   IsEnum,
   IsInt,
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
+
+/**
+ * Détails du chèque quand `method = MANUAL_CHECK` (ADR-0015). Tous
+ * facultatifs : à défaut, le n° vient de `externalRef`, l'émetteur du payeur
+ * ou du libellé de facture, la date de réception du jour.
+ */
+@InputType()
+export class RecordChequeInput {
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  number?: string | null;
+
+  @Field(() => String, { nullable: true, description: 'Nom porté sur le chèque.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  drawerName?: string | null;
+
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  bankName?: string | null;
+
+  @Field(() => String, { nullable: true, description: 'YYYY-MM-DD' })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  receivedOn?: string | null;
+
+  @Field(() => ID, { nullable: true, description: 'Photo du chèque (MediaAsset image).' })
+  @IsOptional()
+  @IsUUID()
+  imageAssetId?: string | null;
+}
 
 @InputType()
 export class RecordManualPaymentInput {
@@ -49,4 +88,13 @@ export class RecordManualPaymentInput {
   @IsOptional()
   @IsUUID()
   paidByContactId?: string | null;
+
+  @Field(() => RecordChequeInput, {
+    nullable: true,
+    description: 'Détails du chèque, si method = MANUAL_CHECK.',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RecordChequeInput)
+  cheque?: RecordChequeInput | null;
 }

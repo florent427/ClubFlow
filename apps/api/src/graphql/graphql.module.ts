@@ -36,6 +36,7 @@ import { MembershipModule } from '../membership/membership.module';
 import { MailModule } from '../mail/mail.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { PdfModule } from '../pdf/pdf.module';
+import { ChequesModule } from '../cheques/cheques.module';
 import { PlanningModule } from '../planning/planning.module';
 import './register-enums';
 /** Charge tôt les @ObjectType membres (MemberGraph, AssignedDynamicGroupGraph, …) pour le build du schéma GraphQL. */
@@ -92,6 +93,8 @@ import '../external-finance/dto/update-grant-application.input';
 import '../accounting/models/accounting-entry.model';
 import '../accounting/models/accounting-summary.model';
 import '../accounting/dto/create-accounting-entry.input';
+import '../cheques/models/cheque.model';
+import '../cheques/dto/cheque.input';
 import '../dashboard/models/admin-dashboard.model';
 import '../dashboard/models/club-search.model';
 import '../viewer/dto/viewer-update-my-pseudo.input';
@@ -138,6 +141,7 @@ import '../documents/dto/sign-club-document.input';
     AccountingModule,
     PaymentsModule,
     PdfModule,
+    ChequesModule,
     MembershipModule,
     CommsModule,
     MailModule,

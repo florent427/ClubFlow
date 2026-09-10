@@ -2,7 +2,9 @@ import { UseGuards } from '@nestjs/common';
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import type { Club } from '@prisma/client';
 import { CurrentClub } from '../common/decorators/current-club.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequireClubModule } from '../common/decorators/require-club-module.decorator';
+import type { RequestUser } from '../common/types/request-user';
 import { ClubAdminRoleGuard } from '../common/guards/club-admin-role.guard';
 import { ClubContextGuard } from '../common/guards/club-context.guard';
 import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.guard';
@@ -211,9 +213,14 @@ export class PaymentsResolver {
   @Mutation(() => PaymentGraph)
   async recordClubManualPayment(
     @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
     @Args('input') input: RecordManualPaymentInput,
   ): Promise<PaymentGraph> {
-    const p = await this.payments.recordManualPayment(club.id, input);
+    const p = await this.payments.recordManualPayment(
+      club.id,
+      input,
+      user.userId,
+    );
     return {
       id: p.id,
       invoiceId: p.invoiceId,
