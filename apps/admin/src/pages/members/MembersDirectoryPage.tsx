@@ -120,6 +120,7 @@ export function MembersDirectoryPage() {
   const [quickMember, setQuickMember] = useState<{
     id: string;
     label: string;
+    email: string | null;
   } | null>(null);
 
   const { data, loading, error, refetch } = useQuery<MembersQueryData>(CLUB_MEMBERS);
@@ -560,6 +561,7 @@ export function MembersDirectoryPage() {
                           setQuickMember({
                             id: m.id,
                             label: `${m.firstName} ${m.lastName}`,
+                            email: m.email,
                           })
                         }
                       >
@@ -699,6 +701,7 @@ export function MembersDirectoryPage() {
                               setQuickMember({
                                 id: m.id,
                                 label: `${m.firstName} ${m.lastName}`,
+                                email: m.email,
                               })
                             }
                           >
@@ -731,6 +734,7 @@ export function MembersDirectoryPage() {
           recipientType="MEMBER"
           recipientId={quickMember.id}
           recipientLabel={quickMember.label}
+          recipientEmail={quickMember.email}
         />
       ) : null}
     </>

@@ -9,10 +9,7 @@ import {
   CLUB_GRADE_LEVELS,
   CLUB_MEMBER_FIELD_LAYOUT,
   CLUB_MEMBERS,
-  CLUB_MEMBER_TELEGRAM,
   CLUB_ROLE_DEFINITIONS,
-  DISCONNECT_MEMBER_TELEGRAM,
-  ISSUE_TELEGRAM_MEMBER_LINK,
   CREATE_CLUB_FAMILY,
   DELETE_CLUB_MEMBER,
   SET_CLUB_MEMBER_STATUS,
@@ -30,7 +27,6 @@ import type {
   GradeLevelsQueryData,
   MemberFieldLayoutQueryData,
   MembersQueryData,
-  ClubMemberTelegramQueryData,
   RoleDefinitionsQueryData,
   SetClubFamilyPayerMutationData,
   TransferMemberFamilyMutationData,
@@ -42,20 +38,6 @@ import { BUILTIN_ROLE_OPTIONS, roleLabel } from './members-constants';
 import { MemberAccountLinkPanel } from './MemberAccountLinkPanel';
 import { MemberAdhesionPanels } from './MemberAdhesionPanels';
 import { MemberPhotoField } from './MemberPhotoField';
-
-function formatGqlMutationError(err: unknown): string {
-  if (err && typeof err === 'object' && 'graphQLErrors' in err) {
-    const gql = err as {
-      graphQLErrors?: readonly { message?: string }[];
-      message?: string;
-    };
-    const first = gql.graphQLErrors?.[0]?.message;
-    if (first) return first;
-    if (gql.message) return gql.message;
-  }
-  if (err instanceof Error) return err.message;
-  return 'Une erreur est survenue.';
-}
 
 /* eslint-disable react-hooks/set-state-in-effect -- hydratation / reset formulaire tiroir membre */
 type MemberRow = MembersQueryData['clubMembers'][number];
@@ -209,43 +191,6 @@ export function MemberDetailDrawer({
   const { data, loading, refetch } = useQuery<MembersQueryData>(CLUB_MEMBERS, {
     fetchPolicy: 'network-only',
   });
-  const { data: memberTgData } = useQuery<ClubMemberTelegramQueryData>(
-    CLUB_MEMBER_TELEGRAM,
-    {
-      variables: { id: memberId },
-      skip: !memberId || !commEnabled,
-      fetchPolicy: 'network-only',
-    },
-  );
-  const [issueTelegramLink, { loading: issueTgLoading }] = useMutation<
-    {
-      issueTelegramMemberLink: {
-        url: string;
-        expiresAt: string;
-        emailSent: boolean;
-      };
-    },
-    { memberId: string }
-  >(ISSUE_TELEGRAM_MEMBER_LINK, {
-    refetchQueries: [
-      { query: CLUB_MEMBERS },
-      { query: CLUB_MEMBER_TELEGRAM, variables: { id: memberId } },
-    ],
-  });
-  const [disconnectTelegram, { loading: disconnectTgLoading }] = useMutation<
-    { disconnectMemberTelegram: boolean },
-    { memberId: string }
-  >(DISCONNECT_MEMBER_TELEGRAM, {
-    refetchQueries: [
-      { query: CLUB_MEMBERS },
-      { query: CLUB_MEMBER_TELEGRAM, variables: { id: memberId } },
-    ],
-  });
-  const [telegramInviteEmailSent, setTelegramInviteEmailSent] =
-    useState(false);
-  const [telegramPanelError, setTelegramPanelError] = useState<string | null>(
-    null,
-  );
   const { data: layoutData } = useQuery<MemberFieldLayoutQueryData>(
     CLUB_MEMBER_FIELD_LAYOUT,
   );
@@ -267,20 +212,6 @@ export function MemberDetailDrawer({
     () => members.find((m) => m.id === memberId),
     [members, memberId],
   );
-
-  /** Source fiable : requête `clubMember(id)` (la liste clubMembers peut rester obsolète dans le cache Apollo). */
-  const telegramLinkedUi = useMemo(() => {
-    const cm = memberTgData?.clubMember;
-    if (cm != null) {
-      return cm.telegramLinked === true;
-    }
-    return member?.telegramLinked === true;
-  }, [memberTgData?.clubMember, member?.telegramLinked]);
-
-  useEffect(() => {
-    setTelegramInviteEmailSent(false);
-    setTelegramPanelError(null);
-  }, [memberId, telegramLinkedUi]);
 
   const visibleCatalog = useMemo(() => {
     const list =
@@ -1008,114 +939,6 @@ export function MemberDetailDrawer({
               memberName={`${member.firstName} ${member.lastName}`.trim()}
             />
           ) : null}
-          {commEnabled ? (
-            <div
-              className="member-telegram-panel"
-              style={{
-                marginBottom: '1rem',
-                padding: '0.75rem',
-                border: '1px solid var(--border, #e0e0e0)',
-                borderRadius: 8,
-              }}
-            >
-              <h4 className="family-drawer__h" style={{ fontSize: '0.95rem' }}>
-                Telegram
-              </h4>
-              {telegramPanelError ? (
-                <p className="form-error" role="alert">
-                  {telegramPanelError}
-                </p>
-              ) : null}
-              {telegramLinkedUi ? (
-                <>
-                  <p className="muted" style={{ margin: '0.5rem 0' }}>
-                    Compte Telegram relié.
-                  </p>
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    disabled={disconnectTgLoading}
-                    onClick={() => {
-                      if (!member) return;
-                      setTelegramPanelError(null);
-                      void disconnectTelegram({
-                        variables: { memberId: member.id },
-                      })
-                        .then(() => setTelegramInviteEmailSent(false))
-                        .catch((err: unknown) => {
-                          setTelegramPanelError(formatGqlMutationError(err));
-                        });
-                    }}
-                  >
-                    Déconnecter
-                  </button>
-                </>
-              ) : (
-                <>
-                  <p className="muted" style={{ margin: '0.5rem 0' }}>
-                    Un e-mail avec un bouton pour ouvrir Telegram est envoyé
-                    directement à l’adresse du membre (aucune étape
-                    supplémentaire).
-                  </p>
-                  <p
-                    className="muted"
-                    style={{
-                      fontSize: '0.85rem',
-                      margin: '0 0 0.75rem',
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    Le statut « Compte Telegram relié » apparaît une fois que le
-                    membre a ouvert le lien reçu par e-mail et appuyé sur{' '}
-                    « Démarrer » dans Telegram. Cela peut prendre quelques
-                    instants.
-                  </p>
-                  <button
-                    type="button"
-                    className="btn btn-outline"
-                    disabled={issueTgLoading}
-                    onClick={() => {
-                      if (!member) return;
-                      setTelegramPanelError(null);
-                      void issueTelegramLink({
-                        variables: { memberId: member.id },
-                      })
-                        .then((res) => {
-                          const pl = res.data?.issueTelegramMemberLink;
-                          if (pl?.emailSent) {
-                            setTelegramInviteEmailSent(true);
-                          }
-                        })
-                        .catch((err: unknown) => {
-                          setTelegramPanelError(formatGqlMutationError(err));
-                        });
-                    }}
-                  >
-                    Envoyer l’invitation par e-mail
-                  </button>
-                  {telegramInviteEmailSent ? (
-                    <p
-                      className="muted"
-                      style={{
-                        marginTop: '0.75rem',
-                        padding: '0.6rem 0.75rem',
-                        background: 'rgba(13,148,136,0.08)',
-                        borderRadius: 8,
-                        border: '1px solid rgba(13,148,136,0.25)',
-                      }}
-                    >
-                      <span className="material-symbols-outlined" aria-hidden style={{ verticalAlign: 'middle', marginRight: 6, fontSize: '1.1rem' }}>
-                        mark_email_read
-                      </span>
-                      Invitation envoyée à{' '}
-                      <strong>{member.email}</strong> — le membre peut utiliser
-                      le bouton dans le message.
-                    </p>
-                  ) : null}
-                </>
-              )}
-            </div>
-          ) : null}
           <label className="field">
             <span>Civilité *</span>
             <select
@@ -1712,6 +1535,7 @@ export function MemberDetailDrawer({
           recipientType="MEMBER"
           recipientId={memberId}
           recipientLabel={`${member.firstName} ${member.lastName}`}
+          recipientEmail={member.email}
         />
       ) : null}
     </div>

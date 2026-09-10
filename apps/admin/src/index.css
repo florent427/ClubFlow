@@ -12522,3 +12522,232 @@ body[data-overlay-active='true'] .cf-aiko-panel {
   color: var(--cf-text-muted, #64748b);
   line-height: 1.5;
 }
+
+/* ────────── Message rapide (QuickMessageModal) ──────────
+ * Rendu dans `.members-family-modal` (feuille basse sur mobile, cf.
+ * mobile.css). Deux cartes de canal cliquables, champs pleine largeur. */
+.members-family-modal.qm {
+  width: min(100%, 540px);
+  padding: 0;
+  /* Pas d'overflow hidden : sur un petit écran la feuille doit défiler
+   * (max-height + overflow-y hérités de .members-family-modal). */
+}
+.qm__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.35rem 1rem;
+  border-bottom: 1px solid var(--cf-border);
+}
+.qm__head-text {
+  min-width: 0;
+}
+.qm__title {
+  margin: 0 0 0.6rem;
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--cf-primary-deep);
+}
+.qm__to {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0;
+  font-size: 0.9rem;
+}
+.qm__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #e8ecff, #d0d8f0);
+  color: rgba(0, 6, 102, 0.7);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+.qm__to-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.qm__to-text strong {
+  color: var(--cf-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.qm__email {
+  font-size: 0.8rem;
+  color: var(--cf-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.qm__email--none {
+  color: #b45309;
+}
+.qm__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: none;
+  border-radius: 999px;
+  background: rgba(0, 6, 102, 0.06);
+  color: var(--cf-text);
+  cursor: pointer;
+}
+.qm__close:hover {
+  background: rgba(0, 6, 102, 0.1);
+}
+.qm__form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem 1.35rem 1.35rem;
+}
+.qm__channels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+.qm__channels > legend {
+  padding: 0;
+  margin-bottom: 0.5rem;
+}
+.qm__channel {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 3.5rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--cf-border);
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+.qm__channel input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+/* Anneau de focus au clavier seulement : après un tap, il brouillait la
+ * lecture « sélectionné / non sélectionné ». */
+.qm__channel:has(input:focus-visible) {
+  outline: 2px solid rgba(0, 86, 197, 0.35);
+  outline-offset: 1px;
+}
+.qm__channel .material-symbols-outlined {
+  flex: 0 0 auto;
+  color: var(--cf-text-muted);
+}
+.qm__channel-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.qm__channel-text strong {
+  font-size: 0.9rem;
+  color: var(--cf-text);
+}
+.qm__channel-text small {
+  font-size: 0.75rem;
+  color: var(--cf-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Coche à droite : vide (cercle gris) ou pleine (bleu, check blanc) —
+ * l'état choisi se lit d'un coup d'œil, pas seulement à la teinte du fond. */
+.qm__check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.6rem;
+  height: 1.6rem;
+  margin-left: auto;
+  border: 2px solid #c6c5d4;
+  border-radius: 50%;
+  background: #fff;
+  color: transparent;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+.qm__check .material-symbols-outlined {
+  font-size: 1.05rem !important;
+  color: inherit;
+  font-variation-settings:
+    'FILL' 0,
+    'wght' 700,
+    'GRAD' 0,
+    'opsz' 24;
+}
+.qm__channel:not(.qm__channel--on) .qm__channel-text strong,
+.qm__channel:not(.qm__channel--on) .material-symbols-outlined {
+  color: var(--cf-text-muted);
+}
+/* Cercle vide quand non sélectionné : la coche reste invisible. */
+.qm__channel:not(.qm__channel--on) .qm__check .material-symbols-outlined {
+  color: transparent;
+}
+.qm__channel--on {
+  border-color: var(--cf-secondary);
+  background: rgba(0, 86, 197, 0.08);
+  box-shadow: 0 0 0 1px var(--cf-secondary) inset;
+}
+.qm__channel--on .qm__channel-text strong,
+.qm__channel--on .material-symbols-outlined {
+  color: var(--cf-secondary);
+}
+.qm__channel--on .qm__channel-text strong {
+  color: var(--cf-primary-deep);
+}
+.qm__channel--on > .material-symbols-outlined {
+  font-variation-settings:
+    'FILL' 1,
+    'wght' 400,
+    'GRAD' 0,
+    'opsz' 24;
+}
+.qm__channel--on .qm__check {
+  background: var(--cf-secondary);
+  border-color: var(--cf-secondary);
+  color: #fff;
+}
+/* Plus spécifique que `.qm__channel--on .material-symbols-outlined`, sinon
+ * la coche prend le bleu du fond et disparaît. */
+.qm__channel--on .qm__check .material-symbols-outlined {
+  color: #fff;
+}
+.qm__channel--off {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.qm__channels-hint {
+  grid-column: 1 / -1;
+  margin: 0.15rem 0 0;
+  font-size: 0.8rem;
+  color: var(--cf-text-muted);
+}
+.qm__actions {
+  padding-top: 0.25rem;
+}
