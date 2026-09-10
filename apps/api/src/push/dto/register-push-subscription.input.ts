@@ -23,7 +23,10 @@ export class RegisterPushSubscriptionInput {
   @MaxLength(256)
   auth!: string;
 
-  @Field({ nullable: true })
+  // Type explicite obligatoire : sur une union `string | null`, la
+  // réflexion TypeScript n'émet que `Object` et NestJS refuse de démarrer
+  // (« Undefined type error… userAgent »).
+  @Field(() => String, { nullable: true })
   @IsOptional()
   @IsString()
   @MaxLength(512)
