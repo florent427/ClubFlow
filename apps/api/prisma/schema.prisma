@@ -429,6 +429,7 @@ model User {
   userIdentities          UserIdentity[]
   emailVerificationTokens EmailVerificationToken[]
   passwordResetTokens     PasswordResetToken[]
+  pushSubscriptions       PushSubscription[]
 }
 
 enum OAuthProvider {
@@ -492,6 +493,29 @@ model PasswordResetToken {
   expiresAt  DateTime
   consumedAt DateTime?
   createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Abonnement Web Push d'un navigateur (un par appareil/navigateur), rattaché
+/// au compte. Les notifications adressées à un membre remontent au compte via
+/// `Member.userId`. L'endpoint est fourni par le service push du navigateur ;
+/// une réponse 404/410 à l'envoi signifie « abonnement révoqué » → ligne supprimée.
+model PushSubscription {
+  id           String    @id @default(uuid())
+  userId       String
+  /// Club depuis lequel l'abonnement a été créé (portail multi-club, à titre indicatif).
+  clubId       String?
+  endpoint     String    @unique
+  p256dh       String
+  auth         String
+  userAgent    String?
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+  /// Échecs consécutifs hors 404/410 ; l'abonnement est purgé au 5e.
+  failureCount Int       @default(0)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

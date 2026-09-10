@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { io, type Socket } from 'socket.io-client';
 import {
   VIEWER_CHAT_MESSAGES,
@@ -91,7 +92,20 @@ const QUICK_EMOJIS = [
 ];
 
 export function MessagingPage() {
-  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  // Le salon courant vit aussi dans l'URL (`?room=`) : une notification
+  // push ouvre directement le bon salon, et le service worker sait si
+  // l'adhérent le regarde déjà.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedRoomId, setSelectedRoomIdState] = useState<string | null>(
+    () => searchParams.get('room'),
+  );
+  const setSelectedRoomId = useCallback(
+    (roomId: string | null) => {
+      setSelectedRoomIdState(roomId);
+      setSearchParams(roomId ? { room: roomId } : {}, { replace: true });
+    },
+    [setSearchParams],
+  );
   const [draft, setDraft] = useState('');
   const [pseudoDraft, setPseudoDraft] = useState('');
   const [pseudoError, setPseudoError] = useState<string | null>(null);

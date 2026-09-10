@@ -63,9 +63,22 @@ SMTP_HOST=
 SMTP_PORT=
 SMTP_USER=
 SMTP_PASS=
+
+# Web Push (portail) — générer la paire avec : cd apps/api && npx web-push generate-vapid-keys
+WEB_PUSH_VAPID_PUBLIC_KEY=
+WEB_PUSH_VAPID_PRIVATE_KEY=
+WEB_PUSH_VAPID_SUBJECT=https://clubflow.topdigital.re
 ENV
 chmod 600 /home/clubflow/clubflow/apps/api/.env'
 ```
+
+⚠️ **WEB_PUSH_VAPID_\*** : sans la paire, le canal PUSH est désactivé sans
+erreur (le portail masque l'option). Changer la paire **invalide tous les
+abonnements** des navigateurs : les adhérents doivent réactiver les
+notifications. Conserver donc la paire de prod avec les autres secrets.
+Pour une première mise en place (ou après restauration sans sauvegarde),
+`bin/web-push-vapid-setup.sh` génère la paire sur le serveur, l'ajoute au
+`.env` et redémarre l'API sans jamais afficher la clé privée.
 
 ⚠️ **CORS_ALLOW_NO_ORIGIN=true** est obligatoire — sinon vitrine SSR (Next.js
 server-to-server vers API) reçoit `500 "Not allowed by CORS"`.

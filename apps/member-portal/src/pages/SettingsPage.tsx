@@ -21,6 +21,7 @@ import type {
   ViewerMeData,
 } from '../lib/viewer-types';
 import { useToast } from '../components/ToastProvider';
+import { PushNotificationsCard } from '../components/PushNotificationsCard';
 
 type UpdateProfileData = {
   viewerUpdateMyProfile: {
@@ -485,6 +486,8 @@ export function SettingsPage() {
       {me?.canManageMembershipCart ? (
         <PayerSpacePinCard pinSet={me.payerSpacePinSet} />
       ) : null}
+
+      <PushNotificationsCard />
 
       <div className="mp-settings-actions">
         <button
