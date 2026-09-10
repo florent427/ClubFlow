@@ -3456,3 +3456,118 @@ export const CLOSE_CLUB_ACCOUNTING_FISCAL_YEAR = gql`
     closeClubAccountingFiscalYear(year: $year)
   }
 `;
+
+// ============================================================================
+// Chèques et remises (ADR-0015)
+// ============================================================================
+
+const CHEQUE_FIELDS = `
+  id
+  number
+  drawerName
+  bankName
+  amountCents
+  receivedOn
+  status
+  paymentId
+  invoiceId
+  invoiceLabel
+  entryId
+  depositId
+  depositNumber
+  imageAssetId
+  imageUrl
+  notes
+  createdAt
+`;
+
+const CHEQUE_DEPOSIT_FIELDS = `
+  id
+  number
+  financialAccountId
+  financialAccountLabel
+  depositedOn
+  totalCents
+  chequeCount
+  status
+  entryId
+  slipAssetId
+  slipUrl
+  notes
+  createdAt
+  cheques {
+    ${CHEQUE_FIELDS}
+  }
+`;
+
+export const CLUB_CHEQUES = gql`
+  query ClubCheques($status: ChequeStatus) {
+    clubCheques(status: $status) {
+      ${CHEQUE_FIELDS}
+    }
+  }
+`;
+
+export const CLUB_CHEQUE_DEPOSITS = gql`
+  query ClubChequeDeposits {
+    clubChequeDeposits {
+      ${CHEQUE_DEPOSIT_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_STANDALONE_CHEQUE = gql`
+  mutation CreateStandaloneCheque($input: CreateStandaloneChequeInput!) {
+    createStandaloneCheque(input: $input) {
+      ${CHEQUE_FIELDS}
+    }
+  }
+`;
+
+export const UPDATE_CHEQUE = gql`
+  mutation UpdateCheque($input: UpdateChequeInput!) {
+    updateCheque(input: $input) {
+      ${CHEQUE_FIELDS}
+    }
+  }
+`;
+
+export const ATTACH_CHEQUE_IMAGE = gql`
+  mutation AttachChequeImage($chequeId: ID!, $mediaAssetId: ID!) {
+    attachChequeImage(chequeId: $chequeId, mediaAssetId: $mediaAssetId) {
+      ${CHEQUE_FIELDS}
+    }
+  }
+`;
+
+export const CANCEL_CHEQUE = gql`
+  mutation CancelCheque($id: ID!, $reason: String!) {
+    cancelCheque(id: $id, reason: $reason) {
+      ${CHEQUE_FIELDS}
+    }
+  }
+`;
+
+export const CREATE_CHEQUE_DEPOSIT = gql`
+  mutation CreateChequeDeposit($input: CreateChequeDepositInput!) {
+    createChequeDeposit(input: $input) {
+      ${CHEQUE_DEPOSIT_FIELDS}
+    }
+  }
+`;
+
+export const CANCEL_CHEQUE_DEPOSIT = gql`
+  mutation CancelChequeDeposit($id: ID!, $reason: String!) {
+    cancelChequeDeposit(id: $id, reason: $reason) {
+      ${CHEQUE_DEPOSIT_FIELDS}
+    }
+  }
+`;
+
+export const GENERATE_CHEQUE_DEPOSIT_SLIP = gql`
+  mutation GenerateChequeDepositSlip($id: ID!) {
+    generateChequeDepositSlip(id: $id) {
+      ${CHEQUE_DEPOSIT_FIELDS}
+    }
+  }
+`;

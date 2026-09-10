@@ -164,6 +164,44 @@ export function InvoiceDetailDrawer({
   const [payMethod, setPayMethod] = useState<ClubPaymentMethodStr>('MANUAL_CASH');
   const [payRef, setPayRef] = useState('');
   const [payError, setPayError] = useState<string | null>(null);
+  // Chèque (ADR-0015) : émetteur, banque, date de réception, photo.
+  const [chequeDrawer, setChequeDrawer] = useState('');
+  const [chequeBank, setChequeBank] = useState('');
+  const [chequeReceivedOn, setChequeReceivedOn] = useState('');
+  const [chequeImageAssetId, setChequeImageAssetId] = useState<string | null>(null);
+  const [chequeImageName, setChequeImageName] = useState<string | null>(null);
+  const [chequeUploading, setChequeUploading] = useState(false);
+
+  async function onChequeImagePicked(file: File | undefined) {
+    if (!file) return;
+    const token = getToken();
+    const clubId = getClubId();
+    if (!token || !clubId) {
+      setPayError('Session invalide');
+      return;
+    }
+    setChequeUploading(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(`${API_ROOT}/media/upload?kind=image&ownerKind=CHEQUE`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'x-club-id': clubId },
+        body: form,
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`Upload impossible (HTTP ${res.status})${text ? ': ' + text.slice(0, 120) : ''}`);
+      }
+      const json = (await res.json()) as { id: string };
+      setChequeImageAssetId(json.id);
+      setChequeImageName(file.name);
+    } catch (err) {
+      setPayError(err instanceof Error ? err.message : 'Upload impossible');
+    } finally {
+      setChequeUploading(false);
+    }
+  }
 
   // Remboursement Stripe : l'encaissement ciblé, null = formulaire fermé.
   const [refundPaymentId, setRefundPaymentId] = useState<string | null>(null);
@@ -228,6 +266,11 @@ export function InvoiceDetailDrawer({
       locked && locked !== 'STRIPE_CARD' ? locked : 'MANUAL_CASH',
     );
     setPayRef('');
+    setChequeDrawer(inv.familyLabel ?? '');
+    setChequeBank('');
+    setChequeReceivedOn(new Date().toISOString().slice(0, 10));
+    setChequeImageAssetId(null);
+    setChequeImageName(null);
     setPayError(null);
     setPayOpen(true);
   }
@@ -256,6 +299,17 @@ export function InvoiceDetailDrawer({
             amountCents: cents,
             method: payMethod,
             externalRef: payRef.trim() || null,
+            ...(payMethod === 'MANUAL_CHECK'
+              ? {
+                  cheque: {
+                    number: payRef.trim() || null,
+                    drawerName: chequeDrawer.trim() || null,
+                    bankName: chequeBank.trim() || null,
+                    receivedOn: chequeReceivedOn || null,
+                    imageAssetId: chequeImageAssetId,
+                  },
+                }
+              : {}),
           },
         },
       });
@@ -822,6 +876,67 @@ export function InvoiceDetailDrawer({
                     maxLength={500}
                   />
                 </label>
+                {payMethod === 'MANUAL_CHECK' ? (
+                  <>
+                    <div className="cf-form-row">
+                      <label className="cf-field" style={{ flex: 1 }}>
+                        <span className="cf-field__label">Émetteur (nom sur le chèque)</span>
+                        <input
+                          className="cf-field__input"
+                          type="text"
+                          value={chequeDrawer}
+                          onChange={(e) => setChequeDrawer(e.target.value)}
+                          maxLength={120}
+                        />
+                      </label>
+                      <label className="cf-field" style={{ flex: 1 }}>
+                        <span className="cf-field__label">Banque émettrice</span>
+                        <input
+                          className="cf-field__input"
+                          type="text"
+                          value={chequeBank}
+                          onChange={(e) => setChequeBank(e.target.value)}
+                          maxLength={80}
+                          placeholder="Ex : Crédit Agricole"
+                        />
+                      </label>
+                    </div>
+                    <div className="cf-form-row">
+                      <label className="cf-field" style={{ flex: 1 }}>
+                        <span className="cf-field__label">Reçu le</span>
+                        <input
+                          className="cf-field__input"
+                          type="date"
+                          value={chequeReceivedOn}
+                          onChange={(e) => setChequeReceivedOn(e.target.value)}
+                        />
+                      </label>
+                      <label className="cf-field" style={{ flex: 1 }}>
+                        <span className="cf-field__label">Photo du chèque</span>
+                        <input
+                          className="cf-field__input"
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          disabled={chequeUploading}
+                          onChange={(e) => void onChequeImagePicked(e.target.files?.[0])}
+                        />
+                        <small className="cf-field__hint">
+                          {chequeUploading
+                            ? 'Envoi…'
+                            : chequeImageName
+                              ? `Jointe : ${chequeImageName}`
+                              : 'Facultative, archivée avec la remise.'}
+                        </small>
+                      </label>
+                    </div>
+                    <small className="cf-field__hint">
+                      Le chèque va en portefeuille (compte 511200) jusqu’à sa
+                      remise en banque, à faire dans Comptabilité → Chèques &
+                      remises.
+                    </small>
+                  </>
+                ) : null}
                 {payError ? (
                   <p className="cf-form-error" role="alert">
                     {payError}
