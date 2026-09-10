@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
-  SNOOZE_DURATION_MS,
-  SNOOZE_STORAGE_KEY,
+  INSTALL_PAUSE_DURATION_MS,
+  INSTALL_PAUSE_STORAGE_KEY,
   decideEngagementStep,
-  readSnoozedUntil,
-  snoozeEngagement,
+  pauseInstallInvite,
+  readInstallPausedUntil,
   type EngagementEnvironment,
 } from './engagement-prompt';
 
@@ -75,26 +75,48 @@ describe('decideEngagementStep', () => {
     ).toBe('notifications');
   });
 
-  it('sur Android ouvert depuis l’écran d’accueil, ne propose plus l’installation', () => {
+  it('dans l’application installée, redemande les notifications à chaque ouverture tant que rien n’est décidé', () => {
+    const installed = env({ android: true, standalone: true, canPromptInstall: true });
+    // Ni la pause de l'installation ni son bouton n'ont d'effet une fois installé.
+    expect(decideEngagementStep(installed, null, now)).toBe('notifications');
+    expect(decideEngagementStep(installed, now + INSTALL_PAUSE_DURATION_MS, now)).toBe(
+      'notifications',
+    );
     expect(
-      decideEngagementStep(
-        env({ android: true, standalone: true, canPromptInstall: true }),
-        null,
-        now,
-      ),
-    ).toBe('notifications');
+      decideEngagementStep({ ...installed, permission: 'granted' }, null, now),
+    ).toBeNull();
+    expect(
+      decideEngagementStep({ ...installed, permission: 'denied' }, null, now),
+    ).toBeNull();
   });
 
-  it('respecte la pause demandée, puis revient à son échéance', () => {
-    expect(decideEngagementStep(desktopUndecided, now + 1, now)).toBeNull();
-    expect(decideEngagementStep(desktopUndecided, now, now)).toBe('notifications');
+  it('la pause ne concerne que la suggestion d’installation', () => {
+    const paused = now + 1;
+    // iPhone dans Safari (pas de Web Push hors installation) : on se tait.
     expect(
-      decideEngagementStep(env({ ios: true }), now + SNOOZE_DURATION_MS, now),
+      decideEngagementStep(
+        env({ ios: true, pushSupported: false, permission: 'unsupported' }),
+        paused,
+        now,
+      ),
     ).toBeNull();
+    // Android dans le navigateur : on passe aux notifications.
+    expect(
+      decideEngagementStep(env({ android: true, canPromptInstall: true }), paused, now),
+    ).toBe('notifications');
+    // Ordinateur : la question des notifications ne connaît pas la pause.
+    expect(decideEngagementStep(desktopUndecided, paused, now)).toBe('notifications');
+  });
+
+  it('la suggestion d’installation revient à l’échéance de la pause', () => {
+    expect(decideEngagementStep(env({ ios: true }), now, now)).toBe('install-ios');
+    expect(
+      decideEngagementStep(env({ android: true, canPromptInstall: true }), now, now),
+    ).toBe('install-android');
   });
 });
 
-describe('pause de l’invitation', () => {
+describe('pause de la suggestion d’installation', () => {
   function memoire(): Map<string, string> & Pick<Storage, 'getItem' | 'setItem'> {
     const m = new Map<string, string>() as Map<string, string> &
       Pick<Storage, 'getItem' | 'setItem'>;
@@ -105,18 +127,18 @@ describe('pause de l’invitation', () => {
 
   it('écrit l’échéance et la relit', () => {
     const storage = memoire();
-    const until = snoozeEngagement(storage, now);
-    expect(until).toBe(now + SNOOZE_DURATION_MS);
-    expect(storage.get(SNOOZE_STORAGE_KEY)).toBe(String(until));
-    expect(readSnoozedUntil(storage)).toBe(until);
+    const until = pauseInstallInvite(storage, now);
+    expect(until).toBe(now + INSTALL_PAUSE_DURATION_MS);
+    expect(storage.get(INSTALL_PAUSE_STORAGE_KEY)).toBe(String(until));
+    expect(readInstallPausedUntil(storage)).toBe(until);
   });
 
   it('ignore une valeur illisible ou absente', () => {
     const storage = memoire();
-    expect(readSnoozedUntil(storage)).toBeNull();
-    storage.set(SNOOZE_STORAGE_KEY, 'bientôt');
-    expect(readSnoozedUntil(storage)).toBeNull();
-    expect(readSnoozedUntil(null)).toBeNull();
+    expect(readInstallPausedUntil(storage)).toBeNull();
+    storage.set(INSTALL_PAUSE_STORAGE_KEY, 'bientôt');
+    expect(readInstallPausedUntil(storage)).toBeNull();
+    expect(readInstallPausedUntil(null)).toBeNull();
   });
 
   it('survit à un stockage qui lève (navigation privée stricte)', () => {
@@ -128,7 +150,7 @@ describe('pause de l’invitation', () => {
         throw new Error('QuotaExceededError');
       },
     };
-    expect(readSnoozedUntil(casse)).toBeNull();
-    expect(snoozeEngagement(casse, now)).toBe(now + SNOOZE_DURATION_MS);
+    expect(readInstallPausedUntil(casse)).toBeNull();
+    expect(pauseInstallInvite(casse, now)).toBe(now + INSTALL_PAUSE_DURATION_MS);
   });
 });

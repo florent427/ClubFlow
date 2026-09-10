@@ -4,11 +4,14 @@
  *
  * Deux gestes sont encouragés, dans cet ordre :
  *  1. ajouter le portail à l'écran d'accueil (téléphones et tablettes) —
- *     indispensable sur iPhone et iPad pour recevoir des notifications ;
+ *     indispensable sur iPhone et iPad pour recevoir des notifications.
+ *     « Plus tard » met cette suggestion en pause quelques jours ;
  *  2. autoriser les notifications, tant que l'adhérent n'a pas tranché
- *     (autorisation « default »). Accord ou refus : on n'y revient pas.
- *
- * « Plus tard » met l'invitation en pause quelques jours, sur cet appareil.
+ *     (autorisation « default »). Cette question revient à chaque ouverture
+ *     jusqu'à la décision : l'application installée doit obtenir sa propre
+ *     autorisation système, même après un accord dans le navigateur, et une
+ *     information manquée coûte plus cher qu'une question répétée.
+ *     Accord ou refus : on n'y revient pas.
  */
 
 export type EngagementEnvironment = {
@@ -18,7 +21,7 @@ export type EngagementEnvironment = {
   permission: NotificationPermission | 'unsupported';
   /** L'API publie une clé VAPID : null tant qu'on ne sait pas encore. */
   serverReady: boolean | null;
-  /** Portail ouvert depuis l'écran d'accueil (PWA installée). */
+  /** Portail ouvert depuis l'écran d'accueil (application installée). */
   standalone: boolean;
   ios: boolean;
   android: boolean;
@@ -28,16 +31,17 @@ export type EngagementEnvironment = {
 
 export type EngagementStep = 'install-android' | 'install-ios' | 'notifications';
 
-export const SNOOZE_STORAGE_KEY = 'clubflow_member_engagement_snoozed_until';
-export const SNOOZE_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
+export const INSTALL_PAUSE_STORAGE_KEY =
+  'clubflow_member_install_invite_paused_until';
+export const INSTALL_PAUSE_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function decideEngagementStep(
   env: EngagementEnvironment,
-  snoozedUntil: number | null,
+  installPausedUntil: number | null,
   now: number,
 ): EngagementStep | null {
-  if (snoozedUntil !== null && now < snoozedUntil) return null;
-  if (!env.standalone) {
+  const installPaused = installPausedUntil !== null && now < installPausedUntil;
+  if (!env.standalone && !installPaused) {
     // Sur iPhone et iPad, Safari n'expose Web Push qu'au portail installé :
     // l'installation passe avant, même quand rien d'autre n'est possible.
     if (env.ios) return 'install-ios';
@@ -58,9 +62,9 @@ export function wantsNotifications(env: EngagementEnvironment): boolean {
 
 type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;
 
-export function readSnoozedUntil(storage: StorageLike | null): number | null {
+export function readInstallPausedUntil(storage: StorageLike | null): number | null {
   try {
-    const raw = storage?.getItem(SNOOZE_STORAGE_KEY);
+    const raw = storage?.getItem(INSTALL_PAUSE_STORAGE_KEY);
     if (!raw) return null;
     const value = Number(raw);
     return Number.isFinite(value) ? value : null;
@@ -69,17 +73,17 @@ export function readSnoozedUntil(storage: StorageLike | null): number | null {
   }
 }
 
-/** Met l'invitation en pause et renvoie l'échéance (ms epoch). */
-export function snoozeEngagement(
+/** Met la suggestion d'installation en pause et renvoie l'échéance (ms epoch). */
+export function pauseInstallInvite(
   storage: StorageLike | null,
   now: number,
-  durationMs: number = SNOOZE_DURATION_MS,
+  durationMs: number = INSTALL_PAUSE_DURATION_MS,
 ): number {
   const until = now + durationMs;
   try {
-    storage?.setItem(SNOOZE_STORAGE_KEY, String(until));
+    storage?.setItem(INSTALL_PAUSE_STORAGE_KEY, String(until));
   } catch {
-    // Stockage indisponible (navigation privée stricte) : l'invitation
+    // Stockage indisponible (navigation privée stricte) : la suggestion
     // reviendra simplement à la prochaine visite.
   }
   return until;

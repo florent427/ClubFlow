@@ -21,6 +21,8 @@ export type BeforeInstallPromptEvent = Event & {
 
 export type InstallPromptOutcome = 'accepted' | 'dismissed' | 'unavailable';
 
+const INSTALLED_STORAGE_KEY = 'clubflow_member_app_installed';
+
 let deferredPrompt: BeforeInstallPromptEvent | null = null;
 let version = 0;
 let watching = false;
@@ -29,6 +31,27 @@ const listeners = new Set<() => void>();
 function notify(): void {
   version += 1;
   listeners.forEach((listener) => listener());
+}
+
+/**
+ * Un navigateur ne dit pas si l'application qu'il a installée l'est
+ * toujours ; on garde le souvenir d'une installation réussie depuis ce
+ * navigateur pour ne plus suggérer le geste manuel.
+ */
+function rememberInstalled(): void {
+  try {
+    window.localStorage.setItem(INSTALLED_STORAGE_KEY, '1');
+  } catch {
+    // Stockage indisponible : on redira le geste, ce n'est pas grave.
+  }
+}
+
+export function wasInstalledFromHere(): boolean {
+  try {
+    return window.localStorage.getItem(INSTALLED_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
 }
 
 /** À appeler une fois au chargement, avant le montage de React. */
@@ -44,6 +67,7 @@ export function watchInstallability(): void {
   });
   window.addEventListener('appinstalled', () => {
     deferredPrompt = null;
+    rememberInstalled();
     notify();
   });
   if (typeof window.matchMedia === 'function') {
@@ -86,6 +110,8 @@ export async function promptInstall(): Promise<InstallPromptOutcome> {
   try {
     await event.prompt();
     const choice = await event.userChoice;
+    if (choice.outcome === 'accepted') rememberInstalled();
+    notify();
     return choice.outcome;
   } catch {
     return 'unavailable';
