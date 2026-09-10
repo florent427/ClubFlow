@@ -46,17 +46,20 @@ self.addEventListener('push', (event) => {
     (async () => {
       // Si le portail est au premier plan, déjà sur la page visée,
       // l'utilisateur voit le contenu arriver en direct : pas de doublon.
-      const clients = await self.clients.matchAll({
-        type: 'window',
-        includeUncontrolled: true,
-      });
-      const target = new URL(url, self.location.origin);
-      const alreadyVisible = clients.some((c) => {
-        if (!c.focused) return false;
-        const u = new URL(c.url);
-        return u.pathname === target.pathname && u.search === target.search;
-      });
-      if (alreadyVisible) return;
+      // Sauf `force` (notification de test envoyée depuis la page visée).
+      if (data.force !== true) {
+        const clients = await self.clients.matchAll({
+          type: 'window',
+          includeUncontrolled: true,
+        });
+        const target = new URL(url, self.location.origin);
+        const alreadyVisible = clients.some((c) => {
+          if (!c.focused) return false;
+          const u = new URL(c.url);
+          return u.pathname === target.pathname && u.search === target.search;
+        });
+        if (alreadyVisible) return;
+      }
       await self.registration.showNotification(title, options);
     })(),
   );

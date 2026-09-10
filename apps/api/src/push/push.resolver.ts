@@ -69,7 +69,12 @@ export class PushResolver {
       title: 'ClubFlow',
       body: 'Les notifications fonctionnent sur cet appareil.',
       url: '/parametres',
-      tag: 'push-test',
+      // Tag unique : un test répété doit produire une nouvelle notification
+      // (un tag fixe la remplacerait en silence, surtout sur iOS) ; force :
+      // l'adhérent clique depuis la page Paramètres, précisément la page visée.
+      tag: `push-test-${Date.now()}`,
+      renotify: true,
+      force: true,
     });
     return report.sent > 0;
   }

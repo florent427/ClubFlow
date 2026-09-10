@@ -16,6 +16,13 @@ export type PushMessage = {
   tag?: string;
   /** Re-signaler (son, vibration) même si une notification du même tag est affichée. */
   renotify?: boolean;
+  /**
+   * Afficher même si l'adhérent regarde déjà la page visée. Par défaut le
+   * service worker se tait dans ce cas (le contenu arrive en direct) ; la
+   * notification de test, déclenchée depuis la page qu'elle vise, doit
+   * passer outre.
+   */
+  force?: boolean;
 };
 
 export type PushSubscriptionInput = {
