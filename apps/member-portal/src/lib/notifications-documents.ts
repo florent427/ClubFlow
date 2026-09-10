@@ -5,6 +5,8 @@ export type UserNotificationKind = 'QUICK_MESSAGE' | 'CAMPAIGN' | 'SYSTEM';
 export type UserNotificationRow = {
   id: string;
   kind: UserNotificationKind;
+  /** Club émetteur : la boîte est celle du compte, tous clubs confondus. */
+  clubName: string;
   title: string;
   body: string;
   url: string | null;
@@ -20,6 +22,7 @@ export const MY_NOTIFICATIONS = gql`
     myNotifications(limit: $limit) {
       id
       kind
+      clubName
       title
       body
       url

@@ -10,6 +10,10 @@ export class UserNotificationGraph {
   @Field(() => UserNotificationKind)
   kind!: UserNotificationKind;
 
+  /** Club émetteur : la boîte est celle du compte, tous clubs confondus. */
+  @Field()
+  clubName!: string;
+
   @Field()
   title!: string;
 

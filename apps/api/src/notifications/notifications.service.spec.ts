@@ -100,8 +100,40 @@ describe('NotificationsService', () => {
     const svc = new NotificationsService(f.prisma, f.push);
     await svc.markRead('u1', 'n1');
     expect(f.updates[0].where).toMatchObject({ id: 'n1', userId: 'u1', readAt: null });
-    await svc.markAllRead('u1', 'club-1');
-    expect(f.updates[1].where).toMatchObject({ userId: 'u1', clubId: 'club-1', readAt: null });
+    await svc.markAllRead('u1');
+    expect(f.updates[1].where).toMatchObject({ userId: 'u1', readAt: null });
+    // Tous clubs confondus : aucun filtre club sur la boîte du compte.
+    expect(f.updates[1].where).not.toHaveProperty('clubId');
+  });
+
+  it('la boîte du compte couvre tous les clubs et nomme le club émetteur', async () => {
+    const f = fakes();
+    const rows = [
+      {
+        id: 'n1', userId: 'u1', clubId: 'club-2', kind: 'CAMPAIGN', title: 'Stage',
+        body: 'Inscriptions ouvertes', url: null, readAt: null,
+        createdAt: new Date('2026-09-10T07:00:00Z'), club: { name: 'Judo Club Nord' },
+      },
+    ];
+    let capturedWhere: Record<string, unknown> | null = null;
+    (f.prisma.userNotification as unknown as { findMany: unknown }).findMany = async ({
+      where,
+    }: {
+      where: Record<string, unknown>;
+    }) => {
+      capturedWhere = where;
+      return rows;
+    };
+    const svc = new NotificationsService(f.prisma, f.push);
+    const list = await svc.listForUser('u1');
+    expect(capturedWhere).toEqual({ userId: 'u1' });
+    expect(list).toEqual([
+      {
+        id: 'n1', kind: 'CAMPAIGN', clubName: 'Judo Club Nord', title: 'Stage',
+        body: 'Inscriptions ouvertes', url: null, readAt: null,
+        createdAt: '2026-09-10T07:00:00.000Z',
+      },
+    ]);
   });
 
   it('pushExcerpt aplatit et coupe à 160 caractères', () => {

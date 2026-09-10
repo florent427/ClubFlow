@@ -19,6 +19,7 @@ describe('NotificationsResolver — schéma GraphQL', () => {
     const sdl = printSchema(schema);
 
     expect(sdl).toContain('type UserNotificationGraph');
+    expect(sdl).toContain('clubName: String!');
     expect(sdl).toContain('enum UserNotificationKind');
     expect(sdl).toContain('myNotifications(limit: Int): [UserNotificationGraph!]!');
     expect(sdl).toContain('myUnreadNotificationCount: Int!');

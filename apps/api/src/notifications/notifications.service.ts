@@ -103,22 +103,28 @@ export class NotificationsService {
     return this.notifyUsers(userIds, input);
   }
 
+  /**
+   * Boîte du compte, tous clubs confondus : un adhérent de plusieurs clubs
+   * reçoit ses pushs sur le même appareil, la page qui s'ouvre au tap doit
+   * montrer le message quel que soit le club actif dans le portail. Le nom
+   * du club est porté par chaque entrée.
+   */
   async listForUser(
     userId: string,
-    clubId: string,
     limit = 50,
   ): Promise<UserNotificationGraph[]> {
     const rows = await this.prisma.userNotification.findMany({
-      where: { userId, clubId },
+      where: { userId },
       orderBy: { createdAt: 'desc' },
       take: Math.min(Math.max(limit, 1), 200),
+      include: { club: { select: { name: true } } },
     });
     return rows.map(toGraph);
   }
 
-  async unreadCount(userId: string, clubId: string): Promise<number> {
+  async unreadCount(userId: string): Promise<number> {
     return this.prisma.userNotification.count({
-      where: { userId, clubId, readAt: null },
+      where: { userId, readAt: null },
     });
   }
 
@@ -131,9 +137,9 @@ export class NotificationsService {
     return r.count > 0;
   }
 
-  async markAllRead(userId: string, clubId: string): Promise<number> {
+  async markAllRead(userId: string): Promise<number> {
     const r = await this.prisma.userNotification.updateMany({
-      where: { userId, clubId, readAt: null },
+      where: { userId, readAt: null },
       data: { readAt: new Date() },
     });
     this.log.debug(`notifications.mark_all_read user=${userId} count=${r.count}`);
@@ -141,10 +147,13 @@ export class NotificationsService {
   }
 }
 
-function toGraph(row: UserNotification): UserNotificationGraph {
+function toGraph(
+  row: UserNotification & { club: { name: string } },
+): UserNotificationGraph {
   return {
     id: row.id,
     kind: row.kind,
+    clubName: row.club.name,
     title: row.title,
     body: row.body,
     url: row.url ?? null,

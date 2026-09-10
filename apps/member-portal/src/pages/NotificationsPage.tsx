@@ -30,10 +30,11 @@ function formatWhen(iso: string): string {
 }
 
 /**
- * Centre de notifications : tout ce que le club a envoyé en push à ce
- * compte, pour ce club, lu ou non. Une notification système ouvre cette
- * page avec `?open=<id>` : l'entrée est dépliée, marquée lue et amenée à
- * l'écran.
+ * Centre de notifications : tout ce que les clubs ont envoyé en push à ce
+ * compte, tous clubs confondus (un adhérent multi-club reçoit tout sur le
+ * même appareil, quel que soit le club actif ici). Une notification
+ * système ouvre cette page avec `?open=<id>` : l'entrée est dépliée,
+ * marquée lue et amenée à l'écran.
  */
 export function NotificationsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -90,7 +91,7 @@ export function NotificationsPage() {
         <div>
           <h1 className="mp-page-title">Notifications</h1>
           <p className="mp-lead mp-lead--tight">
-            Les messages et annonces que le club vous a envoyés.
+            Les messages et annonces que vos clubs vous ont envoyés.
           </p>
         </div>
         {unread > 0 ? (
@@ -149,6 +150,8 @@ export function NotificationsPage() {
                     </span>
                     <span className="mp-notif__kind">
                       {KIND_LABEL[row.kind] ?? row.kind}
+                      {' · '}
+                      {row.clubName}
                       {isUnread ? ' · non lu' : ''}
                     </span>
                     <span className="mp-notif__body">{row.body}</span>
