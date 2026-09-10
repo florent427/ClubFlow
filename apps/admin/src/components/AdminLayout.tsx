@@ -6,6 +6,8 @@ import { ModuleRouteGuard } from './ModuleRouteGuard';
 import { GlobalSearchBar } from './GlobalSearchBar';
 import { ClubSwitcher } from './ClubSwitcher';
 import { AikoChatWidget } from './agent/AikoChatWidget';
+import { MobileTabBar } from './MobileTabBar';
+import { useIsMobile } from '../lib/use-media-query';
 import { VIEWER_PROFILES } from '../lib/documents';
 import { apolloClient } from '../lib/apollo';
 import { navigateToMemberPortal } from '../lib/member-portal-switch';
@@ -240,14 +242,19 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
     : 'Aucun profil membre lié à ce compte. Contactez votre club.';
 
   /**
-   * Drawer de navigation mobile. Sous 900px la sidenav sort du flux et
-   * devient un panneau off-canvas : elle n'est plus empilée au-dessus du
-   * contenu (ancien comportement, ~15 écrans de nav avant le premier
-   * pixel utile).
+   * Mode mobile (< 900px, cf. lib/use-media-query) : la sidenav devient une
+   * feuille plein écran ouverte depuis le burger ou l'onglet « Menu » de la
+   * barre basse ; la top-bar se réduit au club, à la recherche et aux
+   * notifications ; le widget Aïko flottant laisse place à l'onglet Aïko.
    */
-  const [navOpen, setNavOpen] = useState(false);
+  const isMobile = useIsMobile();
+  const [navRequested, setNavOpen] = useState(false);
+  // Dérivé plutôt que synchronisé par effet : au repassage en desktop
+  // (rotation, fenêtre agrandie) la feuille se referme d'elle-même et le
+  // verrou de scroll du body est levé dans la foulée.
+  const navOpen = isMobile && navRequested;
 
-  // Toute navigation referme le drawer — sinon on reste sur le panneau
+  // Toute navigation referme la feuille — sinon on reste sur le panneau
   // après avoir cliqué un lien.
   useEffect(() => {
     setNavOpen(false);
@@ -355,6 +362,19 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
     void navigate('/login', { replace: true });
   }
 
+  const notificationsButton = (
+    <button
+      type="button"
+      className="cf-icon-btn"
+      aria-label="Notifications (démo)"
+    >
+      <span className="material-symbols-outlined" aria-hidden>
+        notifications
+      </span>
+      <span className="cf-icon-btn__dot" aria-hidden />
+    </button>
+  );
+
   return (
     <div className="cf-shell">
       <aside
@@ -453,6 +473,22 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
                 currentPath={location.pathname}
               />
             ))}
+            {/* La bascule Admin/Personnel de la top-bar n'est pas rendue sur
+                mobile : le lien vers l'espace personnel vit ici. */}
+            {isMobile ? (
+              <button
+                type="button"
+                className="cf-sidenav__link cf-sidenav__link--button cf-mobile-only"
+                disabled={!hasMemberProfiles}
+                title={personnelTitle}
+                onClick={() => goPersonnel()}
+              >
+                <span className="material-symbols-outlined" aria-hidden>
+                  switch_account
+                </span>
+                <span className="cf-sidenav__link-label">Espace personnel</span>
+              </button>
+            ) : null}
             <button
               type="button"
               className="cf-sidenav__link cf-sidenav__link--button"
@@ -479,15 +515,6 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
         </div>
       </aside>
 
-      {navOpen ? (
-        <button
-          type="button"
-          className="cf-nav-backdrop"
-          aria-label="Fermer la navigation"
-          onClick={() => setNavOpen(false)}
-        />
-      ) : null}
-
       <header className="cf-topbar">
         <button
           type="button"
@@ -501,63 +528,78 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
             menu
           </span>
         </button>
-        <GlobalSearchBar />
-        <div className="cf-topbar__actions">
-          <ClubSwitcher />
-          <div className="cf-role-toggle" role="group" aria-label="Vue">
-            <button
-              type="button"
-              className="cf-role-toggle__btn cf-role-toggle__btn--on"
-              aria-current="page"
-              disabled
-            >
-              Admin
-            </button>
-            <button
-              type="button"
-              className="cf-role-toggle__btn"
-              disabled={!hasMemberProfiles}
-              title={personnelTitle}
-              onClick={() => goPersonnel()}
-            >
-              Personnel
-            </button>
-          </div>
-          <button
-            type="button"
-            className="cf-icon-btn"
-            aria-label="Notifications (démo)"
-          >
-            <span className="material-symbols-outlined" aria-hidden>
-              notifications
-            </span>
-            <span className="cf-icon-btn__dot" aria-hidden />
-          </button>
-          <div className="cf-topbar__profile">
-            <div className="cf-topbar__profile-text">
-              <p className="cf-topbar__profile-name">{displayName}</p>
-              <p className="cf-topbar__profile-role">Administrateur club</p>
+        {isMobile ? (
+          <>
+            {/* Mobile : club à gauche, recherche (feuille plein écran) et
+                notifications à droite. Bascule et profil vivent dans la nav. */}
+            <ClubSwitcher />
+            <div className="cf-topbar__spacer" />
+            <GlobalSearchBar variant="sheet" />
+            {notificationsButton}
+          </>
+        ) : (
+          <>
+            <GlobalSearchBar />
+            <div className="cf-topbar__actions">
+              <ClubSwitcher />
+              <div className="cf-role-toggle" role="group" aria-label="Vue">
+                <button
+                  type="button"
+                  className="cf-role-toggle__btn cf-role-toggle__btn--on"
+                  aria-current="page"
+                  disabled
+                >
+                  Admin
+                </button>
+                <button
+                  type="button"
+                  className="cf-role-toggle__btn"
+                  disabled={!hasMemberProfiles}
+                  title={personnelTitle}
+                  onClick={() => goPersonnel()}
+                >
+                  Personnel
+                </button>
+              </div>
+              {notificationsButton}
+              <div className="cf-topbar__profile">
+                <div className="cf-topbar__profile-text">
+                  <p className="cf-topbar__profile-name">{displayName}</p>
+                  <p className="cf-topbar__profile-role">Administrateur club</p>
+                </div>
+                <div className="cf-topbar__avatar" aria-hidden>
+                  {initialsFrom(identity)}
+                </div>
+              </div>
             </div>
-            <div className="cf-topbar__avatar" aria-hidden>
-              {initialsFrom(identity)}
-            </div>
-          </div>
-        </div>
+          </>
+        )}
       </header>
 
       <main className="cf-main">
         <ModuleRouteGuard>{children ?? <Outlet />}</ModuleRouteGuard>
       </main>
 
-      <footer className="cf-footer">
-        <span>ClubFlow v0.2</span>
-        <div className="cf-footer__links">
-          <span className="cf-footer__muted">Support</span>
-          <span className="cf-footer__muted">Documentation</span>
-        </div>
-      </footer>
+      {isMobile ? (
+        <MobileTabBar
+          navOpen={navOpen}
+          onToggleNav={() => setNavOpen((v) => !v)}
+        />
+      ) : (
+        <>
+          <footer className="cf-footer">
+            <span>ClubFlow v0.2</span>
+            <div className="cf-footer__links">
+              <span className="cf-footer__muted">Support</span>
+              <span className="cf-footer__muted">Documentation</span>
+            </div>
+          </footer>
 
-      <AikoChatWidget />
+          {/* Sur mobile, l'onglet Aïko mène à la page complète : pas de
+              bulle flottante qui masquerait la barre d'onglets. */}
+          <AikoChatWidget />
+        </>
+      )}
     </div>
   );
 }

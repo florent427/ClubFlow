@@ -4,7 +4,10 @@ import { useQuery } from '@apollo/client/react';
 import { MY_ADMIN_CLUBS } from '../lib/documents';
 import type { MyAdminClubsQueryData, MyAdminClub } from '../lib/types';
 import { landingUrl } from '../lib/landing-url';
+import { decodeJwtIdentity } from '../lib/jwt';
 import {
+  clearSession,
+  getToken,
   isLoggedIn,
   getClubId,
   setActiveClub,
@@ -51,16 +54,27 @@ export function SelectClubPage() {
     void navigate('/', { replace: true });
   }
 
+  /** Adresse du compte connecté, pour nommer le compte sans club. */
+  const token = getToken();
+  const accountEmail = token ? decodeJwtIdentity(token).email : null;
+
+  function switchAccount() {
+    clearSession();
+    void navigate('/login', { replace: true });
+  }
+
   return (
     <div className="select-club-page">
       <div className="select-club-card">
         <header className="select-club-header">
           <p className="select-club-eyebrow">ClubFlow</p>
           <h1>Choisissez un club</h1>
-          <p className="select-club-sub">
-            Vous avez accès à plusieurs clubs. Sélectionnez celui que vous
-            souhaitez administrer.
-          </p>
+          {clubs.length > 0 ? (
+            <p className="select-club-sub">
+              Vous avez accès à plusieurs clubs. Sélectionnez celui que vous
+              souhaitez administrer.
+            </p>
+          ) : null}
         </header>
 
         {loading ? (
@@ -72,13 +86,29 @@ export function SelectClubPage() {
         ) : clubs.length === 0 ? (
           <div className="select-club-empty">
             <p>
-              Votre compte n'a accès à aucun club pour le moment. Si vous venez
-              de vous inscrire, vérifiez que votre email a bien été confirmé.
+              {accountEmail ? (
+                <>
+                  Le compte <strong>{accountEmail}</strong> n'administre aucun
+                  club sur cet environnement.
+                </>
+              ) : (
+                <>Votre compte n'administre aucun club pour le moment.</>
+              )}{' '}
+              Si vous venez de vous inscrire, vérifiez que votre e-mail a bien
+              été confirmé ; sinon, connectez-vous avec un compte
+              administrateur de club.
             </p>
             <p>
-              <a href={landingUrl('/signup')} className="btn btn-secondary">
-                Créer un nouveau club
-              </a>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={switchAccount}
+              >
+                Se connecter avec un autre compte
+              </button>
+            </p>
+            <p>
+              <a href={landingUrl('/signup')}>Créer un nouveau club</a>
             </p>
           </div>
         ) : (

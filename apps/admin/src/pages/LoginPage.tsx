@@ -3,7 +3,12 @@ import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useApolloClient } from '@apollo/client/react';
 import { LOGIN, MY_ADMIN_CLUBS } from '../lib/documents';
 import type { LoginMutationData, MyAdminClubsQueryData } from '../lib/types';
-import { hasActiveClub, setActiveClub, setToken } from '../lib/storage';
+import {
+  clearSession,
+  hasActiveClub,
+  setActiveClub,
+  setToken,
+} from '../lib/storage';
 import { PasswordInput } from '../components/PasswordInput';
 import { landingUrl } from '../lib/landing-url';
 import { frenchAuthError } from '../lib/errors';
@@ -60,8 +65,14 @@ export function LoginPage() {
       const clubs = result.data?.myAdminClubs ?? [];
 
       if (clubs.length === 0) {
+        // Nommer le compte : sur staging, un compte de test « membre »
+        // se connecte très bien mais n'administre aucun club, et sans
+        // l'adresse à l'écran on croit à une panne plutôt qu'à un
+        // mauvais compte. Le jeton est purgé pour ne pas laisser une
+        // session sans club derrière (ClubSwitcher, /select-club).
+        clearSession();
         setError(
-          "Votre compte n'a accès à aucun club. Vérifiez votre email de confirmation ou contactez l'administrateur.",
+          `Le compte ${email.trim().toLowerCase()} n'administre aucun club sur cet environnement. Connectez-vous avec un compte administrateur de club, ou contactez l'administrateur pour obtenir l'accès.`,
         );
         return;
       }

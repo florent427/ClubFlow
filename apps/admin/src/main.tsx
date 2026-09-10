@@ -1,6 +1,8 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
+// Couche mobile (< 900px), chargée après le socle pour le surcharger.
+import './mobile.css'
 import App from './App.tsx'
 import { setToken, setActiveClub } from './lib/storage'
 

@@ -21,6 +21,7 @@
 | [`apollo-server-csrf-cross-origin.md`](pitfalls/apollo-server-csrf-cross-origin.md) | Piège — Apollo Server v5 bloque les POST cross-origin sans header non-simple |
 | [`atob-latin1-et-base64url.md`](pitfalls/atob-latin1-et-base64url.md) | `atob()` ne décode ni l'UTF-8 ni le base64url : mojibake visible, déconnexions invisibles |
 | [`auto-merge-clean-status.md`](pitfalls/auto-merge-clean-status.md) | Piège — `gh pr merge --auto` échoue "Pull request not in a clean status" |
+| [`backdrop-filter-bloc-conteneur-fixed.md`](pitfalls/backdrop-filter-bloc-conteneur-fixed.md) | Piège — `backdrop-filter` enferme les descendants `position: fixed` |
 | [`bash-quoting-json-pr.md`](pitfalls/bash-quoting-json-pr.md) | Piège — Interpolation `${{ outputs.pr }}` casse le shell sur parenthèses |
 | [`bracketed-paste-corrupts-tokens.md`](pitfalls/bracketed-paste-corrupts-tokens.md) | Piège — Bracketed paste corrompt les tokens collés via `read -s` |
 | [`brevo-sender-domain-must-be-authenticated.md`](pitfalls/brevo-sender-domain-must-be-authenticated.md) | Piège — Brevo rejette les mails si le sender domain n'est PAS authentifié (DB VERIFIED ne suffit pas) |
@@ -44,6 +45,7 @@
 | [`gha-pr-permission.md`](pitfalls/gha-pr-permission.md) | Piège — GitHub Actions ne peut pas créer ou approuver de PRs |
 | [`github-token-ne-retrigger-pas.md`](pitfalls/github-token-ne-retrigger-pas.md) | Le tag de release n'est jamais coupé : GITHUB_TOKEN ne réveille aucun workflow |
 | [`gitignore-claude-trailing-slash-blocks-negation.md`](pitfalls/gitignore-claude-trailing-slash-blocks-negation.md) | Piège — `.gitignore` `.claude/` (trailing slash) bloque la négation `!.claude/skills/` |
+| [`grid-1fr-minimum-auto-deborde.md`](pitfalls/grid-1fr-minimum-auto-deborde.md) | Piège — `1fr` vaut `minmax(auto, 1fr)` : un texte nowrap élargit la colonne hors écran |
 | [`juge-non-fiable-verdict-sans-valeur.md`](pitfalls/juge-non-fiable-verdict-sans-valeur.md) | Le juge non fiable : un verdict rendu sur un signal dont on n'a pas vérifié le sens |
 | [`module-natif-ne-passe-pas-par-metro.md`](pitfalls/module-natif-ne-passe-pas-par-metro.md) | `Cannot find native module` : un module natif ne s'installe pas par Metro |
 | [`nestjs-graphql-nullable-needs-explicit-type.md`](pitfalls/nestjs-graphql-nullable-needs-explicit-type.md) | Piège — `@Field({ nullable: true })` GraphQL crash sans type explicite |
@@ -101,7 +103,7 @@
 
 ---
 
-_Index généré le 2026-07-22 16:34 UTC par `bin/memory-index`._
+_Index généré le 2026-09-09 10:00 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`

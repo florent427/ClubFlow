@@ -1,0 +1,1189 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * ADMIN — COUCHE MOBILE (< 900px)
+ *
+ * Tout ce qui concerne les écrans étroits vit ici, chargé après index.css.
+ * Principe : en dessous de 900px l'admin devient une application mobile —
+ * barre d'onglets en bas, navigation en feuille plein écran, tiroirs et
+ * modales en feuilles, listes en cartes, cibles tactiles ≥ 44px, champs à
+ * 16px (sous cette taille iOS zoome à la prise de focus).
+ *
+ * Le point de rupture est partagé avec `useIsMobile()`
+ * (lib/use-media-query.ts) : les composants réservés au mobile ne sont
+ * rendus que sous cette largeur, et masqués ici par sécurité au-dessus.
+ *
+ * Ordre des couches (z-index) : top-bar 40 · sidenav 44 · barre d'onglets 45
+ * · recherche plein écran 70 · tiroirs 90–101 · modales 200 · toasts 9999.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --cf-tabbar-h: 3.75rem;
+  --cf-topbar-mobile-h: 3.5rem;
+  --cf-safe-top: env(safe-area-inset-top, 0px);
+  --cf-safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Composants propres au mobile : le JSX ne les rend que sous le point de
+ * rupture, mais on les neutralise aussi en CSS (redimensionnement en cours,
+ * tests de rendu). */
+.cf-tabbar,
+.cf-mobile-only,
+.cf-gs-sheet,
+.cf-gs__sheet-btn,
+.cf-topbar__spacer {
+  display: none;
+}
+
+/* ────────── Liste en cartes (remplace les tableaux sur mobile) ────────── */
+
+.cf-cardlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.cf-cardlist__row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 3.5rem;
+  padding: 0.75rem 0.85rem;
+  background: #fff;
+  border: 1px solid var(--cf-border);
+  border-radius: 12px;
+  -webkit-tap-highlight-color: transparent;
+}
+.cf-cardlist__row[role='button'] {
+  cursor: pointer;
+}
+.cf-cardlist__row[role='button']:active {
+  background: #f3f4f5;
+}
+.cf-cardlist__row:focus-visible {
+  outline: 2px solid rgba(0, 86, 197, 0.5);
+  outline-offset: 1px;
+}
+.cf-cardlist__leading {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+.cf-cardlist__main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.cf-cardlist__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.cf-cardlist__title {
+  min-width: 0;
+  /* Deux lignes maximum : un libellé de facture ou un nom composé reste
+   * lisible sans pousser la méta hors de la carte. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--cf-primary);
+}
+.cf-cardlist__meta {
+  flex: 0 0 auto;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--cf-text-muted);
+  white-space: nowrap;
+}
+.cf-cardlist__meta--danger {
+  color: #b91c1c;
+}
+.cf-cardlist__meta--ok {
+  color: #166534;
+}
+.cf-cardlist__sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  color: var(--cf-text-muted);
+}
+.cf-cardlist__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.15rem;
+}
+.cf-cardlist__trailing {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.cf-cardlist__chevron {
+  flex: 0 0 auto;
+  color: #9aa0b5;
+}
+.cf-cardlist__avatar {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  object-fit: cover;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #e8ecff, #d0d8f0);
+  border: 1px solid var(--cf-border);
+  color: rgba(0, 6, 102, 0.55);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+/* ────────── Filtres repliés derrière un bouton (mobile) ────────── */
+
+.cf-filters-disclosure {
+  margin-bottom: 1rem;
+}
+.cf-filters-disclosure > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: 12px;
+  background: rgba(26, 35, 126, 0.05);
+  border: 1px solid rgba(25, 28, 29, 0.06);
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--cf-primary-deep);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.cf-filters-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+.cf-filters-disclosure__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.cf-filters-disclosure__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--cf-primary);
+  color: #fff;
+  font-size: 0.7rem;
+}
+.cf-filters-disclosure__chevron {
+  transition: transform 0.15s ease;
+}
+.cf-filters-disclosure[open] > summary .cf-filters-disclosure__chevron {
+  transform: rotate(180deg);
+}
+.cf-filters-disclosure > .members-directory__filters {
+  margin: 0.5rem 0 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * SOUS 900px
+ * ═══════════════════════════════════════════════════════════════════════ */
+@media (max-width: 899.98px) {
+  /* ────────── Shell ────────── */
+
+  .cf-shell {
+    /* Les feuilles plein écran ne doivent jamais faire déborder la page. */
+    overflow-x: clip;
+  }
+
+  /* Navigation = feuille plein écran, au-dessus de la barre d'onglets
+   * (celle-ci reste visible : son bouton « Menu » devient « Fermer »). */
+  .cf-sidenav {
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: calc(var(--cf-tabbar-h) + var(--cf-safe-bottom));
+    z-index: 44;
+    width: 100%;
+    height: auto;
+    max-height: none;
+    padding: calc(0.75rem + var(--cf-safe-top)) 1rem 1.25rem;
+    border-right: none;
+    background: #f8f9fa;
+    transform: translateY(100%);
+    visibility: hidden;
+    transition:
+      transform 0.26s cubic-bezier(0.32, 0.72, 0, 1),
+      visibility 0.26s;
+  }
+  .cf-sidenav--open {
+    transform: none;
+    visibility: visible;
+  }
+  .cf-sidenav__brand {
+    margin-bottom: 0.75rem;
+    font-size: 1.2rem;
+  }
+  .cf-sidenav__close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    margin-left: auto;
+    border-radius: 999px;
+    background: rgba(0, 6, 102, 0.06);
+  }
+  .cf-sidenav__nav {
+    gap: 0.15rem;
+  }
+  .cf-sidenav__link {
+    min-height: 3rem;
+    padding: 0.6rem 0.85rem;
+    border-radius: 12px;
+    font-size: 1rem;
+  }
+  .cf-sidenav__link .material-symbols-outlined {
+    font-size: 1.4rem !important;
+  }
+  .cf-sidenav__link-chevron {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+  .cf-sidenav__sublink {
+    min-height: 2.75rem;
+    font-size: 0.95rem;
+  }
+  .cf-sidenav__section-header {
+    min-height: 2.5rem;
+  }
+  .cf-sidenav__link:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .cf-sidenav__user {
+    margin-top: 1rem;
+  }
+  .cf-sidenav__user-name,
+  .cf-sidenav__user-meta {
+    max-width: none;
+  }
+  .cf-sidenav__user-name {
+    font-size: 0.9rem;
+  }
+  .cf-sidenav__user-meta {
+    font-size: 0.75rem;
+  }
+  .cf-mobile-only {
+    display: flex;
+  }
+
+  /* Top-bar : plein écran, collante, compacte.
+   * Sans flou d'arrière-plan : `backdrop-filter` fait de la barre le bloc
+   * conteneur de ses descendants `position: fixed`, et la feuille de
+   * recherche comme le menu du club (rendus dedans) restaient enfermés
+   * dans ses 56px de haut. */
+  .cf-topbar {
+    position: sticky;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: calc(var(--cf-topbar-mobile-h) + var(--cf-safe-top));
+    gap: 0.25rem;
+    padding: var(--cf-safe-top) 0.5rem 0 0.25rem;
+    justify-content: flex-start;
+    background: #fff;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .cf-topbar__burger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 999px;
+  }
+  .cf-topbar__spacer {
+    display: block;
+    flex: 1 1 auto;
+  }
+  .cf-topbar__actions {
+    gap: 0.25rem;
+  }
+  .cf-icon-btn {
+    width: 2.75rem;
+    height: 2.75rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+  }
+  /* Redondants avec la nav (déconnexion, identité, espace personnel). */
+  .cf-role-toggle,
+  .cf-topbar__profile {
+    display: none;
+  }
+
+  /* Contenu : pleine largeur, place réservée à la barre d'onglets. */
+  .cf-main {
+    margin-left: 0;
+    min-width: 0;
+    min-height: calc(100vh - var(--cf-topbar-mobile-h));
+    min-height: calc(100dvh - var(--cf-topbar-mobile-h));
+    padding: 1rem 1rem calc(var(--cf-tabbar-h) + var(--cf-safe-bottom) + 1.5rem);
+  }
+  .cf-footer {
+    display: none;
+  }
+
+  /* ────────── Barre d'onglets ────────── */
+
+  .cf-tabbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 45;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    height: calc(var(--cf-tabbar-h) + var(--cf-safe-bottom));
+    padding: 0.2rem 0.25rem calc(0.2rem + var(--cf-safe-bottom));
+    background: rgba(255, 255, 255, 0.94);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(0, 6, 102, 0.08);
+    box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.05);
+  }
+  .cf-tabbar__item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.15rem;
+    min-width: 0;
+    min-height: 3.2rem;
+    padding: 0.25rem 0.1rem;
+    border: none;
+    border-radius: 12px;
+    background: transparent;
+    font: inherit;
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    color: #5c6178;
+    text-decoration: none;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .cf-tabbar__item .material-symbols-outlined {
+    font-size: 1.5rem !important;
+    transition: transform 0.15s ease;
+  }
+  .cf-tabbar__item:active .material-symbols-outlined {
+    transform: scale(0.9);
+  }
+  .cf-tabbar__item--active {
+    color: var(--cf-primary);
+  }
+  .cf-tabbar__item--active .material-symbols-outlined {
+    font-variation-settings:
+      'FILL' 1,
+      'wght' 500,
+      'GRAD' 0,
+      'opsz' 24;
+  }
+  .cf-tabbar__item--disabled {
+    opacity: 0.35;
+    pointer-events: none;
+  }
+  .cf-tabbar__label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ────────── Recherche globale : bouton + feuille plein écran ────────── */
+
+  .cf-gs__sheet-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: #191c1d;
+    cursor: pointer;
+  }
+  .cf-gs-sheet {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    background: #f8f9fa;
+    padding-top: var(--cf-safe-top);
+    animation: cf-fade 0.15s ease;
+  }
+  .cf-gs-sheet__bar {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.5rem 0.75rem 0.5rem 0.35rem;
+    background: #fff;
+    border-bottom: 1px solid #eef0f6;
+  }
+  .cf-gs-sheet__back {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 2.75rem;
+    height: 2.75rem;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: #191c1d;
+    cursor: pointer;
+  }
+  .cf-gs-sheet__field {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .cf-gs-sheet__field .cf-topbar__search-icon {
+    left: 0.85rem;
+  }
+  .cf-gs-sheet__input {
+    width: 100%;
+    min-height: 2.75rem;
+    padding: 0.6rem 0.9rem 0.6rem 2.6rem;
+    border: none;
+    border-radius: 12px;
+    font: inherit;
+    font-size: 16px;
+    background: rgba(225, 227, 228, 0.55);
+    color: #191c1d;
+  }
+  .cf-gs-sheet__input:focus {
+    outline: 2px solid rgba(0, 86, 197, 0.35);
+  }
+  .cf-gs-sheet__results {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 0.5rem 0.75rem calc(1rem + var(--cf-safe-bottom));
+  }
+  .cf-gs-sheet .cf-gs__status {
+    padding: 1.25rem 0.5rem;
+    text-align: center;
+  }
+  .cf-gs-sheet .cf-gs__group {
+    margin-bottom: 0.75rem;
+  }
+  .cf-gs-sheet .cf-gs__item {
+    min-height: 3rem;
+    padding: 0.65rem 0.75rem;
+    border-radius: 10px;
+    background: #fff;
+    margin-bottom: 0.25rem;
+  }
+
+  /* ────────── Tiroirs → plein écran ────────── */
+
+  .cf-drawer {
+    width: 100vw !important;
+    left: 0;
+    right: 0;
+    height: 100vh;
+    height: 100dvh;
+    box-shadow: none;
+  }
+  .cf-drawer__header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: calc(0.75rem + var(--cf-safe-top)) 1rem 0.75rem;
+    background: #fff;
+  }
+  .cf-drawer__title {
+    font-size: 1.05rem;
+  }
+  .cf-drawer__close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 999px;
+    background: #f1f5f9;
+  }
+  .cf-drawer__body {
+    padding: 1rem;
+    -webkit-overflow-scrolling: touch;
+  }
+  .cf-drawer__footer,
+  .cf-drawer-foot {
+    display: flex;
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem calc(0.75rem + var(--cf-safe-bottom));
+  }
+  .cf-drawer__footer > *,
+  .cf-drawer-foot > * {
+    width: 100%;
+    justify-content: center;
+  }
+  .cf-drawer__footer-actions {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 0.5rem;
+  }
+  .cf-drawer__footer-actions > * {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .family-drawer,
+  .family-drawer--wide,
+  .planning-slot-drawer {
+    width: 100% !important;
+    max-width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    border-left: none;
+    box-shadow: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .family-drawer > .family-drawer__section:last-of-type,
+  .family-drawer > form:last-child {
+    padding-bottom: calc(1.5rem + var(--cf-safe-bottom));
+  }
+  .member-drawer__head {
+    padding-top: calc(1rem + var(--cf-safe-top));
+  }
+  .member-drawer__icon-btn {
+    min-width: 2.5rem;
+    min-height: 2.5rem;
+  }
+  .member-drawer-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .member-drawer-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .member-drawer-tab {
+    flex: 0 0 auto;
+    min-height: 2.75rem;
+    white-space: nowrap;
+  }
+  .family-drawer__head-actions,
+  .family-drawer__hg-actions,
+  .family-drawer__member-actions {
+    flex-wrap: wrap;
+  }
+  /* Le dialogue « Enregistrer les modifications ? » du tiroir membre. */
+  .member-drawer-close-confirm {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .member-drawer-close-confirm__panel {
+    width: 100%;
+    max-width: none;
+    border-radius: 18px 18px 0 0;
+    padding-bottom: calc(1rem + var(--cf-safe-bottom));
+  }
+
+  /* ────────── Modales → feuilles basses ────────── */
+
+  .cf-modal {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    transform: none;
+    width: 100%;
+    max-height: 92vh;
+    max-height: 92dvh;
+    overflow-y: auto;
+    border-radius: 18px 18px 0 0;
+    padding: 1.25rem 1rem calc(1rem + var(--cf-safe-bottom));
+    animation: cf-sheet-up 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  .quick-message-modal-backdrop,
+  .members-family-modal-backdrop,
+  .members-palette-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .members-family-modal,
+  .members-palette {
+    width: 100%;
+    max-width: none;
+    max-height: 92vh;
+    max-height: 92dvh;
+    border-radius: 18px 18px 0 0;
+    padding-bottom: calc(1rem + var(--cf-safe-bottom));
+    animation: cf-sheet-up 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  .members-palette__list {
+    max-height: 50vh;
+    max-height: 50dvh;
+  }
+  .members-palette__row {
+    flex-wrap: wrap;
+    padding: 0.6rem 0;
+  }
+  .members-palette-hint {
+    display: none;
+  }
+
+  /* ────────── Notifications ────────── */
+
+  .cf-toast-container {
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: calc(var(--cf-tabbar-h) + var(--cf-safe-bottom) + 0.75rem);
+    align-items: stretch;
+  }
+  .cf-toast {
+    max-width: none;
+  }
+
+  /* Le widget Aïko flottant n'est pas rendu sur mobile (l'onglet mène à la
+   * page complète) ; ceinture et bretelles au cas où. */
+  .cf-aiko-bubble,
+  .cf-aiko-panel {
+    display: none !important;
+  }
+
+  /* ────────── En-têtes de page ────────── */
+
+  .cf-page {
+    gap: 0.75rem;
+  }
+  .cf-page__header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+  .cf-page__header > .cf-btn,
+  .cf-page__header > .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .cf-page__actions,
+  .cf-projects .cf-page__actions {
+    display: flex;
+    flex-wrap: wrap;
+    width: 100%;
+    gap: 0.5rem;
+  }
+  .cf-page__actions > *,
+  .cf-projects .cf-page__actions > * {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+  .cf-page__title,
+  .members-loom__title,
+  .cf-dash__h1 {
+    font-size: 1.5rem;
+  }
+  .cf-page__subtitle,
+  .members-loom__lede {
+    font-size: 0.9rem;
+  }
+  .members-loom {
+    padding-bottom: 0.5rem;
+  }
+  .members-loom::before {
+    display: none;
+  }
+  .members-loom__hero {
+    margin-bottom: 1rem;
+    max-width: none;
+  }
+  .members-loom__hero--nested {
+    margin-bottom: 0.75rem;
+  }
+  .members-hero__actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+  .members-hero__ctas,
+  .planning-v2 .members-hero__ctas {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    width: 100%;
+  }
+  .members-hero__ctas > *,
+  .members-hero__actions .members-hero__cta,
+  .members-hero__actions .members-hero__back {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+  }
+
+  /* Sous-navigations (Membres, Paramètres) : rangée de puces défilante,
+   * débordant des gouttières pour indiquer qu'elle continue. */
+  .members-subnav {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.4rem;
+    margin: 0 -1rem 1rem;
+    padding: 0.25rem 1rem;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+    white-space: nowrap;
+  }
+  .members-subnav::-webkit-scrollbar {
+    display: none;
+  }
+  .members-subnav__link {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    min-height: 2.5rem;
+    padding: 0.45rem 0.9rem;
+    border-radius: 999px;
+    background: #fff;
+    border: 1px solid var(--cf-border);
+    font-size: 0.85rem;
+    scroll-snap-align: start;
+  }
+  .members-subnav__link--active {
+    background: var(--cf-primary);
+    border-color: var(--cf-primary);
+    color: #fff;
+    box-shadow: none;
+  }
+
+  /* Onglets et segments : défilement plutôt que débord. */
+  .cf-tabs {
+    display: flex;
+    flex-wrap: nowrap;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .cf-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .cf-tab {
+    flex: 0 0 auto;
+    min-height: 2.5rem;
+    white-space: nowrap;
+  }
+  .cf-segmented {
+    display: flex;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .cf-segmented::-webkit-scrollbar {
+    display: none;
+  }
+  .cf-segmented__btn {
+    flex: 1 0 auto;
+    justify-content: center;
+    min-height: 2.5rem;
+  }
+  .cf-toolbar,
+  .cf-section-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.6rem;
+  }
+  .cf-toolbar > *,
+  .cf-section-toolbar > * {
+    max-width: 100%;
+  }
+  .cf-section-toolbar__spacer {
+    display: none;
+  }
+  .cf-searchbox {
+    min-width: 0;
+    width: 100%;
+  }
+
+  /* KPI et cartes : deux colonnes serrées, sans ombres portées lourdes. */
+  .members-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+  .members-kpi {
+    padding: 0.75rem 0.85rem;
+    box-shadow: none;
+  }
+  .cf-billing-kpis {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.5rem;
+  }
+  .members-panel {
+    padding: 1rem;
+    box-shadow: none;
+  }
+  .members-panel--table {
+    padding: 1rem;
+  }
+  /* minmax(0, 1fr) et non 1fr : « 1fr » vaut minmax(auto, 1fr) et laisse une
+   * carte au texte long (e-mail nowrap) élargir la colonne au-delà de
+   * l'écran — la moitié droite du panneau partait hors champ. */
+  .members-loom__grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+  }
+  .cf-card {
+    padding: 1rem;
+  }
+  .cf-alert {
+    flex-wrap: wrap;
+    padding: 0.75rem 0.85rem;
+  }
+  .cf-alert > .cf-btn,
+  .cf-alert > .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .cf-grid-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* ────────── Formulaires ────────── */
+
+  /* 16px : sous cette taille, iOS Safari zoome le champ à la prise de focus
+   * et la page reste dézoomée ensuite. Spécificité volontairement haute pour
+   * passer devant les classes de champ (.cf-input, .cf-field__input…). */
+  .cf-shell input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='color']),
+  .cf-shell :is(select, textarea):not([hidden]) {
+    font-size: 16px;
+  }
+  .cf-form-row,
+  .cf-form__row,
+  .members-form--inline,
+  .slot-edit-form__row,
+  .dyn-group-form__row,
+  .planning-slot-drawer .cf-form__row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .cf-form-row > *,
+  .cf-form__row > *,
+  .members-form--inline > .field {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  .cf-form-actions,
+  .cf-form__actions,
+  .cf-modal-actions,
+  .members-form__actions-row,
+  .members-family-modal__actions,
+  .member-drawer-close-confirm__actions,
+  .cf-stripe-connect__actions {
+    display: flex;
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  .cf-form-actions > *,
+  .cf-form__actions > *,
+  .cf-modal-actions > *,
+  .members-form__actions-row > *,
+  .members-family-modal__actions > *,
+  .member-drawer-close-confirm__actions > *,
+  .cf-stripe-connect__actions > * {
+    width: 100%;
+    justify-content: center;
+    margin: 0;
+  }
+  .cf-btn,
+  .btn,
+  .btn-primary,
+  .btn-ghost {
+    min-height: 2.75rem;
+  }
+  .cf-btn--sm,
+  .btn-tight {
+    min-height: 2.25rem;
+  }
+  .cf-checkbox,
+  .cf-radio,
+  .members-checkbox,
+  .members-filter-dropdown__opt {
+    min-height: 2.5rem;
+  }
+  .members-directory__filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.6rem 0.75rem;
+    padding: 0.75rem;
+  }
+  .members-directory__filters-reset .btn {
+    width: 100%;
+  }
+
+  /* ────────── Tableaux restants : défilement horizontal assumé ──────────
+   * Les listes les plus fréquentées (annuaire, contacts, factures) sont
+   * rendues en cartes ; les autres tableaux défilent dans leur conteneur,
+   * avec une ombre au bord qui signale qu'il y a du contenu au-delà. */
+  .members-table-wrap,
+  .cf-main :is(div, section, article):has(> table) {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    background:
+      linear-gradient(to right, #fff 30%, rgba(255, 255, 255, 0)),
+      linear-gradient(to right, rgba(255, 255, 255, 0), #fff 70%) 100% 0,
+      radial-gradient(farthest-side at 0 50%, rgba(0, 6, 102, 0.16), transparent),
+      radial-gradient(farthest-side at 100% 50%, rgba(0, 6, 102, 0.16), transparent) 100% 0;
+    background-repeat: no-repeat;
+    background-size:
+      40px 100%,
+      40px 100%,
+      12px 100%,
+      12px 100%;
+    background-attachment: local, local, scroll, scroll;
+  }
+  .members-table-wrap {
+    margin: 0 -1rem;
+    padding: 0 1rem;
+  }
+  .members-table th,
+  .members-table td,
+  .cf-data-table th,
+  .cf-data-table td {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+  }
+
+  /* ────────── Tableau de bord ────────── */
+
+  .cf-dash {
+    gap: 1.25rem;
+    padding-bottom: 1rem;
+  }
+  .cf-dash__welcome {
+    gap: 1rem;
+  }
+  .cf-dash__welcome-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .cf-dash__lede {
+    font-size: 0.95rem;
+  }
+  .cf-dash__quick-btns {
+    flex-direction: column;
+    width: 100%;
+  }
+  .cf-dash__quick-btns .cf-btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .cf-dash__shortcut-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+  .cf-shortcut {
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.85rem 0.5rem;
+    font-size: 0.8rem;
+    text-align: center;
+    border-color: var(--cf-border);
+  }
+  .cf-dash__kpi {
+    gap: 0.75rem;
+  }
+  .cf-kpi-card {
+    padding: 1.1rem;
+  }
+  .cf-kpi-value {
+    font-size: 2rem;
+  }
+  .cf-kpi-spotlight {
+    min-height: 180px;
+  }
+  .cf-dash__mini {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+    margin: 0;
+  }
+  .cf-mini-tile {
+    padding: 0.75rem 0.85rem;
+  }
+  .cf-mini-tile__value {
+    font-size: 1.25rem;
+  }
+  .cf-dash__bento,
+  .cf-dash__lists {
+    gap: 0.75rem;
+  }
+  .cf-bento-card {
+    padding: 1rem;
+  }
+  .cf-bento-card--wide {
+    min-height: 0;
+  }
+  .cf-pie-wrap {
+    width: 9rem;
+    height: 9rem;
+  }
+  .cf-finance-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+  .cf-finance-cell {
+    padding: 0.75rem 0.85rem;
+  }
+  .cf-onboarding-banner {
+    flex-wrap: wrap;
+    padding: 1rem;
+  }
+  .cf-agenda-row {
+    padding: 0.75rem;
+  }
+  .cf-module-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* Même garde-fou pour les grilles à une colonne du socle. */
+  .cf-dash__kpi,
+  .cf-dash__bento,
+  .cf-dash__lists,
+  .cf-projects__layout,
+  .grades-layout,
+  .roles-layout,
+  .dyn-group-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* ────────── Planning ────────── */
+
+  .planning-calendar-shell {
+    margin: 0 -0.5rem 1rem;
+    padding: 0.5rem;
+  }
+  .planning-time-grid-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .planning-toolbar__nav .btn,
+  .planning-toolbar__nav .cf-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+  .cf-main .planning-v2 .planning-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: none;
+  }
+  /* Le socle aligne les filtres en bas à droite d'une rangée ; en colonne,
+   * cela décale chaque champ vers la droite. */
+  .planning-v2 .planning-filters {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.6rem;
+  }
+  .planning-v2 .planning-filters > .field,
+  .planning-v2 .planning-filters__search {
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    margin: 0;
+  }
+
+  /* ────────── Aïko (page complète) ────────── */
+
+  .cf-agent-layout {
+    grid-template-columns: 1fr !important;
+    height: auto !important;
+    min-height: 0 !important;
+    gap: 0.75rem !important;
+  }
+  .cf-agent-layout > aside {
+    max-height: 32vh;
+  }
+  .cf-agent-layout > main {
+    height: calc(100vh - 21rem);
+    height: calc(100dvh - 21rem);
+    min-height: 22rem;
+  }
+
+  /* ────────── Divers ────────── */
+
+  .cf-club-switcher--solo,
+  .cf-club-switcher__btn {
+    max-width: 44vw;
+  }
+  .grades-form-panel,
+  .roles-sidebar,
+  .article-editor__side {
+    position: static;
+  }
+  .article-editor__stickybar,
+  .editor-topbar {
+    top: calc(var(--cf-topbar-mobile-h) + var(--cf-safe-top));
+  }
+  .tiptap-toolbar {
+    top: calc(
+      var(--cf-topbar-mobile-h) + var(--cf-safe-top) +
+        var(--article-editor-stickybar-h, 76px)
+    );
+  }
+}
+
+@keyframes cf-sheet-up {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cf-sidenav,
+  .cf-modal,
+  .members-family-modal,
+  .members-palette,
+  .cf-gs-sheet,
+  .cf-tabbar__item .material-symbols-outlined {
+    transition: none;
+    animation: none;
+  }
+}

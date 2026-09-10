@@ -11,6 +11,8 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { LoadingState, Skeleton } from '../../components/ui/LoadingState';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { SearchBox } from '../../components/ui/SearchBox';
+import { CardList, CardListItem } from '../../components/ui/CardList';
+import { useIsMobile } from '../../lib/use-media-query';
 import { InvoiceDetailDrawer } from './InvoiceDetailDrawer';
 
 function formatEuros(cents: number): string {
@@ -64,6 +66,7 @@ type StatusFilter = 'ALL' | InvoiceStatusStr;
 export function BillingPage() {
   const { isEnabled } = useClubModules();
   const paymentOn = isEnabled('PAYMENT');
+  const isMobile = useIsMobile();
 
   const { data, loading, error, refetch } = useQuery<ClubInvoicesQueryData>(
     CLUB_INVOICES,
@@ -76,6 +79,9 @@ export function BillingPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<StatusFilter>('ALL');
   const [openId, setOpenId] = useState<string | null>(null);
+  // Instant de référence figé au montage : « en retard » se juge à
+  // l'ouverture de la page, pas à chaque re-rendu (règle de pureté React).
+  const [now] = useState(() => Date.now());
 
   const invoices = data?.clubInvoices ?? [];
 
@@ -250,6 +256,55 @@ export function BillingPage() {
               : 'Ajustez la recherche ou changez d\u2019onglet.'
           }
         />
+      ) : isMobile ? (
+        <CardList ariaLabel="Factures">
+          {filtered.map((inv) => {
+            const overdue =
+              inv.status === 'OPEN' &&
+              inv.dueAt &&
+              new Date(inv.dueAt).getTime() < now;
+            const household =
+              inv.householdGroupLabel ??
+              inv.familyLabel ??
+              (inv.familyId ? inv.familyId.slice(0, 8) : '—');
+            return (
+              <CardListItem
+                key={inv.id}
+                title={inv.label}
+                subtitle={`${household} · ${
+                  overdue
+                    ? `en retard depuis le ${formatDate(inv.dueAt)}`
+                    : `échéance ${formatDate(inv.dueAt)}`
+                }`}
+                meta={
+                  <span
+                    className={
+                      inv.balanceCents > 0
+                        ? 'cf-cardlist__meta--danger'
+                        : 'cf-cardlist__meta--ok'
+                    }
+                  >
+                    {formatEuros(inv.amountCents)}
+                  </span>
+                }
+                footer={
+                  <>
+                    <StatusPill
+                      status={inv.status}
+                      isCreditNote={inv.isCreditNote}
+                    />
+                    {inv.balanceCents > 0 ? (
+                      <span className="cf-pill cf-pill--danger">
+                        Reste dû {formatEuros(inv.balanceCents)}
+                      </span>
+                    ) : null}
+                  </>
+                }
+                onOpen={() => setOpenId(inv.id)}
+              />
+            );
+          })}
+        </CardList>
       ) : (
         <table className="cf-data-table cf-data-table--billing">
           <thead>
@@ -267,7 +322,7 @@ export function BillingPage() {
               const overdue =
                 inv.status === 'OPEN' &&
                 inv.dueAt &&
-                new Date(inv.dueAt).getTime() < Date.now();
+                new Date(inv.dueAt).getTime() < now;
               return (
                 <tr
                   key={inv.id}

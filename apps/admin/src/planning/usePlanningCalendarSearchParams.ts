@@ -9,9 +9,9 @@ import { startOfDay } from 'date-fns/startOfDay';
 
 export type PlanningView = 'month' | 'week' | 'day';
 
-function parseView(v: string | null): PlanningView {
+function parseView(v: string | null, fallback: PlanningView): PlanningView {
   if (v === 'month' || v === 'week' || v === 'day') return v;
-  return 'week';
+  return fallback;
 }
 
 function parsePivotDate(s: string | null): Date {
@@ -25,7 +25,10 @@ function parsePivotDate(s: string | null): Date {
   }
 }
 
-export function usePlanningCalendarSearchParams(): {
+export function usePlanningCalendarSearchParams(
+  /** Vue quand l'URL n'en précise pas : semaine sur desktop, jour sur mobile. */
+  defaultView: PlanningView = 'week',
+): {
   view: PlanningView;
   pivotDate: Date;
   setView: (v: PlanningView) => void;
@@ -36,7 +39,7 @@ export function usePlanningCalendarSearchParams(): {
 } {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const view = parseView(searchParams.get('view'));
+  const view = parseView(searchParams.get('view'), defaultView);
   const pivotDate = useMemo(
     () => parsePivotDate(searchParams.get('date')),
     [searchParams],
