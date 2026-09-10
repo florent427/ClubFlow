@@ -9,6 +9,20 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.40.0](https://github.com/florent427/ClubFlow/compare/v0.39.0...v0.40.0) (2026-09-10)
+
+
+### ✨ Features
+
+* **portail:** notifications Web Push et canal PUSH réel ([e42a991](https://github.com/florent427/ClubFlow/commit/e42a991e39a4b7aa8d9a79c74e09f7d70839b66c))
+
+
+### 🐛 Bug Fixes
+
+* **api:** type explicite sur userAgent, l'API staging ne démarrait plus ([93b3be7](https://github.com/florent427/ClubFlow/commit/93b3be7eef4ce53144310d4ff5e545514edc566b))
+* **portail:** la notification de test s'affiche à chaque essai ([f2271c6](https://github.com/florent427/ClubFlow/commit/f2271c6b1041b660822ce6a021f06bcb646a368b))
+* **portail:** manifeste en .json pour un Content-Type JSON derrière Caddy ([09f7f49](https://github.com/florent427/ClubFlow/commit/09f7f4989528f45ce0a8a030a0d1f42d51a3cf49))
+
 ## [0.39.0](https://github.com/florent427/ClubFlow/compare/v0.38.0...v0.39.0) (2026-09-10)
 
 
