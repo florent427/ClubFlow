@@ -86,6 +86,7 @@ const input = {
   occurredOn: undefined,
   financialAccountId: 'fin-cheques',
   paymentMethod: 'CHECK',
+  paymentReference: '1234567',
 };
 
 describe('AccountingService.createManualEntry — transaction de l’appelant', () => {
@@ -97,6 +98,15 @@ describe('AccountingService.createManualEntry — transaction de l’appelant', 
     expect(created.id).toBe('entry-1');
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(outerTx.accountingEntry.create).toHaveBeenCalledTimes(1);
+    // Mode et référence de paiement persistés sur l'écriture, comme
+    // ManualEntryInput le promet.
+    expect(outerTx.accountingEntry.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        paymentMethod: 'CHECK',
+        paymentReference: '1234567',
+        financialAccountId: 'fin-cheques',
+      }),
+    });
     expect(outerTx.accountingEntryLine.create).toHaveBeenCalledTimes(2);
     expect(audit.log).toHaveBeenCalledTimes(1);
     expect(audit.log.mock.calls[0][1]).toBe(outerTx);

@@ -985,6 +985,11 @@ export class AccountingService {
           occurredAt,
           createdByUserId: userId,
           financialAccountId: fin.id,
+          // Documentés « persistés sur l'entry » par ManualEntryInput, mais
+          // jamais écrits ici : un chèque hors facture perdait son mode et
+          // son numéro (vu en base staging le 2026-09-10).
+          paymentMethod: input.paymentMethod ?? null,
+          paymentReference: input.paymentReference ?? null,
         },
       });
 
