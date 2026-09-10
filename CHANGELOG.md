@@ -9,6 +9,18 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.39.0](https://github.com/florent427/ClubFlow/compare/v0.38.0...v0.39.0) (2026-09-10)
+
+
+### ✨ Features
+
+* **admin:** refonte de l'espace admin sur mobile ([68eb207](https://github.com/florent427/ClubFlow/commit/68eb20714dd17efabd301ffdc46b09d346a9154e))
+
+
+### 🐛 Bug Fixes
+
+* **admin:** nommer le compte qui n'administre aucun club ([70f410e](https://github.com/florent427/ClubFlow/commit/70f410e2f9fac1cae8848b33acf13b6ed3a7d207))
+
 ## [0.38.0](https://github.com/florent427/ClubFlow/compare/v0.37.0...v0.38.0) (2026-09-07)
 
 
