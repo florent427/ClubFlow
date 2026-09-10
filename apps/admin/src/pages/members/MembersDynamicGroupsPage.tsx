@@ -11,6 +11,7 @@ import {
 import type { DynamicGroupsQueryData, GradeLevelsQueryData } from '../../lib/types';
 import { useClubModules } from '../../lib/club-modules-context';
 import { QueryError } from '../../components/QueryError';
+import { DynamicGroupMembersPanel } from './DynamicGroupMembersPanel';
 
 type GroupRow = DynamicGroupsQueryData['clubDynamicGroups'][number];
 type GradeRow = GradeLevelsQueryData['clubGradeLevels'][number];
@@ -501,12 +502,21 @@ export function MembersDynamicGroupsPage() {
                           </strong>
                           <span
                             className={`dyn-group-card__count${g.matchingActiveMembersCount === 0 ? ' dyn-group-card__count--zero' : ''}`}
-                            title={`${g.matchingActiveMembersCount} membre(s) correspondant(s)`}
+                            title={
+                              g.manuallyAssignedCount > 0
+                                ? `${g.matchingActiveMembersCount} membre(s), dont ${g.manuallyAssignedCount} ajouté(s) à la main`
+                                : `${g.matchingActiveMembersCount} membre(s) par critères`
+                            }
                           >
                             <span className="material-symbols-outlined" aria-hidden>
                               person
                             </span>
                             {g.matchingActiveMembersCount}
+                            {g.manuallyAssignedCount > 0 ? (
+                              <span className="dyn-group-card__count-manual">
+                                +{g.manuallyAssignedCount} à la main
+                              </span>
+                            ) : null}
                           </span>
                         </div>
                         <div className="dyn-group-card__criteria">
@@ -620,6 +630,14 @@ export function MembersDynamicGroupsPage() {
                 onSubmit={(f) => void handleUpdate(f)}
                 onCancel={() => setEditing(null)}
                 previewCount={editing.matchingActiveMembersCount}
+              />
+            </div>
+            <div className="family-drawer__section">
+              <DynamicGroupMembersPanel
+                key={editing.id}
+                groupId={editing.id}
+                groupName={editing.name}
+                onChanged={() => void refetch()}
               />
             </div>
           </aside>

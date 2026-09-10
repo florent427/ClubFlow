@@ -261,8 +261,23 @@ export type DynamicGroupsQueryData = {
     name: string;
     minAge: number | null;
     maxAge: number | null;
+    /** Membres actifs du groupe : critères OU affectation manuelle. */
     matchingActiveMembersCount: number;
+    /** Parmi eux, ceux ajoutés à la main. */
+    manuallyAssignedCount: number;
     gradeFilters: { id: string; label: string }[];
+  }[];
+};
+
+export type DynamicGroupMemberSourceStr = 'CRITERIA' | 'MANUAL' | 'BOTH';
+
+export type DynamicGroupMembersQueryData = {
+  dynamicGroupMembers: {
+    memberId: string;
+    firstName: string;
+    lastName: string;
+    gradeLabel: string | null;
+    source: DynamicGroupMemberSourceStr;
   }[];
 };
 

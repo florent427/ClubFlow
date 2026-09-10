@@ -29,6 +29,11 @@ import { UpdateDynamicGroupInput } from './dto/update-dynamic-group.input';
 import { UpdateGradeLevelInput } from './dto/update-grade-level.input';
 import { UpdateMemberInput } from './dto/update-member.input';
 import { memberMatchesDynamicGroup } from './dynamic-group-matcher';
+import { resolveDynamicGroupMembers } from './dynamic-group-membership';
+import {
+  DynamicGroupMemberGraph,
+  DynamicGroupMemberSource,
+} from './models/dynamic-group-member.model';
 import {
   catalogFieldLabelFr,
   isCatalogFieldEmpty,
@@ -1088,6 +1093,10 @@ export class MembersService {
         clubId,
         r,
       );
+      const manuallyAssignedCount = await this.countManualAssignments(
+        clubId,
+        r.id,
+      );
       out.push({
         id: r.id,
         clubId: r.clubId,
@@ -1096,6 +1105,7 @@ export class MembersService {
         maxAge: r.maxAge,
         gradeFilters: r.gradeFilters.map((gf) => this.toGradeGraph(gf.gradeLevel)),
         matchingActiveMembersCount,
+        manuallyAssignedCount,
       });
     }
     return out;
@@ -1135,14 +1145,28 @@ export class MembersService {
     });
   }
 
+  /**
+   * Membres actifs du groupe : critères OU affectation manuelle (définition
+   * unique, cf. dynamic-group-membership.ts). Sans `id` (aperçu d'un groupe
+   * pas encore créé), seuls les critères comptent.
+   */
   async countMatchingMembers(
     clubId: string,
     group: {
+      id?: string;
       minAge: number | null;
       maxAge: number | null;
       gradeFilters: { gradeLevelId: string }[];
     },
   ): Promise<number> {
+    if (group.id) {
+      const members = await resolveDynamicGroupMembers(
+        this.prisma,
+        clubId,
+        group.id,
+      );
+      return members.size;
+    }
     const criteria = this.criteriaFromGroup(group);
     const members = await this.prisma.member.findMany({
       where: { clubId, status: MemberStatus.ACTIVE },
@@ -1161,6 +1185,110 @@ export class MembersService {
     ).length;
   }
 
+  /** Membres actifs ajoutés à la main au groupe (critères remplis ou non). */
+  async countManualAssignments(
+    clubId: string,
+    dynamicGroupId: string,
+  ): Promise<number> {
+    return this.prisma.memberDynamicGroup.count({
+      where: {
+        clubId,
+        dynamicGroupId,
+        member: { status: MemberStatus.ACTIVE },
+      },
+    });
+  }
+
+  /** Liste des membres du groupe avec l'origine de leur appartenance, tri par nom. */
+  async listDynamicGroupMembers(
+    clubId: string,
+    dynamicGroupId: string,
+  ): Promise<DynamicGroupMemberGraph[]> {
+    const group = await this.prisma.dynamicGroup.findFirst({
+      where: { id: dynamicGroupId, clubId },
+      select: { id: true },
+    });
+    if (!group) {
+      throw new NotFoundException('Groupe dynamique introuvable');
+    }
+    const sources = await resolveDynamicGroupMembers(
+      this.prisma,
+      clubId,
+      dynamicGroupId,
+    );
+    if (sources.size === 0) return [];
+    const rows = await this.prisma.member.findMany({
+      where: { id: { in: [...sources.keys()] }, clubId },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        gradeLevel: { select: { label: true } },
+      },
+    });
+    return rows
+      .map((m) => ({
+        memberId: m.id,
+        firstName: m.firstName,
+        lastName: m.lastName,
+        gradeLabel: m.gradeLevel?.label ?? null,
+        source: DynamicGroupMemberSource[
+          sources.get(m.id) ?? 'MANUAL'
+        ],
+      }))
+      .sort((a, b) =>
+        `${a.lastName} ${a.firstName}`.localeCompare(
+          `${b.lastName} ${b.firstName}`,
+          'fr',
+        ),
+      );
+  }
+
+  /** Ajoute des affectations manuelles ; renvoie le nombre réellement ajouté. */
+  async addMembersToDynamicGroup(
+    clubId: string,
+    dynamicGroupId: string,
+    memberIds: string[],
+  ): Promise<number> {
+    const group = await this.prisma.dynamicGroup.findFirst({
+      where: { id: dynamicGroupId, clubId },
+      select: { id: true },
+    });
+    if (!group) {
+      throw new NotFoundException('Groupe dynamique introuvable');
+    }
+    const uniq = [...new Set(memberIds)];
+    const members = await this.prisma.member.findMany({
+      where: { id: { in: uniq }, clubId },
+      select: { id: true },
+    });
+    if (members.length !== uniq.length) {
+      throw new BadRequestException(
+        'Un ou plusieurs membres sont introuvables dans ce club.',
+      );
+    }
+    const r = await this.prisma.memberDynamicGroup.createMany({
+      data: uniq.map((memberId) => ({ clubId, memberId, dynamicGroupId })),
+      skipDuplicates: true,
+    });
+    return r.count;
+  }
+
+  /**
+   * Retire l'affectation manuelle. Si le membre remplit encore les
+   * critères, il reste dans le groupe : l'écran le dit avant de confirmer.
+   */
+  async removeMemberFromDynamicGroup(
+    clubId: string,
+    dynamicGroupId: string,
+    memberId: string,
+  ): Promise<boolean> {
+    const r = await this.prisma.memberDynamicGroup.deleteMany({
+      where: { clubId, dynamicGroupId, memberId },
+    });
+    return r.count > 0;
+  }
+
   async listDynamicGroups(clubId: string): Promise<DynamicGroupGraph[]> {
     const rows = await this.prisma.dynamicGroup.findMany({
       where: { clubId },
@@ -1175,6 +1303,10 @@ export class MembersService {
         clubId,
         r,
       );
+      const manuallyAssignedCount = await this.countManualAssignments(
+        clubId,
+        r.id,
+      );
       out.push({
         id: r.id,
         clubId: r.clubId,
@@ -1183,6 +1315,7 @@ export class MembersService {
         maxAge: r.maxAge,
         gradeFilters: r.gradeFilters.map((gf) => this.toGradeGraph(gf.gradeLevel)),
         matchingActiveMembersCount,
+        manuallyAssignedCount,
       });
     }
     return out;
@@ -1213,6 +1346,10 @@ export class MembersService {
       clubId,
       row,
     );
+    const manuallyAssignedCount = await this.countManualAssignments(
+      clubId,
+      row.id,
+    );
     return {
       id: row.id,
       clubId: row.clubId,
@@ -1223,6 +1360,7 @@ export class MembersService {
         this.toGradeGraph(gf.gradeLevel),
       ),
       matchingActiveMembersCount,
+      manuallyAssignedCount,
     };
   }
 
@@ -1273,6 +1411,10 @@ export class MembersService {
       clubId,
       row,
     );
+    const manuallyAssignedCount = await this.countManualAssignments(
+      clubId,
+      row.id,
+    );
     return {
       id: row.id,
       clubId: row.clubId,
@@ -1283,6 +1425,7 @@ export class MembersService {
         this.toGradeGraph(gf.gradeLevel),
       ),
       matchingActiveMembersCount,
+      manuallyAssignedCount,
     };
   }
 

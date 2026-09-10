@@ -23,7 +23,13 @@ export class DynamicGroupGraph {
 
   @Field(() => Int, {
     description:
-      'Nombre de membres actifs dont âge / grade correspondent aux critères du groupe (date de référence : maintenant).',
+      'Membres actifs du groupe : critères (âge / grade, date de référence : maintenant) OU affectation manuelle.',
   })
   matchingActiveMembersCount!: number;
+
+  @Field(() => Int, {
+    description:
+      'Parmi eux, ceux ajoutés à la main (fiche ou écran du groupe), critères remplis ou non.',
+  })
+  manuallyAssignedCount!: number;
 }

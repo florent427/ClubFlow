@@ -14,10 +14,8 @@ import {
   type MessageCampaign,
 } from '@prisma/client';
 import type { MessageCampaignGraph } from './models/message-campaign.model';
-import {
-  memberMatchesDynamicGroup,
-  type DynamicGroupCriteria,
-} from '../members/dynamic-group-matcher';
+import type { DynamicGroupCriteria } from '../members/dynamic-group-matcher';
+import { resolveDynamicGroupsMemberIds } from '../members/dynamic-group-membership';
 import { MembersService } from '../members/members.service';
 import { ClubSendingDomainService } from '../mail/club-sending-domain.service';
 import { MAIL_TRANSPORT } from '../mail/mail.constants';
@@ -156,28 +154,16 @@ export class CommsService {
     // Calcule l'union de tous les critères
     const matchedIds = new Set<string>();
 
-    // 1. Groupes dynamiques
+    // 1. Groupes dynamiques : critères OU affectation manuelle (définition
+    //    partagée, cf. members/dynamic-group-membership.ts).
     if (filter.dynamicGroupIds?.length) {
-      const now = new Date();
-      for (const gid of filter.dynamicGroupIds) {
-        const criteria = await this.loadGroupCriteria(clubId, gid);
-        if (!criteria) continue;
-        for (const m of allActive) {
-          if (matchedIds.has(m.id)) continue;
-          if (
-            memberMatchesDynamicGroup(
-              {
-                status: m.status,
-                birthDate: m.birthDate,
-                gradeLevelId: m.gradeLevelId,
-              },
-              criteria,
-              now,
-            )
-          ) {
-            matchedIds.add(m.id);
-          }
-        }
+      const inGroups = await resolveDynamicGroupsMemberIds(
+        this.prisma,
+        clubId,
+        filter.dynamicGroupIds,
+      );
+      for (const m of allActive) {
+        if (inGroups.has(m.id)) matchedIds.add(m.id);
       }
     }
 
@@ -573,20 +559,12 @@ export class CommsService {
       if (!criteria) {
         throw new BadRequestException('Groupe invalide');
       }
+      const inGroup = await resolveDynamicGroupsMemberIds(this.prisma, clubId, [
+        campaign.dynamicGroupId,
+      ]);
       const allMembers = await this.members.listMembers(clubId);
-      const now = new Date();
       matched = allMembers.filter(
-        (m) =>
-          m.status === MemberStatus.ACTIVE &&
-          memberMatchesDynamicGroup(
-            {
-              status: m.status,
-              birthDate: m.birthDate,
-              gradeLevelId: m.gradeLevelId,
-            },
-            criteria,
-            now,
-          ),
+        (m) => m.status === MemberStatus.ACTIVE && inGroup.has(m.id),
       );
     } else {
       const allMembers = await this.members.listMembers(clubId);

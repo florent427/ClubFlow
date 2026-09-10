@@ -1,5 +1,5 @@
 import { UseGuards } from '@nestjs/common';
-import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Args, ID, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
 import type { Club } from '@prisma/client';
 import { MemberStatus } from '@prisma/client';
 import { CurrentClub } from '../common/decorators/current-club.decorator';
@@ -21,6 +21,9 @@ import { UpdateDynamicGroupInput } from './dto/update-dynamic-group.input';
 import { UpdateGradeLevelInput } from './dto/update-grade-level.input';
 import { UpdateMemberCustomFieldDefinitionInput } from './dto/update-member-custom-field-definition.input';
 import { SetMemberDynamicGroupsInput } from './dto/set-member-dynamic-groups.input';
+import { AddMembersToDynamicGroupInput } from './dto/add-members-to-dynamic-group.input';
+import { RemoveMemberFromDynamicGroupInput } from './dto/remove-member-from-dynamic-group.input';
+import { DynamicGroupMemberGraph } from './models/dynamic-group-member.model';
 import { UpdateMemberInput } from './dto/update-member.input';
 import { ClubMemberFieldLayoutGraph } from './models/club-member-field-layout.model';
 import { ClubRoleDefinitionGraph } from './models/club-role-definition.model';
@@ -273,6 +276,43 @@ export class MembersResolver {
   @Query(() => [DynamicGroupGraph], { name: 'clubDynamicGroups' })
   clubDynamicGroups(@CurrentClub() club: Club): Promise<DynamicGroupGraph[]> {
     return this.members.listDynamicGroups(club.id);
+  }
+
+  @Query(() => [DynamicGroupMemberGraph], {
+    name: 'dynamicGroupMembers',
+    description:
+      'Membres actifs du groupe (critères OU affectation manuelle), avec l’origine de leur appartenance.',
+  })
+  dynamicGroupMembers(
+    @CurrentClub() club: Club,
+    @Args('dynamicGroupId', { type: () => ID }) dynamicGroupId: string,
+  ): Promise<DynamicGroupMemberGraph[]> {
+    return this.members.listDynamicGroupMembers(club.id, dynamicGroupId);
+  }
+
+  /** Ajout depuis l’écran du groupe ; renvoie le nombre réellement ajouté. */
+  @Mutation(() => Int)
+  addMembersToDynamicGroup(
+    @CurrentClub() club: Club,
+    @Args('input') input: AddMembersToDynamicGroupInput,
+  ): Promise<number> {
+    return this.members.addMembersToDynamicGroup(
+      club.id,
+      input.dynamicGroupId,
+      input.memberIds,
+    );
+  }
+
+  @Mutation(() => Boolean)
+  removeMemberFromDynamicGroup(
+    @CurrentClub() club: Club,
+    @Args('input') input: RemoveMemberFromDynamicGroupInput,
+  ): Promise<boolean> {
+    return this.members.removeMemberFromDynamicGroup(
+      club.id,
+      input.dynamicGroupId,
+      input.memberId,
+    );
   }
 
   @Query(() => [DynamicGroupGraph], {
