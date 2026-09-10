@@ -37,6 +37,7 @@
 | [`compta-non-seedee-webhook-500.md`](pitfalls/compta-non-seedee-webhook-500.md) | Piège — module comptable activé mais plan comptable jamais seedé |
 | [`cors-admin-web-origin-missing-domain.md`](pitfalls/cors-admin-web-origin-missing-domain.md) | Piège — Login admin "Failed to fetch" : nouveau sous-domaine pas dans ADMIN_WEB_ORIGIN |
 | [`cors-no-origin-prod.md`](pitfalls/cors-no-origin-prod.md) | Piège — CORS API en `NODE_ENV=production` bloque les appels SSR |
+| [`double-transaction-rollback-trop-genereux.md`](pitfalls/double-transaction-rollback-trop-genereux.md) | Piège — un double de transaction qui annule TOUT à l'échec ne prouve rien |
 | [`eas-build-view-non-interactive.md`](pitfalls/eas-build-view-non-interactive.md) | Suivi de build EAS : un flag invalide rend le statut illisible, et le monitor tourne dans le vide |
 | [`echec-silencieux-chemin-erreur.md`](pitfalls/echec-silencieux-chemin-erreur.md) | L'échec qui ne dit rien : un chemin d'erreur muet se lit comme « rien ne s'est passé » |
 | [`env-production-perdus-reset-hard.md`](pitfalls/env-production-perdus-reset-hard.md) | Piège — `.env.production` perdus après `git reset --hard` |
@@ -108,7 +109,7 @@
 
 ---
 
-_Index généré le 2026-09-10 11:54 UTC par `bin/memory-index`._
+_Index généré le 2026-09-10 17:23 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`
