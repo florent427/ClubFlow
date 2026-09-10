@@ -49,6 +49,7 @@
 | [`juge-non-fiable-verdict-sans-valeur.md`](pitfalls/juge-non-fiable-verdict-sans-valeur.md) | Le juge non fiable : un verdict rendu sur un signal dont on n'a pas vérifié le sens |
 | [`module-natif-ne-passe-pas-par-metro.md`](pitfalls/module-natif-ne-passe-pas-par-metro.md) | `Cannot find native module` : un module natif ne s'installe pas par Metro |
 | [`nestjs-graphql-nullable-needs-explicit-type.md`](pitfalls/nestjs-graphql-nullable-needs-explicit-type.md) | Piège — `@Field({ nullable: true })` GraphQL crash sans type explicite |
+| [`nestjs-graphql-union-type-explicite.md`](pitfalls/nestjs-graphql-union-type-explicite.md) | Piège — un `@Field` sur une union `string | null` fait tomber l'API au démarrage |
 | [`nextjs-isr-cache-stale.md`](pitfalls/nextjs-isr-cache-stale.md) | Piège — Next.js ISR cache stale après insert DB |
 | [`nextjs-public-env-vars-not-bundled.md`](pitfalls/nextjs-public-env-vars-not-bundled.md) | Piège — Next.js : `process.env.X` côté client n'a QUE les `NEXT_PUBLIC_*` |
 | [`nextjs-route-force-dynamic-headers-cookies.md`](pitfalls/nextjs-route-force-dynamic-headers-cookies.md) | Piège — une route Next.js reste 100% dynamique malgré un refactor headers()/cookies() |
@@ -103,7 +104,7 @@
 
 ---
 
-_Index généré le 2026-09-09 10:00 UTC par `bin/memory-index`._
+_Index généré le 2026-09-10 05:45 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`
