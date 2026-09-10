@@ -1,5 +1,5 @@
 import { UseGuards } from '@nestjs/common';
-import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Args, ID, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
 import type { Club } from '@prisma/client';
 import {
   AccountingAccountKind,
@@ -27,6 +27,22 @@ import { AccountingSuggestionService } from './accounting-suggestion.service';
 import { ClubFinancialAccountsService } from './club-financial-accounts.service';
 import { ClubPaymentRoutesService } from './club-payment-routes.service';
 import { ReceiptOcrService } from './receipt-ocr.service';
+import {
+  AccountingFiscalYearService,
+  formatIsoDate,
+  parseIsoDate,
+  todayInClubTimezone,
+} from './accounting-fiscal-year.service';
+import type { FiscalSettings } from './accounting-fiscal-year.service';
+import {
+  SetFinancialAccountOpeningBalanceInput,
+  UpdateAccountingFiscalSettingsInput,
+} from './dto/accounting-fiscal.input';
+import {
+  AccountingFiscalSettingsGraph,
+  AccountingFiscalYearCloseGraph,
+  AccountingPeriodLockGraph,
+} from './models/accounting-fiscal.model';
 import { CancelAccountingEntryInput } from './dto/cancel-accounting-entry.input';
 import {
   CreateClubFinancialAccountInput,
@@ -225,6 +241,64 @@ function toGraph(entry: EntryRow): AccountingEntryGraph {
   };
 }
 
+interface FinancialAccountRow {
+  id: string;
+  kind: ClubFinancialAccountGraph['kind'];
+  label: string;
+  accountingAccountId: string;
+  accountingAccount: { code: string; label: string };
+  iban: string | null;
+  bic: string | null;
+  stripeAccountId: string | null;
+  isDefault: boolean;
+  isActive: boolean;
+  sortOrder: number;
+  notes: string | null;
+  openingBalanceCents: number | null;
+  openingBalanceOn: Date | null;
+}
+
+function toFinancialAccountGraph(r: FinancialAccountRow): ClubFinancialAccountGraph {
+  return {
+    id: r.id,
+    kind: r.kind,
+    label: r.label,
+    accountingAccountId: r.accountingAccountId,
+    accountingAccountCode: r.accountingAccount.code,
+    accountingAccountLabel: r.accountingAccount.label,
+    iban: r.iban,
+    bic: r.bic,
+    stripeAccountId: r.stripeAccountId,
+    isDefault: r.isDefault,
+    isActive: r.isActive,
+    sortOrder: r.sortOrder,
+    notes: r.notes,
+    openingBalanceCents: r.openingBalanceCents,
+    openingBalanceOn: r.openingBalanceOn ? formatIsoDate(r.openingBalanceOn) : null,
+  };
+}
+
+function toFiscalSettingsGraph(
+  settings: FiscalSettings,
+): AccountingFiscalSettingsGraph {
+  const year = AccountingFiscalYearService.yearFor(
+    settings,
+    todayInClubTimezone(),
+  );
+  const bounds = AccountingFiscalYearService.boundsFor(settings, year);
+  return {
+    fiscalYearStartMonth: settings.fiscalYearStartMonth,
+    fiscalYearStartDay: settings.fiscalYearStartDay,
+    accountingStartsOn: settings.accountingStartsOn
+      ? formatIsoDate(settings.accountingStartsOn)
+      : null,
+    currentFiscalYear: year,
+    currentFiscalYearLabel: bounds.label,
+    currentFiscalYearStartsOn: formatIsoDate(bounds.startsOn),
+    currentFiscalYearEndsOn: formatIsoDate(bounds.endsOn),
+  };
+}
+
 @Resolver()
 @UseGuards(
   GqlJwtAuthGuard,
@@ -246,6 +320,7 @@ export class AccountingResolver {
     private readonly financialAccounts: ClubFinancialAccountsService,
     private readonly paymentRoutes: ClubPaymentRoutesService,
     private readonly consolidation: AccountingConsolidationService,
+    private readonly fiscal: AccountingFiscalYearService,
   ) {}
 
   // =========================================================================
@@ -491,14 +566,98 @@ export class AccountingResolver {
     return true;
   }
 
-  @Mutation(() => Boolean, { name: 'closeClubAccountingFiscalYear' })
+  @Mutation(() => Boolean, {
+    name: 'closeClubAccountingFiscalYear',
+    description:
+      'Clôture l’exercice dont `year` est l’année de DÉBUT (au 1er septembre, 2026 couvre 2026-09-01 → 2027-08-31). Refusé tant que l’exercice n’est pas terminé.',
+  })
   async closeClubAccountingFiscalYear(
     @CurrentClub() club: Club,
     @CurrentUser() user: RequestUser,
-    @Args('year') year: number,
+    @Args('year', { type: () => Int }) year: number,
   ): Promise<boolean> {
     await this.periodService.closeFiscalYear(club.id, year, user.userId);
     return true;
+  }
+
+  @Query(() => [AccountingPeriodLockGraph], {
+    name: 'clubAccountingPeriodLocks',
+  })
+  async clubAccountingPeriodLocks(
+    @CurrentClub() club: Club,
+  ): Promise<AccountingPeriodLockGraph[]> {
+    const rows = await this.periodService.listLocks(club.id);
+    return rows.map((r) => ({
+      month: r.month,
+      lockedAt: r.lockedAt,
+      lockedByUserId: r.lockedByUserId,
+    }));
+  }
+
+  @Query(() => [AccountingFiscalYearCloseGraph], {
+    name: 'clubAccountingFiscalYearCloses',
+  })
+  async clubAccountingFiscalYearCloses(
+    @CurrentClub() club: Club,
+  ): Promise<AccountingFiscalYearCloseGraph[]> {
+    const rows = await this.periodService.listClosures(club.id);
+    return rows.map((r) => ({
+      year: r.year,
+      label: r.label,
+      startsOn: r.startsOn,
+      endsOn: r.endsOn,
+      closedAt: r.closedAt,
+      closedByUserId: r.closedByUserId,
+    }));
+  }
+
+  // =========================================================================
+  // Exercice comptable, reprise, soldes d'ouverture (ADR-0014 §1)
+  // =========================================================================
+
+  @Query(() => AccountingFiscalSettingsGraph, {
+    name: 'clubAccountingFiscalSettings',
+  })
+  async clubAccountingFiscalSettings(
+    @CurrentClub() club: Club,
+  ): Promise<AccountingFiscalSettingsGraph> {
+    return toFiscalSettingsGraph(await this.fiscal.getSettings(club.id));
+  }
+
+  @Mutation(() => AccountingFiscalSettingsGraph, {
+    name: 'updateClubAccountingFiscalSettings',
+  })
+  async updateClubAccountingFiscalSettings(
+    @CurrentClub() club: Club,
+    @Args('input') input: UpdateAccountingFiscalSettingsInput,
+  ): Promise<AccountingFiscalSettingsGraph> {
+    const settings = await this.fiscal.updateSettings(club.id, {
+      fiscalYearStartMonth: input.fiscalYearStartMonth,
+      fiscalYearStartDay: input.fiscalYearStartDay,
+      accountingStartsOn:
+        input.accountingStartsOn === undefined
+          ? undefined
+          : input.accountingStartsOn === null
+            ? null
+            : parseIsoDate(input.accountingStartsOn),
+    });
+    return toFiscalSettingsGraph(settings);
+  }
+
+  @Mutation(() => ClubFinancialAccountGraph, {
+    name: 'setClubFinancialAccountOpeningBalance',
+  })
+  async setClubFinancialAccountOpeningBalance(
+    @CurrentClub() club: Club,
+    @Args('input') input: SetFinancialAccountOpeningBalanceInput,
+  ): Promise<ClubFinancialAccountGraph> {
+    const r = await this.fiscal.setOpeningBalance(
+      club.id,
+      input.financialAccountId,
+      input.balanceCents,
+      parseIsoDate(input.on),
+    );
+    return toFinancialAccountGraph(r);
   }
 
   /**
@@ -794,21 +953,7 @@ export class AccountingResolver {
     // au moins ses 2 comptes par défaut (Banque + Caisse) seedés.
     await this.seedService.seedIfEmpty(club.id);
     const rows = await this.financialAccounts.listAll(club.id);
-    return rows.map((r) => ({
-      id: r.id,
-      kind: r.kind,
-      label: r.label,
-      accountingAccountId: r.accountingAccountId,
-      accountingAccountCode: r.accountingAccount.code,
-      accountingAccountLabel: r.accountingAccount.label,
-      iban: r.iban,
-      bic: r.bic,
-      stripeAccountId: r.stripeAccountId,
-      isDefault: r.isDefault,
-      isActive: r.isActive,
-      sortOrder: r.sortOrder,
-      notes: r.notes,
-    }));
+    return rows.map(toFinancialAccountGraph);
   }
 
   @Mutation(() => ClubFinancialAccountGraph, {
@@ -829,21 +974,7 @@ export class AccountingResolver {
       sortOrder: input.sortOrder ?? 0,
       notes: input.notes ?? null,
     });
-    return {
-      id: r.id,
-      kind: r.kind,
-      label: r.label,
-      accountingAccountId: r.accountingAccountId,
-      accountingAccountCode: r.accountingAccount.code,
-      accountingAccountLabel: r.accountingAccount.label,
-      iban: r.iban,
-      bic: r.bic,
-      stripeAccountId: r.stripeAccountId,
-      isDefault: r.isDefault,
-      isActive: r.isActive,
-      sortOrder: r.sortOrder,
-      notes: r.notes,
-    };
+    return toFinancialAccountGraph(r);
   }
 
   @Mutation(() => ClubFinancialAccountGraph, {
@@ -863,21 +994,7 @@ export class AccountingResolver {
       notes: input.notes,
       sortOrder: input.sortOrder,
     });
-    return {
-      id: r.id,
-      kind: r.kind,
-      label: r.label,
-      accountingAccountId: r.accountingAccountId,
-      accountingAccountCode: r.accountingAccount.code,
-      accountingAccountLabel: r.accountingAccount.label,
-      iban: r.iban,
-      bic: r.bic,
-      stripeAccountId: r.stripeAccountId,
-      isDefault: r.isDefault,
-      isActive: r.isActive,
-      sortOrder: r.sortOrder,
-      notes: r.notes,
-    };
+    return toFinancialAccountGraph(r);
   }
 
   @Mutation(() => Boolean, { name: 'archiveClubFinancialAccount' })

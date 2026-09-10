@@ -10,6 +10,7 @@ import { AccountingAllocationService } from './accounting-allocation.service';
 import { AccountingAuditService } from './accounting-audit.service';
 import { AccountingConsolidationService } from './accounting-consolidation.service';
 import { AccountingExportService } from './accounting-export.service';
+import { AccountingFiscalYearService } from './accounting-fiscal-year.service';
 import { AccountingMappingService } from './accounting-mapping.service';
 import { AccountingPeriodService } from './accounting-period.service';
 import { AccountingSeedService } from './accounting-seed.service';
@@ -25,6 +26,7 @@ import { ReceiptOcrService } from './receipt-ocr.service';
     AccountingService,
     AccountingAllocationService,
     AccountingMappingService,
+    AccountingFiscalYearService,
     AccountingPeriodService,
     AccountingAuditService,
     AccountingExportService,
@@ -41,6 +43,7 @@ import { ReceiptOcrService } from './receipt-ocr.service';
     AccountingService,
     AccountingAllocationService,
     AccountingMappingService,
+    AccountingFiscalYearService,
     AccountingPeriodService,
     AccountingAuditService,
     AccountingExportService,
