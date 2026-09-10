@@ -948,6 +948,12 @@ export class AccountingService {
     clubId: string,
     userId: string,
     input: ManualEntryInput,
+    /**
+     * Transaction de l'appelant, quand l'écriture doit naître avec autre
+     * chose ou pas du tout (un chèque hors facture et sa recette, ADR-0015).
+     * Sans elle, l'écriture ouvre sa propre transaction.
+     */
+    outerTx?: Prisma.TransactionClient,
   ) {
     const occurredAt = input.occurredAt ?? new Date();
     await this.period.assertDateIsOpen(clubId, occurredAt);
@@ -966,7 +972,7 @@ export class AccountingService {
 
     const side = this.deriveSide(account.kind, input.kind, account.code);
 
-    const created = await this.prisma.$transaction(async (tx) => {
+    const run = async (tx: Prisma.TransactionClient) => {
       const entry = await tx.accountingEntry.create({
         data: {
           clubId,
@@ -1047,7 +1053,10 @@ export class AccountingService {
       }
 
       return entry;
-    });
+    };
+    const created = outerTx
+      ? await run(outerTx)
+      : await this.prisma.$transaction(run);
 
     await this.audit.log({
       clubId,

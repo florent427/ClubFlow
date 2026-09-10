@@ -107,6 +107,8 @@ export class AccountingSeedService {
 
     // === Actif / tiers / trésorerie ===
     { code: '411000', label: 'Clients / Cotisants', kind: 'ASSET', sortOrder: 80 },
+    // Chèques reçus, en portefeuille jusqu'à la remise (ADR-0015).
+    { code: '511200', label: 'Chèques à encaisser (en portefeuille)', kind: 'ASSET', sortOrder: 81 },
     // Banques (jusqu'à 5 banques distinctes — extensible via UI plan comptable)
     { code: '512000', label: 'Banque (générique)', kind: 'ASSET', sortOrder: 81 },
     { code: '512100', label: 'Banque secondaire #1 (renommez)', kind: 'ASSET', sortOrder: 81 },
@@ -303,13 +305,23 @@ export class AccountingSeedService {
   ): Promise<number> {
     let created = 0;
     const defaults: Array<{
-      kind: 'BANK' | 'CASH' | 'STRIPE_TRANSIT';
+      kind: 'BANK' | 'CASH' | 'STRIPE_TRANSIT' | 'CHEQUE_TRANSIT';
       label: string;
       accountCode: string;
       sortOrder: number;
     }> = [
       { kind: 'BANK', label: 'Banque principale', accountCode: '512000', sortOrder: 0 },
       { kind: 'CASH', label: 'Caisse principale', accountCode: '530000', sortOrder: 10 },
+      // Chèques reçus : en portefeuille jusqu'à la remise (ADR-0015). Un
+      // chèque comptabilisé en banque le jour de la saisie fausse le solde
+      // jusqu'au dépôt, et la ligne « REMISE CHEQUES » du relevé ne
+      // correspondrait à rien.
+      {
+        kind: 'CHEQUE_TRANSIT',
+        label: 'Chèques à encaisser',
+        accountCode: '511200',
+        sortOrder: 3,
+      },
       // Compte tampon entre l'encaissement et le virement Stripe.
       //
       // Stripe encaisse le BRUT, prélève sa commission, puis vire le NET
@@ -373,6 +385,9 @@ export class AccountingSeedService {
     const stripeTransitDefault = await this.prisma.clubFinancialAccount.findFirst(
       { where: { clubId, kind: 'STRIPE_TRANSIT', isDefault: true }, select: { id: true } },
     );
+    const chequeTransitDefault = await this.prisma.clubFinancialAccount.findFirst(
+      { where: { clubId, kind: 'CHEQUE_TRANSIT', isDefault: true }, select: { id: true } },
+    );
     const routes: Array<{
       method:
         | 'STRIPE_CARD'
@@ -389,7 +404,12 @@ export class AccountingSeedService {
         method: 'STRIPE_CARD',
         finId: stripeTransitDefault?.id ?? bankDefault?.id ?? null,
       },
-      { method: 'MANUAL_CHECK', finId: bankDefault?.id ?? null },
+      // Un chèque attend sa remise sur 511200 (ADR-0015) ; même repli banque
+      // que Stripe si le transit n'a pas pu être créé.
+      {
+        method: 'MANUAL_CHECK',
+        finId: chequeTransitDefault?.id ?? bankDefault?.id ?? null,
+      },
       { method: 'MANUAL_TRANSFER', finId: bankDefault?.id ?? null },
     ];
     for (const r of routes) {
@@ -414,17 +434,24 @@ export class AccountingSeedService {
       }
     }
 
-    created += await this.repointStripeRouteToTransit(
+    created += await this.repointDefaultRouteToTransit(
       clubId,
+      'STRIPE_CARD',
       stripeTransitDefault?.id ?? null,
+      bankDefault?.id ?? null,
+    );
+    created += await this.repointDefaultRouteToTransit(
+      clubId,
+      'MANUAL_CHECK',
+      chequeTransitDefault?.id ?? null,
       bankDefault?.id ?? null,
     );
     return created;
   }
 
   /**
-   * Redirige vers le compte de transit la route Stripe des clubs créés AVANT
-   * son introduction.
+   * Redirige vers son compte de transit la route (Stripe, puis chèques) des
+   * clubs créés AVANT son introduction.
    *
    * Une boucle de seed ordinaire ne suffit pas : elle saute toute route déjà
    * présente, et ces clubs en ont une — vers la banque. Sans cette reprise,
@@ -444,8 +471,9 @@ export class AccountingSeedService {
    *    exactement l'état produit par l'ancien seed. On corrige un défaut de
    *    fabrique identifié, pas « tout ce qui n'est pas le transit ».
    */
-  private async repointStripeRouteToTransit(
+  private async repointDefaultRouteToTransit(
     clubId: string,
+    method: 'STRIPE_CARD' | 'MANUAL_CHECK',
     transitAccountId: string | null,
     bankDefaultId: string | null,
   ): Promise<number> {
@@ -455,7 +483,7 @@ export class AccountingSeedService {
     const { count } = await this.prisma.clubPaymentRoute.updateMany({
       where: {
         clubId,
-        method: 'STRIPE_CARD',
+        method,
         isDefault: true,
         financialAccountId: bankDefaultId,
       },
@@ -463,7 +491,7 @@ export class AccountingSeedService {
     });
     if (count > 0) {
       this.logger.log(
-        `Club ${clubId} : route STRIPE_CARD redirigée vers le compte de transit.`,
+        `Club ${clubId} : route ${method} redirigée vers son compte de transit.`,
       );
     }
     return count;

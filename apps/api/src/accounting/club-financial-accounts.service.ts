@@ -266,7 +266,11 @@ export class ClubFinancialAccountsService {
         return ClubFinancialAccountKind.STRIPE_TRANSIT;
       case ClubPaymentMethod.MANUAL_CASH:
         return ClubFinancialAccountKind.CASH;
+      // Un chèque reçu n'est pas encore en banque : il attend sa remise sur
+      // 511200 (ADR-0015). Le repli banque de `resolveForPayment` couvre un
+      // club dont le transit chèques n'existerait pas encore.
       case ClubPaymentMethod.MANUAL_CHECK:
+        return ClubFinancialAccountKind.CHEQUE_TRANSIT;
       case ClubPaymentMethod.MANUAL_TRANSFER:
         return ClubFinancialAccountKind.BANK;
       default:
