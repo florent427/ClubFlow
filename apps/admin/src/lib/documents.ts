@@ -1468,6 +1468,7 @@ export const SEND_CLUB_QUICK_MESSAGE = gql`
   mutation SendClubQuickMessage($input: SendQuickMessageInput!) {
     sendClubQuickMessage(input: $input) {
       success
+      pushDelivered
     }
   }
 `;

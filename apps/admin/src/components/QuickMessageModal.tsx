@@ -108,7 +108,7 @@ function QuickMessageDialog({
       return;
     }
     try {
-      await sendQuick({
+      const res = await sendQuick({
         variables: {
           input: {
             recipientType,
@@ -119,12 +119,17 @@ function QuickMessageDialog({
           },
         },
       });
-      showToast(
-        selected.length === 1
-          ? `Message envoyé à ${recipientLabel}.`
-          : `Message envoyé à ${recipientLabel} sur ${selected.length} canaux.`,
-        'success',
-      );
+      const delivered = res.data?.sendClubQuickMessage.pushDelivered ?? null;
+      const parts: string[] = [];
+      if (channels.EMAIL) parts.push('e-mail envoyé');
+      if (channels.PUSH) {
+        parts.push(
+          delivered && delivered > 0
+            ? `déposé dans son espace et notifié sur ${delivered} appareil${delivered > 1 ? 's' : ''}`
+            : 'déposé dans son espace (aucun appareil abonné aux notifications)',
+        );
+      }
+      showToast(`${recipientLabel} : ${parts.join(', ')}.`, 'success');
       onClose();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erreur inconnue';

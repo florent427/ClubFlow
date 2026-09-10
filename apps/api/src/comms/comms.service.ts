@@ -10,6 +10,7 @@ import {
   MembershipRole,
   MemberStatus,
   Prisma,
+  UserNotificationKind,
   type MessageCampaign,
 } from '@prisma/client';
 import type { MessageCampaignGraph } from './models/message-campaign.model';
@@ -23,8 +24,8 @@ import { MAIL_TRANSPORT } from '../mail/mail.constants';
 import type { MailTransport } from '../mail/mail-transport.interface';
 import { MessagingGateway } from '../messaging/messaging.gateway';
 import { MessagingService } from '../messaging/messaging.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { WebPushService } from '../push/push.service';
 import { TelegramApiService } from '../telegram/telegram-api.service';
 import { aggregateForParent } from './notification-aggregator';
 import type { CreateMessageCampaignInput } from './dto/create-message-campaign.input';
@@ -87,7 +88,7 @@ export class CommsService {
     private readonly telegram: TelegramApiService,
     private readonly messaging: MessagingService,
     private readonly messagingGateway: MessagingGateway,
-    private readonly push: WebPushService,
+    private readonly notifications: NotificationsService,
     @Inject(MAIL_TRANSPORT) private readonly mail: MailTransport,
   ) {}
 
@@ -403,7 +404,9 @@ export class CommsService {
   async sendQuickMessage(
     clubId: string,
     input: SendQuickMessageInput,
-  ): Promise<{ success: boolean }> {
+  ): Promise<{ success: boolean; pushDelivered: number | null }> {
+    /** Appareils ayant accepté le push ; null si le canal n'était pas demandé. */
+    let pushDelivered: number | null = null;
     let emailTo: string | null = null;
     if (input.recipientType === QuickMessageRecipientType.MEMBER) {
       const m = await this.prisma.member.findFirst({
@@ -475,7 +478,7 @@ export class CommsService {
           `${input.title}\n\n${input.body}`,
         );
       } else if (channel === CommunicationChannel.PUSH) {
-        await this.sendQuickPush(clubId, input);
+        pushDelivered = await this.sendQuickPush(clubId, input);
       } else {
         this.log.log(
           JSON.stringify({
@@ -487,24 +490,20 @@ export class CommsService {
         );
       }
     }
-    return { success: true };
+    return { success: true, pushDelivered };
   }
 
   /**
-   * Notification push d'un message ponctuel : le destinataire est le compte
-   * rattaché à la fiche (membre) ou le compte du contact. Comme pour l'e-mail
-   * et Telegram, l'impossibilité d'atteindre le destinataire est une erreur
-   * explicite pour l'admin, pas un silence.
+   * Canal push d'un message ponctuel : le message est déposé dans le centre
+   * de notifications du compte rattaché à la fiche (membre) ou du contact,
+   * puis poussé vers ses navigateurs abonnés. Sans compte, rien ne peut le
+   * recevoir : erreur explicite pour l'admin. Sans navigateur abonné, le
+   * message reste lisible dans le portail ; on renvoie 0 appareil.
    */
   private async sendQuickPush(
     clubId: string,
     input: SendQuickMessageInput,
-  ): Promise<void> {
-    if (!this.push.enabled) {
-      throw new BadRequestException(
-        'Les notifications push ne sont pas configurées sur ce serveur.',
-      );
-    }
+  ): Promise<number> {
     let userId: string | null = null;
     if (input.recipientType === QuickMessageRecipientType.MEMBER) {
       const m = await this.prisma.member.findFirst({
@@ -527,12 +526,11 @@ export class CommsService {
         throw new BadRequestException('Contact introuvable');
       }
     }
-    const report = await this.push.sendToUsers([userId], {
+    const report = await this.notifications.notifyUsers([userId], {
+      clubId,
+      kind: UserNotificationKind.QUICK_MESSAGE,
       title: input.title,
-      body: pushExcerpt(input.body),
-      url: '/',
-      tag: `quick-${input.recipientId}`,
-      renotify: true,
+      body: input.body,
     });
     this.log.log(
       JSON.stringify({
@@ -542,11 +540,7 @@ export class CommsService {
         ...report,
       }),
     );
-    if (report.sent === 0) {
-      throw new BadRequestException(
-        'Ce destinataire n’a activé les notifications sur aucun appareil.',
-      );
-    }
+    return report.sent;
   }
 
   async sendCampaign(clubId: string, campaignId: string) {
@@ -663,7 +657,7 @@ export class CommsService {
             suppressPush: channels.includes(CommunicationChannel.PUSH),
           });
         } else if (channel === CommunicationChannel.PUSH) {
-          await this.deliverPush(campaign, matched, payerByAudienceId, channels);
+          await this.deliverPush(clubId, campaign, matched, payerByAudienceId);
         } else {
           this.log.warn(
             `comms.channel_unknown campaign=${campaign.id} channel=${channel}`,
@@ -858,15 +852,15 @@ export class CommsService {
 
   /**
    * Canal PUSH d'une campagne : chaque membre de l'audience, plus le payeur
-   * de son foyer (agrégation parent), reçoit la notification sur les
-   * navigateurs où il a activé les notifications. Les fiches sans compte
-   * portail sont ignorées.
+   * de son foyer (agrégation parent), reçoit la campagne dans son centre de
+   * notifications, avec un push vers ses navigateurs abonnés. Les fiches
+   * sans compte portail sont ignorées.
    */
   private async deliverPush(
+    clubId: string,
     campaign: { id: string; title: string; body: string },
     matched: Array<{ id: string }>,
     payerByAudienceId: Map<string, string | null>,
-    channels: CommunicationChannel[],
   ): Promise<void> {
     const targets = new Set<string>();
     for (const m of matched) {
@@ -878,26 +872,12 @@ export class CommsService {
       );
       for (const id of agg.targetMemberIds) targets.add(id);
     }
-    if (!this.push.enabled) {
-      this.log.warn(
-        JSON.stringify({
-          event: 'comms.push_skipped_disabled',
-          campaignId: campaign.id,
-          targets: targets.size,
-        }),
-      );
-      return;
-    }
-    const report = await this.push.sendToMembers([...targets], {
+    const report = await this.notifications.notifyMembers([...targets], {
+      clubId,
+      kind: UserNotificationKind.CAMPAIGN,
       title: campaign.title,
-      body: pushExcerpt(campaign.body),
-      // Le contenu complet est dans la messagerie quand la campagne y est
-      // aussi diffusée ; sinon la notification porte le message.
-      url: channels.includes(CommunicationChannel.MESSAGING)
-        ? '/messagerie'
-        : '/',
+      body: campaign.body,
       tag: `campaign-${campaign.id}`,
-      renotify: true,
     });
     this.log.log(
       JSON.stringify({
@@ -908,12 +888,6 @@ export class CommsService {
       }),
     );
   }
-}
-
-/** Corps d'une notification : une ligne, 160 caractères maximum. */
-function pushExcerpt(text: string, max = 160): string {
-  const flat = text.replace(/\s+/g, ' ').trim();
-  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
 }
 
 function escapeHtml(s: string): string {

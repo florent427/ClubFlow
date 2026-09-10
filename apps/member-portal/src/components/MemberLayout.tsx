@@ -25,6 +25,7 @@ import { ModuleGatedNavLink } from './ModuleGatedNavLink';
 import { PendingFamilyInvitesBanner } from './PendingFamilyInvitesBanner';
 import { PinGate } from './PinGate';
 import { UserMenu } from './UserMenu';
+import { NotificationBell } from './NotificationBell';
 import {
   VIEWER_ACTIVE_CART,
   type ViewerActiveCartData,
@@ -259,6 +260,7 @@ export function MemberLayout() {
             <span className="mp-bc-current">{crumb}</span>
           </div>
           <div className="mp-topbar-actions">
+            <NotificationBell />
             {/* Notifications toujours visibles : panier badge rouge si
                 items. Le reste des actions (admin, profils, settings,
                 logout) est groupé dans UserMenu pour éviter la

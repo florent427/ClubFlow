@@ -17,6 +17,7 @@ import { FamiliesModule } from '../families/families.module';
 import { ViewerModule } from '../viewer/viewer.module';
 import { MessagingModule } from '../messaging/messaging.module';
 import { PushModule } from '../push/push.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { SystemAdminModule } from '../system-admin/system-admin.module';
 import { ClubLifeModule } from '../club-life/club-life.module';
 import { EventsModule } from '../events/events.module';
@@ -145,6 +146,7 @@ import '../documents/dto/sign-club-document.input';
     TelegramModule,
     MessagingModule,
     PushModule,
+    NotificationsModule,
     SystemAdminModule,
     ClubLifeModule,
     EventsModule,

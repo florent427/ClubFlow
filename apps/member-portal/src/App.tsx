@@ -24,6 +24,7 @@ import { PlanningPage } from './pages/PlanningPage';
 import { FamilyPage } from './pages/FamilyPage';
 import { BillingPage } from './pages/BillingPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { NotificationsPage } from './pages/NotificationsPage';
 import { MessagingPage } from './pages/MessagingPage';
 import { NewsPage } from './pages/NewsPage';
 import { EventsPage } from './pages/EventsPage';
@@ -121,6 +122,7 @@ export default function App() {
                 element={<DocumentsToSignPage />}
               />
               <Route path="/parametres" element={<SettingsPage />} />
+              <Route path="/notifications" element={<NotificationsPage />} />
               <Route
                 path="/messagerie"
                 element={

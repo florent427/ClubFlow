@@ -5361,3 +5361,128 @@ a:focus-visible {
   gap: 10px;
   margin-top: 16px;
 }
+
+/* ────────── Centre de notifications ────────── */
+.mp-bell {
+  position: relative;
+  cursor: pointer;
+  text-decoration: none;
+}
+.mp-bell.active {
+  background: #e0e7ff;
+  color: #1a237e;
+}
+.mp-bell__badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+.mp-notif__actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.mp-notif-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.mp-notif {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  overflow: hidden;
+}
+.mp-notif--unread {
+  border-color: #c7d2fe;
+  background: #f8faff;
+}
+.mp-notif__btn {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.mp-notif__dot {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: #c7d2fe;
+}
+.mp-notif--unread .mp-notif__dot {
+  background: #2563eb;
+}
+.mp-notif__main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.mp-notif__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.mp-notif__title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+  overflow-wrap: anywhere;
+}
+.mp-notif--unread .mp-notif__title {
+  font-weight: 800;
+}
+.mp-notif__time {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: #64748b;
+  white-space: nowrap;
+}
+.mp-notif__kind {
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.mp-notif__body {
+  margin-top: 6px;
+  font-size: 14px;
+  color: #334155;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.mp-notif--open .mp-notif__body {
+  display: block;
+  -webkit-line-clamp: unset;
+}
