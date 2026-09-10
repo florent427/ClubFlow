@@ -197,6 +197,17 @@ model Club {
   /// FULL = totalement assujettie.
   vatMode VatMode @default(NONE)
 
+  /// Début de l'exercice comptable (jour/mois), cf. ADR-0014 §1. Défaut
+  /// 1er janvier : rien ne change pour les clubs existants. Un club sportif
+  /// choisira typiquement le 1er septembre, aligné sur sa saison. Février est
+  /// plafonné à 28 côté service : un exercice commence à date fixe.
+  fiscalYearStartMonth Int @default(1)
+  fiscalYearStartDay   Int @default(1)
+  /// Date de reprise de la comptabilité dans ClubFlow. Rien d'antérieur n'est
+  /// rapproché : une ligne de relevé antérieure est ignorée « hors reprise ».
+  /// Null = reprise non définie, le rapprochement bancaire est indisponible.
+  accountingStartsOn DateTime? @db.Date
+
   accountingAccounts         AccountingAccount[]
   accountingCohorts          AccountingCohort[]
   accountingPeriodLocks      AccountingPeriodLock[]
@@ -1466,6 +1477,12 @@ model ClubFinancialAccount {
   notes               String?
   createdAt           DateTime                 @default(now())
   updatedAt           DateTime                 @updatedAt
+
+  /// Solde d'ouverture à la date de reprise (ADR-0014 §1), vérifié contre le
+  /// solde de début du premier relevé déposé sur ce compte. Négatif possible
+  /// (découvert). Null = jamais renseigné.
+  openingBalanceCents Int?
+  openingBalanceOn    DateTime? @db.Date
 
   club              Club              @relation(fields: [clubId], references: [id], onDelete: Cascade)
   accountingAccount AccountingAccount @relation(fields: [accountingAccountId], references: [id], onDelete: Restrict)
