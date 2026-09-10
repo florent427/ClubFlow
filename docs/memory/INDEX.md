@@ -91,6 +91,9 @@
 | [`0011-remboursement-eteint-la-creance.md`](decisions/0011-remboursement-eteint-la-creance.md) | ADR-0011 — Un remboursement éteint la créance correspondante |
 | [`0012-boutique-variantes-et-stock.md`](decisions/0012-boutique-variantes-et-stock.md) | ADR-0012 — Tout ce qui est vendable est une variante, et le stock est un journal |
 | [`0013-commandes-fournisseur.md`](decisions/0013-commandes-fournisseur.md) | ADR-0013 — Commandes fournisseur : réception, rapprochement et écart |
+| [`0014-rapprochement-bancaire-par-releves.md`](decisions/0014-rapprochement-bancaire-par-releves.md) | ADR-0014 — Rapprochement bancaire piloté par les relevés |
+| [`0015-cheques-a-encaisser-5112.md`](decisions/0015-cheques-a-encaisser-5112.md) | ADR-0015 — Les chèques transitent par 5112 jusqu'à la remise |
+| [`0016-frais-avances-benevoles-467.md`](decisions/0016-frais-avances-benevoles-467.md) | ADR-0016 — Les frais avancés par un bénévole passent par un compte de tiers |
 
 ## 🔄 Workflows métier
 
@@ -104,7 +107,7 @@
 
 ---
 
-_Index généré le 2026-09-10 05:45 UTC par `bin/memory-index`._
+_Index généré le 2026-09-10 11:19 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`

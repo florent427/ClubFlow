@@ -279,6 +279,7 @@ Détails complets → [ssh-windows.md](docs/knowledge/ssh-windows.md) et
 | "Quel est le coût mensuel infra ?" | [infra-prod.md](docs/knowledge/infra-prod.md) §Coûts |
 | "Comment cloner la prod en local ?" | [workflows/snapshot-prod-vers-clone.md](docs/memory/workflows/snapshot-prod-vers-clone.md) |
 | "Comment marche le pipeline release ?" | [runbooks/release.md](docs/runbooks/release.md) |
+| "Comment marche le rapprochement bancaire, les chèques, la caisse ?" | [ADR-0014](docs/memory/decisions/0014-rapprochement-bancaire-par-releves.md) + [plan par lots](docs/superpowers/plans/2026-09-10-rapprochement-bancaire-implementation.md) |
 
 ---
 
