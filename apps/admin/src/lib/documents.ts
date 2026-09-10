@@ -3168,6 +3168,8 @@ const FINANCIAL_ACCOUNT_FIELDS = `
   isActive
   sortOrder
   notes
+  openingBalanceCents
+  openingBalanceOn
 `;
 
 export const CLUB_FINANCIAL_ACCOUNTS = gql`
@@ -3369,5 +3371,88 @@ export const SET_CLUB_TEAM_MEMBER_ROLE = gql`
 export const REMOVE_CLUB_TEAM_MEMBER = gql`
   mutation RemoveClubTeamMember($membershipId: ID!) {
     removeClubTeamMember(membershipId: $membershipId)
+  }
+`;
+
+// ============================================================================
+// Comptabilité — exercice, reprise, soldes d'ouverture, verrous (ADR-0014 §1)
+// ============================================================================
+
+const FISCAL_SETTINGS_FIELDS = `
+  fiscalYearStartMonth
+  fiscalYearStartDay
+  accountingStartsOn
+  currentFiscalYear
+  currentFiscalYearLabel
+  currentFiscalYearStartsOn
+  currentFiscalYearEndsOn
+`;
+
+export const CLUB_ACCOUNTING_FISCAL_SETTINGS = gql`
+  query ClubAccountingFiscalSettings {
+    clubAccountingFiscalSettings {
+      ${FISCAL_SETTINGS_FIELDS}
+    }
+  }
+`;
+
+export const UPDATE_CLUB_ACCOUNTING_FISCAL_SETTINGS = gql`
+  mutation UpdateClubAccountingFiscalSettings(
+    $input: UpdateAccountingFiscalSettingsInput!
+  ) {
+    updateClubAccountingFiscalSettings(input: $input) {
+      ${FISCAL_SETTINGS_FIELDS}
+    }
+  }
+`;
+
+export const SET_CLUB_FINANCIAL_ACCOUNT_OPENING_BALANCE = gql`
+  mutation SetClubFinancialAccountOpeningBalance(
+    $input: SetFinancialAccountOpeningBalanceInput!
+  ) {
+    setClubFinancialAccountOpeningBalance(input: $input) {
+      ${FINANCIAL_ACCOUNT_FIELDS}
+    }
+  }
+`;
+
+export const CLUB_ACCOUNTING_PERIOD_LOCKS = gql`
+  query ClubAccountingPeriodLocks {
+    clubAccountingPeriodLocks {
+      month
+      lockedAt
+      lockedByUserId
+    }
+  }
+`;
+
+export const CLUB_ACCOUNTING_FISCAL_YEAR_CLOSES = gql`
+  query ClubAccountingFiscalYearCloses {
+    clubAccountingFiscalYearCloses {
+      year
+      label
+      startsOn
+      endsOn
+      closedAt
+      closedByUserId
+    }
+  }
+`;
+
+export const LOCK_CLUB_ACCOUNTING_MONTH = gql`
+  mutation LockClubAccountingMonth($month: String!) {
+    lockClubAccountingMonth(month: $month)
+  }
+`;
+
+export const UNLOCK_CLUB_ACCOUNTING_MONTH = gql`
+  mutation UnlockClubAccountingMonth($month: String!) {
+    unlockClubAccountingMonth(month: $month)
+  }
+`;
+
+export const CLOSE_CLUB_ACCOUNTING_FISCAL_YEAR = gql`
+  mutation CloseClubAccountingFiscalYear($year: Int!) {
+    closeClubAccountingFiscalYear(year: $year)
   }
 `;
