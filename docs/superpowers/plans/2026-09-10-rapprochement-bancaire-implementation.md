@@ -630,9 +630,24 @@ model ChequeDeposit {
 
 ### Task 5.6 : Vérification staging
 
-- [ ] Deux paiements par chèque et un chèque de sponsor ; remise des trois ;
-  PDF téléchargé ; solde 511200 revenu à 0 (`select` sur les lignes
-  `511200`) ; CSV avec la ligne « REMISE » → rapprochée.
+- [x] Fait le 2026-09-10 sur `club-demo` (staging), dans la session Chrome de
+  Florent : au premier chargement des réglages, le seed a créé le compte
+  « Chèques à encaisser » (511200) et redirigé la route chèque depuis la
+  banque ; chèque hors facture « Mairie de Saint-Denis » 120,00 € sur 754000
+  (écriture 511200 débit / 754000 crédit, audit CREATE) ; remise
+  `R-2026-0001` sur Banque principale (écriture 512000 débit / 511200 crédit,
+  chèque DEPOSITED, bordereau PDF archivé en média privé et servi en URL
+  signée, 200 `application/pdf`) ; annulation motivée (contre-passation
+  inversée, chèque de retour en portefeuille, remise CANCELLED, audit
+  CHEQUE_DEPOSIT_CANCEL). Aucune erreur API sur ces opérations.
+- [x] Deux bugs trouvés et corrigés en vérifiant : le journal d'audit écrivait
+  hors de la transaction de l'appelant (P2003, transaction annulée) ; le mode
+  et la référence de paiement d'une écriture manuelle n'étaient jamais
+  persistés.
+- [ ] Non rejoué sur staging : paiement de facture par chèque (aucune facture
+  ouverte sur `club-demo` ; chemin couvert par
+  `payments-record-manual.spec.ts`) ; rapprochement de la ligne « REMISE »
+  (lot 1).
 
 ---
 
