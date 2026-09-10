@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -16,6 +17,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { WebPushService } from '../push/push.service';
 
 const COMMUNITY_NAME = 'Communauté';
 
@@ -68,7 +70,12 @@ export type ScopeTarget = {
 
 @Injectable()
 export class MessagingService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly log = new Logger(MessagingService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly push: WebPushService,
+  ) {}
 
   private async assertRoomMember(
     clubId: string,
@@ -532,6 +539,64 @@ export class MessagingService {
     return false;
   }
 
+  /**
+   * Notifie par Web Push les membres du salon, sauf l'auteur. Best effort :
+   * lancée sans attente depuis `postMessage`, jamais bloquante — un service
+   * push en panne ne doit pas empêcher un message de partir.
+   *
+   * Titre = interlocuteur en direct, nom du salon sinon. Le tag par salon
+   * fait qu'une rafale de messages remplace la notification précédente au
+   * lieu d'empiler ; seuls les messages directs re-signalent (son/vibration).
+   */
+  private async notifyRoomByPush(
+    roomId: string,
+    senderMemberId: string,
+    msg: {
+      body: string | null;
+      attachments: unknown[];
+      sender: { pseudo: string | null; firstName: string; lastName: string };
+    },
+  ): Promise<void> {
+    if (!this.push.enabled) return;
+    const room = await this.prisma.chatRoom.findUnique({
+      where: { id: roomId },
+      select: {
+        kind: true,
+        name: true,
+        members: { select: { memberId: true } },
+      },
+    });
+    if (!room) return;
+    const recipients = room.members
+      .map((m) => m.memberId)
+      .filter((id) => id !== senderMemberId);
+    if (recipients.length === 0) return;
+
+    const senderName =
+      msg.sender.pseudo?.trim() ||
+      `${msg.sender.firstName} ${msg.sender.lastName}`.trim() ||
+      'Un membre';
+    const text = (msg.body ?? '').replace(/\s+/g, ' ').trim();
+    const excerpt = text
+      ? text.length > 140
+        ? `${text.slice(0, 139)}…`
+        : text
+      : msg.attachments.length > 0
+        ? 'Pièce jointe'
+        : '';
+    const direct = room.kind === ChatRoomKind.DIRECT;
+    const report = await this.push.sendToMembers(recipients, {
+      title: direct ? senderName : (room.name ?? COMMUNITY_NAME),
+      body: direct ? excerpt : `${senderName} : ${excerpt}`,
+      url: `/messagerie?room=${roomId}`,
+      tag: `room-${roomId}`,
+      renotify: direct,
+    });
+    this.log.debug(
+      `push.room room=${roomId} targeted=${report.targeted} sent=${report.sent} removed=${report.removed} failed=${report.failed}`,
+    );
+  }
+
   async postMessage(
     clubId: string,
     roomId: string,
@@ -541,6 +606,8 @@ export class MessagingService {
       parentMessageId?: string | null;
       postedAsAdminUserId?: string | null;
       attachmentMediaAssetIds?: string[] | null;
+      /** Pas de Web Push (ex. campagne qui notifie déjà par le canal PUSH). */
+      suppressPush?: boolean;
     },
   ) {
     const text = (body ?? '').trim();
@@ -696,6 +763,12 @@ export class MessagingService {
       where: { id: roomId },
       data: { updatedAt: new Date() },
     });
+
+    if (!options?.suppressPush) {
+      void this.notifyRoomByPush(roomId, senderMemberId, msg).catch((err) =>
+        this.log.warn(`push.room_failed room=${roomId}: ${String(err)}`),
+      );
+    }
     return msg;
   }
 

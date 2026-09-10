@@ -16,7 +16,7 @@ type ChannelKey = (typeof CHANNEL_KEYS)[number];
 const CHANNEL_OPTIONS: { value: ChannelKey; label: string }[] = [
   { value: 'EMAIL', label: 'E-mail' },
   { value: 'TELEGRAM', label: 'Telegram' },
-  { value: 'PUSH', label: 'Push' },
+  { value: 'PUSH', label: 'Notification push (portail)' },
 ];
 
 function initialChannels(): Record<ChannelKey, boolean> {

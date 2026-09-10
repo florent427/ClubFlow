@@ -44,7 +44,8 @@ const CHANNEL_OPTIONS: {
   {
     value: 'PUSH',
     label: 'Notification push',
-    description: 'Aperçu mobile (V2 — actuellement journalisé).',
+    description:
+      'Notification navigateur, pour les adhérents qui l’ont activée sur le portail.',
     icon: 'notifications',
   },
 ];

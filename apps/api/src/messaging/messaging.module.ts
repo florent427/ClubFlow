@@ -7,6 +7,7 @@ import { ViewerActiveProfileGuard } from '../common/guards/viewer-active-profile
 import { FamiliesModule } from '../families/families.module';
 import { MediaModule } from '../media/media.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { PushModule } from '../push/push.module';
 import { MemberPseudoService } from './member-pseudo.service';
 import { MessagingAdminResolver } from './messaging-admin.resolver';
 import { MessagingAdminService } from './messaging-admin.service';
@@ -17,6 +18,8 @@ import { MessagingService } from './messaging.service';
 @Module({
   imports: [
     PrismaModule,
+    // Notifications Web Push des messages (best effort, cf. postMessage).
+    PushModule,
     FamiliesModule,
     // Pour MediaUrlSignerService : les avatars poussés en WebSocket sont
     // signés à la main (aucun modèle GraphQL sur ce chemin).
