@@ -66,6 +66,7 @@
 | [`release-please-no-trigger.md`](pitfalls/release-please-no-trigger.md) | Piège — release-please ne se déclenche pas (pas de `workflow_dispatch`) |
 | [`revue-adversariale-tout-refute.md`](pitfalls/revue-adversariale-tout-refute.md) | Piège — une revue adversariale qui réfute 100 % de ses constats |
 | [`safety-blocks-shared-infra-mcp.md`](pitfalls/safety-blocks-shared-infra-mcp.md) | Piège — Safety bloque les modifs d'infra partagée via Chrome MCP |
+| [`seed-concurrent-p2002-comptes-zero.md`](pitfalls/seed-concurrent-p2002-comptes-zero.md) | Piège — deux `seedIfEmpty` concurrents, et l'écran affiche « Comptes (0) » |
 | [`signup-unverified-email-blocks-login.md`](pitfalls/signup-unverified-email-blocks-login.md) | Piège — Signup self-service : compte créé mais bloqué au login (email pas vérifié) |
 | [`souin-respects-origin-no-store.md`](pitfalls/souin-respects-origin-no-store.md) | Piège — Souin (cache-handler Caddy) refuse de cacher malgré default_cache_control |
 | [`ssh-passphrase-non-tty.md`](pitfalls/ssh-passphrase-non-tty.md) | Piège — SSH `Permission denied` quand la clé a une passphrase |
@@ -107,7 +108,7 @@
 
 ---
 
-_Index généré le 2026-09-10 11:19 UTC par `bin/memory-index`._
+_Index généré le 2026-09-10 11:54 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`

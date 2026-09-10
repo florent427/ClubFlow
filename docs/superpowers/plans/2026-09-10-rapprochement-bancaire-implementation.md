@@ -126,50 +126,56 @@ clôture annuelle se calcule sur l'exercice du club.
 
 ### Task 0.1 : Schéma
 
-- [ ] `Club` : `fiscalYearStartMonth Int @default(1)`, `fiscalYearStartDay Int @default(1)`,
+- [x] `Club` : `fiscalYearStartMonth Int @default(1)`, `fiscalYearStartDay Int @default(1)`,
   `accountingStartsOn DateTime? @db.Date`.
-- [ ] `ClubFinancialAccount` : `openingBalanceCents Int?`, `openingBalanceOn DateTime? @db.Date`.
-- [ ] `db push` + `generate`.
+- [x] `ClubFinancialAccount` : `openingBalanceCents Int?`, `openingBalanceOn DateTime? @db.Date`.
+- [x] `db push` + `generate`.
 
 ### Task 0.2 : `AccountingFiscalYearService`
 
-- [ ] `boundsFor(clubId, year)` → `{ startsOn, endsOn }` (fin incluse, veille du
+- [x] `boundsFor(clubId, year)` → `{ startsOn, endsOn }` (fin incluse, veille du
   début suivant) ; `yearFor(clubId, date)` ; `label(year, settings)` →
   « 2026 » si 1er janvier, « 2026-2027 » sinon.
-- [ ] `AccountingPeriodService.closeFiscalYear` utilise `boundsFor` et
+- [x] `AccountingPeriodService.closeFiscalYear` utilise `boundsFor` et
   verrouille les 12 mois **de l'exercice** (« 2026-09 » … « 2027-08 »).
-- [ ] Validation de `updateFiscalSettings` : jour valide pour le mois (pas de
+- [x] Validation de `updateFiscalSettings` : jour valide pour le mois (pas de
   30/02) ; `accountingStartsOn` ≤ aujourd'hui ; interdiction de **reculer**
   `accountingStartsOn` après le premier relevé déposé (garde posée au lot 1).
-- [ ] Tests `accounting-fiscal-year.service.spec.ts` : bornes pour 01/09
+- [x] Tests `accounting-fiscal-year.service.spec.ts` : bornes pour 01/09
   (2026-09-01 → 2027-08-31) ; 01/01 inchangé ; `closeFiscalYear` verrouille
   « 2026-09 » … « 2027-08 » et **pas** « 2026-01 » (mutation : revenir à
   l'année civile doit rougir).
 
 ### Task 0.3 : GraphQL
 
-- [ ] Query `clubAccountingFiscalSettings` ; mutations
+- [x] Query `clubAccountingFiscalSettings` ; mutations
   `updateClubAccountingFiscalSettings(input)` et
   `setClubFinancialAccountOpeningBalance(financialAccountId, balanceCents, on)`.
-- [ ] `closeClubAccountingFiscalYear` : `year` = année de début ; exposer
+- [x] `closeClubAccountingFiscalYear` : `year` = année de début ; exposer
   `label` sur les clôtures.
-- [ ] Test de construction du schéma.
+- [x] Test de construction du schéma.
 
 ### Task 0.4 : Admin
 
-- [ ] `AccountingSettingsPage.tsx` : `TabKey` gagne `FISCAL` ; nouveau
+- [x] `AccountingSettingsPage.tsx` : `TabKey` gagne `FISCAL` ; nouveau
   `pages/settings/accounting/FiscalYearSettingsTab.tsx` : jour/mois de début,
   date de reprise, tableau des comptes financiers avec solde d'ouverture.
-- [ ] Verrou mensuel et clôture annuelle : les mutations existent côté API mais
+- [x] Verrou mensuel et clôture annuelle : les mutations existent côté API mais
   aucun écran admin ne les appelle (vérifié le 2026-09-10 par grep). Les
   ajouter dans cet onglet, avec le libellé « Exercice 2026-2027 (01/09/2026 →
   31/08/2027) ».
 
 ### Task 0.5 : Vérification staging
 
-- [ ] Club démo : 01/09, reprise 2026-09-01, soldes d'ouverture ; clôturer un
-  exercice sur un club jetable et vérifier
-  `select month from "AccountingPeriodLock" where "clubId"='…'`.
+- [x] Fait le 2026-09-10 sur `club-demo` (staging) : 01/09, reprise
+  2026-09-01, solde d'ouverture 1 234,56 € au 01/09/2026 sur « Banque
+  principale », verrou août 2026 posé puis retiré ; persistance vérifiée en
+  base par `psql`. La clôture annuelle n'a été vérifiée que par tests
+  unitaires : pas de club jetable sur staging, et la clôture ne se défait pas.
+- [x] Trouvé en vérifiant : course de `seedIfEmpty` entre les trois requêtes
+  de l'écran → « Comptes (0) » au premier chargement. Corrigé (`createMany
+  skipDuplicates`), cf.
+  [pitfall](../../memory/pitfalls/seed-concurrent-p2002-comptes-zero.md).
 
 ---
 
