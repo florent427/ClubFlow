@@ -1058,13 +1058,19 @@ export class AccountingService {
       ? await run(outerTx)
       : await this.prisma.$transaction(run);
 
-    await this.audit.log({
-      clubId,
-      userId,
-      entryId: created.id,
-      action: AccountingAuditAction.CREATE,
-      metadata: { source: 'MANUAL', input: JSON.parse(JSON.stringify(input)) },
-    });
+    // Dans la transaction de l'appelant s'il y en a une : l'écriture n'est
+    // pas encore visible hors de celle-ci, et la clé étrangère du journal
+    // vers elle échouerait.
+    await this.audit.log(
+      {
+        clubId,
+        userId,
+        entryId: created.id,
+        action: AccountingAuditAction.CREATE,
+        metadata: { source: 'MANUAL', input: JSON.parse(JSON.stringify(input)) },
+      },
+      outerTx,
+    );
 
     return created;
   }

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AccountingAuditAction } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -14,15 +15,25 @@ import { PrismaService } from '../prisma/prisma.service';
 export class AccountingAuditService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async log(params: {
-    clubId: string;
-    entryId?: string | null;
-    userId: string;
-    action: AccountingAuditAction;
-    diffJson?: Record<string, unknown>;
-    metadata?: Record<string, unknown>;
-  }): Promise<void> {
-    await this.prisma.accountingAuditLog.create({
+  /**
+   * `tx` : la transaction de l'appelant, OBLIGATOIRE quand l'écriture
+   * journalisée y est encore invisible du reste de la base. Sans elle, la
+   * clé étrangère vers l'écriture non commitée échoue (P2003) et fait
+   * annuler toute la transaction — vu sur staging le 2026-09-10 à la
+   * première saisie d'un chèque hors facture.
+   */
+  async log(
+    params: {
+      clubId: string;
+      entryId?: string | null;
+      userId: string;
+      action: AccountingAuditAction;
+      diffJson?: Record<string, unknown>;
+      metadata?: Record<string, unknown>;
+    },
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
+    await (tx ?? this.prisma).accountingAuditLog.create({
       data: {
         clubId: params.clubId,
         entryId: params.entryId ?? null,
