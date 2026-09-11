@@ -20,6 +20,13 @@ import {
 
 /** Au-delà, on ne remonte pas : une première synchro ne relit pas des années. */
 const MAX_LOOKBACK_DAYS = 400;
+/**
+ * On relit toujours deux jours en arrière. Un virement manqué est une
+ * divergence silencieuse — précisément ce que ce lot existe pour éviter — et
+ * repasser ne coûte qu'un appel : l'écriture est idempotente par
+ * `stripePayoutId`, les lignes par leur identifiant de transaction.
+ */
+const OVERLAP_DAYS = 2;
 /** Garde-fou de pagination : un club normal fait quelques virements par mois. */
 const MAX_PAYOUTS_PER_RUN = 300;
 const PAGE_SIZE = 100;
@@ -451,8 +458,11 @@ export class StripeTransitSyncService {
 
   private lookbackFrom(syncedAt: Date | null, accountingStartsOn: Date): Date {
     const floor = new Date(Date.now() - MAX_LOOKBACK_DAYS * 86_400_000);
-    const wanted = syncedAt ?? accountingStartsOn;
-    return wanted.getTime() < floor.getTime() ? floor : wanted;
+    const wanted = syncedAt
+      ? new Date(syncedAt.getTime() - OVERLAP_DAYS * 86_400_000)
+      : accountingStartsOn;
+    const notBeforeReprise = Math.max(wanted.getTime(), accountingStartsOn.getTime());
+    return new Date(Math.max(notBeforeReprise, floor.getTime()));
   }
 }
 

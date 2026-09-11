@@ -60,6 +60,7 @@ interface WorldOpts {
   }>;
   previousClosingCents?: number | null;
   transitOpeningCents?: number | null;
+  syncedAt?: Date | null;
 }
 
 function makeWorld(opts: WorldOpts = {}) {
@@ -76,7 +77,7 @@ function makeWorld(opts: WorldOpts = {}) {
     id: TRANSIT,
     clubId: CLUB,
     kind: 'STRIPE_TRANSIT',
-    stripeSyncedAt: null as Date | null,
+    stripeSyncedAt: (opts.syncedAt ?? null) as Date | null,
     openingBalanceCents: opts.transitOpeningCents ?? null,
     accountingAccount: { code: '512300' },
   };
@@ -356,6 +357,38 @@ describe('StripeTransitSyncService.syncClub', () => {
 
     expect(report.arithmeticWarnings).toBe(1);
     expect(report.payoutsSeen).toBe(1);
+  });
+
+  it('relit deux jours en arrière : un virement manqué serait invisible', async () => {
+    const w = makeWorld({ syncedAt: new Date('2026-06-10T04:30:00.000Z') });
+    stripeReturns([], {});
+
+    await w.svc.syncClub(CLUB);
+
+    const args = payoutsList.mock.calls[0][0] as { arrival_date: { gte: number } };
+    expect(new Date(args.arrival_date.gte * 1000).toISOString()).toBe('2026-06-08T04:30:00.000Z');
+  });
+
+  it('ne remonte jamais avant la date de reprise comptable', async () => {
+    // Deux jours avant la première synchro tomberaient avant la reprise :
+    // on écrirait des mouvements que la comptabilité du club ignore.
+    const w = makeWorld({ syncedAt: new Date('2026-01-01T12:00:00.000Z') });
+    stripeReturns([], {});
+
+    await w.svc.syncClub(CLUB);
+
+    const args = payoutsList.mock.calls[0][0] as { arrival_date: { gte: number } };
+    expect(new Date(args.arrival_date.gte * 1000).toISOString()).toBe('2026-01-01T00:00:00.000Z');
+  });
+
+  it('part de la date de reprise quand rien n’a jamais été synchronisé', async () => {
+    const w = makeWorld();
+    stripeReturns([], {});
+
+    await w.svc.syncClub(CLUB);
+
+    const args = payoutsList.mock.calls[0][0] as { arrival_date: { gte: number } };
+    expect(new Date(args.arrival_date.gte * 1000).toISOString()).toBe('2026-01-01T00:00:00.000Z');
   });
 
   it('avance le marqueur de synchro à la fin', async () => {
