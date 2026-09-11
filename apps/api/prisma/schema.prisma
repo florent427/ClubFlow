@@ -1870,51 +1870,54 @@ model BankStatement {
 /// Ligne d'un relevé. `amountCents` est SIGNÉ : positif = crédit pour le
 /// club (argent qui entre), négatif = débit.
 model BankStatementLine {
-  id                 String                         @id @default(uuid())
-  clubId             String
-  statementId        String
+  id                    String                         @id @default(uuid())
+  clubId                String
+  statementId           String
   /// Dénormalisé : les requêtes de rapprochement filtrent par compte.
-  financialAccountId String
-  lineIndex          Int
-  bookedOn           DateTime                       @db.Date
-  valueOn            DateTime?                      @db.Date
-  label              String
-  rawLabel           String
-  reference          String?
-  counterpartyName   String?
-  amountCents        Int
-  balanceAfterCents  Int?
+  financialAccountId    String
+  lineIndex             Int
+  bookedOn              DateTime                       @db.Date
+  valueOn               DateTime?                      @db.Date
+  label                 String
+  rawLabel              String
+  reference             String?
+  counterpartyName      String?
+  amountCents           Int
+  balanceAfterCents     Int?
   /// Identifiant de transaction OFX (FITID), quand la banque en fournit.
-  fitId              String?
-  status             BankStatementLineStatus        @default(UNMATCHED)
-  ignoreReason       BankStatementLineIgnoreReason?
-  ignoreNote         String?
+  fitId                 String?
+  status                BankStatementLineStatus        @default(UNMATCHED)
+  ignoreReason          BankStatementLineIgnoreReason?
+  ignoreNote            String?
   /// Lecture PDF (lot 2) : les deux modèles ont-ils lu la même ligne ?
-  readingAgreement   Boolean                        @default(true)
-  divergenceJson     Json?
+  readingAgreement      Boolean                        @default(true)
+  divergenceJson        Json?
   /// Candidats plausibles quand le rapprochement automatique hésite.
-  candidateEntryIds  String[]                       @default([])
-  resolvedAt         DateTime?
-  resolvedByUserId   String?
+  candidateEntryIds     String[]                       @default([])
+  resolvedAt            DateTime?
+  resolvedByUserId      String?
   /// Catégorisation (lot 3) : proposition de compte pour une ligne sans
   /// écriture, par règle apprise ou par deux modèles.
-  aiProposalJson     Json?
+  aiProposalJson        Json?
   /// Question posée par l'IA quand la ligne n'est pas claire.
-  aiQuestion         String?
+  aiQuestion            String?
   /// Tours de dialogue {role, text} déjà échangés sur cette ligne.
-  aiConversationJson Json?
-  aiAttempts         Int                            @default(0)
+  aiConversationJson    Json?
+  aiAttempts            Int                            @default(0)
   /// Plus de proposition attendue : saisie manuelle ou rapprochement à la main.
-  aiExhausted        Boolean                        @default(false)
+  aiExhausted           Boolean                        @default(false)
   /// Règle qui a produit la proposition, quand c'est une règle.
-  ruleId             String?
+  ruleId                String?
   /// Écriture NEEDS_REVIEW matérialisant la proposition.
-  proposedEntryId    String?                        @unique
+  proposedEntryId       String?                        @unique
   /// Virement d'adhérent reconnu (ADR-0014 §7) : payeur et factures
   /// proposés, en attente d'un clic.
-  payerProposalJson  Json?
-  createdAt          DateTime                       @default(now())
-  updatedAt          DateTime                       @updatedAt
+  payerProposalJson     Json?
+  /// Remboursement de bénévole reconnu (ADR-0016) : le bénévole et les reçus
+  /// que cette sortie d'argent solderait, en attente d'un clic.
+  volunteerProposalJson Json?
+  createdAt             DateTime                       @default(now())
+  updatedAt             DateTime                       @updatedAt
 
   statement BankStatement            @relation(fields: [statementId], references: [id], onDelete: Cascade)
   matches   BankStatementLineMatch[]
