@@ -17,7 +17,7 @@ import type {
 } from '../../../lib/types';
 import { useToast } from '../../../components/ToastProvider';
 import { Drawer } from '../../../components/ui';
-import { centsToInput, formatEuro, formatFr, formatSigned, inputToCents, todayIso } from '../reconciliation/format';
+import { formatEuro, formatFr, formatSigned, inputToCents, todayIso } from '../reconciliation/format';
 
 /** Premier jour du mois de `iso`. */
 function monthStart(iso: string): string {
@@ -546,8 +546,8 @@ export function CashBookPage() {
           </div>
           {book ? (
             <p className="cf-muted">
-              Solde de la caisse au {formatFr(book.to)} : {formatEuro(book.closingCents)} (
-              {centsToInput(book.closingCents)} €).
+              Solde de la caisse à la fin de la période affichée (
+              {formatFr(book.to)}) : {formatEuro(book.closingCents)}.
             </p>
           ) : null}
         </form>

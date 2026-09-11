@@ -89,6 +89,12 @@ function makeWorld(
     statementStatus: l.statementStatus ?? 'READY',
   }));
 
+  // Les écritures NEEDS_REVIEW nées d'une proposition de l'IA sur une ligne.
+  const proposals = [
+    { id: 'prop-review', clubId: CLUB, status: 'NEEDS_REVIEW' },
+    { id: 'prop-posted', clubId: CLUB, status: 'POSTED' },
+  ];
+  const deletedEntries: string[] = [];
   const matches: Array<Record<string, unknown>> = [];
   const flagged: Array<{ entryId: string; accountCode: string }> = [];
   const statements = [
@@ -97,6 +103,13 @@ function makeWorld(
 
   const prisma: Record<string, unknown> = {
     accountingEntry: {
+      findMany: jest.fn(async ({ where }: { where: { id: { in: string[] } } }) =>
+        proposals.filter((p) => where.id.in.includes(p.id) && !deletedEntries.includes(p.id)),
+      ),
+      delete: jest.fn(async ({ where }: { where: { id: string } }) => {
+        deletedEntries.push(where.id);
+        return { id: where.id };
+      }),
       findFirst: jest.fn(
         async ({
           where,
@@ -104,13 +117,22 @@ function makeWorld(
           where: {
             id: string;
             cancelledAt?: null;
-            status?: { in: string[] };
+            status?: { in: string[] } | string;
             financialAccountId?: string;
           };
         }) => {
+          const proposal = proposals.find((p) => p.id === where.id);
+          if (proposal) {
+            if (deletedEntries.includes(proposal.id)) return null;
+            // `dropPendingProposal` ne supprime qu'une proposition en revue.
+            if (typeof where.status === 'string' && proposal.status !== where.status) return null;
+            return proposal;
+          }
           if (where.id !== entry.id) return null;
           if (where.cancelledAt === null && entry.cancelledAt !== null) return null;
-          if (where.status && !where.status.in.includes(entry.status)) return null;
+          if (where.status && typeof where.status !== 'string' && !where.status.in.includes(entry.status)) {
+            return null;
+          }
           if (
             where.financialAccountId !== undefined &&
             entry.financialAccountId !== where.financialAccountId
@@ -208,7 +230,7 @@ function makeWorld(
     { log: jest.fn(async () => undefined) } as never,
     new CategorizationLearningService(prisma as never),
   );
-  return { svc, lines, matches, flagged, statements, prisma };
+  return { svc, lines, matches, flagged, statements, prisma, deletedEntries };
 }
 
 describe('BankReconciliationService.matchExistingLineForEntry', () => {
@@ -265,9 +287,22 @@ describe('BankReconciliationService.matchExistingLineForEntry', () => {
     expect(await w.svc.matchExistingLineForEntry(CLUB, 'entry-1')).toBeNull();
   });
 
-  it('ignore une ligne qui porte déjà une proposition', async () => {
-    const w = makeWorld({ lines: [{ proposedEntryId: 'entry-9' }] });
+  it('passe devant une proposition de l’IA restée en revue, et la jette', async () => {
+    // La catégorisation tourne dès l'import : une ligne orpheline porte
+    // presque toujours une proposition quand l'écriture réelle arrive.
+    const w = makeWorld({ lines: [{ proposedEntryId: 'prop-review' }] });
+    expect(await w.svc.matchExistingLineForEntry(CLUB, 'entry-1')).toBe('st-1');
+    expect(w.matches).toHaveLength(1);
+    expect(w.lines[0].proposedEntryId).toBeNull();
+    // Sans cela, valider la proposition compterait la somme une seconde fois.
+    expect(w.deletedEntries).toEqual(['prop-review']);
+  });
+
+  it('ne passe pas devant une proposition déjà comptabilisée', async () => {
+    const w = makeWorld({ lines: [{ proposedEntryId: 'prop-posted' }] });
     expect(await w.svc.matchExistingLineForEntry(CLUB, 'entry-1')).toBeNull();
+    expect(w.matches).toHaveLength(0);
+    expect(w.deletedEntries).toEqual([]);
   });
 
   it.each(OUT_OF_RANGE)('ignore une ligne d’un relevé %s', async (statementStatus) => {

@@ -470,8 +470,6 @@ export class BankReconciliationService {
         clubId,
         financialAccountId: entry.financialAccountId,
         status: BankStatementLineStatus.UNMATCHED,
-        // Une ligne qui porte déjà une proposition a son propre chemin.
-        proposedEntryId: null,
         amountCents: signedCents,
         bookedOn: { gte: from, lt: to },
         statement: {
@@ -492,12 +490,33 @@ export class BankReconciliationService {
         amountCents: true,
         label: true,
         reference: true,
+        proposedEntryId: true,
       },
-      take: 2,
+      take: 3,
     });
-    if (lines.length !== 1) return null;
+    // `proposedEntryId` n'est pas une relation Prisma : on relit les statuts.
+    const proposedIds = lines.map((l) => l.proposedEntryId).filter((v): v is string => v !== null);
+    const proposedStatus = new Map<string, AccountingEntryStatus>();
+    if (proposedIds.length > 0) {
+      const rows = await this.prisma.accountingEntry.findMany({
+        where: { clubId, id: { in: proposedIds } },
+        select: { id: true, status: true },
+      });
+      for (const r of rows) proposedStatus.set(r.id, r.status);
+    }
+    // Une proposition de l'IA encore en revue cède devant une écriture
+    // réelle du bon montant : c'est une supposition, pas une décision. Une
+    // proposition DÉJÀ comptabilisée, en revanche, est une décision humaine
+    // — on ne passe pas par-dessus.
+    const open = lines.filter(
+      (l) =>
+        l.proposedEntryId === null ||
+        proposedStatus.get(l.proposedEntryId) === AccountingEntryStatus.NEEDS_REVIEW,
+    );
+    if (open.length !== 1) return null;
 
-    const line = lines[0];
+    const line = open[0];
+    await this.dropPendingProposal(clubId, line.id, line.proposedEntryId);
     await this.applyMatch(
       clubId,
       null,
@@ -511,6 +530,36 @@ export class BankReconciliationService {
       `[écriture ${entryId}] rapprochée à la ligne ${line.id} d'un relevé déjà déposé.`,
     );
     return line.statementId;
+  }
+
+  /**
+   * Jette la proposition d'écriture en attente sur une ligne : l'écriture
+   * `NEEDS_REVIEW` qu'elle avait matérialisée est supprimée et la ligne
+   * l'oublie.
+   *
+   * Appelée quand une résolution mieux fondée arrive — un paiement
+   * d'adhérent (lot 4), un dépôt d'espèces, un remboursement de bénévole.
+   * Laisser la proposition permettrait de comptabiliser deux fois la même
+   * somme : une fois par l'écriture réelle, une fois en validant la
+   * supposition de l'IA.
+   */
+  async dropPendingProposal(
+    clubId: string,
+    lineId: string,
+    proposedEntryId: string | null,
+  ): Promise<void> {
+    if (!proposedEntryId) return;
+    const entry = await this.prisma.accountingEntry.findFirst({
+      where: { id: proposedEntryId, clubId, status: AccountingEntryStatus.NEEDS_REVIEW },
+      select: { id: true },
+    });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.bankStatementLine.update({
+        where: { id: lineId },
+        data: { proposedEntryId: null, aiProposalJson: Prisma.DbNull, ruleId: null },
+      });
+      if (entry) await tx.accountingEntry.delete({ where: { id: entry.id } });
+    });
   }
 
   /** Détache : liaisons supprimées, marqueur effacé, ligne de nouveau à traiter. */

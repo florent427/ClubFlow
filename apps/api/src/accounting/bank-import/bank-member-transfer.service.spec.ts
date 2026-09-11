@@ -66,7 +66,12 @@ function makeWorld(
       },
     ),
   };
-  const reconciliation = { match: jest.fn(async () => ({ id: 'l-1' })) };
+  const reconciliation = {
+    match: jest.fn(async () => ({ id: 'l-1' })),
+    // La règle « une proposition cède devant une résolution mieux fondée »
+    // vit dans BankReconciliationService, avec son propre test.
+    dropPendingProposal: jest.fn(async () => undefined),
+  };
   const audit = { log: jest.fn(async () => undefined) };
   const svc = new BankMemberTransferService(
     prisma as never,
@@ -148,11 +153,14 @@ describe('BankMemberTransferService.acceptMemberPayment', () => {
     expect(w.reconciliation.match).not.toHaveBeenCalled();
   });
 
-  it('la proposition d’écriture en attente est supprimée : c’est le paiement qui porte la recette', async () => {
+  it('la proposition d’écriture en attente est jetée : c’est le paiement qui porte la recette', async () => {
     const w = makeWorld({ proposedEntryId: 'entry-proposee' });
     await w.svc.acceptMemberPayment(CLUB, 'user-1', 'l-1', ALLOCATIONS);
-    expect(w.deletedEntries).toEqual(['entry-proposee']);
-    expect(w.lineUpdates[0]).toMatchObject({ proposedEntryId: null });
+    expect(w.reconciliation.dropPendingProposal).toHaveBeenCalledWith(
+      CLUB,
+      'l-1',
+      'entry-proposee',
+    );
   });
 
   it('les parts doivent couvrir exactement le virement', async () => {
