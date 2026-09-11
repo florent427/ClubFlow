@@ -86,11 +86,16 @@ function build(answers: { a: Answer; b: Answer }, opts: { budgetAllowed?: boolea
     }),
   };
   const media = {
-    streamFor: jest.fn(async () => ({
-      stream: (async function* () {
-        yield Buffer.from('%PDF-1.4 fake');
-      })(),
-    })),
+    // Comme le vrai : un fichier privé n'est servi qu'avec le club
+    // propriétaire, sinon « introuvable » (constaté sur staging, 2026-09-11).
+    streamFor: jest.fn(async (_assetId: string, opts?: { clubId?: string | null }) => {
+      if (opts?.clubId !== 'club-1') throw new Error('Asset introuvable');
+      return {
+        stream: (async function* () {
+          yield Buffer.from('%PDF-1.4 fake');
+        })(),
+      };
+    }),
   };
   const audit = { log: jest.fn(async () => undefined) };
   const reconciliation = { autoMatch: jest.fn(async () => undefined) };
