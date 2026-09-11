@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.47.1](https://github.com/florent427/ClubFlow/compare/v0.47.0...v0.47.1) (2026-09-11)
+
+
+### 🐛 Bug Fixes
+
+* **accounting:** lecture d'un relevé PDF — fichier privé lu avec le contexte du club ([b7a239b](https://github.com/florent427/ClubFlow/commit/b7a239b5918c757276e11be4bddfa21711632304))
+* **accounting:** lecture d'un relevé PDF — le fichier privé est lu avec le contexte du club ([3ebd1ba](https://github.com/florent427/ClubFlow/commit/3ebd1ba4f96d89ceca862a9f30233445a9f5b380))
+
 ## [0.47.0](https://github.com/florent427/ClubFlow/compare/v0.46.0...v0.47.0) (2026-09-11)
 
 
