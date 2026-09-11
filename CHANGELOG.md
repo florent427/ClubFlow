@@ -9,6 +9,21 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.48.0](https://github.com/florent427/ClubFlow/compare/v0.47.2...v0.48.0) (2026-09-11)
+
+
+### ✨ Features
+
+* **accounting:** catégorisation des lignes de relevé, règles apprises et dialogue IA (lot 3) ([7694663](https://github.com/florent427/ClubFlow/commit/76946630a4edf5b369fa0693d8bec084f701dc83))
+* **admin:** propositions de compte et règles de catégorisation (lot 3) ([882aa4c](https://github.com/florent427/ClubFlow/commit/882aa4c02ce21584942587f55c9acfc96eee1d0a))
+* **api:** catégorisation des lignes de relevé par règles puis deux modèles (lot 3) ([4879e8e](https://github.com/florent427/ClubFlow/commit/4879e8ec60fe5148726adf6860b850fbee21f250))
+* **db:** règles de catégorisation et état de proposition sur les lignes de relevé ([a6a68e7](https://github.com/florent427/ClubFlow/commit/a6a68e738db7f19080269dd407b46dc2826e3338))
+
+
+### 🐛 Bug Fixes
+
+* **accounting:** valider depuis la file de revue apprend aussi une règle ([bcfd93c](https://github.com/florent427/ClubFlow/commit/bcfd93c7da836b9d3a9ad3852166f796687baab7))
+
 ## [0.47.2](https://github.com/florent427/ClubFlow/compare/v0.47.1...v0.47.2) (2026-09-11)
 
 
