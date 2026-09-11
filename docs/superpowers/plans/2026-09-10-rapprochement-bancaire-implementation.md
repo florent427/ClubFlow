@@ -391,43 +391,43 @@ lignes divergentes mises en évidence ; contrôle bloquant.
 
 ### Task 2.1 : Extraction de l'outillage OCR
 
-- [ ] Sortir de `receipt-ocr.service.ts` vers `ocr-shared.ts` : `extractPdfText`,
+- [x] Sortir de `receipt-ocr.service.ts` vers `ocr-shared.ts` : `extractPdfText`,
   `loadPdfToImg`, rastérisation et tuilage, `pickVisionModel`,
   `VISION_CAPABLE_MODELS`. Les specs existantes de l'OCR reçus restent
   vertes sans modification.
 
 ### Task 2.2 : `BankStatementOcrService`
 
-- [ ] Deux lectures en parallèle (`Promise.allSettled`) : modèle A =
+- [x] Deux lectures en parallèle (`Promise.allSettled`) : modèle A =
   `pickVisionModel(textModel)` ; modèle B = `textFallbackModel` s'il est
   vision et différent de A, sinon `DEFAULT_VISION_MODEL_B = 'google/gemini-2.5-flash'`.
   Prompt : JSON strict `{ iban?, periodStart, periodEnd, openingBalanceCents, closingBalanceCents, lines: [{ bookedOn, valueOn?, label, amountCents, balanceAfterCents? }] }`,
   texte natif du PDF fourni comme vérité textuelle quand il existe ; relevés
   longs traités page par page avec continuité du solde courant.
-- [ ] `merge-readings.ts` (pur) : appariement par (date, montant) puis
+- [x] `merge-readings.ts` (pur) : appariement par (date, montant) puis
   similarité de libellé ; lignes appariées → `readingAgreement = true` ;
   présentes d'un seul côté ou en désaccord de montant ou de date → incluses
   avec `readingAgreement = false` et `divergenceJson { kind: ONLY_IN_A | ONLY_IN_B | AMOUNT | DATE, a, b }` ;
   soldes comparés de la même façon.
-- [ ] Puis `statement-integrity.check` : le relevé n'est `READY` que par
+- [x] Puis `statement-integrity.check` : le relevé n'est `READY` que par
   `transitionAfterIntegrity`. Les deux lectures en échec → `FAILED` avec
   message, relance ou dépôt en CSV proposés.
-- [ ] Budget : `AiBudgetService.checkBudget` avant ; coût journalisé sous
+- [x] Budget : `AiBudgetService.checkBudget` avant ; coût journalisé sous
   `AiUsageFeature.BANK_STATEMENT_OCR` (nouvelle valeur) via `logUsage` et
   `incrementUsage` ; cap atteint → PDF refusé avec message, OFX et CSV
   intacts.
-- [ ] Persistance de `readingAJson`, `readingBJson`, modèles, coût.
-- [ ] Tests : `merge-readings.spec.ts` (accord, présence d'un seul côté,
+- [x] Persistance de `readingAJson`, `readingBJson`, modèles, coût.
+- [x] Tests : `merge-readings.spec.ts` (accord, présence d'un seul côté,
   désaccord de montant) ; intégrité après fusion ; budget bloqué ; un cas où
   les deux lectures concordent mais l'arithmétique est fausse → `NEEDS_CHECK`
   (c'est le test qui prouve que le contrôle est le juge, pas l'accord).
 
 ### Task 2.3 : GraphQL et admin
 
-- [ ] `importBankStatement` en format PDF lance la lecture en arrière-plan
+- [x] `importBankStatement` en format PDF lance la lecture en arrière-plan
   (statut `PARSING`, même schéma que `aiProcessingStartedAt` des reçus) ; le
   client sonde `clubBankStatement` ; mutation `rerunBankStatementReading(id)`.
-- [ ] `StatementDetailPage` : lignes divergentes surlignées, image de la page
+- [x] `StatementDetailPage` : lignes divergentes surlignées, image de la page
   (URL signée du média) en regard, édition inline, bouton « Relancer le
   contrôle ».
 
@@ -436,6 +436,50 @@ lignes divergentes mises en évidence ; contrôle bloquant.
 - [ ] Deux PDF réels de banques différentes ; delta 0 ; fausser une ligne à la
   main → `NEEDS_CHECK` ; corriger → `READY` ; vérifier le coût dans
   `AiUsageLog`.
+
+### Réalisé (2026-09-11)
+
+- [x] Lecture réelle vérifiée en local (clé OpenRouter du poste, script
+  temporaire `ts-node` dans `apps/api`) sur un relevé PDF synthétique d'une
+  page : 7 lignes de tableau dont « ancien solde » et « nouveau solde » en
+  tête et pied. Sonnet 4.5 et Gemini 2.5 Flash rendent les 6 opérations
+  identiques, signes et centimes justes, soldes 1 234,56 → 1 384,26 €,
+  delta 0, 13 s, ~1 centime. Le texte natif de ce PDF (généré par pdfkit)
+  n'a pas pu être extrait (« bad XRef entry » de pdf-parse v1) : l'image
+  seule a suffi.
+- [x] Tests : fusion (accord, ONLY_IN_A/B, DATE, AMOUNT, lecture unique,
+  soldes divergents), analyse tolérante de la réponse, prompt, service avec
+  doubles (READY ; arithmétique fausse malgré l'accord → NEEDS_CHECK ;
+  divergence de date à delta 0 → NEEDS_CHECK ; un modèle en échec ; deux en
+  échec → FAILED ; chevauchement ; budget). Deux mutations à la main (garde
+  des divergences retirée ; budget non vérifié) → rouge.
+- [ ] Sur staging, `club-demo` n'a pas de clé OpenRouter : le dépôt d'un PDF
+  est refusé avant toute écriture, avec le message qui renvoie vers OFX/CSV.
+  La lecture de bout en bout sur staging attend une clé (Paramètres → IA du
+  club démo) ; un PDF synthétique est prêt (`releve-demo-2026-09.pdf`,
+  généré par le script de test local, 7 lignes, soldes 1 234,56 → 1 384,26 €).
+- [x] Vérifié sur staging le 2026-09-11 : PDF refusé sans clé (aucun relevé
+  ni fichier créé, message vers OFX/CSV) ; « Corriger les soldes » sur le
+  relevé CSV d'octobre (solde de fin faux → « À vérifier », écart −11,24 € ;
+  rétabli → « À rapprocher », audit UPDATE avant/après) ; « Relancer le
+  contrôle ». Mutations et champs présents à l'introspection, valeur
+  `BANK_STATEMENT_OCR` en base. Aucune erreur API.
+
+
+### Écarts par rapport au plan
+
+- Lecture par paquets de 3 pages (solde courant transmis au paquet suivant)
+  plutôt que strictement page par page ; au-delà de 10 pages, le reste n'est
+  pas lu.
+- Les désaccords sur les soldes ne bloquent pas par eux-mêmes : la lecture A
+  est retenue et le désaccord affiché, c'est l'arithmétique qui tranche. Les
+  divergences de ligne bloquent jusqu'à confirmation, correction ou retrait
+  (`deriveStatementStatus` reste l'unique chemin vers READY).
+- Le PDF est affiché en regard via l'URL signée du fichier (iframe), pas une
+  image rasterisée par page.
+- « Corriger les soldes » (renvoyé « à plus tard » au lot 1) est livré ici :
+  indispensable pour un PDF dont les soldes ne sont pas lus.
+- Pas de `BankStatementIntegrityGraph` : mêmes choix qu'au lot 1.
 
 ---
 
