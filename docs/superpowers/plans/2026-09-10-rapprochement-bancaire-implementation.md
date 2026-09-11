@@ -1078,32 +1078,100 @@ ClubFlow devient une ligne à catégoriser sur le transit.
 
 ### Task 8.1 : `StripeTransitSyncService` (module `payments`)
 
-- [ ] Cron quotidien 04:30 `Indian/Reunion`, verrou `stripeTransitSync`
+- [x] Cron quotidien 04:30 `Indian/Reunion`, verrou `stripeTransitSync`
   (nouvelle clé dans `SCHEDULER_LOCK_KEYS`, distincte des verrous
-  financiers, même raisonnement que `shopStockThresholdSweep`).
-- [ ] Pour chaque club avec `stripeAccountId`, module compta actif et
+  financiers, même raisonnement que `shopStockThresholdSweep`), plus un
+  interrupteur d'urgence `STRIPE_TRANSIT_SYNC_DISABLED` qui se signale
+  bruyamment.
+- [x] Pour chaque club avec `stripeAccountId`, module compta actif et
   `accountingStartsOn` : `stripe.payouts.list({ arrival_date: { gte } }, { stripeAccount })`
-  depuis la dernière synchro ou la reprise ; virement `paid` sans écriture →
-  `recordStripePayout` (rattrapage).
-- [ ] Par virement : `stripe.balanceTransactions.list({ payout, limit: 100 }, { stripeAccount })`,
-  classement : `charge`/`payment` → `Payment` par `stripeBalanceTransactionId`
-  ou `externalRef` ; `refund` → `Payment` négatif par `stripeRefundId` ;
-  `stripe_fee` → couvert par `stripeFeeCents` ; `payout` lui-même ; **inconnu**
-  → ligne d'un `BankStatement` synthétisé (`format STRIPE_API`,
-  `financialAccountId` = transit, une période par mois, `READY` direct car
-  l'arithmétique est fournie par Stripe : Σ connues + inconnues = net du
-  virement).
-- [ ] Mutation `syncStripeTransit` pour un déclenchement manuel.
-- [ ] Tests avec Stripe mocké, sur le modèle de `stripe-fees.service.spec.ts` :
-  rattrapage idempotent (`@@unique([clubId, stripePayoutId])`), inconnue →
-  ligne, connue → rien.
+  depuis la dernière synchro moins deux jours, ou la reprise ; virement
+  `paid` sans écriture → `recordStripePayout` (rattrapage).
+- [x] Par virement : `stripe.balanceTransactions.list({ payout, limit: 100, expand: ['data.source'] })`,
+  classement : `charge`/`payment` → `Payment` par `stripeBalanceTransactionId`,
+  à défaut par l'intention de paiement ; `refund` → `Payment` par
+  `stripeRefundId` ; `stripe_fee` → couvert par `stripeFeeCents` ; `payout`
+  lui-même ; **inconnu** → ligne d'un `BankStatement` synthétisé
+  (`format STRIPE_API`, `financialAccountId` = transit, une période par
+  mois).
+- [x] Mutation `syncStripeTransit` pour un déclenchement manuel, et requête
+  `stripeTransitStatus` pour afficher « vérifié le… » sans taper l'API.
+- [x] Tests avec Stripe mocké, sur le modèle de `stripe-fees.service.spec.ts` :
+  rattrapage idempotent, inconnue → ligne, connue → rien, repasser n'ajoute
+  rien. Le classement est un module PUR testé à part, sans mocker Stripe.
 
 ### Task 8.2 : Admin et staging
 
-- [ ] `ReconciliationPage` liste le compte de transit avec ses relevés
-  synthétisés et « Vérifier maintenant ».
-- [ ] Staging (Stripe test) : synchro sans inconnue ; paiement créé depuis le
-  dashboard Stripe test → ligne à catégoriser sur le transit.
+- [x] `ReconciliationPage` gagne un panneau « Transit Stripe » avec
+  « Vérifier maintenant » et la date de dernière vérification ; les relevés
+  synthétisés apparaissent dans la liste des relevés déposés.
+- [x] Staging (Stripe test), club `qa-test-club` — le seul de staging à
+  avoir un compte Stripe branché : **synchro sans inconnue**, 3 virements
+  lus, 0 rattrapage (tous déjà écrits), 0 inconnue, 0 écart d'arithmétique.
+  Les trois lots tombent juste au centime : 1716+1716+1716+3216 = 8364,
+  2877+9650+2394 = 14921, −4000+9650 = 5650.
+- [x] **Inconnue → ligne à catégoriser** : le lien d'un remboursement a été
+  délié le temps du test, rendant sa transaction inconnue de ClubFlow. La
+  synchro a créé un relevé `STRIPE_API` de juillet 2026 sur le transit,
+  portant « REFUND FOR CHARGE · réf. re_… · −40,00 € · à traiter », avec les
+  mêmes actions que n'importe quelle ligne de relevé. Lien rétabli, relevé
+  supprimé, accès temporaire retiré.
+- [x] Journal d'erreurs de l'API staging inchangé : 13 avant, 13 après.
+
+### Écarts par rapport au plan
+
+- **Le marqueur de dernière synchro vit sur le compte de transit**
+  (`ClubFinancialAccount.stripeSyncedAt`). C'est le compte qui est
+  synchronisé, pas le club.
+- **On relit toujours deux jours en arrière.** Filtrer sur « arrivés depuis
+  la dernière synchro » laisse passer ce qui se glisse au bord de la
+  fenêtre, et un virement manqué est une divergence silencieuse — ce que ce
+  lot existe précisément pour éviter. Repasser ne coûte qu'un appel :
+  l'écriture est idempotente par `stripePayoutId`, les lignes par leur
+  identifiant de transaction. Le recouvrement ne remonte jamais avant la
+  date de reprise comptable.
+- Un encaissement est reconnu d'abord par sa transaction de solde, puis, à
+  défaut, par son intention de paiement : les frais Stripe arrivent après,
+  donc `stripeBalanceTransactionId` est souvent encore nul quand la synchro
+  passe. Sans ce repli, tout encaissement récent deviendrait une fausse
+  inconnue.
+- Une ligne inconnue porte le **net**, pas le brut : pour une transaction
+  qu'on ne connaît pas, brut et commission ne se distinguent pas. C'est au
+  trésorier de trancher en catégorisant.
+- **L'arithmétique du relevé synthétisé est vraie par construction** — son
+  solde de fin est son solde de début plus ses lignes. Le contrôle qui
+  compte est ailleurs, et il vient de Stripe : la somme des transactions
+  d'un lot vaut exactement le virement. Un écart y est signalé sans
+  interrompre, car il ne dit pas qu'une écriture est fausse mais qu'on n'a
+  pas tout lu.
+- **Correctif tiré de la vérification : un relevé synthétisé chaîne par
+  construction.** Le compte de transit n'a pas de solde d'ouverture, donc le
+  chaînage restait « inconnu » et le relevé arrivait « à vérifier » — sur un
+  relevé sans fichier d'origine, que personne ne peut corriger. L'exception
+  porte sur le chaînage seulement : un solde de fin qui ne suit pas ses
+  propres lignes reste une anomalie.
+- **Limite connue : une transaction inconnue n'apparaît qu'une fois versée.**
+  La synchro lit les transactions PAR VIREMENT, ce qui lui donne son
+  contrôle d'intégrité. Un encaissement fait depuis le tableau de bord
+  Stripe reste donc invisible tant qu'il dort dans le solde en attente. Il
+  remonte au premier virement qui l'emporte. C'est aussi pourquoi la
+  vérification a simulé l'inconnue en déliant un remboursement déjà versé
+  plutôt qu'en créant une charge de test, qui n'aurait été versée que des
+  jours plus tard.
+- `syncStripeTransit` est gaté sur COMPTABILITÉ et non sur PAIEMENT : c'est
+  un écran de trésorier. Un club sans Stripe obtient un rapport « sans
+  compte Stripe » plutôt qu'une erreur.
+- Le panneau du transit se cache tout seul quand le club n'a ni compte
+  Stripe ni compte de transit, plutôt que d'ajouter une ligne vide au
+  tableau des comptes bancaires.
+- Le détail d'un relevé synthétisé offre encore « Corriger les soldes » et
+  « + Ligne manquante », qui n'ont pas de sens pour un relevé bâti par
+  ClubFlow. Sans danger — la synchro suivante recalcule le solde de fin —
+  mais à masquer un jour.
+- La vérification a demandé deux écritures temporaires sur staging :
+  `accountingStartsOn` renseignée sur `qa-test-club` (gardée : sans elle le
+  balayage nocturne saute ce club) et un accès administrateur temporaire au
+  compte principal de Florent (retiré après coup).
 
 ---
 

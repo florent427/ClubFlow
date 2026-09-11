@@ -40,4 +40,13 @@ export const SCHEDULER_LOCK_KEYS = {
    * faire sauter le balayage des seuils du jour.
    */
   shopStockThresholdSweep: 'shop-stock-threshold-sweep',
+  /**
+   * Synchronisation quotidienne du transit Stripe (ADR-0014 §9, lot 8).
+   *
+   * Clé distincte, même raisonnement que `shopStockThresholdSweep` : ce
+   * balayage appelle l'API Stripe club par club, donc sa durée dépend d'un
+   * tiers. Le partager avec un verrou financier laisserait une API lente
+   * retarder un prélèvement dû.
+   */
+  stripeTransitSync: 'stripe-transit-sync',
 } as const;

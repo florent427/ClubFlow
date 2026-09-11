@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { BankStatementStatus } from '@prisma/client';
+import { BankStatementFormat, BankStatementStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { checkStatementIntegrity, deriveStatementStatus } from './statement-integrity';
 
@@ -48,9 +48,18 @@ export class BankStatementIntegrityService {
       return;
     }
     const previous = await this.previousStatement(clubId, st.financialAccountId, st.periodStart, st.id);
-    const previousClosing = previous
-      ? previous.closingBalanceCents
-      : (st.financialAccount.openingBalanceCents ?? null);
+    // Un relevé SYNTHÉTISÉ n'est pas un document reçu : ClubFlow a CHOISI son
+    // solde de début, égal au solde de fin du précédent. Le chaînage y est
+    // donc vrai par construction, et le laisser « inconnu » ferait afficher
+    // « à vérifier » sur un relevé que personne ne peut corriger — il n'a pas
+    // de fichier d'origine. Le contrôle qui compte pour Stripe est ailleurs :
+    // la somme des transactions d'un virement vaut le virement.
+    const previousClosing =
+      st.format === BankStatementFormat.STRIPE_API
+        ? st.openingBalanceCents
+        : previous
+          ? previous.closingBalanceCents
+          : (st.financialAccount.openingBalanceCents ?? null);
     const integrity = checkStatementIntegrity({
       openingBalanceCents: st.openingBalanceCents,
       closingBalanceCents: st.closingBalanceCents,

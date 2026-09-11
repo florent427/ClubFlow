@@ -1502,6 +1502,10 @@ model ClubFinancialAccount {
   /// Mapping de colonnes CSV mémorisé au premier import (ADR-0014 §3) :
   /// chaque banque a son format, on ne le redemande pas à chaque relevé.
   csvMappingJson      Json?
+  /// Transit Stripe uniquement : jusqu'où la synchronisation par API a lu
+  /// les virements (lot 8). Null = jamais synchronisé, on repart de la date
+  /// de reprise comptable du club.
+  stripeSyncedAt      DateTime?
 
   club              Club              @relation(fields: [clubId], references: [id], onDelete: Cascade)
   accountingAccount AccountingAccount @relation(fields: [accountingAccountId], references: [id], onDelete: Restrict)

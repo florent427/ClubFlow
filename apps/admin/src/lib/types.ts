@@ -2547,3 +2547,22 @@ export type CashCount = {
 
 export type ClubCashBookData = { clubCashBook: CashBook };
 export type ClubCashCountsData = { clubCashCounts: CashCount[] };
+
+export type StripeTransitStatus = {
+  hasStripeAccount: boolean;
+  hasTransitAccount: boolean;
+  /** ISO, null = jamais vérifié. */
+  lastSyncedAt: string | null;
+};
+
+export type StripeTransitSyncReport = {
+  /** Renseigné quand il n'y avait rien à faire, et pourquoi. */
+  skipped: string | null;
+  payoutsSeen: number;
+  payoutsRecorded: number;
+  unknownLines: number;
+  arithmeticWarnings: number;
+};
+
+export type StripeTransitStatusData = { stripeTransitStatus: StripeTransitStatus };
+export type SyncStripeTransitData = { syncStripeTransit: StripeTransitSyncReport };

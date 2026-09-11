@@ -21,6 +21,8 @@ import { StripeConnectResolver } from './stripe-connect.resolver';
 import { StripeConnectService } from './stripe-connect.service';
 import { StripeFeesService } from './stripe-fees.service';
 import { StripeRefundsService } from './stripe-refunds.service';
+import { StripeTransitResolver } from './stripe-transit.resolver';
+import { StripeTransitSyncService } from './stripe-transit-sync.service';
 import { CreditNotesService } from './credit-notes.service';
 import { StripeWebhookController } from './stripe-webhook.controller';
 
@@ -47,6 +49,8 @@ import { StripeWebhookController } from './stripe-webhook.controller';
     StripeConnectResolver,
     StripeFeesService,
     StripeRefundsService,
+    StripeTransitSyncService,
+    StripeTransitResolver,
     CreditNotesService,
     PaymentScheduleService,
     PaymentScheduleEngineService,

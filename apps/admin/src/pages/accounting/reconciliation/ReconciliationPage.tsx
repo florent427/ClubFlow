@@ -19,6 +19,7 @@ import {
   statementStatusPill,
 } from './format';
 import { ImportStatementDrawer } from './ImportStatementDrawer';
+import { StripeTransitPanel } from './StripeTransitPanel';
 
 /**
  * Rapprochement bancaire (ADR-0014) : par compte bancaire, où en est-on ;
@@ -149,6 +150,13 @@ export function ReconciliationPage() {
           </table>
         )}
       </section>
+
+      <StripeTransitPanel
+        onSynced={() => {
+          void refetchSummary();
+          void refetchStatements();
+        }}
+      />
 
       <section className="members-panel">
         <h2 className="members-panel__h">Relevés déposés</h2>
