@@ -275,6 +275,12 @@ export class AccountingService {
     paymentId: string,
     legacyLabel?: string,
     legacyAmountCents?: number,
+    /**
+     * Compte financier imposé par l'appelant : le relevé qui a fait naître
+     * ce paiement sait sur QUELLE banque l'argent est arrivé, ce que la
+     * route par mode de paiement ignore (ADR-0014 §7).
+     */
+    financialAccountId?: string | null,
   ): Promise<void> {
     if (!(await this.isAccountingEnabled(clubId))) return;
 
@@ -317,10 +323,9 @@ export class AccountingService {
     // comptes financiers (CASH → caisse, STRIPE_CARD → transit Stripe,
     // virement/chèque → banque). Fallback automatique sur la banque par
     // défaut si pas de route configurée.
-    const fin = await this.financialAccounts.resolveForPayment(
-      clubId,
-      payment.method,
-    );
+    const fin = financialAccountId
+      ? await this.financialAccounts.getById(clubId, financialAccountId)
+      : await this.financialAccounts.resolveForPayment(clubId, payment.method);
     const bankAccount = await this.lookupAccount(
       clubId,
       fin.accountingAccount.code,

@@ -635,28 +635,28 @@ filtre et se résolvent à la main ; N ↔ N.
 
 ### Task 4.1 : `member-transfer-matcher.ts`
 
-- [ ] Avant l'IA, pour les lignes **créditrices** : extraction des jetons de
+- [x] Avant l'IA, pour les lignes **créditrices** : extraction des jetons de
   nom (retrait de « VIR », « SEPA », dates, références) ; comparaison
   normalisée (sans accents, casse) avec les membres, contacts et familles du
   club (pas de `pg_trgm` en base : comparaison en mémoire, un club a moins de
   quelques milliers de noms) ; candidats payeurs → factures `OPEN` du foyer
   avec solde > 0 ; score : montant = solde d'une facture (fort), = somme de
   deux factures, partiel ; `externalRef` égal à la référence (fort).
-- [ ] Sortie `payerProposal { memberId | contactId, allocations: [{ invoiceId, amountCents }], confidence }`.
-- [ ] Tests : libellés SEPA de trois banques ; exact ; somme de deux ; aucun
+- [x] Sortie `payerProposal { memberId | contactId, allocations: [{ invoiceId, amountCents }], confidence }`.
+- [x] Tests : libellés SEPA de trois banques ; exact ; somme de deux ; aucun
   candidat ; homonymes → `SUGGESTED` avec plusieurs payeurs, jamais choisi
   seul.
 
 ### Task 4.2 : `acceptBankLineMemberPayment(lineId, allocations)`
 
-- [ ] Pour chaque allocation, `PaymentsService.recordManualPayment` avec
+- [x] Pour chaque allocation, `PaymentsService.recordManualPayment` avec
   `method MANUAL_TRANSFER`, `externalRef = référence ou libellé`, payeur ; les
   gardes existantes s'appliquent (documents à signer, prélèvement en cours de
   dénouement, solde).
-- [ ] `RecordManualPaymentInput.financialAccountId?` (nouveau, optionnel) : le
+- [x] `RecordManualPaymentInput.financialAccountId?` (nouveau, optionnel) : le
   compte banque du relevé, pour qu'un club multi-banques comptabilise sur le
   bon 512x ; garde : kind `BANK` et club courant.
-- [ ] Les écritures créées par `tryRecordIncome` sont rapprochées de la ligne
+- [x] Les écritures créées par `tryRecordIncome` sont rapprochées de la ligne
   (recherche par `paymentId`). `recordManualPayment` n'est pas transactionnel
   avec la compta : traitement séquentiel, arrêt au premier échec, retour
   explicite de ce qui a été enregistré (jamais de succès partiel silencieux,
@@ -664,18 +664,56 @@ filtre et se résolvent à la main ; N ↔ N.
 
 ### Task 4.3 : Non identifiés
 
-- [ ] Ligne créditrice sans candidat → `hint = UNIDENTIFIED_TRANSFER`, filtre
+- [x] Ligne créditrice sans candidat → `hint = UNIDENTIFIED_TRANSFER`, filtre
   dédié « Virements non identifiés », résolution manuelle : recherche d'un
   membre ou contact, choix des factures, montants.
 
 ### Task 4.4 : GraphQL, admin, staging
 
-- [ ] `bankLinePayerCandidates(lineId)`, `acceptBankLineMemberPayment`.
-- [ ] Carte « Encaisser la facture Cotisation Léa Dupont 2026-27 (250 €) pour
+- [x] `bankLinePayerCandidates(lineId)`, `acceptBankLineMemberPayment`.
+- [x] Carte « Encaisser la facture Cotisation Léa Dupont 2026-27 (250 €) pour
   Marie Dupont », éditeur de répartition multi-factures, résolveur manuel.
-- [ ] Staging : facture ouverte sur le club démo, CSV avec la ligne de virement
-  correspondante, accepter → facture `PAID`, écriture rapprochée, mail de
-  confirmation reçu (cf. [test e-mail staging](../../memory/INDEX.md)).
+- [x] Fait sur `staging` le 2026-09-11 sur `club-demo`. Facture ouverte de
+  120,00 € pour la famille Morel, relevé OFX de décembre avec deux virements
+  reçus. Le premier, « VIR SEPA RECU /DE MOREL JOACHIM », est reconnu sans
+  appel IA : « Virement de Joachim Morel · 100 % · le montant solde
+  exactement cette facture » — le prénom départage Joachim de Florent, qui
+  porte le même nom. « Encaisser » : paiement de 120,00 € MANUAL_TRANSFER au
+  nom de Joachim avec le libellé du relevé en référence, facture `PAID`,
+  écriture `AUTO_MEMBER_PAYMENT` sur Banque principale (le compte du relevé,
+  pas la route par défaut du mode de paiement), `bankReconciledAt` posé et
+  ligne `MATCHED` en `PROPOSAL`. Aucune erreur API.
+- [x] Le second virement, « DE SARL BATIPRO », n'est reconnu par personne :
+  il tombe dans l'onglet « Virements à identifier », la recherche de payeur
+  répond en clair qu'aucun adhérent ni facture ne correspond, et la
+  catégorisation ordinaire prend le relais avec sa question.
+- [x] Deux trous trouvés en vérifiant : le payeur reconnu n'était pas
+  transmis au paiement (donc ni nom sur l'encaissement, ni vérification de
+  ses documents à signer), et les parts proposées repartaient avec le
+  `__typename` d'Apollo — 400 silencieux, « Encaisser » sans effet. Le piège
+  `__typename` est le même qu'au lot 1 ; sa fiche a été complétée.
+
+### Écarts par rapport au plan
+
+- La reconnaissance du payeur passe avant les RÈGLES autant qu'avant l'IA :
+  une règle apprise sur un nom de famille aurait sinon transformé un
+  encaissement d'adhérent en recette générique.
+- Le service est coupé en deux : `BankPayerLookupService` (lecture seule,
+  dans la comptabilité, utilisable par la catégorisation) et
+  `BankMemberTransferService` (écriture, dans un module à part). Les
+  paiements dépendent de la comptabilité ; loger l'encaissement dans la
+  comptabilité aurait fermé le cercle.
+- Pas de `hint = UNIDENTIFIED_TRANSFER` en base : un virement non identifié
+  se reconnaît à ce qu'il est, une ligne créditrice à traiter sans payeur
+  reconnu. L'onglet « Virements à identifier » filtre là-dessus, sans
+  colonne de plus à tenir à jour.
+- La proposition du payeur est mémorisée sur la ligne (`payerProposalJson`)
+  pour l'affichage et le filtre, mais l'encaissement revalide tout par
+  `recordManualPayment` : une facture soldée entre-temps est refusée avec
+  son message.
+- Aucun e-mail de confirmation n'est envoyé : ClubFlow n'en envoie pas non
+  plus sur un encaissement manuel saisi à la main. Le plan l'annonçait ;
+  c'est une fonctionnalité à part entière, pas un effet de bord du lot.
 
 ---
 

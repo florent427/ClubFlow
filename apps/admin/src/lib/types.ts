@@ -1948,6 +1948,8 @@ export type BankStatementLine = {
   conversation: BankLineTurn[];
   aiAttempts: number;
   aiExhausted: boolean;
+  /** Virement d'adhérent reconnu : payeur et factures proposés (lot 4). */
+  payerProposal: BankPayerCandidate | null;
   divergence: BankLineDivergence | null;
 };
 
@@ -1964,6 +1966,48 @@ export type BankLineDivergence = {
   b: BankLineReading | null;
 };
 
+
+/** Personne du club qui a pu émettre un virement (lot 4). */
+export type BankPayer = {
+  kind: 'MEMBER' | 'CONTACT' | string;
+  id: string;
+  firstName: string;
+  lastName: string;
+};
+
+export type BankPayerInvoice = {
+  id: string;
+  label: string;
+  amountCents: number;
+  /** Reste dû, avoirs et acomptes déduits. */
+  balanceCents: number;
+  dueAt: string | null;
+};
+
+export type BankTransferAllocation = { invoiceId: string; amountCents: number };
+
+export type BankPayerCandidate = {
+  payer: BankPayer;
+  nameScore: number;
+  /** EXACT, SUM, PARTIAL ou NONE. */
+  amountMatch: 'EXACT' | 'SUM' | 'PARTIAL' | 'NONE' | string;
+  /** Au-dessus de 80, proposable en un clic. */
+  confidence: number;
+  invoices: BankPayerInvoice[];
+  allocations: BankTransferAllocation[];
+};
+
+export type BankLinePayerCandidatesData = {
+  bankLinePayerCandidates: BankPayerCandidate[];
+};
+
+export type AcceptBankLineMemberPaymentData = {
+  acceptBankLineMemberPayment: {
+    invoicesPaid: number;
+    lineMatched: boolean;
+    stoppedBecause: string | null;
+  };
+};
 export type BankStatementListItem = {
   id: string;
   financialAccountId: string;

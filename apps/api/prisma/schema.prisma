@@ -1810,6 +1810,9 @@ model BankStatementLine {
   ruleId             String?
   /// Écriture NEEDS_REVIEW matérialisant la proposition.
   proposedEntryId    String?                        @unique
+  /// Virement d'adhérent reconnu (ADR-0014 §7) : payeur et factures
+  /// proposés, en attente d'un clic.
+  payerProposalJson  Json?
   createdAt          DateTime                       @default(now())
   updatedAt          DateTime                       @updatedAt
 

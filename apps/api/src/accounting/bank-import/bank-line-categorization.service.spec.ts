@@ -278,6 +278,8 @@ function makeWorld(opts: WorldOptions = {}) {
   // Le vrai service d'apprentissage, sur le même double Prisma : ce que la
   // validation enseigne fait partie de ce qu'on vérifie.
   const learning = new CategorizationLearningService(prisma as never);
+  // Virements d'adhérents (lot 4) : testés dans leur propre spec.
+  const payerLookup = { autoProposal: jest.fn(async () => null) };
 
   const svc = new BankLineCategorizationService(
     prisma as never,
@@ -289,6 +291,7 @@ function makeWorld(opts: WorldOptions = {}) {
     accounting as never,
     reconciliation as never,
     learning as never,
+    payerLookup as never,
   );
   return {
     svc,

@@ -9,6 +9,7 @@ import {
   type Invoice,
   ClubPaymentMethod,
   FamilyMemberLinkRole,
+  ClubFinancialAccountKind,
   InvoiceStatus,
   MemberStatus,
 } from '@prisma/client';
@@ -18,6 +19,7 @@ import {
   todayInClubTimezone,
 } from '../accounting/accounting-fiscal-year.service';
 import { AccountingService } from '../accounting/accounting.service';
+import { ClubFinancialAccountsService } from '../accounting/club-financial-accounts.service';
 import { DocumentsGatingService } from '../documents/documents-gating.service';
 import { ModuleCode } from '../domain/module-registry/module-codes';
 import { PrismaService } from '../prisma/prisma.service';
@@ -60,6 +62,7 @@ export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly accounting: AccountingService,
+    private readonly financialAccounts: ClubFinancialAccountsService,
     private readonly documentsGating: DocumentsGatingService,
     private readonly connect: StripeConnectService,
     private readonly paymentSchedules: PaymentScheduleService,
@@ -634,6 +637,21 @@ export class PaymentsService {
       );
     }
 
+    // Compte bancaire imposé (encaissement depuis un relevé, ADR-0014 §7) :
+    // il doit être une banque active de CE club, sinon la recette
+    // atterrirait sur le compte d'un autre.
+    if (input.financialAccountId) {
+      const fin = await this.financialAccounts.getById(
+        clubId,
+        input.financialAccountId,
+      );
+      if (fin.kind !== ClubFinancialAccountKind.BANK || !fin.isActive) {
+        throw new BadRequestException(
+          'Le compte d’encaissement doit être un compte bancaire actif du club.',
+        );
+      }
+    }
+
     const ref = input.externalRef?.trim() || null;
     // Un chèque naît en portefeuille (ADR-0015) : sa fiche est créée dans la
     // MÊME transaction que le paiement, jamais après. Un paiement par chèque
@@ -690,6 +708,7 @@ export class PaymentsService {
       payment.id,
       `Encaissement ${invoice.label}`,
       payment.amountCents,
+      input.financialAccountId ?? null,
     );
 
     return payment;
@@ -1160,6 +1179,7 @@ export class PaymentsService {
     paymentId: string,
     label: string,
     amountCents: number,
+    financialAccountId: string | null = null,
   ): Promise<void> {
     try {
       await this.accounting.recordIncomeFromPayment(
@@ -1167,6 +1187,7 @@ export class PaymentsService {
         paymentId,
         label,
         amountCents,
+        financialAccountId,
       );
     } catch (err) {
       this.logger.error(

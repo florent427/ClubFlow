@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { InvoiceStatus } from '@prisma/client';
 import Stripe from 'stripe';
 import { AccountingService } from '../accounting/accounting.service';
+import { ClubFinancialAccountsService } from '../accounting/club-financial-accounts.service';
 import { DocumentsGatingService } from '../documents/documents-gating.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentScheduleEngineService } from './payment-schedule-engine.service';
@@ -95,6 +96,14 @@ describe('PaymentsService / Stripe webhook', () => {
         PaymentsService,
         { provide: PrismaService, useValue: prisma },
         { provide: AccountingService, useValue: accounting },
+        // Comptes financiers : seul un encaissement qui impose sa banque
+        // (virement depuis un relevé) s'en sert.
+        {
+          provide: ClubFinancialAccountsService,
+          useValue: {
+            getById: jest.fn(async () => ({ id: 'fa-1', kind: 'BANK', isActive: true })),
+          },
+        },
         { provide: DocumentsGatingService, useValue: documentsGating },
         // Dépendances Connect / échéancier : ces specs ne les exercent pas,
         // mais Nest exige que le constructeur soit résoluble.
@@ -158,6 +167,8 @@ describe('PaymentsService / Stripe webhook', () => {
       'pay-1',
       'Stripe — Adhésion',
       5000,
+      // Encaissement Stripe : aucune banque imposée.
+      null,
     );
 
     // Les frais sont tentés APRÈS la recette, sur le paiement qui vient

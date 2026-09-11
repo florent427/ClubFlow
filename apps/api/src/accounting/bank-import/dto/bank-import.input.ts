@@ -342,3 +342,40 @@ export class UpsertCategorizationRuleInput {
   @IsBoolean()
   isActive?: boolean | null;
 }
+
+@InputType()
+export class BankTransferAllocationInput {
+  @Field(() => ID)
+  @IsUUID()
+  invoiceId!: string;
+
+  @Field(() => Int)
+  @IsInt()
+  @Min(1)
+  amountCents!: number;
+
+  @Field(() => ID, { nullable: true, description: 'Membre payeur, s’il est identifié.' })
+  @IsOptional()
+  @IsUUID()
+  paidByMemberId?: string | null;
+
+  @Field(() => ID, { nullable: true, description: 'Contact payeur, s’il est identifié.' })
+  @IsOptional()
+  @IsUUID()
+  paidByContactId?: string | null;
+}
+
+@InputType()
+export class AcceptBankLineMemberPaymentInput {
+  @Field(() => ID)
+  @IsUUID()
+  lineId!: string;
+
+  @Field(() => [BankTransferAllocationInput])
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(20)
+  @ValidateNested({ each: true })
+  @Type(() => BankTransferAllocationInput)
+  allocations!: BankTransferAllocationInput[];
+}
