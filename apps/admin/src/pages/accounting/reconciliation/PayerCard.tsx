@@ -113,8 +113,8 @@ export function PayerCard({ line, busy, onAccept }: Props) {
           </button>
         </div>
         <div className="cf-muted" style={{ fontSize: '0.8rem', marginTop: 6 }}>
-          Encaisser enregistre le paiement, solde la facture, envoie la confirmation à l’adhérent
-          et rapproche la ligne.
+          Encaisser enregistre le paiement au nom de {payerName(proposal)}, solde la facture,
+          comptabilise la recette et rapproche la ligne.
         </div>
       </div>
     );

@@ -661,12 +661,24 @@ export function StatementDetailPage() {
                               <PayerCard
                                 line={l}
                                 busy={categorizationBusy}
-                                onAccept={(allocations) =>
+                                onAccept={(allocations, candidate) =>
                                   void run(
                                     () =>
                                       acceptTransfer({
                                         variables: {
-                                          input: { lineId: l.id, allocations },
+                                          input: {
+                                            lineId: l.id,
+                                            // Le payeur reconnu est porté par CHAQUE part :
+                                            // c'est lui qui reçoit la confirmation et dont les
+                                            // documents à signer sont vérifiés.
+                                            allocations: allocations.map((a) => ({
+                                              ...a,
+                                              paidByMemberId:
+                                                candidate.payer.kind === 'MEMBER' ? candidate.payer.id : null,
+                                              paidByContactId:
+                                                candidate.payer.kind === 'CONTACT' ? candidate.payer.id : null,
+                                            })),
+                                          },
                                         },
                                       }),
                                     'Virement encaissé, facture soldée',
