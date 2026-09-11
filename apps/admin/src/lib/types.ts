@@ -2458,3 +2458,48 @@ export type ClubTeamMemberRow = {
 export type ClubTeamMembersQueryData = {
   clubTeamMembers: ClubTeamMemberRow[];
 };
+
+/** Ce que le club doit à un bénévole qui a avancé des frais (ADR-0016). */
+export type VolunteerBalance = {
+  memberId: string;
+  firstName: string;
+  lastName: string;
+  openCents: number;
+  openCount: number;
+  /** « YYYY-MM-DD » du plus ancien reçu ouvert. */
+  oldestOccurredAt: string | null;
+};
+
+export type VolunteerOpenItem = {
+  entryId: string;
+  label: string;
+  occurredAt: string;
+  amountCents: number;
+  accountCode: string;
+  accountLabel: string;
+};
+
+export type VolunteerReimbursementItem = {
+  entryId: string;
+  label: string;
+  occurredAt: string;
+  amountCents: number;
+};
+
+export type VolunteerReimbursement = {
+  id: string;
+  memberId: string;
+  memberName: string;
+  financialAccountId: string;
+  financialAccountLabel: string;
+  paidOn: string;
+  totalCents: number;
+  entryId: string | null;
+  status: string;
+  items: VolunteerReimbursementItem[];
+  createdAt: string;
+};
+
+export type VolunteerAdvanceBalancesData = { volunteerAdvanceBalances: VolunteerBalance[] };
+export type VolunteerOpenItemsData = { volunteerOpenItems: VolunteerOpenItem[] };
+export type VolunteerReimbursementsData = { volunteerReimbursements: VolunteerReimbursement[] };

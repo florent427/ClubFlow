@@ -860,25 +860,25 @@ rapproche de la ligne banque.
 
 ### Task 6.1 : Schéma et seed
 
-- [ ] Seed `467100 Bénévoles, frais avancés à rembourser` (`LIABILITY`).
-- [ ] `AccountingEntry.advancedByMemberId?` + relation `Member` + index.
-- [ ] `VolunteerReimbursement { id, clubId, memberId, financialAccountId, paidOn @db.Date, totalCents, entryId?, status, createdByUserId, createdAt }`
+- [x] Seed `467100 Bénévoles, frais avancés à rembourser` (`LIABILITY`).
+- [x] `AccountingEntry.advancedByMemberId?` + relation `Member` + index.
+- [x] `VolunteerReimbursement { id, clubId, memberId, financialAccountId, paidOn @db.Date, totalCents, entryId?, status, createdByUserId, createdAt }`
   et `VolunteerReimbursementItem { id, reimbursementId, entryId, amountCents }`
   (`@@unique([reimbursementId, entryId])`).
-- [ ] `AccountingEntrySource.VOLUNTEER_REIMBURSEMENT`.
+- [x] `AccountingEntrySource.VOLUNTEER_REIMBURSEMENT`.
 
 ### Task 6.2 : `VolunteerAdvancesService`
 
-- [ ] `setAdvancedBy(entryId, memberId | null)` : en `NEEDS_REVIEW` (ou
+- [x] `setAdvancedBy(entryId, memberId | null)` : en `NEEDS_REVIEW` (ou
   `DRAFT`), remplace la ligne de contrepartie 51x/53x par 467100 `CREDIT`
   (et inversement), met `financialAccountId` à nul (ou le restaure) ;
   en `POSTED`, refus : passer par contre-passation.
-- [ ] `balances(clubId)` : Σ crédits 467100 par `advancedByMemberId` − Σ
+- [x] `balances(clubId)` : Σ crédits 467100 par `advancedByMemberId` − Σ
   remboursements ; `openItems(memberId)`.
-- [ ] `recordReimbursement({ memberId, financialAccountId, paidOn, entryIds })` :
+- [x] `recordReimbursement({ memberId, financialAccountId, paidOn, entryIds })` :
   une transaction : écriture `TRANSFER` DÉBIT 467100 / CRÉDIT 512x du total,
   items, `source VOLUNTEER_REIMBURSEMENT`.
-- [ ] Tests : bascule de contrepartie ; solde ; remboursement partiel refusé
+- [x] Tests : bascule de contrepartie ; solde ; remboursement partiel refusé
   si un item n'est pas ouvert ; transaction (mutation → rouge).
 
 ### Task 6.3 : Rapprochement (extension du lot 1)
@@ -887,22 +887,87 @@ rapproche de la ligne banque.
   467 positif → proposition « Rembourser 3 notes de Jean Dupont = 87,40 € »
   quand la somme des items ouverts est égale ; sinon sélection manuelle des
   items ; accepter → `recordReimbursement` + match, même transaction.
+  **Pas fait dans ce lot.** Le chemin inverse marche déjà et suffit : le
+  remboursement enregistré depuis l'écran des bénévoles crée une écriture du
+  montant exact sur le bon compte, que le rapprochement automatique du lot 1
+  relie à la ligne du relevé. Proposer depuis la ligne demanderait une
+  troisième sorte de proposition sur `BankStatementLine` ; à faire quand un
+  club aura assez de bénévoles pour que l'ordre inverse gêne.
 
 ### Task 6.4 : GraphQL et admin
 
-- [ ] `setAccountingEntryAdvancedBy`, `volunteerAdvanceBalances`,
-  `volunteerOpenItems(memberId)`, `recordVolunteerReimbursement`,
-  `acceptBankLineVolunteerReimbursement`.
-- [ ] `AccountingReviewDrawer.tsx` : « Payé depuis » gagne l'option « Avancé
-  par un bénévole » avec sélecteur de membre.
-- [ ] `/comptabilite/benevoles` : soldes, détail des items, « Enregistrer un
-  remboursement » ; carte de proposition dans le détail de relevé.
+- [x] `setAccountingEntryAdvancedBy`, `volunteerAdvanceBalances`,
+  `volunteerOpenItems(memberId)`, `volunteerReimbursements(memberId)`,
+  `recordVolunteerReimbursement`. Pas de
+  `acceptBankLineVolunteerReimbursement` : il appartient à la task 6.3, non
+  faite.
+- [x] Le sélecteur « Changer le compte de contrepartie » de la file de revue
+  gagne un groupe « Avancé par un bénévole » qui liste les membres actifs ;
+  choisir un membre appelle `setAccountingEntryAdvancedBy`. C'est ce
+  sélecteur, et non un champ « Payé depuis » séparé : la contrepartie est
+  déjà ce que l'écran donne à changer.
+- [x] `/comptabilite/benevoles` : soldes par bénévole, tiroir de
+  remboursement (choix des reçus, du compte payeur, de la date), historique
+  des remboursements passés. Pas de carte de proposition dans le détail de
+  relevé (task 6.3).
 
 ### Task 6.5 : Vérification staging
 
-- [ ] Trois reçus « avancés par » un membre du club démo ; solde affiché ;
-  CSV avec le virement de remboursement → proposition → accepter → solde 0,
-  ligne rapprochée.
+- [x] Trois reçus du club démo (essence 45,10 €, repas arbitres 30,00 €,
+  fournitures 12,30 €) marqués « avancés par Florent Morel » depuis la file
+  de revue, puis comptabilisés : la contrepartie bascule bien sur 467100, le
+  compte financier de l'écriture tombe à nul, et l'écran des bénévoles
+  affiche 87,40 € dus sur 3 reçus.
+- [x] « Rembourser… » depuis cet écran, les trois reçus cochés, payés depuis
+  Banque principale : **une seule** écriture `VOLUNTEER_REIMBURSEMENT` de
+  8 740 c, DÉBIT 467100 / CRÉDIT 512000, un `VolunteerReimbursement` POSTED
+  avec ses trois items, une entrée d'audit `VOLUNTEER_REIMBURSEMENT`, et le
+  solde tombé à zéro.
+- [x] Boucle fermée **par le lot 1**, sans la task 6.3 : un quatrième reçu
+  (péage 23,50 €) avancé puis remboursé le 15/01/2027, et un relevé CSV de
+  janvier 2027 ne portant que « VIR SEPA FLORENT MOREL REMB FRAIS BENEVOLE »
+  à −23,50 €. À l'import, le rapprochement automatique relie seul la ligne à
+  l'écriture de remboursement (origine `AUTO`), pose `bankReconciledAt` sur
+  la ligne 512000 et passe le relevé en `RECONCILED` — zéro catégorisation
+  humaine, ce que promet l'écran des bénévoles.
+- [x] Journal d'erreurs de l'API staging inchangé : 13 avant, 13 après.
+
+### Écarts par rapport au plan
+
+- La task 6.3 n'est pas faite — voir la note qui la suit. Le libellé de la
+  task 6.5 (« CSV → proposition → accepter ») a donc été honoré par le
+  chemin inverse, qui donne le même état final sans écrire une ligne de
+  plus : remboursement enregistré, puis relevé importé qui rapproche seul.
+- **Ordre inverse, limite connue :** si le relevé est importé *avant* que le
+  remboursement soit enregistré, la ligne reste orpheline. Rien ne re-balaie
+  les relevés quand une écriture naît postée : `onEntryPosted` ne rapproche
+  que la ligne qui a *proposé* l'écriture, et un remboursement n'est proposé
+  par aucune ligne. Le trésorier a deux sorties d'un clic, « Relancer
+  l'automatique » sur le relevé ou le rapprochement manuel, où l'écriture
+  remonte en tête. Balayer à la création vaudrait pour toutes les sources
+  (chèques, factures), pas pour les seuls bénévoles : à traiter comme tel,
+  pas ici.
+- `recordReimbursement` crée son écriture directement `POSTED`, sans passer
+  par `markPosted` : ses deux lignes sont validées d'office et il n'y a rien
+  à rapprocher à cet instant (cf. ci-dessus). La date de paiement est
+  néanmoins soumise à `assertDateIsOpen`, donc un mois verrouillé ou un
+  exercice clos la refuse.
+- Rendre une dépense au club (`memberId` à nul) remet la contrepartie sur la
+  banque **par défaut** du club, pas sur le compte d'origine : celui-ci n'est
+  pas mémorisé avant la bascule. Sans banque par défaut, l'opération est
+  refusée plutôt que de deviner.
+- Ajout non prévu : la requête `volunteerReimbursements` et le tableau
+  « Remboursements passés ». Sans lui, un remboursement enregistré
+  disparaissait de l'écran sitôt le solde éteint, et rien ne permettait de
+  vérifier ce qu'on venait de faire.
+- `openEntries` exclut les reçus déjà portés par un remboursement POSTED via
+  `reimbursementItems: { none: … }`. Le double de transaction des tests
+  appliquait ce filtre de lui-même : la mutation qui le retirait restait
+  verte. Double corrigé pour honorer la clause, la mutation fait tomber 3
+  tests.
+- Un remboursement ne peut prendre que des reçus ouverts **de ce bénévole**,
+  garde portée par le service : le `@@unique([reimbursementId, entryId])` ne
+  protège que du doublon à l'intérieur d'un même remboursement.
 
 ---
 

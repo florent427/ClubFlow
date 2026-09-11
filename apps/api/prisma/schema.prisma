@@ -219,6 +219,7 @@ model Club {
   chequeDeposits             ChequeDeposit[]
   bankStatements             BankStatement[]
   categorizationRules        AccountingCategorizationRule[]
+  volunteerReimbursements    VolunteerReimbursement[]
 
   documents       ClubDocument[]
   signedDocuments ClubSignedDocument[]
@@ -775,6 +776,8 @@ model Member {
   dynamicGroupAssignments   MemberDynamicGroup[]
   invoiceLines              InvoiceLine[]
   paymentsAsPaidBy          Payment[]                    @relation("PaymentPaidByMember")
+  advancedAccountingEntries AccountingEntry[]            @relation("AccountingEntryAdvancedBy")
+  volunteerReimbursements   VolunteerReimbursement[]
   telegramChatId            String?                      @map("telegram_chat_id")
   telegramLinkedAt          DateTime?                    @map("telegram_linked_at")
   telegramLinkTokens        TelegramLinkToken[]
@@ -1507,6 +1510,7 @@ model ClubFinancialAccount {
   payments       Payment[]
   chequeDeposits ChequeDeposit[]
   bankStatements BankStatement[]
+  volunteerReimbursements VolunteerReimbursement[]
 
   /// Empêche 2 comptes financiers liés au même compte PCG (un compte PCG
   /// ne peut représenter qu'un compte réel).
@@ -1722,6 +1726,55 @@ model AccountingCategorizationRule {
   @@index([clubId, isActive])
 }
 
+
+/// Statut d'un remboursement de bénévole. Annulé = contre-passé : les reçus
+/// qu'il soldait redeviennent dus.
+enum VolunteerReimbursementStatus {
+  POSTED
+  CANCELLED
+}
+
+/// Remboursement des frais avancés par un bénévole (ADR-0016). Une seule
+/// écriture pour N reçus : c'est ce virement-là que le relevé porte, pas les
+/// trois dépenses de trois jours différents.
+model VolunteerReimbursement {
+  id                 String                       @id @default(uuid())
+  clubId             String
+  memberId           String
+  /// Compte du club d'où l'argent est parti.
+  financialAccountId String
+  paidOn             DateTime                     @db.Date
+  totalCents         Int
+  /// Écriture DÉBIT 467100 / CRÉDIT 512x qui porte ce remboursement.
+  entryId            String?                      @unique
+  status             VolunteerReimbursementStatus @default(POSTED)
+  createdByUserId    String?
+  createdAt          DateTime                     @default(now())
+
+  club             Club                         @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  member           Member                       @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  financialAccount ClubFinancialAccount         @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
+  entry            AccountingEntry?             @relation(fields: [entryId], references: [id], onDelete: SetNull)
+  items            VolunteerReimbursementItem[]
+
+  @@index([clubId, memberId, status])
+  @@index([clubId, paidOn])
+}
+
+/// Un reçu couvert par un remboursement, et pour quelle part.
+model VolunteerReimbursementItem {
+  id              String  @id @default(uuid())
+  reimbursementId String
+  entryId         String
+  amountCents     Int
+
+  reimbursement VolunteerReimbursement @relation(fields: [reimbursementId], references: [id], onDelete: Cascade)
+  entry         AccountingEntry        @relation(fields: [entryId], references: [id], onDelete: Restrict)
+
+  /// Un reçu ne peut pas figurer deux fois dans le même remboursement.
+  @@unique([reimbursementId, entryId])
+  @@index([entryId])
+}
 /// Relevé bancaire déposé (ADR-0014). Source de vérité du compte 51x : une
 /// ligne = une écriture. Les relevés d'un même compte ne se chevauchent pas
 /// et se chaînent par leurs soldes.
@@ -2436,6 +2489,9 @@ enum AccountingEntrySource {
   /// Écriture née d'une ligne de relevé bancaire sans écriture correspondante
   /// (ADR-0014 §7) : proposée par règle ou par IA, validée par un humain.
   BANK_IMPORT
+  /// Remboursement d'un bénévole (ADR-0016) : DÉBIT 467100 / CRÉDIT 512x du
+  /// total, listant les reçus qu'il solde.
+  VOLUNTEER_REIMBURSEMENT
 }
 
 /// Côté comptable d'une ligne d'écriture. AUTO = dérivé à la création
@@ -2493,6 +2549,10 @@ model AccountingEntry {
   /// les entries legacy créées avant la migration multi-comptes — le code
   /// tolère null en fallback sur la banque par défaut du club.
   financialAccountId       String?
+  /// Bénévole qui a avancé cette dépense de sa poche (ADR-0016). Quand il
+  /// est posé, `financialAccountId` est nul : l'argent n'est pas sorti du
+  /// club ce jour-là, la contrepartie est le compte de tiers 467100.
+  advancedByMemberId       String?
   /// Marqueur "écriture consolidée" : indique que des lignes ont été
   /// fusionnées par compte (cas note de resto où 6 articles → 1 ligne
   /// 625700 Réceptions). Null = écriture détaillée standard.
@@ -2542,6 +2602,9 @@ model AccountingEntry {
   contraEntry      AccountingEntry?      @relation("AccountingEntryContra", fields: [contraEntryId], references: [id], onDelete: SetNull)
   contraEntryOf    AccountingEntry[]     @relation("AccountingEntryContra")
   financialAccount ClubFinancialAccount? @relation(fields: [financialAccountId], references: [id], onDelete: SetNull)
+  advancedByMember        Member?                 @relation("AccountingEntryAdvancedBy", fields: [advancedByMemberId], references: [id], onDelete: SetNull)
+  volunteerReimbursement  VolunteerReimbursement?
+  reimbursementItems      VolunteerReimbursementItem[]
   /// `SetNull` et non `Cascade` : supprimer une commande fournisseur ne doit
   /// jamais emporter l'écriture comptable qui la référence — l'argent est
   /// sorti, le grand livre doit continuer de le dire.
@@ -2583,6 +2646,7 @@ model AccountingEntry {
   @@index([clubId, status])
   @@index([clubId, source])
   @@index([clubId, financialAccountId])
+  @@index([clubId, advancedByMemberId])
   @@index([clubId, invoiceNumber, amountCents])
   /// Sert le rapprochement : « quelles factures pour cette commande ? »
   @@index([clubId, purchaseOrderId])
@@ -4426,6 +4490,8 @@ enum AccountingAuditAction {
   STATEMENT_DELETE
   RECONCILE
   UNRECONCILE
+  VOLUNTEER_REIMBURSEMENT
+  VOLUNTEER_REIMBURSEMENT_CANCEL
 }
 
 /// Plan comptable curated par club (~30 comptes PCG associatif seedés à

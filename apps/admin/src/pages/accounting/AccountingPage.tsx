@@ -8,6 +8,7 @@ import {
   CLUB_ACCOUNTING_COHORTS,
   CLUB_ACCOUNTING_ENTRIES,
   CLUB_ACCOUNTING_SUMMARY,
+  CLUB_MEMBERS,
   CLUB_FINANCIAL_ACCOUNTS,
   CONSOLIDATE_ACCOUNTING_ENTRY,
   CREATE_CLUB_ACCOUNTING_ENTRY_QUICK,
@@ -17,6 +18,7 @@ import {
   SUBMIT_RECEIPT_FOR_OCR,
   UNCONSOLIDATE_ACCOUNTING_ENTRY,
   UNVALIDATE_ACCOUNTING_ENTRY_LINE,
+  SET_ENTRY_ADVANCED_BY,
   UPDATE_ACCOUNTING_ENTRY_FINANCIAL_ACCOUNT,
   UPDATE_ACCOUNTING_LINE_ALLOCATION,
   VALIDATE_ACCOUNTING_ENTRY_LINE,
@@ -30,6 +32,7 @@ import type {
   ClubAccountingEntriesData,
   ClubAccountingSummaryData,
   ClubFinancialAccountsData,
+  MembersQueryData,
   ClubProjectsData,
   SubmitReceiptForOcrData,
 } from '../../lib/types';
@@ -168,6 +171,11 @@ export function AccountingPage() {
     CLUB_FINANCIAL_ACCOUNTS,
     { fetchPolicy: 'cache-and-network' },
   );
+  // Membres actifs : pour désigner celui qui a avancé une dépense (ADR-0016).
+  const { data: membersData } = useQuery<MembersQueryData>(CLUB_MEMBERS, {
+    fetchPolicy: 'cache-first',
+  });
+  const [setAdvancedBy] = useMutation(SET_ENTRY_ADVANCED_BY);
   const [createQuick, { loading: creating }] = useMutation(
     CREATE_CLUB_ACCOUNTING_ENTRY_QUICK,
   );
@@ -243,6 +251,24 @@ export function AccountingPage() {
    * de revue (NEEDS_REVIEW). Met à jour l'entry ET la ligne contrepartie
    * banque/caisse. Refusé côté backend si POSTED/LOCKED.
    */
+  /**
+   * Bascule une dépense en « avancée par un bénévole » (ADR-0016) : sa
+   * contrepartie n'est plus la trésorerie du club mais le compte de tiers
+   * 467100, et le club lui doit l'argent jusqu'au remboursement.
+   */
+  async function doSetAdvancedBy(entryId: string, memberId: string | null) {
+    try {
+      await setAdvancedBy({ variables: { input: { entryId, memberId } } });
+      showToast(
+        memberId ? 'Dépense avancée par un bénévole' : 'Dépense rendue au club',
+        'success',
+      );
+      await Promise.all([refetchEntries(), refetchSummary()]);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
+
   async function doChangeFinancialAccount(
     entryId: string,
     financialAccountId: string,
@@ -1671,13 +1697,17 @@ export function AccountingPage() {
                                         (finAccountsData?.clubFinancialAccounts ?? []).length > 0 ? (
                                           <select
                                             value={e.financialAccountId ?? ''}
-                                            onChange={(ev) =>
-                                              ev.target.value &&
-                                              void doChangeFinancialAccount(
-                                                e.id,
-                                                ev.target.value,
-                                              )
-                                            }
+                                            onChange={(ev) => {
+                                              const v = ev.target.value;
+                                              if (!v) return;
+                                              // « membre:… » = avancé par un
+                                              // bénévole, pas un compte du club.
+                                              if (v.startsWith('membre:')) {
+                                                void doSetAdvancedBy(e.id, v.slice(7));
+                                              } else {
+                                                void doChangeFinancialAccount(e.id, v);
+                                              }
+                                            }}
                                             style={{
                                               fontSize: '0.82rem',
                                               padding: '3px 5px',
@@ -1697,7 +1727,21 @@ export function AccountingPage() {
                                                 <option key={a.id} value={a.id}>
                                                   {a.label} ({a.accountingAccountCode})
                                                 </option>
-                                              ))}
+                                              ))}
+                                            {e.kind === 'EXPENSE' ? (
+                                              <optgroup label="Avancé par un bénévole">
+                                                {(membersData?.clubMembers ?? [])
+                                                  .filter((m) => m.status === 'ACTIVE')
+                                                  .map((m) => (
+                                                    <option
+                                                      key={m.id}
+                                                      value={`membre:${m.id}`}
+                                                    >
+                                                      {m.firstName} {m.lastName}
+                                                    </option>
+                                                  ))}
+                                              </optgroup>
+                                            ) : null}
                                           </select>
                                         ) : (
                                           <div>

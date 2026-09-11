@@ -4067,3 +4067,70 @@ export const ACCEPT_BANK_LINE_MEMBER_PAYMENT = gql`
     }
   }
 `;
+
+const VOLUNTEER_REIMBURSEMENT_FIELDS = `
+  id
+  memberId
+  memberName
+  financialAccountId
+  financialAccountLabel
+  paidOn
+  totalCents
+  entryId
+  status
+  items {
+    entryId
+    label
+    occurredAt
+    amountCents
+  }
+  createdAt
+`;
+
+export const VOLUNTEER_ADVANCE_BALANCES = gql`
+  query VolunteerAdvanceBalances {
+    volunteerAdvanceBalances {
+      memberId
+      firstName
+      lastName
+      openCents
+      openCount
+      oldestOccurredAt
+    }
+  }
+`;
+
+export const VOLUNTEER_OPEN_ITEMS = gql`
+  query VolunteerOpenItems($memberId: ID!) {
+    volunteerOpenItems(memberId: $memberId) {
+      entryId
+      label
+      occurredAt
+      amountCents
+      accountCode
+      accountLabel
+    }
+  }
+`;
+
+export const VOLUNTEER_REIMBURSEMENTS = gql`
+  query VolunteerReimbursements($memberId: ID) {
+    volunteerReimbursements(memberId: $memberId) {
+      ${VOLUNTEER_REIMBURSEMENT_FIELDS}
+    }
+  }
+`;
+
+export const SET_ENTRY_ADVANCED_BY = gql`
+  mutation SetAccountingEntryAdvancedBy($input: SetAdvancedByInput!) {
+    setAccountingEntryAdvancedBy(input: $input)
+  }
+`;
+
+export const RECORD_VOLUNTEER_REIMBURSEMENT = gql`
+  mutation RecordVolunteerReimbursement($input: RecordVolunteerReimbursementInput!) {
+    recordVolunteerReimbursement(input: $input) {
+      ${VOLUNTEER_REIMBURSEMENT_FIELDS}
+    }
+  }
+`;
