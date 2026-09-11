@@ -81,6 +81,11 @@ export class MediaAssetsService {
     'application/vnd.ms-powerpoint',
     'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     'application/vnd.oasis.opendocument.presentation',
+    // Relevés bancaires archivés par l'API elle-même (ADR-0014) : le
+    // fichier arrive en base64 dans une mutation, jamais par l'upload
+    // navigateur, qui ne sait pas typer un `.ofx`.
+    'text/csv',
+    'application/x-ofx',
   ]);
   static readonly ALLOWED_VIDEO_MIME = new Set<string>([
     // Formats compatibles lecture <video> dans tous les navigateurs modernes.

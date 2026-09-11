@@ -8,6 +8,10 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true,
   });
+  // Les relevés bancaires OFX/CSV sont envoyés en base64 dans une mutation
+  // GraphQL (ADR-0014 §3) : un export annuel dépasse les 100 Ko du corps JSON
+  // par défaut. `useBodyParser` conserve `rawBody` pour le webhook Stripe.
+  app.useBodyParser('json', { limit: '8mb' });
   app.useWebSocketAdapter(new IoAdapter(app));
   /** Origines admin (prod) ; en dev, localhost/127.0.0.1 avec port quelconque sont aussi autorisés (ex. portail membre :5174). */
   const adminOrigins = (process.env.ADMIN_WEB_ORIGIN ?? 'http://localhost:5173')

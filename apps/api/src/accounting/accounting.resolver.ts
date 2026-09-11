@@ -256,6 +256,31 @@ interface FinancialAccountRow {
   notes: string | null;
   openingBalanceCents: number | null;
   openingBalanceOn: Date | null;
+  csvMappingJson?: unknown;
+}
+
+/** Le mapping est stocké en JSON libre : on ne rend que ce qui a la bonne forme. */
+function csvMappingFromJson(raw: unknown): ClubFinancialAccountGraph['csvMapping'] {
+  if (!raw || typeof raw !== 'object') return null;
+  const m = raw as Record<string, unknown>;
+  if (typeof m.delimiter !== 'string' || typeof m.dateCol !== 'number' || typeof m.labelCol !== 'number') {
+    return null;
+  }
+  const int = (v: unknown): number | null => (typeof v === 'number' ? v : null);
+  return {
+    delimiter: m.delimiter,
+    hasHeader: m.hasHeader === true,
+    dateCol: m.dateCol,
+    labelCol: m.labelCol,
+    amountCol: int(m.amountCol),
+    debitCol: int(m.debitCol),
+    creditCol: int(m.creditCol),
+    balanceCol: int(m.balanceCol),
+    valueDateCol: int(m.valueDateCol),
+    referenceCol: int(m.referenceCol),
+    dateFormat: typeof m.dateFormat === 'string' ? m.dateFormat : 'DMY',
+    decimalSeparator: typeof m.decimalSeparator === 'string' ? m.decimalSeparator : ',',
+  };
 }
 
 function toFinancialAccountGraph(r: FinancialAccountRow): ClubFinancialAccountGraph {
@@ -275,6 +300,7 @@ function toFinancialAccountGraph(r: FinancialAccountRow): ClubFinancialAccountGr
     notes: r.notes,
     openingBalanceCents: r.openingBalanceCents,
     openingBalanceOn: r.openingBalanceOn ? formatIsoDate(r.openingBalanceOn) : null,
+    csvMapping: csvMappingFromJson(r.csvMappingJson),
   };
 }
 
