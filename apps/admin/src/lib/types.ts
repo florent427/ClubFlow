@@ -1950,6 +1950,7 @@ export type BankStatementLine = {
   aiExhausted: boolean;
   /** Virement d'adhérent reconnu : payeur et factures proposés (lot 4). */
   payerProposal: BankPayerCandidate | null;
+  volunteerProposal: BankVolunteerCandidate | null;
   divergence: BankLineDivergence | null;
 };
 
@@ -2562,6 +2563,24 @@ export type StripeTransitSyncReport = {
   payoutsRecorded: number;
   unknownLines: number;
   arithmeticWarnings: number;
+};
+
+/** Bénévole que cette sortie d'argent pourrait rembourser (ADR-0016). */
+export type BankVolunteerCandidate = {
+  memberId: string;
+  firstName: string;
+  lastName: string;
+  nameScore: number;
+  /** EXACT_ALL, EXACT_SUBSET ou NONE. */
+  amountMatch: string;
+  entryIds: string[];
+  openCents: number;
+  openCount: number;
+  confidence: number;
+};
+
+export type BankLineVolunteerCandidatesData = {
+  bankLineVolunteerCandidates: BankVolunteerCandidate[];
 };
 
 export type StripeTransitStatusData = { stripeTransitStatus: StripeTransitStatus };
