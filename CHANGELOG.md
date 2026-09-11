@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.47.2](https://github.com/florent427/ClubFlow/compare/v0.47.1...v0.47.2) (2026-09-11)
+
+
+### 🐛 Bug Fixes
+
+* **accounting:** un relevé déposé avant un relevé plus récent rechaîne celui-ci ([aa70235](https://github.com/florent427/ClubFlow/commit/aa702354d652d3387066d1c5360e8d910d287d60))
+* **accounting:** un relevé déposé avant un relevé plus récent rechaîne celui-ci ([2155b37](https://github.com/florent427/ClubFlow/commit/2155b37a4e54eb42ba5ae8a61e5e81b9ff58e3bc))
+
 ## [0.47.1](https://github.com/florent427/ClubFlow/compare/v0.47.0...v0.47.1) (2026-09-11)
 
 
