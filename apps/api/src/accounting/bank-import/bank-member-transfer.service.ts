@@ -101,7 +101,7 @@ export class BankMemberTransferService {
 
     // La proposition d'écriture faite par la catégorisation n'a plus lieu
     // d'être : c'est le paiement qui va porter la recette.
-    await this.dropPendingProposal(clubId, line.id, line.proposedEntryId);
+    await this.reconciliation.dropPendingProposal(clubId, line.id, line.proposedEntryId);
 
     const externalRef = (line.reference?.trim() || line.label).slice(0, 190);
     const result: AcceptTransferResult = {
@@ -209,23 +209,4 @@ export class BankMemberTransferService {
     }
   }
 
-  /** Supprime la proposition d'écriture en attente, s'il y en a une. */
-  private async dropPendingProposal(
-    clubId: string,
-    lineId: string,
-    proposedEntryId: string | null,
-  ): Promise<void> {
-    if (!proposedEntryId) return;
-    const entry = await this.prisma.accountingEntry.findFirst({
-      where: { id: proposedEntryId, clubId, status: 'NEEDS_REVIEW' },
-      select: { id: true },
-    });
-    await this.prisma.$transaction(async (tx) => {
-      await tx.bankStatementLine.update({
-        where: { id: lineId },
-        data: { proposedEntryId: null, aiProposalJson: Prisma.DbNull, ruleId: null },
-      });
-      if (entry) await tx.accountingEntry.delete({ where: { id: entry.id } });
-    });
-  }
 }

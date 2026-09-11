@@ -938,15 +938,13 @@ rapproche de la ligne banque.
   task 6.5 (« CSV → proposition → accepter ») a donc été honoré par le
   chemin inverse, qui donne le même état final sans écrire une ligne de
   plus : remboursement enregistré, puis relevé importé qui rapproche seul.
-- **Ordre inverse, limite connue :** si le relevé est importé *avant* que le
-  remboursement soit enregistré, la ligne reste orpheline. Rien ne re-balaie
-  les relevés quand une écriture naît postée : `onEntryPosted` ne rapproche
-  que la ligne qui a *proposé* l'écriture, et un remboursement n'est proposé
-  par aucune ligne. Le trésorier a deux sorties d'un clic, « Relancer
-  l'automatique » sur le relevé ou le rapprochement manuel, où l'écriture
-  remonte en tête. Balayer à la création vaudrait pour toutes les sources
-  (chèques, factures), pas pour les seuls bénévoles : à traiter comme tel,
-  pas ici.
+- **Ordre inverse : limite relevée au lot 6, levée au lot 7.** Si le relevé
+  est importé *avant* que le remboursement soit enregistré, la ligne restait
+  orpheline : `onEntryPosted` ne rapproche que la ligne qui a *proposé*
+  l'écriture, et un remboursement n'est proposé par aucune ligne. Le lot 7 a
+  rencontré le même cas sur les dépôts d'espèces et l'a traité pour toutes
+  les sources d'un coup — voir `matchExistingLineForEntry` dans les écarts du
+  lot 7.
 - `recordReimbursement` crée son écriture directement `POSTED`, sans passer
   par `markPosted` : ses deux lignes sont validées d'office et il n'y a rien
   à rapprocher à cet instant (cf. ci-dessus). La date de paiement est
@@ -979,36 +977,96 @@ d'espèces rapprochables.
 
 ### Task 7.1 : Schéma et seed
 
-- [ ] `CashCount { id, clubId, financialAccountId, countedOn @db.Date, countedCents, expectedCents, deltaCents, note?, adjustmentEntryId?, countedByUserId, createdAt }`.
-- [ ] Seed `658000 Charges diverses de gestion courante (écarts de caisse)`
+- [x] `CashCount { id, clubId, financialAccountId, countedOn @db.Date, countedCents, expectedCents, deltaCents, note?, adjustmentEntryId?, validatedAt?, validatedByUserId?, countedByUserId, createdAt }`
+  avec `@@unique([financialAccountId, countedOn])`.
+- [x] Seed `658000 Charges diverses de gestion courante (écarts de caisse)`
   (`EXPENSE`) ; `758000` existe déjà pour les écarts positifs.
-- [ ] `AccountingEntrySource.CASH_ADJUSTMENT`, `CASH_TRANSFER`.
+- [x] `AccountingEntrySource.CASH_ADJUSTMENT`, `CASH_TRANSFER`, et les actions
+  d'audit `CASH_COUNT`, `CASH_COUNT_VALIDATE`, `CASH_TRANSFER`.
 
 ### Task 7.2 : `CashBookService`
 
-- [ ] `book(financialAccountId, from, to)` : écritures du compte dans les deux
-  sens, solde courant depuis `openingBalanceCents` (lot 0).
-- [ ] `recordCount({ financialAccountId, countedOn, countedCents, note })` :
+- [x] `book(financialAccountId, from, to)` : mouvements du compte dans les
+  deux sens, solde courant depuis `openingBalanceCents` (lot 0), et un
+  drapeau quand ce solde d'ouverture manque.
+- [x] `recordCount({ financialAccountId, countedOn, countedCents, note })` :
   calcule `expectedCents` à la date, `deltaCents` ; **ne crée aucune
   écriture**. `validateCashCount(countId)` crée l'écriture d'écart
-  (658000 ou 758000 contre 53x) datée du comptage. Test : compter ne
-  comptabilise pas (mutation → rouge).
-- [ ] `recordCashTransfer({ fromAccountId, toAccountId, amountCents, on, note })` :
+  (658000 ou 758000 contre 53x) datée du comptage. Mutation vérifiée :
+  faire créer une écriture à un écart nul fait tomber le test.
+- [x] `recordCashTransfer({ fromAccountId, toAccountId, amountCents, on, note })` :
   `TRANSFER` 53 → 51 (dépôt) ou 51 → 53 (retrait), `source CASH_TRANSFER`,
   rapproché ensuite par la ligne banque « VERSEMENT ESPECES » / « RETRAIT ».
 
 ### Task 7.3 : GraphQL et admin
 
-- [ ] `clubCashBook`, `clubCashCounts`, `recordCashCount`, `validateCashCount`,
-  `recordCashTransfer`.
-- [ ] `/comptabilite/caisse` : sélecteur de caisse, livre, « Compter la
-  caisse », « Déposer en banque », « Retirer de la banque », historique des
-  comptages.
+- [x] `clubCashBook`, `clubCashCounts`, `recordCashCount`, `validateCashCount`,
+  `deleteCashCount`, `recordCashTransfer`.
+- [x] `/comptabilite/caisse` : sélecteur de caisse et de période, livre,
+  « Compter la caisse », « Déposer en banque », « Retirer de la banque »,
+  historique des comptages avec « Valider l'écart » et « Jeter ».
 
 ### Task 7.4 : Vérification staging
 
-- [ ] Encaissement espèces, dépense en caisse, comptage avec écart, validation,
-  dépôt en banque, CSV avec « VERSEMENT ESPECES » → rapproché.
+- [x] Caisse principale du club démo : recette espèces 185,00 €, dépense
+  24,50 €, livre à 219,50 € (59,00 € préexistants compris). Le compte 658000,
+  absent du club, a été créé tout seul à l'ouverture de l'écran — c'est le
+  rattrapage de plan comptable qui tourne sur les chemins de lecture.
+- [x] Comptage à 215,00 € pour 219,50 € attendus : écart −4,50 € affiché,
+  **aucune écriture créée**. Validation → une écriture `CASH_ADJUSTMENT`
+  DÉBIT 658000 / CRÉDIT 530000 de 450 c, datée du comptage, et les deux
+  entrées d'audit.
+- [x] Dépôt de 120,00 € en banque : écriture `CASH_TRANSFER` DÉBIT 512000 /
+  CRÉDIT 530000, portée par la BANQUE. Relevé CSV de février portant
+  « VERSEMENT ESPECES » +120,00 → rapprochée seule à l'import.
+- [x] **Les deux ordres.** Un second versement (+80,00 €) déjà sur le relevé
+  avant d'être saisi n'a d'abord rien rapproché : deux défauts, corrigés et
+  consignés ci-dessous. Après correction, un troisième essai en mars
+  (+15,00 €) a rapproché la ligne seule, origine `AUTO`, en jetant la
+  proposition de l'IA.
+- [x] Caisse soldée à 0,00 € à la fin, journal d'erreurs de l'API staging
+  inchangé : 13 avant, 13 après.
+
+### Écarts par rapport au plan
+
+- **Le solde d'une caisse se lit sur son compte PCG, pas sur le compte
+  porteur de l'écriture.** Un dépôt d'espèces est porté par le compte
+  BANCAIRE — c'est le relevé de la banque qui le confirmera — tout en vidant
+  la caisse. Filtrer les mouvements par `financialAccountId` aurait fait
+  disparaître tous les dépôts du livre de la caisse. Un test le fixe, et la
+  mutation qui rétablit le mauvais filtre fait tomber 5 tests.
+- `CashCount` gagne `validatedAt` / `validatedByUserId`. Le plan ne prévoyait
+  que `adjustmentEntryId?`, qui ne distingue pas « validé, écart nul, rien à
+  écrire » de « pas encore validé ».
+- Une caisse ne se compte qu'une fois par jour (`@@unique`) : deux comptages
+  du même jour se contrediraient sans qu'on sache lequel fait foi. Et un
+  comptage non validé se jette (`deleteCashCount`) ; validé, il faut une
+  contre-passation.
+- **Ajout hors plan, réclamé par les lots 6 ET 7 :
+  `matchExistingLineForEntry`.** Une écriture qui naît déjà comptabilisée
+  hors relevé (remboursement de bénévole, dépôt d'espèces) ne rapprochait
+  rien quand le relevé était déjà déposé. Elle va maintenant chercher la
+  ligne qui lui correspond — même compte, montant signé identique, dans la
+  fenêtre — et ne la prend que si elle est le seul candidat.
+- **Deuxième défaut, trouvé dans la foulée sur staging : une proposition de
+  l'IA restée en revue survivait au rapprochement.** La catégorisation tourne
+  dès l'import, donc une ligne orpheline en porte presque toujours une. Sur
+  le club démo, la proposition faite au versement d'espèces était une
+  écriture IDENTIQUE au dépôt (DÉBIT 512000 / CRÉDIT 530000, 80,00 €, 95 % de
+  confiance) : la valider aurait compté les 80 € deux fois. Désormais toute
+  ligne qui devient rapprochée jette sa proposition en attente, quel que soit
+  le chemin — `applyMatch` est le seul endroit qui rend une ligne MATCHED.
+  Une proposition DÉJÀ comptabilisée, elle, est une décision humaine : on ne
+  passe pas par-dessus. La règle vivait en double dans le lot 4, elle est
+  maintenant partagée.
+- La note d'un mouvement d'espèces vit sur les lignes de l'écriture :
+  `AccountingEntry` n'a pas de champ note.
+- Un mouvement d'espèces relie exactement une caisse et une banque. Rien
+  n'empêche en revanche de déposer plus que ce que contient le tiroir : la
+  caisse peut passer sous zéro, et c'est le comptage qui le fera voir.
+- `clubCashBook` accepte n'importe quel compte financier, pas seulement une
+  caisse ; l'écran ne propose que les caisses. Un livre de banque coûtait
+  zéro ligne de plus.
 
 ---
 

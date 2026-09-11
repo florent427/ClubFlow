@@ -46,6 +46,8 @@ type Line = {
   ignoreNote: string | null;
   resolvedAt: Date | null;
   resolvedByUserId: string | null;
+  /** Écriture NEEDS_REVIEW proposée par la catégorisation, s'il y en a une. */
+  proposedEntryId?: string | null;
 };
 type Match = { id: string; clubId: string; lineId: string; entryId: string; amountCents: number; origin: string; matchedByUserId: string | null };
 
@@ -98,11 +100,13 @@ function line(id: string, iso: string, amountCents: number, label = `Ligne ${id}
     ignoreNote: null,
     resolvedAt: null,
     resolvedByUserId: null,
+    proposedEntryId: null,
   };
 }
 
 function makeWorld(entries: Entry[], lines: Line[]) {
   const state = {
+    deletedEntries: [] as string[],
     entries,
     lines,
     matches: [] as Match[],
@@ -146,6 +150,11 @@ function makeWorld(entries: Entry[], lines: Line[]) {
           statement: statementView(),
         };
       }),
+      // `applyMatch` relit la ligne pour savoir si une proposition de l'IA
+      // traîne encore dessus : sans ce double, la règle serait muette ici.
+      findUnique: jest.fn(async ({ where }: { where: { id: string } }) =>
+        state.lines.find((x) => x.id === where.id) ?? null,
+      ),
       update: jest.fn(async ({ where, data }: { where: { id: string }; data: Partial<Line> }) => {
         const l = state.lines.find((x) => x.id === where.id)!;
         Object.assign(l, data);
@@ -195,12 +204,18 @@ function makeWorld(entries: Entry[], lines: Line[]) {
               bankMatches: state.matches.filter((m) => m.entryId === e.id).map((m) => ({ lineId: m.lineId, amountCents: m.amountCents })),
             })),
       ),
-      findFirst: jest.fn(async ({ where }: { where: { id: string; financialAccountId: string; status: { in: string[] } } }) => {
+      findFirst: jest.fn(async ({ where }: { where: { id: string; financialAccountId?: string; status: { in: string[] } | string } }) => {
+        // Deux appelants, deux formes : `applyMatch` cherche une écriture
+        // comptabilisée du bon compte, `dropPendingProposal` une écriture
+        // encore en revue, quel que soit son compte.
+        if (typeof where.status === 'string') {
+          return state.entries.find((x) => x.id === where.id && x.status === where.status) ?? null;
+        }
         const e = state.entries.find(
           (x) =>
             x.id === where.id &&
             x.financialAccountId === where.financialAccountId &&
-            where.status.in.includes(x.status) &&
+            (where.status as { in: string[] }).in.includes(x.status) &&
             x.cancelledAt === null,
         );
         if (!e) return null;
@@ -208,6 +223,13 @@ function makeWorld(entries: Entry[], lines: Line[]) {
           ...e,
           bankMatches: state.matches.filter((m) => m.entryId === e.id).map((m) => ({ lineId: m.lineId, amountCents: m.amountCents })),
         };
+      }),
+      // `dropPendingProposal` ne supprime qu'une écriture encore en revue.
+      delete: jest.fn(async ({ where }: { where: { id: string } }) => {
+        state.deletedEntries.push(where.id);
+        const i = state.entries.findIndex((x) => x.id === where.id);
+        if (i >= 0) state.entries.splice(i, 1);
+        return { id: where.id };
       }),
     },
     accountingEntryLine: {
@@ -325,6 +347,22 @@ describe('BankReconciliationService.autoMatch', () => {
 });
 
 describe('BankReconciliationService.match / unmatch (manuel, N↔N)', () => {
+  it('rapprocher jette la proposition de l’IA restée en revue sur la ligne', async () => {
+    // Sans cela, l'écriture proposée resterait dans la file de revue :
+    // la valider compterait la même somme une seconde fois.
+    const proposal = entry('e-prop', '2026-09-03', 10000, 'DEBIT');
+    proposal.status = 'NEEDS_REVIEW';
+    const l = line('l1', '2026-09-03', 10000);
+    l.proposedEntryId = 'e-prop';
+    const { svc, state } = makeWorld([entry('e1', '2026-09-01', 10000, 'DEBIT'), proposal], [l]);
+
+    await svc.match(CLUB, 'u', 'l1', [{ entryId: 'e1', amountCents: 10000 }]);
+
+    expect(state.deletedEntries).toEqual(['e-prop']);
+    expect(state.lines[0].proposedEntryId).toBeNull();
+    expect(state.lines[0].status).toBe('MATCHED');
+  });
+
   it('une ligne pour deux écritures : les parts couvrent la ligne, les deux écritures sont marquées', async () => {
     const { svc, state } = makeWorld(
       [entry('e1', '2026-09-01', 10000, 'DEBIT'), entry('e2', '2026-09-01', 20000, 'DEBIT')],

@@ -4134,3 +4134,80 @@ export const RECORD_VOLUNTEER_REIMBURSEMENT = gql`
     }
   }
 `;
+
+// ── Livre de caisse (lot 7) ───────────────────────────────────────────────
+
+const CASH_COUNT_FIELDS = `
+  id
+  financialAccountId
+  financialAccountLabel
+  countedOn
+  countedCents
+  expectedCents
+  deltaCents
+  note
+  adjustmentEntryId
+  validatedAt
+  createdAt
+`;
+
+export const CLUB_CASH_BOOK = gql`
+  query ClubCashBook($financialAccountId: ID!, $from: String!, $to: String!) {
+    clubCashBook(financialAccountId: $financialAccountId, from: $from, to: $to) {
+      financialAccountId
+      label
+      accountCode
+      from
+      to
+      openingCents
+      closingCents
+      hasOpeningBalance
+      lines {
+        entryId
+        occurredAt
+        label
+        source
+        amountCents
+        balanceCents
+        counterpartCodes
+        reconciledAt
+      }
+    }
+  }
+`;
+
+export const CLUB_CASH_COUNTS = gql`
+  query ClubCashCounts($financialAccountId: ID) {
+    clubCashCounts(financialAccountId: $financialAccountId) {
+      ${CASH_COUNT_FIELDS}
+    }
+  }
+`;
+
+export const RECORD_CASH_COUNT = gql`
+  mutation RecordCashCount($input: RecordCashCountInput!) {
+    recordCashCount(input: $input) {
+      ${CASH_COUNT_FIELDS}
+    }
+  }
+`;
+
+export const VALIDATE_CASH_COUNT = gql`
+  mutation ValidateCashCount($countId: ID!) {
+    validateCashCount(countId: $countId) {
+      ${CASH_COUNT_FIELDS}
+    }
+  }
+`;
+
+export const DELETE_CASH_COUNT = gql`
+  mutation DeleteCashCount($countId: ID!) {
+    deleteCashCount(countId: $countId)
+  }
+`;
+
+export const RECORD_CASH_TRANSFER = gql`
+  mutation RecordCashTransfer($input: RecordCashTransferInput!) {
+    recordCashTransfer(input: $input)
+  }
+`;

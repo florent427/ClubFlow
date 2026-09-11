@@ -230,6 +230,11 @@ export const NAV_SECTIONS: NavSection[] = [
             modules: ['ACCOUNTING'],
           },
           {
+            to: '/comptabilite/caisse',
+            label: 'Livre de caisse',
+            modules: ['ACCOUNTING'],
+          },
+          {
             to: '/comptabilite/rapprochement',
             label: 'Rapprochement bancaire',
             modules: ['ACCOUNTING'],

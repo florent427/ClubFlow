@@ -82,6 +82,7 @@ export class AccountingSeedService {
     { code: '627000', label: 'Services bancaires (frais Stripe, virements)', kind: 'EXPENSE', sortOrder: 35 },
     { code: '641000', label: 'Rémunérations du personnel', kind: 'EXPENSE', sortOrder: 40 },
     { code: '645000', label: 'Charges sociales', kind: 'EXPENSE', sortOrder: 41 },
+    { code: '658000', label: 'Charges diverses de gestion courante (écarts de caisse)', kind: 'EXPENSE', sortOrder: 42 },
 
     // === Produits (recettes) — classe 7 ===
     { code: '706100', label: 'Cotisations membres (adhésions)', kind: 'INCOME', sortOrder: 50 },

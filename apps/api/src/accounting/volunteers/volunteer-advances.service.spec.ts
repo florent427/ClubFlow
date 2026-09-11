@@ -167,13 +167,27 @@ function makeWorld(opts: { entries?: Entry[]; lines?: Line[]; reimbursedEntryIds
     })),
     getDefault: jest.fn(async () => ({ id: 'fa-1', accountingAccount: { code: BANK } })),
   };
+  // Le relevé qui portera le virement n'est pas toujours déjà déposé : ce
+  // double dit « aucune ligne à rapprocher », le cas ordinaire.
+  const reconciliation = { matchExistingLineForEntry: jest.fn(async () => null) };
   const svc = new VolunteerAdvancesService(
     prisma as never,
     audit as never,
     period as never,
     financialAccounts as never,
+    reconciliation as never,
   );
-  return { svc, entries, lines, items, reimbursements, audit, period, financialAccounts };
+  return {
+    svc,
+    entries,
+    lines,
+    items,
+    reimbursements,
+    audit,
+    period,
+    financialAccounts,
+    reconciliation,
+  };
 }
 
 function receipt(id: string, over: Partial<Entry> = {}): { entry: Entry; lines: Line[] } {

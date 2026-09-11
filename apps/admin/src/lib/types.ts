@@ -2503,3 +2503,47 @@ export type VolunteerReimbursement = {
 export type VolunteerAdvanceBalancesData = { volunteerAdvanceBalances: VolunteerBalance[] };
 export type VolunteerOpenItemsData = { volunteerOpenItems: VolunteerOpenItem[] };
 export type VolunteerReimbursementsData = { volunteerReimbursements: VolunteerReimbursement[] };
+
+/** Un mouvement du livre de caisse, avec le solde qu'il laisse derrière lui. */
+export type CashBookLine = {
+  entryId: string;
+  /** « YYYY-MM-DD ». */
+  occurredAt: string;
+  label: string;
+  source: string;
+  /** Positif = la caisse se remplit. */
+  amountCents: number;
+  balanceCents: number;
+  counterpartCodes: string[];
+  reconciledAt: string | null;
+};
+
+export type CashBook = {
+  financialAccountId: string;
+  label: string;
+  accountCode: string;
+  from: string;
+  to: string;
+  openingCents: number;
+  closingCents: number;
+  hasOpeningBalance: boolean;
+  lines: CashBookLine[];
+};
+
+export type CashCount = {
+  id: string;
+  financialAccountId: string;
+  financialAccountLabel: string;
+  countedOn: string;
+  countedCents: number;
+  expectedCents: number;
+  /** Négatif = il manque de l'argent dans le tiroir. */
+  deltaCents: number;
+  note: string | null;
+  adjustmentEntryId: string | null;
+  validatedAt: string | null;
+  createdAt: string;
+};
+
+export type ClubCashBookData = { clubCashBook: CashBook };
+export type ClubCashCountsData = { clubCashCounts: CashCount[] };
