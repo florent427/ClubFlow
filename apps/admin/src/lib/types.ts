@@ -1940,6 +1940,14 @@ export type BankStatementLine = {
   resolvedAt: string | null;
   /** Faux tant qu'une divergence entre les deux lectures d'un PDF attend un humain. */
   readingAgreement: boolean;
+  /** Proposition de compte en attente de validation (lot 3). */
+  proposal: BankLineProposal | null;
+  proposedEntryId: string | null;
+  /** Question de l'IA en attente de réponse. */
+  question: string | null;
+  conversation: BankLineTurn[];
+  aiAttempts: number;
+  aiExhausted: boolean;
   divergence: BankLineDivergence | null;
 };
 
@@ -1980,6 +1988,12 @@ export type BankStatementListItem = {
   ignoredCount: number;
   /** Lignes où les deux lectures d'un PDF divergent encore. */
   divergenceCount: number;
+  /** Lignes à traiter portant une proposition à valider. */
+  proposalCount: number;
+  /** Lignes dont l'IA attend une réponse. */
+  questionCount: number;
+  /** Lignes encore sans proposition ni question. */
+  toCategorizeCount: number;
   readingModelA: string | null;
   readingModelB: string | null;
   /** Coût IA de la lecture, en centimes. */
@@ -1988,6 +2002,49 @@ export type BankStatementListItem = {
 };
 
 export type BankStatement = BankStatementListItem & { lines: BankStatementLine[] };
+
+/** Proposition de compte pour une ligne de relevé sans écriture (lot 3). */
+export type BankLineProposal = {
+  accountCode: string;
+  accountLabel: string;
+  projectId: string | null;
+  projectTitle: string | null;
+  label: string;
+  confidencePct: number;
+  /** RULE = une règle du club a décidé ; AI = deux modèles. */
+  source: 'RULE' | 'AI' | string;
+  ruleId: string | null;
+  reasoning: string | null;
+  models: string[];
+  /** Validable en lot. */
+  clear: boolean;
+};
+
+export type BankLineTurn = { role: 'ASSISTANT' | 'USER' | string; text: string };
+
+export type CategorizationMatchKindGql = 'CONTAINS' | 'STARTS_WITH' | 'REGEX';
+export type CategorizationDirectionGql = 'CREDIT' | 'DEBIT' | 'ANY';
+export type CategorizationRuleSourceGql = 'LEARNED' | 'MANUAL';
+
+export type CategorizationRule = {
+  id: string;
+  pattern: string;
+  matchKind: CategorizationMatchKindGql;
+  direction: CategorizationDirectionGql;
+  accountCode: string;
+  accountLabel: string | null;
+  projectId: string | null;
+  label: string | null;
+  source: CategorizationRuleSourceGql;
+  hitCount: number;
+  lastHitAt: string | null;
+  isActive: boolean;
+  createdAt: string;
+};
+
+export type ClubCategorizationRulesData = { clubCategorizationRules: CategorizationRule[] };
+export type UpsertCategorizationRuleData = { upsertCategorizationRule: CategorizationRule[] };
+export type DeleteCategorizationRuleData = { deleteCategorizationRule: CategorizationRule[] };
 
 export type BankLineCandidate = {
   entryId: string;

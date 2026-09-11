@@ -3502,6 +3502,27 @@ const BANK_LINE_FIELDS = `
   }
   resolvedAt
   readingAgreement
+  proposedEntryId
+  question
+  aiAttempts
+  aiExhausted
+  proposal {
+    accountCode
+    accountLabel
+    projectId
+    projectTitle
+    label
+    confidencePct
+    source
+    ruleId
+    reasoning
+    models
+    clear
+  }
+  conversation {
+    role
+    text
+  }
   divergence {
     kind
     a {
@@ -3540,6 +3561,9 @@ const BANK_STATEMENT_ITEM_FIELDS = `
   matchedCount
   ignoredCount
   divergenceCount
+  proposalCount
+  questionCount
+  toCategorizeCount
   readingModelA
   readingModelB
   aiCostCents
@@ -3883,6 +3907,100 @@ export const RECHECK_BANK_STATEMENT = gql`
       status
       integrityDeltaCents
       chainOk
+    }
+  }
+`;
+
+const CATEGORIZATION_RULE_FIELDS = `
+  id
+  pattern
+  matchKind
+  direction
+  accountCode
+  accountLabel
+  projectId
+  label
+  source
+  hitCount
+  lastHitAt
+  isActive
+  createdAt
+`;
+
+export const CLUB_CATEGORIZATION_RULES = gql`
+  query ClubCategorizationRules {
+    clubCategorizationRules {
+      ${CATEGORIZATION_RULE_FIELDS}
+    }
+  }
+`;
+
+export const UPSERT_CATEGORIZATION_RULE = gql`
+  mutation UpsertCategorizationRule($input: UpsertCategorizationRuleInput!) {
+    upsertCategorizationRule(input: $input) {
+      ${CATEGORIZATION_RULE_FIELDS}
+    }
+  }
+`;
+
+export const DELETE_CATEGORIZATION_RULE = gql`
+  mutation DeleteCategorizationRule($id: ID!) {
+    deleteCategorizationRule(id: $id) {
+      ${CATEGORIZATION_RULE_FIELDS}
+    }
+  }
+`;
+
+export const CATEGORIZE_BANK_LINE = gql`
+  mutation CategorizeBankLine($lineId: ID!) {
+    categorizeBankLine(lineId: $lineId) {
+      id
+      status
+    }
+  }
+`;
+
+export const CATEGORIZE_BANK_STATEMENT = gql`
+  mutation CategorizeBankStatement($id: ID!) {
+    categorizeBankStatement(id: $id) {
+      id
+      status
+    }
+  }
+`;
+
+export const ANSWER_BANK_LINE_QUESTION = gql`
+  mutation AnswerBankLineQuestion($input: AnswerBankLineQuestionInput!) {
+    answerBankLineQuestion(input: $input) {
+      id
+      status
+    }
+  }
+`;
+
+export const ACCEPT_BANK_LINE_PROPOSAL = gql`
+  mutation AcceptBankLineProposal($input: AcceptBankLineProposalInput!) {
+    acceptBankLineProposal(input: $input) {
+      id
+      status
+    }
+  }
+`;
+
+export const REJECT_BANK_LINE_PROPOSAL = gql`
+  mutation RejectBankLineProposal($lineId: ID!) {
+    rejectBankLineProposal(lineId: $lineId) {
+      id
+      status
+    }
+  }
+`;
+
+export const BULK_ACCEPT_BANK_LINE_PROPOSALS = gql`
+  mutation BulkAcceptBankLineProposals($statementId: ID!, $lineIds: [ID!]!) {
+    bulkAcceptBankLineProposals(statementId: $statementId, lineIds: $lineIds) {
+      id
+      status
     }
   }
 `;
