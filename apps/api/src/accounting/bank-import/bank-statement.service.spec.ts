@@ -6,6 +6,7 @@ import type { AccountingFiscalYearService } from '../accounting-fiscal-year.serv
 import { parseIsoDate } from '../accounting-fiscal-year.service';
 import type { ClubFinancialAccountsService } from '../club-financial-accounts.service';
 import type { BankReconciliationService } from './bank-reconciliation.service';
+import { BankStatementIntegrityService } from './bank-statement-integrity.service';
 import { BankStatementService } from './bank-statement.service';
 
 /**
@@ -75,7 +76,8 @@ function makeWorld(opts: { accountingStartsOn?: string | null; openingBalanceCen
     mediaAsset: null,
     lines: state.lines
       .filter((l) => l.statementId === s.id)
-      .map((l) => ({ ...l, matches: [] })),
+      // Comme en base : une ligne OFX/CSV est « d'accord » par défaut.
+      .map((l) => ({ readingAgreement: true, ...l, matches: [] })),
     next: state.statements.filter((x) => x.previousStatementId === s.id).map((x) => ({ id: x.id })),
     _count: { lines: state.lines.filter((l) => l.statementId === s.id && l.status === 'MATCHED').length },
   });
@@ -87,20 +89,27 @@ function makeWorld(opts: { accountingStartsOn?: string | null; openingBalanceCen
           where,
           orderBy,
         }: {
-          where: { id?: string; financialAccountId?: string; periodStart?: { lte: Date }; periodEnd?: { gte?: Date; lt?: Date }; id_not?: unknown };
-          orderBy?: { periodEnd: 'desc' };
+          where: {
+            id?: string | { not: string };
+            financialAccountId?: string;
+            periodStart?: { lte?: Date; gt?: Date };
+            periodEnd?: { gte?: Date; lt?: Date };
+          };
+          orderBy?: { periodEnd?: 'desc'; periodStart?: 'asc' };
         }) => {
           let rows = state.statements.filter(
             (s) =>
               s.clubId === CLUB &&
-              (!where.id || s.id === where.id) &&
+              (!where.id || (typeof where.id === 'string' ? s.id === where.id : s.id !== where.id.not)) &&
               (!where.financialAccountId || s.financialAccountId === where.financialAccountId) &&
               s.status !== 'FAILED' &&
               (!where.periodStart?.lte || s.periodStart <= where.periodStart.lte) &&
+              (!where.periodStart?.gt || s.periodStart > where.periodStart.gt) &&
               (where.periodEnd?.gte === undefined || s.periodEnd >= where.periodEnd.gte) &&
               (where.periodEnd?.lt === undefined || s.periodEnd < where.periodEnd.lt),
           );
           if (orderBy?.periodEnd === 'desc') rows = [...rows].sort((a, b) => b.periodEnd.getTime() - a.periodEnd.getTime());
+          if (orderBy?.periodStart === 'asc') rows = [...rows].sort((a, b) => a.periodStart.getTime() - b.periodStart.getTime());
           return rows[0] ? view(rows[0]) : null;
         },
       ),
@@ -153,6 +162,8 @@ function makeWorld(opts: { accountingStartsOn?: string | null; openingBalanceCen
     }),
     readInBackground: jest.fn(),
   };
+  // Le vrai service de chaînage, sur le même double Prisma.
+  const integrity = new BankStatementIntegrityService(prisma as unknown as PrismaService);
   const svc = new BankStatementService(
     prisma as unknown as PrismaService,
     financialAccounts as unknown as ClubFinancialAccountsService,
@@ -161,6 +172,7 @@ function makeWorld(opts: { accountingStartsOn?: string | null; openingBalanceCen
     media as unknown as MediaAssetsService,
     reconciliation as unknown as BankReconciliationService,
     ocr as never,
+    integrity,
   );
   return { svc, state, reconciliation, audit, media };
 }
@@ -220,6 +232,25 @@ describe('BankStatementService.import', () => {
     expect(out.status).toBe('NEEDS_CHECK');
     // début (fin − Σ) = 1189,46 ≠ solde d'ouverture 1234,56 : c'est le chaînage qui le dit.
     expect(state.statements[0].chainOk).toBe(false);
+  });
+
+  it('un relevé déposé après un relevé plus récent rechaîne celui-ci (octobre attendait septembre)', async () => {
+    const october: Statement = {
+      id: 'st-oct', clubId: CLUB, financialAccountId: FIN, status: 'NEEDS_CHECK',
+      periodStart: parseIsoDate('2026-10-01'), periodEnd: parseIsoDate('2026-10-31'),
+      openingBalanceCents: 155946, closingBalanceCents: 160000, lineCount: 1,
+      integrityDeltaCents: 0, chainOk: false, chainExpectedCents: 123456, previousStatementId: null, mediaAssetId: null, error: null,
+    };
+    const { svc, state } = makeWorld({ existing: [october] });
+    // Une ligne de +40,54 € : l'arithmétique d'octobre tombe juste, seul son chaînage manquait.
+    state.lines.push({ id: 'l-oct', statementId: 'st-oct', bookedOn: parseIsoDate('2026-10-05'), amountCents: 4054, status: 'UNMATCHED', ignoreReason: null, label: 'VIR' });
+    const out = await importOfx(svc, GOOD); // septembre, solde de fin 1 559,46 €
+    expect(out.status).toBe('READY');
+    const oct = state.statements.find((s) => s.id === 'st-oct')!;
+    expect(oct.previousStatementId).toBe(out.id);
+    expect(oct.chainExpectedCents).toBe(155946);
+    expect(oct.chainOk).toBe(true);
+    expect(oct.status).toBe('READY');
   });
 
   it('chaîné sur le relevé précédent : son solde de fin doit être le solde de début', async () => {

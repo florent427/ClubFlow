@@ -102,6 +102,11 @@ function build(answers: { a: Answer; b: Answer }, opts: { budgetAllowed?: boolea
   const renderer = {
     render: jest.fn(async () => [{ page: 1, dataUrls: ['data:image/png;base64,AAAA'], text: 'ANCIEN SOLDE' }]),
   };
+  const integrity = {
+    // Pas de relevé précédent : chaînage sur le solde d'ouverture du compte.
+    previousStatement: jest.fn(async () => null),
+    rechainFollowing: jest.fn(async (..._args: unknown[]) => undefined),
+  };
   const svc = new BankStatementOcrService(
     prisma as never,
     aiSettings as never,
@@ -111,9 +116,22 @@ function build(answers: { a: Answer; b: Answer }, opts: { budgetAllowed?: boolea
     audit as never,
     reconciliation as never,
     renderer as never,
+    integrity as never,
   );
   const last = () => updates[updates.length - 1];
-  return { svc, updates, created, last, deletedCalls: () => deleted, aiSettings, aiBudget, openrouter, audit, reconciliation };
+  return {
+    svc,
+    updates,
+    created,
+    last,
+    deletedCalls: () => deleted,
+    aiSettings,
+    aiBudget,
+    openrouter,
+    audit,
+    reconciliation,
+    integrity,
+  };
 }
 
 describe('BankStatementOcrService.assertCanRead', () => {
@@ -158,6 +176,13 @@ describe('BankStatementOcrService.runReading', () => {
     ]);
     expect(t.aiBudget.incrementUsage).toHaveBeenCalledWith('club-1', 'BANK_STATEMENT_OCR', 6, 2000, 400);
     expect(t.reconciliation.autoMatch).toHaveBeenCalledWith('club-1', 'st-1');
+    // Un relevé plus récent déjà déposé doit se rechaîner sur celui-ci.
+    expect(t.integrity.rechainFollowing).toHaveBeenCalledWith(
+      'club-1',
+      'fa-1',
+      new Date('2026-09-30T00:00:00.000Z'),
+      'st-1',
+    );
   });
 
   it('les deux lectures d’accord mais l’arithmétique fausse : NEEDS_CHECK, pas de rapprochement — l’accord ne fait pas foi', async () => {

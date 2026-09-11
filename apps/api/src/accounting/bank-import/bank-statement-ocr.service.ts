@@ -23,6 +23,7 @@ import {
 } from '../ocr-shared';
 import type { RenderedPage } from '../ocr-shared';
 import { BankReconciliationService } from './bank-reconciliation.service';
+import { BankStatementIntegrityService } from './bank-statement-integrity.service';
 import { mergeReadings } from './merge-readings';
 import type { MergedReading, StatementReading } from './merge-readings';
 import {
@@ -87,6 +88,7 @@ export class BankStatementOcrService {
     private readonly audit: AccountingAuditService,
     private readonly reconciliation: BankReconciliationService,
     private readonly renderer: PdfPageRenderer,
+    private readonly integrity: BankStatementIntegrityService,
   ) {}
 
   /**
@@ -344,17 +346,12 @@ export class BankStatementOcrService {
       );
       return;
     }
-    const previous = await this.prisma.bankStatement.findFirst({
-      where: {
-        clubId,
-        financialAccountId: st.financialAccountId,
-        id: { not: st.id },
-        status: { notIn: [BankStatementStatus.FAILED, BankStatementStatus.PARSING] },
-        periodEnd: { lt: start },
-      },
-      orderBy: { periodEnd: 'desc' },
-      select: { id: true, closingBalanceCents: true },
-    });
+    const previous = await this.integrity.previousStatement(
+      clubId,
+      st.financialAccountId,
+      start,
+      st.id,
+    );
     const previousClosing = previous
       ? previous.closingBalanceCents
       : (st.financialAccount.openingBalanceCents ?? null);
@@ -460,6 +457,8 @@ export class BankStatementOcrService {
     this.logger.log(
       `[relevé PDF ${st.id}] ${merged.lines.length} lignes, ${merged.divergenceCount} divergence(s), delta ${balancesRead ? integrity.deltaCents : 'n/a'}, statut ${status}, coût ${totalCost} c`,
     );
+    // Un relevé plus récent déjà déposé se chaîne désormais sur celui-ci.
+    await this.integrity.rechainFollowing(clubId, st.financialAccountId, end, st.id);
     if (status === BankStatementStatus.READY) {
       await this.reconciliation.autoMatch(clubId, st.id);
     }

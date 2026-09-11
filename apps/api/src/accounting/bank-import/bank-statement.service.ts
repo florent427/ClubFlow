@@ -24,6 +24,7 @@ import {
 } from '../accounting-fiscal-year.service';
 import { ClubFinancialAccountsService } from '../club-financial-accounts.service';
 import { BankReconciliationService } from './bank-reconciliation.service';
+import { BankStatementIntegrityService } from './bank-statement-integrity.service';
 import { BankStatementOcrService } from './bank-statement-ocr.service';
 import { detectCsv, parseCsv } from './csv-parser';
 import type { CsvDetection, CsvMapping } from './csv-parser';
@@ -138,6 +139,7 @@ export class BankStatementService {
     private readonly media: MediaAssetsService,
     private readonly reconciliation: BankReconciliationService,
     private readonly ocr: BankStatementOcrService,
+    private readonly integrity: BankStatementIntegrityService,
   ) {}
 
   async list(clubId: string, financialAccountId?: string | null): Promise<StatementListRow[]> {
@@ -353,67 +355,27 @@ export class BankStatementService {
         chainOk: integrity.chainOk,
       },
     });
+    // Un relevé plus récent déjà déposé se chaîne désormais sur celui-ci.
+    await this.integrity.rechainFollowing(clubId, account.id, periodEnd, created.id);
     if (created.status === BankStatementStatus.READY) {
       await this.reconciliation.autoMatch(clubId, created.id);
     }
     return this.getById(clubId, created.id);
   }
 
-  /** Le relevé qui précède une période sur un compte (hors relevés en échec). */
-  private async previousStatement(
+  /** Le relevé qui précède une période sur un compte (hors échec et lecture en cours). */
+  private previousStatement(
     clubId: string,
     financialAccountId: string,
     periodStart: Date,
     excludeId: string | null,
   ) {
-    return this.prisma.bankStatement.findFirst({
-      where: {
-        clubId,
-        financialAccountId,
-        status: { notIn: [BankStatementStatus.FAILED, BankStatementStatus.PARSING] },
-        periodEnd: { lt: periodStart },
-        ...(excludeId ? { id: { not: excludeId } } : {}),
-      },
-      orderBy: { periodEnd: 'desc' },
-      select: { id: true, closingBalanceCents: true },
-    });
+    return this.integrity.previousStatement(clubId, financialAccountId, periodStart, excludeId);
   }
 
   /** Recalcule intégrité, chaînage et statut, après toute édition de lignes. */
-  async recomputeIntegrity(clubId: string, statementId: string): Promise<void> {
-    const st = await this.prisma.bankStatement.findFirst({
-      where: { id: statementId, clubId },
-      include: {
-        financialAccount: { select: { openingBalanceCents: true } },
-        lines: { select: { amountCents: true, status: true, readingAgreement: true } },
-      },
-    });
-    if (!st) throw new NotFoundException('Relevé introuvable');
-    const previous = await this.previousStatement(clubId, st.financialAccountId, st.periodStart, st.id);
-    const previousClosing = previous
-      ? previous.closingBalanceCents
-      : (st.financialAccount.openingBalanceCents ?? null);
-    const integrity = checkStatementIntegrity({
-      openingBalanceCents: st.openingBalanceCents,
-      closingBalanceCents: st.closingBalanceCents,
-      lineAmounts: st.lines.map((l) => l.amountCents),
-      previousClosingCents: previousClosing,
-    });
-    await this.prisma.bankStatement.update({
-      where: { id: st.id },
-      data: {
-        integrityDeltaCents: integrity.deltaCents,
-        chainOk: integrity.chainOk,
-        chainExpectedCents: integrity.chainExpectedCents,
-        previousStatementId: previous?.id ?? null,
-        lineCount: st.lines.length,
-        status: deriveStatementStatus(
-          integrity,
-          st.lines.map((l) => l.status),
-          { unresolvedDivergences: st.lines.filter((l) => !l.readingAgreement).length },
-        ),
-      },
-    });
+  recomputeIntegrity(clubId: string, statementId: string): Promise<void> {
+    return this.integrity.recompute(clubId, statementId);
   }
 
   async updateLine(

@@ -463,6 +463,14 @@ lignes divergentes mises en évidence ; contrôle bloquant.
   automatiquement, coût 2 c journalisé (`AiUsageLog` × 2, `AiMonthlyUsage`
   sous `BANK_STATEMENT_OCR`), audit PARSING → RERUN → READ. Deux vrais PDF
   de banques différentes restent à passer quand Florent en aura.
+- [x] Deuxième trou trouvé en vérifiant : un relevé déposé APRÈS un relevé
+  plus récent (CSV d'octobre déposé avant le PDF de septembre) laissait
+  celui-ci chaîné sur le solde d'ouverture du compte, donc « à vérifier ».
+  Chaînage et contrôle sortent dans `BankStatementIntegrityService`
+  (partagé import OFX/CSV et lecture PDF) ; le premier relevé suivant est
+  recalculé après chaque arrivée. Test de non-régression (mutation → rouge).
+  Sur staging, le CSV d'octobre a été remis dans la continuité du PDF
+  (soldes 1 384,26 → 1 444,36 €) : `READY`.
 - [x] Vérifié sur staging le 2026-09-11 : PDF refusé sans clé (aucun relevé
   ni fichier créé, message vers OFX/CSV) ; « Corriger les soldes » sur le
   relevé CSV d'octobre (solde de fin faux → « À vérifier », écart −11,24 € ;
