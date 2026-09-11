@@ -453,11 +453,16 @@ lignes divergentes mises en évidence ; contrôle bloquant.
   divergence de date à delta 0 → NEEDS_CHECK ; un modèle en échec ; deux en
   échec → FAILED ; chevauchement ; budget). Deux mutations à la main (garde
   des divergences retirée ; budget non vérifié) → rouge.
-- [ ] Sur staging, `club-demo` n'a pas de clé OpenRouter : le dépôt d'un PDF
-  est refusé avant toute écriture, avec le message qui renvoie vers OFX/CSV.
-  La lecture de bout en bout sur staging attend une clé (Paramètres → IA du
-  club démo) ; un PDF synthétique est prêt (`releve-demo-2026-09.pdf`,
-  généré par le script de test local, 7 lignes, soldes 1 234,56 → 1 384,26 €).
+- [x] Vérifié de bout en bout sur staging le 2026-09-11, une fois la clé
+  OpenRouter ajoutée par Florent au club démo : le premier dépôt a échoué
+  (« Asset introuvable » : le fichier privé était lu sans le contexte du
+  club — corrigé, test ajouté) ; après relance, le PDF synthétique
+  (`releve-demo-2026-09.pdf`) est lu par Sonnet 4.5 et Gemini 2.5 Flash en
+  ≈ 25 s : 6 lignes identiques, soldes 1 234,56 → 1 384,26 €, delta 0,
+  chaîné sur le solde d'ouverture, `READY`, ligne « REMISE » rapprochée
+  automatiquement, coût 2 c journalisé (`AiUsageLog` × 2, `AiMonthlyUsage`
+  sous `BANK_STATEMENT_OCR`), audit PARSING → RERUN → READ. Deux vrais PDF
+  de banques différentes restent à passer quand Florent en aura.
 - [x] Vérifié sur staging le 2026-09-11 : PDF refusé sans clé (aucun relevé
   ni fichier créé, message vers OFX/CSV) ; « Corriger les soldes » sur le
   relevé CSV d'octobre (solde de fin faux → « À vérifier », écart −11,24 € ;
