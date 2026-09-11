@@ -4,6 +4,7 @@ import type { FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ACCEPT_BANK_LINE_MEMBER_PAYMENT,
+  ACCEPT_BANK_LINE_VOLUNTEER_REIMBURSEMENT,
   ACCEPT_BANK_LINE_PROPOSAL,
   ADD_BANK_STATEMENT_LINE,
   ANSWER_BANK_LINE_QUESTION,
@@ -48,6 +49,7 @@ import {
 } from './format';
 import { MatchDrawer } from './MatchDrawer';
 import { PayerCard } from './PayerCard';
+import { VolunteerRefundCard } from './VolunteerRefundCard';
 import { ProposalCard } from './ProposalCard';
 
 type Filter = 'TODO' | 'TRANSFERS' | 'ALL' | 'MATCHED' | 'IGNORED';
@@ -120,6 +122,9 @@ export function StatementDetailPage() {
   const [rejectProposal, { loading: rejecting }] = useMutation(REJECT_BANK_LINE_PROPOSAL);
   const [bulkAccept, { loading: bulkAccepting }] = useMutation(BULK_ACCEPT_BANK_LINE_PROPOSALS);
   const [acceptTransfer, { loading: transferring }] = useMutation(ACCEPT_BANK_LINE_MEMBER_PAYMENT);
+  const [acceptVolunteerRefund, { loading: refunding }] = useMutation(
+    ACCEPT_BANK_LINE_VOLUNTEER_REIMBURSEMENT,
+  );
   const { data: accountsData } = useQuery<ClubAccountingAccountsData>(CLUB_ACCOUNTING_ACCOUNTS, {
     fetchPolicy: 'cache-first',
   });
@@ -128,7 +133,14 @@ export function StatementDetailPage() {
     [accountsData],
   );
   const categorizationBusy =
-    categorizingLine || categorizingAll || answering || accepting || rejecting || bulkAccepting || transferring;
+    categorizingLine ||
+    categorizingAll ||
+    answering ||
+    accepting ||
+    rejecting ||
+    bulkAccepting ||
+    transferring ||
+    refunding;
 
   const [filter, setFilter] = useState<Filter>('TODO');
   const [matchLine, setMatchLine] = useState<BankStatementLine | null>(null);
@@ -686,7 +698,22 @@ export function StatementDetailPage() {
                                 }
                               />
                             ) : null}
-                            {l.payerProposal ? null : (
+                            {l.amountCents < 0 ? (
+                              <VolunteerRefundCard
+                                line={l}
+                                busy={categorizationBusy}
+                                onAccept={(memberId, entryIds) =>
+                                  void run(
+                                    () =>
+                                      acceptVolunteerRefund({
+                                        variables: { input: { lineId: l.id, memberId, entryIds } },
+                                      }),
+                                    'Bénévole remboursé, ligne rapprochée',
+                                  )
+                                }
+                              />
+                            ) : null}
+                            {l.payerProposal || l.volunteerProposal ? null : (
                             <ProposalCard
                               line={l}
                               accounts={accounts}

@@ -433,9 +433,25 @@ lignes divergentes mises en évidence ; contrôle bloquant.
 
 ### Task 2.4 : Vérification staging
 
-- [ ] Deux PDF réels de banques différentes ; delta 0 ; fausser une ligne à la
-  main → `NEEDS_CHECK` ; corriger → `READY` ; vérifier le coût dans
-  `AiUsageLog`.
+- [x] Fait sur staging le 2026-09-11, sur le club démo, avec sa propre clé IA.
+  - **Deux relevés PDF de mises en page différentes**, déposés et lus par les
+    deux modèles (`anthropic/claude-sonnet-4-5` et `google/gemini-2.5-flash`) :
+    l'un à colonnes débit et crédit séparées avec « SOLDE PRÉCÉDENT / SOLDE
+    NOUVEAU », l'autre à montant signé et solde courant avec « Ancien solde /
+    Nouveau solde ». 5 lignes puis 4 lignes, **aucune divergence** entre les
+    deux lectures, soldes et dates lus justes, **delta 0**, chaînage vrai, les
+    deux relevés `READY`. Le second chaîne sur le solde de fin du premier.
+  - **Fausser une ligne → corriger** : « COTIS ASSURANCE MAIF 2027 » passée de
+    −184,20 € à −178,70 € fait tomber le relevé en `NEEDS_CHECK` avec un écart
+    de 5,50 € ; le retour à −184,20 € le ramène en `READY`. Même chose
+    vérifiée sur un relevé CSV (−39,90 € → −49,90 €, écart −10,00 €) : le
+    contrôle ne dépend pas du format.
+  - **Coût dans `AiUsageLog`** : quatre entrées `BANK_STATEMENT_OCR`, une par
+    modèle et par relevé — 1 centime pour Claude, 0 pour Gemini à chaque fois,
+    soit **2 centimes** pour les deux relevés.
+  - **Seule réserve :** les deux PDF sont fabriqués à l'image de vraies mises
+    en page, pas extraits de vrais relevés. Ils sont joints à la session pour
+    que tu puisses comparer avec les tiens.
 
 ### Réalisé (2026-09-11)
 
@@ -848,9 +864,16 @@ model ChequeDeposit {
   hors de la transaction de l'appelant (P2003, transaction annulée) ; le mode
   et la référence de paiement d'une écriture manuelle n'étaient jamais
   persistés.
-- [ ] Non rejoué sur staging : paiement de facture par chèque (aucune facture
-  ouverte sur `club-demo` ; chemin couvert par
-  `payments-record-manual.spec.ts`).
+- [x] Paiement de facture par chèque rejoué sur staging le 2026-09-11, sur le
+  club `demo` — le seul à avoir une facture ouverte. Facture de 138,00 €
+  payée par chèque n° 7788991 : un `Cheque` PENDING créé avec émetteur,
+  banque et date de réception, l'écriture d'encaissement DÉBIT 511200 /
+  CRÉDIT 706100 portée par le compte de transit des chèques, et la facture
+  passée à PAID. L'argent reste donc en portefeuille, jamais en banque.
+  Remise ensuite déposée (bordereau R-2026-0001) : DÉBIT 512000 / CRÉDIT
+  511200, chèque DEPOSITED, et le solde du 511200 revenu à zéro. C'est le
+  n° de bordereau porté par `paymentReference` qui sert ensuite de clé forte
+  au rapprochement (task 5.4).
 - [x] Rapprochement de la ligne « REMISE » : rejoué au lot 1 le 2026-09-11
   (clé forte `CHEQUE_DEPOSIT` + « REMISE », `origin AUTO`).
 
@@ -887,16 +910,41 @@ rapproche de la ligne banque.
 
 ### Task 6.3 : Rapprochement (extension du lot 1)
 
-- [ ] Lignes **débitrices** dont le libellé contient le nom d'un membre à solde
+- [x] Lignes **débitrices** dont le libellé contient le nom d'un membre à solde
   467 positif → proposition « Rembourser 3 notes de Jean Dupont = 87,40 € »
   quand la somme des items ouverts est égale ; sinon sélection manuelle des
-  items ; accepter → `recordReimbursement` + match, même transaction.
-  **Pas fait dans ce lot.** Le chemin inverse marche déjà et suffit : le
-  remboursement enregistré depuis l'écran des bénévoles crée une écriture du
-  montant exact sur le bon compte, que le rapprochement automatique du lot 1
-  relie à la ligne du relevé. Proposer depuis la ligne demanderait une
-  troisième sorte de proposition sur `BankStatementLine` ; à faire quand un
-  club aura assez de bénévoles pour que l'ordre inverse gêne.
+  items ; accepter → `recordReimbursement` + rapprochement.
+  Différée à la livraison du lot 6, faite le 2026-09-11.
+
+**Vérifié sur staging.** Un reçu de 18,60 € avancé par Florent Morel, puis un
+relevé CSV portant « VIR SEPA FLORENT MOREL REMB FRAIS BENEVOLE · −18,60 € ».
+À l'import, la ligne reçoit sa proposition toute seule : bon bénévole, bon
+reçu, `EXACT_ALL`, 100 %. Un clic sur « Rembourser 18,60 € » crée l'écriture
+DÉBIT 467100 / CRÉDIT 512000 datée du relevé, rapproche la ligne, efface la
+proposition et ramène le solde du bénévole à zéro. Aucun appel d'IA sur cette
+ligne.
+
+#### Écarts sur cette task
+
+- **La reconnaissance passe avant les règles ET avant l'IA**, comme le
+  virement d'adhérent. En faire une charge générique compterait la dépense
+  deux fois : elle a déjà été comptabilisée le jour du reçu.
+- **On ne propose rien quand deux jeux de reçus font le même total.** Choisir
+  reviendrait à trancher pour le trésorier, et rembourser le mauvais reçu ne
+  se voit pas sur un relevé. Au-delà de seize reçus ouverts, la recherche de
+  sous-ensemble est abandonnée : trop de combinaisons se ressemblent.
+- **Pas la même transaction que le rapprochement**, contrairement au texte du
+  plan, et pour la raison déjà retenue au lot 4 : le remboursement est le fait
+  durable — il éteint une dette réelle — alors que le rapprochement n'est
+  qu'un lien, qu'un clic refait. Une transaction commune ferait perdre le
+  remboursement parce qu'une liaison a échoué.
+- Le rapprochement est souvent déjà fait quand on y arrive : `recordReimbursement`
+  cherche lui-même une ligne de relevé correspondante (lot 7). L'acceptation ne
+  repose donc un lien que si la ligne attend encore, et l'origine du
+  rapprochement observée sur staging est `AUTO` plutôt que `PROPOSAL`.
+- Si le remboursement ne couvre pas exactement la ligne, il est **quand même
+  enregistré** mais la ligne n'est pas rapprochée : on ne pose pas une liaison
+  de travers, et le trésorier voit ce qui reste.
 
 ### Task 6.4 : GraphQL et admin
 
@@ -1187,6 +1235,61 @@ dépense en caisse et un dépôt d'espèces, puis dépôt du relevé bancaire PD
 mois. Attendu : intégrité OK, toutes les lignes rapprochées ou catégorisées,
 soldes 511200 et 467100 à 0 après remise et remboursement, solde 512x de
 ClubFlow égal au solde de fin du relevé.
+
+### Joué le 2026-09-11 — septembre 2027 sur le club démo
+
+**Les événements du mois**, saisis un à un comme le ferait un trésorier :
+deux chèques de cotisation (60,00 € et 45,00 €) reçus le 2, remis en banque
+le 8 ; une recette de buvette en espèces de 200,00 € et un achat de boissons
+de 18,00 € ; trois reçus avancés par Florent Morel (22,00 + 13,50 + 9,00 =
+44,50 €) ; un dépôt d'espèces de 150,00 € le 18 ; un prélèvement Orange et un
+virement d'adhérent portés par le relevé.
+
+**Le relevé de septembre** (2 824,87 € → 3 070,47 €, 5 lignes) : contrôle
+d'intégrité à zéro, chaînage juste. À l'import, **sans aucune action** :
+
+| Ligne | Résolution |
+|---|---|
+| REMISE CHEQUES 000531 · +105,00 € | rapprochée seule — clé forte du bordereau |
+| VERSEMENT ESPECES BORDEREAU 4441 · +150,00 € | rapprochée seule — le dépôt existait |
+| PRLV SEPA ORANGE SA · −39,90 € | proposition 626000 par la règle apprise |
+| VIR SEPA JOACHIM MOREL COTISATION · +75,00 € | proposition 706100 par l'IA |
+| VIR SEPA FLORENT MOREL REMB FRAIS · −44,50 € | proposition de remboursement de bénévole (lot 6.3) |
+
+Trois clics plus tard, **le relevé est `RECONCILED`, ses 5 lignes
+rapprochées**.
+
+**Les soldes attendus, tenus :**
+
+- mouvements du 512000 en septembre : **+245,60 €**, soit exactement
+  3 070,47 − 2 824,87 ;
+- **511200 à zéro** : les deux chèques reçus et remis dans le mois ;
+- **467100 à zéro** : les trois reçus avancés et remboursés dans le mois ;
+- **aucune ligne en attente** sur AUCUN relevé du club, tous formats et tous
+  mois confondus — les onze lignes restées ouvertes des relevés de test
+  antérieurs ont été catégorisées au passage, dont deux où l'IA a préféré
+  **poser une question** plutôt que deviner (« CB CARREFOUR MARKET », « ACHAT
+  CB STATION TOTAL ») et a proposé le bon compte après réponse.
+- Journal d'erreurs de l'API staging inchangé : 13 avant, 13 après.
+
+**L'écart résiduel, expliqué au centime.** Le solde 512000 de ClubFlow
+(3 233,07 €) dépasse le solde de fin du dernier relevé (3 070,47 €) de
+**162,60 €**, et cet écart est exactement la liste des écritures que plus
+aucune ligne ne couvre : deux cotisations saisies à la main le 05/09/2026
+(100,00 + 150,00) et le remboursement de bénévole du 11/09/2026 (−87,40),
+tous trois créés pendant les vérifications des lots précédents sans
+contrepartie sur un relevé. C'est précisément ce que le compteur « Écritures
+non rapprochées » de l'écran sert à montrer : la différence entre les livres
+et la banque n'est jamais un mystère, c'est une liste.
+
+**Deux points non couverts**, faute de matière sur le club démo :
+
+- **encaissements Stripe** : le club démo n'a pas de compte Stripe branché.
+  Le chemin a été vérifié à part sur `qa-test-club`, qui en a un (lot 8).
+- **encaissement du virement d'adhérent sur SA facture** : aucune facture
+  ouverte sur le club démo, donc le montant ne tombait sur rien et la
+  reconnaissance du payeur n'a rien proposé — comportement correct. La ligne
+  a été catégorisée en 706100. Le chemin complet a été vérifié au lot 4.
 
 ## Hors périmètre, noté pour plus tard
 

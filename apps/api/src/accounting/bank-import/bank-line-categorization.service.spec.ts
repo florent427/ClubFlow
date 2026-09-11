@@ -280,6 +280,8 @@ function makeWorld(opts: WorldOptions = {}) {
   const learning = new CategorizationLearningService(prisma as never);
   // Virements d'adhérents (lot 4) : testés dans leur propre spec.
   const payerLookup = { autoProposal: jest.fn(async () => null) };
+  // Remboursements de bénévoles (lot 6.3) : idem.
+  const volunteerLookup = { autoProposal: jest.fn(async () => null) };
 
   const svc = new BankLineCategorizationService(
     prisma as never,
@@ -292,6 +294,7 @@ function makeWorld(opts: WorldOptions = {}) {
     reconciliation as never,
     learning as never,
     payerLookup as never,
+    volunteerLookup as never,
   );
   return {
     svc,

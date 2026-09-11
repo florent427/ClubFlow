@@ -27,5 +27,8 @@ describe('VolunteerAdvancesResolver — schéma GraphQL', () => {
     expect(sdl).toContain('entryIds: [ID!]!');
     expect(sdl).toContain('oldestOccurredAt: String');
     expect(sdl).toContain('items: [VolunteerReimbursementItemGraph!]!');
+    expect(sdl).toContain(
+      'acceptBankLineVolunteerReimbursement(input: AcceptBankLineVolunteerReimbursementInput!): VolunteerReimbursementGraph!',
+    );
   });
 });

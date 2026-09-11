@@ -3528,6 +3528,17 @@ const BANK_LINE_FIELDS = `
       amountCents
     }
   }
+  volunteerProposal {
+  memberId
+  firstName
+  lastName
+  nameScore
+  amountMatch
+  entryIds
+  openCents
+  openCount
+  confidence
+  }
   proposal {
     accountCode
     accountLabel
@@ -4023,6 +4034,34 @@ export const BULK_ACCEPT_BANK_LINE_PROPOSALS = gql`
     bulkAcceptBankLineProposals(statementId: $statementId, lineIds: $lineIds) {
       id
       status
+    }
+  }
+`;
+
+export const BANK_LINE_VOLUNTEER_CANDIDATES = gql`
+  query BankLineVolunteerCandidates($lineId: ID!) {
+    bankLineVolunteerCandidates(lineId: $lineId) {
+    memberId
+    firstName
+    lastName
+    nameScore
+    amountMatch
+    entryIds
+    openCents
+    openCount
+    confidence
+    }
+  }
+`;
+
+export const ACCEPT_BANK_LINE_VOLUNTEER_REIMBURSEMENT = gql`
+  mutation AcceptBankLineVolunteerReimbursement(
+    $input: AcceptBankLineVolunteerReimbursementInput!
+  ) {
+    acceptBankLineVolunteerReimbursement(input: $input) {
+      id
+      totalCents
+      memberName
     }
   }
 `;

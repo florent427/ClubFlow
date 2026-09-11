@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { VolunteerAdvancesService } from './volunteer-advances.service';
 
 /**
@@ -37,7 +38,15 @@ type Entry = {
   advancedByMemberId: string | null;
 };
 
-function makeWorld(opts: { entries?: Entry[]; lines?: Line[]; reimbursedEntryIds?: string[] } = {}) {
+function makeWorld(
+  opts: {
+    entries?: Entry[];
+    lines?: Line[];
+    reimbursedEntryIds?: string[];
+    lineAmountCents?: number;
+    lineStatus?: string;
+  } = {},
+) {
   const entries: Entry[] = opts.entries ?? [];
   const lines: Line[] = opts.lines ?? [];
   const reimbursements: Array<Record<string, unknown>> = [];
@@ -45,6 +54,16 @@ function makeWorld(opts: { entries?: Entry[]; lines?: Line[]; reimbursedEntryIds
   for (const id of opts.reimbursedEntryIds ?? []) {
     items.push({ reimbursementId: 'r-old', entryId: id, amountCents: 0 });
   }
+  // La ligne de relevé qui porte le remboursement, quand il y en a une.
+  const line: Record<string, unknown> & { id: string; status: string } = {
+    id: 'l-1',
+    amountCents: opts.lineAmountCents ?? -8740,
+    bookedOn: new Date('2026-09-11T00:00:00.000Z'),
+    status: opts.lineStatus ?? 'UNMATCHED',
+    financialAccountId: 'fa-1',
+    proposedEntryId: null,
+    volunteerProposalJson: { memberId: 'm-1' },
+  };
   const members = [
     { id: 'm-1', clubId: CLUB, firstName: 'Jean', lastName: 'Dupont', status: 'ACTIVE' },
     { id: 'm-2', clubId: CLUB, firstName: 'Léa', lastName: 'Martin', status: 'ACTIVE' },
@@ -153,6 +172,20 @@ function makeWorld(opts: { entries?: Entry[]; lines?: Line[]; reimbursedEntryIds
         },
       ),
     },
+    bankStatementLine: {
+      findFirst: jest.fn(async ({ where }: { where: { id: string } }) =>
+        line.id === where.id ? line : null,
+      ),
+      findUniqueOrThrow: jest.fn(async () => ({ status: line.status })),
+      update: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        // `Prisma.DbNull` est une sentinelle, pas `null` : en base la colonne
+        // vaut NULL, et c'est cet état-là que le test doit voir.
+        for (const [k, v] of Object.entries(data)) {
+          line[k] = v === Prisma.DbNull ? null : v;
+        }
+        return line;
+      }),
+    },
   };
   prisma.$transaction = jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma));
 
@@ -169,7 +202,13 @@ function makeWorld(opts: { entries?: Entry[]; lines?: Line[]; reimbursedEntryIds
   };
   // Le relevé qui portera le virement n'est pas toujours déjà déposé : ce
   // double dit « aucune ligne à rapprocher », le cas ordinaire.
-  const reconciliation = { matchExistingLineForEntry: jest.fn(async () => null) };
+  const reconciliation = {
+    matchExistingLineForEntry: jest.fn(async (): Promise<string | null> => null),
+    match: jest.fn(async () => {
+      line.status = 'MATCHED';
+      return line;
+    }),
+  };
   const svc = new VolunteerAdvancesService(
     prisma as never,
     audit as never,
@@ -187,6 +226,7 @@ function makeWorld(opts: { entries?: Entry[]; lines?: Line[]; reimbursedEntryIds
     period,
     financialAccounts,
     reconciliation,
+    line,
   };
 }
 
@@ -457,5 +497,89 @@ describe('VolunteerAdvancesService.recordReimbursement', () => {
         entryIds: ['e-1', 'e-1'],
       }),
     ).rejects.toThrow(/deux fois/);
+  });
+});
+
+describe('VolunteerAdvancesService.acceptFromBankLine', () => {
+  function world(over: { lineAmountCents?: number; lineStatus?: string } = {}) {
+    const a = receipt('e-1', { status: 'POSTED', advancedByMemberId: 'm-1', amountCents: 4510 });
+    const b = receipt('e-2', { status: 'POSTED', advancedByMemberId: 'm-1', amountCents: 3000 });
+    return makeWorld({
+      entries: [a.entry, b.entry],
+      lines: [...a.lines, ...b.lines],
+      lineAmountCents: over.lineAmountCents ?? -7510,
+      lineStatus: over.lineStatus,
+    });
+  }
+
+  it('rembourse à la date et sur le compte de la ligne, puis la rapproche', async () => {
+    const w = world();
+    const r = await w.svc.acceptFromBankLine(CLUB, 'user-1', {
+      lineId: 'l-1',
+      memberId: 'm-1',
+      entryIds: ['e-1', 'e-2'],
+    });
+
+    expect(r.totalCents).toBe(7510);
+    // La date vient du relevé, pas du jour où le trésorier clique.
+    expect(w.reimbursements[0]).toMatchObject({
+      paidOn: new Date('2026-09-11T00:00:00.000Z'),
+      financialAccountId: 'fa-1',
+    });
+    expect(w.reconciliation.match).toHaveBeenCalledWith(
+      CLUB,
+      'user-1',
+      'l-1',
+      [{ entryId: expect.any(String), amountCents: 7510 }],
+      'PROPOSAL',
+    );
+    expect(w.line.volunteerProposalJson).toBeNull();
+  });
+
+  it('ne rapproche pas quand le remboursement ne couvre pas exactement la ligne', async () => {
+    // Le remboursement est écrit quand même : il éteint une dette réelle.
+    // C'est la LIAISON qu'on refuse de poser de travers.
+    const w = world({ lineAmountCents: -9999 });
+    const r = await w.svc.acceptFromBankLine(CLUB, 'user-1', {
+      lineId: 'l-1',
+      memberId: 'm-1',
+      entryIds: ['e-1', 'e-2'],
+    });
+
+    expect(r.totalCents).toBe(7510);
+    expect(w.reconciliation.match).not.toHaveBeenCalled();
+  });
+
+  it('ne rapproche pas deux fois quand la ligne a déjà été prise au vol', async () => {
+    const w = world();
+    // `recordReimbursement` cherche un relevé déjà déposé : ici il trouve.
+    w.reconciliation.matchExistingLineForEntry.mockImplementation(async () => {
+      w.line.status = 'MATCHED';
+      return 'st-1';
+    });
+
+    await w.svc.acceptFromBankLine(CLUB, 'user-1', {
+      lineId: 'l-1',
+      memberId: 'm-1',
+      entryIds: ['e-1', 'e-2'],
+    });
+
+    expect(w.reconciliation.match).not.toHaveBeenCalled();
+  });
+
+  it('refuse une ligne déjà rapprochée', async () => {
+    const w = world({ lineStatus: 'MATCHED' });
+    await expect(
+      w.svc.acceptFromBankLine(CLUB, 'user-1', { lineId: 'l-1', memberId: 'm-1', entryIds: ['e-1'] }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(w.reimbursements).toHaveLength(0);
+  });
+
+  it('refuse une ligne créditrice : un remboursement fait sortir l’argent', async () => {
+    const w = world({ lineAmountCents: 7510 });
+    await expect(
+      w.svc.acceptFromBankLine(CLUB, 'user-1', { lineId: 'l-1', memberId: 'm-1', entryIds: ['e-1'] }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(w.reimbursements).toHaveLength(0);
   });
 });

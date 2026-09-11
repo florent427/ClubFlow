@@ -5,6 +5,8 @@ import {
   AccountingEntrySource,
   AccountingEntryStatus,
   AccountingLineSide,
+  BankMatchOrigin,
+  BankStatementLineStatus,
   ClubFinancialAccountKind,
   MemberStatus,
   Prisma,
@@ -15,6 +17,7 @@ import { AccountingAuditService } from '../accounting-audit.service';
 import { AccountingPeriodService } from '../accounting-period.service';
 import { ClubFinancialAccountsService } from '../club-financial-accounts.service';
 import { BankReconciliationService } from '../bank-import/bank-reconciliation.service';
+import type { VolunteerBalanceForMatch } from '../bank-import/volunteer-refund-matcher';
 
 /** Compte de tiers unique : la ventilation par personne est sur l'écriture. */
 export const VOLUNTEER_ACCOUNT_CODE = '467100';
@@ -197,6 +200,34 @@ export class VolunteerAdvancesService {
     return [...byMember.values()].sort((a, b) => b.openCents - a.openCents);
   }
 
+  /**
+   * Les reçus ouverts groupés par bénévole, en UNE requête : ce que la
+   * reconnaissance d'un remboursement sur une ligne de relevé a besoin de
+   * savoir. Même source que `balances`, pour que les deux ne dérivent pas.
+   */
+  async openReceiptsByMember(clubId: string): Promise<VolunteerBalanceForMatch[]> {
+    const open = await this.openEntries(clubId, null);
+    const byMember = new Map<string, VolunteerBalanceForMatch>();
+    for (const e of open) {
+      const m = e.advancedByMember;
+      if (!m) continue;
+      const row = byMember.get(m.id) ?? {
+        memberId: m.id,
+        firstName: m.firstName,
+        lastName: m.lastName,
+        receipts: [],
+      };
+      row.receipts.push({
+        entryId: e.id,
+        label: e.label,
+        amountCents: e.amountCents,
+        occurredAt: e.occurredAt,
+      });
+      byMember.set(m.id, row);
+    }
+    return [...byMember.values()];
+  }
+
   /** Les reçus d'un bénévole qui attendent encore leur remboursement. */
   async openItems(clubId: string, memberId: string): Promise<VolunteerOpenItem[]> {
     const rows = await this.openEntries(clubId, memberId);
@@ -360,6 +391,78 @@ export class VolunteerAdvancesService {
       `[bénévole ${member.id}] remboursement de ${totalCents} c sur ${selected.length} reçu(s)`,
     );
     return this.getReimbursement(clubId, created.id);
+  }
+
+  /**
+   * Accepte la proposition portée par une ligne de relevé : le remboursement
+   * est enregistré aux date et compte de la ligne, puis la ligne lui est
+   * rapprochée.
+   *
+   * Séquentiel et non transactionnel, comme l'encaissement d'un virement
+   * d'adhérent (lot 4) : le remboursement est le fait durable — il éteint
+   * une dette réelle — et le rapprochement n'est qu'un lien, qu'on peut
+   * refaire d'un clic s'il manque. L'inverse serait pire : une transaction
+   * commune ferait perdre le remboursement parce qu'une liaison a échoué.
+   */
+  async acceptFromBankLine(
+    clubId: string,
+    userId: string,
+    input: { lineId: string; memberId: string; entryIds: string[] },
+  ) {
+    const line = await this.prisma.bankStatementLine.findFirst({
+      where: { id: input.lineId, clubId },
+      select: {
+        id: true,
+        amountCents: true,
+        bookedOn: true,
+        status: true,
+        financialAccountId: true,
+        proposedEntryId: true,
+      },
+    });
+    if (!line) throw new NotFoundException('Ligne introuvable');
+    if (line.status !== BankStatementLineStatus.UNMATCHED) {
+      throw new BadRequestException('Seule une ligne à traiter peut porter un remboursement.');
+    }
+    if (line.amountCents >= 0) {
+      throw new BadRequestException('Un remboursement fait sortir l’argent du compte.');
+    }
+
+    const reimbursement = await this.recordReimbursement(clubId, userId, {
+      memberId: input.memberId,
+      financialAccountId: line.financialAccountId,
+      paidOn: line.bookedOn,
+      entryIds: input.entryIds,
+    });
+    if (reimbursement.totalCents !== Math.abs(line.amountCents)) {
+      // `recordReimbursement` a déjà écrit : on ne défait rien, mais on ne
+      // rapproche pas une ligne que l'écriture ne couvre pas exactement.
+      this.logger.warn(
+        `[ligne ${line.id}] remboursement de ${reimbursement.totalCents} c pour une ligne de ${line.amountCents} c : rapprochement laissé à la main.`,
+      );
+      return reimbursement;
+    }
+
+    // `recordReimbursement` a peut-être déjà rapproché la ligne en cherchant
+    // un relevé déjà déposé. On ne le refait que si elle attend encore.
+    const after = await this.prisma.bankStatementLine.findUniqueOrThrow({
+      where: { id: line.id },
+      select: { status: true },
+    });
+    if (after.status === BankStatementLineStatus.UNMATCHED && reimbursement.entryId) {
+      await this.reconciliation.match(
+        clubId,
+        userId,
+        line.id,
+        [{ entryId: reimbursement.entryId, amountCents: reimbursement.totalCents }],
+        BankMatchOrigin.PROPOSAL,
+      );
+    }
+    await this.prisma.bankStatementLine.update({
+      where: { id: line.id },
+      data: { volunteerProposalJson: Prisma.DbNull },
+    });
+    return reimbursement;
   }
 
   async listReimbursements(clubId: string, memberId?: string | null) {

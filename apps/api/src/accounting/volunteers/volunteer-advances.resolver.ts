@@ -158,6 +158,24 @@ export class RecordVolunteerReimbursementInput {
   entryIds!: string[];
 }
 
+@InputType()
+export class AcceptBankLineVolunteerReimbursementInput {
+  @Field(() => ID)
+  @IsUUID()
+  lineId!: string;
+
+  @Field(() => ID)
+  @IsUUID()
+  memberId!: string;
+
+  @Field(() => [ID], { description: 'Reçus soldés par ce remboursement.' })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @IsUUID('all', { each: true })
+  entryIds!: string[];
+}
+
 /** Écritures (reçus) d'un bénévole et remboursements (ADR-0016). */
 @Resolver()
 @UseGuards(GqlJwtAuthGuard, ClubContextGuard, ClubAdminRoleGuard, ClubModuleEnabledGuard)
@@ -228,6 +246,24 @@ export class VolunteerAdvancesResolver {
       memberId: input.memberId,
       financialAccountId: input.financialAccountId,
       paidOn: parseIsoDate(input.paidOn),
+      entryIds: input.entryIds,
+    });
+    return toGraph(row);
+  }
+
+  @Mutation(() => VolunteerReimbursementGraph, {
+    name: 'acceptBankLineVolunteerReimbursement',
+    description:
+      'Accepte la proposition d’une ligne de relevé : rembourse le bénévole à la date et sur le compte de la ligne, puis rapproche la ligne.',
+  })
+  async acceptBankLineVolunteerReimbursement(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('input') input: AcceptBankLineVolunteerReimbursementInput,
+  ): Promise<VolunteerReimbursementGraph> {
+    const row = await this.volunteers.acceptFromBankLine(club.id, user.userId, {
+      lineId: input.lineId,
+      memberId: input.memberId,
       entryIds: input.entryIds,
     });
     return toGraph(row);
