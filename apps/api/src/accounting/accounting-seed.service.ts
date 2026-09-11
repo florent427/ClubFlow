@@ -107,6 +107,15 @@ export class AccountingSeedService {
 
     // === Actif / tiers / trésorerie ===
     { code: '411000', label: 'Clients / Cotisants', kind: 'ASSET', sortOrder: 80 },
+    // Ce qu'un bénévole a avancé de sa poche et que le club lui doit
+    // (ADR-0016). Un seul compte : la ventilation par personne est portée
+    // par l'écriture, pas par N sous-comptes.
+    {
+      code: '467100',
+      label: 'Bénévoles, frais avancés à rembourser',
+      kind: 'LIABILITY',
+      sortOrder: 80,
+    },
     // Chèques reçus, en portefeuille jusqu'à la remise (ADR-0015).
     { code: '511200', label: 'Chèques à encaisser (en portefeuille)', kind: 'ASSET', sortOrder: 81 },
     // Banques (jusqu'à 5 banques distinctes — extensible via UI plan comptable)

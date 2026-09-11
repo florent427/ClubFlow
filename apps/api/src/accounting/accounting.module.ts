@@ -25,6 +25,8 @@ import { BankStatementOcrService } from './bank-import/bank-statement-ocr.servic
 import { BankStatementIntegrityService } from './bank-import/bank-statement-integrity.service';
 import { BankLineCategorizationService } from './bank-import/bank-line-categorization.service';
 import { BankPayerLookupService } from './bank-import/bank-payer-lookup.service';
+import { VolunteerAdvancesService } from './volunteers/volunteer-advances.service';
+import { VolunteerAdvancesResolver } from './volunteers/volunteer-advances.resolver';
 import { CategorizationLearningService } from './bank-import/categorization-learning.service';
 import { PdfPageRenderer } from './ocr-shared';
 
@@ -51,10 +53,12 @@ import { PdfPageRenderer } from './ocr-shared';
     BankStatementIntegrityService,
     BankLineCategorizationService,
     BankPayerLookupService,
+    VolunteerAdvancesService,
     CategorizationLearningService,
     PdfPageRenderer,
     AccountingResolver,
     BankImportResolver,
+    VolunteerAdvancesResolver,
     ClubModuleEnabledGuard,
   ],
   exports: [
@@ -77,6 +81,7 @@ import { PdfPageRenderer } from './ocr-shared';
     BankStatementIntegrityService,
     BankLineCategorizationService,
     BankPayerLookupService,
+    VolunteerAdvancesService,
     CategorizationLearningService,
     PdfPageRenderer,
   ],
