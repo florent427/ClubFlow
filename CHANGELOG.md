@@ -9,6 +9,25 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.45.0](https://github.com/florent427/ClubFlow/compare/v0.44.0...v0.45.0) (2026-09-11)
+
+
+### ✨ Features
+
+* **accounting:** chèques à encaisser 511200, remises et bordereau (lot 5) ([81b648a](https://github.com/florent427/ClubFlow/commit/81b648a6cc4f99e5e688ddb81b488972e9bc7def))
+* **accounting:** les chèques transitent par 511200 jusqu'à la remise ([0918454](https://github.com/florent427/ClubFlow/commit/0918454fe3ed38b1e0ea7c02e886b9162d669e05))
+* **admin:** page Chèques & remises, détails du chèque à l'encaissement ([1a0b0fc](https://github.com/florent427/ClubFlow/commit/1a0b0fc2ba51d48157c803dee38424ca592e42c4))
+* **api:** module chèques et remises — fiche, photo, remise groupée, bordereau PDF ([9ca4390](https://github.com/florent427/ClubFlow/commit/9ca4390a67bffd4781b997b3204241c9951c5f4b))
+* **db:** chèques en portefeuille (511200), remises et bordereau (ADR-0015) ([58e6dc1](https://github.com/florent427/ClubFlow/commit/58e6dc1a7051fb7f72ace2ba4e8bf5a81b45354a))
+* **mobile-admin:** détails du chèque et photo à l'encaissement ([1180420](https://github.com/florent427/ClubFlow/commit/11804201b890a3163773b6297b129dbe9d4b7cbc))
+
+
+### 🐛 Bug Fixes
+
+* **accounting:** journal d'audit écrit dans la transaction de l'appelant ([f5084e9](https://github.com/florent427/ClubFlow/commit/f5084e9ba36aba8544b555c7179bb0b524b457f3))
+* **accounting:** mode et référence de paiement persistés sur une écriture manuelle ([50f2795](https://github.com/florent427/ClubFlow/commit/50f279568c0af60d7bb2670144c3d626c67ea372))
+* **api:** bordereau de remise sur une seule page ([9485a24](https://github.com/florent427/ClubFlow/commit/9485a2428458b37543119dc6709523e9a3ddac96))
+
 ## [0.44.0](https://github.com/florent427/ClubFlow/compare/v0.43.0...v0.44.0) (2026-09-10)
 
 
