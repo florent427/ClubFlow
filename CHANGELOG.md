@@ -9,6 +9,15 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.53.0](https://github.com/florent427/ClubFlow/compare/v0.52.0...v0.53.0) (2026-09-11)
+
+
+### ✨ Features
+
+* **admin:** carte de remboursement de bénévole sur une ligne de relevé ([4b56373](https://github.com/florent427/ClubFlow/commit/4b56373940f57d6000d68518689e5fe9834a3f94))
+* **api:** reconnaître un remboursement de bénévole sur une ligne débitrice (lot 6.3) ([966a8d5](https://github.com/florent427/ClubFlow/commit/966a8d5f777cfaec6fe73f6913a8cf103cd242fd))
+* **db:** proposition de remboursement de bénévole sur une ligne de relevé ([d5ca85b](https://github.com/florent427/ClubFlow/commit/d5ca85b9945845dbde0195a9ffd7a2933011be61))
+
 ## [0.52.0](https://github.com/florent427/ClubFlow/compare/v0.51.0...v0.52.0) (2026-09-11)
 
 
