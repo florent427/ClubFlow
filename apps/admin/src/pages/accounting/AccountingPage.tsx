@@ -1281,6 +1281,15 @@ export function AccountingPage() {
                       >
                         {statusLabel(e.status)}
                       </span>
+                      {e.lines.some((l) => l.bankReconciledAt) ? (
+                        <span
+                          className="cf-pill cf-pill--ok"
+                          style={{ marginLeft: 4 }}
+                          title="Couverte par une ligne de relevé bancaire"
+                        >
+                          Rapproché
+                        </span>
+                      ) : null}
                     </td>
                     <td>
                       <small className="cf-muted">

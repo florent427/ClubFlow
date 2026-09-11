@@ -217,6 +217,7 @@ model Club {
   paymentRoutes              ClubPaymentRoute[]
   cheques                    Cheque[]
   chequeDeposits             ChequeDeposit[]
+  bankStatements             BankStatement[]
 
   documents       ClubDocument[]
   signedDocuments ClubSignedDocument[]
@@ -1489,6 +1490,9 @@ model ClubFinancialAccount {
   /// (découvert). Null = jamais renseigné.
   openingBalanceCents Int?
   openingBalanceOn    DateTime? @db.Date
+  /// Mapping de colonnes CSV mémorisé au premier import (ADR-0014 §3) :
+  /// chaque banque a son format, on ne le redemande pas à chaque relevé.
+  csvMappingJson      Json?
 
   club              Club              @relation(fields: [clubId], references: [id], onDelete: Cascade)
   accountingAccount AccountingAccount @relation(fields: [accountingAccountId], references: [id], onDelete: Restrict)
@@ -1497,6 +1501,7 @@ model ClubFinancialAccount {
   entries        AccountingEntry[]
   payments       Payment[]
   chequeDeposits ChequeDeposit[]
+  bankStatements BankStatement[]
 
   /// Empêche 2 comptes financiers liés au même compte PCG (un compte PCG
   /// ne peut représenter qu'un compte réel).
@@ -1610,6 +1615,158 @@ model ChequeDeposit {
 
   @@unique([clubId, number])
   @@index([clubId, depositedOn])
+}
+
+/// Format d'origine d'un relevé (ADR-0014 §3). OFX et CSV se lisent sans
+/// IA ; PDF passe par la double lecture (lot 2) ; STRIPE_API est un relevé
+/// synthétisé depuis les balance transactions du transit (lot 8).
+enum BankStatementFormat {
+  OFX
+  CSV
+  PDF
+  STRIPE_API
+}
+
+/// PARSING (lecture en cours) → NEEDS_CHECK (intégrité KO, chaînage
+/// inconnu ou divergences) → READY (intégrité OK, exploitable) → RECONCILED
+/// (plus aucune ligne à traiter). FAILED = lecture impossible.
+///
+/// Une seule fonction fait passer un relevé en READY, et elle n'accepte que
+/// le résultat du contrôle d'intégrité (ADR-0014 §4).
+enum BankStatementStatus {
+  PARSING
+  NEEDS_CHECK
+  READY
+  RECONCILED
+  FAILED
+}
+
+enum BankStatementLineStatus {
+  UNMATCHED
+  SUGGESTED
+  MATCHED
+  IGNORED
+}
+
+enum BankStatementLineIgnoreReason {
+  /// Antérieure à la date de reprise : hors périmètre, jamais rapprochée.
+  BEFORE_TAKEOVER
+  DUPLICATE
+  NOT_CLUB
+  OTHER
+}
+
+/// Qui a posé le rapprochement : AUTO = clé forte ou candidat unique,
+/// MANUAL = le trésorier, PROPOSAL = acceptation d'une proposition (lot 3).
+enum BankMatchOrigin {
+  AUTO
+  MANUAL
+  PROPOSAL
+}
+
+/// Relevé bancaire déposé (ADR-0014). Source de vérité du compte 51x : une
+/// ligne = une écriture. Les relevés d'un même compte ne se chevauchent pas
+/// et se chaînent par leurs soldes.
+model BankStatement {
+  id                  String              @id @default(uuid())
+  clubId              String
+  financialAccountId  String
+  /// Fichier d'origine, archivé en média privé.
+  mediaAssetId        String?
+  format              BankStatementFormat
+  status              BankStatementStatus @default(NEEDS_CHECK)
+  periodStart         DateTime            @db.Date
+  periodEnd           DateTime            @db.Date
+  openingBalanceCents Int
+  closingBalanceCents Int
+  lineCount           Int                 @default(0)
+  /// début + Σ lignes − fin. 0 = juste. Null = non calculé.
+  integrityDeltaCents Int?
+  /// Solde de début = solde de fin du relevé précédent (ou solde d'ouverture
+  /// du compte pour le premier). Null = inconnu, solde d'ouverture absent.
+  chainOk             Boolean?
+  chainExpectedCents  Int?
+  previousStatementId String?
+  /// Lecture PDF à deux modèles (lot 2) : sorties brutes, modèles, coût.
+  readingAJson        Json?
+  readingBJson        Json?
+  readingModelA       String?
+  readingModelB       String?
+  aiCostCents         Int                 @default(0)
+  error               String?
+  importedByUserId    String?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  club             Club                 @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  financialAccount ClubFinancialAccount @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
+  mediaAsset       MediaAsset?          @relation("BankStatementFile", fields: [mediaAssetId], references: [id], onDelete: SetNull)
+  previous         BankStatement?       @relation("BankStatementChain", fields: [previousStatementId], references: [id], onDelete: SetNull)
+  next             BankStatement[]      @relation("BankStatementChain")
+  lines            BankStatementLine[]
+
+  @@index([clubId, financialAccountId, periodStart])
+  @@index([clubId, status])
+}
+
+/// Ligne d'un relevé. `amountCents` est SIGNÉ : positif = crédit pour le
+/// club (argent qui entre), négatif = débit.
+model BankStatementLine {
+  id                 String                         @id @default(uuid())
+  clubId             String
+  statementId        String
+  /// Dénormalisé : les requêtes de rapprochement filtrent par compte.
+  financialAccountId String
+  lineIndex          Int
+  bookedOn           DateTime                       @db.Date
+  valueOn            DateTime?                      @db.Date
+  label              String
+  rawLabel           String
+  reference          String?
+  counterpartyName   String?
+  amountCents        Int
+  balanceAfterCents  Int?
+  /// Identifiant de transaction OFX (FITID), quand la banque en fournit.
+  fitId              String?
+  status             BankStatementLineStatus        @default(UNMATCHED)
+  ignoreReason       BankStatementLineIgnoreReason?
+  ignoreNote         String?
+  /// Lecture PDF (lot 2) : les deux modèles ont-ils lu la même ligne ?
+  readingAgreement   Boolean                        @default(true)
+  divergenceJson     Json?
+  /// Candidats plausibles quand le rapprochement automatique hésite.
+  candidateEntryIds  String[]                       @default([])
+  resolvedAt         DateTime?
+  resolvedByUserId   String?
+  createdAt          DateTime                       @default(now())
+  updatedAt          DateTime                       @updatedAt
+
+  statement BankStatement            @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  matches   BankStatementLineMatch[]
+
+  @@index([clubId, statementId])
+  @@index([clubId, status])
+  @@index([clubId, financialAccountId, bookedOn])
+}
+
+/// Liaison N↔N ligne ↔ écriture, avec la part de l'écriture couverte par la
+/// ligne : un virement pour deux enfants, une facture réglée en deux fois,
+/// une remise pour N chèques.
+model BankStatementLineMatch {
+  id              String          @id @default(uuid())
+  clubId          String
+  lineId          String
+  entryId         String
+  amountCents     Int
+  origin          BankMatchOrigin
+  matchedByUserId String?
+  createdAt       DateTime        @default(now())
+
+  line  BankStatementLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  entry AccountingEntry   @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@unique([lineId, entryId])
+  @@index([clubId, entryId])
 }
 
 enum PricingAdjustmentType {
@@ -2201,6 +2358,9 @@ enum AccountingEntrySource {
   /// Remise de chèques en banque (ADR-0015) : DÉBIT 512x / CRÉDIT 511200 du
   /// total de la remise, et son annulation par contre-passation.
   CHEQUE_DEPOSIT
+  /// Écriture née d'une ligne de relevé bancaire sans écriture correspondante
+  /// (ADR-0014 §7) : proposée par règle ou par IA, validée par un humain.
+  BANK_IMPORT
 }
 
 /// Côté comptable d'une ligne d'écriture. AUTO = dérivé à la création
@@ -2321,6 +2481,8 @@ model AccountingEntry {
   cheques                 Cheque[]
   /// Remise de chèques dont cette écriture est le virement 511200 → 512x.
   chequeDeposit           ChequeDeposit?
+  /// Lignes de relevé bancaire rapprochées de cette écriture (ADR-0014 §2).
+  bankMatches             BankStatementLineMatch[]
 
   /// Idempotence du virement Stripe : deux livraisons du même `payout.paid`
   /// ne peuvent pas produire deux écritures. Les NULL ne se heurtent pas
@@ -3763,6 +3925,7 @@ model MediaAsset {
   chatThumbnails        ChatMessageAttachment[] @relation("ChatAttachmentThumbnail")
   chequeImages          Cheque[]                @relation("ChequeImage")
   chequeDepositSlips    ChequeDeposit[]         @relation("ChequeDepositSlip")
+  bankStatements        BankStatement[]         @relation("BankStatementFile")
 
   @@index([clubId, ownerKind, ownerId])
   @@index([clubId, sha256])
@@ -4184,6 +4347,10 @@ enum AccountingAuditAction {
   FISCAL_YEAR_CLOSE
   CHEQUE_DEPOSIT
   CHEQUE_DEPOSIT_CANCEL
+  STATEMENT_IMPORT
+  STATEMENT_DELETE
+  RECONCILE
+  UNRECONCILE
 }
 
 /// Plan comptable curated par club (~30 comptes PCG associatif seedés à

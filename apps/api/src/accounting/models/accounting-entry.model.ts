@@ -72,6 +72,10 @@ export class AccountingEntryLineGraph {
   @Field(() => Int, { nullable: true })
   vatAmountCents!: number | null;
 
+  /** Date à laquelle un relevé bancaire a couvert cette ligne 51x (ADR-0014). */
+  @Field(() => Date, { nullable: true })
+  bankReconciledAt!: Date | null;
+
   // --- Validation granulaire ---
   @Field(() => Date, { nullable: true })
   validatedAt!: Date | null;

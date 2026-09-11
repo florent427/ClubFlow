@@ -109,6 +109,7 @@ interface EntryRow {
     creditCents: number;
     vatRate: { toNumber: () => number } | null;
     vatAmountCents: number | null;
+    bankReconciledAt: Date | null;
     validatedAt: Date | null;
     iaSuggestedAccountCode: string | null;
     iaReasoning: string | null;
@@ -184,6 +185,7 @@ function toGraph(entry: EntryRow): AccountingEntryGraph {
         creditCents: l.creditCents,
         vatRate: l.vatRate ? l.vatRate.toNumber() : null,
         vatAmountCents: l.vatAmountCents,
+        bankReconciledAt: l.bankReconciledAt,
         validatedAt: l.validatedAt,
         iaSuggestedAccountCode: l.iaSuggestedAccountCode,
         iaReasoning: l.iaReasoning,
@@ -256,6 +258,31 @@ interface FinancialAccountRow {
   notes: string | null;
   openingBalanceCents: number | null;
   openingBalanceOn: Date | null;
+  csvMappingJson?: unknown;
+}
+
+/** Le mapping est stocké en JSON libre : on ne rend que ce qui a la bonne forme. */
+function csvMappingFromJson(raw: unknown): ClubFinancialAccountGraph['csvMapping'] {
+  if (!raw || typeof raw !== 'object') return null;
+  const m = raw as Record<string, unknown>;
+  if (typeof m.delimiter !== 'string' || typeof m.dateCol !== 'number' || typeof m.labelCol !== 'number') {
+    return null;
+  }
+  const int = (v: unknown): number | null => (typeof v === 'number' ? v : null);
+  return {
+    delimiter: m.delimiter,
+    hasHeader: m.hasHeader === true,
+    dateCol: m.dateCol,
+    labelCol: m.labelCol,
+    amountCol: int(m.amountCol),
+    debitCol: int(m.debitCol),
+    creditCol: int(m.creditCol),
+    balanceCol: int(m.balanceCol),
+    valueDateCol: int(m.valueDateCol),
+    referenceCol: int(m.referenceCol),
+    dateFormat: typeof m.dateFormat === 'string' ? m.dateFormat : 'DMY',
+    decimalSeparator: typeof m.decimalSeparator === 'string' ? m.decimalSeparator : ',',
+  };
 }
 
 function toFinancialAccountGraph(r: FinancialAccountRow): ClubFinancialAccountGraph {
@@ -275,6 +302,7 @@ function toFinancialAccountGraph(r: FinancialAccountRow): ClubFinancialAccountGr
     notes: r.notes,
     openingBalanceCents: r.openingBalanceCents,
     openingBalanceOn: r.openingBalanceOn ? formatIsoDate(r.openingBalanceOn) : null,
+    csvMapping: csvMappingFromJson(r.csvMappingJson),
   };
 }
 
@@ -458,7 +486,7 @@ export class AccountingResolver {
     @CurrentUser() user: RequestUser,
     @Args('input') input: CreateAccountingEntryInput,
   ): Promise<AccountingEntryGraph> {
-    await this.accounting.createManualEntry(club.id, user.userId, {
+    const created = await this.accounting.createManualEntry(club.id, user.userId, {
       kind: input.kind,
       label: input.label,
       accountCode: input.accountCode,
@@ -472,14 +500,10 @@ export class AccountingResolver {
       vatAmountCents: input.vatAmountCents ?? null,
       financialAccountId: input.financialAccountId ?? null,
     });
-    // Récupère l'entry pleine pour le retour
-    const latest = await this.accounting.listEntries(club.id, {
-      limit: 1,
-    });
-    if (latest.length === 0) {
-      throw new Error('Création échouée');
-    }
-    return toGraph(latest[0] as unknown as EntryRow);
+    // L'écriture créée, pas « la plus récente du club » : une écriture datée
+    // avant une autre existante n'est pas la première de la liste.
+    const entry = await this.accounting.getEntry(club.id, created.id);
+    return toGraph(entry as unknown as EntryRow);
   }
 
   @Mutation(() => AccountingEntryGraph, { name: 'cancelClubAccountingEntry' })

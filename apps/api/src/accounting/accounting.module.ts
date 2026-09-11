@@ -18,6 +18,9 @@ import { AccountingSuggestionService } from './accounting-suggestion.service';
 import { ClubFinancialAccountsService } from './club-financial-accounts.service';
 import { ClubPaymentRoutesService } from './club-payment-routes.service';
 import { ReceiptOcrService } from './receipt-ocr.service';
+import { BankImportResolver } from './bank-import/bank-import.resolver';
+import { BankReconciliationService } from './bank-import/bank-reconciliation.service';
+import { BankStatementService } from './bank-import/bank-statement.service';
 
 @Module({
   imports: [PrismaModule, AiModule, MediaModule],
@@ -36,7 +39,10 @@ import { ReceiptOcrService } from './receipt-ocr.service';
     ClubPaymentRoutesService,
     AccountingConsolidationService,
     ReceiptOcrService,
+    BankReconciliationService,
+    BankStatementService,
     AccountingResolver,
+    BankImportResolver,
     ClubModuleEnabledGuard,
   ],
   exports: [
@@ -53,6 +59,8 @@ import { ReceiptOcrService } from './receipt-ocr.service';
     ClubPaymentRoutesService,
     AccountingConsolidationService,
     ReceiptOcrService,
+    BankReconciliationService,
+    BankStatementService,
   ],
 })
 export class AccountingModule {}

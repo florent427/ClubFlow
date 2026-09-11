@@ -1668,6 +1668,8 @@ export type AccountingEntryLineRow = {
   vatRate: number | null;
   vatAmountCents: number | null;
   validatedAt: string | null;
+  /** Date à laquelle un relevé bancaire a couvert cette ligne 51x. */
+  bankReconciledAt: string | null;
   iaSuggestedAccountCode: string | null;
   iaReasoning: string | null;
   iaConfidencePct: number | null;
@@ -1841,6 +1843,8 @@ export type ClubFinancialAccount = {
   openingBalanceCents: number | null;
   /** « YYYY-MM-DD ». */
   openingBalanceOn: string | null;
+  /** Mapping CSV mémorisé au premier import de relevé (ADR-0014). */
+  csvMapping: CsvMapping | null;
 };
 
 export type ClubFinancialAccountsData = {
@@ -1885,6 +1889,154 @@ export type AccountingFiscalYearClose = {
 export type AccountingFiscalYearClosesData = {
   clubAccountingFiscalYearCloses: AccountingFiscalYearClose[];
 };
+
+// ── Relevés bancaires et rapprochement (ADR-0014) ──────────────────────
+
+export type BankStatementFormatGql = 'OFX' | 'CSV' | 'PDF' | 'STRIPE_API';
+export type BankStatementStatusGql =
+  | 'PARSING'
+  | 'NEEDS_CHECK'
+  | 'READY'
+  | 'RECONCILED'
+  | 'FAILED';
+export type BankStatementLineStatusGql =
+  | 'UNMATCHED'
+  | 'SUGGESTED'
+  | 'MATCHED'
+  | 'IGNORED';
+export type BankStatementLineIgnoreReasonGql =
+  | 'BEFORE_TAKEOVER'
+  | 'DUPLICATE'
+  | 'NOT_CLUB'
+  | 'OTHER';
+
+export type BankLineMatch = {
+  entryId: string;
+  amountCents: number;
+  origin: 'AUTO' | 'MANUAL' | 'PROPOSAL';
+  entryLabel: string;
+  entryOccurredAt: string;
+  entryKind: string;
+  entrySource: string;
+  entryAmountCents: number;
+};
+
+export type BankStatementLine = {
+  id: string;
+  lineIndex: number;
+  bookedOn: string;
+  valueOn: string | null;
+  label: string;
+  rawLabel: string;
+  reference: string | null;
+  /** Signé : positif = crédit pour le club. */
+  amountCents: number;
+  balanceAfterCents: number | null;
+  status: BankStatementLineStatusGql;
+  ignoreReason: BankStatementLineIgnoreReasonGql | null;
+  ignoreNote: string | null;
+  candidateEntryIds: string[];
+  matches: BankLineMatch[];
+  resolvedAt: string | null;
+};
+
+export type BankStatementListItem = {
+  id: string;
+  financialAccountId: string;
+  financialAccountLabel: string;
+  format: BankStatementFormatGql;
+  status: BankStatementStatusGql;
+  periodStart: string;
+  periodEnd: string;
+  openingBalanceCents: number;
+  closingBalanceCents: number;
+  lineCount: number;
+  integrityDeltaCents: number | null;
+  chainOk: boolean | null;
+  chainExpectedCents: number | null;
+  previousStatementId: string | null;
+  fileUrl: string | null;
+  fileName: string | null;
+  warnings: string | null;
+  unmatchedCount: number;
+  suggestedCount: number;
+  matchedCount: number;
+  ignoredCount: number;
+  createdAt: string;
+};
+
+export type BankStatement = BankStatementListItem & { lines: BankStatementLine[] };
+
+export type BankLineCandidate = {
+  entryId: string;
+  label: string;
+  occurredAt: string;
+  kind: string;
+  source: string;
+  amountCents: number;
+  remainingCents: number;
+  strong: boolean;
+};
+
+export type ReconciliationAccountSummary = {
+  financialAccountId: string;
+  label: string;
+  accountingAccountCode: string;
+  openingBalanceSet: boolean;
+  statementCount: number;
+  lastPeriodEnd: string | null;
+  lastStatus: BankStatementStatusGql | null;
+  linesToHandle: number;
+  unreconciledEntries: number;
+};
+
+export type CsvMapping = {
+  delimiter: string;
+  hasHeader: boolean;
+  dateCol: number;
+  labelCol: number;
+  amountCol: number | null;
+  debitCol: number | null;
+  creditCol: number | null;
+  balanceCol: number | null;
+  valueDateCol: number | null;
+  referenceCol: number | null;
+  dateFormat: 'DMY' | 'YMD' | 'MDY';
+  decimalSeparator: ',' | '.';
+};
+
+export type CsvPreview = {
+  delimiter: string;
+  encoding: string;
+  hasHeader: boolean;
+  headers: string[];
+  sampleRows: string[][];
+  rowCount: number;
+  mapping: CsvMapping;
+  parsedCount: number;
+  previewLines: Array<{
+    bookedOn: string;
+    label: string;
+    amountCents: number;
+    balanceAfterCents: number | null;
+  }>;
+  openingBalanceCents: number | null;
+  closingBalanceCents: number | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  warnings: string[];
+  error: string | null;
+};
+
+export type ClubReconciliationSummaryData = {
+  clubReconciliationSummary: ReconciliationAccountSummary[];
+};
+export type ClubBankStatementsData = {
+  clubBankStatements: BankStatementListItem[];
+};
+export type ClubBankStatementData = { clubBankStatement: BankStatement };
+export type BankLineCandidatesData = { bankLineCandidates: BankLineCandidate[] };
+export type PreviewCsvStatementData = { previewCsvStatement: CsvPreview };
 
 export type ClubPaymentRoute = {
   id: string;

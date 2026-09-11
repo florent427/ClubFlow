@@ -1,5 +1,6 @@
 import { Field, ID, Int, ObjectType, registerEnumType } from '@nestjs/graphql';
 import { ClubFinancialAccountKind } from '@prisma/client';
+import { CsvMappingGraph } from '../bank-import/models/bank-statement.model';
 
 registerEnumType(ClubFinancialAccountKind, {
   name: 'ClubFinancialAccountKind',
@@ -57,4 +58,8 @@ export class ClubFinancialAccountGraph {
   /** « YYYY-MM-DD ». */
   @Field(() => String, { nullable: true })
   openingBalanceOn!: string | null;
+
+  /** Mapping CSV mémorisé au premier import de relevé (ADR-0014 §3). */
+  @Field(() => CsvMappingGraph, { nullable: true })
+  csvMapping!: CsvMappingGraph | null;
 }

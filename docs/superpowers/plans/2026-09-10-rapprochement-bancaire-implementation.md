@@ -223,111 +223,164 @@ model BankStatementLineMatch {
 }
 ```
 
-- [ ] `AccountingEntrySource` : `BANK_IMPORT`. `AccountingAuditAction` :
+- [x] `AccountingEntrySource` : `BANK_IMPORT`. `AccountingAuditAction` :
   `STATEMENT_IMPORT`, `RECONCILE`, `UNRECONCILE`. `ClubFinancialAccount.csvMappingJson Json?`.
-- [ ] `register-enums.ts`. `db push`.
+- [x] `register-enums.ts`. `db push`.
 
 ### Task 1.2 : Parseurs (fonctions pures)
 
-- [ ] `ofx-parser.ts` : SGML et XML ; `STMTTRN` (`DTPOSTED` → date, `TRNAMT` →
+- [x] `ofx-parser.ts` : SGML et XML ; `STMTTRN` (`DTPOSTED` → date, `TRNAMT` →
   centimes, `FITID`, `NAME`/`MEMO` → libellé, `REFNUM` → référence) ;
   `LEDGERBAL` → solde de fin daté ; solde de début = fin − Σ. Encodage
   UTF-8 ou cp1252 (`TextDecoder('windows-1252')`, natif Node).
-- [ ] `csv-parser.ts` : détection du séparateur (`;` ou `,`), du BOM, de
+- [x] `csv-parser.ts` : détection du séparateur (`;` ou `,`), du BOM, de
   l'encodage, du format de date et du séparateur décimal ; détection des
   colonnes par mots-clés d'en-tête (date, libellé, débit, crédit, montant,
   solde) ; mapping explicite `{ dateCol, labelCol, debitCol?, creditCol?, amountCol?, balanceCol?, dateFormat, decimalSeparator }`
   mémorisé sur le compte financier ; renvoie un aperçu pour confirmation.
-- [ ] Fixtures anonymisées de deux banques dans `__fixtures__/` ; tests
+- [x] Fixtures anonymisées de deux banques dans `__fixtures__/` ; tests
   table-driven `ofx-parser.spec.ts`, `csv-parser.spec.ts` (montants négatifs,
   virgule décimale, dates `dd/mm/yyyy`, libellés multi-lignes).
 
 ### Task 1.3 : `BankStatementService`
 
-- [ ] `importStatement(clubId, userId, input)` : charge le `MediaAsset` (kind
+- [x] `importStatement(clubId, userId, input)` : charge le `MediaAsset` (kind
   `DOCUMENT`, privé, `ownerKind = 'BANK_STATEMENT'`), choisit le parseur,
   crée relevé + lignes en une transaction, calcule l'intégrité, pose le statut.
   Gardes : compte financier du club et de kind `BANK` ; `accountingStartsOn`
   défini (sinon `BadRequest` qui renvoie vers les paramètres) ; pas de
   chevauchement ; chaînage ; lignes antérieures à la reprise → `IGNORED` /
   `BEFORE_TAKEOVER`.
-- [ ] `statement-integrity.ts` (pur) : `check(opening, lines, closing, previousClosing)`
+- [x] `statement-integrity.ts` (pur) : `check(opening, lines, closing, previousClosing)`
   → `{ ok, deltaCents, chainOk }`.
-- [ ] **Invariant** : `transitionAfterIntegrity(statementId)` est l'unique
+- [x] **Invariant** : `transitionAfterIntegrity(statementId)` est l'unique
   chemin vers `READY`. Test : un relevé dont le delta ≠ 0 ne peut pas être
   `READY` ; mutation (poser `READY` ailleurs) → rouge.
-- [ ] `updateLine` / `addLine` / `removeLine` : permis tant que la ligne n'a
+- [x] `updateLine` / `addLine` / `removeLine` : permis tant que la ligne n'a
   aucun match ; recalcul de l'intégrité et du statut après chaque édition.
-- [ ] `deleteStatement` : refusé s'il existe une ligne `MATCHED` ; sinon
+- [x] `deleteStatement` : refusé s'il existe une ligne `MATCHED` ; sinon
   supprime en cascade et libère le chaînage du suivant (qui repasse en
   `NEEDS_CHECK`).
-- [ ] Garde du lot 0 : `accountingStartsOn` ne peut plus reculer après le
+- [x] Garde du lot 0 : `accountingStartsOn` ne peut plus reculer après le
   premier relevé.
 
 ### Task 1.4 : `BankReconciliationService`
 
-- [ ] `autoMatch(statementId)` : candidats = écritures `POSTED` ou `LOCKED` du
+- [x] `autoMatch(statementId)` : candidats = écritures `POSTED` ou `LOCKED` du
   même `financialAccountId`, ligne 51x avec `bankReconciledAt` nul,
   `occurredAt` dans ± `MATCH_WINDOW_DAYS` (10), même montant, sens cohérent
   (crédit de la ligne ↔ débit du 51x sur l'écriture).
-- [ ] Clés fortes, dans l'ordre : libellé contenant « STRIPE » et écriture avec
+- [x] Clés fortes, dans l'ordre : libellé contenant « STRIPE » et écriture avec
   `stripePayoutId` ; n° de remise dans le libellé (lot 5) ;
   `Payment.externalRef` égal à la référence de la ligne ; sinon candidat
   unique sur montant + date. Clé forte ou candidat unique → `MATCHED`
   (`origin AUTO`) ; plusieurs candidats → `SUGGESTED` avec `candidateEntryIds` ;
   aucun → `UNMATCHED`.
-- [ ] `match(lineId, [{ entryId, amountCents }], userId)` : Σ = |montant de la
+- [x] `match(lineId, [{ entryId, amountCents }], userId)` : Σ = |montant de la
   ligne| pour N écritures ↔ 1 ligne ; une écriture peut être couverte par
   plusieurs lignes (1 ↔ N), chaque match portant sa part ; `bankReconciledAt`
   posé sur la ligne 51x quand l'écriture est entièrement couverte.
   `unmatch(lineId)` retire les matches et **efface** `bankReconciledAt`.
-- [ ] Écriture d'un mois verrouillé : rapprochable (commentaire explicite dans
+- [x] Écriture d'un mois verrouillé : rapprochable (commentaire explicite dans
   le service, test dédié).
-- [ ] Audit `RECONCILE` / `UNRECONCILE` avec `metadata { lineId, entryIds }`.
-- [ ] Tests : bornes de fenêtre ; sens ; unique contre ambigu ; N ↔ 1 ; 1 ↔ N ;
+- [x] Audit `RECONCILE` / `UNRECONCILE` avec `metadata { lineId, entryIds }`.
+- [x] Tests : bornes de fenêtre ; sens ; unique contre ambigu ; N ↔ 1 ; 1 ↔ N ;
   `unmatch` efface le flag (mutation : oublier l'effacement → rouge) ; écriture
   verrouillée rapprochable ; ligne hors reprise ignorée.
 
 ### Task 1.5 : GraphQL (`bank-import.resolver.ts`)
 
-- [ ] Types `BankStatementGraph`, `BankStatementLineGraph` (avec `matches`,
+- [x] Types `BankStatementGraph`, `BankStatementLineGraph` (avec `matches`,
   `candidates`), `BankStatementIntegrityGraph`, `ReconciliationSummaryGraph`.
-- [ ] Queries : `clubBankStatements(financialAccountId?)`, `clubBankStatement(id)`,
+- [x] Queries : `clubBankStatements(financialAccountId?)`, `clubBankStatement(id)`,
   `bankLineCandidates(lineId)` (écritures de la fenêtre, tout montant, pour
   le rapprochement manuel), `clubReconciliationSummary` (par compte : dernier
   relevé, lignes à traiter, écritures non rapprochées).
-- [ ] Mutations : `importBankStatement(input)`, `previewCsvStatement(mediaAssetId, mapping?)`,
+- [x] Mutations : `importBankStatement(input)`, `previewCsvStatement(mediaAssetId, mapping?)`,
   `updateBankStatementLine`, `addBankStatementLine`, `removeBankStatementLine`,
   `deleteBankStatement`, `autoMatchBankStatement(id)`, `matchBankLine`,
   `unmatchBankLine`, `ignoreBankLine(lineId, reason)`, `unignoreBankLine`.
-- [ ] Test de construction du schéma.
+- [x] Test de construction du schéma.
 
 ### Task 1.6 : Admin
 
-- [ ] Routes `/comptabilite/rapprochement` et `/comptabilite/rapprochement/:statementId`
+- [x] Routes `/comptabilite/rapprochement` et `/comptabilite/rapprochement/:statementId`
   dans `App.tsx` ; sous-entrée dans `nav-config.ts` (le préfixe
   `/comptabilite` est déjà mappé sur le module `ACCOUNTING` dans
   `club-modules-nav.ts`).
-- [ ] `pages/accounting/reconciliation/ReconciliationPage.tsx` : par compte
+- [x] `pages/accounting/reconciliation/ReconciliationPage.tsx` : par compte
   financier, chaîne des relevés avec statut, bouton « Déposer un relevé ».
-- [ ] `ImportStatementDialog.tsx` : compte, format déduit de l'extension,
+- [x] `ImportStatementDialog.tsx` : compte, format déduit de l'extension,
   aperçu CSV avec sélection des colonnes, saisie des soldes de début et de fin
   pour le CSV, upload via `/media/upload?kind=document&ownerKind=BANK_STATEMENT`.
-- [ ] `StatementDetailPage.tsx` : bandeau d'intégrité (delta, chaînage,
+- [x] `StatementDetailPage.tsx` : bandeau d'intégrité (delta, chaînage,
   chevauchement) ; tableau des lignes filtrable par statut ; actions par ligne
   (rapprocher, détacher, ignorer, corriger) ; `MatchDrawer.tsx` avec la liste
   des candidats, cases à cocher, montants et somme courante.
-- [ ] `AccountingPage.tsx` : pastille « Rapproché » sur les écritures dont la
+- [x] `AccountingPage.tsx` : pastille « Rapproché » sur les écritures dont la
   ligne 51x porte `bankReconciledAt` (touche minimale, le fichier fait déjà
   2 700 lignes ; ne rien y ajouter d'autre).
 
 ### Task 1.7 : Vérification staging
 
-- [ ] Déposer un OFX réel anonymisé sur le club démo ; intégrité OK ; un
+- [x] Déposer un OFX réel anonymisé sur le club démo ; intégrité OK ; un
   virement Stripe et un virement manuel rapprochés automatiquement ; un
   rapprochement N ↔ 1 manuel ; détacher ; vérifier
   `select status, count(*) from "BankStatementLine" group by status` et
   `bankReconciledAt` sur les lignes 51x.
+
+### Réalisé (2026-09-11)
+
+- [x] Fait sur `staging` le 2026-09-11 sur `club-demo`, dans la session Chrome
+  de Florent. OFX de septembre (3 lignes, soldes 1 234,56 → 1 328,66 €) :
+  contrôle OK, chaînage sur le solde d'ouverture du compte, ligne « ANNULATION
+  REMISE CHQ R-2026-0001 » rapprochée automatiquement par clé forte
+  (`CHEQUE_DEPOSIT` + « REMISE »), fichier archivé (`application/x-ofx`) ;
+  ligne EDF ignorée avec motif ; deux cotisations manuelles de 100 et 150 €
+  rapprochées N ↔ 1 sur le virement de 250 € (parts dans
+  `BankStatementLineMatch`, audit RECONCILE avec allocations) ; détacher
+  (audit UNRECONCILE, flag effacé) puis « Relancer l'automatique »
+  (re-rapprochée, `origin AUTO`) ; relevé `RECONCILED`. CSV d'octobre (`;`,
+  en-tête, débit/crédit, virgule) : mapping détecté puis mémorisé sur le
+  compte ; soldes saisis ; un premier dépôt avec un solde de fin faux →
+  `NEEDS_CHECK` (écart −11,24 €) → suppression (lignes et fichier supprimés,
+  audit STATEMENT_DELETE) → redépôt juste → `READY`, chaîné sur la fin du
+  relevé OFX ; « + Ligne manquante » → écart −3,50 € → « Retirer » → `READY`.
+  `select status, count(*)` : MATCHED 2, IGNORED 1 (septembre) ;
+  `bankReconciledAt` posé sur les trois lignes 512000, pastille « Rapproché »
+  visible dans Écritures. Aucune erreur API (13 avant, 13 après).
+- [x] Garde de la date de reprise vérifiée dans Paramètres → Comptabilité →
+  Exercice : « Un relevé bancaire a déjà été déposé … » ; même date resoumise
+  acceptée.
+- [x] Un bug trouvé et corrigé en vérifiant : `createClubAccountingEntry`
+  renvoyait « la plus récente du club » au lieu de l'écriture créée
+  (`accounting-manual-entry-return.spec.ts`).
+
+### Écarts par rapport au plan
+
+- Le fichier OFX/CSV est envoyé en base64 dans la mutation (limite JSON
+  portée à 8 Mo) et archivé côté serveur après lecture, au lieu d'un upload
+  média préalable : un seul aller-retour, pas d'orphelin si la lecture échoue.
+  `previewCsvStatement(contentBase64, mapping?)` de même.
+- L'intégrité est portée par le relevé (`integrityDeltaCents`, `chainOk`,
+  `chainExpectedCents`) plutôt que par un `BankStatementIntegrityGraph`
+  séparé ; le mapping CSV mémorisé est exposé sur
+  `ClubFinancialAccountGraph.csvMapping`.
+- Fixtures de banques inline dans les specs (BFCOI, Banque Postale, Qonto)
+  plutôt qu'un dossier `__fixtures__/`.
+- La date de reprise est figée dans les deux sens dès qu'un relevé existe (pas
+  seulement « ne peut plus reculer ») : dans les deux cas les lignes déjà
+  découpées deviendraient fausses sans signal.
+- Le rapprochement automatique ne journalise pas chaque ligne (l'import est
+  journalisé, les matches portent `origin AUTO`) ; seuls les rapprochements
+  manuels et les détachements produisent RECONCILE / UNRECONCILE.
+- `ImportStatementDialog` → `ImportStatementDrawer` (tiroir, comme le reste de
+  l'admin). Apollo ajoute `__typename` aux objets lus : le mapping est recopié
+  avant renvoi (pitfall `apollo-typename-dans-les-inputs`).
+
+### À faire plus tard
+
+- Modifier les soldes saisis d'un relevé CSV sans le supprimer.
 
 ---
 
@@ -646,8 +699,9 @@ model ChequeDeposit {
   persistés.
 - [ ] Non rejoué sur staging : paiement de facture par chèque (aucune facture
   ouverte sur `club-demo` ; chemin couvert par
-  `payments-record-manual.spec.ts`) ; rapprochement de la ligne « REMISE »
-  (lot 1).
+  `payments-record-manual.spec.ts`).
+- [x] Rapprochement de la ligne « REMISE » : rejoué au lot 1 le 2026-09-11
+  (clé forte `CHEQUE_DEPOSIT` + « REMISE », `origin AUTO`).
 
 ---
 

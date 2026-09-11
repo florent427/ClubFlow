@@ -192,6 +192,17 @@ export class AccountingFiscalYearService {
           'La date de reprise ne peut pas être dans le futur.',
         );
       }
+      // Les relevés déposés ont été découpés sur cette date (lignes
+      // antérieures ignorées, chaînage sur le solde d'ouverture) : la
+      // changer après coup les rendrait faux sans que rien ne le signale.
+      if (
+        !sameDate(patch.accountingStartsOn, current.accountingStartsOn) &&
+        (await this.prisma.bankStatement.count({ where: { clubId } })) > 0
+      ) {
+        throw new BadRequestException(
+          'Un relevé bancaire a déjà été déposé : la date de reprise ne peut plus changer. Supprimez les relevés d’abord.',
+        );
+      }
       data.accountingStartsOn = patch.accountingStartsOn;
     }
     await this.prisma.club.update({ where: { id: clubId }, data });
@@ -269,4 +280,9 @@ export function parseIsoDate(value: string): Date {
 /** Minuit UTC → « YYYY-MM-DD ». */
 export function formatIsoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
+}
+
+function sameDate(a: Date | null, b: Date | null): boolean {
+  if (!a || !b) return a === b;
+  return a.getTime() === b.getTime();
 }
