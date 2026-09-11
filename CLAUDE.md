@@ -174,7 +174,7 @@ deploy-staging.yml. Détails → [runbooks/release.md](docs/runbooks/release.md)
 Pour tout autre symptôme : grep dans `docs/memory/pitfalls/` ou demander
 à `/learn`.
 
-### Quatre pièges SANS symptôme
+### Six pièges SANS symptôme
 
 Ceux-là ne se trouvent pas par `grep` sur un message d'erreur — il n'y en
 a pas. Ce sont des motifs à reconnaître en écrivant, pas en débuggant :
@@ -191,6 +191,12 @@ a pas. Ce sont des motifs à reconnaître en écrivant, pas en débuggant :
 - **[Un verdict rendu sur un signal dont on n'a pas vérifié le sens](docs/memory/pitfalls/juge-non-fiable-verdict-sans-valeur.md)**
   — faux vert ET faux rouge. A failli faire « corriger » du code correct.
   Avant de conclure : ce signal discrimine-t-il vraiment succès et échec ?
+- **[Un double qui ignore une clause du `where`](docs/memory/pitfalls/double-ignore-une-clause-du-where.md)**
+  — rencontré 3× le 2026-09-11. Le double filtrait de lui-même, donc le
+  service pouvait oublier la clause. Écrire le double EN FACE de la requête.
+- **[Une supposition qui survit à la décision](docs/memory/pitfalls/une-supposition-survit-a-la-decision.md)**
+  — deux mécanismes résolvent la même chose ; le perdant reste vivant et
+  finit validé. Poser la règle au goulot, pas sur chaque chemin.
 
 ---
 
