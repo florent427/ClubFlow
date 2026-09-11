@@ -251,6 +251,8 @@ enum AiUsageFeature {
   PROJECT_REPORT
   /// OCR de reçus / factures pour la comptabilité analytique via OpenRouter vision.
   RECEIPT_OCR
+  /// Lecture de relevés bancaires PDF par deux modèles vision (ADR-0014, lot 2).
+  BANK_STATEMENT_OCR
   OTHER
 }
 
