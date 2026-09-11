@@ -14,6 +14,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AccountingAuditService } from '../accounting-audit.service';
 import { AccountingPeriodService } from '../accounting-period.service';
 import { ClubFinancialAccountsService } from '../club-financial-accounts.service';
+import { BankReconciliationService } from '../bank-import/bank-reconciliation.service';
 
 /** Compte de tiers unique : la ventilation par personne est sur l'écriture. */
 export const VOLUNTEER_ACCOUNT_CODE = '467100';
@@ -58,6 +59,7 @@ export class VolunteerAdvancesService {
     private readonly audit: AccountingAuditService,
     private readonly period: AccountingPeriodService,
     private readonly financialAccounts: ClubFinancialAccountsService,
+    private readonly reconciliation: BankReconciliationService,
   ) {}
 
   /**
@@ -333,6 +335,13 @@ export class VolunteerAdvancesService {
       });
       return reimbursement;
     });
+
+    // Le relevé qui porte ce virement est peut-être déjà déposé : sa ligne
+    // attend alors sans rien pour la rattacher. Hors transaction, car le
+    // rapprochement doit voir l'écriture commitée.
+    if (created.entryId) {
+      await this.reconciliation.matchExistingLineForEntry(clubId, created.entryId);
+    }
 
     await this.audit.log({
       clubId,

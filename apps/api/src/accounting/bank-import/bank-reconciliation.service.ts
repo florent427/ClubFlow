@@ -421,6 +421,98 @@ export class BankReconciliationService {
     return line.statement.id;
   }
 
+  /**
+   * L'inverse de `onEntryPosted` : une écriture naît DÉJÀ comptabilisée, hors
+   * de tout relevé — remboursement d'un bénévole (ADR-0016), dépôt d'espèces
+   * en banque. Quand le relevé qui la porte est déjà importé, sa ligne
+   * attend sans rien pour la rattacher, et la catégorisation finirait par en
+   * faire une dépense de plus.
+   *
+   * On la rapproche quand elle est le SEUL candidat : même compte, montant
+   * signé identique, dans la fenêtre, pas déjà porteuse d'une proposition.
+   * Deux candidats, c'est au trésorier de trancher.
+   */
+  async matchExistingLineForEntry(clubId: string, entryId: string): Promise<string | null> {
+    const entry = await this.prisma.accountingEntry.findFirst({
+      where: {
+        id: entryId,
+        clubId,
+        cancelledAt: null,
+        status: { in: [AccountingEntryStatus.POSTED, AccountingEntryStatus.LOCKED] },
+      },
+      select: {
+        amountCents: true,
+        occurredAt: true,
+        financialAccountId: true,
+        lines: { select: { accountCode: true, debitCents: true } },
+        bankMatches: { select: { id: true } },
+      },
+    });
+    if (!entry?.financialAccountId) return null;
+    // Déjà rapprochée, même partiellement : on ne recouvre pas.
+    if (entry.bankMatches.length > 0) return null;
+
+    const account = await this.prisma.clubFinancialAccount.findFirst({
+      where: { id: entry.financialAccountId, clubId },
+      select: { accountingAccount: { select: { code: true } } },
+    });
+    if (!account) return null;
+    const cashCode = account.accountingAccount.code;
+    const cash = entry.lines.find((l) => l.accountCode === cashCode);
+    if (!cash) return null;
+    // Trésorerie au DÉBIT = argent entré = ligne créditrice du relevé.
+    const signedCents = cash.debitCents > 0 ? entry.amountCents : -entry.amountCents;
+
+    const from = new Date(entry.occurredAt.getTime() - MATCH_WINDOW_DAYS * DAY_MS);
+    const to = new Date(entry.occurredAt.getTime() + (MATCH_WINDOW_DAYS + 1) * DAY_MS);
+    const lines = await this.prisma.bankStatementLine.findMany({
+      where: {
+        clubId,
+        financialAccountId: entry.financialAccountId,
+        status: BankStatementLineStatus.UNMATCHED,
+        // Une ligne qui porte déjà une proposition a son propre chemin.
+        proposedEntryId: null,
+        amountCents: signedCents,
+        bookedOn: { gte: from, lt: to },
+        statement: {
+          status: {
+            notIn: [
+              BankStatementStatus.NEEDS_CHECK,
+              BankStatementStatus.FAILED,
+              BankStatementStatus.PARSING,
+            ],
+          },
+        },
+      },
+      select: {
+        id: true,
+        statementId: true,
+        financialAccountId: true,
+        bookedOn: true,
+        amountCents: true,
+        label: true,
+        reference: true,
+      },
+      take: 2,
+    });
+    if (lines.length !== 1) return null;
+
+    const line = lines[0];
+    await this.applyMatch(
+      clubId,
+      null,
+      line,
+      [{ entryId, amountCents: entry.amountCents }],
+      BankMatchOrigin.AUTO,
+      cashCode,
+    );
+    await this.refreshStatementStatus(clubId, line.statementId);
+    this.logger.log(
+      `[écriture ${entryId}] rapprochée à la ligne ${line.id} d'un relevé déjà déposé.`,
+    );
+    return line.statementId;
+  }
+
   /** Détache : liaisons supprimées, marqueur effacé, ligne de nouveau à traiter. */
   async unmatch(clubId: string, userId: string, lineId: string) {
     const line = await this.loadLine(clubId, lineId);
