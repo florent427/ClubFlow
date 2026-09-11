@@ -162,6 +162,8 @@ function makeWorld(opts: { accountingStartsOn?: string | null; openingBalanceCen
     }),
     readInBackground: jest.fn(),
   };
+  // Catégorisation (lot 3) : lancée en fond après l'import, vérifiée ailleurs.
+  const categorization = { categorizeStatementInBackground: jest.fn() };
   // Le vrai service de chaînage, sur le même double Prisma.
   const integrity = new BankStatementIntegrityService(prisma as unknown as PrismaService);
   const svc = new BankStatementService(
@@ -173,6 +175,7 @@ function makeWorld(opts: { accountingStartsOn?: string | null; openingBalanceCen
     reconciliation as unknown as BankReconciliationService,
     ocr as never,
     integrity,
+    categorization as never,
   );
   return { svc, state, reconciliation, audit, media };
 }

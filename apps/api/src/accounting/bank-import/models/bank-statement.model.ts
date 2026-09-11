@@ -14,6 +14,9 @@ import {
   BankStatementLineIgnoreReason,
   BankStatementLineStatus,
   BankStatementStatus,
+  CategorizationDirection,
+  CategorizationMatchKind,
+  CategorizationRuleSource,
 } from '@prisma/client';
 import { SignedPhotoField } from '../../../media/signed-photo-field.decorator';
 
@@ -57,6 +60,106 @@ export class BankLineMatchGraph {
 }
 
 /** Ligne de relevé. `amountCents` signé : positif = crédit pour le club. */
+registerEnumType(CategorizationMatchKind, { name: 'CategorizationMatchKind' });
+registerEnumType(CategorizationDirection, {
+  name: 'CategorizationDirection',
+  description: 'Sens auquel une règle s’applique : une règle « EDF » en dépense n’attrape pas un remboursement.',
+});
+registerEnumType(CategorizationRuleSource, { name: 'CategorizationRuleSource' });
+
+/** Proposition de compte pour une ligne sans écriture (ADR-0014 §5). */
+@ObjectType()
+export class BankLineProposalGraph {
+  @Field()
+  accountCode!: string;
+
+  @Field()
+  accountLabel!: string;
+
+  @Field(() => ID, { nullable: true })
+  projectId!: string | null;
+
+  @Field(() => String, { nullable: true })
+  projectTitle!: string | null;
+
+  /** Libellé d'écriture proposé, débarrassé du bruit bancaire. */
+  @Field()
+  label!: string;
+
+  @Field(() => Int)
+  confidencePct!: number;
+
+  /** RULE (une règle du club a décidé) ou AI. */
+  @Field()
+  source!: string;
+
+  @Field(() => ID, { nullable: true })
+  ruleId!: string | null;
+
+  @Field(() => String, { nullable: true })
+  reasoning!: string | null;
+
+  @Field(() => [String])
+  models!: string[];
+
+  /** Validable en lot : règle, ou deux modèles d'accord et sûrs. */
+  @Field()
+  clear!: boolean;
+}
+
+/** Un tour de l'échange entre l'IA et le trésorier sur une ligne. */
+@ObjectType()
+export class BankLineTurnGraph {
+  @Field()
+  role!: string;
+
+  @Field()
+  text!: string;
+}
+
+/** Règle de catégorisation du club. */
+@ObjectType()
+export class CategorizationRuleGraph {
+  @Field(() => ID)
+  id!: string;
+
+  @Field()
+  pattern!: string;
+
+  @Field(() => CategorizationMatchKind)
+  matchKind!: CategorizationMatchKind;
+
+  @Field(() => CategorizationDirection)
+  direction!: CategorizationDirection;
+
+  @Field()
+  accountCode!: string;
+
+  @Field(() => String, { nullable: true })
+  accountLabel!: string | null;
+
+  @Field(() => ID, { nullable: true })
+  projectId!: string | null;
+
+  @Field(() => String, { nullable: true })
+  label!: string | null;
+
+  @Field(() => CategorizationRuleSource)
+  source!: CategorizationRuleSource;
+
+  @Field(() => Int)
+  hitCount!: number;
+
+  @Field(() => GraphQLISODateTime, { nullable: true })
+  lastHitAt!: Date | null;
+
+  @Field()
+  isActive!: boolean;
+
+  @Field(() => GraphQLISODateTime)
+  createdAt!: Date;
+}
+
 /** Une ligne telle qu'un des deux modèles l'a lue (relevé PDF). */
 @ObjectType()
 export class BankLineReadingGraph {
@@ -139,6 +242,28 @@ export class BankStatementLineGraph {
 
   @Field(() => BankLineDivergenceGraph, { nullable: true })
   divergence!: BankLineDivergenceGraph | null;
+
+  /** Proposition de compte en attente de validation, s'il y en a une. */
+  @Field(() => BankLineProposalGraph, { nullable: true })
+  proposal!: BankLineProposalGraph | null;
+
+  /** Écriture NEEDS_REVIEW portant la proposition. */
+  @Field(() => ID, { nullable: true })
+  proposedEntryId!: string | null;
+
+  /** Question de l'IA en attente de réponse. */
+  @Field(() => String, { nullable: true })
+  question!: string | null;
+
+  @Field(() => [BankLineTurnGraph])
+  conversation!: BankLineTurnGraph[];
+
+  @Field(() => Int)
+  aiAttempts!: number;
+
+  /** Plus de proposition attendue : à saisir ou rapprocher à la main. */
+  @Field()
+  aiExhausted!: boolean;
 }
 
 @ObjectType()
@@ -211,6 +336,18 @@ export class BankStatementListItemGraph {
   /** Lignes où les deux lectures d'un PDF divergent encore. */
   @Field(() => Int)
   divergenceCount!: number;
+
+  /** Lignes à traiter portant une proposition à valider. */
+  @Field(() => Int)
+  proposalCount!: number;
+
+  /** Lignes dont l'IA attend une réponse. */
+  @Field(() => Int)
+  questionCount!: number;
+
+  /** Lignes encore sans proposition ni question. */
+  @Field(() => Int)
+  toCategorizeCount!: number;
 
   @Field(() => String, { nullable: true })
   readingModelA!: string | null;

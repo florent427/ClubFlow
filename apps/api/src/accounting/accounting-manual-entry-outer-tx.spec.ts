@@ -74,6 +74,12 @@ function makeSvc() {
     {} as AccountingSuggestionService,
     {} as AccountingSeedService,
     financialAccounts as unknown as ClubFinancialAccountsService,
+    // Rapprochement (lot 3) : ces tests ne passent aucune écriture en POSTED
+    // depuis une proposition de relevé.
+    {
+      onEntryPosted: jest.fn(async () => null),
+      refreshStatementStatus: jest.fn(async () => undefined),
+    } as never,
   );
   return { svc, prisma, outerTx, audit };
 }

@@ -171,6 +171,12 @@ function makeHarness(args: {
     {} as never,
     {} as never,
     {} as never,
+    // Rapprochement (lot 3) : ces tests ne passent aucune écriture en POSTED
+    // depuis une proposition de relevé.
+    {
+      onEntryPosted: jest.fn(async () => null),
+      refreshStatementStatus: jest.fn(async () => undefined),
+    } as never,
   );
 
   return { svc, entries, original, tx, lines };

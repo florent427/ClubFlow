@@ -25,6 +25,7 @@ import {
 import { ClubFinancialAccountsService } from '../club-financial-accounts.service';
 import { BankReconciliationService } from './bank-reconciliation.service';
 import { BankStatementIntegrityService } from './bank-statement-integrity.service';
+import { BankLineCategorizationService } from './bank-line-categorization.service';
 import { BankStatementOcrService } from './bank-statement-ocr.service';
 import { detectCsv, parseCsv } from './csv-parser';
 import type { CsvDetection, CsvMapping } from './csv-parser';
@@ -91,6 +92,16 @@ export interface ImportStatementParams {
   periodEnd?: Date | null;
 }
 
+/** Comptages d'un relevé : par statut de ligne, et où en est la catégorisation. */
+export type StatementLineCounts = Partial<Record<BankStatementLineStatus, number>> & {
+  /** Lignes à traiter portant une proposition à valider. */
+  proposalCount: number;
+  /** Lignes dont l'IA attend une réponse. */
+  questionCount: number;
+  /** Lignes encore sans proposition ni question. */
+  toCategorizeCount: number;
+};
+
 export interface CsvPreviewResult {
   detection: CsvDetection;
   mapping: CsvMapping;
@@ -140,6 +151,7 @@ export class BankStatementService {
     private readonly reconciliation: BankReconciliationService,
     private readonly ocr: BankStatementOcrService,
     private readonly integrity: BankStatementIntegrityService,
+    private readonly categorization: BankLineCategorizationService,
   ) {}
 
   async list(clubId: string, financialAccountId?: string | null): Promise<StatementListRow[]> {
@@ -159,24 +171,62 @@ export class BankStatementService {
     return row;
   }
 
-  /** Comptage des lignes par statut, pour les listes. */
+  /** Comptage des lignes par statut et par état de catégorisation, pour les listes. */
   async lineCounts(
     clubId: string,
     statementIds: string[],
-  ): Promise<Map<string, Partial<Record<BankStatementLineStatus, number>>>> {
-    const out = new Map<string, Partial<Record<BankStatementLineStatus, number>>>();
+  ): Promise<Map<string, StatementLineCounts>> {
+    const out = new Map<string, StatementLineCounts>();
     if (statementIds.length === 0) return out;
-    const rows = await this.prisma.bankStatementLine.groupBy({
-      by: ['statementId', 'status'],
-      where: { clubId, statementId: { in: statementIds } },
-      _count: { _all: true },
-    });
-    for (const r of rows) {
-      const m = out.get(r.statementId) ?? {};
-      m[r.status] = r._count._all;
-      out.set(r.statementId, m);
-    }
+    const where = { clubId, statementId: { in: statementIds } };
+    const [byStatus, proposals, questions, toCategorize] = await Promise.all([
+      this.prisma.bankStatementLine.groupBy({
+        by: ['statementId', 'status'],
+        where,
+        _count: { _all: true },
+      }),
+      this.prisma.bankStatementLine.groupBy({
+        by: ['statementId'],
+        where: { ...where, status: BankStatementLineStatus.UNMATCHED, proposedEntryId: { not: null } },
+        _count: { _all: true },
+      }),
+      this.prisma.bankStatementLine.groupBy({
+        by: ['statementId'],
+        where: { ...where, status: BankStatementLineStatus.UNMATCHED, aiQuestion: { not: null } },
+        _count: { _all: true },
+      }),
+      this.prisma.bankStatementLine.groupBy({
+        by: ['statementId'],
+        where: {
+          ...where,
+          status: BankStatementLineStatus.UNMATCHED,
+          proposedEntryId: null,
+          aiQuestion: null,
+          aiExhausted: false,
+        },
+        _count: { _all: true },
+      }),
+    ]);
+    const at = (id: string): StatementLineCounts => {
+      const m = out.get(id) ?? { proposalCount: 0, questionCount: 0, toCategorizeCount: 0 };
+      out.set(id, m);
+      return m;
+    };
+    for (const r of byStatus) at(r.statementId)[r.status] = r._count._all;
+    for (const r of proposals) at(r.statementId).proposalCount = r._count._all;
+    for (const r of questions) at(r.statementId).questionCount = r._count._all;
+    for (const r of toCategorize) at(r.statementId).toCategorizeCount = r._count._all;
     return out;
+  }
+
+  /** Libellés des comptes visés par des règles, pour les afficher en clair. */
+  async accountLabels(clubId: string, codes: string[]): Promise<Map<string, string>> {
+    if (codes.length === 0) return new Map();
+    const rows = await this.prisma.accountingAccount.findMany({
+      where: { clubId, code: { in: [...new Set(codes)] } },
+      select: { code: true, label: true },
+    });
+    return new Map(rows.map((r) => [r.code, r.label]));
   }
 
   /** Détection du mapping CSV et aperçu, avant import. */
@@ -359,6 +409,9 @@ export class BankStatementService {
     await this.integrity.rechainFollowing(clubId, account.id, periodEnd, created.id);
     if (created.status === BankStatementStatus.READY) {
       await this.reconciliation.autoMatch(clubId, created.id);
+      // Ce qui reste sans écriture part en catégorisation, sans faire
+      // attendre le dépôt.
+      this.categorization.categorizeStatementInBackground(clubId, userId, created.id);
     }
     return this.getById(clubId, created.id);
   }

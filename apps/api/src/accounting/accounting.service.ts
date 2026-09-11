@@ -27,6 +27,7 @@ import { AccountingPeriodService } from './accounting-period.service';
 import { AccountingSeedService } from './accounting-seed.service';
 import { AccountingSuggestionService } from './accounting-suggestion.service';
 import { ClubFinancialAccountsService } from './club-financial-accounts.service';
+import { BankReconciliationService } from './bank-import/bank-reconciliation.service';
 
 /** Filtres supportés sur la query liste. */
 export interface ListEntriesFilter {
@@ -117,12 +118,40 @@ export class AccountingService {
     private readonly suggestion: AccountingSuggestionService,
     private readonly seed: AccountingSeedService,
     private readonly financialAccounts: ClubFinancialAccountsService,
+    private readonly reconciliation: BankReconciliationService,
   ) {}
 
   // ========================================================================
   // Helpers
   // ========================================================================
 
+
+  /**
+   * L'UNIQUE passage d'une écriture en POSTED. Tout ce qui doit suivre une
+   * comptabilisation se branche ici : aujourd'hui le rapprochement de la
+   * ligne de relevé qui a proposé cette écriture (ADR-0014 §5), dans la
+   * MÊME transaction — une écriture comptabilisée dont la ligne resterait
+   * « à traiter » n'existe pas.
+   *
+   * Renvoie l'identifiant du relevé touché, à rafraîchir après commit.
+   */
+  async markPosted(
+    tx: Prisma.TransactionClient,
+    clubId: string,
+    entryId: string,
+    userId: string | null,
+    reason: string,
+  ): Promise<string | null> {
+    await tx.accountingEntry.update({
+      where: { id: entryId },
+      data: { status: AccountingEntryStatus.POSTED },
+    });
+    const statementId = await this.reconciliation.onEntryPosted(clubId, entryId, tx, userId);
+    this.logger.log(
+      `[Entry ${entryId}] POSTED (${reason})${statementId ? ' — ligne de relevé rapprochée' : ''}`,
+    );
+    return statementId;
+  }
   async isAccountingEnabled(clubId: string): Promise<boolean> {
     const row = await this.prisma.clubModule.findUnique({
       where: {
@@ -1550,6 +1579,7 @@ export class AccountingService {
     // CONSERVE NEEDS_REVIEW pour permettre une saisie progressive. Mode
     // "Valider" (validate=true, défaut) : passage à POSTED définitif.
     const willValidate = corrections.validate !== false;
+    const touched: { statementId: string | null } = { statementId: null };
 
     const updated = await this.prisma.$transaction(async (tx) => {
       // 1. Update entry header
@@ -1687,8 +1717,18 @@ export class AccountingService {
         }
       }
 
+      // Le passage en POSTED emprunte l'unique porte : c'est elle qui
+      // rapproche la ligne de relevé quand l'écriture vient d'une
+      // proposition (ADR-0014 §5).
+      if (willValidate) {
+        touched.statementId = await this.markPosted(tx, clubId, entryId, userId, 'OCR_CONFIRM');
+      }
       return e;
     });
+
+    if (touched.statementId) {
+      await this.reconciliation.refreshStatementStatus(clubId, touched.statementId);
+    }
 
     await this.audit.log({
       clubId,
@@ -1909,10 +1949,19 @@ export class AccountingService {
 
     let entryPostedAutomatically = false;
     if (unvalidated === 0) {
-      await this.prisma.accountingEntry.update({
-        where: { id: line.entry.id },
-        data: { status: AccountingEntryStatus.POSTED },
+      const touched: { statementId: string | null } = { statementId: null };
+      await this.prisma.$transaction(async (tx) => {
+        touched.statementId = await this.markPosted(
+          tx,
+          clubId,
+          line.entry.id,
+          userId,
+          'ALL_LINES_VALIDATED',
+        );
       });
+      if (touched.statementId) {
+        await this.reconciliation.refreshStatementStatus(clubId, touched.statementId);
+      }
       entryPostedAutomatically = true;
       await this.audit.log({
         clubId,
