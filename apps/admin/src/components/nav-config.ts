@@ -225,6 +225,11 @@ export const NAV_SECTIONS: NavSection[] = [
             modules: ['ACCOUNTING'],
           },
           {
+            to: '/comptabilite/benevoles',
+            label: 'Frais bénévoles',
+            modules: ['ACCOUNTING'],
+          },
+          {
             to: '/comptabilite/rapprochement',
             label: 'Rapprochement bancaire',
             modules: ['ACCOUNTING'],

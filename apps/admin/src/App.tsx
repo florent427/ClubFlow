@@ -34,6 +34,7 @@ import { SubsidiesPage } from './pages/subsidies/SubsidiesPage';
 import { AccountingPage } from './pages/accounting/AccountingPage';
 import { ChequesPage } from './pages/accounting/cheques/ChequesPage';
 import { ReconciliationPage } from './pages/accounting/reconciliation/ReconciliationPage';
+import { VolunteersPage } from './pages/accounting/volunteers/VolunteersPage';
 import { StatementDetailPage } from './pages/accounting/reconciliation/StatementDetailPage';
 import { SettingsLayout } from './pages/settings/SettingsLayout';
 import { SettingsHubPage } from './pages/settings/SettingsHubPage';
@@ -150,6 +151,7 @@ export default function App() {
             <Route path="comptabilite" element={<AccountingPage />} />
             <Route path="comptabilite/cheques" element={<ChequesPage />} />
             <Route path="comptabilite/rapprochement" element={<ReconciliationPage />} />
+            <Route path="comptabilite/benevoles" element={<VolunteersPage />} />
             <Route path="comptabilite/rapprochement/:statementId" element={<StatementDetailPage />} />
             <Route path="vitrine">
               <Route index element={<VitrineHomePage />} />
