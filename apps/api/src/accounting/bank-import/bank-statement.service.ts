@@ -219,6 +219,16 @@ export class BankStatementService {
     return out;
   }
 
+
+  /** Le relevé auquel appartient une ligne, pour recharger le détail après action. */
+  async lineStatementId(clubId: string, lineId: string): Promise<string> {
+    const line = await this.prisma.bankStatementLine.findFirst({
+      where: { id: lineId, clubId },
+      select: { statementId: true },
+    });
+    if (!line) throw new NotFoundException('Ligne introuvable');
+    return line.statementId;
+  }
   /** Libellés des comptes visés par des règles, pour les afficher en clair. */
   async accountLabels(clubId: string, codes: string[]): Promise<Map<string, string>> {
     if (codes.length === 0) return new Map();

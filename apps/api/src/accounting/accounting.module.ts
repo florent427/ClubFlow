@@ -24,6 +24,7 @@ import { BankStatementService } from './bank-import/bank-statement.service';
 import { BankStatementOcrService } from './bank-import/bank-statement-ocr.service';
 import { BankStatementIntegrityService } from './bank-import/bank-statement-integrity.service';
 import { BankLineCategorizationService } from './bank-import/bank-line-categorization.service';
+import { BankPayerLookupService } from './bank-import/bank-payer-lookup.service';
 import { CategorizationLearningService } from './bank-import/categorization-learning.service';
 import { PdfPageRenderer } from './ocr-shared';
 
@@ -49,6 +50,7 @@ import { PdfPageRenderer } from './ocr-shared';
     BankStatementOcrService,
     BankStatementIntegrityService,
     BankLineCategorizationService,
+    BankPayerLookupService,
     CategorizationLearningService,
     PdfPageRenderer,
     AccountingResolver,
@@ -74,6 +76,7 @@ import { PdfPageRenderer } from './ocr-shared';
     BankStatementOcrService,
     BankStatementIntegrityService,
     BankLineCategorizationService,
+    BankPayerLookupService,
     CategorizationLearningService,
     PdfPageRenderer,
   ],

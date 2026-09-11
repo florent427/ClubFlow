@@ -97,4 +97,13 @@ export class RecordManualPaymentInput {
   @ValidateNested()
   @Type(() => RecordChequeInput)
   cheque?: RecordChequeInput | null;
+
+  @Field(() => ID, {
+    nullable: true,
+    description:
+      'Compte bancaire sur lequel l’argent est réellement arrivé (ADR-0014 §7). Par défaut, la route du mode de paiement.',
+  })
+  @IsOptional()
+  @IsUUID()
+  financialAccountId?: string | null;
 }

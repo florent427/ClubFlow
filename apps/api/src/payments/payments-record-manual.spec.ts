@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ClubPaymentMethod, InvoiceStatus } from '@prisma/client';
 import { AccountingService } from '../accounting/accounting.service';
+import { ClubFinancialAccountsService } from '../accounting/club-financial-accounts.service';
 import { DocumentsGatingService } from '../documents/documents-gating.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentScheduleEngineService } from './payment-schedule-engine.service';
@@ -68,6 +69,14 @@ describe('PaymentsService / encaissements manuels', () => {
         PaymentsService,
         { provide: PrismaService, useValue: prisma },
         { provide: AccountingService, useValue: accounting },
+        // Comptes financiers : seul un encaissement qui impose sa banque
+        // (virement depuis un relevé) s'en sert.
+        {
+          provide: ClubFinancialAccountsService,
+          useValue: {
+            getById: jest.fn(async () => ({ id: 'fa-1', kind: 'BANK', isActive: true })),
+          },
+        },
         { provide: DocumentsGatingService, useValue: documentsGating },
         // Non exercées par ces specs, mais le constructeur doit être résoluble.
         { provide: StripeConnectService, useValue: {} },
@@ -167,6 +176,8 @@ describe('PaymentsService / encaissements manuels', () => {
       'pay-1',
       'Encaissement Cotisation',
       4000,
+      // Aucune banque imposée : la route du mode de paiement décide.
+      null,
     );
   });
 

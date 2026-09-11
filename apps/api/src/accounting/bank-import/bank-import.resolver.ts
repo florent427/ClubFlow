@@ -3,6 +3,7 @@ import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 import type { Club } from '@prisma/client';
 import { BankStatementLineStatus } from '@prisma/client';
 import { BankLineCategorizationService } from './bank-line-categorization.service';
+import { BankPayerLookupService } from './bank-payer-lookup.service';
 import { CurrentClub } from '../../common/decorators/current-club.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequireClubModule } from '../../common/decorators/require-club-module.decorator';
@@ -41,6 +42,7 @@ import {
   BankLineCandidateGraph,
   BankLineDivergenceGraph,
   BankLineProposalGraph,
+  BankPayerCandidateGraph,
   BankStatementGraph,
   BankStatementLineGraph,
   BankStatementListItemGraph,
@@ -116,6 +118,45 @@ function conversationGraph(raw: unknown): Array<{ role: string; text: string }> 
     .filter((t) => t.text.length > 0);
 }
 
+/**
+ * Le virement reconnu est stocké en JSON sur la ligne : relu en validant,
+ * pour qu'une donnée d'une version antérieure ne fasse pas tomber la requête.
+ */
+function payerGraph(raw: unknown): BankPayerCandidateGraph | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const p = raw as Record<string, unknown>;
+  const payer = p.payer as Record<string, unknown> | undefined;
+  if (!payer || typeof payer.id !== 'string') return null;
+  const invoices = Array.isArray(p.invoices) ? p.invoices : [];
+  const allocations = Array.isArray(p.allocations) ? p.allocations : [];
+  return {
+    payer: {
+      kind: payer.kind === 'CONTACT' ? 'CONTACT' : 'MEMBER',
+      id: payer.id,
+      firstName: typeof payer.firstName === 'string' ? payer.firstName : '',
+      lastName: typeof payer.lastName === 'string' ? payer.lastName : '',
+    },
+    nameScore: typeof p.nameScore === 'number' ? p.nameScore : 0,
+    amountMatch: typeof p.amountMatch === 'string' ? p.amountMatch : 'NONE',
+    confidence: typeof p.confidence === 'number' ? p.confidence : 0,
+    invoices: invoices
+      .filter((i): i is Record<string, unknown> => typeof i === 'object' && i !== null)
+      .map((i) => ({
+        id: String(i.id ?? ''),
+        label: typeof i.label === 'string' ? i.label : '',
+        amountCents: typeof i.amountCents === 'number' ? i.amountCents : 0,
+        balanceCents: typeof i.balanceCents === 'number' ? i.balanceCents : 0,
+        dueAt: typeof i.dueAt === 'string' ? i.dueAt.slice(0, 10) : null,
+      })),
+    allocations: allocations
+      .filter((a): a is Record<string, unknown> => typeof a === 'object' && a !== null)
+      .map((a) => ({
+        invoiceId: String(a.invoiceId ?? ''),
+        amountCents: typeof a.amountCents === 'number' ? a.amountCents : 0,
+      })),
+  };
+}
+
 export function toLineGraph(l: LineRow): BankStatementLineGraph {
   return {
     proposal: proposalGraph(l.aiProposalJson),
@@ -124,6 +165,7 @@ export function toLineGraph(l: LineRow): BankStatementLineGraph {
     conversation: conversationGraph(l.aiConversationJson),
     aiAttempts: l.aiAttempts,
     aiExhausted: l.aiExhausted,
+    payerProposal: payerGraph(l.payerProposalJson),
     readingAgreement: l.readingAgreement,
     divergence: divergenceFromJson(l.divergenceJson),
     id: l.id,
@@ -236,6 +278,7 @@ export class BankImportResolver {
     private readonly statements: BankStatementService,
     private readonly reconciliation: BankReconciliationService,
     private readonly categorization: BankLineCategorizationService,
+    private readonly payerLookup: BankPayerLookupService,
   ) {}
 
   @Query(() => [ReconciliationAccountSummaryGraph], { name: 'clubReconciliationSummary' })
@@ -284,6 +327,37 @@ export class BankImportResolver {
     return rows.map(toCandidate);
   }
 
+
+  @Query(() => [BankPayerCandidateGraph], {
+    name: 'bankLinePayerCandidates',
+    description:
+      'Adhérents ou contacts qui ont pu émettre ce virement, avec les factures ouvertes que le montant solderait.',
+  })
+  async bankLinePayerCandidates(
+    @CurrentClub() club: Club,
+    @Args('lineId', { type: () => ID }) lineId: string,
+  ): Promise<BankPayerCandidateGraph[]> {
+    const rows = await this.payerLookup.payerCandidates(club.id, lineId);
+    return rows.map((c) => ({
+      payer: {
+        kind: c.payer.kind,
+        id: c.payer.id,
+        firstName: c.payer.firstName,
+        lastName: c.payer.lastName,
+      },
+      nameScore: c.nameScore,
+      amountMatch: c.amountMatch,
+      confidence: c.confidence,
+      invoices: c.invoices.map((i) => ({
+        id: i.id,
+        label: i.label,
+        amountCents: i.amountCents,
+        balanceCents: i.balanceCents,
+        dueAt: i.dueAt ? formatIsoDate(i.dueAt) : null,
+      })),
+      allocations: c.allocations,
+    }));
+  }
   @Mutation(() => CsvPreviewGraph, {
     name: 'previewCsvStatement',
     description: 'Détecte le mapping de colonnes d’un CSV et rend un aperçu, sans rien importer.',

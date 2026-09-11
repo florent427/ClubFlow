@@ -35,6 +35,7 @@ import { MembersModule } from '../members/members.module';
 import { MembershipModule } from '../membership/membership.module';
 import { MailModule } from '../mail/mail.module';
 import { PaymentsModule } from '../payments/payments.module';
+import { BankTransferModule } from '../accounting/bank-import/bank-transfer.module';
 import { PdfModule } from '../pdf/pdf.module';
 import { ChequesModule } from '../cheques/cheques.module';
 import { PlanningModule } from '../planning/planning.module';
@@ -140,6 +141,7 @@ import '../documents/dto/sign-club-document.input';
     PlanningModule,
     AccountingModule,
     PaymentsModule,
+    BankTransferModule,
     PdfModule,
     ChequesModule,
     MembershipModule,

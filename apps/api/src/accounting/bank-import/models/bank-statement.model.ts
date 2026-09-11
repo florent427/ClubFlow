@@ -264,6 +264,10 @@ export class BankStatementLineGraph {
   /** Plus de proposition attendue : à saisir ou rapprocher à la main. */
   @Field()
   aiExhausted!: boolean;
+
+  /** Virement d'adhérent reconnu : payeur et factures proposés. */
+  @Field(() => BankPayerCandidateGraph, { nullable: true })
+  payerProposal!: BankPayerCandidateGraph | null;
 }
 
 @ObjectType()
@@ -531,3 +535,93 @@ export class CsvPreviewGraph {
   @Field(() => String, { nullable: true })
   error!: string | null;
 }
+/** Personne du club qui a pu émettre un virement. */
+@ObjectType()
+export class BankPayerGraph {
+  /** MEMBER ou CONTACT. */
+  @Field()
+  kind!: string;
+
+  @Field(() => ID)
+  id!: string;
+
+  @Field()
+  firstName!: string;
+
+  @Field()
+  lastName!: string;
+}
+
+/** Facture ouverte qu'un virement pourrait solder. */
+@ObjectType()
+export class BankPayerInvoiceGraph {
+  @Field(() => ID)
+  id!: string;
+
+  @Field()
+  label!: string;
+
+  @Field(() => Int)
+  amountCents!: number;
+
+  /** Reste dû, avoirs et acomptes déduits. */
+  @Field(() => Int)
+  balanceCents!: number;
+
+  @Field(() => String, { nullable: true })
+  dueAt!: string | null;
+}
+
+@ObjectType()
+export class BankTransferAllocationGraph {
+  @Field(() => ID)
+  invoiceId!: string;
+
+  @Field(() => Int)
+  amountCents!: number;
+}
+
+/**
+ * Virement d'adhérent reconnu (ADR-0014 §7) : qui a payé, quelles factures
+ * le montant solde, et à quel point c'est sûr.
+ */
+@ObjectType()
+export class BankPayerCandidateGraph {
+  @Field(() => BankPayerGraph)
+  payer!: BankPayerGraph;
+
+  /** 100 = nom et prénom reconnus, 70 = nom de famille seul. */
+  @Field(() => Int)
+  nameScore!: number;
+
+  /** EXACT, SUM (deux factures), PARTIAL (acompte) ou NONE. */
+  @Field()
+  amountMatch!: string;
+
+  /** Au-dessus de 80, proposable en un clic. */
+  @Field(() => Int)
+  confidence!: number;
+
+  @Field(() => [BankPayerInvoiceGraph])
+  invoices!: BankPayerInvoiceGraph[];
+
+  @Field(() => [BankTransferAllocationGraph])
+  allocations!: BankTransferAllocationGraph[];
+}
+
+/** Ce qu'un encaissement de virement a réellement produit. */
+@ObjectType()
+export class BankTransferResultGraph {
+  @Field(() => Int)
+  invoicesPaid!: number;
+
+  @Field()
+  lineMatched!: boolean;
+
+  @Field(() => String, { nullable: true })
+  stoppedBecause!: string | null;
+
+  @Field(() => BankStatementGraph)
+  statement!: BankStatementGraph;
+}
+

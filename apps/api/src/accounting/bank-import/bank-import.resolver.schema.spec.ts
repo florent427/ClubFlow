@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { printSchema } from 'graphql';
 import '../../graphql/register-enums';
 import { BankImportResolver } from './bank-import.resolver';
+import { BankTransferResolver } from './bank-transfer.resolver';
 
 /**
  * Le schéma ne se construit qu'au démarrage de l'API : un champ nullable
@@ -34,5 +35,27 @@ describe('BankImportResolver — schéma GraphQL', () => {
     expect(sdl).toContain('sampleRows: [[String!]!]!');
     expect(sdl).toContain('lines: [BankStatementLineGraph!]!');
     expect(sdl).toContain('fileUrl: String');
+    // Catégorisation (lot 3) et virements d'adhérents (lot 4).
+    expect(sdl).toContain('categorizeBankLine(lineId: ID!): BankStatementGraph!');
+    expect(sdl).toContain('acceptBankLineProposal(input: AcceptBankLineProposalInput!): BankStatementGraph!');
+    expect(sdl).toContain('clubCategorizationRules: [CategorizationRuleGraph!]!');
+    expect(sdl).toContain('bankLinePayerCandidates(lineId: ID!): [BankPayerCandidateGraph!]!');
+    expect(sdl).toContain('payerProposal: BankPayerCandidateGraph');
+  });
+
+  // Le résolveur des virements vit dans son propre module (pas de cycle avec
+  // les paiements) mais partage le schéma : on le construit avec l'autre,
+  // comme au démarrage — un schéma sans Query n'existe pas.
+  it('le résolveur des virements entre dans le même schéma', async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [GraphQLSchemaBuilderModule],
+    }).compile();
+    const factory = moduleRef.get(GraphQLSchemaFactory);
+    const sdl = printSchema(await factory.create([BankImportResolver, BankTransferResolver]));
+    expect(sdl).toContain(
+      'acceptBankLineMemberPayment(input: AcceptBankLineMemberPaymentInput!): BankTransferResultGraph!',
+    );
+    expect(sdl).toContain('invoicesPaid: Int!');
+    expect(sdl).toContain('stoppedBecause: String');
   });
 });

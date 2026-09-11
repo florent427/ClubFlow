@@ -20,6 +20,7 @@ import { AccountingAllocationService } from '../accounting-allocation.service';
 import { AccountingAuditService } from '../accounting-audit.service';
 import { AccountingService } from '../accounting.service';
 import { BankReconciliationService } from './bank-reconciliation.service';
+import { BankPayerLookupService } from './bank-payer-lookup.service';
 import { CategorizationLearningService } from './categorization-learning.service';
 import { applyRules, normalizeStatementLabel } from './categorization-rules';
 import type { CategorizationRule } from './categorization-rules';
@@ -55,7 +56,7 @@ export interface LineProposal {
 }
 
 export interface CategorizationOutcome {
-  status: 'PROPOSED' | 'QUESTION' | 'EXHAUSTED' | 'SKIPPED';
+  status: 'PROPOSED' | 'QUESTION' | 'EXHAUSTED' | 'SKIPPED' | 'PAYER';
   proposal: LineProposal | null;
   question: string | null;
 }
@@ -112,6 +113,7 @@ export class BankLineCategorizationService {
     private readonly accounting: AccountingService,
     private readonly reconciliation: BankReconciliationService,
     private readonly learning: CategorizationLearningService,
+    private readonly payerLookup: BankPayerLookupService,
   ) {}
 
   // ── Règles du club ────────────────────────────────────────────────────
@@ -225,6 +227,12 @@ export class BankLineCategorizationService {
       return skip('Cette ligne a déjà une proposition : valide-la ou rejette-la.');
     }
 
+    // Un encaissement d'adhérent passe avant tout : encaisser LA facture vaut
+    // mieux qu'écrire une recette générique, et personne ne paie l'IA pour ça
+    // (ADR-0014 §7).
+    const payerOutcome = await this.tryMemberTransfer(clubId, line);
+    if (payerOutcome) return payerOutcome;
+
     const ruleOutcome = await this.tryRules(clubId, userId, line);
     if (ruleOutcome) return ruleOutcome;
 
@@ -294,6 +302,7 @@ export class BankLineCategorizationService {
         proposedEntryId: null,
         aiExhausted: false,
         aiQuestion: null,
+        payerProposalJson: { equals: Prisma.DbNull },
       },
       orderBy: { lineIndex: 'asc' },
       select: { id: true },
@@ -548,6 +557,31 @@ export class BankLineCategorizationService {
       throw new BadRequestException(`Compte ${code} inconnu au plan comptable du club.`);
     }
     return account;
+  }
+
+  /**
+   * Ligne créditrice reconnue comme un virement d'adhérent : on retient le
+   * payeur et les factures qu'il solde, et on s'arrête là. Aucune écriture
+   * n'est proposée — c'est l'encaissement de la facture qui portera la
+   * recette, avec son e-mail de confirmation.
+   */
+  private async tryMemberTransfer(
+    clubId: string,
+    line: LineRow,
+  ): Promise<CategorizationOutcome | null> {
+    if (line.amountCents <= 0) return null;
+    const proposal = await this.payerLookup.autoProposal(clubId, line.id);
+    if (!proposal) return null;
+    await this.prisma.bankStatementLine.update({
+      where: { id: line.id },
+      data: {
+        payerProposalJson: JSON.parse(JSON.stringify(proposal)) as Prisma.InputJsonValue,
+      },
+    });
+    this.logger.log(
+      `[ligne ${line.id}] virement de ${proposal.payer.firstName} ${proposal.payer.lastName} : ${proposal.allocations.length} facture(s)`,
+    );
+    return { status: 'PAYER', proposal: null, question: null };
   }
 
   private async tryRules(
