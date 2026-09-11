@@ -65,4 +65,27 @@ describe('deriveStatementStatus', () => {
     expect(deriveStatementStatus({ ok: true }, ['MATCHED', 'IGNORED'])).toBe('RECONCILED');
     expect(deriveStatementStatus({ ok: true }, [])).toBe('READY');
   });
+
+  it('divergences de lecture non tranchées : NEEDS_CHECK même si l’arithmétique tombe juste', () => {
+    expect(
+      deriveStatementStatus({ ok: true }, ['UNMATCHED'], { unresolvedDivergences: 1 }),
+    ).toBe('NEEDS_CHECK');
+    expect(
+      deriveStatementStatus({ ok: true }, ['UNMATCHED'], { unresolvedDivergences: 0 }),
+    ).toBe('READY');
+  });
+
+  it('les deux lectures d’accord mais l’arithmétique fausse : NEEDS_CHECK — le contrôle juge, pas l’accord', () => {
+    const r = checkStatementIntegrity({
+      openingBalanceCents: 123456,
+      closingBalanceCents: 140000,
+      lineAmounts: [25000, -12000, -3590],
+      previousClosingCents: 123456,
+    });
+    expect(
+      deriveStatementStatus(r, ['UNMATCHED', 'UNMATCHED', 'UNMATCHED'], {
+        unresolvedDivergences: 0,
+      }),
+    ).toBe('NEEDS_CHECK');
+  });
 });
