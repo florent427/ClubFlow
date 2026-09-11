@@ -9,6 +9,22 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.51.0](https://github.com/florent427/ClubFlow/compare/v0.50.0...v0.51.0) (2026-09-11)
+
+
+### ✨ Features
+
+* **accounting:** une écriture née hors relevé rapproche la ligne déjà déposée ([8900e14](https://github.com/florent427/ClubFlow/commit/8900e1449acec3803fccfe0a0e99f40778526ff1))
+* **admin:** écran du livre de caisse (lot 7) ([3464487](https://github.com/florent427/ClubFlow/commit/34644874db90d1618b08fbd42c8b64efdfe80fd5))
+* **api:** livre de caisse, comptage et mouvements d'espèces (lot 7) ([327e519](https://github.com/florent427/ClubFlow/commit/327e519225276c3485037ae58ec5ab8132964fd5))
+* **db:** comptages de caisse, écarts et mouvements d'espèces ([8588e5e](https://github.com/florent427/ClubFlow/commit/8588e5e46d2199984c96a3ce5068f5dcf10b761f))
+
+
+### 🐛 Bug Fixes
+
+* **accounting:** rapprocher une ligne jette la proposition restée en revue ([66d61d2](https://github.com/florent427/ClubFlow/commit/66d61d234d0364310063be441a7e2574771500b9))
+* **accounting:** une proposition de l'IA cède devant l'écriture réelle ([539abcc](https://github.com/florent427/ClubFlow/commit/539abccf9a97b734c7edb90ae9a06c4d0d48815d))
+
 ## [0.50.0](https://github.com/florent427/ClubFlow/compare/v0.49.0...v0.50.0) (2026-09-11)
 
 
