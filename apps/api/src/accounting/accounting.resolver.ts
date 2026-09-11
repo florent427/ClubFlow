@@ -486,7 +486,7 @@ export class AccountingResolver {
     @CurrentUser() user: RequestUser,
     @Args('input') input: CreateAccountingEntryInput,
   ): Promise<AccountingEntryGraph> {
-    await this.accounting.createManualEntry(club.id, user.userId, {
+    const created = await this.accounting.createManualEntry(club.id, user.userId, {
       kind: input.kind,
       label: input.label,
       accountCode: input.accountCode,
@@ -500,14 +500,10 @@ export class AccountingResolver {
       vatAmountCents: input.vatAmountCents ?? null,
       financialAccountId: input.financialAccountId ?? null,
     });
-    // Récupère l'entry pleine pour le retour
-    const latest = await this.accounting.listEntries(club.id, {
-      limit: 1,
-    });
-    if (latest.length === 0) {
-      throw new Error('Création échouée');
-    }
-    return toGraph(latest[0] as unknown as EntryRow);
+    // L'écriture créée, pas « la plus récente du club » : une écriture datée
+    // avant une autre existante n'est pas la première de la liste.
+    const entry = await this.accounting.getEntry(club.id, created.id);
+    return toGraph(entry as unknown as EntryRow);
   }
 
   @Mutation(() => AccountingEntryGraph, { name: 'cancelClubAccountingEntry' })
