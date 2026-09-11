@@ -9,6 +9,22 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.46.0](https://github.com/florent427/ClubFlow/compare/v0.45.0...v0.46.0) (2026-09-11)
+
+
+### ✨ Features
+
+* **accounting:** pastille « Rapproché » sur les écritures et date de reprise figée après le premier relevé ([ccd51db](https://github.com/florent427/ClubFlow/commit/ccd51db239a8e6a5bb75182b8953000b0df02045))
+* **accounting:** relevés OFX/CSV, contrôle d'intégrité et rapprochement bancaire (lot 1) ([b8f0c7c](https://github.com/florent427/ClubFlow/commit/b8f0c7cd93273a6827c98b8956aed8a631d352ec))
+* **admin:** écran de rapprochement bancaire (lot 1) ([497820d](https://github.com/florent427/ClubFlow/commit/497820d1df2af433603b097cf53d31088275fbda))
+* **api:** import de relevés OFX/CSV, contrôle d'intégrité et rapprochement (lot 1) ([c714e22](https://github.com/florent427/ClubFlow/commit/c714e22bf6e11e9b47a875459891321592037746))
+* **db:** relevés bancaires, lignes et rapprochements (lot 1) ([871e45d](https://github.com/florent427/ClubFlow/commit/871e45daac889f6020a56a1a1649213d87ab9630))
+
+
+### 🐛 Bug Fixes
+
+* **accounting:** la création d'écriture renvoie l'écriture créée ([e318758](https://github.com/florent427/ClubFlow/commit/e31875880b65117132559b7528a24bb20a4bcb62))
+
 ## [0.45.0](https://github.com/florent427/ClubFlow/compare/v0.44.0...v0.45.0) (2026-09-11)
 
 
