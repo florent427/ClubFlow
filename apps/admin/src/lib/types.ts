@@ -1938,6 +1938,22 @@ export type BankStatementLine = {
   candidateEntryIds: string[];
   matches: BankLineMatch[];
   resolvedAt: string | null;
+  /** Faux tant qu'une divergence entre les deux lectures d'un PDF attend un humain. */
+  readingAgreement: boolean;
+  divergence: BankLineDivergence | null;
+};
+
+/** Une ligne telle qu'un des deux modèles l'a lue (relevé PDF). */
+export type BankLineReading = {
+  bookedOn: string;
+  label: string;
+  amountCents: number;
+};
+
+export type BankLineDivergence = {
+  kind: 'ONLY_IN_A' | 'ONLY_IN_B' | 'AMOUNT' | 'DATE' | string;
+  a: BankLineReading | null;
+  b: BankLineReading | null;
 };
 
 export type BankStatementListItem = {
@@ -1962,6 +1978,12 @@ export type BankStatementListItem = {
   suggestedCount: number;
   matchedCount: number;
   ignoredCount: number;
+  /** Lignes où les deux lectures d'un PDF divergent encore. */
+  divergenceCount: number;
+  readingModelA: string | null;
+  readingModelB: string | null;
+  /** Coût IA de la lecture, en centimes. */
+  aiCostCents: number;
   createdAt: string;
 };
 

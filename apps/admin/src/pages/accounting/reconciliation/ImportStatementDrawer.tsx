@@ -22,7 +22,7 @@ import {
   inputToCents,
 } from './format';
 
-type Format = 'OFX' | 'CSV';
+type Format = 'OFX' | 'CSV' | 'PDF';
 
 type Props = {
   open: boolean;
@@ -47,14 +47,15 @@ function formatOf(name: string): Format | null {
   const ext = name.toLowerCase().split('.').pop();
   if (ext === 'ofx' || ext === 'qfx') return 'OFX';
   if (ext === 'csv' || ext === 'txt' || ext === 'tsv') return 'CSV';
+  if (ext === 'pdf') return 'PDF';
   return null;
 }
 
 /**
- * Dépôt d'un relevé OFX ou CSV (ADR-0014 §3). Pour un CSV, le mapping des
- * colonnes est détecté, montré avec un aperçu, corrigeable, puis mémorisé
- * sur le compte. Les soldes sont demandés seulement si le fichier ne les
- * porte pas.
+ * Dépôt d'un relevé OFX, CSV ou PDF (ADR-0014 §3). Pour un CSV, le mapping
+ * des colonnes est détecté, montré avec un aperçu, corrigeable, puis
+ * mémorisé sur le compte ; les soldes sont demandés seulement si le
+ * fichier ne les porte pas. Un PDF est lu en arrière-plan par deux modèles.
  */
 export function ImportStatementDrawer({
   open,
@@ -112,7 +113,7 @@ export function ImportStatementDrawer({
     if (!file) return;
     const fmt = formatOf(file.name);
     if (!fmt) {
-      showToast('Formats acceptés : OFX (.ofx, .qfx) ou CSV (.csv, .txt)', 'error');
+      showToast('Formats acceptés : OFX (.ofx, .qfx), CSV (.csv, .txt) ou PDF', 'error');
       return;
     }
     setReading(true);
@@ -176,20 +177,24 @@ export function ImportStatementDrawer({
             fileName,
             contentBase64: content,
             csvMapping: format === 'CSV' ? mapping : null,
-            openingBalanceCents: openingCents,
-            closingBalanceCents: closingCents,
+            openingBalanceCents: format === 'CSV' ? openingCents : null,
+            closingBalanceCents: format === 'CSV' ? closingCents : null,
           },
         },
       });
       const st = (res.data as { importBankStatement?: { id: string; status: string; matchedCount: number } } | undefined)
         ?.importBankStatement;
       if (!st) throw new Error('Réponse vide');
-      showToast(
-        st.status === 'NEEDS_CHECK'
-          ? 'Relevé déposé : le contrôle d’intégrité signale un écart'
-          : `Relevé déposé : ${st.matchedCount} ligne(s) rapprochée(s) automatiquement`,
-        st.status === 'NEEDS_CHECK' ? 'error' : 'success',
-      );
+      if (st.status === 'PARSING') {
+        showToast('Relevé déposé : lecture par deux modèles en cours, la page se mettra à jour', 'success');
+      } else {
+        showToast(
+          st.status === 'NEEDS_CHECK'
+            ? 'Relevé déposé : le contrôle d’intégrité signale un écart'
+            : `Relevé déposé : ${st.matchedCount} ligne(s) rapprochée(s) automatiquement`,
+          st.status === 'NEEDS_CHECK' ? 'error' : 'success',
+        );
+      }
       onImported(st.id);
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Import impossible', 'error');
@@ -238,15 +243,17 @@ export function ImportStatementDrawer({
           </p>
         ) : null}
         <label className="cf-field">
-          <span>Fichier (OFX ou CSV) *</span>
+          <span>Fichier (OFX, CSV ou PDF) *</span>
           <input
             type="file"
-            accept=".ofx,.qfx,.csv,.txt,.tsv,text/csv,application/x-ofx"
+            accept=".ofx,.qfx,.csv,.txt,.tsv,.pdf,text/csv,application/x-ofx,application/pdf"
             disabled={reading}
             onChange={(e) => void onFile(e.target.files?.[0])}
           />
           <small className="cf-muted">
-            {fileName ? `${fileName} — ${format}` : 'Export de votre espace bancaire. Le PDF arrive au lot suivant.'}
+            {fileName
+              ? `${fileName} — ${format}`
+              : 'Export OFX ou CSV de votre espace bancaire (lecture exacte), ou le relevé PDF (lu par deux IA).'}
           </small>
         </label>
 
@@ -399,6 +406,21 @@ export function ImportStatementDrawer({
             d’intégrité et le chaînage avec le relevé précédent sont faits au
             dépôt.
           </p>
+        ) : null}
+
+        {format === 'PDF' ? (
+          <section className="members-panel" style={{ padding: 12 }}>
+            <strong>Lecture par deux modèles IA</strong>
+            <p className="cf-muted" style={{ marginTop: 6 }}>
+              Deux modèles indépendants lisent le relevé ; les lignes où ils ne
+              sont pas d’accord sont surlignées pour que tu tranches. Ensuite le
+              contrôle arithmétique (solde de début + mouvements = solde de fin)
+              décide si le relevé est exploitable. Compte quelques dizaines de
+              secondes, et un coût IA de quelques centimes, imputé au budget du
+              club. Un export OFX ou CSV, quand la banque le propose, est lu sans
+              IA et sans erreur.
+            </p>
+          </section>
         ) : null}
       </div>
     </Drawer>
