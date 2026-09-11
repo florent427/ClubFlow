@@ -104,7 +104,18 @@ export function PayerCard({ line, busy, onAccept }: Props) {
             type="button"
             className="btn-primary"
             disabled={busy}
-            onClick={() => onAccept(proposal.allocations, proposal)}
+            // Les parts viennent d'Apollo, donc avec `__typename` : les
+            // recopier, sinon l'input GraphQL les refuse (pitfall
+            // apollo-typename-dans-les-inputs).
+            onClick={() =>
+              onAccept(
+                proposal.allocations.map((a) => ({
+                  invoiceId: a.invoiceId,
+                  amountCents: a.amountCents,
+                })),
+                proposal,
+              )
+            }
           >
             Encaisser
           </button>
