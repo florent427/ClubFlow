@@ -9,6 +9,15 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.50.0](https://github.com/florent427/ClubFlow/compare/v0.49.0...v0.50.0) (2026-09-11)
+
+
+### ✨ Features
+
+* **admin:** écran des frais avancés par les bénévoles (lot 6) ([cb653cc](https://github.com/florent427/ClubFlow/commit/cb653cc6cdbc2c4316001be68615c0a1f1fb0fc6))
+* **api:** frais avancés par un bénévole et remboursement groupé (lot 6) ([6f5b3b6](https://github.com/florent427/ClubFlow/commit/6f5b3b6a2429bf42f7dccbb21383591f73f372e0))
+* **db:** compte de tiers des bénévoles et remboursements groupés ([b996261](https://github.com/florent427/ClubFlow/commit/b996261bf1d395b5d2a9096a0d84e7f6b96bd0cc))
+
 ## [0.49.0](https://github.com/florent427/ClubFlow/compare/v0.48.0...v0.49.0) (2026-09-11)
 
 
