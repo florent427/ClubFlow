@@ -19,6 +19,7 @@
 | Fichier | Sujet |
 |---|---|
 | [`apollo-server-csrf-cross-origin.md`](pitfalls/apollo-server-csrf-cross-origin.md) | Piège — Apollo Server v5 bloque les POST cross-origin sans header non-simple |
+| [`apollo-typename-dans-les-inputs.md`](pitfalls/apollo-typename-dans-les-inputs.md) | Piège — renvoyer un objet lu par Apollo comme input GraphQL (`__typename`) |
 | [`atob-latin1-et-base64url.md`](pitfalls/atob-latin1-et-base64url.md) | `atob()` ne décode ni l'UTF-8 ni le base64url : mojibake visible, déconnexions invisibles |
 | [`auto-merge-clean-status.md`](pitfalls/auto-merge-clean-status.md) | Piège — `gh pr merge --auto` échoue "Pull request not in a clean status" |
 | [`backdrop-filter-bloc-conteneur-fixed.md`](pitfalls/backdrop-filter-bloc-conteneur-fixed.md) | Piège — `backdrop-filter` enferme les descendants `position: fixed` |
@@ -109,7 +110,7 @@
 
 ---
 
-_Index généré le 2026-09-10 17:23 UTC par `bin/memory-index`._
+_Index généré le 2026-09-11 04:43 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`
