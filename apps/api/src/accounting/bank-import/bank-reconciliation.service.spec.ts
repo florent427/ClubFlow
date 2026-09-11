@@ -231,6 +231,7 @@ function makeWorld(entries: Entry[], lines: Line[]) {
   const svc = new BankReconciliationService(
     prisma as unknown as PrismaService,
     audit as unknown as AccountingAuditService,
+    { learnFrom: jest.fn(async () => undefined) } as never,
   );
   return { svc, state, audit };
 }

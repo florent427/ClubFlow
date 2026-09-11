@@ -20,7 +20,8 @@ import { AccountingAllocationService } from '../accounting-allocation.service';
 import { AccountingAuditService } from '../accounting-audit.service';
 import { AccountingService } from '../accounting.service';
 import { BankReconciliationService } from './bank-reconciliation.service';
-import { applyRules, learnedPatternFor, normalizeStatementLabel } from './categorization-rules';
+import { CategorizationLearningService } from './categorization-learning.service';
+import { applyRules, normalizeStatementLabel } from './categorization-rules';
 import type { CategorizationRule } from './categorization-rules';
 import {
   CATEGORIZATION_SYSTEM_PROMPT,
@@ -110,6 +111,7 @@ export class BankLineCategorizationService {
     private readonly allocation: AccountingAllocationService,
     private readonly accounting: AccountingService,
     private readonly reconciliation: BankReconciliationService,
+    private readonly learning: CategorizationLearningService,
   ) {}
 
   // ── Règles du club ────────────────────────────────────────────────────
@@ -395,7 +397,7 @@ export class BankLineCategorizationService {
       await this.reconciliation.refreshStatementStatus(clubId, touched.statementId);
     }
 
-    await this.learnFrom(clubId, userId, line, accountCode, projectId ?? null);
+    await this.learning.learnFrom(clubId, userId, line, accountCode, projectId ?? null);
     await this.audit.log({
       clubId,
       userId,
@@ -975,57 +977,4 @@ export class BankLineCategorizationService {
     );
   }
 
-  /**
-   * La validation enseigne : la règle qui a servi gagne un point, une
-   * décision prise sans règle en crée une. C'est ce qui fait qu'un club
-   * paie l'IA une fois par fournisseur, pas une fois par mois.
-   */
-  private async learnFrom(
-    clubId: string,
-    userId: string,
-    line: LineRow,
-    accountCode: string,
-    projectId: string | null,
-  ): Promise<void> {
-    if (line.ruleId) {
-      const rule = await this.prisma.accountingCategorizationRule.findFirst({
-        where: { id: line.ruleId, clubId },
-        select: { id: true, accountCode: true },
-      });
-      if (rule && rule.accountCode === accountCode) {
-        await this.prisma.accountingCategorizationRule.update({
-          where: { id: rule.id },
-          data: { hitCount: { increment: 1 }, lastHitAt: new Date() },
-        });
-        return;
-      }
-      // Le trésorier a corrigé le compte : la règle ne dit plus le vrai,
-      // on la laisse et on en apprend une nouvelle ci-dessous.
-    }
-    const pattern = learnedPatternFor(line.label);
-    if (!pattern) return;
-    const direction = line.amountCents >= 0 ? CategorizationDirection.CREDIT : CategorizationDirection.DEBIT;
-    await this.prisma.accountingCategorizationRule.upsert({
-      where: { clubId_pattern_direction: { clubId, pattern, direction } },
-      create: {
-        clubId,
-        pattern,
-        matchKind: 'CONTAINS',
-        direction,
-        accountCode,
-        projectId,
-        source: CategorizationRuleSource.LEARNED,
-        hitCount: 1,
-        lastHitAt: new Date(),
-        createdByUserId: userId,
-      },
-      update: {
-        accountCode,
-        projectId,
-        isActive: true,
-        hitCount: { increment: 1 },
-        lastHitAt: new Date(),
-      },
-    });
-  }
 }

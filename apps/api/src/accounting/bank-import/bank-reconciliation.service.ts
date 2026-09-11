@@ -15,6 +15,7 @@ import {
 } from '@prisma/client';
 import { AccountingAuditService } from '../accounting-audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CategorizationLearningService } from './categorization-learning.service';
 import { deriveStatementStatus } from './statement-integrity';
 
 /** Fenêtre du rapprochement automatique : la banque comptabilise à J+2 ou J+3, une remise peut attendre une semaine. */
@@ -75,6 +76,7 @@ export class BankReconciliationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AccountingAuditService,
+    private readonly learning: CategorizationLearningService,
   ) {}
 
   /** Passe sur toutes les lignes non résolues d'un relevé exploitable. */
@@ -369,7 +371,11 @@ export class BankReconciliationService {
     if (!line) return null;
     const entry = await tx.accountingEntry.findFirst({
       where: { id: entryId, clubId, cancelledAt: null },
-      select: { amountCents: true },
+      select: {
+        amountCents: true,
+        projectId: true,
+        lines: { select: { accountCode: true }, orderBy: { sortOrder: 'asc' } },
+      },
     });
     if (!entry) return null;
     if (entry.amountCents !== Math.abs(line.amountCents)) {
@@ -405,6 +411,13 @@ export class BankReconciliationService {
         resolvedByUserId: userId,
       },
     });
+    // La validation enseigne, quel que soit l'écran d'où elle vient : ici la
+    // file de revue comptable, ailleurs l'écran de rapprochement.
+    const cashCode = line.statement.financialAccount.accountingAccount.code;
+    const main = entry.lines.find((l) => l.accountCode !== cashCode);
+    if (main) {
+      await this.learning.learnFrom(clubId, userId, line, main.accountCode, entry.projectId);
+    }
     return line.statement.id;
   }
 

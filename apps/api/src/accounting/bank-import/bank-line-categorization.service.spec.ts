@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { BankLineCategorizationService } from './bank-line-categorization.service';
+import { CategorizationLearningService } from './categorization-learning.service';
 
 /**
  * Catégorisation d'une ligne de relevé (ADR-0014 §5). Ce qui est vérifié :
@@ -274,6 +275,9 @@ function makeWorld(opts: WorldOptions = {}) {
     }),
   };
   const reconciliation = { refreshStatementStatus: jest.fn(async () => undefined) };
+  // Le vrai service d'apprentissage, sur le même double Prisma : ce que la
+  // validation enseigne fait partie de ce qu'on vérifie.
+  const learning = new CategorizationLearningService(prisma as never);
 
   const svc = new BankLineCategorizationService(
     prisma as never,
@@ -284,6 +288,7 @@ function makeWorld(opts: WorldOptions = {}) {
     allocation as never,
     accounting as never,
     reconciliation as never,
+    learning as never,
   );
   return {
     svc,
