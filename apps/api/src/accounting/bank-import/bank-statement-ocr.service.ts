@@ -263,7 +263,7 @@ export class BankStatementOcrService {
       await this.markFailed(st.id, errorMessage(err));
       return;
     }
-    const buffer = await this.loadAssetBuffer(st.mediaAssetId);
+    const buffer = await this.loadAssetBuffer(clubId, st.mediaAssetId);
     const outcome = await this.readBuffer(setup, buffer);
 
     // Coût journalisé même si la lecture est inexploitable : il est payé.
@@ -481,8 +481,13 @@ export class BankStatementOcrService {
     }
   }
 
-  private async loadAssetBuffer(assetId: string): Promise<Buffer> {
-    const { stream } = await this.media.streamFor(assetId);
+  /**
+   * Le fichier archivé est privé : `streamFor` répond « introuvable » à qui
+   * ne présente pas le club propriétaire (volontaire, pas de fuite par
+   * énumération). Ici on lit pour le compte du club lui-même.
+   */
+  private async loadAssetBuffer(clubId: string, assetId: string): Promise<Buffer> {
+    const { stream } = await this.media.streamFor(assetId, { clubId });
     const chunks: Buffer[] = [];
     for await (const chunk of stream) {
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array));
