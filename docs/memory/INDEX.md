@@ -38,6 +38,7 @@
 | [`compta-non-seedee-webhook-500.md`](pitfalls/compta-non-seedee-webhook-500.md) | Piège — module comptable activé mais plan comptable jamais seedé |
 | [`cors-admin-web-origin-missing-domain.md`](pitfalls/cors-admin-web-origin-missing-domain.md) | Piège — Login admin "Failed to fetch" : nouveau sous-domaine pas dans ADMIN_WEB_ORIGIN |
 | [`cors-no-origin-prod.md`](pitfalls/cors-no-origin-prod.md) | Piège — CORS API en `NODE_ENV=production` bloque les appels SSR |
+| [`double-ignore-une-clause-du-where.md`](pitfalls/double-ignore-une-clause-du-where.md) | Piège — un double qui ignore une clause du `where` certifie un filtre absent |
 | [`double-transaction-rollback-trop-genereux.md`](pitfalls/double-transaction-rollback-trop-genereux.md) | Piège — un double de transaction qui annule TOUT à l'échec ne prouve rien |
 | [`eas-build-view-non-interactive.md`](pitfalls/eas-build-view-non-interactive.md) | Suivi de build EAS : un flag invalide rend le statut illisible, et le monitor tourne dans le vide |
 | [`echec-silencieux-chemin-erreur.md`](pitfalls/echec-silencieux-chemin-erreur.md) | L'échec qui ne dit rien : un chemin d'erreur muet se lit comme « rien ne s'est passé » |
@@ -75,6 +76,7 @@
 | [`staging-supprimee-au-merge.md`](pitfalls/staging-supprimee-au-merge.md) | Piège — `staging` disparaît à chaque promotion vers `main` |
 | [`test-verifie-la-forme-pas-le-comportement.md`](pitfalls/test-verifie-la-forme-pas-le-comportement.md) | Piège — un test vert qui certifie un invariant que le code n'a pas |
 | [`typecheck-noop-solution-tsconfig.md`](pitfalls/typecheck-noop-solution-tsconfig.md) | Piège — `npx tsc --noEmit` qui vérifie 0 fichier et sort 0 |
+| [`une-supposition-survit-a-la-decision.md`](pitfalls/une-supposition-survit-a-la-decision.md) | Piège — une supposition qui survit à la décision compte deux fois |
 | [`windows-scp-crlf-bash-script.md`](pitfalls/windows-scp-crlf-bash-script.md) | Piège — `scp` Windows transfère les `.sh` avec line endings CRLF |
 
 ## 🏛️ Décisions architecturales (ADR)
@@ -110,7 +112,7 @@
 
 ---
 
-_Index généré le 2026-09-11 10:30 UTC par `bin/memory-index`._
+_Index généré le 2026-09-11 12:41 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`
