@@ -3501,6 +3501,20 @@ const BANK_LINE_FIELDS = `
     entryAmountCents
   }
   resolvedAt
+  readingAgreement
+  divergence {
+    kind
+    a {
+      bookedOn
+      label
+      amountCents
+    }
+    b {
+      bookedOn
+      label
+      amountCents
+    }
+  }
 `;
 
 const BANK_STATEMENT_ITEM_FIELDS = `
@@ -3525,6 +3539,10 @@ const BANK_STATEMENT_ITEM_FIELDS = `
   suggestedCount
   matchedCount
   ignoredCount
+  divergenceCount
+  readingModelA
+  readingModelB
+  aiCostCents
   createdAt
 `;
 
@@ -3825,6 +3843,46 @@ export const GENERATE_CHEQUE_DEPOSIT_SLIP = gql`
   mutation GenerateChequeDepositSlip($id: ID!) {
     generateChequeDepositSlip(id: $id) {
       ${CHEQUE_DEPOSIT_FIELDS}
+    }
+  }
+`;
+
+export const RERUN_BANK_STATEMENT_READING = gql`
+  mutation RerunBankStatementReading($id: ID!) {
+    rerunBankStatementReading(id: $id) {
+      id
+      status
+    }
+  }
+`;
+
+export const CONFIRM_BANK_LINE_READING = gql`
+  mutation ConfirmBankStatementLineReading($lineId: ID!) {
+    confirmBankStatementLineReading(lineId: $lineId) {
+      id
+      status
+    }
+  }
+`;
+
+export const UPDATE_BANK_STATEMENT_BALANCES = gql`
+  mutation UpdateBankStatementBalances($input: UpdateBankStatementBalancesInput!) {
+    updateBankStatementBalances(input: $input) {
+      id
+      status
+      integrityDeltaCents
+      chainOk
+    }
+  }
+`;
+
+export const RECHECK_BANK_STATEMENT = gql`
+  mutation RecheckBankStatement($id: ID!) {
+    recheckBankStatement(id: $id) {
+      id
+      status
+      integrityDeltaCents
+      chainOk
     }
   }
 `;

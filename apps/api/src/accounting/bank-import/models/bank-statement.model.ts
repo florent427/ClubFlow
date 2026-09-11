@@ -57,6 +57,35 @@ export class BankLineMatchGraph {
 }
 
 /** Ligne de relevé. `amountCents` signé : positif = crédit pour le club. */
+/** Une ligne telle qu'un des deux modèles l'a lue (relevé PDF). */
+@ObjectType()
+export class BankLineReadingGraph {
+  @Field()
+  bookedOn!: string;
+
+  @Field()
+  label!: string;
+
+  @Field(() => Int)
+  amountCents!: number;
+}
+
+/**
+ * Désaccord entre les deux lectures d'une ligne (ADR-0014 §3) :
+ * ONLY_IN_A / ONLY_IN_B (vue d'un seul côté), AMOUNT, DATE.
+ */
+@ObjectType()
+export class BankLineDivergenceGraph {
+  @Field()
+  kind!: string;
+
+  @Field(() => BankLineReadingGraph, { nullable: true })
+  a!: BankLineReadingGraph | null;
+
+  @Field(() => BankLineReadingGraph, { nullable: true })
+  b!: BankLineReadingGraph | null;
+}
+
 @ObjectType()
 export class BankStatementLineGraph {
   @Field(() => ID)
@@ -103,6 +132,13 @@ export class BankStatementLineGraph {
 
   @Field(() => GraphQLISODateTime, { nullable: true })
   resolvedAt!: Date | null;
+
+  /** Faux tant qu'une divergence entre les deux lectures attend un humain. */
+  @Field()
+  readingAgreement!: boolean;
+
+  @Field(() => BankLineDivergenceGraph, { nullable: true })
+  divergence!: BankLineDivergenceGraph | null;
 }
 
 @ObjectType()
@@ -171,6 +207,20 @@ export class BankStatementListItemGraph {
 
   @Field(() => Int)
   ignoredCount!: number;
+
+  /** Lignes où les deux lectures d'un PDF divergent encore. */
+  @Field(() => Int)
+  divergenceCount!: number;
+
+  @Field(() => String, { nullable: true })
+  readingModelA!: string | null;
+
+  @Field(() => String, { nullable: true })
+  readingModelB!: string | null;
+
+  /** Coût IA de la lecture, en centimes. */
+  @Field(() => Int)
+  aiCostCents!: number;
 
   @Field(() => GraphQLISODateTime)
   createdAt!: Date;

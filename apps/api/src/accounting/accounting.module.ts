@@ -21,6 +21,8 @@ import { ReceiptOcrService } from './receipt-ocr.service';
 import { BankImportResolver } from './bank-import/bank-import.resolver';
 import { BankReconciliationService } from './bank-import/bank-reconciliation.service';
 import { BankStatementService } from './bank-import/bank-statement.service';
+import { BankStatementOcrService } from './bank-import/bank-statement-ocr.service';
+import { PdfPageRenderer } from './ocr-shared';
 
 @Module({
   imports: [PrismaModule, AiModule, MediaModule],
@@ -41,6 +43,8 @@ import { BankStatementService } from './bank-import/bank-statement.service';
     ReceiptOcrService,
     BankReconciliationService,
     BankStatementService,
+    BankStatementOcrService,
+    PdfPageRenderer,
     AccountingResolver,
     BankImportResolver,
     ClubModuleEnabledGuard,
@@ -61,6 +65,8 @@ import { BankStatementService } from './bank-import/bank-statement.service';
     ReceiptOcrService,
     BankReconciliationService,
     BankStatementService,
+    BankStatementOcrService,
+    PdfPageRenderer,
   ],
 })
 export class AccountingModule {}

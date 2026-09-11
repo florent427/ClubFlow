@@ -44,16 +44,28 @@ export function checkStatementIntegrity(input: IntegrityInput): IntegrityResult 
   };
 }
 
+export interface StatusContext {
+  /**
+   * Lignes d'un relevé lu par deux modèles (PDF) sur lesquelles les deux
+   * lectures divergent et qu'un humain n'a pas encore confirmées, corrigées
+   * ou retirées (ADR-0014 §3). Tant qu'il en reste, le relevé n'est pas
+   * exploitable, même si l'arithmétique tombe juste.
+   */
+  unresolvedDivergences?: number;
+}
+
 /**
  * L'UNIQUE façon de calculer le statut d'un relevé : `READY` seulement si
- * le contrôle passe, `RECONCILED` seulement si, en plus, chaque ligne est
- * rapprochée ou ignorée.
+ * le contrôle passe et qu'aucune divergence de lecture n'attend un humain,
+ * `RECONCILED` seulement si, en plus, chaque ligne est rapprochée ou ignorée.
  */
 export function deriveStatementStatus(
   integrity: Pick<IntegrityResult, 'ok'>,
   lineStatuses: BankStatementLineStatus[],
+  context: StatusContext = {},
 ): BankStatementStatus {
   if (!integrity.ok) return 'NEEDS_CHECK';
+  if ((context.unresolvedDivergences ?? 0) > 0) return 'NEEDS_CHECK';
   const allResolved =
     lineStatuses.length > 0 &&
     lineStatuses.every((s) => s === 'MATCHED' || s === 'IGNORED');

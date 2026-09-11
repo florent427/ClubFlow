@@ -110,7 +110,9 @@ export class ImportBankStatementInput {
   @IsUUID()
   financialAccountId!: string;
 
-  @Field(() => BankStatementFormat, { description: 'OFX ou CSV.' })
+  @Field(() => BankStatementFormat, {
+    description: 'OFX, CSV ou PDF (lu par deux modèles en arrière-plan).',
+  })
   @IsEnum(BankStatementFormat)
   format!: BankStatementFormat;
 
@@ -238,4 +240,19 @@ export class IgnoreBankLineInput {
   @IsString()
   @MaxLength(300)
   note?: string | null;
+}
+
+@InputType()
+export class UpdateBankStatementBalancesInput {
+  @Field(() => ID)
+  @IsUUID()
+  statementId!: string;
+
+  @Field(() => Int)
+  @IsInt()
+  openingBalanceCents!: number;
+
+  @Field(() => Int)
+  @IsInt()
+  closingBalanceCents!: number;
 }

@@ -146,6 +146,13 @@ function makeWorld(opts: { accountingStartsOn?: string | null; openingBalanceCen
   const audit = { log: jest.fn(async () => undefined) };
   const media = { uploadDocument: jest.fn(async () => ({ id: 'asset-1' })), delete: jest.fn(async () => true) };
   const reconciliation = { autoMatch: jest.fn(async () => ({ matched: 0, suggested: 0, unmatched: 0 })) };
+  // Lecture PDF (lot 2) : hors du périmètre de ces tests, jamais appelée ici.
+  const ocr = {
+    assertCanRead: jest.fn(async () => {
+      throw new Error('inattendu');
+    }),
+    readInBackground: jest.fn(),
+  };
   const svc = new BankStatementService(
     prisma as unknown as PrismaService,
     financialAccounts as unknown as ClubFinancialAccountsService,
@@ -153,6 +160,7 @@ function makeWorld(opts: { accountingStartsOn?: string | null; openingBalanceCen
     audit as unknown as AccountingAuditService,
     media as unknown as MediaAssetsService,
     reconciliation as unknown as BankReconciliationService,
+    ocr as never,
   );
   return { svc, state, reconciliation, audit, media };
 }

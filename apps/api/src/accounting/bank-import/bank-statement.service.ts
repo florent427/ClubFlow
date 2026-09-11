@@ -20,9 +20,11 @@ import { AccountingAuditService } from '../accounting-audit.service';
 import {
   AccountingFiscalYearService,
   formatIsoDate,
+  todayInClubTimezone,
 } from '../accounting-fiscal-year.service';
 import { ClubFinancialAccountsService } from '../club-financial-accounts.service';
 import { BankReconciliationService } from './bank-reconciliation.service';
+import { BankStatementOcrService } from './bank-statement-ocr.service';
 import { detectCsv, parseCsv } from './csv-parser';
 import type { CsvDetection, CsvMapping } from './csv-parser';
 import { parseOfx } from './ofx-parser';
@@ -39,6 +41,8 @@ export const statementListInclude = {
     select: { id: true, label: true, accountingAccount: { select: { code: true } } },
   },
   mediaAsset: { select: { id: true, publicUrl: true, fileName: true } },
+  /** Lignes où les deux lectures d'un PDF divergent encore (ADR-0014 §3). */
+  _count: { select: { lines: { where: { readingAgreement: false } } } },
 } satisfies Prisma.BankStatementInclude;
 
 export const lineInclude = {
@@ -76,7 +80,7 @@ export type LineRow = Prisma.BankStatementLineGetPayload<{ include: typeof lineI
 
 export interface ImportStatementParams {
   financialAccountId: string;
-  format: 'OFX' | 'CSV';
+  format: 'OFX' | 'CSV' | 'PDF';
   fileName: string;
   contentBase64: string;
   csvMapping?: CsvMapping | null;
@@ -133,6 +137,7 @@ export class BankStatementService {
     private readonly audit: AccountingAuditService,
     private readonly media: MediaAssetsService,
     private readonly reconciliation: BankReconciliationService,
+    private readonly ocr: BankStatementOcrService,
   ) {}
 
   async list(clubId: string, financialAccountId?: string | null): Promise<StatementListRow[]> {
@@ -200,6 +205,9 @@ export class BankStatementService {
     if (account.kind !== ClubFinancialAccountKind.BANK || !account.isActive) {
       throw new BadRequestException('Un relevé se dépose sur un compte bancaire actif.');
     }
+    if (params.format === 'PDF') {
+      return this.importPdf(clubId, userId, params, account.id);
+    }
     if (params.format !== 'OFX' && params.format !== 'CSV') {
       throw new BadRequestException('Format non pris en charge pour un import de fichier.');
     }
@@ -230,7 +238,7 @@ export class BankStatementService {
       where: {
         clubId,
         financialAccountId: account.id,
-        status: { not: BankStatementStatus.FAILED },
+        status: { notIn: [BankStatementStatus.FAILED, BankStatementStatus.PARSING] },
         periodStart: { lte: periodEnd },
         periodEnd: { gte: periodStart },
       },
@@ -362,7 +370,7 @@ export class BankStatementService {
       where: {
         clubId,
         financialAccountId,
-        status: { not: BankStatementStatus.FAILED },
+        status: { notIn: [BankStatementStatus.FAILED, BankStatementStatus.PARSING] },
         periodEnd: { lt: periodStart },
         ...(excludeId ? { id: { not: excludeId } } : {}),
       },
@@ -377,7 +385,7 @@ export class BankStatementService {
       where: { id: statementId, clubId },
       include: {
         financialAccount: { select: { openingBalanceCents: true } },
-        lines: { select: { amountCents: true, status: true } },
+        lines: { select: { amountCents: true, status: true, readingAgreement: true } },
       },
     });
     if (!st) throw new NotFoundException('Relevé introuvable');
@@ -399,7 +407,11 @@ export class BankStatementService {
         chainExpectedCents: integrity.chainExpectedCents,
         previousStatementId: previous?.id ?? null,
         lineCount: st.lines.length,
-        status: deriveStatementStatus(integrity, st.lines.map((l) => l.status)),
+        status: deriveStatementStatus(
+          integrity,
+          st.lines.map((l) => l.status),
+          { unresolvedDivergences: st.lines.filter((l) => !l.readingAgreement).length },
+        ),
       },
     });
   }
@@ -430,6 +442,9 @@ export class BankStatementService {
       }
       data.amountCents = patch.amountCents;
     }
+    // Corrigée par un humain : une divergence de lecture est tranchée.
+    data.readingAgreement = true;
+    data.divergenceJson = Prisma.DbNull;
     await this.prisma.bankStatementLine.update({ where: { id: line.id }, data });
     await this.recomputeIntegrity(clubId, line.statementId);
     await this.audit.log({
@@ -509,6 +524,186 @@ export class BankStatementService {
       metadata: { bankStatementId: line.statementId, removedLine: { label: line.label, amountCents: line.amountCents } },
     });
     return this.getById(clubId, line.statementId);
+  }
+
+  /**
+   * Relevé PDF (ADR-0014 §3) : le fichier est archivé, le relevé créé en
+   * `PARSING`, puis lu en arrière-plan par deux modèles. Clé IA et budget
+   * sont vérifiés avant toute écriture ; les dépôts OFX/CSV n'en dépendent pas.
+   */
+  private async importPdf(
+    clubId: string,
+    userId: string,
+    params: ImportStatementParams,
+    financialAccountId: string,
+  ) {
+    const setup = await this.ocr.assertCanRead(clubId);
+    const buffer = decodeBase64(params.contentBase64);
+    if (!buffer.subarray(0, 5).toString('latin1').startsWith('%PDF')) {
+      throw new BadRequestException('Ce fichier n’est pas un PDF.');
+    }
+    const today = todayInClubTimezone();
+    const created = await this.prisma.bankStatement.create({
+      data: {
+        clubId,
+        financialAccountId,
+        format: BankStatementFormat.PDF,
+        status: BankStatementStatus.PARSING,
+        periodStart: today,
+        periodEnd: today,
+        openingBalanceCents: 0,
+        closingBalanceCents: 0,
+        lineCount: 0,
+        importedByUserId: userId,
+        readingModelA: setup.modelA,
+        readingModelB: setup.modelB,
+      },
+    });
+    // Ici le fichier EST la garantie : sans lui, rien à lire ni à relire.
+    try {
+      const asset = await this.media.uploadDocument(
+        clubId,
+        userId,
+        {
+          originalname: params.fileName.slice(0, 200) || 'releve.pdf',
+          mimetype: 'application/pdf',
+          size: buffer.byteLength,
+          buffer,
+        },
+        { kind: 'BANK_STATEMENT', id: created.id },
+      );
+      await this.prisma.bankStatement.update({
+        where: { id: created.id },
+        data: { mediaAssetId: asset.id },
+      });
+    } catch (err) {
+      await this.prisma.bankStatement.delete({ where: { id: created.id } });
+      throw new BadRequestException(
+        `Fichier non archivé, relevé non créé : ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    await this.audit.log({
+      clubId,
+      userId,
+      action: AccountingAuditAction.STATEMENT_IMPORT,
+      metadata: {
+        statementId: created.id,
+        format: 'PDF',
+        phase: 'PARSING',
+        modelA: setup.modelA,
+        modelB: setup.modelB,
+      },
+    });
+    this.ocr.readInBackground(clubId, userId, created.id);
+    return this.getById(clubId, created.id);
+  }
+
+  /** Relit un relevé PDF (lecture en échec ou fausse) : ses lignes sont remplacées. */
+  async rerunReading(clubId: string, userId: string, statementId: string) {
+    const st = await this.prisma.bankStatement.findFirst({
+      where: { id: statementId, clubId },
+      select: {
+        id: true,
+        format: true,
+        status: true,
+        mediaAssetId: true,
+        _count: { select: { lines: { where: { status: BankStatementLineStatus.MATCHED } } } },
+      },
+    });
+    if (!st) throw new NotFoundException('Relevé introuvable');
+    if (st.format !== BankStatementFormat.PDF || !st.mediaAssetId) {
+      throw new BadRequestException('Seul un relevé PDF archivé peut être relu.');
+    }
+    if (st.status === BankStatementStatus.PARSING) {
+      throw new BadRequestException('Lecture déjà en cours.');
+    }
+    if (st._count.lines > 0) {
+      throw new BadRequestException('Ce relevé a des lignes rapprochées : détache-les avant de le relire.');
+    }
+    await this.ocr.assertCanRead(clubId);
+    await this.prisma.bankStatement.update({
+      where: { id: st.id },
+      data: { status: BankStatementStatus.PARSING, error: null },
+    });
+    await this.audit.log({
+      clubId,
+      userId,
+      action: AccountingAuditAction.STATEMENT_IMPORT,
+      metadata: { statementId: st.id, format: 'PDF', phase: 'RERUN' },
+    });
+    this.ocr.readInBackground(clubId, userId, st.id);
+    return this.getById(clubId, st.id);
+  }
+
+  /** Un humain tranche une divergence de lecture : la ligne est gardée telle quelle. */
+  async confirmLineReading(clubId: string, userId: string, lineId: string) {
+    const line = await this.prisma.bankStatementLine.findFirst({
+      where: { id: lineId, clubId },
+      select: { id: true, statementId: true, readingAgreement: true, divergenceJson: true },
+    });
+    if (!line) throw new NotFoundException('Ligne introuvable');
+    if (line.readingAgreement) return this.getById(clubId, line.statementId);
+    await this.prisma.bankStatementLine.update({
+      where: { id: line.id },
+      data: { readingAgreement: true, divergenceJson: Prisma.DbNull },
+    });
+    await this.recomputeIntegrity(clubId, line.statementId);
+    await this.audit.log({
+      clubId,
+      userId,
+      action: AccountingAuditAction.UPDATE,
+      metadata: {
+        bankStatementLineId: line.id,
+        confirmedReading: line.divergenceJson as Prisma.InputJsonValue,
+      },
+    });
+    return this.getById(clubId, line.statementId);
+  }
+
+  /** Soldes de début et de fin corrigés à la main (CSV sans soldes, PDF mal lu). */
+  async updateBalances(
+    clubId: string,
+    userId: string,
+    input: { statementId: string; openingBalanceCents: number; closingBalanceCents: number },
+  ) {
+    const st = await this.prisma.bankStatement.findFirst({
+      where: { id: input.statementId, clubId },
+      select: { id: true, status: true, openingBalanceCents: true, closingBalanceCents: true },
+    });
+    if (!st) throw new NotFoundException('Relevé introuvable');
+    if (st.status === BankStatementStatus.PARSING) {
+      throw new BadRequestException('Lecture en cours : attends la fin.');
+    }
+    if (!Number.isInteger(input.openingBalanceCents) || !Number.isInteger(input.closingBalanceCents)) {
+      throw new BadRequestException('Soldes attendus en centimes entiers.');
+    }
+    await this.prisma.bankStatement.update({
+      where: { id: st.id },
+      data: {
+        openingBalanceCents: input.openingBalanceCents,
+        closingBalanceCents: input.closingBalanceCents,
+      },
+    });
+    await this.recomputeIntegrity(clubId, st.id);
+    // Les relevés suivants se chaînent sur ce solde de fin.
+    const next = await this.prisma.bankStatement.findMany({
+      where: { previousStatementId: st.id },
+      select: { id: true },
+    });
+    for (const n of next) await this.recomputeIntegrity(clubId, n.id);
+    await this.audit.log({
+      clubId,
+      userId,
+      action: AccountingAuditAction.UPDATE,
+      metadata: {
+        bankStatementId: st.id,
+        balances: {
+          before: { opening: st.openingBalanceCents, closing: st.closingBalanceCents },
+          after: { opening: input.openingBalanceCents, closing: input.closingBalanceCents },
+        },
+      },
+    });
+    return this.getById(clubId, st.id);
   }
 
   /** Supprime un relevé sans ligne rapprochée ; les relevés suivants sont rechaînés. */

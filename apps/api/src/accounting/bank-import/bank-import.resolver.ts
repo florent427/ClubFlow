@@ -28,10 +28,13 @@ import {
   ImportBankStatementInput,
   MatchBankLineInput,
   PreviewCsvStatementInput,
+  UpdateBankStatementBalancesInput,
   UpdateBankStatementLineInput,
 } from './dto/bank-import.input';
+import type { LineDivergence } from './merge-readings';
 import {
   BankLineCandidateGraph,
+  BankLineDivergenceGraph,
   BankStatementGraph,
   BankStatementLineGraph,
   BankStatementListItemGraph,
@@ -58,8 +61,21 @@ function toMapping(input: CsvMappingInput): CsvMapping {
   };
 }
 
+function divergenceFromJson(raw: unknown): BankLineDivergenceGraph | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const d = raw as Partial<LineDivergence>;
+  if (typeof d.kind !== 'string') return null;
+  const side = (s: LineDivergence['a']): BankLineDivergenceGraph['a'] =>
+    s && typeof s === 'object'
+      ? { bookedOn: s.bookedOn, label: s.label, amountCents: s.amountCents }
+      : null;
+  return { kind: d.kind, a: side(d.a ?? null), b: side(d.b ?? null) };
+}
+
 export function toLineGraph(l: LineRow): BankStatementLineGraph {
   return {
+    readingAgreement: l.readingAgreement,
+    divergence: divergenceFromJson(l.divergenceJson),
     id: l.id,
     lineIndex: l.lineIndex,
     bookedOn: formatIsoDate(l.bookedOn),
@@ -110,6 +126,10 @@ function toListItem(s: StatementListRow, counts: Counts): BankStatementListItemG
     suggestedCount: counts.SUGGESTED ?? 0,
     matchedCount: counts.MATCHED ?? 0,
     ignoredCount: counts.IGNORED ?? 0,
+    divergenceCount: s._count.lines,
+    readingModelA: s.readingModelA,
+    readingModelB: s.readingModelB,
+    aiCostCents: s.aiCostCents,
     createdAt: s.createdAt,
   };
 }
@@ -236,7 +256,7 @@ export class BankImportResolver {
   @Mutation(() => BankStatementGraph, {
     name: 'importBankStatement',
     description:
-      'Dépose un relevé OFX ou CSV : lecture, contrôle d’intégrité (soldes, chaînage, non-chevauchement), puis rapprochement automatique s’il est exploitable.',
+      'Dépose un relevé OFX, CSV ou PDF : lecture (deux modèles en arrière-plan pour un PDF, statut PARSING), contrôle d’intégrité (soldes, chaînage, non-chevauchement), puis rapprochement automatique s’il est exploitable.',
   })
   async importBankStatement(
     @CurrentClub() club: Club,
@@ -245,7 +265,7 @@ export class BankImportResolver {
   ): Promise<BankStatementGraph> {
     const row = await this.statements.import(club.id, user.userId, {
       financialAccountId: input.financialAccountId,
-      format: input.format === 'OFX' ? 'OFX' : 'CSV',
+      format: input.format === 'OFX' ? 'OFX' : input.format === 'PDF' ? 'PDF' : 'CSV',
       fileName: input.fileName,
       contentBase64: input.contentBase64,
       csvMapping: input.csvMapping ? toMapping(input.csvMapping) : null,
@@ -355,5 +375,59 @@ export class BankImportResolver {
     @Args('lineId', { type: () => ID }) lineId: string,
   ): Promise<BankStatementLineGraph> {
     return toLineGraph(await this.reconciliation.unignore(club.id, lineId));
+  }
+
+  @Mutation(() => BankStatementGraph, {
+    name: 'rerunBankStatementReading',
+    description: 'Relit un relevé PDF par les deux modèles (statut PARSING pendant la lecture).',
+  })
+  async rerunBankStatementReading(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<BankStatementGraph> {
+    return toDetail(await this.statements.rerunReading(club.id, user.userId, id));
+  }
+
+  @Mutation(() => BankStatementGraph, {
+    name: 'confirmBankStatementLineReading',
+    description: 'Tranche une divergence entre les deux lectures : la ligne est gardée telle quelle.',
+  })
+  async confirmBankStatementLineReading(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('lineId', { type: () => ID }) lineId: string,
+  ): Promise<BankStatementGraph> {
+    return toDetail(await this.statements.confirmLineReading(club.id, user.userId, lineId));
+  }
+
+  @Mutation(() => BankStatementGraph, {
+    name: 'updateBankStatementBalances',
+    description: 'Corrige les soldes de début et de fin ; le contrôle est relancé (et le chaînage des suivants).',
+  })
+  async updateBankStatementBalances(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('input') input: UpdateBankStatementBalancesInput,
+  ): Promise<BankStatementGraph> {
+    return toDetail(
+      await this.statements.updateBalances(club.id, user.userId, {
+        statementId: input.statementId,
+        openingBalanceCents: input.openingBalanceCents,
+        closingBalanceCents: input.closingBalanceCents,
+      }),
+    );
+  }
+
+  @Mutation(() => BankStatementGraph, {
+    name: 'recheckBankStatement',
+    description: 'Relance le contrôle d’intégrité et le chaînage d’un relevé.',
+  })
+  async recheckBankStatement(
+    @CurrentClub() club: Club,
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<BankStatementGraph> {
+    await this.statements.recomputeIntegrity(club.id, id);
+    return toDetail(await this.statements.getById(club.id, id));
   }
 }
