@@ -15,6 +15,11 @@ Rien ne le signale en local tant qu'on ne renvoie pas l'objet **tel quel** :
 résultats (`addTypename` est vrai par défaut), et les types `input` GraphQL
 refusent tout champ inconnu.
 
+Revenu le même jour sur `PayerCard.tsx` (lot 4) : les parts d'un virement
+proposées par le serveur, renvoyées telles quelles, ont valu un 400 et un
+bouton « Encaisser » qui n'encaissait rien. Le symptôme est discret : le
+réseau montre un POST 400, la page ne change pas.
+
 Rencontré le 2026-09-11 sur `ImportStatementDrawer.tsx` (mapping CSV
 détecté par `previewCsvStatement`, corrigé par l'utilisateur, renvoyé à
 `previewCsvStatement` puis `importBankStatement`).
