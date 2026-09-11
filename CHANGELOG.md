@@ -9,6 +9,22 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.49.0](https://github.com/florent427/ClubFlow/compare/v0.48.0...v0.49.0) (2026-09-11)
+
+
+### ✨ Features
+
+* **accounting:** encaisser un virement d'adhérent depuis le relevé (lot 4) ([631af37](https://github.com/florent427/ClubFlow/commit/631af37733c793d7bdd98a464fb5ee47c3973406))
+* **admin:** carte d'encaissement des virements d'adhérents (lot 4) ([0c736c6](https://github.com/florent427/ClubFlow/commit/0c736c6d4254b46fc3fdce1a6c0377da1f34a0c6))
+* **api:** encaisser un virement d'adhérent depuis le relevé (lot 4) ([2c51a5a](https://github.com/florent427/ClubFlow/commit/2c51a5a1162593e418075610fd3c78ae85db7edb))
+* **db:** virement d'adhérent reconnu sur une ligne de relevé ([846641b](https://github.com/florent427/ClubFlow/commit/846641be0ed8b135e892f2fdd56a53a8eed8cbab))
+
+
+### 🐛 Bug Fixes
+
+* **admin:** le payeur reconnu est transmis au paiement du virement ([aa23e98](https://github.com/florent427/ClubFlow/commit/aa23e98ffa2739942dfaec8961e2193fccfbc4b2))
+* **admin:** parts du virement recopiées avant envoi (__typename) ([46a87db](https://github.com/florent427/ClubFlow/commit/46a87dbbc0253652f2c16f68720f7b6580b4198e))
+
 ## [0.48.0](https://github.com/florent427/ClubFlow/compare/v0.47.2...v0.48.0) (2026-09-11)
 
 
