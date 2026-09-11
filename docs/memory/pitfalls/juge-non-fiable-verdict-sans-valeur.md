@@ -15,13 +15,14 @@ un sens ou dans l'autre :
 Le point commun n'est pas le résultat, c'est sa **source** : on a interprété
 un signal dont on avait **supposé** la sémantique au lieu de la vérifier.
 
-## Trois occurrences, trois formes
+## Quatre occurrences, quatre formes
 
 | Signal utilisé | Ce qu'on croyait | Ce qu'il valait vraiment |
 |---|---|---|
 | Code HTTP d'une URL Stripe Checkout | expirée ⇒ redirection 3xx | **200 dans les deux cas** — la page est une application qui affiche ensuite le message |
 | Erreur GraphQL renvoyée par l'API | refus métier | souvent une **erreur de validation** : requête invalide, aucun métier exécuté |
 | Sortie de `eas build:view --non-interactive` | build en cours | **flag invalide** : la commande échoue, le moniteur boucle indéfiniment |
+| « La mutation survit, les tests restent verts » | le test ne tient pas l'invariant | **la mutation n'a jamais été appliquée** : le motif `perl` ne matchait pas le fichier CRLF |
 
 Le premier a failli me faire « corriger » du code qui fonctionnait — le
 correctif venait pourtant d'être validé par 13 tests unitaires. Le deuxième
@@ -78,10 +79,37 @@ Il a fonctionné dès le premier lancement du script d'expiration de session :
 `memberLogin` n'existait pas (c'est `login`), et le script s'est arrêté net
 au lieu de conclure quoi que ce soit.
 
+## Le garde-fou du mutation testing
+
+Une mutation qui « survit » est un verdict, et il pousse dans la pire
+direction : croire son test faible, ou pire, croire que le code muté ne sert
+à rien et le retirer. Or sous Windows, `perl -0p` avec `
+` ou `$` ne matche
+pas un fichier CRLF : le fichier n'est pas modifié, les tests passent, et le
+verdict ne vaut rien.
+
+Le garde-fou tient en une ligne : **refuser de conclure si le fichier n'a pas
+changé.**
+
+```bash
+"$@"                                   # applique la mutation
+if cmp -s "$SVC" "$BAK"; then
+  echo "AUCUN CHANGEMENT — verdict sans valeur"; return
+fi
+npx jest "$SPEC"                       # seulement maintenant, juger
+```
+
+Le 2026-09-11, deux mutations « survivantes » sur cinq n'avaient simplement
+jamais été appliquées. Et une troisième, appliquée, visait la MAUVAISE
+occurrence : sans `/g`, `perl` remplace la première, qui était ailleurs dans
+le fichier. Ancrer le motif sur une ligne voisine propre à la fonction visée.
+
 ## Rencontré
 
 2026-07-20 au 2026-07-22 — moniteur EAS, scripts E2E boutique, puis
 vérification de l'expiration des sessions Stripe.
+
+2026-09-11 — mutation testing des lots 7 et 8 du rapprochement bancaire.
 
 ## Lié
 
