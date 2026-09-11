@@ -433,9 +433,25 @@ lignes divergentes mises en évidence ; contrôle bloquant.
 
 ### Task 2.4 : Vérification staging
 
-- [ ] Deux PDF réels de banques différentes ; delta 0 ; fausser une ligne à la
-  main → `NEEDS_CHECK` ; corriger → `READY` ; vérifier le coût dans
-  `AiUsageLog`.
+- [x] Fait sur staging le 2026-09-11, sur le club démo, avec sa propre clé IA.
+  - **Deux relevés PDF de mises en page différentes**, déposés et lus par les
+    deux modèles (`anthropic/claude-sonnet-4-5` et `google/gemini-2.5-flash`) :
+    l'un à colonnes débit et crédit séparées avec « SOLDE PRÉCÉDENT / SOLDE
+    NOUVEAU », l'autre à montant signé et solde courant avec « Ancien solde /
+    Nouveau solde ». 5 lignes puis 4 lignes, **aucune divergence** entre les
+    deux lectures, soldes et dates lus justes, **delta 0**, chaînage vrai, les
+    deux relevés `READY`. Le second chaîne sur le solde de fin du premier.
+  - **Fausser une ligne → corriger** : « COTIS ASSURANCE MAIF 2027 » passée de
+    −184,20 € à −178,70 € fait tomber le relevé en `NEEDS_CHECK` avec un écart
+    de 5,50 € ; le retour à −184,20 € le ramène en `READY`. Même chose
+    vérifiée sur un relevé CSV (−39,90 € → −49,90 €, écart −10,00 €) : le
+    contrôle ne dépend pas du format.
+  - **Coût dans `AiUsageLog`** : quatre entrées `BANK_STATEMENT_OCR`, une par
+    modèle et par relevé — 1 centime pour Claude, 0 pour Gemini à chaque fois,
+    soit **2 centimes** pour les deux relevés.
+  - **Seule réserve :** les deux PDF sont fabriqués à l'image de vraies mises
+    en page, pas extraits de vrais relevés. Ils sont joints à la session pour
+    que tu puisses comparer avec les tiens.
 
 ### Réalisé (2026-09-11)
 
@@ -848,9 +864,16 @@ model ChequeDeposit {
   hors de la transaction de l'appelant (P2003, transaction annulée) ; le mode
   et la référence de paiement d'une écriture manuelle n'étaient jamais
   persistés.
-- [ ] Non rejoué sur staging : paiement de facture par chèque (aucune facture
-  ouverte sur `club-demo` ; chemin couvert par
-  `payments-record-manual.spec.ts`).
+- [x] Paiement de facture par chèque rejoué sur staging le 2026-09-11, sur le
+  club `demo` — le seul à avoir une facture ouverte. Facture de 138,00 €
+  payée par chèque n° 7788991 : un `Cheque` PENDING créé avec émetteur,
+  banque et date de réception, l'écriture d'encaissement DÉBIT 511200 /
+  CRÉDIT 706100 portée par le compte de transit des chèques, et la facture
+  passée à PAID. L'argent reste donc en portefeuille, jamais en banque.
+  Remise ensuite déposée (bordereau R-2026-0001) : DÉBIT 512000 / CRÉDIT
+  511200, chèque DEPOSITED, et le solde du 511200 revenu à zéro. C'est le
+  n° de bordereau porté par `paymentReference` qui sert ensuite de clé forte
+  au rapprochement (task 5.4).
 - [x] Rapprochement de la ligne « REMISE » : rejoué au lot 1 le 2026-09-11
   (clé forte `CHEQUE_DEPOSIT` + « REMISE », `origin AUTO`).
 
