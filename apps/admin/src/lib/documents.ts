@@ -3506,6 +3506,28 @@ const BANK_LINE_FIELDS = `
   question
   aiAttempts
   aiExhausted
+  payerProposal {
+    payer {
+      kind
+      id
+      firstName
+      lastName
+    }
+    nameScore
+    amountMatch
+    confidence
+    invoices {
+      id
+      label
+      amountCents
+      balanceCents
+      dueAt
+    }
+    allocations {
+      invoiceId
+      amountCents
+    }
+  }
   proposal {
     accountCode
     accountLabel
@@ -4001,6 +4023,47 @@ export const BULK_ACCEPT_BANK_LINE_PROPOSALS = gql`
     bulkAcceptBankLineProposals(statementId: $statementId, lineIds: $lineIds) {
       id
       status
+    }
+  }
+`;
+
+export const BANK_LINE_PAYER_CANDIDATES = gql`
+  query BankLinePayerCandidates($lineId: ID!) {
+    bankLinePayerCandidates(lineId: $lineId) {
+      payer {
+        kind
+        id
+        firstName
+        lastName
+      }
+      nameScore
+      amountMatch
+      confidence
+      invoices {
+        id
+        label
+        amountCents
+        balanceCents
+        dueAt
+      }
+      allocations {
+        invoiceId
+        amountCents
+      }
+    }
+  }
+`;
+
+export const ACCEPT_BANK_LINE_MEMBER_PAYMENT = gql`
+  mutation AcceptBankLineMemberPayment($input: AcceptBankLineMemberPaymentInput!) {
+    acceptBankLineMemberPayment(input: $input) {
+      invoicesPaid
+      lineMatched
+      stoppedBecause
+      statement {
+        id
+        status
+      }
     }
   }
 `;

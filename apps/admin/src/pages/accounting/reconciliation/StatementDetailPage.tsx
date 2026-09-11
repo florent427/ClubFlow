@@ -3,6 +3,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
+  ACCEPT_BANK_LINE_MEMBER_PAYMENT,
   ACCEPT_BANK_LINE_PROPOSAL,
   ADD_BANK_STATEMENT_LINE,
   ANSWER_BANK_LINE_QUESTION,
@@ -46,9 +47,10 @@ import {
   todayIso,
 } from './format';
 import { MatchDrawer } from './MatchDrawer';
+import { PayerCard } from './PayerCard';
 import { ProposalCard } from './ProposalCard';
 
-type Filter = 'TODO' | 'ALL' | 'MATCHED' | 'IGNORED';
+type Filter = 'TODO' | 'TRANSFERS' | 'ALL' | 'MATCHED' | 'IGNORED';
 
 const IGNORE_LABELS: Record<BankStatementLineIgnoreReasonGql, string> = {
   BEFORE_TAKEOVER: 'Antérieure à la reprise',
@@ -117,6 +119,7 @@ export function StatementDetailPage() {
   const [acceptProposal, { loading: accepting }] = useMutation(ACCEPT_BANK_LINE_PROPOSAL);
   const [rejectProposal, { loading: rejecting }] = useMutation(REJECT_BANK_LINE_PROPOSAL);
   const [bulkAccept, { loading: bulkAccepting }] = useMutation(BULK_ACCEPT_BANK_LINE_PROPOSALS);
+  const [acceptTransfer, { loading: transferring }] = useMutation(ACCEPT_BANK_LINE_MEMBER_PAYMENT);
   const { data: accountsData } = useQuery<ClubAccountingAccountsData>(CLUB_ACCOUNTING_ACCOUNTS, {
     fetchPolicy: 'cache-first',
   });
@@ -125,7 +128,7 @@ export function StatementDetailPage() {
     [accountsData],
   );
   const categorizationBusy =
-    categorizingLine || categorizingAll || answering || accepting || rejecting || bulkAccepting;
+    categorizingLine || categorizingAll || answering || accepting || rejecting || bulkAccepting || transferring;
 
   const [filter, setFilter] = useState<Filter>('TODO');
   const [matchLine, setMatchLine] = useState<BankStatementLine | null>(null);
@@ -153,6 +156,12 @@ export function StatementDetailPage() {
     switch (filter) {
       case 'TODO':
         return all.filter((l) => l.status === 'UNMATCHED' || l.status === 'SUGGESTED');
+      case 'TRANSFERS':
+        // Virements reçus qu'aucun payeur connu n'explique : la file à
+        // résoudre à la main (ADR-0014 §7).
+        return all.filter(
+          (l) => l.status === 'UNMATCHED' && l.amountCents > 0 && !l.payerProposal,
+        );
       case 'MATCHED':
         return all.filter((l) => l.status === 'MATCHED');
       case 'IGNORED':
@@ -303,6 +312,9 @@ export function StatementDetailPage() {
     }
   }
   const todo = st.unmatchedCount + st.suggestedCount;
+  const unidentifiedTransfers = (st.lines ?? []).filter(
+    (l) => l.status === 'UNMATCHED' && l.amountCents > 0 && !l.payerProposal,
+  ).length;
   const sureProposals = (st.lines ?? []).filter(
     (l) => l.status === 'UNMATCHED' && l.proposal?.clear,
   );
@@ -486,6 +498,7 @@ export function StatementDetailPage() {
               {(
                 [
                   ['TODO', `À traiter (${todo})`],
+                  ['TRANSFERS', `Virements à identifier (${unidentifiedTransfers})`],
                   ['MATCHED', `Rapprochées (${st.matchedCount})`],
                   ['IGNORED', `Ignorées (${st.ignoredCount})`],
                   ['ALL', `Toutes (${st.lineCount})`],
@@ -644,6 +657,24 @@ export function StatementDetailPage() {
                       {showProposal ? (
                         <tr>
                           <td colSpan={6} style={{ paddingTop: 0 }}>
+                            {l.amountCents > 0 ? (
+                              <PayerCard
+                                line={l}
+                                busy={categorizationBusy}
+                                onAccept={(allocations) =>
+                                  void run(
+                                    () =>
+                                      acceptTransfer({
+                                        variables: {
+                                          input: { lineId: l.id, allocations },
+                                        },
+                                      }),
+                                    'Virement encaissé, facture soldée',
+                                  )
+                                }
+                              />
+                            ) : null}
+                            {l.payerProposal ? null : (
                             <ProposalCard
                               line={l}
                               accounts={accounts}
@@ -685,6 +716,7 @@ export function StatementDetailPage() {
                                 )
                               }
                             />
+                            )}
                           </td>
                         </tr>
                       ) : null}
