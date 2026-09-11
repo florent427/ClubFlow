@@ -218,6 +218,7 @@ model Club {
   cheques                    Cheque[]
   chequeDeposits             ChequeDeposit[]
   bankStatements             BankStatement[]
+  categorizationRules        AccountingCategorizationRule[]
 
   documents       ClubDocument[]
   signedDocuments ClubSignedDocument[]
@@ -253,6 +254,8 @@ enum AiUsageFeature {
   RECEIPT_OCR
   /// Lecture de relevés bancaires PDF par deux modèles vision (ADR-0014, lot 2).
   BANK_STATEMENT_OCR
+  /// Catégorisation des lignes de relevé sans écriture (ADR-0014, lot 3).
+  BANK_LINE_CATEGORIZATION
   OTHER
 }
 
@@ -1666,6 +1669,59 @@ enum BankMatchOrigin {
   PROPOSAL
 }
 
+/// Comment le motif d'une règle de catégorisation est confronté au libellé
+/// normalisé d'une ligne de relevé.
+enum CategorizationMatchKind {
+  CONTAINS
+  STARTS_WITH
+  REGEX
+}
+
+/// Sens auquel une règle s'applique : une règle « EDF » en dépense ne doit
+/// pas attraper un remboursement d'EDF.
+enum CategorizationDirection {
+  CREDIT
+  DEBIT
+  ANY
+}
+
+enum CategorizationRuleSource {
+  /// Créée à la volée en validant une proposition.
+  LEARNED
+  /// Écrite à la main dans les paramètres.
+  MANUAL
+}
+
+/// Règle de catégorisation d'une ligne de relevé (ADR-0014 §5). Elle évite
+/// de repayer l'IA pour un mouvement déjà vu : le loyer, EDF, la subvention
+/// annuelle. Une règle ne propose pas, elle décide — la validation reste
+/// humaine.
+model AccountingCategorizationRule {
+  id              String                   @id @default(uuid())
+  clubId          String
+  /// Motif confronté au libellé NORMALISÉ (majuscules, sans accents, sans
+  /// dates ni références).
+  pattern         String
+  matchKind       CategorizationMatchKind  @default(CONTAINS)
+  direction       CategorizationDirection  @default(ANY)
+  accountCode     String
+  projectId       String?
+  /// Libellé d'écriture proposé ; à défaut celui de la ligne.
+  label           String?
+  source          CategorizationRuleSource @default(LEARNED)
+  hitCount        Int                      @default(0)
+  lastHitAt       DateTime?
+  isActive        Boolean                  @default(true)
+  createdByUserId String?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, pattern, direction])
+  @@index([clubId, isActive])
+}
+
 /// Relevé bancaire déposé (ADR-0014). Source de vérité du compte 51x : une
 /// ligne = une écriture. Les relevés d'un même compte ne se chevauchent pas
 /// et se chaînent par leurs soldes.
@@ -1740,6 +1796,20 @@ model BankStatementLine {
   candidateEntryIds  String[]                       @default([])
   resolvedAt         DateTime?
   resolvedByUserId   String?
+  /// Catégorisation (lot 3) : proposition de compte pour une ligne sans
+  /// écriture, par règle apprise ou par deux modèles.
+  aiProposalJson     Json?
+  /// Question posée par l'IA quand la ligne n'est pas claire.
+  aiQuestion         String?
+  /// Tours de dialogue {role, text} déjà échangés sur cette ligne.
+  aiConversationJson Json?
+  aiAttempts         Int                            @default(0)
+  /// Plus de proposition attendue : saisie manuelle ou rapprochement à la main.
+  aiExhausted        Boolean                        @default(false)
+  /// Règle qui a produit la proposition, quand c'est une règle.
+  ruleId             String?
+  /// Écriture NEEDS_REVIEW matérialisant la proposition.
+  proposedEntryId    String?                        @unique
   createdAt          DateTime                       @default(now())
   updatedAt          DateTime                       @updatedAt
 
