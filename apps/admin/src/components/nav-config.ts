@@ -224,6 +224,11 @@ export const NAV_SECTIONS: NavSection[] = [
             label: 'Chèques & remises',
             modules: ['ACCOUNTING'],
           },
+          {
+            to: '/comptabilite/rapprochement',
+            label: 'Rapprochement bancaire',
+            modules: ['ACCOUNTING'],
+          },
         ],
       },
       {

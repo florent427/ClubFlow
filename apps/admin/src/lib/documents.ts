@@ -3170,6 +3170,20 @@ const FINANCIAL_ACCOUNT_FIELDS = `
   notes
   openingBalanceCents
   openingBalanceOn
+  csvMapping {
+    delimiter
+    hasHeader
+    dateCol
+    labelCol
+    amountCol
+    debitCol
+    creditCol
+    balanceCol
+    valueDateCol
+    referenceCol
+    dateFormat
+    decimalSeparator
+  }
 `;
 
 export const CLUB_FINANCIAL_ACCOUNTS = gql`
@@ -3454,6 +3468,248 @@ export const UNLOCK_CLUB_ACCOUNTING_MONTH = gql`
 export const CLOSE_CLUB_ACCOUNTING_FISCAL_YEAR = gql`
   mutation CloseClubAccountingFiscalYear($year: Int!) {
     closeClubAccountingFiscalYear(year: $year)
+  }
+`;
+
+// ============================================================================
+// Relevés bancaires et rapprochement (ADR-0014)
+// ============================================================================
+
+const BANK_LINE_FIELDS = `
+  id
+  lineIndex
+  bookedOn
+  valueOn
+  label
+  rawLabel
+  reference
+  amountCents
+  balanceAfterCents
+  status
+  ignoreReason
+  ignoreNote
+  candidateEntryIds
+  matches {
+    entryId
+    amountCents
+    origin
+    entryLabel
+    entryOccurredAt
+    entryKind
+    entrySource
+    entryAmountCents
+  }
+  resolvedAt
+`;
+
+const BANK_STATEMENT_ITEM_FIELDS = `
+  id
+  financialAccountId
+  financialAccountLabel
+  format
+  status
+  periodStart
+  periodEnd
+  openingBalanceCents
+  closingBalanceCents
+  lineCount
+  integrityDeltaCents
+  chainOk
+  chainExpectedCents
+  previousStatementId
+  fileUrl
+  fileName
+  warnings
+  unmatchedCount
+  suggestedCount
+  matchedCount
+  ignoredCount
+  createdAt
+`;
+
+export const CLUB_RECONCILIATION_SUMMARY = gql`
+  query ClubReconciliationSummary {
+    clubReconciliationSummary {
+      financialAccountId
+      label
+      accountingAccountCode
+      openingBalanceSet
+      statementCount
+      lastPeriodEnd
+      lastStatus
+      linesToHandle
+      unreconciledEntries
+    }
+  }
+`;
+
+export const CLUB_BANK_STATEMENTS = gql`
+  query ClubBankStatements($financialAccountId: ID) {
+    clubBankStatements(financialAccountId: $financialAccountId) {
+      ${BANK_STATEMENT_ITEM_FIELDS}
+    }
+  }
+`;
+
+export const CLUB_BANK_STATEMENT = gql`
+  query ClubBankStatement($id: ID!) {
+    clubBankStatement(id: $id) {
+      ${BANK_STATEMENT_ITEM_FIELDS}
+      lines {
+        ${BANK_LINE_FIELDS}
+      }
+    }
+  }
+`;
+
+export const BANK_LINE_CANDIDATES = gql`
+  query BankLineCandidates($lineId: ID!) {
+    bankLineCandidates(lineId: $lineId) {
+      entryId
+      label
+      occurredAt
+      kind
+      source
+      amountCents
+      remainingCents
+      strong
+    }
+  }
+`;
+
+export const PREVIEW_CSV_STATEMENT = gql`
+  mutation PreviewCsvStatement($input: PreviewCsvStatementInput!) {
+    previewCsvStatement(input: $input) {
+      delimiter
+      encoding
+      hasHeader
+      headers
+      sampleRows
+      rowCount
+      mapping {
+        delimiter
+        hasHeader
+        dateCol
+        labelCol
+        amountCol
+        debitCol
+        creditCol
+        balanceCol
+        valueDateCol
+        referenceCol
+        dateFormat
+        decimalSeparator
+      }
+      parsedCount
+      previewLines {
+        bookedOn
+        label
+        amountCents
+        balanceAfterCents
+      }
+      openingBalanceCents
+      closingBalanceCents
+      periodStart
+      periodEnd
+      warnings
+      error
+    }
+  }
+`;
+
+export const IMPORT_BANK_STATEMENT = gql`
+  mutation ImportBankStatement($input: ImportBankStatementInput!) {
+    importBankStatement(input: $input) {
+      id
+      status
+      integrityDeltaCents
+      chainOk
+      unmatchedCount
+      suggestedCount
+      matchedCount
+      ignoredCount
+    }
+  }
+`;
+
+export const UPDATE_BANK_STATEMENT_LINE = gql`
+  mutation UpdateBankStatementLine($input: UpdateBankStatementLineInput!) {
+    updateBankStatementLine(input: $input) {
+      id
+      status
+      integrityDeltaCents
+      chainOk
+    }
+  }
+`;
+
+export const ADD_BANK_STATEMENT_LINE = gql`
+  mutation AddBankStatementLine($input: AddBankStatementLineInput!) {
+    addBankStatementLine(input: $input) {
+      id
+      status
+      integrityDeltaCents
+    }
+  }
+`;
+
+export const REMOVE_BANK_STATEMENT_LINE = gql`
+  mutation RemoveBankStatementLine($lineId: ID!) {
+    removeBankStatementLine(lineId: $lineId) {
+      id
+      status
+      integrityDeltaCents
+    }
+  }
+`;
+
+export const DELETE_BANK_STATEMENT = gql`
+  mutation DeleteBankStatement($id: ID!) {
+    deleteBankStatement(id: $id)
+  }
+`;
+
+export const AUTO_MATCH_BANK_STATEMENT = gql`
+  mutation AutoMatchBankStatement($id: ID!) {
+    autoMatchBankStatement(id: $id) {
+      id
+      status
+      unmatchedCount
+      suggestedCount
+      matchedCount
+    }
+  }
+`;
+
+export const MATCH_BANK_LINE = gql`
+  mutation MatchBankLine($input: MatchBankLineInput!) {
+    matchBankLine(input: $input) {
+      ${BANK_LINE_FIELDS}
+    }
+  }
+`;
+
+export const UNMATCH_BANK_LINE = gql`
+  mutation UnmatchBankLine($lineId: ID!) {
+    unmatchBankLine(lineId: $lineId) {
+      ${BANK_LINE_FIELDS}
+    }
+  }
+`;
+
+export const IGNORE_BANK_LINE = gql`
+  mutation IgnoreBankLine($input: IgnoreBankLineInput!) {
+    ignoreBankLine(input: $input) {
+      ${BANK_LINE_FIELDS}
+    }
+  }
+`;
+
+export const UNIGNORE_BANK_LINE = gql`
+  mutation UnignoreBankLine($lineId: ID!) {
+    unignoreBankLine(lineId: $lineId) {
+      ${BANK_LINE_FIELDS}
+    }
   }
 `;
 
