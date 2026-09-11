@@ -22,6 +22,7 @@ import {
   pickVisionModel,
 } from '../ocr-shared';
 import type { RenderedPage } from '../ocr-shared';
+import { BankLineCategorizationService } from './bank-line-categorization.service';
 import { BankReconciliationService } from './bank-reconciliation.service';
 import { BankStatementIntegrityService } from './bank-statement-integrity.service';
 import { mergeReadings } from './merge-readings';
@@ -89,6 +90,7 @@ export class BankStatementOcrService {
     private readonly reconciliation: BankReconciliationService,
     private readonly renderer: PdfPageRenderer,
     private readonly integrity: BankStatementIntegrityService,
+    private readonly categorization: BankLineCategorizationService,
   ) {}
 
   /**
@@ -461,6 +463,8 @@ export class BankStatementOcrService {
     await this.integrity.rechainFollowing(clubId, st.financialAccountId, end, st.id);
     if (status === BankStatementStatus.READY) {
       await this.reconciliation.autoMatch(clubId, st.id);
+      // Ce qui reste sans écriture part en catégorisation, à la suite.
+      await this.categorization.categorizeStatement(clubId, userId, st.id);
     }
   }
 

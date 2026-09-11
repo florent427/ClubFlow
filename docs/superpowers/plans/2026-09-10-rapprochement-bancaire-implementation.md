@@ -504,21 +504,21 @@ ligne par ligne ou en lot, les validations créent des règles.
 
 ### Task 3.1 : Schéma
 
-- [ ] `AccountingCategorizationRule { id, clubId, pattern, matchKind CONTAINS|STARTS_WITH|REGEX, direction CREDIT|DEBIT|ANY, accountCode, projectId?, label?, source LEARNED|MANUAL, hitCount, lastHitAt?, isActive, createdByUserId, createdAt, updatedAt } @@index([clubId, isActive])`.
-- [ ] `BankStatementLine` : `aiProposalJson?`, `aiQuestion?`, `aiConversationJson?`,
+- [x] `AccountingCategorizationRule { id, clubId, pattern, matchKind CONTAINS|STARTS_WITH|REGEX, direction CREDIT|DEBIT|ANY, accountCode, projectId?, label?, source LEARNED|MANUAL, hitCount, lastHitAt?, isActive, createdByUserId, createdAt, updatedAt } @@index([clubId, isActive])`.
+- [x] `BankStatementLine` : `aiProposalJson?`, `aiQuestion?`, `aiConversationJson?`,
   `aiAttempts Int @default(0)`, `aiExhausted Boolean @default(false)`,
   `ruleId?`, `proposedEntryId?`.
 
 ### Task 3.2 : Moteur de règles (pur, `categorization-rules.ts`)
 
-- [ ] Normalisation du libellé : majuscules, retrait des dates, numéros et
+- [x] Normalisation du libellé : majuscules, retrait des dates, numéros et
   références, espaces réduits. Application par ordre de spécificité (motif le
   plus long d'abord) et de sens. Tests : « PRLV SEPA EDF 12/08 REF 123 » →
   règle « EDF » ; règle DEBIT ne s'applique pas à un crédit.
 
 ### Task 3.3 : `BankLineCategorizationService`
 
-- [ ] `categorize(lineId)` : 1) règles → proposition `{ accountCode, projectId?, label, confidence: 100, ruleId }` ;
+- [x] `categorize(lineId)` : 1) règles → proposition `{ accountCode, projectId?, label, confidence: 100, ruleId }` ;
   2) sinon deux modèles texte en parallèle (`textModel`, `textFallbackModel`) avec
   un prompt dérivé de `AccountingSuggestionService.buildPrompt` enrichi du sens,
   du compte financier, des règles du club, des 20 dernières lignes validées aux
@@ -526,52 +526,104 @@ ligne par ligne ou en lot, les validations créent des règles.
   **Clair** = deux réponses, même compte, confiance minimale ≥ 80 ; un seul
   modèle configuré → clair seulement si ≥ 90. Sinon le modèle le plus confiant
   formule **une** question (≤ 200 caractères) → `aiQuestion`.
-- [ ] `answerQuestion(lineId, answer)` : ajoute le tour, relance ; au troisième
+- [x] `answerQuestion(lineId, answer)` : ajoute le tour, relance ; au troisième
   échec `aiExhausted = true`, saisie manuelle proposée.
-- [ ] **Matérialisation** : toute proposition (claire ou après dialogue) crée
+- [x] **Matérialisation** : toute proposition (claire ou après dialogue) crée
   une écriture `NEEDS_REVIEW`, `source BANK_IMPORT`, `occurredAt = bookedOn`,
   `financialAccountId` du relevé, deux lignes (51x contrepartie + compte
   proposé avec `iaSuggestedAccountCode`, `iaReasoning`, `iaConfidencePct`) ;
   `proposedEntryId` sur la ligne ; sens : crédit → `INCOME`, débit →
   `EXPENSE`, compte 51x/53x → `TRANSFER`. Elle apparaît donc dans
   `clubAccountingReviewQueue` : **une seule boîte de réception**.
-- [ ] Validation : depuis l'écran de rapprochement (`acceptBankLineProposal`,
+- [x] Validation : depuis l'écran de rapprochement (`acceptBankLineProposal`,
   avec surcharges compte/projet/libellé) ou depuis la file de revue existante.
   Dans les deux cas, le passage en `POSTED` appelle
   `BankReconciliationService.onEntryPosted(entryId)` qui crée le match et
   passe la ligne `MATCHED`, dans la même transaction. Refactor préalable : un
   seul point de passage vers `POSTED` dans `AccountingService` (`markPosted`),
   utilisé par `validateAccountingEntryLine` et `confirmExtraction`.
-- [ ] Rejet : `rejectBankLineProposal` supprime l'écriture `NEEDS_REVIEW` et
+- [x] Rejet : `rejectBankLineProposal` supprime l'écriture `NEEDS_REVIEW` et
   remet la ligne `UNMATCHED` avec `aiExhausted = true`.
-- [ ] Apprentissage : à la validation, si aucune règle n'a servi, création
+- [x] Apprentissage : à la validation, si aucune règle n'a servi, création
   d'une règle `LEARNED` sur le jeton de contrepartie normalisé ; si une règle
   a servi, `hitCount++`.
-- [ ] **Invariant** : `bulkAcceptBankLineProposals(lineIds)` n'accepte que les
+- [x] **Invariant** : `bulkAcceptBankLineProposals(lineIds)` n'accepte que les
   lignes dont la proposition est claire, **revérifié côté serveur** ; test par
   mutation (retirer la revérification → rouge).
-- [ ] Déclenchement : après `autoMatch`, les lignes `UNMATCHED` sont
+- [x] Déclenchement : après `autoMatch`, les lignes `UNMATCHED` sont
   catégorisées en arrière-plan, séquentiellement, en respectant le budget ; le
   relevé expose l'avancement.
 
 ### Task 3.4 : GraphQL et admin
 
-- [ ] Mutations `categorizeBankLine`, `answerBankLineQuestion`,
+- [x] Mutations `categorizeBankLine`, `answerBankLineQuestion`,
   `acceptBankLineProposal`, `rejectBankLineProposal`,
   `bulkAcceptBankLineProposals` ; queries et mutations
   `clubCategorizationRules`, `upsertCategorizationRule`, `deleteCategorizationRule`.
-- [ ] `StatementDetailPage` : carte de proposition par ligne (compte, libellé,
+- [x] `StatementDetailPage` : carte de proposition par ligne (compte, libellé,
   confiance, badge « règle » ou « IA » avec accord des deux modèles), boutons
   Valider / Modifier / Rejeter, bulle de question avec champ de réponse,
   bouton « Tout valider (n lignes sûres) ».
-- [ ] `pages/settings/accounting/CategorizationRulesTab.tsx` : liste, édition,
+- [x] `pages/settings/accounting/CategorizationRulesTab.tsx` : liste, édition,
   désactivation, compteur d'utilisation.
 
 ### Task 3.5 : Vérification staging
 
-- [ ] Lignes connues (EDF, loyer) → proposition claire ; ligne ambiguë →
-  question → réponse → proposition ; valider ; réimporter le mois suivant →
-  règles appliquées sans IA (nombre de lignes dans `AiUsageLog` inchangé).
+- [x] Fait sur `staging` le 2026-09-11 sur `club-demo`, sur les 7 lignes
+  restées à traiter après les lots 1 et 2. « Catégoriser 5 lignes » sur le
+  relevé PDF : 4 propositions sûres (cotisation 706100, EDF 606100,
+  subvention mairie 742000, frais bancaires 627000, toutes à 95 % avec un
+  seul modèle configuré) et 1 question sur la ligne Decathlon — « qu'avez-vous
+  acheté chez Decathlon pour 89,90 € ? ». Réponse « des tapis de sol pour le
+  dojo, du petit équipement sportif » → proposition 606300. « Tout valider
+  (5 sûres) » : 5 écritures POSTED `BANK_IMPORT`, 5 liaisons `PROPOSAL`,
+  `bankReconciledAt` posé, relevé `RECONCILED`, 5 règles apprises.
+- [x] Règles réutilisées sans IA : sur le relevé CSV, « CARTE 04/10 DECATHLON
+  ST DENIS » est proposée par la règle à 100 % sans appel modèle (AiUsageLog
+  inchangé), tandis que « VIR SEPA MARTIN PAUL COTISATION » consomme un appel
+  et cite la décision passée sur DUPONT (mémoire few-shot). 7 appels et
+  7 centimes au total pour les 8 lignes.
+- [x] Rejet puis relance sur la ligne Decathlon : écriture supprimée, ligne
+  rendue au traitement manuel, relance → la règle repropose → validée.
+  `hitCount` de la règle DECATHLON à 2.
+- [x] Une seule boîte de réception : les propositions apparaissent dans
+  Comptabilité en « À valider » avec la source BANK_IMPORT ; valider depuis
+  cet écran comptabilise ET rapproche la ligne (`markPosted` →
+  `onEntryPosted`). Les deux relevés finissent `RECONCILED`, 8 lignes
+  rapprochées, aucune erreur API.
+- [x] Un trou trouvé en vérifiant : cette validation-là n'apprenait aucune
+  règle. L'apprentissage est sorti dans `CategorizationLearningService`,
+- [x] Déclenchement automatique vérifié : un relevé OFX de novembre déposé
+  après le correctif (une ligne « PRLV SEPA ORANGE SA ») arrive avec sa
+  proposition sans rien cliquer — 626000 Frais postaux et télécommunications
+  à 95 %. Validée depuis la file de revue : écriture comptabilisée, ligne
+  rapprochée, relevé `RECONCILED`, et règle « ORANGE » (DEBIT → 626000)
+  apprise cette fois. 8 appels IA au total sur le club démo.
+  appelé par les deux chemins ; test dédié de `onEntryPosted`.
+
+### Écarts par rapport au plan
+
+- « Clair » a une règle de plus que prévu : quand un seul des deux modèles
+  répond (l'autre a échoué), on retombe sur le seuil du modèle unique, 90 %,
+  au lieu de refuser toute proposition. Le recoupement manque, on exige
+  davantage — plutôt que de poser une question qui n'apprendrait rien.
+- Au troisième essai sans certitude, la meilleure réponse est tout de même
+  matérialisée, marquée « à revoir » : elle n'est pas validable en lot mais
+  fait gagner la saisie. Le plan la jetait.
+- Un clic humain sur une ligne abandonnée rouvre le dossier (compteur
+  d'essais remis à zéro, conversation conservée) ; le traitement de fond,
+  lui, ne revient jamais dessus.
+- `markPosted(tx, …)` renvoie l'identifiant du relevé touché plutôt que de
+  rafraîchir lui-même son statut : le rafraîchissement a lieu après le
+  commit, jamais dans la transaction.
+- Détacher une ligne (`unmatch`) efface la proposition consommée, et une
+  ligne qui porte une proposition ne peut pas être ignorée sans la trancher
+  d'abord : sans cela l'écriture proposée resterait en revue sans rien pour
+  la rattacher.
+- Le compte visé par une règle est revérifié à chaque usage : une règle qui
+  pointe un compte supprimé est ignorée et la ligne repart vers l'IA.
+- La mémoire few-shot prend les décisions passées dont le libellé partage un
+  jeton avec la ligne, pas les 20 dernières indistinctement.
 
 ---
 

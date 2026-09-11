@@ -107,6 +107,8 @@ function build(answers: { a: Answer; b: Answer }, opts: { budgetAllowed?: boolea
     previousStatement: jest.fn(async () => null),
     rechainFollowing: jest.fn(async (..._args: unknown[]) => undefined),
   };
+  // Catégorisation (lot 3) : vérifiée dans son propre test.
+  const categorization = { categorizeStatement: jest.fn(async () => undefined) };
   const svc = new BankStatementOcrService(
     prisma as never,
     aiSettings as never,
@@ -117,6 +119,7 @@ function build(answers: { a: Answer; b: Answer }, opts: { budgetAllowed?: boolea
     reconciliation as never,
     renderer as never,
     integrity as never,
+    categorization as never,
   );
   const last = () => updates[updates.length - 1];
   return {
@@ -131,6 +134,7 @@ function build(answers: { a: Answer; b: Answer }, opts: { budgetAllowed?: boolea
     audit,
     reconciliation,
     integrity,
+    categorization,
   };
 }
 

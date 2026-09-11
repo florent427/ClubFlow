@@ -2,6 +2,7 @@ import { UseGuards } from '@nestjs/common';
 import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
 import type { Club } from '@prisma/client';
 import { BankStatementLineStatus } from '@prisma/client';
+import { BankLineCategorizationService } from './bank-line-categorization.service';
 import { CurrentClub } from '../../common/decorators/current-club.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequireClubModule } from '../../common/decorators/require-club-module.decorator';
@@ -17,12 +18,15 @@ import type { Candidate } from './bank-reconciliation.service';
 import { BankStatementService } from './bank-statement.service';
 import type {
   LineRow,
+  StatementLineCounts,
   StatementDetailRow,
   StatementListRow,
 } from './bank-statement.service';
 import type { CsvMapping } from './csv-parser';
 import {
+  AcceptBankLineProposalInput,
   AddBankStatementLineInput,
+  AnswerBankLineQuestionInput,
   CsvMappingInput,
   IgnoreBankLineInput,
   ImportBankStatementInput,
@@ -30,19 +34,24 @@ import {
   PreviewCsvStatementInput,
   UpdateBankStatementBalancesInput,
   UpdateBankStatementLineInput,
+  UpsertCategorizationRuleInput,
 } from './dto/bank-import.input';
 import type { LineDivergence } from './merge-readings';
 import {
   BankLineCandidateGraph,
   BankLineDivergenceGraph,
+  BankLineProposalGraph,
   BankStatementGraph,
   BankStatementLineGraph,
   BankStatementListItemGraph,
+  CategorizationRuleGraph,
   CsvPreviewGraph,
   ReconciliationAccountSummaryGraph,
 } from './models/bank-statement.model';
 
-type Counts = Partial<Record<BankStatementLineStatus, number>>;
+type Counts = StatementLineCounts;
+
+const EMPTY_COUNTS: Counts = { proposalCount: 0, questionCount: 0, toCategorizeCount: 0 };
 
 function toMapping(input: CsvMappingInput): CsvMapping {
   return {
@@ -72,8 +81,49 @@ function divergenceFromJson(raw: unknown): BankLineDivergenceGraph | null {
   return { kind: d.kind, a: side(d.a ?? null), b: side(d.b ?? null) };
 }
 
+/**
+ * La proposition est stockée en JSON sur la ligne : on la relit en la
+ * validant, pour qu'une donnée écrite par une version antérieure ne fasse
+ * pas tomber toute la requête.
+ */
+function proposalGraph(raw: unknown): BankLineProposalGraph | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const p = raw as Record<string, unknown>;
+  if (typeof p.accountCode !== 'string') return null;
+  return {
+    accountCode: p.accountCode,
+    accountLabel: typeof p.accountLabel === 'string' ? p.accountLabel : '',
+    projectId: typeof p.projectId === 'string' ? p.projectId : null,
+    projectTitle: typeof p.projectTitle === 'string' ? p.projectTitle : null,
+    label: typeof p.label === 'string' ? p.label : '',
+    confidencePct: typeof p.confidencePct === 'number' ? p.confidencePct : 0,
+    source: p.source === 'RULE' ? 'RULE' : 'AI',
+    ruleId: typeof p.ruleId === 'string' ? p.ruleId : null,
+    reasoning: typeof p.reasoning === 'string' ? p.reasoning : null,
+    models: Array.isArray(p.models) ? p.models.filter((m): m is string => typeof m === 'string') : [],
+    clear: p.clear === true,
+  };
+}
+
+function conversationGraph(raw: unknown): Array<{ role: string; text: string }> {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((t): t is Record<string, unknown> => typeof t === 'object' && t !== null)
+    .map((t) => ({
+      role: t.role === 'USER' ? 'USER' : 'ASSISTANT',
+      text: typeof t.text === 'string' ? t.text : '',
+    }))
+    .filter((t) => t.text.length > 0);
+}
+
 export function toLineGraph(l: LineRow): BankStatementLineGraph {
   return {
+    proposal: proposalGraph(l.aiProposalJson),
+    proposedEntryId: l.proposedEntryId,
+    question: l.aiQuestion,
+    conversation: conversationGraph(l.aiConversationJson),
+    aiAttempts: l.aiAttempts,
+    aiExhausted: l.aiExhausted,
     readingAgreement: l.readingAgreement,
     divergence: divergenceFromJson(l.divergenceJson),
     id: l.id,
@@ -127,6 +177,9 @@ function toListItem(s: StatementListRow, counts: Counts): BankStatementListItemG
     matchedCount: counts.MATCHED ?? 0,
     ignoredCount: counts.IGNORED ?? 0,
     divergenceCount: s._count.lines,
+    proposalCount: counts.proposalCount,
+    questionCount: counts.questionCount,
+    toCategorizeCount: counts.toCategorizeCount,
     readingModelA: s.readingModelA,
     readingModelB: s.readingModelB,
     aiCostCents: s.aiCostCents,
@@ -134,9 +187,22 @@ function toListItem(s: StatementListRow, counts: Counts): BankStatementListItemG
   };
 }
 
-function countsOf(lines: Array<{ status: BankStatementLineStatus }>): Counts {
-  const c: Counts = {};
-  for (const l of lines) c[l.status] = (c[l.status] ?? 0) + 1;
+function countsOf(
+  lines: Array<{
+    status: BankStatementLineStatus;
+    proposedEntryId: string | null;
+    aiQuestion: string | null;
+    aiExhausted: boolean;
+  }>,
+): Counts {
+  const c: Counts = { proposalCount: 0, questionCount: 0, toCategorizeCount: 0 };
+  for (const l of lines) {
+    c[l.status] = (c[l.status] ?? 0) + 1;
+    if (l.status !== BankStatementLineStatus.UNMATCHED) continue;
+    if (l.proposedEntryId) c.proposalCount++;
+    else if (l.aiQuestion) c.questionCount++;
+    else if (!l.aiExhausted) c.toCategorizeCount++;
+  }
   return c;
 }
 
@@ -169,6 +235,7 @@ export class BankImportResolver {
   constructor(
     private readonly statements: BankStatementService,
     private readonly reconciliation: BankReconciliationService,
+    private readonly categorization: BankLineCategorizationService,
   ) {}
 
   @Query(() => [ReconciliationAccountSummaryGraph], { name: 'clubReconciliationSummary' })
@@ -193,7 +260,7 @@ export class BankImportResolver {
       club.id,
       rows.map((r) => r.id),
     );
-    return rows.map((r) => toListItem(r, counts.get(r.id) ?? {}));
+    return rows.map((r) => toListItem(r, counts.get(r.id) ?? EMPTY_COUNTS));
   }
 
   @Query(() => BankStatementGraph, { name: 'clubBankStatement' })
@@ -429,5 +496,143 @@ export class BankImportResolver {
   ): Promise<BankStatementGraph> {
     await this.statements.recomputeIntegrity(club.id, id);
     return toDetail(await this.statements.getById(club.id, id));
+  }
+
+  // ── Catégorisation des lignes sans écriture (ADR-0014 §5) ─────────────
+
+  @Mutation(() => BankStatementGraph, {
+    name: 'categorizeBankLine',
+    description:
+      'Propose un compte pour une ligne sans écriture : règle du club, sinon deux modèles, sinon une question.',
+  })
+  async categorizeBankLine(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('lineId', { type: () => ID }) lineId: string,
+  ): Promise<BankStatementGraph> {
+    await this.categorization.categorizeLine(club.id, user.userId, lineId);
+    const line = await this.reconciliation.loadLine(club.id, lineId);
+    return toDetail(await this.statements.getById(club.id, line.statementId));
+  }
+
+  @Mutation(() => BankStatementGraph, {
+    name: 'categorizeBankStatement',
+    description: 'Relance la catégorisation de toutes les lignes encore sans proposition.',
+  })
+  async categorizeBankStatement(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<BankStatementGraph> {
+    await this.categorization.categorizeStatement(club.id, user.userId, id);
+    return toDetail(await this.statements.getById(club.id, id));
+  }
+
+  @Mutation(() => BankStatementGraph, {
+    name: 'answerBankLineQuestion',
+    description: 'Répond à la question posée sur une ligne ; la réflexion est relancée aussitôt.',
+  })
+  async answerBankLineQuestion(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('input') input: AnswerBankLineQuestionInput,
+  ): Promise<BankStatementGraph> {
+    await this.categorization.answerQuestion(club.id, user.userId, input.lineId, input.answer);
+    const line = await this.reconciliation.loadLine(club.id, input.lineId);
+    return toDetail(await this.statements.getById(club.id, line.statementId));
+  }
+
+  @Mutation(() => BankStatementGraph, {
+    name: 'acceptBankLineProposal',
+    description:
+      'Valide la proposition : l’écriture est comptabilisée, la ligne rapprochée, et la décision devient une règle.',
+  })
+  async acceptBankLineProposal(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('input') input: AcceptBankLineProposalInput,
+  ): Promise<BankStatementGraph> {
+    const line = await this.reconciliation.loadLine(club.id, input.lineId);
+    await this.categorization.accept(club.id, user.userId, input.lineId, {
+      accountCode: input.accountCode ?? null,
+      projectId: input.projectId === undefined ? undefined : input.projectId,
+      label: input.label ?? null,
+    });
+    return toDetail(await this.statements.getById(club.id, line.statementId));
+  }
+
+  @Mutation(() => BankStatementGraph, {
+    name: 'rejectBankLineProposal',
+    description: 'Rejette la proposition : son écriture est supprimée, la ligne reste à traiter.',
+  })
+  async rejectBankLineProposal(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('lineId', { type: () => ID }) lineId: string,
+  ): Promise<BankStatementGraph> {
+    const line = await this.reconciliation.loadLine(club.id, lineId);
+    await this.categorization.reject(club.id, user.userId, lineId);
+    return toDetail(await this.statements.getById(club.id, line.statementId));
+  }
+
+  @Mutation(() => BankStatementGraph, {
+    name: 'bulkAcceptBankLineProposals',
+    description:
+      'Valide en lot ; les propositions qui ne sont pas sûres sont écartées, revérification faite côté serveur.',
+  })
+  async bulkAcceptBankLineProposals(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('statementId', { type: () => ID }) statementId: string,
+    @Args('lineIds', { type: () => [ID] }) lineIds: string[],
+  ): Promise<BankStatementGraph> {
+    await this.categorization.bulkAccept(club.id, user.userId, lineIds);
+    return toDetail(await this.statements.getById(club.id, statementId));
+  }
+
+  @Query(() => [CategorizationRuleGraph], { name: 'clubCategorizationRules' })
+  async clubCategorizationRules(@CurrentClub() club: Club): Promise<CategorizationRuleGraph[]> {
+    const rules = await this.categorization.listRules(club.id);
+    return this.withAccountLabels(club.id, rules);
+  }
+
+  @Mutation(() => [CategorizationRuleGraph], { name: 'upsertCategorizationRule' })
+  async upsertCategorizationRule(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('input') input: UpsertCategorizationRuleInput,
+  ): Promise<CategorizationRuleGraph[]> {
+    await this.categorization.upsertRule(club.id, user.userId, {
+      id: input.id ?? null,
+      pattern: input.pattern,
+      matchKind: input.matchKind,
+      direction: input.direction,
+      accountCode: input.accountCode,
+      projectId: input.projectId ?? null,
+      label: input.label ?? null,
+      isActive: input.isActive ?? null,
+    });
+    return this.withAccountLabels(club.id, await this.categorization.listRules(club.id));
+  }
+
+  @Mutation(() => [CategorizationRuleGraph], { name: 'deleteCategorizationRule' })
+  async deleteCategorizationRule(
+    @CurrentClub() club: Club,
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<CategorizationRuleGraph[]> {
+    await this.categorization.deleteRule(club.id, id);
+    return this.withAccountLabels(club.id, await this.categorization.listRules(club.id));
+  }
+
+  /** Le libellé du compte visé, pour que la liste des règles se lise sans décoder. */
+  private async withAccountLabels(
+    clubId: string,
+    rules: Array<Omit<CategorizationRuleGraph, 'accountLabel'>>,
+  ): Promise<CategorizationRuleGraph[]> {
+    const labels = await this.statements.accountLabels(
+      clubId,
+      rules.map((r) => r.accountCode),
+    );
+    return rules.map((r) => ({ ...r, accountLabel: labels.get(r.accountCode) ?? null }));
   }
 }

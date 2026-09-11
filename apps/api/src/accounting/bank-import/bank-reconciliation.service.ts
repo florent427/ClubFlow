@@ -15,6 +15,7 @@ import {
 } from '@prisma/client';
 import { AccountingAuditService } from '../accounting-audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CategorizationLearningService } from './categorization-learning.service';
 import { deriveStatementStatus } from './statement-integrity';
 
 /** Fenêtre du rapprochement automatique : la banque comptabilise à J+2 ou J+3, une remise peut attendre une semaine. */
@@ -75,6 +76,7 @@ export class BankReconciliationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AccountingAuditService,
+    private readonly learning: CategorizationLearningService,
   ) {}
 
   /** Passe sur toutes les lignes non résolues d'un relevé exploitable. */
@@ -336,6 +338,89 @@ export class BankReconciliationService {
     });
   }
 
+  /**
+   * Appelé au moment exact où une écriture passe en POSTED (ADR-0014 §5).
+   * Si elle est née d'une proposition sur une ligne de relevé, la ligne est
+   * rapprochée dans la MÊME transaction : une écriture comptabilisée dont
+   * la ligne resterait « à traiter » n'existe pas.
+   *
+   * Renvoie l'identifiant du relevé touché, pour que l'appelant rafraîchisse
+   * son statut après la validation de la transaction.
+   */
+  async onEntryPosted(
+    clubId: string,
+    entryId: string,
+    tx: Prisma.TransactionClient,
+    userId: string | null,
+  ): Promise<string | null> {
+    const line = await tx.bankStatementLine.findFirst({
+      where: {
+        clubId,
+        proposedEntryId: entryId,
+        status: BankStatementLineStatus.UNMATCHED,
+      },
+      include: {
+        statement: {
+          select: {
+            id: true,
+            financialAccount: { select: { accountingAccount: { select: { code: true } } } },
+          },
+        },
+      },
+    });
+    if (!line) return null;
+    const entry = await tx.accountingEntry.findFirst({
+      where: { id: entryId, clubId, cancelledAt: null },
+      select: {
+        amountCents: true,
+        projectId: true,
+        lines: { select: { accountCode: true }, orderBy: { sortOrder: 'asc' } },
+      },
+    });
+    if (!entry) return null;
+    if (entry.amountCents !== Math.abs(line.amountCents)) {
+      // Le montant a été corrigé à la validation : la ligne ne serait plus
+      // couverte exactement. On laisse le trésorier rapprocher à la main
+      // plutôt que de poser une liaison fausse.
+      this.logger.warn(
+        `[ligne ${line.id}] écriture ${entryId} postée à ${entry.amountCents} c pour une ligne de ${line.amountCents} c : rapprochement laissé à la main.`,
+      );
+      return null;
+    }
+    await tx.bankStatementLineMatch.create({
+      data: {
+        clubId,
+        lineId: line.id,
+        entryId,
+        amountCents: entry.amountCents,
+        origin: BankMatchOrigin.PROPOSAL,
+        matchedByUserId: userId,
+      },
+    });
+    await tx.accountingEntryLine.updateMany({
+      where: { entryId, accountCode: line.statement.financialAccount.accountingAccount.code },
+      data: { bankReconciledAt: new Date() },
+    });
+    await tx.bankStatementLine.update({
+      where: { id: line.id },
+      data: {
+        status: BankStatementLineStatus.MATCHED,
+        candidateEntryIds: [],
+        aiQuestion: null,
+        resolvedAt: new Date(),
+        resolvedByUserId: userId,
+      },
+    });
+    // La validation enseigne, quel que soit l'écran d'où elle vient : ici la
+    // file de revue comptable, ailleurs l'écran de rapprochement.
+    const cashCode = line.statement.financialAccount.accountingAccount.code;
+    const main = entry.lines.find((l) => l.accountCode !== cashCode);
+    if (main) {
+      await this.learning.learnFrom(clubId, userId, line, main.accountCode, entry.projectId);
+    }
+    return line.statement.id;
+  }
+
   /** Détache : liaisons supprimées, marqueur effacé, ligne de nouveau à traiter. */
   async unmatch(clubId: string, userId: string, lineId: string) {
     const line = await this.loadLine(clubId, lineId);
@@ -360,6 +445,12 @@ export class BankReconciliationService {
           status: BankStatementLineStatus.UNMATCHED,
           resolvedAt: null,
           resolvedByUserId: null,
+          // La proposition a été consommée : son écriture est comptabilisée
+          // et ne reviendra pas en revue. La laisser accrochée bloquerait
+          // toute nouvelle catégorisation de la ligne.
+          proposedEntryId: null,
+          aiProposalJson: Prisma.DbNull,
+          ruleId: null,
         },
       });
     });
@@ -384,6 +475,11 @@ export class BankReconciliationService {
     const line = await this.loadLine(clubId, lineId);
     if (line.status === BankStatementLineStatus.MATCHED) {
       throw new BadRequestException('Détache la ligne avant de l’ignorer.');
+    }
+    if (line.proposedEntryId) {
+      // Sinon l'écriture proposée resterait en revue sans rien pour la
+      // rattacher : on demande de trancher la proposition d'abord.
+      throw new BadRequestException('Rejette d’abord la proposition de cette ligne.');
     }
     await this.prisma.bankStatementLine.update({
       where: { id: line.id },

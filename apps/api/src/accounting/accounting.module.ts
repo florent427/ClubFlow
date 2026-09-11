@@ -23,6 +23,8 @@ import { BankReconciliationService } from './bank-import/bank-reconciliation.ser
 import { BankStatementService } from './bank-import/bank-statement.service';
 import { BankStatementOcrService } from './bank-import/bank-statement-ocr.service';
 import { BankStatementIntegrityService } from './bank-import/bank-statement-integrity.service';
+import { BankLineCategorizationService } from './bank-import/bank-line-categorization.service';
+import { CategorizationLearningService } from './bank-import/categorization-learning.service';
 import { PdfPageRenderer } from './ocr-shared';
 
 @Module({
@@ -46,6 +48,8 @@ import { PdfPageRenderer } from './ocr-shared';
     BankStatementService,
     BankStatementOcrService,
     BankStatementIntegrityService,
+    BankLineCategorizationService,
+    CategorizationLearningService,
     PdfPageRenderer,
     AccountingResolver,
     BankImportResolver,
@@ -69,6 +73,8 @@ import { PdfPageRenderer } from './ocr-shared';
     BankStatementService,
     BankStatementOcrService,
     BankStatementIntegrityService,
+    BankLineCategorizationService,
+    CategorizationLearningService,
     PdfPageRenderer,
   ],
 })

@@ -1,15 +1,22 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
+  ACCEPT_BANK_LINE_PROPOSAL,
   ADD_BANK_STATEMENT_LINE,
+  ANSWER_BANK_LINE_QUESTION,
   AUTO_MATCH_BANK_STATEMENT,
+  BULK_ACCEPT_BANK_LINE_PROPOSALS,
+  CATEGORIZE_BANK_LINE,
+  CATEGORIZE_BANK_STATEMENT,
+  CLUB_ACCOUNTING_ACCOUNTS,
   CLUB_BANK_STATEMENT,
   CONFIRM_BANK_LINE_READING,
   DELETE_BANK_STATEMENT,
   IGNORE_BANK_LINE,
   RECHECK_BANK_STATEMENT,
+  REJECT_BANK_LINE_PROPOSAL,
   REMOVE_BANK_STATEMENT_LINE,
   RERUN_BANK_STATEMENT_READING,
   UNIGNORE_BANK_LINE,
@@ -19,6 +26,7 @@ import {
 } from '../../../lib/documents';
 import type {
   BankLineDivergence,
+  ClubAccountingAccountsData,
   BankStatementLine,
   BankStatementLineIgnoreReasonGql,
   ClubBankStatementData,
@@ -38,6 +46,7 @@ import {
   todayIso,
 } from './format';
 import { MatchDrawer } from './MatchDrawer';
+import { ProposalCard } from './ProposalCard';
 
 type Filter = 'TODO' | 'ALL' | 'MATCHED' | 'IGNORED';
 
@@ -102,6 +111,21 @@ export function StatementDetailPage() {
   const [confirmReading] = useMutation(CONFIRM_BANK_LINE_READING);
   const [updateBalances] = useMutation(UPDATE_BANK_STATEMENT_BALANCES);
   const [recheck, { loading: rechecking }] = useMutation(RECHECK_BANK_STATEMENT);
+  const [categorizeLine, { loading: categorizingLine }] = useMutation(CATEGORIZE_BANK_LINE);
+  const [categorizeAll, { loading: categorizingAll }] = useMutation(CATEGORIZE_BANK_STATEMENT);
+  const [answerQuestion, { loading: answering }] = useMutation(ANSWER_BANK_LINE_QUESTION);
+  const [acceptProposal, { loading: accepting }] = useMutation(ACCEPT_BANK_LINE_PROPOSAL);
+  const [rejectProposal, { loading: rejecting }] = useMutation(REJECT_BANK_LINE_PROPOSAL);
+  const [bulkAccept, { loading: bulkAccepting }] = useMutation(BULK_ACCEPT_BANK_LINE_PROPOSALS);
+  const { data: accountsData } = useQuery<ClubAccountingAccountsData>(CLUB_ACCOUNTING_ACCOUNTS, {
+    fetchPolicy: 'cache-first',
+  });
+  const accounts = useMemo(
+    () => (accountsData?.clubAccountingAccounts ?? []).filter((a) => a.isActive),
+    [accountsData],
+  );
+  const categorizationBusy =
+    categorizingLine || categorizingAll || answering || accepting || rejecting || bulkAccepting;
 
   const [filter, setFilter] = useState<Filter>('TODO');
   const [matchLine, setMatchLine] = useState<BankStatementLine | null>(null);
@@ -279,6 +303,9 @@ export function StatementDetailPage() {
     }
   }
   const todo = st.unmatchedCount + st.suggestedCount;
+  const sureProposals = (st.lines ?? []).filter(
+    (l) => l.status === 'UNMATCHED' && l.proposal?.clear,
+  );
   const borderColor =
     st.status === 'NEEDS_CHECK' || st.status === 'FAILED'
       ? '#b45309'
@@ -341,7 +368,12 @@ export function StatementDetailPage() {
             <strong>Contrôle OK · toutes les lignes sont rapprochées ou ignorées.</strong>
           ) : (
             <strong>
-              Contrôle OK · {todo} ligne{todo > 1 ? 's' : ''} à traiter, {st.matchedCount} rapprochée{st.matchedCount > 1 ? 's' : ''}, {st.ignoredCount} ignorée{st.ignoredCount > 1 ? 's' : ''}.
+              Contrôle OK · {todo} ligne{todo > 1 ? 's' : ''} à traiter
+              {st.proposalCount > 0 ? `, dont ${st.proposalCount} avec proposition` : ''}
+              {st.questionCount > 0
+                ? `, ${st.questionCount} question${st.questionCount > 1 ? 's' : ''} en attente`
+                : ''}
+              , {st.matchedCount} rapprochée{st.matchedCount > 1 ? 's' : ''}, {st.ignoredCount} ignorée{st.ignoredCount > 1 ? 's' : ''}.
             </strong>
           )}
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -371,6 +403,42 @@ export function StatementDetailPage() {
                 <button type="button" className="btn-ghost" onClick={() => setAddOpen(true)}>
                   + Ligne manquante
                 </button>
+                {sureProposals.length > 0 ? (
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={categorizationBusy}
+                    onClick={() =>
+                      void run(
+                        () =>
+                          bulkAccept({
+                            variables: {
+                              statementId: st.id,
+                              lineIds: sureProposals.map((l) => l.id),
+                            },
+                          }),
+                        `${sureProposals.length} proposition(s) validée(s)`,
+                      )
+                    }
+                  >
+                    Tout valider ({sureProposals.length} sûre{sureProposals.length > 1 ? 's' : ''})
+                  </button>
+                ) : null}
+                {st.toCategorizeCount > 0 ? (
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    disabled={categorizationBusy}
+                    onClick={() =>
+                      void run(
+                        () => categorizeAll({ variables: { id: st.id } }),
+                        'Catégorisation relancée',
+                      )
+                    }
+                  >
+                    Catégoriser {st.toCategorizeCount} ligne{st.toCategorizeCount > 1 ? 's' : ''}
+                  </button>
+                ) : null}
               </>
             ) : null}
             {isPdf && st.fileUrl && !parsing ? (
@@ -455,9 +523,12 @@ export function StatementDetailPage() {
                 <tbody>
                   {lines.map((l) => {
                     const divergent = !l.readingAgreement;
+                    // Toute ligne encore à traiter porte sa carte : une
+                    // proposition, une question, ou de quoi en demander une.
+                    const showProposal = l.status === 'UNMATCHED';
                     return (
+                      <Fragment key={l.id}>
                       <tr
-                        key={l.id}
                         style={{
                           ...(l.status === 'IGNORED' ? { opacity: 0.6 } : {}),
                           ...(divergent ? { background: '#fef3c7' } : {}),
@@ -570,6 +641,54 @@ export function StatementDetailPage() {
                           )}
                         </td>
                       </tr>
+                      {showProposal ? (
+                        <tr>
+                          <td colSpan={6} style={{ paddingTop: 0 }}>
+                            <ProposalCard
+                              line={l}
+                              accounts={accounts}
+                              busy={categorizationBusy}
+                              onAccept={(overrides) =>
+                                void run(
+                                  () =>
+                                    acceptProposal({
+                                      variables: {
+                                        input: {
+                                          lineId: l.id,
+                                          accountCode: overrides?.accountCode ?? null,
+                                          label: overrides?.label ?? null,
+                                        },
+                                      },
+                                    }),
+                                  'Écriture comptabilisée, ligne rapprochée',
+                                )
+                              }
+                              onReject={() =>
+                                void run(
+                                  () => rejectProposal({ variables: { lineId: l.id } }),
+                                  'Proposition rejetée',
+                                )
+                              }
+                              onAnswer={(answer) =>
+                                void run(
+                                  () =>
+                                    answerQuestion({
+                                      variables: { input: { lineId: l.id, answer } },
+                                    }),
+                                  'Réponse transmise',
+                                )
+                              }
+                              onCategorize={() =>
+                                void run(
+                                  () => categorizeLine({ variables: { lineId: l.id } }),
+                                  'Catégorisation lancée',
+                                )
+                              }
+                            />
+                          </td>
+                        </tr>
+                      ) : null}
+                      </Fragment>
                     );
                   })}
                 </tbody>

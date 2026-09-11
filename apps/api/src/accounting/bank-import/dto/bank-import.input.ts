@@ -1,5 +1,10 @@
 import { Field, ID, InputType, Int } from '@nestjs/graphql';
-import { BankStatementFormat, BankStatementLineIgnoreReason } from '@prisma/client';
+import {
+  BankStatementFormat,
+  BankStatementLineIgnoreReason,
+  CategorizationDirection,
+  CategorizationMatchKind,
+} from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -255,4 +260,85 @@ export class UpdateBankStatementBalancesInput {
   @Field(() => Int)
   @IsInt()
   closingBalanceCents!: number;
+}
+
+@InputType()
+export class AnswerBankLineQuestionInput {
+  @Field(() => ID)
+  @IsUUID()
+  lineId!: string;
+
+  @Field({ description: 'Réponse du trésorier à la question posée.' })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  answer!: string;
+}
+
+@InputType()
+export class AcceptBankLineProposalInput {
+  @Field(() => ID)
+  @IsUUID()
+  lineId!: string;
+
+  @Field(() => String, { nullable: true, description: 'Compte retenu, s’il diffère du compte proposé.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  accountCode?: string | null;
+
+  @Field(() => ID, { nullable: true })
+  @IsOptional()
+  @IsUUID()
+  projectId?: string | null;
+
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  label?: string | null;
+}
+
+@InputType()
+export class UpsertCategorizationRuleInput {
+  @Field(() => ID, { nullable: true, description: 'Absent = création.' })
+  @IsOptional()
+  @IsUUID()
+  id?: string | null;
+
+  @Field({ description: 'Motif confronté au libellé normalisé de la ligne.' })
+  @IsString()
+  @MinLength(2)
+  @MaxLength(120)
+  pattern!: string;
+
+  @Field(() => CategorizationMatchKind)
+  @IsEnum(CategorizationMatchKind)
+  matchKind!: CategorizationMatchKind;
+
+  @Field(() => CategorizationDirection)
+  @IsEnum(CategorizationDirection)
+  direction!: CategorizationDirection;
+
+  @Field()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(20)
+  accountCode!: string;
+
+  @Field(() => ID, { nullable: true })
+  @IsOptional()
+  @IsUUID()
+  projectId?: string | null;
+
+  @Field(() => String, { nullable: true, description: 'Libellé d’écriture ; à défaut celui de la ligne.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  label?: string | null;
+
+  @Field(() => Boolean, { nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean | null;
 }

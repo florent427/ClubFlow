@@ -20,9 +20,10 @@ import type {
 } from '../../lib/types';
 import { useToast } from '../../components/ToastProvider';
 import { ConfirmModal, Drawer } from '../../components/ui';
+import { CategorizationRulesTab } from './accounting/CategorizationRulesTab';
 import { FiscalYearSettingsTab } from './accounting/FiscalYearSettingsTab';
 
-type TabKey = 'ACCOUNTS' | 'ROUTES' | 'FISCAL';
+type TabKey = 'ACCOUNTS' | 'ROUTES' | 'FISCAL' | 'RULES';
 
 const KIND_LABELS: Record<ClubFinancialAccountKindGql, string> = {
   BANK: 'Banque',
@@ -273,6 +274,19 @@ export default function AccountingSettingsPage() {
           >
             Exercice
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'RULES'}
+            className={
+              tab === 'RULES'
+                ? 'cf-segmented__btn cf-segmented__btn--active'
+                : 'cf-segmented__btn'
+            }
+            onClick={() => setTab('RULES')}
+          >
+            Règles de catégorisation
+          </button>
         </div>
         {tab === 'ACCOUNTS' ? (
           <button
@@ -456,6 +470,8 @@ export default function AccountingSettingsPage() {
           onAccountsChanged={() => refetchAccounts()}
         />
       ) : null}
+
+      {tab === 'RULES' ? <CategorizationRulesTab /> : null}
 
       <Drawer
         open={drawerOpen}
