@@ -28,6 +28,8 @@ import { BankPayerLookupService } from './bank-import/bank-payer-lookup.service'
 import { VolunteerAdvancesService } from './volunteers/volunteer-advances.service';
 import { VolunteerAdvancesResolver } from './volunteers/volunteer-advances.resolver';
 import { CategorizationLearningService } from './bank-import/categorization-learning.service';
+import { CashBookService } from './cash/cash-book.service';
+import { CashBookResolver } from './cash/cash-book.resolver';
 import { PdfPageRenderer } from './ocr-shared';
 
 @Module({
@@ -54,11 +56,13 @@ import { PdfPageRenderer } from './ocr-shared';
     BankLineCategorizationService,
     BankPayerLookupService,
     VolunteerAdvancesService,
+    CashBookService,
     CategorizationLearningService,
     PdfPageRenderer,
     AccountingResolver,
     BankImportResolver,
     VolunteerAdvancesResolver,
+    CashBookResolver,
     ClubModuleEnabledGuard,
   ],
   exports: [
@@ -82,6 +86,7 @@ import { PdfPageRenderer } from './ocr-shared';
     BankLineCategorizationService,
     BankPayerLookupService,
     VolunteerAdvancesService,
+    CashBookService,
     CategorizationLearningService,
     PdfPageRenderer,
   ],
