@@ -1236,6 +1236,61 @@ mois. Attendu : intégrité OK, toutes les lignes rapprochées ou catégorisées
 soldes 511200 et 467100 à 0 après remise et remboursement, solde 512x de
 ClubFlow égal au solde de fin du relevé.
 
+### Joué le 2026-09-11 — septembre 2027 sur le club démo
+
+**Les événements du mois**, saisis un à un comme le ferait un trésorier :
+deux chèques de cotisation (60,00 € et 45,00 €) reçus le 2, remis en banque
+le 8 ; une recette de buvette en espèces de 200,00 € et un achat de boissons
+de 18,00 € ; trois reçus avancés par Florent Morel (22,00 + 13,50 + 9,00 =
+44,50 €) ; un dépôt d'espèces de 150,00 € le 18 ; un prélèvement Orange et un
+virement d'adhérent portés par le relevé.
+
+**Le relevé de septembre** (2 824,87 € → 3 070,47 €, 5 lignes) : contrôle
+d'intégrité à zéro, chaînage juste. À l'import, **sans aucune action** :
+
+| Ligne | Résolution |
+|---|---|
+| REMISE CHEQUES 000531 · +105,00 € | rapprochée seule — clé forte du bordereau |
+| VERSEMENT ESPECES BORDEREAU 4441 · +150,00 € | rapprochée seule — le dépôt existait |
+| PRLV SEPA ORANGE SA · −39,90 € | proposition 626000 par la règle apprise |
+| VIR SEPA JOACHIM MOREL COTISATION · +75,00 € | proposition 706100 par l'IA |
+| VIR SEPA FLORENT MOREL REMB FRAIS · −44,50 € | proposition de remboursement de bénévole (lot 6.3) |
+
+Trois clics plus tard, **le relevé est `RECONCILED`, ses 5 lignes
+rapprochées**.
+
+**Les soldes attendus, tenus :**
+
+- mouvements du 512000 en septembre : **+245,60 €**, soit exactement
+  3 070,47 − 2 824,87 ;
+- **511200 à zéro** : les deux chèques reçus et remis dans le mois ;
+- **467100 à zéro** : les trois reçus avancés et remboursés dans le mois ;
+- **aucune ligne en attente** sur AUCUN relevé du club, tous formats et tous
+  mois confondus — les onze lignes restées ouvertes des relevés de test
+  antérieurs ont été catégorisées au passage, dont deux où l'IA a préféré
+  **poser une question** plutôt que deviner (« CB CARREFOUR MARKET », « ACHAT
+  CB STATION TOTAL ») et a proposé le bon compte après réponse.
+- Journal d'erreurs de l'API staging inchangé : 13 avant, 13 après.
+
+**L'écart résiduel, expliqué au centime.** Le solde 512000 de ClubFlow
+(3 233,07 €) dépasse le solde de fin du dernier relevé (3 070,47 €) de
+**162,60 €**, et cet écart est exactement la liste des écritures que plus
+aucune ligne ne couvre : deux cotisations saisies à la main le 05/09/2026
+(100,00 + 150,00) et le remboursement de bénévole du 11/09/2026 (−87,40),
+tous trois créés pendant les vérifications des lots précédents sans
+contrepartie sur un relevé. C'est précisément ce que le compteur « Écritures
+non rapprochées » de l'écran sert à montrer : la différence entre les livres
+et la banque n'est jamais un mystère, c'est une liste.
+
+**Deux points non couverts**, faute de matière sur le club démo :
+
+- **encaissements Stripe** : le club démo n'a pas de compte Stripe branché.
+  Le chemin a été vérifié à part sur `qa-test-club`, qui en a un (lot 8).
+- **encaissement du virement d'adhérent sur SA facture** : aucune facture
+  ouverte sur le club démo, donc le montant ne tombait sur rien et la
+  reconnaissance du payeur n'a rien proposé — comportement correct. La ligne
+  a été catégorisée en 706100. Le chemin complet a été vérifié au lot 4.
+
 ## Hors périmètre, noté pour plus tard
 
 - Chèque impayé (`BOUNCED`) avec contre-passation et réouverture de facture.
