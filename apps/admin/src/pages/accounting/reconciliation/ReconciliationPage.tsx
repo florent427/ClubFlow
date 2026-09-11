@@ -66,20 +66,20 @@ export function ReconciliationPage() {
         </p>
       </header>
 
-      <div className="cf-toolbar" style={{ marginBottom: 16 }}>
-        <button
-          type="button"
-          className="btn-primary"
-          disabled={bankAccounts.length === 0}
-          onClick={() => openImport(null)}
-          style={{ marginLeft: 'auto' }}
-        >
-          + Déposer un relevé
-        </button>
-      </div>
-
       <section className="members-panel">
-        <h2 className="members-panel__h">Comptes bancaires</h2>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <h2 className="members-panel__h" style={{ margin: 0 }}>
+            Comptes bancaires
+          </h2>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={bankAccounts.length === 0}
+            onClick={() => openImport(null)}
+          >
+            + Déposer un relevé
+          </button>
+        </div>
         {summary.length === 0 ? (
           <p className="cf-muted">
             Aucun compte bancaire actif. Crée-le dans Paramètres → Comptabilité.

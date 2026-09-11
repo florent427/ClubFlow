@@ -315,7 +315,7 @@ export function StatementDetailPage() {
                 <th style={{ textAlign: 'right' }}>Montant</th>
                 <th>Statut</th>
                 <th>Écriture(s)</th>
-                <th style={{ width: 260 }}>Actions</th>
+                <th style={{ width: 300 }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -358,7 +358,7 @@ export function StatementDetailPage() {
                       </div>
                     ))}
                   </td>
-                  <td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
                     {l.status === 'UNMATCHED' || l.status === 'SUGGESTED' ? (
                       <>
                         <button type="button" className="btn-ghost btn-ghost--sm" onClick={() => setMatchLine(l)} disabled={st.status === 'NEEDS_CHECK'}>
