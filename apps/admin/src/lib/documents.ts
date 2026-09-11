@@ -4211,3 +4211,27 @@ export const RECORD_CASH_TRANSFER = gql`
     recordCashTransfer(input: $input)
   }
 `;
+
+// ── Transit Stripe (lot 8) ────────────────────────────────────────────────
+
+export const STRIPE_TRANSIT_STATUS = gql`
+  query StripeTransitStatus {
+    stripeTransitStatus {
+      hasStripeAccount
+      hasTransitAccount
+      lastSyncedAt
+    }
+  }
+`;
+
+export const SYNC_STRIPE_TRANSIT = gql`
+  mutation SyncStripeTransit {
+    syncStripeTransit {
+      skipped
+      payoutsSeen
+      payoutsRecorded
+      unknownLines
+      arithmeticWarnings
+    }
+  }
+`;
