@@ -887,16 +887,41 @@ rapproche de la ligne banque.
 
 ### Task 6.3 : Rapprochement (extension du lot 1)
 
-- [ ] Lignes **débitrices** dont le libellé contient le nom d'un membre à solde
+- [x] Lignes **débitrices** dont le libellé contient le nom d'un membre à solde
   467 positif → proposition « Rembourser 3 notes de Jean Dupont = 87,40 € »
   quand la somme des items ouverts est égale ; sinon sélection manuelle des
-  items ; accepter → `recordReimbursement` + match, même transaction.
-  **Pas fait dans ce lot.** Le chemin inverse marche déjà et suffit : le
-  remboursement enregistré depuis l'écran des bénévoles crée une écriture du
-  montant exact sur le bon compte, que le rapprochement automatique du lot 1
-  relie à la ligne du relevé. Proposer depuis la ligne demanderait une
-  troisième sorte de proposition sur `BankStatementLine` ; à faire quand un
-  club aura assez de bénévoles pour que l'ordre inverse gêne.
+  items ; accepter → `recordReimbursement` + rapprochement.
+  Différée à la livraison du lot 6, faite le 2026-09-11.
+
+**Vérifié sur staging.** Un reçu de 18,60 € avancé par Florent Morel, puis un
+relevé CSV portant « VIR SEPA FLORENT MOREL REMB FRAIS BENEVOLE · −18,60 € ».
+À l'import, la ligne reçoit sa proposition toute seule : bon bénévole, bon
+reçu, `EXACT_ALL`, 100 %. Un clic sur « Rembourser 18,60 € » crée l'écriture
+DÉBIT 467100 / CRÉDIT 512000 datée du relevé, rapproche la ligne, efface la
+proposition et ramène le solde du bénévole à zéro. Aucun appel d'IA sur cette
+ligne.
+
+#### Écarts sur cette task
+
+- **La reconnaissance passe avant les règles ET avant l'IA**, comme le
+  virement d'adhérent. En faire une charge générique compterait la dépense
+  deux fois : elle a déjà été comptabilisée le jour du reçu.
+- **On ne propose rien quand deux jeux de reçus font le même total.** Choisir
+  reviendrait à trancher pour le trésorier, et rembourser le mauvais reçu ne
+  se voit pas sur un relevé. Au-delà de seize reçus ouverts, la recherche de
+  sous-ensemble est abandonnée : trop de combinaisons se ressemblent.
+- **Pas la même transaction que le rapprochement**, contrairement au texte du
+  plan, et pour la raison déjà retenue au lot 4 : le remboursement est le fait
+  durable — il éteint une dette réelle — alors que le rapprochement n'est
+  qu'un lien, qu'un clic refait. Une transaction commune ferait perdre le
+  remboursement parce qu'une liaison a échoué.
+- Le rapprochement est souvent déjà fait quand on y arrive : `recordReimbursement`
+  cherche lui-même une ligne de relevé correspondante (lot 7). L'acceptation ne
+  repose donc un lien que si la ligne attend encore, et l'origine du
+  rapprochement observée sur staging est `AUTO` plutôt que `PROPOSAL`.
+- Si le remboursement ne couvre pas exactement la ligne, il est **quand même
+  enregistré** mais la ligne n'est pas rapprochée : on ne pose pas une liaison
+  de travers, et le trésorier voit ce qui reste.
 
 ### Task 6.4 : GraphQL et admin
 
