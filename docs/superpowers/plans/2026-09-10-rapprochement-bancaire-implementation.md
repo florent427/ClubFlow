@@ -809,9 +809,13 @@ model ChequeDeposit {
 
 ### Task 5.4 : Rapprochement (extension du lot 1)
 
-- [ ] Clé forte : libellé contenant « REMISE » ou les chiffres du n° de
-  bordereau, montant = total, dans la fenêtre → `MATCHED`, remise →
-  `RECONCILED`.
+- [x] Clé forte : libellé contenant « REMISE », « CHQ » ou « CHEQ » sur une
+  écriture `CHEQUE_DEPOSIT`, ou le n° de bordereau — porté par
+  `paymentReference` de l'écriture, que `isStrong` cherche dans le libellé et
+  la référence de la ligne. Montant = total et fenêtre de 10 jours →
+  candidat unique fort → `MATCHED`, puis relevé `RECONCILED`.
+  Cochée après coup le 2026-09-11 : le code était là depuis le lot 5, la case
+  seule avait été oubliée.
 
 ### Task 5.5 : GraphQL et admin
 
