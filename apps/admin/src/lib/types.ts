@@ -1668,6 +1668,8 @@ export type AccountingEntryLineRow = {
   vatRate: number | null;
   vatAmountCents: number | null;
   validatedAt: string | null;
+  /** Date à laquelle un relevé bancaire a couvert cette ligne 51x. */
+  bankReconciledAt: string | null;
   iaSuggestedAccountCode: string | null;
   iaReasoning: string | null;
   iaConfidencePct: number | null;

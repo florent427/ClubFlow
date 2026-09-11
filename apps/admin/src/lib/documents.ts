@@ -2572,6 +2572,7 @@ const ACCOUNTING_ENTRY_FIELDS = `
     creditCents
     vatRate
     vatAmountCents
+    bankReconciledAt
     validatedAt
     iaSuggestedAccountCode
     iaReasoning

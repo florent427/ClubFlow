@@ -109,6 +109,7 @@ interface EntryRow {
     creditCents: number;
     vatRate: { toNumber: () => number } | null;
     vatAmountCents: number | null;
+    bankReconciledAt: Date | null;
     validatedAt: Date | null;
     iaSuggestedAccountCode: string | null;
     iaReasoning: string | null;
@@ -184,6 +185,7 @@ function toGraph(entry: EntryRow): AccountingEntryGraph {
         creditCents: l.creditCents,
         vatRate: l.vatRate ? l.vatRate.toNumber() : null,
         vatAmountCents: l.vatAmountCents,
+        bankReconciledAt: l.bankReconciledAt,
         validatedAt: l.validatedAt,
         iaSuggestedAccountCode: l.iaSuggestedAccountCode,
         iaReasoning: l.iaReasoning,

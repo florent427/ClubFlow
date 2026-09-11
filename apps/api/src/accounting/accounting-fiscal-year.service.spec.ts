@@ -108,9 +108,11 @@ describe('AccountingFiscalYearService — réglages du club', () => {
     openingBalanceOn: Date | null;
   }>;
   let svc: AccountingFiscalYearService;
+  let statementCount: number;
 
   beforeEach(() => {
     club = { fiscalYearStartMonth: 1, fiscalYearStartDay: 31, accountingStartsOn: null };
+    statementCount = 0;
     accounts = [
       { id: 'fa-1', clubId, openingBalanceCents: null, openingBalanceOn: null },
       { id: 'fa-other', clubId: 'club-2', openingBalanceCents: null, openingBalanceOn: null },
@@ -127,6 +129,7 @@ describe('AccountingFiscalYearService — réglages du club', () => {
           },
         ),
       },
+      bankStatement: { count: jest.fn(async () => statementCount) },
       clubFinancialAccount: {
         findFirst: jest.fn(
           async ({ where }: { where: { id: string; clubId: string } }) =>
@@ -199,6 +202,30 @@ describe('AccountingFiscalYearService — réglages du club', () => {
     expect(club.accountingStartsOn).not.toBeNull();
     await svc.updateSettings(clubId, { accountingStartsOn: null }, now);
     expect(club.accountingStartsOn).toBeNull();
+  });
+
+  it('updateSettings : la date de reprise ne change plus une fois un relevé déposé', async () => {
+    const now = parseIsoDate('2026-09-10');
+    club.accountingStartsOn = parseIsoDate('2026-09-01');
+    statementCount = 1;
+    await expect(
+      svc.updateSettings(clubId, { accountingStartsOn: parseIsoDate('2026-08-01') }, now),
+    ).rejects.toThrow(/relevé/);
+    await expect(
+      svc.updateSettings(clubId, { accountingStartsOn: null }, now),
+    ).rejects.toThrow(/relevé/);
+    expect(formatIsoDate(club.accountingStartsOn!)).toBe('2026-09-01');
+    // Resoumettre la même date (formulaire) ou changer le début d'exercice reste permis.
+    await svc.updateSettings(
+      clubId,
+      { fiscalYearStartMonth: 9, fiscalYearStartDay: 1, accountingStartsOn: parseIsoDate('2026-09-01') },
+      now,
+    );
+    expect(club.fiscalYearStartMonth).toBe(9);
+    // Sans relevé, la date reste libre.
+    statementCount = 0;
+    await svc.updateSettings(clubId, { accountingStartsOn: parseIsoDate('2026-08-01') }, now);
+    expect(formatIsoDate(club.accountingStartsOn!)).toBe('2026-08-01');
   });
 
   it('setOpeningBalance refuse un compte d’un autre club', async () => {
