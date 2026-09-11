@@ -307,8 +307,8 @@ describe('ClubFinancialAccountsService', () => {
     it('mappe MANUAL_CASH → CASH', () => {
       expect(svc.kindFromMethod('MANUAL_CASH')).toBe('CASH');
     });
-    it('mappe MANUAL_CHECK / MANUAL_TRANSFER → BANK', () => {
-      expect(svc.kindFromMethod('MANUAL_CHECK')).toBe('BANK');
+    it('mappe MANUAL_CHECK → CHEQUE_TRANSIT (ADR-0015) et MANUAL_TRANSFER → BANK', () => {
+      expect(svc.kindFromMethod('MANUAL_CHECK')).toBe('CHEQUE_TRANSIT');
       expect(svc.kindFromMethod('MANUAL_TRANSFER')).toBe('BANK');
     });
   });

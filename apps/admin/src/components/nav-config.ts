@@ -211,6 +211,20 @@ export const NAV_SECTIONS: NavSection[] = [
         label: 'Comptabilité',
         icon: 'account_balance',
         modules: ['ACCOUNTING'],
+        end: true,
+        children: [
+          {
+            to: '/comptabilite',
+            label: 'Écritures',
+            end: true,
+            modules: ['ACCOUNTING'],
+          },
+          {
+            to: '/comptabilite/cheques',
+            label: 'Chèques & remises',
+            modules: ['ACCOUNTING'],
+          },
+        ],
       },
       {
         to: '/sponsoring',

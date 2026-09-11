@@ -1767,7 +1767,55 @@ export type ClubFinancialAccountKindGql =
   | 'BANK'
   | 'CASH'
   | 'STRIPE_TRANSIT'
-  | 'OTHER_TRANSIT';
+  | 'OTHER_TRANSIT'
+  | 'CHEQUE_TRANSIT';
+
+// ── Chèques et remises (ADR-0015) ────────────────────────────────────────
+
+export type ChequeStatusGql = 'PENDING' | 'DEPOSITED' | 'BOUNCED' | 'CANCELLED';
+export type ChequeDepositStatusGql = 'DEPOSITED' | 'RECONCILED' | 'CANCELLED';
+
+export type Cheque = {
+  id: string;
+  number: string | null;
+  drawerName: string;
+  bankName: string | null;
+  amountCents: number;
+  /** « YYYY-MM-DD ». */
+  receivedOn: string;
+  status: ChequeStatusGql;
+  paymentId: string | null;
+  invoiceId: string | null;
+  invoiceLabel: string | null;
+  entryId: string | null;
+  depositId: string | null;
+  depositNumber: string | null;
+  imageAssetId: string | null;
+  /** URL signée, valable un temps limité. */
+  imageUrl: string | null;
+  notes: string | null;
+  createdAt: string;
+};
+
+export type ChequeDeposit = {
+  id: string;
+  number: string;
+  financialAccountId: string;
+  financialAccountLabel: string;
+  depositedOn: string;
+  totalCents: number;
+  chequeCount: number;
+  status: ChequeDepositStatusGql;
+  entryId: string | null;
+  slipAssetId: string | null;
+  slipUrl: string | null;
+  notes: string | null;
+  createdAt: string;
+  cheques: Cheque[];
+};
+
+export type ClubChequesData = { clubCheques: Cheque[] };
+export type ClubChequeDepositsData = { clubChequeDeposits: ChequeDeposit[] };
 
 export type ClubPaymentMethodGql =
   | 'STRIPE_CARD'

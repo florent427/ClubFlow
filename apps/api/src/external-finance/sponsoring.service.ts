@@ -244,6 +244,11 @@ export class SponsoringService {
       receivedAmountCents: number;
       receivedAt?: Date | null;
       paymentId?: string | null;
+      /**
+       * Recette DÉJÀ comptabilisée (chèque saisi hors facture, ADR-0015) :
+       * la tranche s'y rattache au lieu de créer une seconde écriture.
+       */
+      accountingEntryId?: string | null;
     },
   ) {
     const installment = await this.prisma.sponsorshipInstallment.findFirst({
@@ -296,7 +301,13 @@ export class SponsoringService {
         },
       });
       let entryId: string | null = null;
-      if (moduleRow?.enabled === true && account && bank) {
+      if (input.accountingEntryId) {
+        entryId = input.accountingEntryId;
+        await tx.sponsorshipInstallment.update({
+          where: { id: installmentId },
+          data: { accountingEntryId: entryId },
+        });
+      } else if (moduleRow?.enabled === true && account && bank) {
         const entry = await tx.accountingEntry.create({
           data: {
             clubId,

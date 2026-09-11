@@ -214,6 +214,8 @@ export class AccountingExportService {
       case 'AUTO_REFUND':
         return 'AV'; // Avoirs
       case 'AUTO_STRIPE_FEES':
+      case 'AUTO_STRIPE_PAYOUT':
+      case 'CHEQUE_DEPOSIT':
         return 'BQ'; // Banque
       case 'OCR_AI':
       case 'MANUAL':

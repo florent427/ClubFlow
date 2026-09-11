@@ -19,9 +19,11 @@ import {
   type RouteProp,
 } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Image,
   Keyboard,
   Pressable,
   StyleSheet,
@@ -29,6 +31,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
+import { storage } from '../../lib/storage';
 import {
   CLUB_INVOICE,
   PAYMENT_METHODS,
@@ -53,6 +56,26 @@ type InvoiceLite = {
 
 type Data = { clubInvoice: InvoiceLite };
 
+function getApiBaseUrl(): string {
+  const explicit = process.env.EXPO_PUBLIC_API_BASE;
+  if (explicit) return explicit.replace(/\/$/, '');
+  const graphql =
+    process.env.EXPO_PUBLIC_GRAPHQL_HTTP ?? 'http://localhost:3000/graphql';
+  return graphql.replace(/\/graphql\/?$/, '') || 'http://localhost:3000';
+}
+
+/** Aujourd'hui en « JJ/MM/AAAA », ce que le trésorier lit sur le chèque. */
+function todayFr(): string {
+  const d = new Date();
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+}
+
+/** « JJ/MM/AAAA » → « AAAA-MM-JJ » ; null si le format n'y est pas. */
+function frToIso(value: string): string | null {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value.trim());
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
+}
+
 export function RecordPaymentScreen() {
   const nav = useNavigation<Nav>();
   const { invoiceId } = useRoute<R>().params;
@@ -72,14 +95,83 @@ export function RecordPaymentScreen() {
   const [method, setMethod] = useState<PaymentMethod>('MANUAL_CASH');
   const [amount, setAmount] = useState('');
   const [externalRef, setExternalRef] = useState('');
+  // Chèque (ADR-0015) : émetteur, banque, date de réception, photo. Le
+  // chèque se photographie au moment où on le reçoit, souvent au dojo.
+  const [chequeDrawer, setChequeDrawer] = useState('');
+  const [chequeBank, setChequeBank] = useState('');
+  const [chequeReceivedOn, setChequeReceivedOn] = useState(todayFr());
+  const [chequeImageAssetId, setChequeImageAssetId] = useState<string | null>(null);
+  const [chequeImageUri, setChequeImageUri] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   // Pré-remplir avec le solde restant à la première frappe
   useEffect(() => {
     if (inv && amount === '') {
       setAmount((remaining / 100).toFixed(2).replace('.', ','));
     }
+    if (inv && chequeDrawer === '' && inv.familyLabel) {
+      setChequeDrawer(inv.familyLabel);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inv]);
+
+  const onPickChequePhoto = async (source: 'camera' | 'gallery') => {
+    const perm =
+      source === 'camera'
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert(
+        'Autorisation refusée',
+        source === 'camera'
+          ? "Activez l'accès à l'appareil photo dans les réglages."
+          : "Activez l'accès à la galerie dans les réglages.",
+      );
+      return;
+    }
+    const opts: ImagePicker.ImagePickerOptions = {
+      mediaTypes: ['images'],
+      quality: 0.85,
+    };
+    const result =
+      source === 'camera'
+        ? await ImagePicker.launchCameraAsync(opts)
+        : await ImagePicker.launchImageLibraryAsync(opts);
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+
+    setUploadingPhoto(true);
+    try {
+      const token = await storage.getToken();
+      const clubId = await storage.getClubId();
+      if (!token || !clubId) throw new Error('Session expirée. Reconnectez-vous.');
+      const form = new FormData();
+      form.append('file', {
+        uri: asset.uri,
+        name: asset.fileName ?? `cheque-${Date.now()}.jpg`,
+        type: asset.mimeType ?? 'image/jpeg',
+      } as unknown as Blob);
+      const res = await fetch(
+        `${getApiBaseUrl()}/media/upload?kind=image&ownerKind=CHEQUE`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'X-Club-Id': clubId },
+          body: form,
+        },
+      );
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`Upload échoué (HTTP ${res.status}). ${text.slice(0, 120)}`);
+      }
+      const json = (await res.json()) as { id: string };
+      setChequeImageAssetId(json.id);
+      setChequeImageUri(asset.uri);
+    } catch (err) {
+      Alert.alert('Photo non jointe', err instanceof Error ? err.message : 'Upload impossible.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
 
   const amountCents = useMemo(() => {
     const n = parseFloat(amount.replace(',', '.'));
@@ -94,6 +186,21 @@ export function RecordPaymentScreen() {
 
   const onSubmit = async () => {
     if (!isValid || !invoiceId || amountCents === null) return;
+    let cheque: Record<string, unknown> | undefined;
+    if (method === 'MANUAL_CHECK') {
+      const receivedOn = chequeReceivedOn.trim() ? frToIso(chequeReceivedOn) : null;
+      if (chequeReceivedOn.trim() && !receivedOn) {
+        Alert.alert('Date invalide', 'Saisissez la date de réception au format JJ/MM/AAAA.');
+        return;
+      }
+      cheque = {
+        number: externalRef.trim() || null,
+        drawerName: chequeDrawer.trim() || null,
+        bankName: chequeBank.trim() || null,
+        receivedOn,
+        imageAssetId: chequeImageAssetId,
+      };
+    }
     try {
       await recordPayment({
         variables: {
@@ -102,6 +209,7 @@ export function RecordPaymentScreen() {
             amountCents,
             method,
             externalRef: externalRef.trim() || null,
+            ...(cheque ? { cheque } : {}),
           },
         },
       });
@@ -290,6 +398,58 @@ export function RecordPaymentScreen() {
               />
             </Card>
 
+            {method === 'MANUAL_CHECK' ? (
+              <Card title="Chèque">
+                <Text style={styles.chequeHint}>
+                  Le chèque va en portefeuille jusqu’à sa remise en banque,
+                  à faire depuis l’admin web (Comptabilité → Chèques & remises).
+                </Text>
+                <TextField
+                  value={chequeDrawer}
+                  onChangeText={setChequeDrawer}
+                  placeholder="Émetteur (nom sur le chèque)"
+                  autoCapitalize="words"
+                />
+                <View style={{ height: spacing.sm }} />
+                <TextField
+                  value={chequeBank}
+                  onChangeText={setChequeBank}
+                  placeholder="Banque émettrice (facultatif)"
+                  autoCapitalize="words"
+                />
+                <View style={{ height: spacing.sm }} />
+                <TextField
+                  value={chequeReceivedOn}
+                  onChangeText={setChequeReceivedOn}
+                  placeholder="Reçu le (JJ/MM/AAAA)"
+                  keyboardType="numbers-and-punctuation"
+                />
+                <View style={styles.photoRow}>
+                  <Pressable
+                    style={styles.photoBtn}
+                    onPress={() => void onPickChequePhoto('camera')}
+                    disabled={uploadingPhoto}
+                  >
+                    <Ionicons name="camera-outline" size={18} color={palette.primary} />
+                    <Text style={styles.photoBtnLabel}>
+                      {uploadingPhoto ? 'Envoi…' : chequeImageUri ? 'Reprendre' : 'Photographier'}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.photoBtn}
+                    onPress={() => void onPickChequePhoto('gallery')}
+                    disabled={uploadingPhoto}
+                  >
+                    <Ionicons name="images-outline" size={18} color={palette.primary} />
+                    <Text style={styles.photoBtnLabel}>Galerie</Text>
+                  </Pressable>
+                  {chequeImageUri ? (
+                    <Image source={{ uri: chequeImageUri }} style={styles.thumb} />
+                  ) : null}
+                </View>
+              </Card>
+            ) : null}
+
             {/* CTA */}
             <View style={{ paddingTop: spacing.sm }}>
               <GradientButton
@@ -439,5 +599,38 @@ const styles = StyleSheet.create({
   currency: {
     ...typography.h3,
     color: palette.muted,
+  },
+
+  chequeHint: {
+    ...typography.caption,
+    color: palette.muted,
+    marginBottom: spacing.sm,
+  },
+  photoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  photoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: palette.border,
+    backgroundColor: palette.surface,
+  },
+  photoBtnLabel: {
+    ...typography.smallStrong,
+    color: palette.primary,
+  },
+  thumb: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    marginLeft: 'auto',
   },
 });

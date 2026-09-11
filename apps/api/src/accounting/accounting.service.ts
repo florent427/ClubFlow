@@ -948,6 +948,12 @@ export class AccountingService {
     clubId: string,
     userId: string,
     input: ManualEntryInput,
+    /**
+     * Transaction de l'appelant, quand l'écriture doit naître avec autre
+     * chose ou pas du tout (un chèque hors facture et sa recette, ADR-0015).
+     * Sans elle, l'écriture ouvre sa propre transaction.
+     */
+    outerTx?: Prisma.TransactionClient,
   ) {
     const occurredAt = input.occurredAt ?? new Date();
     await this.period.assertDateIsOpen(clubId, occurredAt);
@@ -966,7 +972,7 @@ export class AccountingService {
 
     const side = this.deriveSide(account.kind, input.kind, account.code);
 
-    const created = await this.prisma.$transaction(async (tx) => {
+    const run = async (tx: Prisma.TransactionClient) => {
       const entry = await tx.accountingEntry.create({
         data: {
           clubId,
@@ -979,6 +985,11 @@ export class AccountingService {
           occurredAt,
           createdByUserId: userId,
           financialAccountId: fin.id,
+          // Documentés « persistés sur l'entry » par ManualEntryInput, mais
+          // jamais écrits ici : un chèque hors facture perdait son mode et
+          // son numéro (vu en base staging le 2026-09-10).
+          paymentMethod: input.paymentMethod ?? null,
+          paymentReference: input.paymentReference ?? null,
         },
       });
 
@@ -1047,15 +1058,24 @@ export class AccountingService {
       }
 
       return entry;
-    });
+    };
+    const created = outerTx
+      ? await run(outerTx)
+      : await this.prisma.$transaction(run);
 
-    await this.audit.log({
-      clubId,
-      userId,
-      entryId: created.id,
-      action: AccountingAuditAction.CREATE,
-      metadata: { source: 'MANUAL', input: JSON.parse(JSON.stringify(input)) },
-    });
+    // Dans la transaction de l'appelant s'il y en a une : l'écriture n'est
+    // pas encore visible hors de celle-ci, et la clé étrangère du journal
+    // vers elle échouerait.
+    await this.audit.log(
+      {
+        clubId,
+        userId,
+        entryId: created.id,
+        action: AccountingAuditAction.CREATE,
+        metadata: { source: 'MANUAL', input: JSON.parse(JSON.stringify(input)) },
+      },
+      outerTx,
+    );
 
     return created;
   }

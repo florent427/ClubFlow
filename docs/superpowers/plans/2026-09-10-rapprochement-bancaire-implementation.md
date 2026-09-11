@@ -524,16 +524,33 @@ portefeuille 511200 avec sa photo ; une remise groupe N chèques, produit
 l'écriture 512 / 5112 et un bordereau PDF ; la ligne banque « REMISE » se
 rapproche de la remise.
 
+**Réalisé le 2026-09-10 — écarts par rapport au plan :**
+- Module à part `apps/api/src/cheques/` et non `accounting/cheques/` : il
+  dépend de la compta, des subventions et du sponsoring, des médias et du
+  PDF, et rien ne dépend de lui.
+- Pas de contrôleur REST pour le bordereau : PDF généré à la remise, archivé
+  en média privé, exposé en URL signée, régénérable par
+  `generateChequeDepositSlip`.
+- Numérotation `R-<exercice>-NNNN` par « dernier + 1 » dans la transaction,
+  contrainte unique et reprise sur collision : pas de verrou `$executeRaw`.
+- Task 5.4 (clé forte de rapprochement) reportée au lot 1, qui porte le
+  moteur.
+- Rattachement d'un chèque à une tranche de subvention ou de sponsoring :
+  exposé par l'API, pas encore dans l'écran admin.
+- Chèque impayé (`BOUNCED`) non livré, comme prévu.
+- Le double de transaction des tests a d'abord été trop généreux, cf.
+  [pitfall](../../memory/pitfalls/double-transaction-rollback-trop-genereux.md).
+
 ### Task 5.1 : Schéma et seed
 
-- [ ] `ClubFinancialAccountKind.CHEQUE_TRANSIT` ; seed du compte PCG `511200
+- [x] `ClubFinancialAccountKind.CHEQUE_TRANSIT` ; seed du compte PCG `511200
   Chèques à encaisser` (`ASSET`) et du compte financier « Chèques à
   encaisser » (`isDefault`) dans `seedIfEmpty`, sur le modèle du
   `STRIPE_TRANSIT` ; `kindFromMethod(MANUAL_CHECK)` → `CHEQUE_TRANSIT` ;
   `repointCheckRouteToTransit` copie de `repointStripeRouteToTransit` (route
   `isDefault` **et** pointant sur la banque par défaut) ; spec miroir de
   `accounting-seed-transit.spec.ts`.
-- [ ] Modèles :
+- [x] Modèles :
 
 ```prisma
 enum ChequeStatus { PENDING DEPOSITED BOUNCED CANCELLED }
@@ -552,42 +569,42 @@ model ChequeDeposit {
 }
 ```
 
-- [ ] `AccountingEntrySource.CHEQUE_DEPOSIT` ; `AccountingAuditAction.CHEQUE_DEPOSIT`.
+- [x] `AccountingEntrySource.CHEQUE_DEPOSIT` ; `AccountingAuditAction.CHEQUE_DEPOSIT`.
 
 ### Task 5.2 : `ChequesService` et `ChequeDepositsService`
 
-- [ ] `RecordManualPaymentInput.cheque?: { number?, drawerName?, bankName?, receivedOn?, imageAssetId? }` ;
+- [x] `RecordManualPaymentInput.cheque?: { number?, drawerName?, bankName?, receivedOn?, imageAssetId? }` ;
   `recordManualPayment` en `MANUAL_CHECK` crée toujours un `Cheque`
   (à défaut : n° = `externalRef`, émetteur = payeur de la facture, date = jour)
   pour que les appelants existants — admin, mobile admin — ne perdent rien.
-- [ ] `createStandaloneCheque(input)` : chèque sans facture ; crée l'écriture
+- [x] `createStandaloneCheque(input)` : chèque sans facture ; crée l'écriture
   `INCOME` (contrepartie 511200, compte 7xx choisi ou suggéré par
   `suggestAccountingCategorization`) ; lien optionnel vers un
   `GrantInstallment` ou un `SponsorshipInstallment` (`accountingEntryId`,
   `receivedAt`, `receivedAmountCents`).
-- [ ] `attachChequeImage(chequeId, mediaAssetId)` ; upload via
+- [x] `attachChequeImage(chequeId, mediaAssetId)` ; upload via
   `/media/upload?kind=image&ownerKind=CHEQUE&ownerId=<chequeId>`.
-- [ ] `createDeposit({ financialAccountId, depositedOn, chequeIds })` : gardes
+- [x] `createDeposit({ financialAccountId, depositedOn, chequeIds })` : gardes
   (tous `PENDING`, même club, banque de kind `BANK`, date ≥ chaque
   `receivedOn`, mois ouvert) ; **une transaction** : numéro séquentiel par
   club (`$executeRaw` avec verrou de ligne sur un compteur par club, testé
   en e2e), remise, écriture `TRANSFER` DÉBIT 512x / CRÉDIT 511200 libellée
   « Remise de chèques R-2026-0007 (n chèques) » datée du dépôt,
   `source CHEQUE_DEPOSIT`, chèques → `DEPOSITED` avec `depositId`.
-- [ ] `cancelDeposit` : seulement sans rapprochement bancaire et mois ouvert ;
+- [x] `cancelDeposit` : seulement sans rapprochement bancaire et mois ouvert ;
   contre-passation, chèques → `PENDING`.
-- [ ] Tests : seed et redirection conditionnelle ; transaction de remise
+- [x] Tests : seed et redirection conditionnelle ; transaction de remise
   (mutation : sortir le passage des chèques de la transaction → rouge) ;
   numérotation sans doublon sous concurrence (e2e) ; gardes.
 
 ### Task 5.3 : Bordereau PDF
 
-- [ ] `apps/api/src/pdf/cheque-deposit-pdf.service.ts` (pdfkit, comme
+- [x] `apps/api/src/pdf/cheque-deposit-pdf.service.ts` (pdfkit, comme
   `invoice-pdf.service.ts`) : club, IBAN du compte banque, n° et date de
   remise, tableau (n° chèque, émetteur, banque, montant), total, nombre,
   cadre signature. Contrôleur `GET /cheque-deposits/:id/pdf` sur le modèle de
   `invoice-pdf.controller.ts` (auth et club).
-- [ ] Le PDF est rendu à la création et stocké en `MediaAsset` privé
+- [x] Le PDF est rendu à la création et stocké en `MediaAsset` privé
   (`bordereauAssetId`) : la remise est l'unité d'archive, avec les photos.
 
 ### Task 5.4 : Rapprochement (extension du lot 1)
@@ -598,24 +615,39 @@ model ChequeDeposit {
 
 ### Task 5.5 : GraphQL et admin
 
-- [ ] `clubCheques(status)`, `clubCheque(id)`, `createStandaloneCheque`,
+- [x] `clubCheques(status)`, `clubCheque(id)`, `createStandaloneCheque`,
   `updateCheque`, `attachChequeImage`, `clubChequeDeposits`,
   `clubChequeDeposit(id)`, `createChequeDeposit`, `cancelChequeDeposit` ;
   extension de `recordManualPayment`. Test de construction du schéma.
-- [ ] `/comptabilite/cheques` : onglets « En portefeuille » (sélection →
+- [x] `/comptabilite/cheques` : onglets « En portefeuille » (sélection →
   « Créer la remise »), « Remises » (détail avec chèques, photos, lien PDF),
   « Nouveau chèque » (formulaire libre avec photo).
-- [ ] `pages/billing/InvoiceDetailDrawer.tsx` : quand la méthode est chèque,
+- [x] `pages/billing/InvoiceDetailDrawer.tsx` : quand la méthode est chèque,
   champs n°, émetteur, banque, date de réception, photo.
-- [ ] `apps/mobile-admin/src/screens/billing/RecordPaymentScreen.tsx` : mêmes
+- [x] `apps/mobile-admin/src/screens/billing/RecordPaymentScreen.tsx` : mêmes
   champs, photo par la caméra (le chèque se photographie au moment où on le
   reçoit, souvent au dojo).
 
 ### Task 5.6 : Vérification staging
 
-- [ ] Deux paiements par chèque et un chèque de sponsor ; remise des trois ;
-  PDF téléchargé ; solde 511200 revenu à 0 (`select` sur les lignes
-  `511200`) ; CSV avec la ligne « REMISE » → rapprochée.
+- [x] Fait le 2026-09-10 sur `club-demo` (staging), dans la session Chrome de
+  Florent : au premier chargement des réglages, le seed a créé le compte
+  « Chèques à encaisser » (511200) et redirigé la route chèque depuis la
+  banque ; chèque hors facture « Mairie de Saint-Denis » 120,00 € sur 754000
+  (écriture 511200 débit / 754000 crédit, audit CREATE) ; remise
+  `R-2026-0001` sur Banque principale (écriture 512000 débit / 511200 crédit,
+  chèque DEPOSITED, bordereau PDF archivé en média privé et servi en URL
+  signée, 200 `application/pdf`) ; annulation motivée (contre-passation
+  inversée, chèque de retour en portefeuille, remise CANCELLED, audit
+  CHEQUE_DEPOSIT_CANCEL). Aucune erreur API sur ces opérations.
+- [x] Deux bugs trouvés et corrigés en vérifiant : le journal d'audit écrivait
+  hors de la transaction de l'appelant (P2003, transaction annulée) ; le mode
+  et la référence de paiement d'une écriture manuelle n'étaient jamais
+  persistés.
+- [ ] Non rejoué sur staging : paiement de facture par chèque (aucune facture
+  ouverte sur `club-demo` ; chemin couvert par
+  `payments-record-manual.spec.ts`) ; rapprochement de la ligne « REMISE »
+  (lot 1).
 
 ---
 

@@ -13,6 +13,10 @@ import {
   MemberStatus,
 } from '@prisma/client';
 import Stripe from 'stripe';
+import {
+  parseIsoDate,
+  todayInClubTimezone,
+} from '../accounting/accounting-fiscal-year.service';
 import { AccountingService } from '../accounting/accounting.service';
 import { DocumentsGatingService } from '../documents/documents-gating.service';
 import { ModuleCode } from '../domain/module-registry/module-codes';
@@ -546,6 +550,7 @@ export class PaymentsService {
   async recordManualPayment(
     clubId: string,
     input: RecordManualPaymentInput,
+    userId: string | null = null,
   ) {
     const invoice = await this.prisma.invoice.findFirst({
       where: { id: input.invoiceId, clubId },
@@ -630,6 +635,14 @@ export class PaymentsService {
     }
 
     const ref = input.externalRef?.trim() || null;
+    // Un chèque naît en portefeuille (ADR-0015) : sa fiche est créée dans la
+    // MÊME transaction que le paiement, jamais après. Un paiement par chèque
+    // sans fiche serait invisible à la remise, et la banque le verrait sans
+    // que rien ne l'explique.
+    const chequeData =
+      input.method === ClubPaymentMethod.MANUAL_CHECK
+        ? await this.buildChequeData(clubId, invoice, input, ref, userId)
+        : null;
     const payment = await this.prisma.$transaction(async (tx) => {
       const p = await tx.payment.create({
         data: {
@@ -642,6 +655,9 @@ export class PaymentsService {
           paidByContactId: input.paidByContactId ?? null,
         },
       });
+      if (chequeData) {
+        await tx.cheque.create({ data: { ...chequeData, paymentId: p.id } });
+      }
       const newPaid = paidBefore + input.amountCents;
       if (newPaid === invoice.amountCents) {
         await tx.invoice.update({
@@ -677,6 +693,47 @@ export class PaymentsService {
     );
 
     return payment;
+  }
+
+  /**
+   * Fiche du chèque d'un paiement manuel. Les champs absents ont un défaut
+   * raisonnable : n° = référence du paiement, émetteur = payeur connu sinon
+   * libellé de facture, réception = aujourd'hui (jour du club).
+   */
+  private async buildChequeData(
+    clubId: string,
+    invoice: Invoice,
+    input: RecordManualPaymentInput,
+    ref: string | null,
+    userId: string | null,
+  ) {
+    const c = input.cheque;
+    let drawerName = c?.drawerName?.trim() || '';
+    if (!drawerName && input.paidByMemberId) {
+      const m = await this.prisma.member.findFirst({
+        where: { id: input.paidByMemberId, clubId },
+        select: { firstName: true, lastName: true },
+      });
+      drawerName = [m?.firstName, m?.lastName].filter(Boolean).join(' ').trim();
+    }
+    if (!drawerName && input.paidByContactId) {
+      const ct = await this.prisma.contact.findFirst({
+        where: { id: input.paidByContactId, clubId },
+        select: { firstName: true, lastName: true },
+      });
+      drawerName = [ct?.firstName, ct?.lastName].filter(Boolean).join(' ').trim();
+    }
+    if (!drawerName) drawerName = invoice.label;
+    return {
+      clubId,
+      number: c?.number?.trim() || ref,
+      drawerName: drawerName.slice(0, 120),
+      bankName: c?.bankName?.trim() || null,
+      amountCents: input.amountCents,
+      receivedOn: c?.receivedOn ? parseIsoDate(c.receivedOn) : todayInClubTimezone(),
+      imageAssetId: c?.imageAssetId ?? null,
+      createdByUserId: userId,
+    };
   }
 
   /**

@@ -32,6 +32,7 @@ import { ShopPage } from './pages/shop/ShopPage';
 import { SponsoringPage } from './pages/sponsoring/SponsoringPage';
 import { SubsidiesPage } from './pages/subsidies/SubsidiesPage';
 import { AccountingPage } from './pages/accounting/AccountingPage';
+import { ChequesPage } from './pages/accounting/cheques/ChequesPage';
 import { SettingsLayout } from './pages/settings/SettingsLayout';
 import { SettingsHubPage } from './pages/settings/SettingsHubPage';
 import { MemberFieldsSettingsPage } from './pages/settings/MemberFieldsSettingsPage';
@@ -145,6 +146,7 @@ export default function App() {
             <Route path="sponsoring" element={<SponsoringPage />} />
             <Route path="subventions" element={<SubsidiesPage />} />
             <Route path="comptabilite" element={<AccountingPage />} />
+            <Route path="comptabilite/cheques" element={<ChequesPage />} />
             <Route path="vitrine">
               <Route index element={<VitrineHomePage />} />
               <Route path="articles" element={<VitrineArticlesPage />} />

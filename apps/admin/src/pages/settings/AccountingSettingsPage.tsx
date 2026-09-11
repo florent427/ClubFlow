@@ -29,6 +29,7 @@ const KIND_LABELS: Record<ClubFinancialAccountKindGql, string> = {
   CASH: 'Caisse',
   STRIPE_TRANSIT: 'Transit Stripe',
   OTHER_TRANSIT: 'Transit autre',
+  CHEQUE_TRANSIT: 'Chèques à encaisser',
 };
 
 const METHOD_LABELS: Record<ClubPaymentMethodGql, string> = {
@@ -411,6 +412,11 @@ export default function AccountingSettingsPage() {
                       a.kind === 'BANK' ||
                       a.kind === 'OTHER_TRANSIT'
                     );
+                  // Un chèque attend sa remise en portefeuille (ADR-0015) ;
+                  // la banque reste possible pour un club qui ne fait pas de
+                  // remises groupées.
+                  if (m === 'MANUAL_CHECK')
+                    return a.kind === 'CHEQUE_TRANSIT' || a.kind === 'BANK';
                   return a.kind === 'BANK';
                 });
                 return (
@@ -495,6 +501,9 @@ export default function AccountingSettingsPage() {
                 <option value="BANK">Banque</option>
                 <option value="CASH">Caisse espèces</option>
                 <option value="STRIPE_TRANSIT">Transit Stripe</option>
+                <option value="CHEQUE_TRANSIT">
+                  Chèques à encaisser (portefeuille)
+                </option>
                 <option value="OTHER_TRANSIT">
                   Transit autre (HelloAsso, Lydia…)
                 </option>
