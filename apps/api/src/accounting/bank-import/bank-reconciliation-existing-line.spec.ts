@@ -187,6 +187,9 @@ function makeWorld(
           return take ? kept.slice(0, take) : kept;
         },
       ),
+      findUnique: jest.fn(async ({ where }: { where: { id: string } }) =>
+        lines.find((x) => x.id === where.id) ?? null,
+      ),
       update: jest.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
         const l = lines.find((x) => x.id === where.id)!;
         Object.assign(l, data);

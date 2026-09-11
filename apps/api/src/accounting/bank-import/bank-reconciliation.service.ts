@@ -326,6 +326,14 @@ export class BankReconciliationService {
           });
         }
       }
+      // La ligne est résolue pour de bon : une proposition de l'IA encore en
+      // revue n'a plus lieu d'être, et la laisser permettrait de
+      // comptabiliser la même somme une seconde fois en la validant.
+      const current = await tx.bankStatementLine.findUnique({
+        where: { id: line.id },
+        select: { proposedEntryId: true },
+      });
+      await this.dropPendingProposal(clubId, line.id, current?.proposedEntryId ?? null, tx);
       await tx.bankStatementLine.update({
         where: { id: line.id },
         data: {
@@ -516,7 +524,6 @@ export class BankReconciliationService {
     if (open.length !== 1) return null;
 
     const line = open[0];
-    await this.dropPendingProposal(clubId, line.id, line.proposedEntryId);
     await this.applyMatch(
       clubId,
       null,
@@ -547,19 +554,22 @@ export class BankReconciliationService {
     clubId: string,
     lineId: string,
     proposedEntryId: string | null,
+    tx?: Prisma.TransactionClient,
   ): Promise<void> {
     if (!proposedEntryId) return;
-    const entry = await this.prisma.accountingEntry.findFirst({
-      where: { id: proposedEntryId, clubId, status: AccountingEntryStatus.NEEDS_REVIEW },
-      select: { id: true },
-    });
-    await this.prisma.$transaction(async (tx) => {
-      await tx.bankStatementLine.update({
+    const run = async (db: Prisma.TransactionClient) => {
+      const entry = await db.accountingEntry.findFirst({
+        where: { id: proposedEntryId, clubId, status: AccountingEntryStatus.NEEDS_REVIEW },
+        select: { id: true },
+      });
+      await db.bankStatementLine.update({
         where: { id: lineId },
         data: { proposedEntryId: null, aiProposalJson: Prisma.DbNull, ruleId: null },
       });
-      if (entry) await tx.accountingEntry.delete({ where: { id: entry.id } });
-    });
+      if (entry) await db.accountingEntry.delete({ where: { id: entry.id } });
+    };
+    if (tx) return run(tx);
+    await this.prisma.$transaction(run);
   }
 
   /** Détache : liaisons supprimées, marqueur effacé, ligne de nouveau à traiter. */
