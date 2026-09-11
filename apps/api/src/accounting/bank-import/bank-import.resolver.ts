@@ -4,6 +4,7 @@ import type { Club } from '@prisma/client';
 import { BankStatementLineStatus } from '@prisma/client';
 import { BankLineCategorizationService } from './bank-line-categorization.service';
 import { BankPayerLookupService } from './bank-payer-lookup.service';
+import { BankVolunteerLookupService } from './bank-volunteer-lookup.service';
 import { CurrentClub } from '../../common/decorators/current-club.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequireClubModule } from '../../common/decorators/require-club-module.decorator';
@@ -43,6 +44,7 @@ import {
   BankLineDivergenceGraph,
   BankLineProposalGraph,
   BankPayerCandidateGraph,
+  BankVolunteerCandidateGraph,
   BankStatementGraph,
   BankStatementLineGraph,
   BankStatementListItemGraph,
@@ -157,6 +159,25 @@ function payerGraph(raw: unknown): BankPayerCandidateGraph | null {
   };
 }
 
+/** Même prudence que pour le payeur : relu en validant, jamais en supposant. */
+function volunteerGraph(raw: unknown): BankVolunteerCandidateGraph | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const v = raw as Record<string, unknown>;
+  if (typeof v.memberId !== 'string') return null;
+  const entryIds = Array.isArray(v.entryIds) ? v.entryIds : [];
+  return {
+    memberId: v.memberId,
+    firstName: typeof v.firstName === 'string' ? v.firstName : '',
+    lastName: typeof v.lastName === 'string' ? v.lastName : '',
+    nameScore: typeof v.nameScore === 'number' ? v.nameScore : 0,
+    amountMatch: typeof v.amountMatch === 'string' ? v.amountMatch : 'NONE',
+    entryIds: entryIds.filter((e): e is string => typeof e === 'string'),
+    openCents: typeof v.openCents === 'number' ? v.openCents : 0,
+    openCount: typeof v.openCount === 'number' ? v.openCount : 0,
+    confidence: typeof v.confidence === 'number' ? v.confidence : 0,
+  };
+}
+
 export function toLineGraph(l: LineRow): BankStatementLineGraph {
   return {
     proposal: proposalGraph(l.aiProposalJson),
@@ -166,6 +187,7 @@ export function toLineGraph(l: LineRow): BankStatementLineGraph {
     aiAttempts: l.aiAttempts,
     aiExhausted: l.aiExhausted,
     payerProposal: payerGraph(l.payerProposalJson),
+    volunteerProposal: volunteerGraph(l.volunteerProposalJson),
     readingAgreement: l.readingAgreement,
     divergence: divergenceFromJson(l.divergenceJson),
     id: l.id,
@@ -279,6 +301,7 @@ export class BankImportResolver {
     private readonly reconciliation: BankReconciliationService,
     private readonly categorization: BankLineCategorizationService,
     private readonly payerLookup: BankPayerLookupService,
+    private readonly volunteerLookup: BankVolunteerLookupService,
   ) {}
 
   @Query(() => [ReconciliationAccountSummaryGraph], { name: 'clubReconciliationSummary' })
@@ -327,6 +350,18 @@ export class BankImportResolver {
     return rows.map(toCandidate);
   }
 
+
+  @Query(() => [BankVolunteerCandidateGraph], {
+    name: 'bankLineVolunteerCandidates',
+    description:
+      'Bénévoles à qui le club doit de l’argent et que ce paiement sortant pourrait rembourser, avec les reçus que le montant solderait.',
+  })
+  async bankLineVolunteerCandidates(
+    @CurrentClub() club: Club,
+    @Args('lineId', { type: () => ID }) lineId: string,
+  ): Promise<BankVolunteerCandidateGraph[]> {
+    return this.volunteerLookup.refundCandidates(club.id, lineId);
+  }
 
   @Query(() => [BankPayerCandidateGraph], {
     name: 'bankLinePayerCandidates',

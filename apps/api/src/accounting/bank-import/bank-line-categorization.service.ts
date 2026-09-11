@@ -21,6 +21,7 @@ import { AccountingAuditService } from '../accounting-audit.service';
 import { AccountingService } from '../accounting.service';
 import { BankReconciliationService } from './bank-reconciliation.service';
 import { BankPayerLookupService } from './bank-payer-lookup.service';
+import { BankVolunteerLookupService } from './bank-volunteer-lookup.service';
 import { CategorizationLearningService } from './categorization-learning.service';
 import { applyRules, normalizeStatementLabel } from './categorization-rules';
 import type { CategorizationRule } from './categorization-rules';
@@ -56,7 +57,7 @@ export interface LineProposal {
 }
 
 export interface CategorizationOutcome {
-  status: 'PROPOSED' | 'QUESTION' | 'EXHAUSTED' | 'SKIPPED' | 'PAYER';
+  status: 'PROPOSED' | 'QUESTION' | 'EXHAUSTED' | 'SKIPPED' | 'PAYER' | 'VOLUNTEER';
   proposal: LineProposal | null;
   question: string | null;
 }
@@ -114,6 +115,7 @@ export class BankLineCategorizationService {
     private readonly reconciliation: BankReconciliationService,
     private readonly learning: CategorizationLearningService,
     private readonly payerLookup: BankPayerLookupService,
+    private readonly volunteerLookup: BankVolunteerLookupService,
   ) {}
 
   // ── Règles du club ────────────────────────────────────────────────────
@@ -232,6 +234,12 @@ export class BankLineCategorizationService {
     // (ADR-0014 §7).
     const payerOutcome = await this.tryMemberTransfer(clubId, line);
     if (payerOutcome) return payerOutcome;
+
+    // Symétrique, côté sortie : une dépense qui rembourse un bénévole n'est
+    // pas une charge de plus — la charge a déjà été comptabilisée le jour du
+    // reçu. En faire une écriture générique compterait la dépense deux fois.
+    const refundOutcome = await this.tryVolunteerRefund(clubId, line);
+    if (refundOutcome) return refundOutcome;
 
     const ruleOutcome = await this.tryRules(clubId, userId, line);
     if (ruleOutcome) return ruleOutcome;
@@ -582,6 +590,31 @@ export class BankLineCategorizationService {
       `[ligne ${line.id}] virement de ${proposal.payer.firstName} ${proposal.payer.lastName} : ${proposal.allocations.length} facture(s)`,
     );
     return { status: 'PAYER', proposal: null, question: null };
+  }
+
+  /**
+   * Ligne débitrice au nom de quelqu'un à qui le club doit de l'argent : on
+   * propose de solder ses reçus plutôt que d'inventer une charge. Aucune
+   * écriture n'est créée ici — c'est l'acceptation qui enregistrera le
+   * remboursement, et lui seul éteint la dette.
+   */
+  private async tryVolunteerRefund(
+    clubId: string,
+    line: LineRow,
+  ): Promise<CategorizationOutcome | null> {
+    if (line.amountCents >= 0) return null;
+    const proposal = await this.volunteerLookup.autoProposal(clubId, line.id);
+    if (!proposal) return null;
+    await this.prisma.bankStatementLine.update({
+      where: { id: line.id },
+      data: {
+        volunteerProposalJson: JSON.parse(JSON.stringify(proposal)) as Prisma.InputJsonValue,
+      },
+    });
+    this.logger.log(
+      `[ligne ${line.id}] remboursement de ${proposal.firstName} ${proposal.lastName} : ${proposal.entryIds.length} reçu(s)`,
+    );
+    return { status: 'VOLUNTEER', proposal: null, question: null };
   }
 
   private async tryRules(

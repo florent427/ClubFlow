@@ -268,6 +268,50 @@ export class BankStatementLineGraph {
   /** Virement d'adhérent reconnu : payeur et factures proposés. */
   @Field(() => BankPayerCandidateGraph, { nullable: true })
   payerProposal!: BankPayerCandidateGraph | null;
+
+  /** Remboursement de bénévole reconnu : qui, et quels reçus soldés. */
+  @Field(() => BankVolunteerCandidateGraph, { nullable: true })
+  volunteerProposal!: BankVolunteerCandidateGraph | null;
+}
+
+/**
+ * Remboursement de bénévole reconnu sur une ligne débitrice (ADR-0016) : à
+ * qui le club doit de l'argent, quels reçus cette sortie solderait, et à
+ * quel point c'est sûr.
+ */
+@ObjectType()
+export class BankVolunteerCandidateGraph {
+  @Field(() => ID)
+  memberId!: string;
+
+  @Field()
+  firstName!: string;
+
+  @Field()
+  lastName!: string;
+
+  /** 100 = nom et prénom reconnus, 70 = nom de famille seul. */
+  @Field(() => Int)
+  nameScore!: number;
+
+  /** EXACT_ALL (tous les reçus), EXACT_SUBSET (une partie) ou NONE. */
+  @Field()
+  amountMatch!: string;
+
+  /** Reçus que ce remboursement solderait. Vide si rien ne tombe juste. */
+  @Field(() => [ID])
+  entryIds!: string[];
+
+  /** Total encore dû à ce bénévole, tous reçus confondus. */
+  @Field(() => Int)
+  openCents!: number;
+
+  @Field(() => Int)
+  openCount!: number;
+
+  /** Au-dessus de 80, proposable en un clic. */
+  @Field(() => Int)
+  confidence!: number;
 }
 
 @ObjectType()
