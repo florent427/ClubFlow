@@ -9,6 +9,21 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.47.0](https://github.com/florent427/ClubFlow/compare/v0.46.0...v0.47.0) (2026-09-11)
+
+
+### ✨ Features
+
+* **accounting:** lecture des relevés PDF par deux modèles (lot 2) ([c1e3dad](https://github.com/florent427/ClubFlow/commit/c1e3dadda60afe290e49e0a44e05bd4dc90b84fa))
+* **admin:** dépôt de relevés PDF, divergences à trancher, soldes corrigeables (lot 2) ([29ff8d2](https://github.com/florent427/ClubFlow/commit/29ff8d2a442b08ef64830f90b0caa4f4c0752dab))
+* **api:** lecture des relevés PDF par deux modèles, fusion et divergences (lot 2) ([8f16f17](https://github.com/florent427/ClubFlow/commit/8f16f179bfe41ab13b508539b7096b424f440231))
+* **db:** valeur d'usage IA BANK_STATEMENT_OCR ([46712cc](https://github.com/florent427/ClubFlow/commit/46712cccf3859afc9fc172e48f57dbbf03fa5dc6))
+
+
+### ♻️ Refactor
+
+* **ocr:** outillage PDF et vision partagé entre reçus et relevés ([3cfe787](https://github.com/florent427/ClubFlow/commit/3cfe787c2eee5d9d070c6a4b51bc386db0195004))
+
 ## [0.46.0](https://github.com/florent427/ClubFlow/compare/v0.45.0...v0.46.0) (2026-09-11)
 
 
