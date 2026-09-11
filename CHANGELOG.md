@@ -9,6 +9,21 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.52.0](https://github.com/florent427/ClubFlow/compare/v0.51.0...v0.52.0) (2026-09-11)
+
+
+### ✨ Features
+
+* **admin:** panneau du transit Stripe sur le rapprochement (lot 8) ([a77a74a](https://github.com/florent427/ClubFlow/commit/a77a74ad99a05162da6be2598aa344c94d652792))
+* **api:** synchronisation du transit Stripe par l'API (lot 8) ([f8d92d1](https://github.com/florent427/ClubFlow/commit/f8d92d1f1bf539083212a0420b40bfc1174539f1))
+* **db:** marqueur de synchronisation du transit Stripe ([9b6bce8](https://github.com/florent427/ClubFlow/commit/9b6bce8f4e019e53e23d7afd54dfceaae8e3821f))
+
+
+### 🐛 Bug Fixes
+
+* **accounting:** un relevé synthétisé chaîne par construction ([26f9104](https://github.com/florent427/ClubFlow/commit/26f91044edcb1603c6a9f01ae865822687eaf911))
+* **api:** la synchro Stripe relit deux jours en arrière ([f35b557](https://github.com/florent427/ClubFlow/commit/f35b557195f952c7effb204472f3d6b1e66fc00e))
+
 ## [0.51.0](https://github.com/florent427/ClubFlow/compare/v0.50.0...v0.51.0) (2026-09-11)
 
 
