@@ -1365,6 +1365,12 @@ export class MembershipCartService {
   }
 
   /**
+   * Les motifs énoncent le FAIT, sans dire à qui s'adresser : ils sont lus
+   * autant par le parent sur son portail que par le club depuis l'admin.
+   * « Contactez le club » y était faux deux fois — absurde pour le club
+   * lui-même, et trompeur pour le parent, puisqu'une adhésion réglée n'est
+   * rouvrable par personne.
+   *
    * Rien d'encaissé sur la facture du panier ? Source unique partagée
    * par la lecture (`findReopenableCartForFamily`) et l'écriture
    * (`reopenCart`), pour que le bouton affiché et l'action autorisée ne
@@ -1381,14 +1387,14 @@ export class MembershipCartService {
     });
     if (!invoice) return null;
     if (invoice.status === InvoiceStatus.PAID) {
-      return 'Cette adhésion est déjà réglée. Contactez le club pour toute modification.';
+      return 'Cette adhésion est déjà réglée : elle ne peut plus être rouverte.';
     }
     const paidAgg = await this.prisma.payment.aggregate({
       where: { invoiceId: invoice.id },
       _sum: { amountCents: true },
     });
     if ((paidAgg._sum.amountCents ?? 0) > 0) {
-      return 'Un règlement a déjà été encaissé sur cette adhésion. Contactez le club pour la modifier.';
+      return 'Un règlement a déjà été encaissé sur cette adhésion : elle ne peut plus être rouverte.';
     }
     const scheduleStatus = invoice.paymentSchedule?.status;
     if (

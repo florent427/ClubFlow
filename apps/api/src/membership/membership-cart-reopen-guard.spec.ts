@@ -121,6 +121,37 @@ describe('MembershipCartService.reopenCart — refus si un règlement existe', (
     expectRienModifie();
   });
 
+  /**
+   * Le même motif est lu par le PARENT sur son portail et par le CLUB depuis
+   * l'admin, depuis que la réouverture existe des deux côtés. Il disait
+   * « Contactez le club » : absurde pour le club lui-même, et trompeur pour le
+   * parent — une adhésion réglée n'est rouvrable par personne.
+   */
+  it.each([
+    ['facture soldée', InvoiceStatus.PAID, 0],
+    ['paiement partiel', InvoiceStatus.OPEN, 5_000],
+  ])(
+    'refuse avec un motif valable pour le club comme pour le parent (%s)',
+    async (_cas, status, encaisse) => {
+      prisma.invoice.findFirst.mockResolvedValue({
+        id: INVOICE_ID,
+        status,
+        paymentSchedule: null,
+      });
+      prisma.payment.aggregate.mockResolvedValue({
+        _sum: { amountCents: encaisse },
+      });
+
+      const motif = await service
+        .reopenCart(CLUB_ID, CART_ID)
+        .then(() => '')
+        .catch((e: Error) => e.message);
+
+      expect(motif).not.toMatch(/contactez/i);
+      expect(motif).toMatch(/rouvert|rouvrir/i);
+    },
+  );
+
   it.each([
     PaymentScheduleStatus.ACTIVE,
     PaymentScheduleStatus.PENDING_SETUP,
