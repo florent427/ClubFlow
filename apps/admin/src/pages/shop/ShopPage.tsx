@@ -836,15 +836,19 @@ function ProductsTab() {
                   >
                     Modifier
                   </button>
-                  {p.hasVariants ? (
-                    <button
-                      type="button"
-                      className="cf-btn"
-                      onClick={() => setVariantsFor(p)}
-                    >
-                      Déclinaisons
-                    </button>
-                  ) : null}
+                  {/*
+                    Toujours proposé, même sans déclinaison existante : le
+                    bouton n'apparaissait que si le produit en avait déjà, donc
+                    un produit neuf ne pouvait jamais en recevoir. L'éditeur
+                    d'axes sait partir de zéro — il sème une ligne vide.
+                  */}
+                  <button
+                    type="button"
+                    className="cf-btn"
+                    onClick={() => setVariantsFor(p)}
+                  >
+                    {p.hasVariants ? 'Déclinaisons' : 'Ajouter des tailles'}
+                  </button>
                   <button
                     type="button"
                     className="cf-btn cf-btn--danger"
