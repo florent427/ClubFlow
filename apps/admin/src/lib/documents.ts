@@ -2126,6 +2126,20 @@ export const SHOP_ORDERS = gql`
   }
 `;
 
+/**
+ * Vente au comptoir : le club vend sur place. Rend la FACTURE autant que la
+ * commande — c'est sur elle que le règlement se saisit.
+ */
+export const RECORD_SHOP_COUNTER_SALE = gql`
+  mutation RecordShopCounterSale($input: RecordShopCounterSaleInput!) {
+    recordShopCounterSale(input: $input) {
+      orderId
+      invoiceId
+      totalCents
+    }
+  }
+`;
+
 export const MARK_SHOP_ORDER_PAID = gql`
   mutation MarkShopOrderPaid($id: ID!) {
     markShopOrderPaid(id: $id) {
