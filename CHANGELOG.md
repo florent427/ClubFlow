@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.57.0](https://github.com/florent427/ClubFlow/compare/v0.56.1...v0.57.0) (2026-09-12)
+
+
+### ✨ Features
+
+* **boutique:** supprimer une déclinaison, et rechercher l'acheteur par nom ([5e0fc6b](https://github.com/florent427/ClubFlow/commit/5e0fc6b3560f1fa054a77dd85adf4bc575bb5cf2))
+* **boutique:** supprimer une déclinaison, rechercher l'acheteur par nom ([184aef7](https://github.com/florent427/ClubFlow/commit/184aef7fc9232a22f716d255fd84685153060694))
+
 ## [0.56.1](https://github.com/florent427/ClubFlow/compare/v0.56.0...v0.56.1) (2026-09-12)
 
 
