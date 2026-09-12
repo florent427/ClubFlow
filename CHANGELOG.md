@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.54.2](https://github.com/florent427/ClubFlow/compare/v0.54.1...v0.54.2) (2026-09-12)
+
+
+### 🐛 Bug Fixes
+
+* **compta:** comptabiliser une vente boutique sur le compte de ventes ([1b4b0c2](https://github.com/florent427/ClubFlow/commit/1b4b0c2357c0fa79940b5091c71a0c0735a03d38))
+* **compta:** comptabiliser une vente boutique sur le compte de ventes ([3c8a425](https://github.com/florent427/ClubFlow/commit/3c8a42583ba8db4328ff2f8e31eb524c97341183))
+
 ## [0.54.1](https://github.com/florent427/ClubFlow/compare/v0.54.0...v0.54.1) (2026-09-12)
 
 
