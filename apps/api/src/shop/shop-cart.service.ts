@@ -354,7 +354,7 @@ export class ShopCartService {
 
     const club = await this.prisma.club.findUnique({
       where: { id: clubId },
-      select: { shopInstallmentThresholdCents: true, name: true },
+      select: { shopInstallmentThresholdCents: true },
     });
     const thresholdCents = club?.shopInstallmentThresholdCents ?? null;
 
@@ -379,20 +379,17 @@ export class ShopCartService {
         installmentsCount = 3;
       }
 
-      // 3. Facture liée à la commande.
-      const invoice = await tx.invoice.create({
-        data: {
-          clubId,
-          label: `Commande boutique${club?.name ? ` — ${club.name}` : ''}`,
-          baseAmountCents: order.totalCents,
-          amountCents: order.totalCents,
-          status: InvoiceStatus.OPEN,
+      // 3. Facture liée à la commande, dans la forme partagée par les trois
+      //    chemins de vente. Seul le paiement en ligne impose la carte.
+      const invoice = await this.shop.createOrderInvoiceInTx(
+        tx,
+        clubId,
+        order,
+        {
           installmentsCount,
           lockedPaymentMethod: ClubPaymentMethod.STRIPE_CARD,
-          shopOrderId: order.id,
         },
-        select: { id: true },
-      });
+      );
 
       // 4. Le panier est consommé : on le vide dans la même transaction.
       await tx.shopCartItem.deleteMany({ where: { cartId: cart.id, clubId } });
@@ -411,10 +408,16 @@ export class ShopCartService {
   /**
    * Validation du panier SANS paiement en ligne : « régler sur place ».
    *
-   * La commande est créée et le stock RÉSERVÉ (même chemin atomique que le
-   * checkout Stripe), mais AUCUNE facture ni session Stripe n'est produite : la
-   * commande reste PENDING jusqu'à ce que le club la marque payée
+   * La commande est créée, le stock RÉSERVÉ et la FACTURE émise (même chemin
+   * atomique que le checkout Stripe), mais aucune session de paiement n'est
+   * ouverte : la commande reste PENDING jusqu'à ce que le club la marque payée
    * (`markShopOrderPaid`) quand l'adhérent règle en espèces/chèque au club.
+   *
+   * La facture manquait, et c'était un trou : `markOrderPaid` ne fait que
+   * basculer le statut et sortir le stock. Sans facture, il n'y a rien à
+   * encaisser, donc aucun `Payment`, donc AUCUNE écriture comptable — l'argent
+   * remis au club n'existait nulle part dans les livres. Le mode de paiement
+   * n'est délibérément pas figé : on paie sur place, pas par carte.
    *
    * La réservation est identique au checkout en ligne — un article validé « sur
    * place » n'est donc pas revendable en double —, et le panier est vidé dans la
@@ -424,7 +427,7 @@ export class ShopCartService {
   async checkoutOnSite(
     clubId: string,
     viewer: ViewerIdentity,
-  ): Promise<{ orderId: string }> {
+  ): Promise<{ orderId: string; invoiceId: string }> {
     const owner = this.assertViewer(viewer);
     const cart = await this.prisma.shopCart.findFirst({
       where: this.ownerWhere(clubId, owner),
@@ -440,8 +443,9 @@ export class ShopCartService {
 
     return this.prisma.$transaction(async (tx) => {
       const order = await this.shop.placeOrderInTx(tx, clubId, owner, { lines });
+      const invoice = await this.shop.createOrderInvoiceInTx(tx, clubId, order);
       await tx.shopCartItem.deleteMany({ where: { cartId: cart.id, clubId } });
-      return { orderId: order.id };
+      return { orderId: order.id, invoiceId: invoice.id };
     });
   }
 }

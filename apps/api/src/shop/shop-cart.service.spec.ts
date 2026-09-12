@@ -1,5 +1,9 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { InvoiceStatus, ShopOrderStatus } from '@prisma/client';
+import {
+  ClubPaymentMethod,
+  InvoiceStatus,
+  ShopOrderStatus,
+} from '@prisma/client';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
 import { ShopCartService } from './shop-cart.service';
@@ -76,6 +80,15 @@ type InvoiceRow = {
   status: InvoiceStatus;
   installmentsCount: number;
   shopOrderId: string | null;
+  /**
+   * Ces deux champs manquaient au double, qui les JETAIT en silence. Un test
+   * affirmant « le mode de paiement n'est pas figé » lisait donc toujours
+   * `undefined` et passait quoi qu'écrive le service : figer la carte sur le
+   * règlement sur place n'était pas détecté. Un double qui perd un champ
+   * certifie ce qu'on veut sur ce champ.
+   */
+  lockedPaymentMethod: ClubPaymentMethod | null;
+  familyId: string | null;
 };
 
 function makeStore(opts: {
@@ -225,10 +238,25 @@ function makeStore(opts: {
           status: data.status,
           installmentsCount: data.installmentsCount,
           shopOrderId: data.shopOrderId ?? null,
+          lockedPaymentMethod: data.lockedPaymentMethod ?? null,
+          familyId: data.familyId ?? null,
         };
         invoices.push(row);
         return { id: row.id };
       }),
+    },
+    // La facture d'une commande nomme son acheteur et le rattache à son foyer :
+    // le service lit donc ces tables DANS la transaction. Ces tests ne parlent
+    // pas de l'acheteur — les doubles rendent `null`, et le libellé retombe sur
+    // sa valeur de repli, ce qui n'ôte rien à ce qu'ils vérifient.
+    member: {
+      findFirst: jest.fn(async () => null),
+    },
+    contact: {
+      findFirst: jest.fn(async () => null),
+    },
+    familyMember: {
+      findFirst: jest.fn(async () => null),
     },
     shopCart: {
       findFirst: jest.fn(async ({ where, include }: any) => {
@@ -539,6 +567,79 @@ describe('ShopCartService.checkout — commande + facture + 3×', () => {
     await expect(h.cart.checkout('club-1', MEMBER, false)).rejects.toThrow(
       BadRequestException,
     );
+  });
+});
+
+describe('ShopCartService.checkoutOnSite — « régler sur place »', () => {
+  /**
+   * Ce chemin n'avait AUCUN test, et c'est ce qui a laissé passer le trou :
+   * il ne produisait pas de facture. Or `markOrderPaid` ne fait que basculer
+   * le statut et sortir le stock. Sans facture, rien à encaisser, donc aucun
+   * `Payment`, donc aucune écriture — l'argent remis au club n'existait nulle
+   * part dans les livres.
+   */
+  async function seededCart(over?: {
+    available?: number;
+    price?: number;
+    qty?: number;
+  }) {
+    const h = makeStore({
+      variants: [
+        VARIANT({
+          available: over?.available ?? 5,
+          product: {
+            id: 'p-1',
+            name: 'Kimono',
+            priceCents: over?.price ?? 2000,
+            active: true,
+            imageUrl: null,
+          },
+        }),
+      ],
+    });
+    await h.cart.addItem('club-1', MEMBER, 'v-1', over?.qty ?? 1);
+    return h;
+  }
+
+  it('émet une facture liée à la commande — sans elle, la recette n’existe pas', async () => {
+    const h = await seededCart({ available: 5, price: 2500, qty: 1 });
+
+    const res = await h.cart.checkoutOnSite('club-1', MEMBER);
+
+    expect(h.invoices).toHaveLength(1);
+    expect(h.invoices[0].shopOrderId).toBe(res.orderId);
+    expect(h.invoices[0].id).toBe(res.invoiceId);
+    expect(h.invoices[0].amountCents).toBe(2500);
+    expect(h.invoices[0].status).toBe(InvoiceStatus.OPEN);
+  });
+
+  it('ne fige AUCUN mode de paiement : on règle sur place, pas par carte', async () => {
+    const h = await seededCart();
+
+    await h.cart.checkoutOnSite('club-1', MEMBER);
+
+    expect(h.invoices[0].lockedPaymentMethod).toBeNull();
+  });
+
+  it('réserve le stock comme le checkout en ligne, et vide le panier', async () => {
+    const h = await seededCart({ available: 5, price: 2000, qty: 2 });
+
+    await h.cart.checkoutOnSite('club-1', MEMBER);
+
+    expect(h.orders).toHaveLength(1);
+    expect(h.orders[0].status).toBe(ShopOrderStatus.PENDING);
+    expect(h.variants[0].available).toBe(3);
+    expect(h.variants[0].onHand).toBe(5);
+    expect(h.items).toHaveLength(0);
+  });
+
+  it('refuse un panier vide', async () => {
+    const h = makeStore({ variants: [VARIANT({ available: 5 })] });
+
+    await expect(h.cart.checkoutOnSite('club-1', MEMBER)).rejects.toThrow(
+      /panier est vide/i,
+    );
+    expect(h.invoices).toHaveLength(0);
   });
 });
 

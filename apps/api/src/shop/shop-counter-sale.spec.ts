@@ -53,7 +53,12 @@ function makeHarness() {
   const contacts = [
     { id: 'c-1', clubId: CLUB, firstName: 'Mevajoro', lastName: 'ECHA' },
   ];
-  const familles = [{ memberId: 'm-1', familyId: 'fam-1', clubId: CLUB }];
+  const familles = [
+    { memberId: 'm-1', familyId: 'fam-1', clubId: CLUB },
+    // Un foyer dans l'AUTRE club : sans lui, « ne pas le rattacher » serait
+    // vrai par absence de candidat, et le test ne dirait rien.
+    { memberId: 'm-etranger', familyId: 'fam-autre', clubId: AUTRE_CLUB },
+  ];
   const variantes = [
     {
       id: 'v-120',
@@ -75,7 +80,54 @@ function makeHarness() {
     },
   ];
 
+  // Doubles écrits EN FACE des requêtes : Prisma n'applique QUE les clauses
+  // présentes. Un double qui EXIGERAIT `clubId` serait plus strict que la
+  // réalité : retirer le scope du service ferait alors tomber tous les tests,
+  // y compris ceux qui n'ont rien à dire sur le cloisonnement — un faux
+  // positif qui masque ce que la mutation démontre vraiment.
+  //
+  // Montés sur `prisma` ET sur `tx` : la garde d'appartenance s'exécute hors
+  // transaction, le libellé de la facture dedans.
+  const lookups = {
+    member: {
+      findFirst: jest.fn(
+        async ({ where }: { where: { id?: string; clubId?: string } }) =>
+          membres.find(
+            (m) =>
+              (where.id === undefined || m.id === where.id) &&
+              (where.clubId === undefined || m.clubId === where.clubId),
+          ) ?? null,
+      ),
+    },
+    contact: {
+      findFirst: jest.fn(
+        async ({ where }: { where: { id?: string; clubId?: string } }) =>
+          contacts.find(
+            (c) =>
+              (where.id === undefined || c.id === where.id) &&
+              (where.clubId === undefined || c.clubId === where.clubId),
+          ) ?? null,
+      ),
+    },
+    familyMember: {
+      findFirst: jest.fn(
+        async ({
+          where,
+        }: {
+          where: { memberId?: string; family?: { clubId?: string } };
+        }) =>
+          familles.find(
+            (f) =>
+              (where.memberId === undefined || f.memberId === where.memberId) &&
+              (where.family?.clubId === undefined ||
+                f.clubId === where.family.clubId),
+          ) ?? null,
+      ),
+    },
+  };
+
   const tx = {
+    ...lookups,
     shopProductVariant: {
       // Double écrit EN FACE de la requête : Prisma n'applique que les clauses
       // présentes, et toutes celles présentes.
@@ -113,47 +165,8 @@ function makeHarness() {
     },
   };
 
-  // Doubles écrits EN FACE des requêtes : Prisma n'applique QUE les clauses
-  // présentes. Un double qui EXIGERAIT `clubId` serait plus strict que la
-  // réalité : retirer le scope du service ferait alors tomber tous les tests,
-  // y compris ceux qui n'ont rien à dire sur le cloisonnement — un faux
-  // positif qui masque ce que la mutation démontre vraiment.
   const prisma = {
-    member: {
-      findFirst: jest.fn(
-        async ({ where }: { where: { id?: string; clubId?: string } }) =>
-          membres.find(
-            (m) =>
-              (where.id === undefined || m.id === where.id) &&
-              (where.clubId === undefined || m.clubId === where.clubId),
-          ) ?? null,
-      ),
-    },
-    contact: {
-      findFirst: jest.fn(
-        async ({ where }: { where: { id?: string; clubId?: string } }) =>
-          contacts.find(
-            (c) =>
-              (where.id === undefined || c.id === where.id) &&
-              (where.clubId === undefined || c.clubId === where.clubId),
-          ) ?? null,
-      ),
-    },
-    familyMember: {
-      findFirst: jest.fn(
-        async ({
-          where,
-        }: {
-          where: { memberId?: string; family?: { clubId?: string } };
-        }) =>
-          familles.find(
-            (f) =>
-              (where.memberId === undefined || f.memberId === where.memberId) &&
-              (where.family?.clubId === undefined ||
-                f.clubId === where.family.clubId),
-          ) ?? null,
-      ),
-    },
+    ...lookups,
     $transaction: jest.fn(async (fn: (t: typeof tx) => Promise<unknown>) =>
       fn(tx),
     ),
@@ -173,7 +186,7 @@ function makeHarness() {
     {} as unknown as ShopPurchaseOrdersService,
   );
 
-  return { svc, invoices, orders, reserved };
+  return { svc, invoices, orders, reserved, tx };
 }
 
 describe('ShopService.recordCounterSale', () => {
@@ -279,6 +292,26 @@ describe('ShopService.recordCounterSale', () => {
 
     expect(h.invoices[0].label).toContain('Mevajoro ECHA');
     expect(h.orders[0].contactId).toBe('c-1');
+  });
+
+  /**
+   * `createOrderInvoiceInTx` lit l'acheteur DANS la commande pour la nommer et
+   * la rattacher à son foyer. Le scope de club y est une défense en
+   * profondeur : `placeOrderInTx` ne vérifie pas l'acheteur, et sans ce
+   * contrôle une facture pourrait porter le foyer d'un AUTRE club.
+   */
+  it('ne rattache pas le foyer d’un autre club, même si la commande le désigne', async () => {
+    const h = makeHarness();
+
+    await h.svc.createOrderInvoiceInTx(h.tx as never, CLUB, {
+      id: 'ord-x',
+      totalCents: 2500,
+      memberId: 'm-etranger',
+      contactId: null,
+    });
+
+    expect(h.invoices[0].familyId).toBeNull();
+    expect(h.invoices[0].label).not.toContain('Autre Club');
   });
 
   it('refuse quand aucun acheteur n’est désigné', async () => {
