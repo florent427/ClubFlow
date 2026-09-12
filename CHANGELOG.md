@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.55.1](https://github.com/florent427/ClubFlow/compare/v0.55.0...v0.55.1) (2026-09-12)
+
+
+### 🐛 Bug Fixes
+
+* **boutique:** permettre d'ajouter des déclinaisons à un produit qui n'en a pas ([c686a7b](https://github.com/florent427/ClubFlow/commit/c686a7b573ffae1825cd97bdc789e9236db1fe04))
+* **boutique:** permettre d'ajouter des déclinaisons à un produit qui n'en a pas ([1faa09e](https://github.com/florent427/ClubFlow/commit/1faa09ec076d0c8b29f11efcd67bd1f313da7541))
+
 ## [0.55.0](https://github.com/florent427/ClubFlow/compare/v0.54.2...v0.55.0) (2026-09-12)
 
 
