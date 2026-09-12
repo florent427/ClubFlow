@@ -9,6 +9,15 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.54.0](https://github.com/florent427/ClubFlow/compare/v0.53.0...v0.54.0) (2026-09-12)
+
+
+### ✨ Features
+
+* **admin:** corriger le libellé comptable depuis la fiche du compte ([b79e2df](https://github.com/florent427/ClubFlow/commit/b79e2df16568a310aad5d48e6d824ce68fb282b6))
+* **api:** renommer un compte du plan comptable ([5858baf](https://github.com/florent427/ClubFlow/commit/5858bafe7390905df713a71aa6f341ed47d64b6a))
+* **compta:** renommer un compte du plan comptable ([84f1fa7](https://github.com/florent427/ClubFlow/commit/84f1fa77d4d18def9112961fb92331374c0a7303))
+
 ## [0.53.0](https://github.com/florent427/ClubFlow/compare/v0.52.0...v0.53.0) (2026-09-11)
 
 
