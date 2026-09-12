@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.54.1](https://github.com/florent427/ClubFlow/compare/v0.54.0...v0.54.1) (2026-09-12)
+
+
+### 🐛 Bug Fixes
+
+* **portail:** masquer le prélèvement SEPA tant que Stripe ne le permet pas ([126433f](https://github.com/florent427/ClubFlow/commit/126433f01a170d6f6760446c6c008c0fe1e6735a))
+* **portail:** masquer le prélèvement SEPA tant que Stripe ne le permet pas ([b87faef](https://github.com/florent427/ClubFlow/commit/b87faef7ace1fdd37bff17b5476cfdf52450ab21))
+
 ## [0.54.0](https://github.com/florent427/ClubFlow/compare/v0.53.0...v0.54.0) (2026-09-12)
 
 
