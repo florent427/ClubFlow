@@ -9,6 +9,15 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.56.0](https://github.com/florent427/ClubFlow/compare/v0.55.1...v0.56.0) (2026-09-12)
+
+
+### ✨ Features
+
+* **admin:** écran de vente au comptoir ([44c72e3](https://github.com/florent427/ClubFlow/commit/44c72e3dbaf3050e071e2fdf98a0c77fd6a46f72))
+* **api:** vente au comptoir dans la boutique ([0379012](https://github.com/florent427/ClubFlow/commit/037901265015d868762ef4e032b47392a4b4a0dc))
+* **boutique:** vente au comptoir ([044a887](https://github.com/florent427/ClubFlow/commit/044a887e0dfaaafe840317df1fb614bd85daf776))
+
 ## [0.55.1](https://github.com/florent427/ClubFlow/compare/v0.55.0...v0.55.1) (2026-09-12)
 
 
