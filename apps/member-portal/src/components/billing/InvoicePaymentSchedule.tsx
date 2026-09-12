@@ -158,6 +158,20 @@ function scheduleStatusLabel(status: PaymentScheduleStatus): string {
   }
 }
 
+/**
+ * Le prélèvement SEPA est masqué au parent tant que les comptes Stripe des
+ * clubs n'ont pas la capacité `sepa_debit_payments`. Sans elle, Stripe refuse
+ * la session avec « The payment method type provided: sepa_debit is invalid » :
+ * le parent enchaîne les échecs sans explication, et l'échéancier reste en
+ * PENDING_SETUP — il a l'air en place, mais aucun euro ne sera jamais prélevé.
+ * C'est le pire des deux mondes, d'où le masquage plutôt qu'un message.
+ *
+ * À rétablir quand la capacité sera active, et de préférence en exposant la
+ * capacité réelle du club par l'API plutôt qu'avec cette constante : tous les
+ * clubs n'auront pas le même compte Stripe.
+ */
+const SEPA_DEBIT_AVAILABLE = false;
+
 function methodLabel(method: PaymentScheduleMethod): string {
   return method === 'CARD' ? 'Carte bancaire' : 'Prélèvement bancaire (SEPA)';
 }
@@ -336,31 +350,35 @@ export function InvoicePaymentSchedule({
         aujourd’hui.
       </p>
 
-      <fieldset className="mp-fieldset">
-        <legend className="mp-legend">Comment souhaitez-vous être prélevé ?</legend>
-        <label className="mp-radio mp-radio--inline">
-          <input
-            type="radio"
-            name={`schedule-method-${invoiceId}`}
-            value="CARD"
-            checked={method === 'CARD'}
-            onChange={() => setMethod('CARD')}
-            disabled={submitting}
-          />
-          <span>Carte bancaire</span>
-        </label>
-        <label className="mp-radio mp-radio--inline">
-          <input
-            type="radio"
-            name={`schedule-method-${invoiceId}`}
-            value="SEPA_DEBIT"
-            checked={method === 'SEPA_DEBIT'}
-            onChange={() => setMethod('SEPA_DEBIT')}
-            disabled={submitting}
-          />
-          <span>Prélèvement sur mon compte bancaire</span>
-        </label>
-      </fieldset>
+      {SEPA_DEBIT_AVAILABLE ? (
+        <fieldset className="mp-fieldset">
+          <legend className="mp-legend">
+            Comment souhaitez-vous être prélevé ?
+          </legend>
+          <label className="mp-radio mp-radio--inline">
+            <input
+              type="radio"
+              name={`schedule-method-${invoiceId}`}
+              value="CARD"
+              checked={method === 'CARD'}
+              onChange={() => setMethod('CARD')}
+              disabled={submitting}
+            />
+            <span>Carte bancaire</span>
+          </label>
+          <label className="mp-radio mp-radio--inline">
+            <input
+              type="radio"
+              name={`schedule-method-${invoiceId}`}
+              value="SEPA_DEBIT"
+              checked={method === 'SEPA_DEBIT'}
+              onChange={() => setMethod('SEPA_DEBIT')}
+              disabled={submitting}
+            />
+            <span>Prélèvement sur mon compte bancaire</span>
+          </label>
+        </fieldset>
+      ) : null}
 
       <p className="mp-hint">
         {method === 'CARD'
