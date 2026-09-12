@@ -2869,6 +2869,27 @@ export const CLUB_ACCOUNTING_ACCOUNTS = gql`
   }
 `;
 
+/**
+ * Renomme un compte du plan. Le code PCG n'est pas modifiable : le plan seedé
+ * pose des libellés à compléter (« Banque secondaire #1 (renommez) ») et il
+ * faut pouvoir les corriger.
+ */
+export const RENAME_CLUB_ACCOUNTING_ACCOUNT = gql`
+  mutation RenameClubAccountingAccount(
+    $input: RenameClubAccountingAccountInput!
+  ) {
+    renameClubAccountingAccount(input: $input) {
+      id
+      code
+      label
+      kind
+      isDefault
+      isActive
+      sortOrder
+    }
+  }
+`;
+
 export const CLUB_ACCOUNTING_COHORTS = gql`
   query ClubAccountingCohorts {
     clubAccountingCohorts {

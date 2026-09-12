@@ -7,6 +7,7 @@ import {
   CLUB_FINANCIAL_ACCOUNTS,
   CLUB_PAYMENT_ROUTES,
   CREATE_CLUB_FINANCIAL_ACCOUNT,
+  RENAME_CLUB_ACCOUNTING_ACCOUNT,
   UPDATE_CLUB_FINANCIAL_ACCOUNT,
   UPSERT_CLUB_PAYMENT_ROUTE,
 } from '../../lib/documents';
@@ -64,10 +65,10 @@ export default function AccountingSettingsPage() {
     useQuery<ClubPaymentRoutesData>(CLUB_PAYMENT_ROUTES, {
       fetchPolicy: 'cache-and-network',
     });
-  const { data: pcgData } = useQuery<ClubAccountingAccountsData>(
-    CLUB_ACCOUNTING_ACCOUNTS,
-    { fetchPolicy: 'cache-and-network' },
-  );
+  const { data: pcgData, refetch: refetchPcg } =
+    useQuery<ClubAccountingAccountsData>(CLUB_ACCOUNTING_ACCOUNTS, {
+      fetchPolicy: 'cache-and-network',
+    });
 
   const accounts = accountsData?.clubFinancialAccounts ?? [];
   const routes = routesData?.clubPaymentRoutes ?? [];
@@ -78,6 +79,7 @@ export default function AccountingSettingsPage() {
   );
   const [updateMut] = useMutation(UPDATE_CLUB_FINANCIAL_ACCOUNT);
   const [archiveMut] = useMutation(ARCHIVE_CLUB_FINANCIAL_ACCOUNT);
+  const [renamePcgMut] = useMutation(RENAME_CLUB_ACCOUNTING_ACCOUNT);
   const [upsertRoute] = useMutation(UPSERT_CLUB_PAYMENT_ROUTE);
 
   // Drawer "Ajouter un compte"
@@ -95,6 +97,10 @@ export default function AccountingSettingsPage() {
   const [stripeAccountId, setStripeAccountId] = useState('');
   const [isDefault, setIsDefault] = useState(false);
   const [notes, setNotes] = useState('');
+  // Libellé du compte du PLAN (distinct du libellé du compte financier) :
+  // le plan seedé livre des « Banque secondaire #1 (renommez) » qu'il faut
+  // pouvoir corriger, et c'est ce libellé-là qui sort au journal.
+  const [pcgLabel, setPcgLabel] = useState('');
 
   // Comptes PCG filtrés :
   //  - selon le kind sélectionné (BANK/STRIPE/OTHER → 51x ; CASH → 53x)
@@ -115,6 +121,12 @@ export default function AccountingSettingsPage() {
     });
   }, [pcgAccounts, kind, accounts, editing]);
 
+  /** Compte du plan actuellement visé par le drawer, s'il y en a un. */
+  const selectedPcg = useMemo(
+    () => pcgAccounts.find((p) => p.id === accountingAccountId) ?? null,
+    [pcgAccounts, accountingAccountId],
+  );
+
   function resetForm() {
     setKind('BANK');
     setLabel('');
@@ -124,6 +136,7 @@ export default function AccountingSettingsPage() {
     setStripeAccountId('');
     setIsDefault(false);
     setNotes('');
+    setPcgLabel('');
     setEditing(null);
   }
 
@@ -142,6 +155,7 @@ export default function AccountingSettingsPage() {
     setStripeAccountId(acc.stripeAccountId ?? '');
     setIsDefault(acc.isDefault);
     setNotes(acc.notes ?? '');
+    setPcgLabel(acc.accountingAccountLabel);
     setDrawerOpen(true);
   }
 
@@ -189,10 +203,22 @@ export default function AccountingSettingsPage() {
         });
         showToast('Compte créé', 'success');
       }
+      // Renommage du compte du PLAN si le libellé a bougé. Appel distinct
+      // parce que ce n'est pas le même objet : on touche au plan comptable,
+      // pas au compte financier qui pointe dessus.
+      const pcgWanted = pcgLabel.trim();
+      const pcgCurrent = pcgAccounts.find((x) => x.id === accountingAccountId);
+      if (pcgWanted && pcgCurrent && pcgWanted !== pcgCurrent.label) {
+        await renamePcgMut({
+          variables: { input: { accountingAccountId, label: pcgWanted } },
+        });
+        showToast(`Compte ${pcgCurrent.code} renommé`, 'success');
+      }
       setDrawerOpen(false);
       resetForm();
       await refetchAccounts();
       await refetchRoutes();
+      await refetchPcg();
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Erreur', 'error');
     }
@@ -356,6 +382,22 @@ export default function AccountingSettingsPage() {
                       <small className="cf-muted">
                         {a.accountingAccountLabel}
                       </small>
+                      {/renommez/i.test(a.accountingAccountLabel) ? (
+                        <button
+                          type="button"
+                          className="cf-pill cf-pill--warn"
+                          style={{
+                            marginTop: 4,
+                            display: 'block',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontSize: '0.7rem',
+                          }}
+                          onClick={() => openEdit(a)}
+                        >
+                          libellé à compléter
+                        </button>
+                      ) : null}
                     </td>
                     <td>
                       {a.iban ? (
@@ -541,7 +583,13 @@ export default function AccountingSettingsPage() {
               <span>Compte PCG *</span>
               <select
                 value={accountingAccountId}
-                onChange={(e) => setAccountingAccountId(e.target.value)}
+                onChange={(e) => {
+                  setAccountingAccountId(e.target.value);
+                  setPcgLabel(
+                    pcgAccounts.find((x) => x.id === e.target.value)?.label ??
+                      '',
+                  );
+                }}
               >
                 <option value="">— Sélectionner —</option>
                 {compatiblePcg.map((p) => (
@@ -558,6 +606,23 @@ export default function AccountingSettingsPage() {
                   plan comptable.
                 </small>
               ) : null}
+            </label>
+          ) : null}
+          {selectedPcg ? (
+            <label className="cf-field">
+              <span>Libellé du compte {selectedPcg.code} au plan</span>
+              <input
+                type="text"
+                value={pcgLabel}
+                onChange={(e) => setPcgLabel(e.target.value)}
+                placeholder="Ex : Sogexia"
+                maxLength={120}
+              />
+              <small className="cf-muted">
+                C'est ce libellé qui sort au journal et à la balance. Le code{' '}
+                {selectedPcg.code} ne bouge pas, et les écritures déjà passées
+                gardent le libellé qu'elles portaient.
+              </small>
             </label>
           ) : null}
           {kind === 'BANK' ? (

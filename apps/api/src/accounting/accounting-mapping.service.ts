@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -14,6 +18,9 @@ import { PrismaService } from '../prisma/prisma.service';
  * pour INCOME, 606800 fournitures pour EXPENSE). L'admin peut toujours
  * reclassifier via l'UI.
  */
+/** Longueur max d'un libellé de compte du plan. */
+export const ACCOUNT_LABEL_MAX_LENGTH = 120;
+
 @Injectable()
 export class AccountingMappingService {
   constructor(private readonly prisma: PrismaService) {}
@@ -133,6 +140,45 @@ export class AccountingMappingService {
     return this.prisma.accountingAccount.findMany({
       where: { clubId },
       orderBy: [{ sortOrder: 'asc' }, { code: 'asc' }],
+    });
+  }
+
+  /**
+   * Renomme un compte du plan comptable du club.
+   *
+   * Le **code** PCG ne bouge jamais : c'est lui la clé de tout le reste
+   * (mappings, règles de catégorisation, `accountCode` des lignes). Seul
+   * le libellé lisible change.
+   *
+   * Les écritures déjà passées gardent le libellé qu'elles ont copié à leur
+   * création : c'est le rôle du snapshot `AccountingEntryLine.label`, et
+   * c'est voulu. Une balance éditée l'an dernier ne doit pas changer de mots
+   * parce qu'on renomme un compte aujourd'hui.
+   *
+   * Existe parce que le plan seedé livre des libellés à compléter
+   * (« Banque secondaire #1 (renommez) ») qu'aucun écran ne savait corriger.
+   */
+  async renameAccount(clubId: string, accountId: string, label: string) {
+    const trimmed = label.trim();
+    if (!trimmed) {
+      throw new BadRequestException('Libellé requis.');
+    }
+    if (trimmed.length > ACCOUNT_LABEL_MAX_LENGTH) {
+      throw new BadRequestException(
+        `Libellé limité à ${ACCOUNT_LABEL_MAX_LENGTH} caractères.`,
+      );
+    }
+    const existing = await this.prisma.accountingAccount.findFirst({
+      where: { clubId, id: accountId },
+    });
+    if (!existing) {
+      throw new NotFoundException(
+        `Compte ${accountId} introuvable dans le plan du club.`,
+      );
+    }
+    return this.prisma.accountingAccount.update({
+      where: { id: existing.id },
+      data: { label: trimmed },
     });
   }
 }

@@ -43,6 +43,7 @@ import {
   AccountingFiscalYearCloseGraph,
   AccountingPeriodLockGraph,
 } from './models/accounting-fiscal.model';
+import { RenameClubAccountingAccountInput } from './dto/accounting-account.input';
 import { CancelAccountingEntryInput } from './dto/cancel-accounting-entry.input';
 import {
   CreateClubFinancialAccountInput,
@@ -439,6 +440,34 @@ export class AccountingResolver {
       isActive: r.isActive,
       sortOrder: r.sortOrder,
     }));
+  }
+
+  /**
+   * Renomme un compte du plan. Le code PCG, lui, n'est pas modifiable : le
+   * plan seedé pose des libellés à compléter (« Banque secondaire #1
+   * (renommez) ») et il fallait pouvoir les corriger sans toucher au code.
+   */
+  @Mutation(() => AccountingAccountGraph, {
+    name: 'renameClubAccountingAccount',
+  })
+  async renameClubAccountingAccount(
+    @CurrentClub() club: Club,
+    @Args('input') input: RenameClubAccountingAccountInput,
+  ): Promise<AccountingAccountGraph> {
+    const r = await this.mappingService.renameAccount(
+      club.id,
+      input.accountingAccountId,
+      input.label,
+    );
+    return {
+      id: r.id,
+      code: r.code,
+      label: r.label,
+      kind: r.kind as AccountingAccountKind,
+      isDefault: r.isDefault,
+      isActive: r.isActive,
+      sortOrder: r.sortOrder,
+    };
   }
 
   @Query(() => [AccountingCohortGraph], { name: 'clubAccountingCohorts' })

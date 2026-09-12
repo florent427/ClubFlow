@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { AccountingMappingService } from './accounting-mapping.service';
 import type { PrismaService } from '../prisma/prisma.service';
 
@@ -41,6 +41,14 @@ describe('AccountingMappingService', () => {
         code: '740000',
         label: 'Subventions exploitation',
       },
+      // Compte d'un AUTRE club : présent pour que le filtre `clubId` des
+      // doubles soit réellement exercé, pas supposé.
+      {
+        id: 'acc-autre-club',
+        clubId: 'club-2',
+        code: '512100',
+        label: 'Banque secondaire #1 (renommez)',
+      },
     ];
     const prisma = {
       accountingAccount: {
@@ -59,6 +67,32 @@ describe('AccountingMappingService', () => {
         findMany: jest.fn(
           async ({ where }: { where: { clubId: string } }) =>
             accounts.filter((a) => a.clubId === where.clubId),
+        ),
+        // Double écrit EN FACE de la requête : Prisma n'applique que les
+        // clauses présentes. Un double qui EXIGE `clubId` serait plus strict
+        // que la réalité et tuerait la mutation « filtre oublié » pour une
+        // raison fausse.
+        findFirst: jest.fn(
+          async ({ where }: { where: { clubId?: string; id?: string } }) =>
+            accounts.find(
+              (a) =>
+                (where.clubId === undefined || a.clubId === where.clubId) &&
+                (where.id === undefined || a.id === where.id),
+            ) ?? null,
+        ),
+        update: jest.fn(
+          async ({
+            where,
+            data,
+          }: {
+            where: { id: string };
+            data: { label: string };
+          }) => {
+            const a = accounts.find((x) => x.id === where.id);
+            if (!a) throw new Error('Compte inexistant');
+            Object.assign(a, data);
+            return a;
+          },
         ),
       },
       accountingAccountMapping: {
@@ -223,6 +257,69 @@ describe('AccountingMappingService', () => {
     it('throws NotFoundException when account does not exist in the plan', async () => {
       await expect(
         svc.upsertMapping(clubId, 'SUBSIDY', null, '999999'),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('renameAccount', () => {
+    const labelOf = (id: string) => accounts.find((a) => a.id === id)?.label;
+
+    it('changes the label the plan shows', async () => {
+      await svc.renameAccount(clubId, 'acc-706', 'Cotisations saison');
+
+      const plan = await svc.listAccounts(clubId);
+      expect(plan.find((a) => a.id === 'acc-706')?.label).toBe(
+        'Cotisations saison',
+      );
+    });
+
+    it('never touches the PCG code, which keys the whole accounting', async () => {
+      const r = await svc.renameAccount(clubId, 'acc-706', 'Autre chose');
+
+      expect(r.code).toBe('706100');
+      expect(labelOf('acc-706')).toBe('Autre chose');
+    });
+
+    it('trims the label so a stray space does not become the name', async () => {
+      await svc.renameAccount(clubId, 'acc-606', '  Fournitures  ');
+
+      expect(labelOf('acc-606')).toBe('Fournitures');
+    });
+
+    it('refuses a blank label and leaves the account named as it was', async () => {
+      await expect(svc.renameAccount(clubId, 'acc-706', '   ')).rejects.toThrow(
+        BadRequestException,
+      );
+
+      expect(labelOf('acc-706')).toBe('Cotisations');
+    });
+
+    it('refuses a label longer than the max and leaves the account untouched', async () => {
+      await expect(
+        svc.renameAccount(clubId, 'acc-706', 'x'.repeat(121)),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(labelOf('acc-706')).toBe('Cotisations');
+    });
+
+    it('accepts a label exactly at the max length', async () => {
+      const max = 'x'.repeat(120);
+      await svc.renameAccount(clubId, 'acc-706', max);
+
+      expect(labelOf('acc-706')).toBe(max);
+    });
+
+    it('refuses to rename an account belonging to another club', async () => {
+      await expect(
+        svc.renameAccount(clubId, 'acc-autre-club', 'Sogexia'),
+      ).rejects.toThrow(NotFoundException);
+
+      expect(labelOf('acc-autre-club')).toBe('Banque secondaire #1 (renommez)');
+    });
+
+    it('throws NotFoundException on an unknown account', async () => {
+      await expect(
+        svc.renameAccount(clubId, 'acc-inconnu', 'Peu importe'),
       ).rejects.toThrow(NotFoundException);
     });
   });
