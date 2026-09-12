@@ -51,3 +51,35 @@ export class PlaceShopOrderInput {
   @MaxLength(500)
   note?: string;
 }
+
+/**
+ * Vente au comptoir. L'acheteur est DÉSIGNÉ par l'admin — d'où les deux
+ * identifiants optionnels dont exactement un doit être fourni, contrôle fait
+ * côté service pour qu'il vaille sur tout appelant.
+ */
+@InputType()
+export class RecordShopCounterSaleInput {
+  @Field(() => ID, { nullable: true })
+  @IsOptional()
+  @IsUUID()
+  memberId?: string;
+
+  @Field(() => ID, { nullable: true })
+  @IsOptional()
+  @IsUUID()
+  contactId?: string;
+
+  @Field(() => [PlaceShopOrderLineInput])
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => PlaceShopOrderLineInput)
+  lines!: PlaceShopOrderLineInput[];
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
+}

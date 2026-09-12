@@ -624,6 +624,122 @@ export class ShopService {
   }
 
   /**
+   * Vente au comptoir : le club vend un article sur place, sans que l'adhérent
+   * passe par son panier.
+   *
+   * Sans ce chemin, un club qui vend un kimono au dojo n'avait AUCUN moyen de
+   * l'enregistrer. Seul le portail sait créer une commande, et l'admin ne sait
+   * pas créer de facture libre : la recette restait hors des livres.
+   *
+   * Trois choix qui distinguent cette vente du passage en caisse du portail :
+   *
+   *  - La facture porte `shopOrderId`. C'est CE champ qui fait comptabiliser
+   *    la recette en 708000 (ventes) plutôt qu'en 706100 (cotisations).
+   *  - `lockedPaymentMethod` reste NULL, là où le portail le fige sur
+   *    STRIPE_CARD : au comptoir on paie en espèces ou par chèque, et un mode
+   *    figé sur la carte interdirait la saisie du règlement réel.
+   *  - `familyId` est résolu depuis l'acheteur, ce que le portail ne fait pas.
+   *    Sans lui, la facture n'apparaît sous aucun payeur et devient
+   *    introuvable dans un écran de facturation qui en compte des dizaines.
+   *
+   * La commande reste PENDING et le stock RÉSERVÉ. Le club la marque payée
+   * quand l'argent est là, ce qui sort la marchandise du placard : l'argent et
+   * la marchandise sont deux faits distincts, on ne les confond pas. L'article
+   * n'est pour autant pas revendable entre-temps — `available` a déjà baissé à
+   * la réservation.
+   */
+  async recordCounterSale(
+    clubId: string,
+    input: {
+      memberId?: string | null;
+      contactId?: string | null;
+      lines: Array<{ variantId: string; quantity: number }>;
+      note?: string | null;
+    },
+  ) {
+    const buyer = await this.resolveBuyerInClub(clubId, input);
+
+    return this.prisma.$transaction(async (tx) => {
+      const order = await this.placeOrderInTx(
+        tx,
+        clubId,
+        { memberId: buyer.memberId, contactId: buyer.contactId },
+        { lines: input.lines, note: input.note ?? undefined },
+      );
+      const invoice = await tx.invoice.create({
+        data: {
+          clubId,
+          familyId: buyer.familyId,
+          label: `Vente boutique — ${buyer.label}`,
+          baseAmountCents: order.totalCents,
+          amountCents: order.totalCents,
+          status: InvoiceStatus.OPEN,
+          installmentsCount: 1,
+          shopOrderId: order.id,
+        },
+        select: { id: true },
+      });
+      return {
+        orderId: order.id,
+        invoiceId: invoice.id,
+        totalCents: order.totalCents,
+      };
+    });
+  }
+
+  /**
+   * L'acheteur d'une vente au comptoir est DÉSIGNÉ par l'admin, il ne vient
+   * pas d'un jeton. `placeOrderInTx` ne vérifie que les articles, pas
+   * l'acheteur — sans ce contrôle, une vente pourrait être rattachée à
+   * l'adhérent d'un autre club.
+   */
+  private async resolveBuyerInClub(
+    clubId: string,
+    input: { memberId?: string | null; contactId?: string | null },
+  ): Promise<{
+    memberId: string | null;
+    contactId: string | null;
+    familyId: string | null;
+    label: string;
+  }> {
+    if (input.memberId) {
+      const member = await this.prisma.member.findFirst({
+        where: { id: input.memberId, clubId },
+        select: { id: true, firstName: true, lastName: true },
+      });
+      if (!member) {
+        throw new BadRequestException('Adhérent introuvable dans ce club.');
+      }
+      const fm = await this.prisma.familyMember.findFirst({
+        where: { memberId: member.id, family: { clubId } },
+        select: { familyId: true },
+      });
+      return {
+        memberId: member.id,
+        contactId: null,
+        familyId: fm?.familyId ?? null,
+        label: `${member.firstName} ${member.lastName}`.trim(),
+      };
+    }
+    if (input.contactId) {
+      const contact = await this.prisma.contact.findFirst({
+        where: { id: input.contactId, clubId },
+        select: { id: true, firstName: true, lastName: true },
+      });
+      if (!contact) {
+        throw new BadRequestException('Contact introuvable dans ce club.');
+      }
+      return {
+        memberId: null,
+        contactId: contact.id,
+        familyId: null,
+        label: `${contact.firstName} ${contact.lastName}`.trim(),
+      };
+    }
+    throw new BadRequestException('Acheteur requis.');
+  }
+
+  /**
    * PENDING → PAID. Aucune autre transition n'est permise.
    *
    * L'ancien code ne testait AUCUN statut : une commande annulée — dont le

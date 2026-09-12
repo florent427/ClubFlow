@@ -78,3 +78,20 @@ export class ShopOrderGraph {
   @Field(() => String, { nullable: true })
   buyerLastName!: string | null;
 }
+
+/**
+ * Ce que rend une vente au comptoir. La FACTURE est renvoyée autant que la
+ * commande : c'est sur elle que le club enregistre le règlement, et sans son
+ * identifiant l'écran devrait la retrouver à tâtons.
+ */
+@ObjectType()
+export class ShopCounterSaleGraph {
+  @Field(() => ID)
+  orderId!: string;
+
+  @Field(() => ID)
+  invoiceId!: string;
+
+  @Field(() => Int)
+  totalCents!: number;
+}

@@ -16,7 +16,10 @@ import {
   SetShopCartItemQuantityInput,
 } from './dto/shop-cart.input';
 import { CreateShopProductInput } from './dto/create-shop-product.input';
-import { PlaceShopOrderInput } from './dto/place-shop-order.input';
+import {
+  PlaceShopOrderInput,
+  RecordShopCounterSaleInput,
+} from './dto/place-shop-order.input';
 import {
   AddShopPurchaseOrderLineInput,
   CreateShopPurchaseOrderInput,
@@ -35,7 +38,10 @@ import {
 } from './dto/shop-variant.input';
 import { UpdateShopProductInput } from './dto/update-shop-product.input';
 import { ShopCartGraph } from './models/shop-cart.model';
-import { ShopOrderGraph } from './models/shop-order.model';
+import {
+  ShopCounterSaleGraph,
+  ShopOrderGraph,
+} from './models/shop-order.model';
 import { ShopProductGraph } from './models/shop-product.model';
 import {
   ShopPurchaseInvoiceAccountGraph,
@@ -110,6 +116,27 @@ export class ShopAdminResolver {
   @Query(() => [ShopOrderGraph], { name: 'shopOrders' })
   shopOrders(@CurrentClub() club: Club): Promise<ShopOrderGraph[]> {
     return this.service.listOrdersAdmin(club.id) as Promise<ShopOrderGraph[]>;
+  }
+
+  /**
+   * Vente au comptoir : le club vend sur place, sans panier côté adhérent.
+   *
+   * La commande naît PENDING avec son stock réservé, et sa facture OUVERTE :
+   * le règlement se saisit ensuite par le circuit habituel, ce qui produit
+   * l'écriture comptable sur le compte de ventes. C'est le seul chemin par
+   * lequel une vente du club entre dans les livres.
+   */
+  @Mutation(() => ShopCounterSaleGraph)
+  recordShopCounterSale(
+    @CurrentClub() club: Club,
+    @Args('input') input: RecordShopCounterSaleInput,
+  ): Promise<ShopCounterSaleGraph> {
+    return this.service.recordCounterSale(club.id, {
+      memberId: input.memberId ?? null,
+      contactId: input.contactId ?? null,
+      lines: input.lines,
+      note: input.note ?? null,
+    });
   }
 
   @Mutation(() => ShopOrderGraph)

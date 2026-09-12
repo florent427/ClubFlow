@@ -4,10 +4,12 @@ import type { FormEvent } from 'react';
 import {
   ADJUST_SHOP_VARIANT_STOCK,
   CANCEL_SHOP_ORDER,
+  CLUB_MEMBERS,
   CREATE_SHOP_PRODUCT,
   DELETE_SHOP_PRODUCT,
   GENERATE_SHOP_PRODUCT_VARIANTS,
   MARK_SHOP_ORDER_PAID,
+  RECORD_SHOP_COUNTER_SALE,
   RESTOCK_SHOP_VARIANT,
   SET_SHOP_PRODUCT_OPTIONS,
   SHOP_LOW_STOCK_VARIANTS,
@@ -22,6 +24,7 @@ import {
 import type {
   AdjustShopVariantStockMutationData,
   CreateShopProductMutationData,
+  MembersQueryData,
   GenerateShopProductVariantsMutationData,
   RestockShopVariantMutationData,
   SetShopProductOptionsMutationData,
@@ -545,6 +548,195 @@ function VariantsDrawer({
   );
 }
 
+/**
+ * Vente au comptoir — le club vend un article sur place.
+ *
+ * Sans cet écran, une vente faite au dojo n'entrait pas dans les livres :
+ * seul le portail savait créer une commande, et l'admin ne savait pas créer
+ * de facture. La recette n'existait nulle part.
+ *
+ * La vente produit une commande et sa FACTURE. Le règlement se saisit
+ * ensuite dans Facturation, par le circuit habituel — c'est lui qui écrit la
+ * comptabilité, sur le compte de ventes et non sur les cotisations.
+ */
+function CounterSaleDrawer({
+  products,
+  onClose,
+  onDone,
+}: {
+  products: ShopProduct[];
+  onClose: () => void;
+  onDone: () => Promise<void>;
+}) {
+  const { showToast } = useToast();
+  const { data: membersData } = useQuery<MembersQueryData>(CLUB_MEMBERS);
+  const [sell, { loading: selling }] = useMutation(RECORD_SHOP_COUNTER_SALE);
+
+  const [memberId, setMemberId] = useState('');
+  const [variantId, setVariantId] = useState('');
+  const [qtyStr, setQtyStr] = useState('1');
+  const [note, setNote] = useState('');
+
+  const members = useMemo(
+    () =>
+      [...(membersData?.clubMembers ?? [])].sort((a, b) =>
+        `${a.lastName} ${a.firstName}`.localeCompare(
+          `${b.lastName} ${b.firstName}`,
+        ),
+      ),
+    [membersData],
+  );
+
+  /**
+   * On vend une DÉCLINAISON, jamais un produit : un produit simple expose sa
+   * déclinaison par défaut, l'admin n'a pas à savoir qu'elle existe.
+   */
+  const sellable = useMemo(
+    () =>
+      products
+        .filter((p) => p.active)
+        .flatMap((p) =>
+          p.variants
+            .filter((v) => v.active)
+            .map((v) => ({
+              id: v.id,
+              label: v.label ? `${p.name} — ${v.label}` : p.name,
+              unitPriceCents: v.unitPriceCents,
+              trackStock: v.trackStock,
+              available: v.available,
+            })),
+        ),
+    [products],
+  );
+
+  const chosen = sellable.find((v) => v.id === variantId) ?? null;
+  const qty = Number.parseInt(qtyStr, 10);
+  const qtyOk = Number.isInteger(qty) && qty >= 1;
+  const totalCents = chosen && qtyOk ? chosen.unitPriceCents * qty : 0;
+
+  async function onSubmit(): Promise<void> {
+    if (!memberId) {
+      showToast('Choisis l’acheteur.', 'error');
+      return;
+    }
+    if (!chosen) {
+      showToast('Choisis l’article.', 'error');
+      return;
+    }
+    if (!qtyOk) {
+      showToast('Quantité invalide.', 'error');
+      return;
+    }
+    try {
+      await sell({
+        variables: {
+          input: {
+            memberId,
+            lines: [{ variantId: chosen.id, quantity: qty }],
+            note: note.trim() || null,
+          },
+        },
+      });
+      showToast(
+        `Vente enregistrée — facture de ${fmtEuros(totalCents)} à encaisser dans Facturation.`,
+        'success',
+      );
+      await onDone();
+      onClose();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Échec.', 'error');
+    }
+  }
+
+  return (
+    <Drawer
+      open
+      title="Vente au comptoir"
+      onClose={onClose}
+      footer={
+        <div className="cf-form-actions">
+          <button type="button" className="cf-btn" onClick={onClose}>
+            Annuler
+          </button>
+          <button
+            type="button"
+            className="cf-btn cf-btn--primary"
+            disabled={selling}
+            onClick={() => void onSubmit()}
+          >
+            {selling ? 'Enregistrement…' : 'Enregistrer la vente'}
+          </button>
+        </div>
+      }
+    >
+      <label className="cf-field">
+        <span>Acheteur *</span>
+        <select value={memberId} onChange={(e) => setMemberId(e.target.value)}>
+          <option value="">— Choisir un adhérent —</option>
+          {members.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.lastName} {m.firstName}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="cf-field">
+        <span>Article *</span>
+        <select
+          value={variantId}
+          onChange={(e) => setVariantId(e.target.value)}
+        >
+          <option value="">— Choisir un article —</option>
+          {sellable.map((v) => (
+            <option key={v.id} value={v.id}>
+              {v.label} · {fmtEuros(v.unitPriceCents)}
+              {v.trackStock && v.available !== null
+                ? ` · ${v.available} en stock`
+                : ''}
+            </option>
+          ))}
+        </select>
+        {sellable.length === 0 ? (
+          <small className="cf-muted">
+            Aucun article actif à vendre. Créez un produit d’abord.
+          </small>
+        ) : null}
+      </label>
+
+      <label className="cf-field">
+        <span>Quantité *</span>
+        <input
+          type="number"
+          min={1}
+          value={qtyStr}
+          onChange={(e) => setQtyStr(e.target.value)}
+        />
+      </label>
+
+      <label className="cf-field">
+        <span>Note (optionnel)</span>
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          maxLength={500}
+          rows={2}
+          placeholder="Ex : réglé par chèque avec la cotisation"
+        />
+      </label>
+
+      {chosen && qtyOk ? (
+        <p className="cf-muted">
+          Total : <strong>{fmtEuros(totalCents)}</strong>. Une facture de ce
+          montant est ouverte au nom de l’acheteur ; elle s’encaisse dans
+          Facturation, comme une cotisation. Le stock est réservé dès
+          maintenant, et sort du placard quand la commande est marquée payée.
+        </p>
+      ) : null}
+    </Drawer>
+  );
+}
+
 function ProductsTab() {
   const { showToast } = useToast();
   const { data, refetch, loading } = useQuery<ShopProductsQueryData>(
@@ -586,6 +778,8 @@ function ProductsTab() {
   const [withVariants, setWithVariants] = useState(false);
   /** Panneau de rédaction IA de la description. Fermé par défaut. */
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
+  /** Tiroir de vente au comptoir. */
+  const [counterSaleOpen, setCounterSaleOpen] = useState(false);
 
   const products = data?.shopProducts ?? [];
 
@@ -742,7 +936,27 @@ function ProductsTab() {
           </span>
           Nouveau produit
         </button>
+        <button
+          type="button"
+          className="cf-btn"
+          onClick={() => setCounterSaleOpen(true)}
+        >
+          <span className="material-symbols-outlined" aria-hidden>
+            point_of_sale
+          </span>
+          Vente au comptoir
+        </button>
       </div>
+
+      {counterSaleOpen ? (
+        <CounterSaleDrawer
+          products={products}
+          onClose={() => setCounterSaleOpen(false)}
+          onDone={async () => {
+            await refetch();
+          }}
+        />
+      ) : null}
 
       {loading && products.length === 0 ? (
         <p className="cf-muted">Chargement…</p>
