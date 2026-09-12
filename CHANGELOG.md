@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.56.1](https://github.com/florent427/ClubFlow/compare/v0.56.0...v0.56.1) (2026-09-12)
+
+
+### 🐛 Bug Fixes
+
+* **boutique:** facturer aussi le « régler sur place » ([751c211](https://github.com/florent427/ClubFlow/commit/751c2116564b8f018a3d6274f043208a05b3d367))
+* **boutique:** facturer aussi le « régler sur place » ([601a1d8](https://github.com/florent427/ClubFlow/commit/601a1d801b8258029e608cadac9d2185939e9db5))
+
 ## [0.56.0](https://github.com/florent427/ClubFlow/compare/v0.55.1...v0.56.0) (2026-09-12)
 
 
