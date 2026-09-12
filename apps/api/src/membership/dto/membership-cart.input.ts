@@ -115,6 +115,24 @@ export class CancelMembershipCartInput {
   reason!: string;
 }
 
+/**
+ * Réouverture d'un panier validé. Le motif est FACULTATIF, contrairement à
+ * l'annulation : rouvrir avant tout règlement est une correction ordinaire,
+ * pas une décision à justifier.
+ */
+@InputType()
+export class ReopenMembershipCartInput {
+  @Field(() => ID)
+  @IsUUID()
+  cartId!: string;
+
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
+}
+
 @InputType()
 export class ListMembershipCartsFilter {
   @Field(() => ID, { nullable: true })

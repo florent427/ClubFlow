@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import {
   CLUB_APPLY_EXCEPTIONAL_DISCOUNT,
   CLUB_CANCEL_CART,
+  CLUB_REOPEN_CART,
   CLUB_MEMBERSHIP_CARTS,
   CLUB_REMOVE_CART_ITEM,
   CLUB_TOGGLE_CART_LICENSE,
@@ -53,6 +54,9 @@ export function MembershipCartDetailDrawer({ cart, onClose }: Props) {
   const [cancelCart, { loading: cancelling }] = useMutation(CLUB_CANCEL_CART, {
     refetchQueries,
   });
+  const [reopenCart, { loading: reopening }] = useMutation(CLUB_REOPEN_CART, {
+    refetchQueries,
+  });
 
   const busy =
     updating ||
@@ -60,7 +64,8 @@ export function MembershipCartDetailDrawer({ cart, onClose }: Props) {
     removing ||
     applyingDiscount ||
     validating ||
-    cancelling;
+    cancelling ||
+    reopening;
 
   async function handleRhythm(
     item: AdminCartItem,
@@ -129,7 +134,38 @@ export function MembershipCartDetailDrawer({ cart, onClose }: Props) {
     }
   }
 
+  async function handleReopen(): Promise<void> {
+    const avertissement = [
+      'Rouvrir ce projet ?',
+      '',
+      'La facture émise sera annulée et le projet redeviendra modifiable.',
+      'Les adhérents déjà créés sont conservés.',
+      '',
+      'Impossible si un règlement a déjà été encaissé.',
+    ].join('\n');
+    if (!window.confirm(avertissement)) return;
+    const reason = window.prompt(
+      'Motif (facultatif, visible sur la facture annulée) :',
+      '',
+    );
+    if (reason === null) return;
+    try {
+      await reopenCart({
+        variables: {
+          input: {
+            cartId: cart.id,
+            reason: reason.trim() || null,
+          },
+        },
+      });
+      showToast('Projet rouvert : il est de nouveau modifiable.', 'success');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Échec.', 'error');
+    }
+  }
+
   const isOpen = cart.status === 'OPEN';
+  const isValidated = cart.status === 'VALIDATED';
 
   return (
     <div
@@ -255,6 +291,28 @@ export function MembershipCartDetailDrawer({ cart, onClose }: Props) {
                 assignation manuelle (produit ou remise exceptionnelle).
               </p>
             ) : null}
+          </div>
+        ) : null}
+
+        {isValidated ? (
+          <div className="family-drawer__section">
+            <h3 className="family-drawer__h">Actions</h3>
+            <div className="family-drawer__hg-actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={busy}
+                onClick={() => void handleReopen()}
+              >
+                {reopening ? 'Réouverture…' : 'Rouvrir pour corriger'}
+              </button>
+            </div>
+            <p className="muted">
+              Corriger une formule ou un rythme de paiement après validation.
+              La facture est annulée et le projet redevient modifiable ; les
+              adhérents déjà créés sont conservés. Refusé dès qu'un règlement
+              a été encaissé, même partiel.
+            </p>
           </div>
         ) : null}
       </aside>
