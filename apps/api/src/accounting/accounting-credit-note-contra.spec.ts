@@ -46,6 +46,12 @@ function makeHarness(args: {
   recettes?: Array<{ paymentId: string; compte: string }>;
   /** Facture jamais réglée : aucune écriture de recette. */
   sansRecette?: boolean;
+  /**
+   * Compte de PRODUIT crédité par la recette d'origine. Une vente boutique
+   * crédite 708000, une cotisation 706100 ; la contre-passation doit reprendre
+   * celui-là, pas en recalculer un.
+   */
+  compteProduit?: string;
 }) {
   // L'écriture de recette née de l'encaissement d'origine.
   const original: Entry = {
@@ -133,7 +139,18 @@ function makeHarness(args: {
         if (args.compteEncaissement === undefined && args.sansRecette) return null;
         return {
           ...original,
-          lines: [],
+          // L'écriture de recette porte UNE ligne au crédit : son compte de
+          // produit. Sans elle, le code retombe sur le mapping.
+          lines: args.compteProduit
+            ? [
+                {
+                  accountCode: args.compteProduit,
+                  side: 'CREDIT',
+                  debitCents: 0,
+                  creditCents: args.encaissementCents,
+                },
+              ]
+            : [],
           financialAccount:
             args.compteEncaissement === null
               ? null
@@ -343,4 +360,41 @@ describe('createContraEntryForCreditNote — effet sur le résultat', () => {
     expect(h.lines).toHaveLength(0);
   });
 
+});
+
+describe('createContraEntryForCreditNote — compte de produit', () => {
+  it('reprend le compte de ventes quand la recette venait de la boutique', async () => {
+    const h = makeHarness({
+      encaissementCents: 2500,
+      avoirCents: 2500,
+      compteProduit: '708000',
+    });
+
+    await h.svc.createContraEntryForCreditNote('club-1', 'cn-1');
+
+    const debit = h.lines.find((l) => l.side === 'DEBIT');
+    expect(debit?.accountCode).toBe('708000');
+  });
+
+  it('reprend les cotisations quand la recette venait d’une adhésion', async () => {
+    const h = makeHarness({
+      encaissementCents: 9000,
+      avoirCents: 9000,
+      compteProduit: '706100',
+    });
+
+    await h.svc.createContraEntryForCreditNote('club-1', 'cn-1');
+
+    const debit = h.lines.find((l) => l.side === 'DEBIT');
+    expect(debit?.accountCode).toBe('706100');
+  });
+
+  it('retombe sur le mapping pour une recette antérieure au figeage du compte', async () => {
+    const h = makeHarness({ encaissementCents: 9000, avoirCents: 9000 });
+
+    await h.svc.createContraEntryForCreditNote('club-1', 'cn-1');
+
+    const debit = h.lines.find((l) => l.side === 'DEBIT');
+    expect(debit?.accountCode).toBe('706100');
+  });
 });
