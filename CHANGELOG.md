@@ -9,6 +9,20 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.55.0](https://github.com/florent427/ClubFlow/compare/v0.54.2...v0.55.0) (2026-09-12)
+
+
+### ✨ Features
+
+* **adhesions:** rouvrir un projet d'adhésion validé depuis l'admin ([f827567](https://github.com/florent427/ClubFlow/commit/f8275670e4fbf8eb29c7bad9420ef106a6f7ea61))
+* **admin:** bouton « Rouvrir pour corriger » sur un projet d'adhésion validé ([cfa98bf](https://github.com/florent427/ClubFlow/commit/cfa98bf3b54563cc2864226c0517a529c834a1b7))
+* **api:** rouvrir un panier d'adhésion validé depuis l'admin ([a743d96](https://github.com/florent427/ClubFlow/commit/a743d96a7eff7c4d87fd518bb2a7f15c6de144bd))
+
+
+### 🐛 Bug Fixes
+
+* **adhesions:** motif de refus lisible par le club comme par le parent ([b9608c9](https://github.com/florent427/ClubFlow/commit/b9608c9c572717241f288db50ec495641cbac108))
+
 ## [0.54.2](https://github.com/florent427/ClubFlow/compare/v0.54.1...v0.54.2) (2026-09-12)
 
 
