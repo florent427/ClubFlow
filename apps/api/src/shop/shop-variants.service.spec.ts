@@ -70,7 +70,17 @@ const DEFAULT_VARIANT = (over: Partial<VariantRow> = {}): VariantRow => ({
   ...over,
 });
 
-function makeHarness(seed: { variants?: VariantRow[] } = {}) {
+function makeHarness(
+  seed: {
+    variants?: VariantRow[];
+    /** Histoire de la déclinaison : ce qui doit INTERDIRE sa suppression. */
+    history?: {
+      movements?: number;
+      orderLines?: number;
+      purchaseLines?: number;
+    };
+  } = {},
+) {
   const options: OptionRow[] = [];
   const values: ValueRow[] = [];
   const variants: VariantRow[] = seed.variants ?? [DEFAULT_VARIANT()];
@@ -82,6 +92,17 @@ function makeHarness(seed: { variants?: VariantRow[] } = {}) {
   const matchVariant = (r: VariantRow, w: Record<string, any>): boolean => {
     if (w.id !== undefined && typeof w.id === 'string' && r.id !== w.id) return false;
     if (!idIn(w, r.id)) return false;
+    // `id: { not: x }` — sert à compter les AUTRES déclinaisons du produit.
+    // Sans cette clause, le double serait plus permissif que Prisma et
+    // compterait celle qu'on est en train de supprimer.
+    if (
+      w.id !== undefined &&
+      typeof w.id === 'object' &&
+      w.id.not !== undefined &&
+      r.id === w.id.not
+    ) {
+      return false;
+    }
     if (w.clubId !== undefined && r.clubId !== w.clubId) return false;
     if (w.productId !== undefined && r.productId !== w.productId) return false;
     if (w.isDefault !== undefined && r.isDefault !== w.isDefault) return false;
@@ -156,7 +177,25 @@ function makeHarness(seed: { variants?: VariantRow[] } = {}) {
       }),
     },
 
+    shopStockMovement: {
+      count: jest.fn(async () => seed.history?.movements ?? 0),
+    },
+    shopOrderLine: {
+      count: jest.fn(async () => seed.history?.orderLines ?? 0),
+    },
+    shopPurchaseOrderLine: {
+      count: jest.fn(async () => seed.history?.purchaseLines ?? 0),
+    },
+
     shopProductVariant: {
+      count: jest.fn(async ({ where }: any) =>
+        variants.filter((r) => matchVariant(r, where)).length,
+      ),
+      deleteMany: jest.fn(async ({ where }: any) => {
+        const gone = variants.filter((r) => matchVariant(r, where));
+        gone.forEach((r) => variants.splice(variants.indexOf(r), 1));
+        return { count: gone.length };
+      }),
       findMany: jest.fn(async ({ where }: any) =>
         variants.filter((r) => matchVariant(r, where)).map((r) => ({ ...r })),
       ),
@@ -489,5 +528,125 @@ describe('ShopVariantsService — délégations au moteur de stock', () => {
     expect(h.stock.recordShrinkage).toHaveBeenCalledWith(
       expect.objectContaining({ clubId: 'club-1', qty: 1, reason: 'Casse' }),
     );
+  });
+});
+
+
+describe('ShopVariantsService.deleteVariant — supprimer une saisie fautive', () => {
+  /**
+   * Jusqu'ici on ne pouvait que RETIRER DE LA VENTE une déclinaison, qui
+   * restait dans la matrice pour toujours. C'est le bon modèle pour un article
+   * qu'on arrête, pas pour une taille saisie de travers cinq minutes plus tôt.
+   *
+   * Ce qui se joue ici, ce sont les REFUS. Le lien vers `ShopStockMovement`
+   * est en `onDelete: Cascade` : sans contrôle explicite, supprimer effacerait
+   * l'historique des entrées et sorties SANS un mot.
+   */
+  const TAILLE = (over: Partial<VariantRow> = {}): VariantRow => ({
+    ...DEFAULT_VARIANT(),
+    id: 'var-120',
+    isDefault: false,
+    optionSignature: 'o:taille=120',
+    label: '120/130',
+    onHand: 0,
+    available: 0,
+    ...over,
+  });
+
+  function harnessAvec(over?: {
+    history?: {
+      movements?: number;
+      orderLines?: number;
+      purchaseLines?: number;
+    };
+    onHand?: number;
+    autreTaille?: boolean;
+  }) {
+    const variants = [
+      DEFAULT_VARIANT({ onHand: 0, available: 0 }),
+      TAILLE({ onHand: over?.onHand ?? 0 }),
+    ];
+    if (over?.autreTaille !== false) {
+      variants.push(
+        TAILLE({
+          id: 'var-140',
+          optionSignature: 'o:taille=140',
+          label: '140/150',
+        }),
+      );
+    }
+    return makeHarness({ variants, history: over?.history });
+  }
+
+  it('supprime une déclinaison vierge', async () => {
+    const h = harnessAvec();
+
+    await h.svc.deleteVariant('club-1', 'var-120');
+
+    expect(h.variants.map((v) => v.id)).not.toContain('var-120');
+    expect(h.variants.map((v) => v.id)).toContain('var-140');
+  });
+
+  it('REFUSE si elle a déjà été vendue, et ne supprime rien', async () => {
+    const h = harnessAvec({ history: { orderLines: 1 } });
+
+    await expect(h.svc.deleteVariant('club-1', 'var-120')).rejects.toThrow(
+      /vendue/i,
+    );
+    expect(h.variants.map((v) => v.id)).toContain('var-120');
+  });
+
+  it('REFUSE si elle a un historique de stock — il serait effacé en silence', async () => {
+    const h = harnessAvec({ history: { movements: 3 } });
+
+    await expect(h.svc.deleteVariant('club-1', 'var-120')).rejects.toThrow(
+      /historique de stock/i,
+    );
+    expect(h.variants.map((v) => v.id)).toContain('var-120');
+  });
+
+  it('REFUSE si elle figure sur une commande fournisseur', async () => {
+    const h = harnessAvec({ history: { purchaseLines: 1 } });
+
+    await expect(h.svc.deleteVariant('club-1', 'var-120')).rejects.toThrow(
+      /fournisseur/i,
+    );
+    expect(h.variants.map((v) => v.id)).toContain('var-120');
+  });
+
+  it('REFUSE s’il reste du stock : la marchandise ne disparaît pas des comptes', async () => {
+    const h = harnessAvec({ onHand: 2 });
+
+    await expect(h.svc.deleteVariant('club-1', 'var-120')).rejects.toThrow(
+      /en stock/i,
+    );
+    expect(h.variants.map((v) => v.id)).toContain('var-120');
+  });
+
+  it('REFUSE la DERNIÈRE déclinaison : le produit deviendrait invendable', async () => {
+    const h = harnessAvec({ autreTaille: false });
+
+    await expect(h.svc.deleteVariant('club-1', 'var-120')).rejects.toThrow(
+      /dernière déclinaison/i,
+    );
+    expect(h.variants.map((v) => v.id)).toContain('var-120');
+  });
+
+  it('REFUSE la déclinaison par défaut : elle EST le produit', async () => {
+    const h = harnessAvec();
+
+    await expect(h.svc.deleteVariant('club-1', 'var-default')).rejects.toThrow(
+      /par défaut/i,
+    );
+    expect(h.variants.map((v) => v.id)).toContain('var-default');
+  });
+
+  it('ne supprime PAS la déclinaison d’un autre club', async () => {
+    const h = harnessAvec();
+
+    await expect(h.svc.deleteVariant('club-2', 'var-120')).rejects.toThrow(
+      /introuvable/i,
+    );
+    expect(h.variants.map((v) => v.id)).toContain('var-120');
   });
 });
