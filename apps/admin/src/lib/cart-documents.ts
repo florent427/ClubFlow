@@ -130,6 +130,20 @@ export const CLUB_CANCEL_CART = gql`
   ${MEMBERSHIP_CART_FIELDS}
 `;
 
+/**
+ * Rouvre un panier validé pour le corriger puis le revalider. La facture est
+ * annulée (VOID), jamais supprimée, et les adhérents déjà créés restent.
+ * Refusé côté serveur dès qu'un règlement existe.
+ */
+export const CLUB_REOPEN_CART = gql`
+  mutation ClubReopenMembershipCart($input: ReopenMembershipCartInput!) {
+    clubReopenMembershipCart(input: $input) {
+      ...AdminMembershipCartFields
+    }
+  }
+  ${MEMBERSHIP_CART_FIELDS}
+`;
+
 // ---------- Types ----------
 
 export type MembershipCartStatus = 'OPEN' | 'VALIDATED' | 'CANCELLED';
