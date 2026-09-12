@@ -330,9 +330,17 @@ export class AccountingService {
       clubId,
       fin.accountingAccount.code,
     );
+    // Une vente boutique n'est pas une cotisation. Le mapping SHOP_PRODUCT
+    // était seedé depuis le début mais AUCUN chemin ne l'utilisait : tout
+    // encaissement créditait 706100, y compris un kimono.
+    //
+    // `shopOrderId` est le seul discriminant disponible, et il est fiable :
+    // une facture de commande n'a aucune `InvoiceLine` (le kind n'existe que
+    // pour l'adhésion) et seul le panier boutique renseigne ce champ. Une
+    // facture ne peut donc pas être mi-cotisation mi-boutique.
     const revenueCode = await this.mapping.resolveAccountCode(
       clubId,
-      'MEMBERSHIP_PRODUCT',
+      invoice.shopOrderId ? 'SHOP_PRODUCT' : 'MEMBERSHIP_PRODUCT',
     );
     const revenueAccount = await this.lookupAccount(clubId, revenueCode);
 
@@ -537,10 +545,21 @@ export class AccountingService {
       // Encaissement antérieur au multi-comptes : le compte n'a pas été figé.
       (await this.mapping.resolveAccountCode(clubId, 'BANK_ACCOUNT'));
     const bankAccount = await this.lookupAccount(clubId, cashCode);
-    const revenueCode = await this.mapping.resolveAccountCode(
-      clubId,
-      'MEMBERSHIP_PRODUCT',
-    );
+
+    // Le compte de PRODUIT suit la même règle que la trésorerie juste au-
+    // dessus : on reprend celui de l'écriture d'origine au lieu de le
+    // recalculer. Une vente boutique a crédité 708000 ; la contre-passer sur
+    // 706100 laisserait le produit boutique crédité à vie et les cotisations
+    // débitrices d'autant — les deux comptes faux d'un coup, comme pour la
+    // banque. L'écriture de recette ne porte qu'une seule ligne au crédit.
+    //
+    // Repli sur le mapping pour les recettes nées avant que le compte ne soit
+    // figé sur la ligne.
+    const revenueCode =
+      originalEntry.lines.find(
+        (l) => l.side === AccountingLineSide.CREDIT,
+      )?.accountCode ??
+      (await this.mapping.resolveAccountCode(clubId, 'MEMBERSHIP_PRODUCT'));
     const revenueAccount = await this.lookupAccount(clubId, revenueCode);
 
     const amountCents = creditNote.amountCents;
