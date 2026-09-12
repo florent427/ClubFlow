@@ -4,7 +4,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InvoiceStatus, Prisma, ShopOrderStatus } from '@prisma/client';
+import {
+  ClubPaymentMethod,
+  InvoiceStatus,
+  Prisma,
+  ShopOrderStatus,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
 import { ShopStockService } from './shop-stock.service';
@@ -666,18 +671,8 @@ export class ShopService {
         { memberId: buyer.memberId, contactId: buyer.contactId },
         { lines: input.lines, note: input.note ?? undefined },
       );
-      const invoice = await tx.invoice.create({
-        data: {
-          clubId,
-          familyId: buyer.familyId,
-          label: `Vente boutique — ${buyer.label}`,
-          baseAmountCents: order.totalCents,
-          amountCents: order.totalCents,
-          status: InvoiceStatus.OPEN,
-          installmentsCount: 1,
-          shopOrderId: order.id,
-        },
-        select: { id: true },
+      const invoice = await this.createOrderInvoiceInTx(tx, clubId, order, {
+        labelPrefix: 'Vente boutique',
       });
       return {
         orderId: order.id,
@@ -685,6 +680,98 @@ export class ShopService {
         totalCents: order.totalCents,
       };
     });
+  }
+
+  /**
+   * La facture d'une commande boutique, définie en UN endroit.
+   *
+   * Trois chemins créent des commandes — le panier en ligne, le « régler sur
+   * place » et la vente au comptoir — et la facture doit être la même partout
+   * sur ce qui compte. `shopOrderId` décide du compte de produit : trois
+   * copies de cette ligne, c'est la garantie qu'un chemin finira par
+   * l'oublier. Ce n'est pas une crainte abstraite, c'est déjà arrivé pour
+   * `familyId`, que le panier en ligne ne posait pas — sa facture
+   * n'apparaissait alors sous aucun payeur.
+   *
+   * `lockedPaymentMethod` n'est posé que si l'appelant le demande : seul le
+   * paiement en ligne impose la carte. Un règlement sur place ou au comptoir
+   * se fait en espèces ou par chèque, et un mode figé l'interdirait.
+   */
+  async createOrderInvoiceInTx(
+    tx: Prisma.TransactionClient,
+    clubId: string,
+    order: {
+      id: string;
+      totalCents: number;
+      memberId: string | null;
+      contactId: string | null;
+    },
+    opts?: {
+      labelPrefix?: string;
+      installmentsCount?: number;
+      lockedPaymentMethod?: ClubPaymentMethod | null;
+    },
+  ): Promise<{ id: string }> {
+    const buyer = await this.describeOrderBuyer(tx, clubId, order);
+    return tx.invoice.create({
+      data: {
+        clubId,
+        familyId: buyer.familyId,
+        label: `${opts?.labelPrefix ?? 'Commande boutique'} — ${buyer.label}`,
+        baseAmountCents: order.totalCents,
+        amountCents: order.totalCents,
+        status: InvoiceStatus.OPEN,
+        installmentsCount: opts?.installmentsCount ?? 1,
+        ...(opts?.lockedPaymentMethod
+          ? { lockedPaymentMethod: opts.lockedPaymentMethod }
+          : {}),
+        shopOrderId: order.id,
+      },
+      select: { id: true },
+    });
+  }
+
+  /**
+   * Qui a commandé, et sous quel foyer sa facture doit apparaître.
+   *
+   * Lu depuis la COMMANDE et non depuis l'appelant : c'est elle qui porte
+   * l'acheteur, donc la facture ne peut pas se retrouver au nom de quelqu'un
+   * d'autre par une étourderie de paramètre.
+   */
+  private async describeOrderBuyer(
+    tx: Prisma.TransactionClient,
+    clubId: string,
+    order: { memberId: string | null; contactId: string | null },
+  ): Promise<{ label: string; familyId: string | null }> {
+    if (order.memberId) {
+      const member = await tx.member.findFirst({
+        where: { id: order.memberId, clubId },
+        select: { firstName: true, lastName: true },
+      });
+      const fm = await tx.familyMember.findFirst({
+        where: { memberId: order.memberId, family: { clubId } },
+        select: { familyId: true },
+      });
+      return {
+        label: member
+          ? `${member.firstName} ${member.lastName}`.trim()
+          : 'adhérent',
+        familyId: fm?.familyId ?? null,
+      };
+    }
+    if (order.contactId) {
+      const contact = await tx.contact.findFirst({
+        where: { id: order.contactId, clubId },
+        select: { firstName: true, lastName: true },
+      });
+      return {
+        label: contact
+          ? `${contact.firstName} ${contact.lastName}`.trim()
+          : 'contact',
+        familyId: null,
+      };
+    }
+    return { label: 'acheteur inconnu', familyId: null };
   }
 
   /**
@@ -989,9 +1076,15 @@ export class ShopService {
     const contactById = new Map(contacts.map((c) => [c.id, c]));
 
     // Une commande est « payable en ligne » si elle porte une facture OUVERTE.
-    // Les commandes « réglées sur place » (checkoutOnSite) n'ont PAS de facture :
-    // c'est ce booléen — et non le seul statut PENDING — qui permet aux écrans
-    // de n'afficher « Payer » que là où le repay en ligne aboutira.
+    // C'est ce booléen — et non le seul statut PENDING — qui permet aux écrans
+    // de n'afficher « Payer » que là où le repaiement aboutira.
+    //
+    // Les commandes « réglées sur place » en portent désormais une, elles
+    // aussi : sans facture, l'argent remis au club n'entrait dans aucune
+    // écriture. Un adhérent qui avait choisi de régler sur place voit donc
+    // maintenant « Payer » — et c'est tant mieux : il peut changer d'avis, et
+    // le double règlement est impossible, la seconde saisie se heurtant à une
+    // facture déjà soldée.
     const orderIds = orders.map((o) => o.id);
     const openInvoices =
       orderIds.length > 0
