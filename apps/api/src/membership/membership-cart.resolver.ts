@@ -15,6 +15,7 @@ import {
   CancelMembershipCartInput,
   ListMembershipCartsFilter,
   OpenMembershipCartInput,
+  ReopenMembershipCartInput,
   ToggleCartItemLicenseInput,
   UpdateMembershipCartItemInput,
   ValidateMembershipCartInput,
@@ -191,6 +192,38 @@ export class MembershipCartAdminResolver {
       club.id,
       input.cartId,
       input.reason,
+    );
+    const { cart: full, preview, productsById, clubOneTimeFees } =
+      await this.service.getCartFullForGraph(club.id, cart.id);
+    return toMembershipCartGraph(full, preview, productsById, clubOneTimeFees);
+  }
+
+  /**
+   * Rouvre un panier validé pour le corriger — changer un rythme de paiement,
+   * retirer une ligne — puis le revalider.
+   *
+   * La réouverture n'existait que côté portail : une fois le panier validé,
+   * le club ne pouvait plus rien corriger, même sur une adhésion dont rien
+   * n'avait été encaissé. Corriger sa propre saisie demandait de faire agir
+   * la famille depuis son espace.
+   *
+   * La garantie « rien d'encaissé » reste dans le service : elle protège les
+   * deux chemins d'un seul endroit, y compris les clients mobiles déjà
+   * installés.
+   */
+  @Mutation(() => MembershipCartGraph, { name: 'clubReopenMembershipCart' })
+  async clubReopenMembershipCart(
+    @CurrentClub() club: Club,
+    @Args('input') input: ReopenMembershipCartInput,
+  ): Promise<MembershipCartGraph> {
+    const cart = await this.service.reopenCart(
+      club.id,
+      input.cartId,
+      // Le motif par défaut du service dit « par le payeur » : c'était le seul
+      // chemin possible. Depuis l'admin, la trace doit nommer le club, sinon
+      // le `voidReason` de la facture ment sur qui a agi.
+      input.reason?.trim() ||
+        'Panier d’adhésion rouvert par le club avant règlement.',
     );
     const { cart: full, preview, productsById, clubOneTimeFees } =
       await this.service.getCartFullForGraph(club.id, cart.id);
