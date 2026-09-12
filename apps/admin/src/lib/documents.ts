@@ -2204,6 +2204,19 @@ export const UPDATE_SHOP_PRODUCT_VARIANT = gql`
   }
 `;
 
+/**
+ * Supprime une déclinaison saisie par erreur. Refusé côté serveur dès qu'elle
+ * a une histoire — vente, commande fournisseur, mouvement de stock, stock
+ * restant — pour ne pas effacer ce qui s'est réellement passé.
+ */
+export const DELETE_SHOP_PRODUCT_VARIANT = gql`
+  mutation DeleteShopProductVariant($variantId: ID!) {
+    deleteShopProductVariant(variantId: $variantId) {
+      ${SHOP_PRODUCT_FIELDS}
+    }
+  }
+`;
+
 export const RESTOCK_SHOP_VARIANT = gql`
   mutation RestockShopVariant($input: RestockShopVariantInput!) {
     restockShopVariant(input: $input) {

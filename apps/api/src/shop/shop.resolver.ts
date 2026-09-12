@@ -282,6 +282,22 @@ export class ShopAdminResolver {
     }) as Promise<ShopProductGraph>;
   }
 
+  /**
+   * Supprime une déclinaison saisie par erreur. Refusé dès qu'elle a une
+   * histoire — vente, commande fournisseur, mouvement de stock, stock restant
+   * — pour ne pas effacer ce qui s'est réellement passé.
+   */
+  @Mutation(() => ShopProductGraph)
+  deleteShopProductVariant(
+    @CurrentClub() club: Club,
+    @Args('variantId', { type: () => ID }) variantId: string,
+  ): Promise<ShopProductGraph> {
+    return this.variants.deleteVariant(
+      club.id,
+      variantId,
+    ) as Promise<ShopProductGraph>;
+  }
+
   @Mutation(() => ShopProductGraph, { description: 'Perte, casse, vol.' })
   recordShopVariantShrinkage(
     @CurrentClub() club: Club,

@@ -376,6 +376,105 @@ export class ShopVariantsService {
     return this.reloadVariantProduct(clubId, variantId);
   }
 
+  /**
+   * Supprime une déclinaison créée par erreur.
+   *
+   * Jusqu'ici on ne pouvait que la RETIRER DE LA VENTE (`active: false`), et
+   * elle restait dans la matrice pour toujours. C'est le bon modèle pour un
+   * article qu'on a vendu et qu'on arrête, pas pour une taille saisie de
+   * travers cinq minutes plus tôt.
+   *
+   * ⚠️ La suppression est refusée dès que la déclinaison a une HISTOIRE, et le
+   * contrôle est ici, explicite, parce que la base ne le ferait pas : le lien
+   * vers `ShopStockMovement` est en `onDelete: Cascade`. Supprimer sans
+   * vérifier effacerait donc l'historique des entrées et sorties de stock
+   * SANS un mot — une perte de données silencieuse dans une zone qui touche à
+   * la comptabilité. Les lignes de commande, elles, sont en `Restrict` : la
+   * base refuserait, mais avec une erreur illisible plutôt qu'une phrase.
+   */
+  async deleteVariant(clubId: string, variantId: string) {
+    const variant = await this.prisma.shopProductVariant.findFirst({
+      where: { id: variantId, clubId },
+      select: { id: true, productId: true, isDefault: true, onHand: true },
+    });
+    if (!variant) {
+      throw new BadRequestException('Déclinaison introuvable.');
+    }
+    if (variant.isDefault) {
+      throw new BadRequestException(
+        'La déclinaison par défaut ne se supprime pas : elle EST le produit. ' +
+          'Pour revenir à un article sans taille, décoche « avec déclinaisons » ' +
+          'dans Modifier.',
+      );
+    }
+
+    const [movements, orderLines, purchaseLines, autresDuProduit] =
+      await Promise.all([
+        this.prisma.shopStockMovement.count({ where: { clubId, variantId } }),
+        // `ShopOrderLine` ne porte pas de clubId : il se scope par sa
+        // commande, qui en porte un.
+        this.prisma.shopOrderLine.count({
+          where: { variantId, order: { clubId } },
+        }),
+        this.prisma.shopPurchaseOrderLine.count({
+          where: { clubId, variantId },
+        }),
+        this.prisma.shopProductVariant.count({
+          where: {
+            clubId,
+            productId: variant.productId,
+            isDefault: false,
+            id: { not: variantId },
+          },
+        }),
+      ]);
+
+    if (orderLines > 0) {
+      throw new BadRequestException(
+        'Cette déclinaison a déjà été vendue : la supprimer effacerait la ' +
+          'trace de ces ventes. Décoche « En vente » pour l’arrêter.',
+      );
+    }
+    if (purchaseLines > 0) {
+      throw new BadRequestException(
+        'Cette déclinaison figure sur une commande fournisseur. Décoche ' +
+          '« En vente » pour l’arrêter.',
+      );
+    }
+    if (movements > 0) {
+      throw new BadRequestException(
+        'Cette déclinaison a un historique de stock, qui serait perdu. ' +
+          'Décoche « En vente » pour l’arrêter.',
+      );
+    }
+    if (variant.onHand !== 0) {
+      throw new BadRequestException(
+        `Il reste ${variant.onHand} article(s) en stock sur cette ` +
+          'déclinaison. Sors-les du stock d’abord, sinon la marchandise ' +
+          'disparaît des comptes sans être partie du placard.',
+      );
+    }
+    if (autresDuProduit === 0) {
+      throw new BadRequestException(
+        'C’est la dernière déclinaison du produit : le supprimer ainsi ' +
+          'rendrait l’article invendable en silence. Décoche « avec ' +
+          'déclinaisons » dans Modifier, ce qui remet le produit en article ' +
+          'simple.',
+      );
+    }
+
+    // `deleteMany` scopé par clubId, comme les écritures voisines : la
+    // frontière multi-tenant est portée par l'écriture, pas par la lecture
+    // ci-dessus qu'on pourrait oublier de refaire un jour.
+    const removed = await this.prisma.shopProductVariant.deleteMany({
+      where: { id: variantId, clubId, isDefault: false },
+    });
+    if (removed.count !== 1) {
+      throw new BadRequestException('Déclinaison introuvable.');
+    }
+    return this.shop.reloadProduct(clubId, variant.productId);
+  }
+
   // --- Délégations au moteur de stock ---
   //
   // Ces trois méthodes ne réimplémentent RIEN : elles adaptent la signature

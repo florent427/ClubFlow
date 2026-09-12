@@ -7,6 +7,7 @@ import {
   CLUB_MEMBERS,
   CREATE_SHOP_PRODUCT,
   DELETE_SHOP_PRODUCT,
+  DELETE_SHOP_PRODUCT_VARIANT,
   GENERATE_SHOP_PRODUCT_VARIANTS,
   MARK_SHOP_ORDER_PAID,
   RECORD_SHOP_COUNTER_SALE,
@@ -124,6 +125,40 @@ function VariantsDrawer({
 
   const [axes, setAxes] = useState<AxisDraft[] | null>(null);
   const [savingMatrix, setSavingMatrix] = useState(false);
+  const [deleteVariant] = useMutation(DELETE_SHOP_PRODUCT_VARIANT);
+  /** Déclinaison dont on s'apprête à confirmer la suppression. */
+  const [confirmDelVariant, setConfirmDelVariant] = useState<{
+    id: string;
+    label: string | null;
+  } | null>(null);
+
+  /**
+   * Supprimer, et non « retirer de la vente ».
+   *
+   * Décocher « En vente » est le bon geste pour un article qu'on arrête : la
+   * ligne reste, avec son historique. Ça ne l'était pas pour une taille saisie
+   * de travers, qui encombrait la matrice à jamais. Le serveur refuse dès que
+   * la déclinaison a une histoire — on affiche alors sa phrase telle quelle,
+   * elle dit quoi faire à la place.
+   */
+  async function onDeleteVariant(): Promise<void> {
+    const target = confirmDelVariant;
+    if (!target) return;
+    try {
+      const res = await deleteVariant({
+        variables: { variantId: target.id },
+      });
+      const fresh = (
+        res.data as { deleteShopProductVariant?: ShopProduct } | null | undefined
+      )?.deleteShopProductVariant;
+      if (fresh) setProduct(fresh);
+      showToast('Déclinaison supprimée', 'success');
+      setConfirmDelVariant(null);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Suppression refusée', 'error');
+      setConfirmDelVariant(null);
+    }
+  }
 
   // Semé UNE FOIS : un refetch en arrière-plan ne doit pas effacer les axes
   // que l'admin est en train de saisir.
@@ -393,6 +428,7 @@ function VariantsDrawer({
                     <th>Coût moyen</th>
                     <th>Marge</th>
                     <th>Seuil d’alerte</th>
+                    <th />
                   </tr>
                 </thead>
                 <tbody>
@@ -513,6 +549,23 @@ function VariantsDrawer({
                             }
                           />
                         </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="cf-btn cf-btn--danger cf-btn--sm"
+                            title="Supprimer cette déclinaison"
+                            onClick={() =>
+                              setConfirmDelVariant({ id: v.id, label: v.label })
+                            }
+                          >
+                            <span
+                              className="material-symbols-outlined"
+                              aria-hidden
+                            >
+                              delete
+                            </span>
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
@@ -544,6 +597,20 @@ function VariantsDrawer({
           </>
         )}
       </section>
+
+      <ConfirmModal
+        open={confirmDelVariant !== null}
+        title="Supprimer cette déclinaison ?"
+        message={
+          `« ${confirmDelVariant?.label ?? ''} » disparaîtra de la liste. ` +
+          'Si elle a déjà été vendue, commandée ou mouvementée en stock, la ' +
+          'suppression sera refusée : décoche « En vente » pour l’arrêter sans ' +
+          'effacer son passé.'
+        }
+        confirmLabel="Supprimer"
+        onConfirm={() => void onDeleteVariant()}
+        onCancel={() => setConfirmDelVariant(null)}
+      />
     </Drawer>
   );
 }
@@ -573,6 +640,11 @@ function CounterSaleDrawer({
   const [sell, { loading: selling }] = useMutation(RECORD_SHOP_COUNTER_SALE);
 
   const [memberId, setMemberId] = useState('');
+  /**
+   * Filtre du sélecteur d'acheteur. Une liste déroulante de soixante adhérents
+   * se parcourt mal au comptoir, avec quelqu'un qui attend devant soi.
+   */
+  const [buyerQuery, setBuyerQuery] = useState('');
   const [variantId, setVariantId] = useState('');
   const [qtyStr, setQtyStr] = useState('1');
   const [note, setNote] = useState('');
@@ -586,6 +658,25 @@ function CounterSaleDrawer({
       ),
     [membersData],
   );
+
+  /**
+   * Recherche insensible à la casse ET aux accents : « joachim » doit trouver
+   * « Joachim », et « morel » doit trouver « Morél » — sinon le filtre gêne
+   * plus qu'il n'aide, sur des noms qu'on tape vite.
+   */
+  const normalise = (t: string) =>
+    t
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+
+  const shownMembers = useMemo(() => {
+    const q = normalise(buyerQuery.trim());
+    if (!q) return members;
+    return members.filter((m) =>
+      normalise(`${m.lastName} ${m.firstName}`).includes(q),
+    );
+  }, [members, buyerQuery]);
 
   /**
    * On vend une DÉCLINAISON, jamais un produit : un produit simple expose sa
@@ -671,14 +762,29 @@ function CounterSaleDrawer({
     >
       <label className="cf-field">
         <span>Acheteur *</span>
+        <input
+          type="search"
+          value={buyerQuery}
+          onChange={(e) => setBuyerQuery(e.target.value)}
+          placeholder="Rechercher par nom…"
+        />
         <select value={memberId} onChange={(e) => setMemberId(e.target.value)}>
           <option value="">— Choisir un adhérent —</option>
-          {members.map((m) => (
+          {shownMembers.map((m) => (
             <option key={m.id} value={m.id}>
               {m.lastName} {m.firstName}
             </option>
           ))}
         </select>
+        {buyerQuery.trim() && shownMembers.length === 0 ? (
+          <small className="cf-muted">Aucun adhérent à ce nom.</small>
+        ) : null}
+        {shownMembers.length === 1 && !memberId ? (
+          <small className="cf-muted">
+            Un seul résultat : {shownMembers[0].lastName}{' '}
+            {shownMembers[0].firstName}. Choisis-le dans la liste.
+          </small>
+        ) : null}
       </label>
 
       <label className="cf-field">
