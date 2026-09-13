@@ -25,6 +25,8 @@ function item(over: Partial<ShopCartItem> = {}): ShopCartItem {
     unitPriceCents: 1500,
     lineTotalCents: 1500,
     inStock: true,
+    availability: 'IN_STOCK',
+    preorderLeadTime: null,
     unavailable: false,
     ...over,
   };
@@ -61,8 +63,20 @@ describe('computeShopCartTotalCents', () => {
 });
 
 describe('shopCartHasBlockingItems', () => {
-  it('détecte une ligne épuisée (inStock=false)', () => {
-    expect(shopCartHasBlockingItems([item({ inStock: false })])).toBe(true);
+  it('détecte une ligne épuisée et non commandable', () => {
+    expect(
+      shopCartHasBlockingItems([
+        item({ inStock: false, availability: 'SOLD_OUT' }),
+      ]),
+    ).toBe(true);
+  });
+
+  it('une ligne sur commande ne bloque pas : elle sera remise à l’arrivage (ADR-0018)', () => {
+    expect(
+      shopCartHasBlockingItems([
+        item({ inStock: false, availability: 'PREORDER' }),
+      ]),
+    ).toBe(false);
   });
 
   it('détecte une ligne devenue indisponible', () => {

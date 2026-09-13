@@ -107,6 +107,8 @@ export class ShopAdminResolver {
       priceCents: input.priceCents,
       stock: input.stock,
       active: input.active,
+      preorderEnabled: input.preorderEnabled,
+      preorderLeadTime: input.preorderLeadTime,
     }) as Promise<ShopProductGraph>;
   }
 

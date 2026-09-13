@@ -110,12 +110,19 @@ function makeHarness(rows: VariantRow[], sendResult: boolean | (() => boolean) =
 
   const prisma = { shopProductVariant: variantApi };
 
+  // Le filet de sécurité des précommandes a sa spec : ici, seulement son
+  // branchement dans le passage (ADR-0018).
+  const preorders = {
+    allocatePending: jest.fn(async (_clubId?: string): Promise<number> => 0),
+  };
+
   const svc = new ShopStockSweepService(
     prisma as unknown as PrismaService,
     notifier as unknown as ShopLowStockNotifierService,
     lock as unknown as SchedulerLockService,
+    preorders as never,
   );
-  return { svc, rows, notifier, sent, lock };
+  return { svc, rows, notifier, sent, lock, preorders };
 }
 
 describe('ShopStockSweepService — anti-spam tenu par la base', () => {
@@ -124,7 +131,13 @@ describe('ShopStockSweepService — anti-spam tenu par la base', () => {
 
     const report = await h.svc.sweep();
 
-    expect(report).toEqual({ examined: 1, alerted: 1, rearmed: 0, failed: 0 });
+    expect(report).toEqual({
+      examined: 1,
+      alerted: 1,
+      rearmed: 0,
+      failed: 0,
+      preordersServed: 0,
+    });
     expect(h.sent).toHaveLength(1);
     expect(h.sent[0]!.items).toEqual([
       expect.objectContaining({
@@ -325,5 +338,32 @@ describe('ShopStockSweepService — kill-switch', () => {
     await h.svc.dailySweep();
 
     expect(h.notifier.notifyLowStock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ShopStockSweepService — filet de sécurité des précommandes (ADR-0018)', () => {
+  it('sert les précommandes restées en attente, et le compte', async () => {
+    const h = makeHarness([]);
+    h.preorders.allocatePending.mockResolvedValueOnce(3);
+
+    const report = await h.svc.sweep('club-1');
+
+    expect(h.preorders.allocatePending).toHaveBeenCalledWith('club-1');
+    expect(report.preordersServed).toBe(3);
+  });
+
+  it('les sert AVANT d’évaluer les seuils : le stock qui compte est celui qui reste', async () => {
+    // 6 vendables pour un seuil de 5 : rien à signaler… jusqu'à ce que les
+    // précommandes en attente prennent 2 unités. Évaluer avant de servir
+    // raterait l'alerte jusqu'au lendemain.
+    const h = makeHarness([VARIANT({ available: 6, reorderThreshold: 5 })]);
+    h.preorders.allocatePending.mockImplementationOnce(async () => {
+      h.rows[0]!.available = 4;
+      return 2;
+    });
+
+    const report = await h.svc.sweep();
+
+    expect(report).toMatchObject({ preordersServed: 2, alerted: 1 });
   });
 });

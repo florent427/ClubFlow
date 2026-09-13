@@ -494,7 +494,9 @@ export const VIEWER_CLUB_BLOG_POST = gql`
  * On ne sélectionne volontairement AUCUN compteur — ni `stock`, ni `available`,
  * ni `onHand`, ni `reorderThreshold` : côté portail l'API les renvoie à null,
  * et un adhérent n'a pas à savoir combien il reste de M ni à quel niveau le
- * club réapprovisionne. La seule information de stock est le booléen `inStock`.
+ * club réapprovisionne. La disponibilité se lit dans `inStock` et
+ * `availability` — en stock, sur commande, épuisé (ADR-0018) —, jamais dans
+ * un chiffre.
  */
 const VIEWER_SHOP_PRODUCT_FIELDS = `
   id
@@ -505,6 +507,8 @@ const VIEWER_SHOP_PRODUCT_FIELDS = `
   priceCents
   hasVariants
   priceFromCents
+  preorderEnabled
+  preorderLeadTime
   active
   variants {
     id
@@ -513,6 +517,7 @@ const VIEWER_SHOP_PRODUCT_FIELDS = `
     sku
     unitPriceCents
     inStock
+    availability
   }
 `;
 
@@ -533,6 +538,7 @@ const VIEWER_SHOP_ORDER_FIELDS = `
     quantity
     unitPriceCents
     label
+    awaitingStockQty
   }
 `;
 
@@ -582,6 +588,8 @@ const VIEWER_SHOP_CART_FIELDS = `
     unitPriceCents
     lineTotalCents
     inStock
+    availability
+    preorderLeadTime
     unavailable
   }
 `;

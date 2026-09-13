@@ -3,6 +3,9 @@ import {
   eurosToCents,
   parseOptionalInt,
   planMatrixSave,
+  planProductStock,
+  productCountedStock,
+  productReservedUnits,
   seedRow,
 } from './shop-variant-matrix';
 import type { MatrixRowDraft } from './shop-variant-matrix';
@@ -24,10 +27,12 @@ function variant(over: Partial<ShopProductVariant> = {}): ShopProductVariant {
     // cours » / « coût jamais renseigné ». La matrice ne s'en sert pas, mais
     // le type l'exige — et null est la valeur honnête par défaut.
     onOrder: null,
+    preorderedQty: null,
     avgCostCents: null,
     marginCents: null,
     marginRate: null,
     inStock: true,
+    availability: 'IN_STOCK',
     belowThreshold: false,
     active: true,
     ...over,
@@ -211,5 +216,39 @@ describe('planMatrixSave', () => {
       ok: true,
       steps: [{ variantId: 'v1', update: { sku: null }, countedOnHand: null }],
     });
+  });
+});
+
+describe('fiche produit : le stock compté (ADR-0018)', () => {
+  const produit = (over: Partial<ShopProductVariant> = {}) => ({
+    variants: [variant({ isDefault: true, ...over })],
+  });
+
+  it('montre le stock PHYSIQUE, réservations comprises — jamais le vendable', () => {
+    expect(productCountedStock(produit({ onHand: 5, available: 0 }))).toBe('5');
+    expect(productReservedUnits(produit({ onHand: 5, available: 0 }))).toBe(5);
+  });
+
+  it('stock illimité, ou pas de déclinaison par défaut : champ vide, rien de réservé', () => {
+    expect(productCountedStock(produit({ trackStock: false }))).toBe('');
+    expect(
+      productReservedUnits(produit({ trackStock: false, onHand: 5, available: 0 })),
+    ).toBe(0);
+    expect(productCountedStock({ variants: [variant()] })).toBe('');
+  });
+
+  it('n’envoie rien si le champ n’a pas bougé : changer un délai ne corrige pas l’inventaire', () => {
+    expect(planProductStock('5', ' 5 ')).toEqual({ ok: true, stock: undefined });
+    expect(planProductStock('', '')).toEqual({ ok: true, stock: undefined });
+  });
+
+  it('envoie le nouveau compte, ou null pour passer en stock illimité', () => {
+    expect(planProductStock('5', '7')).toEqual({ ok: true, stock: 7 });
+    expect(planProductStock('5', '')).toEqual({ ok: true, stock: null });
+  });
+
+  it('refuse une saisie invalide', () => {
+    expect(planProductStock('5', '-1')).toEqual({ ok: false });
+    expect(planProductStock('5', '2,5')).toEqual({ ok: false });
   });
 });

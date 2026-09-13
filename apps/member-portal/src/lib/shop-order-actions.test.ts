@@ -108,3 +108,32 @@ describe('orderPickupLabel — le retrait, distinct du paiement (ADR-0017)', () 
     expect(orderPickupLabel({ status: 'CANCELLED', deliveredAt: null })).toBeNull();
   });
 });
+
+describe('orderPickupLabel — précommande (ADR-0018)', () => {
+  const attend = [{ awaitingStockQty: 0 }, { awaitingStockQty: 1 }];
+
+  it('un article attend l’arrivage : « en attente d’arrivage », payée ou non', () => {
+    expect(
+      orderPickupLabel({ status: 'PAID', deliveredAt: null, lines: attend }),
+    ).toEqual({ kind: 'AWAITING_STOCK' });
+    expect(
+      orderPickupLabel({ status: 'PENDING', deliveredAt: null, lines: attend }),
+    ).toEqual({ kind: 'AWAITING_STOCK' });
+  });
+
+  it('tout est arrivé : de nouveau « à retirer » une fois payée', () => {
+    expect(
+      orderPickupLabel({
+        status: 'PAID',
+        deliveredAt: null,
+        lines: [{ awaitingStockQty: 0 }],
+      }),
+    ).toEqual({ kind: 'TO_COLLECT' });
+  });
+
+  it('une commande annulée n’attend plus rien', () => {
+    expect(
+      orderPickupLabel({ status: 'CANCELLED', deliveredAt: null, lines: attend }),
+    ).toBeNull();
+  });
+});

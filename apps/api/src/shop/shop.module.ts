@@ -13,6 +13,7 @@ import { ShopDeliveryNoteLinkService } from './shop-delivery-note-link.service';
 import { ShopDeliveryNoteService } from './shop-delivery-note.service';
 import { ShopLowStockNotifierService } from './shop-low-stock-notifier.service';
 import { ShopService } from './shop.service';
+import { ShopPreorderService } from './shop-preorder.service';
 import { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
 import { ShopStockService } from './shop-stock.service';
 import { ShopStockSweepService } from './shop-stock-sweep.service';
@@ -39,6 +40,7 @@ import { ShopVariantsService } from './shop-variants.service';
     ShopDeliveryNoteService,
     ShopDeliveryNoteLinkService,
     ShopStockService,
+    ShopPreorderService,
     ShopPurchaseOrdersService,
     ShopVariantsService,
     ShopStockSweepService,

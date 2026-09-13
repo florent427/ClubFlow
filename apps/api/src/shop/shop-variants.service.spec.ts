@@ -256,12 +256,20 @@ function makeHarness(
     listMovements: jest.fn(async () => []),
   };
 
+  const preorders = {
+    allocateQuietly: jest.fn(
+      async (_clubId: string, _variantIds: Iterable<string>): Promise<void> =>
+        undefined,
+    ),
+  };
+
   const svc = new ShopVariantsService(
     prisma as unknown as PrismaService,
     shop as unknown as ShopService,
     stock as unknown as ShopStockService,
+    preorders as never,
   );
-  return { svc, prisma, variants, options, values, shop, stock };
+  return { svc, prisma, variants, options, values, shop, stock, preorders };
 }
 
 describe('optionSignature', () => {
@@ -648,5 +656,63 @@ describe('ShopVariantsService.deleteVariant — supprimer une saisie fautive', (
       /introuvable/i,
     );
     expect(h.variants.map((v) => v.id)).toContain('var-120');
+  });
+});
+
+describe('ShopVariantsService — les précommandes passent avant tout nouvel acheteur (ADR-0018)', () => {
+  it('une entrée de stock sert les précommandes, APRÈS l’écriture du moteur', async () => {
+    const h = makeHarness();
+    const appels: string[] = [];
+    h.stock.restock.mockImplementation(async () => {
+      appels.push('restock');
+      return undefined;
+    });
+    h.preorders.allocateQuietly.mockImplementation(async () => {
+      appels.push('attribution');
+    });
+
+    await h.svc.restock('club-1', { variantId: 'var-default', qty: 12 });
+
+    expect(appels).toEqual(['restock', 'attribution']);
+    expect(h.preorders.allocateQuietly).toHaveBeenCalledWith('club-1', [
+      'var-default',
+    ]);
+  });
+
+  it('une correction d’inventaire aussi : elle peut rendre du stock vendable', async () => {
+    const h = makeHarness();
+
+    await h.svc.adjustStock('club-1', {
+      variantId: 'var-default',
+      countedOnHand: 9,
+    });
+
+    expect(h.preorders.allocateQuietly).toHaveBeenCalledWith('club-1', [
+      'var-default',
+    ]);
+  });
+
+  it('changer le suivi de stock sert les précommandes ; renommer ne déclenche rien', async () => {
+    const h = makeHarness();
+
+    await h.svc.updateVariant('club-1', 'var-default', { label: 'Unique' });
+    expect(h.preorders.allocateQuietly).not.toHaveBeenCalled();
+
+    await h.svc.updateVariant('club-1', 'var-default', { trackStock: false });
+    expect(h.preorders.allocateQuietly).toHaveBeenCalledWith('club-1', [
+      'var-default',
+    ]);
+  });
+
+  it('une perte ne rend rien vendable : aucune attribution', async () => {
+    const h = makeHarness();
+
+    await h.svc.recordShrinkage('club-1', {
+      variantId: 'var-default',
+      qty: 1,
+      reason: 'Casse',
+    });
+
+    expect(h.preorders.allocateQuietly).not.toHaveBeenCalled();
   });
 });

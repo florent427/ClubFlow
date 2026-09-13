@@ -18,6 +18,13 @@ import {
 } from '../lib/viewer-documents';
 import { canCheckout, countCartUnits, partitionCart } from '../lib/shop-cart';
 import {
+  availabilitySuffix,
+  canAddToCart,
+  cartPreorderNotice,
+  defaultVariantOf,
+  preorderNotice,
+} from '../lib/shop-availability';
+import {
   canCancelOrder,
   canRepayOrder,
   orderPickupLabel,
@@ -33,7 +40,6 @@ import type {
   ViewerShopCartData,
   ViewerShopOrder,
   ViewerShopOrdersData,
-  ViewerShopProduct,
   ViewerShopProductsData,
   ViewerShopTermsData,
   ViewerShopVariant,
@@ -56,15 +62,6 @@ function fmtDate(iso: string | null): string {
 /** Libellé affiché pour une déclinaison, jamais vide. */
 function variantLabel(v: ViewerShopVariant): string {
   return v.label ?? 'Modèle unique';
-}
-
-/**
- * Déclinaison proposée par défaut : la première disponible, sinon la première
- * tout court. Choisir d'emblée une taille épuisée forcerait l'adhérent à
- * comprendre le sélecteur avant de pouvoir ajouter quoi que ce soit.
- */
-function defaultVariantOf(p: ViewerShopProduct): ViewerShopVariant | null {
-  return p.variants.find((v) => v.inStock) ?? p.variants[0] ?? null;
 }
 
 export function ShopPage() {
@@ -253,7 +250,7 @@ export function ShopPage() {
       ) : (
         <ul className="mp-product-list">
           {products.map((p) => {
-            const fallback = defaultVariantOf(p);
+            const fallback = defaultVariantOf(p.variants);
             const pickedId = picked.get(p.id);
             const variant =
               (pickedId ? p.variants.find((v) => v.id === pickedId) : null) ??
@@ -302,7 +299,7 @@ export function ShopPage() {
                         {p.variants.map((v) => (
                           <option key={v.id} value={v.id}>
                             {variantLabel(v)}
-                            {v.inStock ? '' : ' — épuisé'}
+                            {availabilitySuffix(v.availability)}
                           </option>
                         ))}
                       </select>
@@ -315,10 +312,15 @@ export function ShopPage() {
                   </p>
 
                   {/* Ajout au panier via un BOUTON — jamais en modifiant une
-                      quantité sur la grille. Désactivé si épuisé : la seule
-                      info de stock connue du portail est le booléen `inStock`,
-                      aucun compteur n'est exposé. */}
-                  {!variant.inStock ? (
+                      quantité sur la grille. Refusé si épuisé et non
+                      commandable : le portail ne connaît que la disponibilité
+                      (en stock, sur commande, épuisé), jamais un compteur. */}
+                  {variant.availability === 'PREORDER' ? (
+                    <p className="mp-hint" style={{ margin: '0 0 8px' }}>
+                      {preorderNotice(p.preorderLeadTime)}
+                    </p>
+                  ) : null}
+                  {!canAddToCart(variant.availability) ? (
                     <p className="mp-product-card__oos">
                       {p.hasVariants
                         ? `${variantLabel(variant)} : épuisé`
@@ -375,6 +377,13 @@ export function ShopPage() {
                     >
                       Indisponible
                     </span>
+                  ) : it.availability === 'PREORDER' ? (
+                    <span
+                      className="mp-pill mp-pill--warn"
+                      style={{ marginLeft: 8 }}
+                    >
+                      Sur commande
+                    </span>
                   ) : !it.inStock ? (
                     <span
                       className="mp-pill mp-pill--warn"
@@ -386,6 +395,9 @@ export function ShopPage() {
                   <br />
                   <small className="mp-hint">
                     {formatEuroCents(it.unitPriceCents)} l'unité
+                    {it.availability === 'PREORDER' && it.preorderLeadTime
+                      ? ` · délai indicatif : ${it.preorderLeadTime}`
+                      : ''}
                   </small>
                 </span>
 
@@ -497,6 +509,12 @@ export function ShopPage() {
                       <li key={l.id}>
                         <span>
                           {l.quantity} × {l.label}
+                          {l.awaitingStockQty > 0 ? (
+                            <small className="mp-hint">
+                              {' '}
+                              ({l.awaitingStockQty} en attente d’arrivage)
+                            </small>
+                          ) : null}
                         </span>
                         <span>
                           {formatEuroCents(l.unitPriceCents * l.quantity)}
@@ -511,7 +529,9 @@ export function ShopPage() {
                     <p className="mp-hint" style={{ margin: '4px 0 0' }}>
                       {pickup.kind === 'DELIVERED'
                         ? `Retirée au club le ${fmtDate(pickup.at)}`
-                        : 'À retirer au club'}
+                        : pickup.kind === 'AWAITING_STOCK'
+                          ? 'En attente d’arrivage : à retirer au club dès que tout est arrivé'
+                          : 'À retirer au club'}
                     </p>
                   ) : null}
 
@@ -558,6 +578,7 @@ export function ShopPage() {
       {checkoutOpen ? (
         <ShopCheckoutModal
           totalCents={cart.totalCents}
+          preorderNotice={cartPreorderNotice(cart.items)}
           onOnSitePlaced={() => {
             // « Régler sur place » : commande créée en PENDING, panier vidé
             // côté serveur. On lâche l'état local du panier (le serveur fait

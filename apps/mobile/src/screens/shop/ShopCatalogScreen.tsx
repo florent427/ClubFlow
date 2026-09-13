@@ -26,6 +26,13 @@ import { absolutizeMediaUrl } from '../../lib/absolutize-url';
 import { formatEuroCents } from '../../lib/format';
 import { shopCartItemCount } from '../../lib/shop-cart';
 import {
+  availabilityChipSuffix,
+  availabilityPill,
+  canAddToCart,
+  defaultVariantOf,
+  preorderNotice,
+} from '../../lib/shop-availability';
+import {
   canCancelShopOrder,
   canPayShopOrder,
   shopOrderPickupLabel,
@@ -43,7 +50,6 @@ import {
   type ViewerShopCartData,
   type ViewerShopOrder,
   type ViewerShopOrdersData,
-  type ViewerShopProduct,
   type ViewerShopProductsData,
   type ViewerShopVariant,
 } from '../../lib/shop-documents';
@@ -54,14 +60,6 @@ import type { ShopStackParamList } from '../../types/navigation';
 /** Libellé affiché pour une déclinaison, jamais vide. */
 function variantLabel(v: ViewerShopVariant): string {
   return v.label ?? 'Modèle unique';
-}
-
-/**
- * Déclinaison proposée par défaut : la première disponible, sinon la
- * première tout court.
- */
-function defaultVariantOf(p: ViewerShopProduct): ViewerShopVariant | null {
-  return p.variants.find((v) => v.inStock) ?? p.variants[0] ?? null;
 }
 
 function frDateTime(iso: string): string {
@@ -87,10 +85,11 @@ function statusPill(status: ViewerShopOrder['status']): {
  * bouton « Ajouter au panier » pousse UNE unité au panier serveur
  * (`viewerAddShopCartItem`, qui CUMULE côté serveur). La quantité se règle
  * ensuite dans l'écran panier dédié. Le bouton disparaît au profit du message
- * d'épuisement quand `inStock` est faux — jamais un chiffre de stock.
+ * d'épuisement quand l'article est épuisé et non commandable (ADR-0018) —
+ * jamais un chiffre de stock.
  *
  * ── Confidentialité ──────────────────────────────────────────────────────
- * La seule info de stock manipulée est le booléen `inStock`. Aucun plafond
+ * Seule la disponibilité (en stock, sur commande, épuisé) est manipulée. Aucun plafond
  * numérique côté client : le serveur arbitre la survente au checkout.
  */
 export function ShopCatalogScreen() {
@@ -341,7 +340,7 @@ export function ShopCatalogScreen() {
             const pickedId = picked.get(p.id);
             const variant =
               (pickedId ? p.variants.find((v) => v.id === pickedId) : null) ??
-              defaultVariantOf(p);
+              defaultVariantOf(p.variants);
 
             if (!variant) {
               return (
@@ -384,13 +383,13 @@ export function ShopCatalogScreen() {
                             onPress={() => pickVariant(p.id, v.id)}
                             accessibilityRole="button"
                             accessibilityState={{ selected }}
-                            accessibilityLabel={`${variantLabel(v)}${
-                              v.inStock ? '' : ', épuisé'
-                            }`}
+                            accessibilityLabel={`${variantLabel(v)}${availabilityChipSuffix(
+                              v.availability,
+                            ).replace(' · ', ', ')}`}
                             style={({ pressed }) => [
                               styles.chip,
                               selected && styles.chipSelected,
-                              !v.inStock && styles.chipOut,
+                              v.availability === 'SOLD_OUT' && styles.chipOut,
                               pressed && styles.chipPressed,
                             ]}
                           >
@@ -398,12 +397,13 @@ export function ShopCatalogScreen() {
                               style={[
                                 styles.chipLabel,
                                 selected && styles.chipLabelSelected,
-                                !v.inStock && styles.chipLabelOut,
+                                v.availability === 'SOLD_OUT' &&
+                                  styles.chipLabelOut,
                               ]}
                               numberOfLines={1}
                             >
                               {variantLabel(v)}
-                              {v.inStock ? '' : ' · épuisé'}
+                              {availabilityChipSuffix(v.availability)}
                             </Text>
                           </Pressable>
                         );
@@ -416,18 +416,16 @@ export function ShopCatalogScreen() {
                   <Text style={styles.price}>
                     {formatEuroCents(variant.unitPriceCents)}
                   </Text>
-                  <Pill
-                    label={variant.inStock ? 'Disponible' : 'Épuisé'}
-                    tone={variant.inStock ? 'success' : 'neutral'}
-                    icon={
-                      variant.inStock
-                        ? 'checkmark-circle-outline'
-                        : 'close-circle-outline'
-                    }
-                  />
+                  <Pill {...availabilityPill(variant.availability)} />
                 </View>
 
-                {!variant.inStock ? (
+                {variant.availability === 'PREORDER' ? (
+                  <Text style={styles.oos}>
+                    {preorderNotice(p.preorderLeadTime)}
+                  </Text>
+                ) : null}
+
+                {!canAddToCart(variant.availability) ? (
                   <Text style={styles.oos}>
                     {p.hasVariants
                       ? `${variantLabel(variant)} : épuisé`
@@ -478,6 +476,9 @@ export function ShopCatalogScreen() {
                     <View key={line.id} style={styles.orderLine}>
                       <Text style={styles.orderLineLabel} numberOfLines={2}>
                         {line.quantity} × {line.label}
+                        {line.awaitingStockQty > 0
+                          ? ` (${line.awaitingStockQty} en attente d’arrivage)`
+                          : ''}
                       </Text>
                       <Text style={styles.orderLineAmount}>
                         {formatEuroCents(line.unitPriceCents * line.quantity)}
@@ -491,7 +492,9 @@ export function ShopCatalogScreen() {
                     <Text style={styles.orderPickup}>
                       {pickup.kind === 'DELIVERED'
                         ? `Retirée au club le ${frDateTime(pickup.at)}`
-                        : 'À retirer au club'}
+                        : pickup.kind === 'AWAITING_STOCK'
+                          ? 'En attente d’arrivage : à retirer au club dès que tout est arrivé'
+                          : 'À retirer au club'}
                     </Text>
                   ) : null}
 

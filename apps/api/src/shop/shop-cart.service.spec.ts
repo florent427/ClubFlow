@@ -3,8 +3,10 @@ import {
   ClubPaymentMethod,
   InvoiceStatus,
   ShopOrderStatus,
+  ShopStockMovementKind,
 } from '@prisma/client';
 import type { PrismaService } from '../prisma/prisma.service';
+import { ShopAvailability } from './enums/shop-availability.enum';
 import type { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
 import { ShopCartService } from './shop-cart.service';
 import { ShopService } from './shop.service';
@@ -32,7 +34,16 @@ type VariantRow = {
   available: number;
   priceCents: number | null;
   label: string | null;
-  product: { id: string; name: string; priceCents: number; active: boolean; imageUrl: string | null };
+  product: {
+    id: string;
+    name: string;
+    priceCents: number;
+    active: boolean;
+    imageUrl: string | null;
+    /** Absents des fixtures anciennes : le double rend le défaut de la base. */
+    preorderEnabled?: boolean;
+    preorderLeadTime?: string | null;
+  };
 };
 
 type OrderRow = {
@@ -55,6 +66,7 @@ type OrderRow = {
     quantity: number;
     unitPriceCents: number;
     label: string;
+    awaitingStockQty: number;
   }>;
 };
 
@@ -125,6 +137,14 @@ function makeStore(opts: {
     return true;
   };
 
+  // Défauts de la base sur le produit : une fixture qui ne les nomme pas lit ce
+  // que PostgreSQL rendrait, pas `undefined`.
+  const productRow = (p: VariantRow['product']) => ({
+    preorderEnabled: false,
+    preorderLeadTime: null as string | null,
+    ...p,
+  });
+
   const applyVariant = (r: VariantRow, data: any) => {
     if (data.available?.decrement) r.available -= data.available.decrement;
     if (data.available?.increment) r.available += data.available.increment;
@@ -167,11 +187,11 @@ function makeStore(opts: {
       findMany: jest.fn(async ({ where }: any) => {
         return variants
           .filter((r) => vMatches(r, where))
-          .map((r) => ({ ...r, product: { ...r.product } }));
+          .map((r) => ({ ...r, product: productRow(r.product) }));
       }),
       findFirst: jest.fn(async ({ where }: any) => {
         const r = variants.find((x) => vMatches(x, where));
-        return r ? { ...r, product: { ...r.product } } : null;
+        return r ? { ...r, product: productRow(r.product) } : null;
       }),
       updateMany: jest.fn(async ({ where, data }: any) => {
         const hit = variants.filter((r) => vMatches(r, where));
@@ -210,6 +230,8 @@ function makeStore(opts: {
             quantity: l.quantity,
             unitPriceCents: l.unitPriceCents,
             label: l.label,
+            // Défaut de la base : une ligne naît servie (ADR-0018).
+            awaitingStockQty: l.awaitingStockQty ?? 0,
           })),
         };
         orders.push(row);
@@ -242,6 +264,24 @@ function makeStore(opts: {
         );
         if (!o) throw new Error('order not found');
         return { ...o, lines: o.lines.map((l) => ({ ...l })) };
+      }),
+    },
+    // Précommande (ADR-0018) : le passage de commande note sur la ligne ce qui
+    // attend l'arrivage. Le double écrit dans la commande qui porte la ligne,
+    // et refuse toute donnée qu'il ne sait pas écrire.
+    shopOrderLine: {
+      update: jest.fn(async ({ where, data }: any) => {
+        const line = orders
+          .flatMap((o) => o.lines)
+          .find((l) => l.id === where.id);
+        if (!line) throw new Error('line not found');
+        for (const key of Object.keys(data)) {
+          if (key !== 'awaitingStockQty') {
+            throw new Error(`donnée non simulée : ${key}`);
+          }
+        }
+        line.awaitingStockQty = data.awaitingStockQty;
+        return { ...line };
       }),
     },
     invoice: {
@@ -303,7 +343,7 @@ function makeStore(opts: {
               return {
                 ...i,
                 variant: include.items.include?.variant
-                  ? { ...v, product: { ...v.product } }
+                  ? { ...v, product: productRow(v.product) }
                   : undefined,
               };
             });
@@ -404,6 +444,7 @@ function makeStore(opts: {
     db as unknown as PrismaService,
     stock,
     purchases as unknown as ShopPurchaseOrdersService,
+    { allocateQuietly: jest.fn(), preorderedByVariant: jest.fn() } as never,
   );
   const cart = new ShopCartService(db as unknown as PrismaService, shop);
 
@@ -823,5 +864,137 @@ describe('CGV de la boutique (ADR-0017) — l’acceptation se décide au passag
     expect(h.orders[0].termsAssetId).toBe('cgv-v2');
     // Et la commande rendue le dit : c'est ce que l'admin affiche.
     expect(commande.termsAcceptedAt).toBeInstanceOf(Date);
+  });
+});
+
+describe('précommande — commander un article épuisé (ADR-0018)', () => {
+  const KIMONO = () => ({
+    id: 'p-1',
+    name: 'Kimono',
+    priceCents: 4500,
+    active: true,
+    imageUrl: null,
+    preorderEnabled: true,
+    preorderLeadTime: '3 à 4 semaines',
+  });
+
+  it('s’ajoute au panier épuisé, annoncé « sur commande » avec son délai, sans quantité', async () => {
+    const h = makeStore({
+      variants: [VARIANT({ available: 0, onHand: 0, product: KIMONO() })],
+    });
+
+    const view = await h.cart.addItem('club-1', MEMBER, 'v-1', 2);
+
+    expect(view.items[0].inStock).toBe(false);
+    expect(view.items[0].availability).toBe(ShopAvailability.PREORDER);
+    expect(view.items[0].preorderLeadTime).toBe('3 à 4 semaines');
+    expect(JSON.stringify(view)).not.toContain('"available"');
+    expect(h.movements).toHaveLength(0);
+  });
+
+  it('épuisé et NON commandable : toujours refusé au panier', async () => {
+    const h = makeStore({
+      variants: [
+        VARIANT({ available: 0, product: { ...KIMONO(), preorderEnabled: false } }),
+      ],
+    });
+
+    await expect(h.cart.addItem('club-1', MEMBER, 'v-1', 1)).rejects.toThrow(
+      'Cet article est épuisé.',
+    );
+    expect(h.items).toHaveLength(0);
+  });
+
+  it('le panier suit la règle du catalogue : épuisé, sur commande, retiré de la vente', async () => {
+    const h = makeStore({
+      variants: [
+        VARIANT({ available: 1, product: { ...KIMONO(), preorderEnabled: false } }),
+      ],
+    });
+    await h.cart.addItem('club-1', MEMBER, 'v-1', 1);
+    const disponibilite = async () =>
+      (await h.cart.getCart('club-1', MEMBER)).items[0].availability;
+
+    expect(await disponibilite()).toBe(ShopAvailability.IN_STOCK);
+
+    h.variants[0].available = 0;
+    expect(await disponibilite()).toBe(ShopAvailability.SOLD_OUT);
+
+    h.variants[0].product.preorderEnabled = true;
+    expect(await disponibilite()).toBe(ShopAvailability.PREORDER);
+
+    // Retiré de la vente, il n'est plus « sur commande » : il n'est plus
+    // vendable du tout.
+    h.variants[0].product.active = false;
+    expect(await disponibilite()).toBe(ShopAvailability.SOLD_OUT);
+  });
+
+  it('checkout épuisé : la commande passe, TOUT attend l’arrivage, rien n’est réservé', async () => {
+    const h = makeStore({
+      variants: [VARIANT({ available: 0, onHand: 0, product: KIMONO() })],
+    });
+    await h.cart.addItem('club-1', MEMBER, 'v-1', 2);
+
+    const res = await h.cart.checkout('club-1', MEMBER, false, null);
+
+    expect(h.orders).toHaveLength(1);
+    expect(h.orders[0].lines[0]).toMatchObject({ quantity: 2, awaitingStockQty: 2 });
+    expect(h.variants[0].available).toBe(0);
+    expect(h.movements).toHaveLength(0);
+    // La facture est émise à la commande, pour le tout : le règlement suit
+    // comme pour une adhésion, en ligne ou sur place.
+    expect(h.invoices[0].shopOrderId).toBe(res.orderId);
+    expect(h.invoices[0].amountCents).toBe(9000);
+  });
+
+  it('checkout partiel : réserve ce qui reste, le manque attend l’arrivage', async () => {
+    const h = makeStore({
+      variants: [VARIANT({ available: 1, onHand: 1, product: KIMONO() })],
+    });
+    await h.cart.addItem('club-1', MEMBER, 'v-1', 3);
+
+    await h.cart.checkoutOnSite('club-1', MEMBER, null);
+
+    expect(h.orders[0].lines[0].awaitingStockQty).toBe(2);
+    expect(h.variants[0].available).toBe(0);
+    expect(h.variants[0].onHand).toBe(1);
+    expect(h.movements).toEqual([
+      expect.objectContaining({
+        kind: ShopStockMovementKind.RESERVE,
+        availableDelta: -1,
+      }),
+    ]);
+  });
+
+  it('stock suffisant : une précommande ne fait rien attendre', async () => {
+    const h = makeStore({
+      variants: [VARIANT({ available: 5, product: KIMONO() })],
+    });
+    await h.cart.addItem('club-1', MEMBER, 'v-1', 2);
+
+    await h.cart.checkout('club-1', MEMBER, false, null);
+
+    expect(h.orders[0].lines[0].awaitingStockQty).toBe(0);
+    expect(h.variants[0].available).toBe(3);
+    expect(h.db.shopOrderLine.update).not.toHaveBeenCalled();
+  });
+
+  it('sans précommande, la rupture au checkout annule toujours tout', async () => {
+    // La garantie historique n'est pas affaiblie : seul un produit qui
+    // l'autorise fait attendre l'arrivage.
+    const h = makeStore({
+      variants: [
+        VARIANT({ available: 5, product: { ...KIMONO(), preorderEnabled: false } }),
+      ],
+    });
+    await h.cart.addItem('club-1', MEMBER, 'v-1', 2);
+    h.variants[0].available = 1;
+
+    await expect(h.cart.checkout('club-1', MEMBER, false, null)).rejects.toThrow(
+      BadRequestException,
+    );
+
+    expect(h.orders).toHaveLength(0);
+    expect(h.variants[0].available).toBe(1);
   });
 });

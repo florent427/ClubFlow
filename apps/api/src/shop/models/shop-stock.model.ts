@@ -133,4 +133,10 @@ export class ShopStockSweepReportGraph {
       'Alertes réclamées mais perdues faute d’envoi possible — à surveiller.',
   })
   failed!: number;
+
+  @Field(() => Int, {
+    description:
+      'Unités précommandées servies par ce passage — filet de sécurité des arrivages (ADR-0018).',
+  })
+  preordersServed!: number;
 }

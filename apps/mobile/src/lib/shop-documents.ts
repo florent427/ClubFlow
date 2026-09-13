@@ -28,8 +28,9 @@ import { gql } from '@apollo/client';
  * donc rien, mais inviterait à afficher un chiffre — et le jour où le
  * masquage serveur régresse, l'écran l'exposerait aussitôt.
  *
- * La seule information de stock transmise à l'adhérent est le booléen
- * `inStock` : « Disponible » ou « Épuisé », jamais « il en reste 2 ».
+ * La disponibilité transmise à l'adhérent tient dans `inStock` et
+ * `availability` : « Disponible », « Sur commande » (ADR-0018) ou « Épuisé »,
+ * jamais « il en reste 2 ».
  */
 const VIEWER_SHOP_PRODUCT_FIELDS = `
   id
@@ -40,6 +41,8 @@ const VIEWER_SHOP_PRODUCT_FIELDS = `
   priceCents
   hasVariants
   priceFromCents
+  preorderEnabled
+  preorderLeadTime
   active
   variants {
     id
@@ -48,6 +51,7 @@ const VIEWER_SHOP_PRODUCT_FIELDS = `
     sku
     unitPriceCents
     inStock
+    availability
   }
 `;
 
@@ -66,6 +70,7 @@ const VIEWER_SHOP_ORDER_FIELDS = `
     quantity
     unitPriceCents
     label
+    awaitingStockQty
   }
 `;
 
@@ -126,6 +131,8 @@ const VIEWER_SHOP_CART_FIELDS = `
     unitPriceCents
     lineTotalCents
     inStock
+    availability
+    preorderLeadTime
     unavailable
   }
 `;
@@ -283,6 +290,12 @@ export const VIEWER_CLUB_MODULES = gql`
 `;
 
 /**
+ * Disponibilité d'une déclinaison (ADR-0018) : en stock, sur commande (épuisée
+ * mais commandable, remise à l'arrivage) ou épuisée.
+ */
+export type ViewerShopAvailability = 'IN_STOCK' | 'PREORDER' | 'SOLD_OUT';
+
+/**
  * Déclinaison vendable. `available`, `onHand` et `reorderThreshold` ne
  * sont volontairement PAS typés : l'API les renvoie à null côté adhérent,
  * les déclarer ici inviterait à les afficher.
@@ -296,8 +309,10 @@ export type ViewerShopVariant = {
   sku: string | null;
   /** Prix réellement appliqué : celui de la déclinaison, sinon du produit. */
   unitPriceCents: number;
-  /** Seule information de stock transmise à l'adhérent. */
+  /** En stock (ou stock non suivi). Épuisée, elle peut rester commandable. */
   inStock: boolean;
+  /** Ce que l'adhérent peut en faire — jamais combien il en reste. */
+  availability: ViewerShopAvailability;
 };
 
 export type ViewerShopProduct = {
@@ -311,6 +326,10 @@ export type ViewerShopProduct = {
   hasVariants: boolean;
   /** Prix le plus bas parmi les déclinaisons — « à partir de X € ». */
   priceFromCents: number;
+  /** Commandable une fois épuisé (ADR-0018). */
+  preorderEnabled: boolean;
+  /** Délai indicatif annoncé par le club, ou null. */
+  preorderLeadTime: string | null;
   /** Toujours au moins une (celle par défaut si le produit est simple). */
   variants: ViewerShopVariant[];
   active: boolean;
@@ -325,6 +344,8 @@ export type ViewerShopOrderLine = {
   unitPriceCents: number;
   /** Libellé FIGÉ à la commande, déclinaison comprise. */
   label: string;
+  /** Unités en attente d'arrivage (ADR-0018) ; zéro quand tout est servi. */
+  awaitingStockQty: number;
 };
 
 export type ViewerShopOrder = {
@@ -369,8 +390,12 @@ export type ShopCartItem = {
   quantity: number;
   unitPriceCents: number;
   lineTotalCents: number;
-  /** Seule information de stock transmise : « Disponible » / « Épuisé ». */
+  /** « Disponible » / « Épuisé ». Jamais un chiffre. */
   inStock: boolean;
+  /** En stock, sur commande ou épuisé (ADR-0018). Jamais un chiffre. */
+  availability: ViewerShopAvailability;
+  /** Délai indicatif du produit, à montrer quand l'article est sur commande. */
+  preorderLeadTime: string | null;
   /** Produit ou déclinaison désactivé après l'ajout au panier. */
   unavailable: boolean;
 };

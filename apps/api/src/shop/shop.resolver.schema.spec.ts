@@ -80,6 +80,41 @@ describe('ShopAdminResolver — schéma GraphQL', () => {
     expect(sdl).toContain('shopTerms: ShopTermsGraph');
     expect(sdl).not.toContain('shopTerms: ShopTermsGraph!');
     expect(sdl).toContain('setShopTerms(mediaAssetId: ID): ShopTermsGraph');
+
+    // Précommande (ADR-0018).
+    const corpsDe = (entete: string) => {
+      const debut = sdl.indexOf(entete);
+      expect(debut).toBeGreaterThanOrEqual(0);
+      const bloc = sdl.slice(debut);
+      return bloc.slice(0, bloc.indexOf('}'));
+    };
+    expect(corpsDe('enum ShopAvailability {')).toMatch(
+      /IN_STOCK[\s\S]*PREORDER[\s\S]*SOLD_OUT/,
+    );
+    const variante = corpsDe('type ShopProductVariantGraph {');
+    expect(variante).toContain('availability: ShopAvailability!');
+    expect(variante).toContain('preorderedQty: Int');
+    expect(variante).not.toContain('preorderedQty: Int!');
+    const produit = corpsDe('type ShopProductGraph {');
+    expect(produit).toContain('preorderEnabled: Boolean!');
+    expect(produit).toContain('preorderLeadTime: String');
+    expect(produit).not.toContain('preorderLeadTime: String!');
+    expect(corpsDe('type ShopOrderLineGraph {')).toContain(
+      'awaitingStockQty: Int!',
+    );
+    for (const entree of [
+      'input CreateShopProductInput {',
+      'input UpdateShopProductInput {',
+    ]) {
+      const corps = corpsDe(entree);
+      expect(corps).toContain('preorderEnabled: Boolean');
+      expect(corps).not.toContain('preorderEnabled: Boolean!');
+      expect(corps).toContain('preorderLeadTime: String');
+      expect(corps).not.toContain('preorderLeadTime: String!');
+    }
+    expect(corpsDe('type ShopStockSweepReportGraph {')).toContain(
+      'preordersServed: Int!',
+    );
   });
 });
 
@@ -106,5 +141,12 @@ describe('ShopViewerResolver — schéma GraphQL', () => {
     const corps = entree.slice(0, entree.indexOf('}'));
     expect(corps).toContain('acceptedTermsId: ID');
     expect(corps).not.toContain('acceptedTermsId: ID!');
+
+    // Précommande (ADR-0018) : le panier dit « sur commande » et le délai.
+    const ligne = sdl.slice(sdl.indexOf('type ShopCartItem {'));
+    const corpsLigne = ligne.slice(0, ligne.indexOf('}'));
+    expect(corpsLigne).toContain('availability: ShopAvailability!');
+    expect(corpsLigne).toContain('preorderLeadTime: String');
+    expect(corpsLigne).not.toContain('preorderLeadTime: String!');
   });
 });

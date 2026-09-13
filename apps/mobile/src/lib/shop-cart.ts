@@ -27,15 +27,16 @@ export function computeShopCartTotalCents(
 }
 
 /**
- * Vrai si au moins une ligne est épuisée ou devenue indisponible. Ne lit QUE
- * les booléens `inStock` / `unavailable` — jamais un compteur. Sert à afficher
- * une bannière d'avertissement ; le refus ferme reste au serveur au checkout,
- * dont le message est affiché tel quel.
+ * Vrai si au moins une ligne est épuisée et non commandable, ou devenue
+ * indisponible. Ne lit QUE la disponibilité et `unavailable` — jamais un
+ * compteur. Une ligne sur commande ne bloque pas : elle sera remise à son
+ * arrivée (ADR-0018). Sert à afficher une bannière d'avertissement ; le refus
+ * ferme reste au serveur au checkout, dont le message est affiché tel quel.
  */
 export function shopCartHasBlockingItems(
-  items: readonly Pick<ShopCartItem, 'inStock' | 'unavailable'>[],
+  items: readonly Pick<ShopCartItem, 'availability' | 'unavailable'>[],
 ): boolean {
-  return items.some((it) => it.unavailable || !it.inStock);
+  return items.some((it) => it.unavailable || it.availability === 'SOLD_OUT');
 }
 
 /**

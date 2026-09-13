@@ -360,6 +360,12 @@ export type ViewerClubBlogPostData = {
 };
 
 /**
+ * Disponibilité d'une déclinaison (ADR-0018) : en stock, sur commande (épuisée
+ * mais commandable, remise à l'arrivage) ou épuisée.
+ */
+export type ViewerShopAvailability = 'IN_STOCK' | 'PREORDER' | 'SOLD_OUT';
+
+/**
  * Déclinaison vendable telle que la voit un ADHÉRENT (ADR-0012).
  *
  * Le type ne comporte volontairement ni `available`, ni `onHand`, ni
@@ -375,8 +381,10 @@ export type ViewerShopVariant = {
   sku: string | null;
   /** Prix réellement appliqué : celui de la déclinaison, sinon du produit. */
   unitPriceCents: number;
-  /** Seule information de stock transmise à l'adhérent. */
+  /** En stock (ou stock non suivi). Épuisée, elle peut rester commandable. */
   inStock: boolean;
+  /** Ce que l'adhérent peut en faire — jamais combien il en reste. */
+  availability: ViewerShopAvailability;
 };
 
 export type ViewerShopProduct = {
@@ -390,6 +398,10 @@ export type ViewerShopProduct = {
   hasVariants: boolean;
   /** Prix le plus bas parmi les déclinaisons — « à partir de X € ». */
   priceFromCents: number;
+  /** Commandable une fois épuisé (ADR-0018). */
+  preorderEnabled: boolean;
+  /** Délai indicatif annoncé par le club, ou null. */
+  preorderLeadTime: string | null;
   /** Toujours au moins une (celle par défaut si le produit est simple). */
   variants: ViewerShopVariant[];
   active: boolean;
@@ -403,6 +415,8 @@ export type ViewerShopOrderLine = {
   quantity: number;
   unitPriceCents: number;
   label: string;
+  /** Unités en attente d'arrivage (ADR-0018) ; zéro quand tout est servi. */
+  awaitingStockQty: number;
 };
 
 export type ViewerShopOrder = {
@@ -505,8 +519,12 @@ export type ViewerShopCartItem = {
   quantity: number;
   unitPriceCents: number;
   lineTotalCents: number;
-  /** Seule info de stock : « en stock » / « épuisé ». Jamais un chiffre. */
+  /** « En stock » / « épuisé ». Jamais un chiffre. */
   inStock: boolean;
+  /** En stock, sur commande ou épuisé (ADR-0018). Jamais un chiffre. */
+  availability: ViewerShopAvailability;
+  /** Délai indicatif du produit, à montrer quand l'article est sur commande. */
+  preorderLeadTime: string | null;
   /** Produit ou déclinaison devenu indisponible après l'ajout au panier. */
   unavailable: boolean;
 };

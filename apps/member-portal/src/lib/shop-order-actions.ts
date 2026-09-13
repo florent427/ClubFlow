@@ -78,8 +78,22 @@ export function orderStatusBadge(
 export function orderPickupLabel(order: {
   status: ViewerShopOrderStatus;
   deliveredAt: string | null;
-}): { kind: 'DELIVERED'; at: string } | { kind: 'TO_COLLECT' } | null {
+  /** Lignes de la commande ; absentes, rien n'attend l'arrivage. */
+  lines?: ReadonlyArray<{ awaitingStockQty: number }>;
+}):
+  | { kind: 'DELIVERED'; at: string }
+  | { kind: 'AWAITING_STOCK' }
+  | { kind: 'TO_COLLECT' }
+  | null {
   if (order.deliveredAt) return { kind: 'DELIVERED', at: order.deliveredAt };
+  // Précommande (ADR-0018) : tant qu'un article attend l'arrivage, il n'y a
+  // rien à retirer — payée ou non, le club ne peut pas la remettre.
+  if (
+    order.status !== 'CANCELLED' &&
+    (order.lines ?? []).some((l) => l.awaitingStockQty > 0)
+  ) {
+    return { kind: 'AWAITING_STOCK' };
+  }
   if (order.status === 'PAID') return { kind: 'TO_COLLECT' };
   return null;
 }

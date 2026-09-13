@@ -21,6 +21,8 @@ function line(over: Partial<ViewerShopCartItem> = {}): ViewerShopCartItem {
     unitPriceCents: 1500,
     lineTotalCents: 1500,
     inStock: true,
+    availability: 'IN_STOCK',
+    preorderLeadTime: null,
     unavailable: false,
     ...over,
   };

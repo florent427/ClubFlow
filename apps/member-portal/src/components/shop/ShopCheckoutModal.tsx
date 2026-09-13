@@ -32,6 +32,12 @@ interface Props {
    * panier et ferme la modale. Ignoré en mode repay (le bouton n'apparaît pas).
    */
   onOnSitePlaced?: () => void;
+  /**
+   * Avertissement quand le panier contient des articles sur commande
+   * (ADR-0018) : ils seront remis à leur arrivée. Absent en reprise de
+   * paiement.
+   */
+  preorderNotice?: string | null;
   /** Fermeture sans payer. */
   onClose: () => void;
 }
@@ -60,6 +66,7 @@ export function ShopCheckoutModal({
   totalCents,
   orderId,
   onOnSitePlaced,
+  preorderNotice,
   onClose,
 }: Props) {
   const { showToast } = useToast();
@@ -185,6 +192,11 @@ export function ShopCheckoutModal({
               : 'Paiement sécurisé par carte (Stripe). Votre commande et sa facture sont créées dès la validation du paiement.'}
           </small>
         </p>
+        {preorderNotice ? (
+          <p className="mp-hint" style={{ margin: '0 0 12px' }}>
+            {preorderNotice}
+          </p>
+        ) : null}
 
         <fieldset className="mp-fieldset">
           <legend className="mp-legend">Échéancier</legend>

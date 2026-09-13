@@ -27,6 +27,14 @@ export class ShopOrderLineGraph {
 
   @Field()
   label!: string;
+
+  /**
+   * Unités en attente d'arrivage (ADR-0018) ; zéro quand tout est servi sur le
+   * stock. C'est la commande de l'adhérent : il doit savoir ce qu'il peut
+   * retirer au club et ce qui arrivera plus tard.
+   */
+  @Field(() => Int)
+  awaitingStockQty!: number;
 }
 
 @ObjectType()

@@ -1097,6 +1097,9 @@ export type PublishClubBlogPostMutationData = { publishClubBlogPost: BlogPost };
 export type ArchiveClubBlogPostMutationData = { archiveClubBlogPost: BlogPost };
 export type DeleteClubBlogPostMutationData = { deleteClubBlogPost: boolean };
 
+/** Disponibilité d'une déclinaison, telle que la voit l'adhérent (ADR-0018). */
+export type ShopAvailabilityGql = 'IN_STOCK' | 'PREORDER' | 'SOLD_OUT';
+
 /**
  * Une déclinaison vendable (ADR-0012). Un produit SIMPLE en possède
  * exactement une, `isDefault`, que l'interface ne montre jamais.
@@ -1121,6 +1124,11 @@ export type ShopProductVariant = {
    */
   onOrder: number | null;
   /**
+   * Unités précommandées en attente d'arrivage (ADR-0018). DÉRIVÉE : ce que
+   * le club doit encore aux adhérents, à recommander en plus du seuil.
+   */
+  preorderedQty: number | null;
+  /**
    * Coût moyen pondéré, en centimes. NULL = coût jamais renseigné (aucune
    * réception valorisée). À afficher « — », JAMAIS 0 € : « gratuit » et
    * « on ne sait pas » ne sont pas la même information.
@@ -1131,6 +1139,8 @@ export type ShopProductVariant = {
   /** Taux de marge (0–1). Null si coût inconnu OU prix de vente nul. */
   marginRate: number | null;
   inStock: boolean;
+  /** En stock, sur commande ou épuisée : ce que voit l'adhérent (ADR-0018). */
+  availability: ShopAvailabilityGql;
   belowThreshold: boolean;
   active: boolean;
 };
@@ -1143,6 +1153,10 @@ export type ShopProduct = {
   description: string | null;
   imageUrl: string | null;
   priceCents: number;
+  /** Commandable une fois épuisé, servi à l'arrivage (ADR-0018). */
+  preorderEnabled: boolean;
+  /** Délai indicatif annoncé à l'adhérent. */
+  preorderLeadTime: string | null;
   /**
    * Champ DÉRIVÉ (ADR-0012) : somme des `available` des déclinaisons suivies,
    * null si aucune ne l'est. La somme masque qu'il ne reste que des XXL, d'où
@@ -1235,6 +1249,8 @@ export type ShopOrderLine = {
   quantity: number;
   unitPriceCents: number;
   label: string;
+  /** Unités en attente d'arrivage (ADR-0018). Zéro : tout est servi. */
+  awaitingStockQty: number;
 };
 
 export type ShopOrder = {

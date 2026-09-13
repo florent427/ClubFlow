@@ -43,6 +43,7 @@ type OrderRow = {
     quantity: number;
     unitPriceCents: number;
     label: string;
+    awaitingStockQty: number;
   }>;
 };
 
@@ -252,6 +253,7 @@ function makeStore(opts: {
     db as unknown as PrismaService,
     stock,
     purchases as unknown as ShopPurchaseOrdersService,
+    { allocateQuietly: jest.fn() } as never,
   );
 
   return { db, shop, orders, variants, invoices, movements };
@@ -290,6 +292,7 @@ const ORDER = (over: Partial<OrderRow> = {}): OrderRow => ({
       quantity: 2,
       unitPriceCents: 2000,
       label: 'T-shirt — L',
+      awaitingStockQty: 0,
     },
   ],
   ...over,

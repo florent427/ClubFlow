@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ShopService } from './shop.service';
+import { ShopPreorderService } from './shop-preorder.service';
 import { ShopStockService } from './shop-stock.service';
 
 /**
@@ -48,6 +49,7 @@ export class ShopVariantsService {
     private readonly prisma: PrismaService,
     private readonly shop: ShopService,
     private readonly stock: ShopStockService,
+    private readonly preorders: ShopPreorderService,
   ) {}
 
   // --- Axes de variation ---
@@ -373,6 +375,11 @@ export class ShopVariantsService {
     if (updated.count !== 1) {
       throw new BadRequestException('Déclinaison introuvable.');
     }
+    // Stock devenu illimité, ou de nouveau compté : les précommandes en attente
+    // sont servies sur ce qui est vendable (ADR-0018).
+    if (input.trackStock !== undefined) {
+      await this.preorders.allocateQuietly(clubId, [variantId]);
+    }
     return this.reloadVariantProduct(clubId, variantId);
   }
 
@@ -481,12 +488,17 @@ export class ShopVariantsService {
   // GraphQL à celle du moteur, puis rechargent le produit pour l'écran. Y
   // glisser le moindre calcul de compteur créerait le second chemin d'écriture
   // que l'ADR-0012 existe pour interdire.
+  //
+  // Une entrée ou une correction peut rendre du stock vendable : les
+  // précommandes en attente passent alors avant tout nouvel acheteur
+  // (ADR-0018). Là non plus, rien n'est recalculé ici.
 
   async restock(
     clubId: string,
     args: { variantId: string; qty: number; userId?: string | null; reason?: string | null },
   ) {
     await this.stock.restock({ clubId, ...args });
+    await this.preorders.allocateQuietly(clubId, [args.variantId]);
     return this.reloadVariantProduct(clubId, args.variantId);
   }
 
@@ -500,6 +512,7 @@ export class ShopVariantsService {
     },
   ) {
     await this.stock.adjust({ clubId, ...args });
+    await this.preorders.allocateQuietly(clubId, [args.variantId]);
     return this.reloadVariantProduct(clubId, args.variantId);
   }
 
