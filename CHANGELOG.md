@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.62.0](https://github.com/florent427/ClubFlow/compare/v0.61.0...v0.62.0) (2026-09-13)
+
+
+### ✨ Features
+
+* **boutique:** annuler une commande payée et rembourser chaque règlement (lot 4) ([4f3eb7f](https://github.com/florent427/ClubFlow/commit/4f3eb7ff879281cc024cce46b51d2df533386abd))
+* **boutique:** annuler une commande payée et rembourser chaque règlement par son moyen ([a7aadd4](https://github.com/florent427/ClubFlow/commit/a7aadd423c7f21e01f59cad2178e4447ff3f7199))
+
 ## [0.61.0](https://github.com/florent427/ClubFlow/compare/v0.60.0...v0.61.0) (2026-09-13)
 
 
