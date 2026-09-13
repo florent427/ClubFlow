@@ -582,6 +582,65 @@ export class ShopStockService {
     });
   }
 
+  /**
+   * REPRISE du suivi d'une déclinaison qui n'était pas suivie.
+   *
+   * Tant que le stock n'est pas suivi, rien ne touche aux compteurs : ni les
+   * réservations des commandes passées, ni les sorties de leurs règlements.
+   * L'écart `onHand − available` qu'ils portent encore ne désigne donc plus
+   * aucune réservation réelle. La reprise l'efface (`available = onHand`) et
+   * l'archive ; l'appelant réserve de nouveau les commandes en cours, dans la
+   * même transaction (`ShopPreorderService.resumeTrackingInTx`).
+   *
+   * Conditionnelle sur l'état lu : renvoie `false` si la déclinaison est déjà
+   * suivie, introuvable, ou vient de changer.
+   */
+  async resumeTracking(
+    tx: Prisma.TransactionClient,
+    args: {
+      clubId: string;
+      variantId: string;
+      userId?: string | null;
+      reason: string;
+    },
+  ): Promise<boolean> {
+    const { clubId, variantId } = args;
+    const current = await tx.shopProductVariant.findFirst({
+      where: { id: variantId, clubId, trackStock: false },
+      select: { onHand: true, available: true },
+    });
+    if (!current) return false;
+
+    const resumed = await tx.shopProductVariant.updateMany({
+      where: {
+        id: variantId,
+        clubId,
+        trackStock: false,
+        onHand: current.onHand,
+        available: current.available,
+      },
+      data: {
+        trackStock: true,
+        available: current.onHand,
+        lowStockAlertedAt: null,
+      },
+    });
+    if (resumed.count !== 1) return false;
+
+    await tx.shopStockMovement.create({
+      data: {
+        clubId,
+        variantId,
+        kind: ShopStockMovementKind.ADJUSTMENT,
+        onHandDelta: 0,
+        availableDelta: current.onHand - current.available,
+        reason: args.reason,
+        userId: args.userId ?? null,
+      },
+    });
+    return true;
+  }
+
   /** Journal d'une variante, du plus récent au plus ancien. */
   async listMovements(
     clubId: string,

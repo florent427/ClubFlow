@@ -430,16 +430,14 @@ export class ShopService {
         });
       } else {
         if (!def.trackStock) {
-          // Passage d'illimité à suivi : la remise à zéro passe par le
-          // moteur, qui l'archive. L'écrire à la main ferait apparaître, dans
-          // le journal, une correction sortie de nulle part — la vraie
-          // discontinuité, elle, n'y figurerait pas.
+          // Passage d'illimité à suivi : les commandes passées pendant que le
+          // stock n'était pas suivi n'ont rien réservé. La reprise, archivée
+          // par le moteur, les remet en attente ; l'attribution ci-dessous les
+          // sert sur le stock compté, avant tout nouvel acheteur.
           await this.prisma.$transaction((tx) =>
-            this.stock.open(tx, {
+            this.preorders.resumeTrackingInTx(tx, {
               clubId,
               variantId: def.id,
-              qty: 0,
-              trackStock: true,
               reason: 'Passage en stock suivi depuis la fiche produit',
             }),
           );

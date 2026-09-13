@@ -243,8 +243,11 @@ function makeHarness(
     },
   };
 
+  // Le client de transaction partage les doubles de `prisma` sans être le même
+  // objet : on vérifie ainsi qu'un geste passe bien PAR la transaction.
+  const txClient = { ...prisma };
   prisma.$transaction.mockImplementation(((fn: (t: unknown) => Promise<unknown>) =>
-    fn(prisma)) as never);
+    fn(txClient)) as never);
 
   const shop = {
     reloadProduct: jest.fn(async (_clubId: string, id: string) => ({ id })),
@@ -261,6 +264,12 @@ function makeHarness(
       async (_clubId: string, _variantIds: Iterable<string>): Promise<void> =>
         undefined,
     ),
+    resumeTrackingInTx: jest.fn(
+      async (
+        _tx: unknown,
+        _args: { clubId: string; variantId: string },
+      ): Promise<number | null> => null,
+    ),
   };
 
   const svc = new ShopVariantsService(
@@ -269,7 +278,7 @@ function makeHarness(
     stock as unknown as ShopStockService,
     preorders as never,
   );
-  return { svc, prisma, variants, options, values, shop, stock, preorders };
+  return { svc, prisma, txClient, variants, options, values, shop, stock, preorders };
 }
 
 describe('optionSignature', () => {
@@ -465,6 +474,33 @@ describe('ShopVariantsService.updateVariant', () => {
     await h.svc.updateVariant('club-1', 'var-default', { trackStock: true });
 
     expect(h.variants[0]!.lowStockAlertedAt).toBeNull();
+  });
+
+  it('reprise du suivi : les commandes en cours sont réservées de nouveau, DANS la transaction et AVANT l’écriture', async () => {
+    const h = makeHarness({ variants: [DEFAULT_VARIANT({ trackStock: false })] });
+
+    await h.svc.updateVariant('club-1', 'var-default', { trackStock: true });
+
+    expect(h.preorders.resumeTrackingInTx).toHaveBeenCalledTimes(1);
+    const [tx, args] = h.preorders.resumeTrackingInTx.mock.calls[0];
+    expect(tx).toBe(h.txClient);
+    expect(args).toMatchObject({ clubId: 'club-1', variantId: 'var-default' });
+    // Verrous dans l'ordre du règlement : les commandes, puis la déclinaison.
+    expect(h.preorders.resumeTrackingInTx.mock.invocationCallOrder[0]).toBeLessThan(
+      h.prisma.shopProductVariant.updateMany.mock.invocationCallOrder[0],
+    );
+    expect(h.variants[0]!.trackStock).toBe(true);
+    // L'attribution suit, après le commit.
+    expect(h.preorders.allocateQuietly).toHaveBeenCalledWith('club-1', ['var-default']);
+  });
+
+  it('ni l’arrêt du suivi ni une retouche ne reprennent quoi que ce soit', async () => {
+    const h = makeHarness();
+
+    await h.svc.updateVariant('club-1', 'var-default', { trackStock: false });
+    await h.svc.updateVariant('club-1', 'var-default', { label: 'Taille unique' });
+
+    expect(h.preorders.resumeTrackingInTx).not.toHaveBeenCalled();
   });
 
   it('NE réarme PAS sur un changement sans rapport', async () => {

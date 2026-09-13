@@ -126,6 +126,12 @@ function makeHarness(
     onOrderByVariant: jest.fn(async () => new Map<string, number>()),
   };
   const preorders = {
+    resumeTrackingInTx: jest.fn(
+      async (_tx: unknown, _args: unknown): Promise<number | null> => {
+        calls.push('reprise');
+        return 0;
+      },
+    ),
     preorderedByVariant: jest.fn(async () => new Map<string, number>()),
     allocateQuietly: jest.fn(
       async (_clubId: string, _variantIds: Iterable<string>): Promise<void> => {
@@ -277,5 +283,31 @@ describe('ShopService.updateProduct — réglages de précommande (ADR-0018)', (
     });
 
     expect(h.preorders.allocateQuietly).not.toHaveBeenCalled();
+  });
+
+  it('passer d’illimité à suivi reprend le suivi AVANT la correction : les ventes déjà passées sont servies', async () => {
+    const h = makeHarness({
+      products: [PRODUIT()],
+      variants: [DEFAUT({ trackStock: false })],
+    });
+
+    await h.svc.updateProduct('club-1', 'p-kimono', { stock: 4 });
+
+    expect(h.calls).toEqual(['reprise', 'adjust', 'attribution']);
+    expect(h.preorders.resumeTrackingInTx).toHaveBeenCalledWith(
+      h.db,
+      expect.objectContaining({ clubId: 'club-1', variantId: 'v-kimono' }),
+    );
+    // Plus de remise à zéro aveugle : elle effaçait sans le dire ce que les
+    // commandes en cours avaient réservé.
+    expect(h.stock.open).not.toHaveBeenCalled();
+  });
+
+  it('stock déjà suivi : pas de reprise', async () => {
+    const h = makeHarness({ products: [PRODUIT()], variants: [DEFAUT()] });
+
+    await h.svc.updateProduct('club-1', 'p-kimono', { stock: 4 });
+
+    expect(h.preorders.resumeTrackingInTx).not.toHaveBeenCalled();
   });
 });

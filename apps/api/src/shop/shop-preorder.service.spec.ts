@@ -134,11 +134,15 @@ function makeStore(seed: {
   const orderOf = (l: LineRow) => orders.find((o) => o.id === l.orderId)!;
 
   const orderMatches = (o: OrderRow, where: any) => {
-    clauses(where, ['id', 'clubId', 'status']);
+    clauses(where, ['id', 'clubId', 'status', 'fulfilledAt']);
+    if (where.fulfilledAt !== undefined && where.fulfilledAt !== null) {
+      throw new Error('Clause fulfilledAt non simulée par le double');
+    }
     return (
       egal(o.id, where.id) &&
       egal(o.clubId, where.clubId) &&
-      egal(o.status, where.status)
+      egal(o.status, where.status) &&
+      (where.fulfilledAt === undefined || o.fulfilledAt === null)
     );
   };
   const lineMatches = (l: LineRow, where: any) => {
@@ -152,13 +156,14 @@ function makeStore(seed: {
     );
   };
   const variantMatches = (v: VariantRow, where: any) => {
-    clauses(where, ['id', 'clubId', 'active', 'trackStock', 'available']);
+    clauses(where, ['id', 'clubId', 'active', 'trackStock', 'available', 'onHand']);
     return (
       egal(v.id, where.id) &&
       egal(v.clubId, where.clubId) &&
       egal(v.active, where.active) &&
       egal(v.trackStock, where.trackStock) &&
-      entier(v.available, where.available)
+      entier(v.available, where.available) &&
+      entier(v.onHand, where.onHand)
     );
   };
 
@@ -208,6 +213,15 @@ function makeStore(seed: {
         hit.forEach((v) => ecrit(v, data));
         return { count: hit.length };
       }),
+      // Correction d'inventaire (`adjust`) : écriture par identifiant, après
+      // sa lecture.
+      update: jest.fn(async ({ where, data }: any) => {
+        clauses(where, ['id']);
+        const v = variants.find((x) => x.id === where.id);
+        if (!v) throw new Error('Déclinaison introuvable');
+        ecrit(v, data);
+        return { ...v };
+      }),
     },
     shopStockMovement: {
       create: jest.fn(async ({ data }: any) => {
@@ -231,7 +245,7 @@ function makeStore(seed: {
 
   const stock = new ShopStockService(db as unknown as PrismaService);
   const svc = new ShopPreorderService(db as unknown as PrismaService, stock);
-  return { db, svc, orders, lines, variants, movements };
+  return { db, svc, stock, orders, lines, variants, movements };
 }
 
 const attente = (h: ReturnType<typeof makeStore>, lineId: string) =>
@@ -539,5 +553,182 @@ describe('ShopPreorderService.preorderedByVariant — ce que voit le trésorier'
 
     await expect(h.svc.preorderedByVariant(CLUB, [])).resolves.toEqual(new Map());
     expect(h.db.shopOrderLine.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('ShopPreorderService.resumeTrackingInTx — reprise du suivi du stock', () => {
+  const reprise = (h: ReturnType<typeof makeStore>, clubId = CLUB) =>
+    h.db.$transaction((tx: unknown) =>
+      h.svc.resumeTrackingInTx(tx as never, {
+        clubId,
+        variantId: 'v-1',
+        reason: 'Reprise du suivi du stock',
+      }),
+    );
+
+  it('vente passée avant le suivi : réservée sur le stock compté, son règlement ne laisse aucun article fantôme', async () => {
+    // Le cas constaté en prod : taille créée sans suivi, vendue au comptoir,
+    // stock compté ensuite dans la matrice, puis vente réglée.
+    const h = makeStore({
+      orders: [commande()],
+      lines: [ligne({ quantity: 1, awaitingStockQty: 0 })],
+      variants: [declinaison({ trackStock: false, onHand: 0, available: 0 })],
+    });
+
+    await expect(reprise(h)).resolves.toBe(1);
+    expect(attente(h, 'l-1')).toBe(1);
+
+    // L'admin compte 4 : l'attribution sert la vente avant tout nouvel acheteur.
+    await h.stock.adjust({
+      clubId: CLUB,
+      variantId: 'v-1',
+      countedOnHand: 4,
+      reason: 'Saisie depuis la matrice des déclinaisons',
+    });
+    await h.svc.allocate(CLUB, 'v-1');
+    expect(h.variants[0]).toMatchObject({ onHand: 4, available: 3 });
+    expect(attente(h, 'l-1')).toBe(0);
+
+    // Le règlement sort ce que la ligne a réservé — sa quantité moins son
+    // attente, comme `ShopService.claimFulfilmentInTx`.
+    await h.db.$transaction((tx: unknown) =>
+      h.stock.fulfill(tx as never, {
+        clubId: CLUB,
+        variantId: 'v-1',
+        qty: 1 - attente(h, 'l-1'),
+        orderId: 'o-1',
+        orderLineId: 'l-1',
+      }),
+    );
+    expect(h.variants[0]).toMatchObject({ onHand: 3, available: 3 });
+  });
+
+  it('une ancienne réservation ne compte plus : toute la commande est réservée de nouveau', async () => {
+    const h = makeStore({
+      orders: [commande()],
+      lines: [ligne({ quantity: 2, awaitingStockQty: 0 })],
+      variants: [declinaison({ trackStock: false, onHand: 5, available: 3 })],
+    });
+
+    await expect(reprise(h)).resolves.toBe(2);
+    expect(h.variants[0]).toMatchObject({ trackStock: true, onHand: 5, available: 5 });
+
+    await h.svc.allocate(CLUB, 'v-1');
+    expect(h.variants[0].available).toBe(3);
+    expect(attente(h, 'l-1')).toBe(0);
+  });
+
+  it('une précommande qui attendait déjà attend désormais toute sa quantité', async () => {
+    const h = makeStore({
+      orders: [commande()],
+      lines: [ligne({ quantity: 3, awaitingStockQty: 2 })],
+      variants: [declinaison({ trackStock: false })],
+    });
+
+    await expect(reprise(h)).resolves.toBe(3);
+    expect(attente(h, 'l-1')).toBe(3);
+  });
+
+  it('ne remet en attente que les commandes en attente pas encore sorties, de ce club et de cette déclinaison', async () => {
+    const h = makeStore({
+      orders: [
+        commande({ id: 'o-1' }),
+        commande({ id: 'o-payee', status: ShopOrderStatus.PAID }),
+        commande({ id: 'o-remise', fulfilledAt: new Date('2026-09-02T10:00:00Z') }),
+        commande({ id: 'o-annulee', status: ShopOrderStatus.CANCELLED }),
+        commande({ id: 'o-autre-club', clubId: 'club-2' }),
+      ],
+      lines: [
+        ligne({ id: 'l-1', orderId: 'o-1', quantity: 1, awaitingStockQty: 0 }),
+        ligne({ id: 'l-payee', orderId: 'o-payee', quantity: 1, awaitingStockQty: 0 }),
+        ligne({ id: 'l-remise', orderId: 'o-remise', quantity: 1, awaitingStockQty: 0 }),
+        ligne({ id: 'l-annulee', orderId: 'o-annulee', quantity: 1, awaitingStockQty: 0 }),
+        ligne({ id: 'l-autre-club', orderId: 'o-autre-club', quantity: 1, awaitingStockQty: 0 }),
+        ligne({ id: 'l-autre-decl', orderId: 'o-1', variantId: 'v-2', quantity: 1, awaitingStockQty: 0 }),
+      ],
+      variants: [declinaison({ trackStock: false })],
+    });
+
+    await expect(reprise(h)).resolves.toBe(1);
+
+    expect(attente(h, 'l-1')).toBe(1);
+    for (const id of ['l-payee', 'l-remise', 'l-annulee', 'l-autre-club', 'l-autre-decl']) {
+      expect(attente(h, id)).toBe(0);
+    }
+  });
+
+  it('verrouille les commandes AVANT la déclinaison — l’ordre du règlement', async () => {
+    const h = makeStore({
+      orders: [commande()],
+      lines: [ligne({ quantity: 1, awaitingStockQty: 0 })],
+      variants: [declinaison({ trackStock: false })],
+    });
+
+    await reprise(h);
+
+    const verrou = h.db.shopOrder.updateMany.mock.invocationCallOrder[0];
+    const reprend = h.db.shopProductVariant.updateMany.mock.invocationCallOrder[0];
+    expect(verrou).toBeDefined();
+    expect(reprend).toBeDefined();
+    expect(verrou).toBeLessThan(reprend);
+  });
+
+  it('déclinaison déjà suivie : ne verrouille rien et ne touche à rien', async () => {
+    const h = makeStore({
+      orders: [commande()],
+      lines: [ligne({ quantity: 1, awaitingStockQty: 0 })],
+      variants: [declinaison({ onHand: 4, available: 4 })],
+    });
+
+    await expect(reprise(h)).resolves.toBeNull();
+
+    expect(h.db.shopOrder.updateMany).not.toHaveBeenCalled();
+    expect(attente(h, 'l-1')).toBe(0);
+    expect(h.movements).toHaveLength(0);
+  });
+
+  it('déclinaison d’un AUTRE club : rien', async () => {
+    const h = makeStore({
+      orders: [commande()],
+      lines: [ligne({ quantity: 1, awaitingStockQty: 0 })],
+      variants: [declinaison({ trackStock: false })],
+    });
+
+    await expect(reprise(h, 'club-2')).resolves.toBeNull();
+
+    expect(h.variants[0].trackStock).toBe(false);
+    expect(attente(h, 'l-1')).toBe(0);
+  });
+
+  it('suivi repris par quelqu’un d’autre entre-temps : aucune commande remise en attente', async () => {
+    const h = makeStore({
+      orders: [commande()],
+      lines: [ligne({ quantity: 1, awaitingStockQty: 0 })],
+      variants: [declinaison({ trackStock: false })],
+    });
+    h.db.shopProductVariant.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(reprise(h)).resolves.toBeNull();
+
+    expect(attente(h, 'l-1')).toBe(0);
+    expect(h.movements).toHaveLength(0);
+  });
+
+  it('relit SOUS le verrou : une commande réglée juste avant n’est pas remise en attente', async () => {
+    const h = makeStore({
+      orders: [commande()],
+      lines: [ligne({ quantity: 1, awaitingStockQty: 0 })],
+      variants: [declinaison({ trackStock: false })],
+    });
+    const verrouiller = h.db.shopOrder.updateMany.getMockImplementation();
+    h.db.shopOrder.updateMany.mockImplementationOnce(async (args: any) => {
+      h.orders[0].status = ShopOrderStatus.PAID;
+      return verrouiller(args);
+    });
+
+    await expect(reprise(h)).resolves.toBe(0);
+
+    expect(attente(h, 'l-1')).toBe(0);
+    expect(h.variants[0].trackStock).toBe(true);
   });
 });

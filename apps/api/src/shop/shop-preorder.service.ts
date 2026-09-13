@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ShopOrderStatus } from '@prisma/client';
+import { Prisma, ShopOrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ShopStockService } from './shop-stock.service';
 
@@ -204,6 +204,80 @@ export class ShopPreorderService {
       }
     }
     return served;
+  }
+
+  /**
+   * Reprise du suivi du stock d'une déclinaison qui n'était pas suivie, dans la
+   * transaction de l'appelant.
+   *
+   * Une commande passée pendant que le stock n'était pas suivi n'a rien
+   * réservé. Son règlement sortirait pourtant l'article du placard, sans qu'il
+   * ait jamais quitté le vendable : un article fantôme resterait en vente
+   * (constaté en prod le 2026-09-13).
+   *
+   * Les unités des commandes en attente, pas encore sorties du stock, passent
+   * donc TOUTES en attente d'arrivage. L'attribution (`allocate`, après le
+   * commit) les sert sur le stock compté, de la plus ancienne commande à la plus
+   * récente, avant tout nouvel acheteur. Une réservation d'avant, s'il y en
+   * avait une, a été effacée avec l'écart par le moteur
+   * (`ShopStockService.resumeTracking`).
+   *
+   * Même ordre de verrous que l'attribution et le règlement : les commandes,
+   * puis la déclinaison.
+   *
+   * Renvoie le nombre d'unités remises en attente, ou `null` si la déclinaison
+   * était déjà suivie.
+   */
+  async resumeTrackingInTx(
+    tx: Prisma.TransactionClient,
+    args: {
+      clubId: string;
+      variantId: string;
+      userId?: string | null;
+      reason: string;
+    },
+  ): Promise<number | null> {
+    const { clubId, variantId } = args;
+    const untracked = await tx.shopProductVariant.findFirst({
+      where: { id: variantId, clubId, trackStock: false },
+      select: { id: true },
+    });
+    if (!untracked) return null;
+
+    const pending = {
+      clubId,
+      status: ShopOrderStatus.PENDING,
+      fulfilledAt: null,
+    };
+    const waiting = await tx.shopOrderLine.findMany({
+      where: { variantId, order: pending },
+      select: { orderId: true },
+    });
+    const orderIds = [...new Set(waiting.map((w) => w.orderId))].sort();
+    for (const id of orderIds) {
+      await tx.shopOrder.updateMany({
+        where: { id, ...pending },
+        data: { updatedAt: new Date() },
+      });
+    }
+
+    if (!(await this.stock.resumeTracking(tx, args))) return null;
+
+    // Relecture sous verrou : une commande réglée ou annulée entre-temps n'y
+    // figure plus.
+    const lines = await tx.shopOrderLine.findMany({
+      where: { variantId, order: pending },
+      select: { id: true, quantity: true },
+    });
+    let held = 0;
+    for (const line of lines) {
+      await tx.shopOrderLine.updateMany({
+        where: { id: line.id },
+        data: { awaitingStockQty: line.quantity },
+      });
+      held += line.quantity;
+    }
+    return held;
   }
 
   /**
