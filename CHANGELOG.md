@@ -9,6 +9,19 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.58.0](https://github.com/florent427/ClubFlow/compare/v0.57.0...v0.58.0) (2026-09-13)
+
+
+### ✨ Features
+
+* **admin:** « Encaisser » remplace « Marquer payée » sur les commandes ([74aa891](https://github.com/florent427/ClubFlow/commit/74aa8910951252daf30538e0015fba24fc2533eb))
+
+
+### 🐛 Bug Fixes
+
+* **boutique:** encaisser la facture clôture la commande ([f2c2245](https://github.com/florent427/ClubFlow/commit/f2c2245b859c4b6d5d76259c9c062419b667da3f))
+* **boutique:** encaisser la facture clôture la commande — « Encaisser » remplace « Marquer payée » ([3f11699](https://github.com/florent427/ClubFlow/commit/3f11699f8d0156900b589cfaefe367861bd39595))
+
 ## [0.57.0](https://github.com/florent427/ClubFlow/compare/v0.56.1...v0.57.0) (2026-09-12)
 
 
