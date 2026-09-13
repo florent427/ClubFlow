@@ -523,6 +523,7 @@ const VIEWER_SHOP_ORDER_FIELDS = `
   note
   createdAt
   paidAt
+  deliveredAt
   payableOnline
   buyerFirstName
   buyerLastName

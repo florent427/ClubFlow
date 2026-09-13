@@ -57,6 +57,11 @@ import { PurchaseOrdersTab } from './PurchaseOrdersTab';
 import { ShopSettingsTab } from './ShopSettingsTab';
 import { InvoiceDetailDrawer } from '../billing/InvoiceDetailDrawer';
 import {
+  ShopDeliveryDrawer,
+  ShopDeliveryNoteMailDrawer,
+  useOpenDeliveryNote,
+} from './ShopDeliveryDrawer';
+import {
   fmtCostOrUnknown,
   fmtDate,
   fmtDelta,
@@ -1378,6 +1383,11 @@ function OrdersTab() {
   const [cancel] = useMutation(CANCEL_SHOP_ORDER);
   /** Facture ouverte dans le tiroir d'encaissement. Null = tiroir fermé. */
   const [invoiceOpenId, setInvoiceOpenId] = useState<string | null>(null);
+  /** Commande en cours de remise signée. Null = tiroir fermé. */
+  const [deliveryOrder, setDeliveryOrder] = useState<ShopOrder | null>(null);
+  /** Commande dont on envoie le bon de livraison par e-mail. */
+  const [mailOrder, setMailOrder] = useState<ShopOrder | null>(null);
+  const openDeliveryNote = useOpenDeliveryNote();
 
   const orders = data?.shopOrders ?? [];
   const [filter, setFilter] = useState<'ALL' | ShopOrder['status']>('ALL');
@@ -1402,6 +1412,17 @@ function OrdersTab() {
       await refetch();
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
+  async function onDownloadNote(o: ShopOrder) {
+    try {
+      // Aucun `await` avant : l'onglet doit s'ouvrir pendant le clic.
+      await openDeliveryNote(o.id);
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : 'Téléchargement impossible',
+        'error',
+      );
     }
   }
 
@@ -1492,13 +1513,17 @@ function OrdersTab() {
                             {o.invoiceId ? 'Clôturer la commande' : 'Marquer payée'}
                           </button>
                         )}
-                        <button
-                          type="button"
-                          className="cf-btn cf-btn--danger"
-                          onClick={() => void onCancel(o)}
-                        >
-                          Annuler
-                        </button>
+                        {/* Une commande remise ne s'annule plus : la
+                            marchandise est partie (ADR-0017). */}
+                        {!o.deliveredAt ? (
+                          <button
+                            type="button"
+                            className="cf-btn cf-btn--danger"
+                            onClick={() => void onCancel(o)}
+                          >
+                            Annuler
+                          </button>
+                        ) : null}
                       </>
                     ) : null}
                     {o.status === 'PENDING' && !o.invoiceId ? (
@@ -1510,6 +1535,39 @@ function OrdersTab() {
                       <span className="cf-muted">
                         Payée le {fmtDate(o.paidAt)}
                       </span>
+                    ) : null}
+                    {o.status !== 'CANCELLED' && !o.deliveredAt ? (
+                      <button
+                        type="button"
+                        className="cf-btn"
+                        onClick={() => setDeliveryOrder(o)}
+                      >
+                        Remettre
+                      </button>
+                    ) : null}
+                    {o.deliveredAt ? (
+                      <>
+                        <span className="cf-muted">
+                          Remise le {fmtDate(o.deliveredAt)}
+                          {o.deliverySignerName
+                            ? ` à ${o.deliverySignerName}`
+                            : ''}
+                        </span>
+                        <button
+                          type="button"
+                          className="cf-btn"
+                          onClick={() => void onDownloadNote(o)}
+                        >
+                          Bon de livraison
+                        </button>
+                        <button
+                          type="button"
+                          className="cf-btn"
+                          onClick={() => setMailOrder(o)}
+                        >
+                          Envoyer par e-mail
+                        </button>
+                      </>
                     ) : null}
                   </div>
                 </div>
@@ -1530,6 +1588,24 @@ function OrdersTab() {
         onClose={() => setInvoiceOpenId(null)}
         onChanged={() => void refetch()}
       />
+
+      {deliveryOrder ? (
+        <ShopDeliveryDrawer
+          order={deliveryOrder}
+          onClose={() => setDeliveryOrder(null)}
+          onDelivered={() => {
+            setDeliveryOrder(null);
+            void refetch();
+          }}
+        />
+      ) : null}
+
+      {mailOrder ? (
+        <ShopDeliveryNoteMailDrawer
+          order={mailOrder}
+          onClose={() => setMailOrder(null)}
+        />
+      ) : null}
     </div>
   );
 }

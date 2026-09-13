@@ -92,3 +92,31 @@ describe('SmtpMailTransport', () => {
     expect(snap.failed).toBe(true);
   });
 });
+
+describe('SmtpMailTransport.sendEmail — pièces jointes', () => {
+  it('transmet les pièces jointes au relais SMTP', async () => {
+    const sendMail = jest.fn().mockResolvedValue({ messageId: 'm-1' });
+    const transport = new SmtpMailTransport({ sendMail } as never);
+    const pdf = Buffer.from('%PDF-bon');
+
+    await transport.sendEmail({
+      clubId: 'club-1',
+      kind: 'transactional',
+      from: { name: 'Dojo', address: 'noreply@dojo.fr' },
+      to: 'maman@example.fr',
+      subject: 'Bon de livraison',
+      html: '<p>ci-joint</p>',
+      attachments: [
+        { filename: 'Bon.pdf', content: pdf, contentType: 'application/pdf' },
+      ],
+    });
+
+    expect(sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attachments: [
+          { filename: 'Bon.pdf', content: pdf, contentType: 'application/pdf' },
+        ],
+      }),
+    );
+  });
+});

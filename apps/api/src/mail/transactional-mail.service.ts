@@ -422,6 +422,64 @@ export class TransactionalMailService {
     });
   }
 
+  /**
+   * Bon de livraison d'une commande boutique, en pièce jointe (ADR-0017).
+   *
+   * Expéditeur : le profil d'envoi du club, avec repli sur l'expéditeur de la
+   * plateforme — comme le formulaire de contact de la vitrine. Un club sans
+   * domaine vérifié doit pouvoir remettre son bon à l'adhérent.
+   *
+   * « Bonjour, » sans prénom : l'adresse peut être celle d'un parent qui a
+   * retiré la commande d'un enfant.
+   */
+  async sendShopDeliveryNote(
+    clubId: string,
+    to: string,
+    options: {
+      clubName: string;
+      buyerName: string | null;
+      orderReference: string;
+      deliveredAt: Date;
+      pdf: Buffer;
+    },
+  ): Promise<void> {
+    const trimmed = to.trim();
+    if (!trimmed || !trimmed.includes('@')) {
+      throw new BadRequestException('Adresse e-mail invalide');
+    }
+    const profile = await this.domains.getAuthMailProfile(clubId);
+    const date = options.deliveredAt.toLocaleDateString('fr-FR', {
+      timeZone: 'UTC',
+    });
+    const pour = options.buyerName ? ` de ${options.buyerName}` : '';
+    await this.transport.sendEmail({
+      clubId,
+      kind: 'transactional',
+      from: profile.from,
+      to: trimmed,
+      subject: `Bon de livraison — ${options.clubName}`,
+      html: `<p>Bonjour,</p><p>Vous trouverez ci-joint le bon de livraison de la commande <strong>${escapeHtml(
+        options.orderReference,
+      )}</strong>${escapeHtml(pour)}, retirée le ${escapeHtml(date)}.</p><p>${escapeHtml(
+        options.clubName,
+      )}</p>`,
+      text: [
+        'Bonjour,',
+        '',
+        `Vous trouverez ci-joint le bon de livraison de la commande ${options.orderReference}${pour}, retirée le ${date}.`,
+        '',
+        options.clubName,
+      ].join('\n'),
+      attachments: [
+        {
+          filename: `Bon_de_livraison_${options.orderReference}.pdf`,
+          content: options.pdf,
+          contentType: 'application/pdf',
+        },
+      ],
+    });
+  }
+
   async sendTestEmail(clubId: string, to: string): Promise<void> {
     const trimmed = to.trim();
     if (!trimmed || !trimmed.includes('@')) {

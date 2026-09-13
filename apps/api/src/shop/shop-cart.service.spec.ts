@@ -46,6 +46,7 @@ type OrderRow = {
   note: string | null;
   termsAssetId: string | null;
   termsAcceptedAt: Date | null;
+  fulfilledAt: Date | null;
   lines: Array<{
     id: string;
     orderId: string;
@@ -200,6 +201,7 @@ function makeStore(opts: {
           // eux : ils sont la preuve de l'acceptation.
           termsAssetId: data.termsAssetId ?? null,
           termsAcceptedAt: data.termsAcceptedAt ?? null,
+          fulfilledAt: null,
           lines: (data.lines?.create ?? []).map((l: any) => ({
             id: uid('line'),
             orderId: id,
@@ -218,11 +220,17 @@ function makeStore(opts: {
           (o) =>
             (where.id === undefined || o.id === where.id) &&
             (where.clubId === undefined || o.clubId === where.clubId) &&
-            (where.status === undefined || o.status === where.status),
+            (where.status === undefined || o.status === where.status) &&
+            // `fulfilledAt: null` : la marchandise ne sort qu'une fois
+            // (ADR-0017). Un double qui ignorerait la clause certifierait une
+            // idempotence que le code n'aurait plus.
+            (where.fulfilledAt === undefined ||
+              o.fulfilledAt === where.fulfilledAt),
         );
         hit.forEach((o) => {
           if (data.status) o.status = data.status;
           if (data.paidAt) o.paidAt = data.paidAt;
+          if (data.fulfilledAt) o.fulfilledAt = data.fulfilledAt;
         });
         return { count: hit.length };
       }),
@@ -684,6 +692,7 @@ describe('ShopService.fulfillPaidShopOrderInTx — idempotence webhook', () => {
     );
 
     expect(h.orders[0].status).toBe(ShopOrderStatus.PAID);
+    expect(h.orders[0].fulfilledAt).toBeInstanceOf(Date);
     expect(h.variants[0].onHand).toBe(3); // sorti
     expect(h.variants[0].available).toBe(3); // inchangé
   });

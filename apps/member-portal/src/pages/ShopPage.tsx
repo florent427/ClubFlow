@@ -20,6 +20,7 @@ import { canCheckout, countCartUnits, partitionCart } from '../lib/shop-cart';
 import {
   canCancelOrder,
   canRepayOrder,
+  orderPickupLabel,
   orderStatusBadge,
 } from '../lib/shop-order-actions';
 import type {
@@ -480,8 +481,9 @@ export function ShopPage() {
           <ul className="mp-order-list">
             {orders.map((o) => {
               const pill = orderStatusBadge(o.status);
+              const pickup = orderPickupLabel(o);
               const showActions =
-                canRepayOrder(o) || canCancelOrder(o.status);
+                canRepayOrder(o) || canCancelOrder(o.status, o.deliveredAt);
               return (
                 <li key={o.id} className="mp-order-card">
                   <div className="mp-order-card__head">
@@ -505,6 +507,13 @@ export function ShopPage() {
                   <p className="mp-order-card__total">
                     Total : {formatEuroCents(o.totalCents)}
                   </p>
+                  {pickup ? (
+                    <p className="mp-hint" style={{ margin: '4px 0 0' }}>
+                      {pickup.kind === 'DELIVERED'
+                        ? `Retirée au club le ${fmtDate(pickup.at)}`
+                        : 'À retirer au club'}
+                    </p>
+                  ) : null}
 
                   {/* Actions réservées aux commandes EN ATTENTE : reprendre le
                       paiement (repay → Stripe) ou annuler (libère le stock).
@@ -527,7 +536,7 @@ export function ShopPage() {
                           Payer
                         </button>
                       ) : null}
-                      {canCancelOrder(o.status) ? (
+                      {canCancelOrder(o.status, o.deliveredAt) ? (
                         <button
                           type="button"
                           className="mp-btn mp-btn-outline"

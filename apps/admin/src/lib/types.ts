@@ -1250,9 +1250,16 @@ export type ShopOrder = {
   paidAt: string | null;
   /** Acceptation des CGV au passage de commande — null au comptoir. */
   termsAcceptedAt: string | null;
+  /** Sortie de stock — null sur une commande payée avant le 2026-09-13. */
+  fulfilledAt: string | null;
+  /** Remise signée à l'adhérent (ADR-0017). */
+  deliveredAt: string | null;
+  deliverySignerName: string | null;
   lines: ShopOrderLine[];
   buyerFirstName: string | null;
   buyerLastName: string | null;
+  /** Adresse de l'acheteur : préremplit l'envoi du bon de livraison. */
+  buyerEmail: string | null;
   /** La facture de la commande : c'est sur elle que le club encaisse. */
   invoiceId: string | null;
   invoiceStatus: InvoiceStatusStr | null;
@@ -1267,6 +1274,11 @@ export type ShopTerms = {
 };
 export type ShopTermsQueryData = { shopTerms: ShopTerms | null };
 export type SetShopTermsMutationData = { setShopTerms: ShopTerms | null };
+export type DeliverShopOrderMutationData = { deliverShopOrder: ShopOrder };
+export type CreateShopDeliveryNoteLinkMutationData = {
+  createShopDeliveryNoteLink: string;
+};
+export type SendShopDeliveryNoteMutationData = { sendShopDeliveryNote: string };
 
 export type ShopProductsQueryData = { shopProducts: ShopProduct[] };
 export type CreateShopProductMutationData = { createShopProduct: ShopProduct };

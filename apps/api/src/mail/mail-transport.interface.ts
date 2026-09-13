@@ -27,6 +27,12 @@ export type SendClubEmailParams = {
   text?: string;
   /** En-tête List-Unsubscribe (campagnes marketing). */
   listUnsubscribe?: string;
+  /** Pièces jointes — bon de livraison PDF, par exemple. */
+  attachments?: Array<{
+    filename: string;
+    content: Buffer;
+    contentType?: string;
+  }>;
 };
 
 export type RegisterDomainResult = {

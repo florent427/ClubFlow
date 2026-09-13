@@ -69,6 +69,24 @@ export class ShopOrderGraph {
   termsAcceptedAt!: Date | null;
 
   /**
+   * Sortie de stock (ADR-0017). Null sur une commande payée avant le
+   * 2026-09-13 : elle est sortie à son paiement.
+   */
+  @Field(() => Date, { nullable: true })
+  fulfilledAt!: Date | null;
+
+  /** Remise signée à l'adhérent (ADR-0017). */
+  @Field(() => Date, { nullable: true })
+  deliveredAt!: Date | null;
+
+  /**
+   * Personne qui a signé la remise. La signature elle-même n'est jamais
+   * exposée ici : elle ne sort que dans le bon de livraison.
+   */
+  @Field(() => String, { nullable: true })
+  deliverySignerName!: string | null;
+
+  /**
    * Vrai si la commande porte une facture OUVERTE, donc payable : « Payer »
    * côté adhérent, « Encaisser » côté club. Depuis le 2026-09-12 toute commande
    * reçoit sa facture, « régler sur place » compris : seules les commandes
@@ -96,6 +114,13 @@ export class ShopOrderGraph {
 
   @Field(() => String, { nullable: true })
   buyerLastName!: string | null;
+
+  /**
+   * Adresse de l'acheteur — sa fiche d'adhérent, ou le compte du contact.
+   * Préremplit l'envoi du bon de livraison ; l'admin peut la remplacer.
+   */
+  @Field(() => String, { nullable: true })
+  buyerEmail!: string | null;
 }
 
 /**
