@@ -5,6 +5,7 @@ import {
   countCartUnits,
   installmentsPreview,
   partitionCart,
+  shopTermsGate,
 } from './shop-cart';
 import type { ViewerShopCartItem } from './viewer-types';
 
@@ -101,5 +102,41 @@ describe('installmentsPreview — échéancier 3× fidèle à l’adhésion', ()
       const p = installmentsPreview(total);
       expect(p.base * 2 + p.last).toBe(total);
     }
+  });
+});
+
+describe('shopTermsGate — les CGV devant les boutons de commande (ADR-0017)', () => {
+  const CGV = { id: 'cgv-v2' };
+  const base = { repay: false, loading: false, terms: null, accepted: false };
+
+  it('club sans CGV : on commande comme avant, sans rien envoyer', () => {
+    expect(shopTermsGate(base)).toEqual({ blocked: false, acceptedTermsId: null });
+  });
+
+  it('CGV en ligne, case non cochée : bloqué', () => {
+    expect(shopTermsGate({ ...base, terms: CGV })).toEqual({
+      blocked: true,
+      acceptedTermsId: null,
+    });
+  });
+
+  it('case cochée : débloqué, et c’est la version AFFICHÉE qui part', () => {
+    expect(shopTermsGate({ ...base, terms: CGV, accepted: true })).toEqual({
+      blocked: false,
+      acceptedTermsId: 'cgv-v2',
+    });
+  });
+
+  it('tant que la requête n’a rien rendu : bloqué, le serveur refuserait', () => {
+    expect(shopTermsGate({ ...base, loading: true })).toEqual({
+      blocked: true,
+      acceptedTermsId: null,
+    });
+  });
+
+  it('reprise de paiement : jamais bloquée, rien de nouveau à accepter', () => {
+    expect(
+      shopTermsGate({ repay: true, loading: true, terms: CGV, accepted: false }),
+    ).toEqual({ blocked: false, acceptedTermsId: null });
   });
 });

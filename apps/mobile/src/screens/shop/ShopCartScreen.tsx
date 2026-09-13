@@ -27,6 +27,7 @@ import { formatEuroCents } from '../../lib/format';
 import {
   canCheckoutShopCart,
   shopCartHasBlockingItems,
+  shopTermsGate,
 } from '../../lib/shop-cart';
 import {
   VIEWER_CHECKOUT_SHOP_CART,
@@ -90,12 +91,11 @@ export function ShopCartScreen() {
   useEffect(() => {
     setTermsAccepted(false);
   }, [termsId]);
-  // Tant qu'on ne sait pas s'il y a des CGV, on attend plutôt que d'envoyer une
-  // commande que le serveur refuserait.
-  const termsBlocking =
-    (termsLoading && !termsData) || (terms !== null && !termsAccepted);
-  // L'identifiant de la version AFFICHÉE : le serveur refuse s'il a changé.
-  const acceptedTermsId = terms && termsAccepted ? terms.id : null;
+  const { blocked: termsBlocking, acceptedTermsId } = shopTermsGate({
+    loading: termsLoading && !termsData,
+    terms,
+    accepted: termsAccepted,
+  });
 
   // set / remove / clear renvoient le MÊME panier (id stable une fois
   // matérialisé) : Apollo fusionne le résultat dans le cache normalisé et la

@@ -50,3 +50,38 @@ export function canCheckoutShopCart(
 ): boolean {
   return !!cart && cart.items.length > 0;
 }
+
+/** Ce que les CGV imposent aux boutons de commande. */
+export type ShopTermsGate = {
+  /** Les boutons de commande sont-ils bloqués ? */
+  blocked: boolean;
+  /**
+   * L'identifiant à envoyer au passage de commande : celui de la version
+   * AFFICHÉE et acceptée. Le serveur refuse une version qui n'est plus en
+   * vigueur — c'est ce qui rend l'acceptation opposable.
+   */
+  acceptedTermsId: string | null;
+};
+
+/**
+ * Les CGV de la boutique devant les boutons de commande (ADR-0017).
+ *
+ * Le serveur reste seul juge : il refuse toute commande sans acceptation dès
+ * que le club a des CGV. Cette règle n'existe que pour ne pas proposer un
+ * bouton voué au refus — d'où le blocage tant que la requête n'a rien rendu.
+ * Une requête en échec rend `terms: null` et laisse commander : le refus
+ * serveur, affiché tel quel, dira alors quoi faire.
+ */
+export function shopTermsGate(args: {
+  /** La requête des CGV n'a encore rien rendu. */
+  loading: boolean;
+  /** Les CGV en vigueur ; null si le club n'en a pas. */
+  terms: { id: string } | null;
+  accepted: boolean;
+}): ShopTermsGate {
+  if (args.loading) return { blocked: true, acceptedTermsId: null };
+  if (args.terms === null) return { blocked: false, acceptedTermsId: null };
+  return args.accepted
+    ? { blocked: false, acceptedTermsId: args.terms.id }
+    : { blocked: true, acceptedTermsId: null };
+}

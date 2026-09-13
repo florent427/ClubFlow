@@ -13,7 +13,7 @@ import type {
   ViewerShopTermsData,
 } from '../../lib/viewer-types';
 import { formatEuroCents } from '../../lib/format';
-import { installmentsPreview } from '../../lib/shop-cart';
+import { installmentsPreview, shopTermsGate } from '../../lib/shop-cart';
 import { canPayOnSiteAtCheckout } from '../../lib/shop-order-actions';
 import { useToast } from '../ToastProvider';
 
@@ -93,12 +93,12 @@ export function ShopCheckoutModal({
   useEffect(() => {
     setTermsAccepted(false);
   }, [termsId]);
-  // Tant qu'on ne sait pas s'il y a des CGV, on attend plutôt que d'envoyer une
-  // commande que le serveur refuserait.
-  const termsPending = !orderId && termsLoading && !termsData;
-  const blockedByTerms = termsPending || (terms !== null && !termsAccepted);
-  // L'identifiant de la version AFFICHÉE : le serveur refuse s'il a changé.
-  const acceptedTermsId = terms && termsAccepted ? terms.id : null;
+  const { blocked: blockedByTerms, acceptedTermsId } = shopTermsGate({
+    repay: Boolean(orderId),
+    loading: termsLoading && !termsData,
+    terms,
+    accepted: termsAccepted,
+  });
 
   // « Régler sur place » : proposé à la validation du panier, jamais en reprise
   // de paiement (mode repay = `orderId` renseigné). Cf. canPayOnSiteAtCheckout.
