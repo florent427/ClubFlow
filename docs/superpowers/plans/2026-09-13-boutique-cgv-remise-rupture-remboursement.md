@@ -22,17 +22,18 @@ chaque étape.
 
 **Architecture :** la commande porte trois faits indépendants — `status`
 (règlement, inchangé), `fulfilledAt` (sortie de stock) et `deliveredAt`
-(remise). Une seule fonction, `fulfillIfDue`, décide de la sortie et est appelée
-par tous les chemins : webhook carte, encaissement manuel, remise signée,
-affectation à l'arrivage. Les remboursements et échanges composent l'avoir
-(`CreditNotesService`) et le remboursement Stripe (`StripeRefundsService`)
-existants. La signature réutilise `signature_pad`, déjà employé par le portail
-membre ; le bon de livraison est un PDF pdfkit archivé en privé.
+(remise). Une seule fonction, `claimFulfilmentInTx`, décide de la sortie et
+est appelée par tous les chemins : webhook carte, encaissement manuel, remise
+signée, affectation à l'arrivage. Les remboursements et échanges composent
+l'avoir (`CreditNotesService`) et le remboursement Stripe
+(`StripeRefundsService`) existants. La signature est capturée par un pavé canvas
+de l'admin, sans dépendance ; le bon de livraison est un PDF pdfkit produit à la
+demande à partir des données figées à la remise.
 
 **Tech stack :** NestJS 11, Prisma 6 (`prisma db push`, cf.
 [ADR-0003](../../memory/decisions/0003-prisma-db-push.md)), GraphQL code-first,
 admin React + Vite + Apollo, portail membre React, application mobile Expo,
-`signature_pad`, pdfkit, Jest.
+pdfkit, Jest, Vitest.
 
 ---
 
@@ -140,32 +141,38 @@ déploiement, l'application mobile seulement à sa publication suivante.
 
 - [ ] `ShopOrder.fulfilledAt DateTime?`, `deliveredAt DateTime?`,
   `deliveredByUserId String?`, `deliverySignerName String? @db.VarChar(160)`,
-  `deliveryNoteAssetId String?`.
-- [ ] Rattrapage : `fulfilledAt` posé sur les commandes qui ont déjà un mouvement
-  `FULFILL`.
+  `deliverySignaturePng String? @db.Text`.
+- [ ] Pas de rattrapage : une commande payée est sortie à son paiement, par
+  construction. « Sortie » se lit `status = PAID OR fulfilledAt IS NOT NULL`.
 
 ### Task 2.2 : La règle en un seul endroit
 
-- [ ] `fulfillIfDue(tx, clubId, orderId)` : sort la marchandise **réservée** si
-  `fulfilledAt IS NULL`, par écriture conditionnelle. Idempotente, jamais
-  d'exception sur une commande déjà sortie.
-- [ ] Appelée par la facture soldée (webhook carte, encaissement manuel) et par
-  la remise signée ; `fulfillPaidShopOrderInTx` et `markOrderPaid` y délèguent.
+- [ ] `claimFulfilmentInTx(tx, clubId, orderId, trigger)` : pose `fulfilledAt`
+  s'il est NULL — sur une commande PAYÉE au règlement, EN ATTENTE à la remise —
+  puis sort la marchandise réservée. Idempotente, jamais d'exception.
+- [ ] Appelée par la facture soldée (webhook carte, encaissement manuel,
+  « Clôturer la commande ») et par la remise signée.
 - [ ] **Invariant** : payer puis remettre, ou remettre puis payer, sortent le
-  stock **une** fois.
+  stock **une** fois — y compris sur une commande payée avant `fulfilledAt`.
+- [ ] **Invariant** : une commande remise ne s'annule plus (`fulfilledAt: null`
+  dans l'écriture conditionnelle des deux annulations).
 
 ### Task 2.3 : Remise signée et bon de livraison
 
-- [ ] `deliverShopOrder(orderId, signerName, signaturePng)` : pose la remise,
-  appelle `fulfillIfDue`, produit le bon de livraison PDF (club, commande,
-  lignes, date, signataire, signature, CGV acceptées le…) archivé en privé.
-- [ ] Refus si une ligne attend un arrivage (lot 3) ou si la commande est
-  annulée.
+- [ ] `deliverShopOrder(orderId, signerName, signaturePng)` : une écriture
+  conditionnelle (`deliveredAt: null`) fige date, admin, signataire et
+  signature ; la signature porte l'acceptation des CGV si la commande n'en a
+  aucune ; puis `claimFulfilmentInTx(…, 'DELIVERY')`.
+- [ ] Bon de livraison PDF produit à la demande :
+  `GET /shop/orders/:id/delivery-note.pdf`, réservé au back-office du club.
+- [ ] Refus si la commande est annulée ou déjà remise ; au lot 3, si une ligne
+  attend un arrivage.
 
 ### Task 2.4 : Admin web, pensée pour le téléphone
 
-- [ ] « Remettre » sur la carte de commande → écran de signature plein écran
-  (`signature_pad`) → bon téléchargeable depuis la commande.
+- [ ] « Remettre » sur la carte de commande → tiroir plein écran sur téléphone,
+  pavé de signature canvas sans dépendance → « Bon de livraison » téléchargeable
+  depuis la commande.
 
 ### Task 2.5 : Portail membre
 
@@ -200,7 +207,7 @@ déploiement, l'application mobile seulement à sa publication suivante.
 ### Task 3.4 : Arrivage
 
 - [ ] À la réception fournisseur : affectation aux lignes en attente par
-  ancienneté, puis `fulfillIfDue` pour les commandes déjà réglées.
+  ancienneté, puis sortie immédiate pour les commandes déjà réglées.
 
 ### Task 3.5 : Admin, portail, mobile, vérification staging
 
@@ -216,6 +223,9 @@ déploiement, l'application mobile seulement à sa publication suivante.
   rendu (ADR-0011).
 - [ ] Stock : libération si la marchandise n'était que réservée ; retour en stock
   par un mouvement dédié si elle était sortie.
+- [ ] L'annulation par le club laisse aujourd'hui la facture OUVERTE, là où
+  l'annulation par l'adhérent l'annule : l'aligner, en tenant compte d'un
+  règlement partiel déjà encaissé (constaté le 2026-09-13).
 
 ### Task 4.2 : Admin, vérification staging
 

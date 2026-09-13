@@ -44,6 +44,12 @@ disponible.**
   conditionnée à `fulfilledAt IS NULL` et arbitrée par la base (écriture
   conditionnelle), exactement comme l'est aujourd'hui `PENDING` → `PAID`. Le
   second des deux gestes ne décompte rien.
+- **Le statut attendu dépend du geste.** Au règlement, la commande vient de
+  passer payée dans la même transaction ; à la remise, seule une commande
+  encore en attente sort. Une commande payée est sortie à son paiement — y
+  compris celles payées avant l'existence de `fulfilledAt`, qui l'ont NULL.
+  « Sortie » se lit `status = PAID OR fulfilledAt IS NOT NULL` : aucun
+  rattrapage des commandes existantes n'est nécessaire.
 - **Commande sur rupture.** Un produit peut être déclaré « commandable en
   rupture », avec un délai indicatif en texte libre. La quantité commandée sans
   stock est mise *en attente d'arrivage* sur la ligne : elle ne réserve rien. La
@@ -55,8 +61,12 @@ disponible.**
   sort aussitôt du stock : le règlement, première des deux actions, a déjà eu
   lieu.
 - **Remise.** Refusée tant qu'une ligne attend son arrivage. Signée dans l'admin
-  web ouverte sur le téléphone ; le bon de livraison PDF est archivé en privé et
-  porte la date d'acceptation des conditions générales de vente.
+  web ouverte sur le téléphone. La date, l'admin, le signataire et sa signature
+  sont figés par la même écriture conditionnelle que la remise ; le bon de
+  livraison PDF se reproduit à la demande à partir d'eux, comme une facture, et
+  porte la date d'acceptation des conditions générales de vente. Sur une vente
+  au comptoir sans acceptation préalable, la signature porte cette acceptation.
+  Une commande remise ne s'annule plus : la marchandise est partie.
 - **Annulation d'une commande payée.** Suit l'ADR-0011 : le remboursement éteint
   la créance par un avoir du montant rendu. Carte : remboursement Stripe. Chèque
   encore en portefeuille : le chèque est rendu. Chèque remis en banque ou
@@ -99,8 +109,8 @@ nulle part dans ClubFlow. Écarté par le club : la différence est remboursée.
 
 ### Négatives
 
-- Les commandes déjà sorties doivent recevoir leur `fulfilledAt`, déduit de
-  leurs mouvements `FULFILL`.
+- Une commande payée avant cet ADR garde `fulfilledAt` à NULL : « sortie » se
+  lit `status = PAID OR fulfilledAt IS NOT NULL`, jamais `fulfilledAt` seul.
 - La réception fournisseur gagne une étape : l'affectation aux lignes en attente.
 - L'application mobile ne reçoit les écrans adhérent qu'à sa prochaine
   publication. Pour les CGV, c'est un refus : tant que des CGV sont en ligne, une
