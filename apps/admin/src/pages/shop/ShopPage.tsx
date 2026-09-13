@@ -55,6 +55,7 @@ import { AiProductDescriptionPanel } from '../../components/AiProductDescription
 import { SuppliersTab } from './SuppliersTab';
 import { PurchaseOrdersTab } from './PurchaseOrdersTab';
 import { ShopSettingsTab } from './ShopSettingsTab';
+import { InvoiceDetailDrawer } from '../billing/InvoiceDetailDrawer';
 import {
   fmtCostOrUnknown,
   fmtDate,
@@ -1375,6 +1376,8 @@ function OrdersTab() {
   });
   const [markPaid] = useMutation(MARK_SHOP_ORDER_PAID);
   const [cancel] = useMutation(CANCEL_SHOP_ORDER);
+  /** Facture ouverte dans le tiroir d'encaissement. Null = tiroir fermé. */
+  const [invoiceOpenId, setInvoiceOpenId] = useState<string | null>(null);
 
   const orders = data?.shopOrders ?? [];
   const [filter, setFilter] = useState<'ALL' | ShopOrder['status']>('ALL');
@@ -1422,7 +1425,7 @@ function OrdersTab() {
         <EmptyState
           icon="receipt_long"
           title="Aucune commande"
-          message="Les commandes des membres apparaîtront ici."
+          message="Les commandes des membres et les ventes au comptoir apparaîtront ici."
         />
       ) : (
         <ul className="cf-order-list">
@@ -1458,13 +1461,29 @@ function OrdersTab() {
                   <div className="cf-order-card__actions">
                     {o.status === 'PENDING' ? (
                       <>
-                        <button
-                          type="button"
-                          className="cf-btn cf-btn--primary"
-                          onClick={() => void onMarkPaid(o)}
-                        >
-                          Marquer payée
-                        </button>
+                        {/*
+                          « Marquer payée » ne s'affiche plus quand une facture
+                          attend un encaissement : il basculait la commande sans
+                          enregistrer aucun argent. « Encaisser » ouvre la facture,
+                          et c'est son règlement qui clôture la commande.
+                        */}
+                        {o.invoiceId && o.invoiceStatus === 'OPEN' ? (
+                          <button
+                            type="button"
+                            className="cf-btn cf-btn--primary"
+                            onClick={() => setInvoiceOpenId(o.invoiceId)}
+                          >
+                            Encaisser
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="cf-btn cf-btn--primary"
+                            onClick={() => void onMarkPaid(o)}
+                          >
+                            {o.invoiceId ? 'Clôturer la commande' : 'Marquer payée'}
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="cf-btn cf-btn--danger"
@@ -1473,6 +1492,11 @@ function OrdersTab() {
                           Annuler
                         </button>
                       </>
+                    ) : null}
+                    {o.status === 'PENDING' && !o.invoiceId ? (
+                      <small className="cf-muted">
+                        Commande sans facture : rien ne sera comptabilisé.
+                      </small>
                     ) : null}
                     {o.status === 'PAID' ? (
                       <span className="cf-muted">
@@ -1486,6 +1510,18 @@ function OrdersTab() {
           })}
         </ul>
       )}
+
+      {/*
+        LA facture de la commande, dans le tiroir même de Facturation : moyen de
+        paiement, n° de chèque, écriture comptable. Le serveur clôture la
+        commande et sort le stock dès que la facture est soldée — le club n'a
+        plus de second geste à penser.
+      */}
+      <InvoiceDetailDrawer
+        invoiceId={invoiceOpenId}
+        onClose={() => setInvoiceOpenId(null)}
+        onChanged={() => void refetch()}
+      />
     </div>
   );
 }

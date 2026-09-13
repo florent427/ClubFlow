@@ -144,6 +144,12 @@ function makeStore(opts: {
       }),
     },
     invoice: {
+      // Garde de `markOrderPaid` : existe-t-il une facture OUVERTE pour cette
+      // commande ? Le double applique toutes les clauses présentes.
+      findFirst: jest.fn(async ({ where }: any) => {
+        const i = invoices.find((x) => invMatches(x, where));
+        return i ? { id: i.id } : null;
+      }),
       updateMany: jest.fn(async ({ where, data }: any) => {
         const hit = invoices.filter((i) => invMatches(i, where));
         hit.forEach((i) => {
@@ -152,8 +158,9 @@ function makeStore(opts: {
         });
         return { count: hit.length };
       }),
-      // Sert `payableOnline` dans hydrateBuyers : les factures OUVERTES des
-      // commandes affichées.
+      // Sert hydrateBuyers : LA facture de chaque commande affichée, tous
+      // statuts confondus — `invoiceId`, `invoiceStatus` et `payableOnline`
+      // s'en déduisent.
       findMany: jest.fn(async ({ where }: any) => {
         const ids: string[] = where?.shopOrderId?.in ?? [];
         return invoices
@@ -163,7 +170,7 @@ function makeStore(opts: {
               ids.includes(i.shopOrderId) &&
               (!where?.status || i.status === where.status),
           )
-          .map((i) => ({ shopOrderId: i.shopOrderId }));
+          .map((i) => ({ id: i.id, shopOrderId: i.shopOrderId, status: i.status }));
       }),
     },
     shopProductVariant: {
@@ -172,6 +179,10 @@ function makeStore(opts: {
         hit.forEach((r) => {
           if (data.available?.increment) r.available += data.available.increment;
           if (data.available?.decrement) r.available -= data.available.decrement;
+          // Sortie de stock (`fulfill`) : sans cette ligne, le double
+          // ignorerait la décrémentation et un « stock sorti » serait certifié
+          // quel que soit le code.
+          if (data.onHand?.decrement) r.onHand -= data.onHand.decrement;
         });
         return { count: hit.length };
       }),
@@ -562,5 +573,63 @@ describe('viewerRepayShopOrder — reprise de paiement', () => {
     expect(stripe.createInvoiceCheckoutSession).toHaveBeenCalledWith(
       expect.objectContaining({ installmentsCount: 3 }),
     );
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// markOrderPaid — le raccourci ne court-circuite plus l'encaissement
+// ---------------------------------------------------------------------------
+
+describe('markOrderPaid — ne plus marquer payée une facture non encaissée', () => {
+  /**
+   * « Marquer payée » basculait le statut et sortait le stock sans créer aucun
+   * paiement. La commande affichait « Payée », la facture restait « À payer »,
+   * et la comptabilité ne recevait rien. Cette méthode n'avait AUCUN test.
+   */
+  it('REFUSE une commande dont la facture est à encaisser, et ne touche à rien', async () => {
+    const h = makeStore({
+      orders: [ORDER()],
+      variants: [VARIANT()],
+      invoices: [INVOICE()],
+    });
+
+    await expect(h.shop.markOrderPaid('club-1', 'order-1')).rejects.toThrow(
+      /encaisser/i,
+    );
+
+    expect(h.orders[0].status).toBe(ShopOrderStatus.PENDING);
+    expect(h.variants[0].onHand).toBe(5);
+    expect(h.movements).toHaveLength(0);
+  });
+
+  it('accepte une commande SANS facture, antérieure à la facturation systématique', async () => {
+    const h = makeStore({ orders: [ORDER()], variants: [VARIANT()], invoices: [] });
+
+    const res = await h.shop.markOrderPaid('club-1', 'order-1');
+
+    expect(h.orders[0].status).toBe(ShopOrderStatus.PAID);
+    expect(h.variants[0].onHand).toBe(3);
+    expect(res.invoiceId).toBeNull();
+    expect(res.invoiceStatus).toBeNull();
+    expect(res.payableOnline).toBe(false);
+  });
+
+  it('accepte une commande dont la facture est déjà payée : il ne reste que le stock', async () => {
+    const h = makeStore({
+      orders: [ORDER()],
+      variants: [VARIANT()],
+      invoices: [INVOICE({ status: InvoiceStatus.PAID })],
+    });
+
+    const res = await h.shop.markOrderPaid('club-1', 'order-1');
+
+    expect(h.orders[0].status).toBe(ShopOrderStatus.PAID);
+    expect(h.variants[0].onHand).toBe(3);
+    // La facture est exposée, pour que l'écran puisse l'ouvrir…
+    expect(res.invoiceId).toBe('inv-1');
+    expect(res.invoiceStatus).toBe(InvoiceStatus.PAID);
+    // …mais une facture payée n'est plus « payable ».
+    expect(res.payableOnline).toBe(false);
   });
 });

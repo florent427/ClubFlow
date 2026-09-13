@@ -2078,6 +2078,8 @@ const SHOP_ORDER_FIELDS = `
   paidAt
   buyerFirstName
   buyerLastName
+  invoiceId
+  invoiceStatus
   lines {
     id
     orderId

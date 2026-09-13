@@ -1,5 +1,5 @@
 import { Field, ID, Int, ObjectType } from '@nestjs/graphql';
-import { ShopOrderStatus } from '@prisma/client';
+import { InvoiceStatus, ShopOrderStatus } from '@prisma/client';
 
 @ObjectType()
 export class ShopOrderLineGraph {
@@ -62,12 +62,24 @@ export class ShopOrderGraph {
   paidAt!: Date | null;
 
   /**
-   * Vrai si la commande porte une facture OUVERTE, donc payable en ligne
-   * (bouton « Payer » / reprise de paiement). Faux pour une commande « réglée
-   * sur place » (sans facture) : les écrans ne doivent y proposer qu'« Annuler ».
+   * Vrai si la commande porte une facture OUVERTE, donc payable : « Payer »
+   * côté adhérent, « Encaisser » côté club. Depuis le 2026-09-12 toute commande
+   * reçoit sa facture, « régler sur place » compris : seules les commandes
+   * antérieures peuvent encore en être dépourvues.
    */
   @Field()
   payableOnline!: boolean;
+
+  /**
+   * La facture de la commande, quel que soit son statut. C'est sur elle que le
+   * club encaisse : l'écran l'ouvre directement au lieu de la chercher. Null
+   * pour une commande antérieure à la facturation systématique.
+   */
+  @Field(() => ID, { nullable: true })
+  invoiceId!: string | null;
+
+  @Field(() => InvoiceStatus, { nullable: true })
+  invoiceStatus!: InvoiceStatus | null;
 
   @Field(() => [ShopOrderLineGraph])
   lines!: ShopOrderLineGraph[];
