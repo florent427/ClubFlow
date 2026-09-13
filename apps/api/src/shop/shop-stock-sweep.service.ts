@@ -10,6 +10,7 @@ import {
   ShopLowStockNotifierService,
   type LowStockItem,
 } from './shop-low-stock-notifier.service';
+import { ShopPreorderService } from './shop-preorder.service';
 
 /** Compte-rendu chiffré d'un passage. */
 export type ShopStockSweepReport = {
@@ -21,6 +22,11 @@ export type ShopStockSweepReport = {
   rearmed: number;
   /** Alertes réclamées mais perdues faute d'envoi possible. */
   failed: number;
+  /**
+   * Unités précommandées servies par le filet de sécurité (ADR-0018). Zéro
+   * dans le cas normal : chaque arrivage sert déjà ses précommandes.
+   */
+  preordersServed: number;
 };
 
 const EMPTY_REPORT: ShopStockSweepReport = {
@@ -28,6 +34,7 @@ const EMPTY_REPORT: ShopStockSweepReport = {
   alerted: 0,
   rearmed: 0,
   failed: 0,
+  preordersServed: 0,
 };
 
 /** Bail large : le passage dépend d'un SMTP tiers, pas de notre seule base. */
@@ -68,6 +75,7 @@ export class ShopStockSweepService {
     private readonly prisma: PrismaService,
     private readonly notifier: ShopLowStockNotifierService,
     private readonly lock: SchedulerLockService,
+    private readonly preorders: ShopPreorderService,
   ) {}
 
   /**
@@ -94,7 +102,12 @@ export class ShopStockSweepService {
       LEASE_MS,
       async () => {
         const report = await this.sweep();
-        if (report.alerted > 0 || report.failed > 0 || report.rearmed > 0) {
+        if (
+          report.alerted > 0 ||
+          report.failed > 0 ||
+          report.rearmed > 0 ||
+          report.preordersServed > 0
+        ) {
           this.logger.log(
             `[boutique] balayage des seuils : ${JSON.stringify(report)}`,
           );
@@ -138,6 +151,15 @@ export class ShopStockSweepService {
   async sweep(clubId?: string): Promise<ShopStockSweepReport> {
     const scope = clubId ? { clubId } : {};
     const report: ShopStockSweepReport = { ...EMPTY_REPORT };
+
+    // --- 0. Précommandes : filet de sécurité (ADR-0018) ---
+    //
+    // Chaque arrivage sert déjà les précommandes, juste après son commit. Ce
+    // passage rattrape une attribution manquée — serveur arrêté entre les deux
+    // transactions, interblocage refusé par PostgreSQL. AVANT les seuils : le
+    // stock qui compte pour alerter est celui qui reste une fois les
+    // précommandes servies.
+    report.preordersServed = await this.preorders.allocatePending(clubId);
 
     // --- 1. Réarmement, AVANT d'alerter ---
     //

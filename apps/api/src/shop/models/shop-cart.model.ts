@@ -1,4 +1,5 @@
 import { Field, ID, Int, ObjectType } from '@nestjs/graphql';
+import { ShopAvailability } from '../enums/shop-availability.enum';
 
 /**
  * Ligne de panier telle que la voit le MEMBRE.
@@ -36,6 +37,17 @@ export class ShopCartItemGraph {
   /** Booléen seulement : « en stock » / « épuisé ». Jamais la quantité. */
   @Field(() => Boolean)
   inStock!: boolean;
+
+  /**
+   * En stock, sur commande ou épuisé (ADR-0018) : la règle du catalogue.
+   * Jamais la quantité.
+   */
+  @Field(() => ShopAvailability)
+  availability!: ShopAvailability;
+
+  /** Délai indicatif du produit, à montrer quand l'article est sur commande. */
+  @Field(() => String, { nullable: true })
+  preorderLeadTime!: string | null;
 
   /** Article devenu indisponible (produit/déclinaison désactivé) après l'ajout. */
   @Field(() => Boolean)

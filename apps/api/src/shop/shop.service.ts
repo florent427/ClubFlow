@@ -13,12 +13,22 @@ import {
 } from '@prisma/client';
 import type { ShopDeliveryNoteData } from '../pdf/shop-delivery-note-pdf.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { availabilityOf } from './enums/shop-availability.enum';
+import { ShopPreorderService } from './shop-preorder.service';
 import { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
 import { ShopStockService } from './shop-stock.service';
 
 type ViewerIdentity = {
   memberId?: string | null;
   contactId?: string | null;
+};
+
+/** Ce que la projection d'un produit a le droit de montrer. */
+type ShapeOptions = {
+  /** Faux sur tout chemin public : aucune quantité, même dérivée. */
+  withQuantities: boolean;
+  onOrder?: Map<string, number>;
+  preordered?: Map<string, number>;
 };
 
 /**
@@ -44,12 +54,22 @@ export type ShopTermsView = {
   updatedAt: Date | null;
 };
 
+/**
+ * Délai indicatif de précommande tel que saisi : les blancs sont retirés, et un
+ * champ vide se lit « aucun délai annoncé » plutôt qu'une chaîne vide.
+ */
+function leadTimeOf(value: string | null | undefined): string | null {
+  const trimmed = value?.trim() ?? '';
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 @Injectable()
 export class ShopService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly stock: ShopStockService,
     private readonly purchases: ShopPurchaseOrdersService,
+    private readonly preorders: ShopPreorderService,
   ) {}
 
   // --- Products ---
@@ -60,8 +80,10 @@ export class ShopService {
       orderBy: [{ active: 'desc' }, { createdAt: 'desc' }],
       include: { variants: { orderBy: { createdAt: 'asc' } } },
     });
-    const onOrder = await this.onOrderFor(clubId, rows);
-    return rows.map((p) => this.shapeProduct(p, { withQuantities: true, onOrder }));
+    const counts = await this.adminCountsFor(clubId, rows);
+    return rows.map((p) =>
+      this.shapeProduct(p, { withQuantities: true, ...counts }),
+    );
   }
 
   async listProductsPublic(clubId: string) {
@@ -91,25 +113,30 @@ export class ShopService {
       where: { id, clubId },
       include: { variants: { orderBy: { createdAt: 'asc' } } },
     });
-    const onOrder = await this.onOrderFor(clubId, [row]);
-    return this.shapeProduct(row, { withQuantities: true, onOrder });
+    const counts = await this.adminCountsFor(clubId, [row]);
+    return this.shapeProduct(row, { withQuantities: true, ...counts });
   }
 
   /**
-   * Encours fournisseur des déclinaisons affichées (ADR-0013 §4).
+   * Quantités DÉRIVÉES des déclinaisons affichées : l'encours fournisseur
+   * (ADR-0013 §4) et les unités précommandées en attente d'arrivage
+   * (ADR-0018).
    *
-   * Une seule requête pour tout l'écran : le calcul est DÉRIVÉ, donc il ne
-   * doit pas coûter une requête par ligne. Jamais appelé sur le chemin
-   * PUBLIC — l'acheteur n'a pas à connaître l'encours d'achat du club.
+   * Une requête par compteur pour tout l'écran : le calcul est DÉRIVÉ, donc il
+   * ne doit pas coûter une requête par ligne. Jamais appelé sur le chemin
+   * PUBLIC — l'acheteur n'a pas à connaître l'encours d'achat du club, ni
+   * combien d'autres attendent le même article.
    */
-  private onOrderFor(
+  private async adminCountsFor(
     clubId: string,
     products: Array<{ variants: Array<{ id: string }> }>,
   ) {
-    return this.purchases.onOrderByVariant(
-      clubId,
-      products.flatMap((p) => p.variants.map((v) => v.id)),
-    );
+    const ids = products.flatMap((p) => p.variants.map((v) => v.id));
+    const [onOrder, preordered] = await Promise.all([
+      this.purchases.onOrderByVariant(clubId, ids),
+      this.preorders.preorderedByVariant(clubId, ids),
+    ]);
+    return { onOrder, preordered };
   }
 
   /**
@@ -121,7 +148,7 @@ export class ShopService {
    */
   private shapeProduct(
     p: Prisma.ShopProductGetPayload<{ include: { variants: true } }>,
-    opts: { withQuantities: boolean; onOrder?: Map<string, number> },
+    opts: ShapeOptions,
   ) {
     const variants = p.variants;
     const tracked = variants.filter((v) => v.trackStock && v.active);
@@ -137,6 +164,9 @@ export class ShopService {
       description: p.description,
       imageUrl: p.imageUrl,
       priceCents: p.priceCents,
+      // Réglages de précommande : publics, ce ne sont pas des quantités.
+      preorderEnabled: p.preorderEnabled,
+      preorderLeadTime: p.preorderLeadTime,
       // Somme des variantes suivies, ou null si aucune ne l'est : c'est
       // exactement l'ancienne sémantique « illimité ».
       //
@@ -175,7 +205,9 @@ export class ShopService {
               v.reorderThreshold !== null && v.available <= v.reorderThreshold,
           ).length
         : 0,
-      variants: variants.map((v) => this.shapeVariant(v, priceOf(v), opts)),
+      variants: variants.map((v) =>
+        this.shapeVariant(v, priceOf(v), p.preorderEnabled, opts),
+      ),
       active: p.active,
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
@@ -190,7 +222,8 @@ export class ShopService {
   private shapeVariant(
     v: Prisma.ShopProductVariantGetPayload<object>,
     unitPriceCents: number,
-    opts: { withQuantities: boolean; onOrder?: Map<string, number> },
+    preorderEnabled: boolean,
+    opts: ShapeOptions,
   ) {
     // Coût d'achat, marge, taux de marge : trois champs DÉRIVÉS du coût
     // d'acquisition, donc trois fuites potentielles du prix fournisseur.
@@ -234,10 +267,16 @@ export class ShopService {
       // Neutralisé hors administration comme `available` : « 20 arrivent »
       // est une quantité, et l'encours d'achat n'a rien à faire au portail.
       onOrder: opts.withQuantities ? opts.onOrder?.get(v.id) ?? 0 : null,
+      // Idem : « 3 précommandées » est une quantité (ADR-0018).
+      preorderedQty: opts.withQuantities
+        ? opts.preordered?.get(v.id) ?? 0
+        : null,
       avgCostCents,
       marginCents,
       marginRate,
       inStock: !v.trackStock || v.available > 0,
+      // Ce que l'adhérent peut en faire, sans savoir combien il en reste.
+      availability: availabilityOf(v, preorderEnabled),
       // Neutralisé hors administration au même titre que le reste : savoir
       // qu'une taille est « sous le seuil » revient à connaître à la fois la
       // quantité restante et la politique de réappro du club.
@@ -272,6 +311,8 @@ export class ShopService {
       stock?: number;
       active?: boolean;
       reorderThreshold?: number;
+      preorderEnabled?: boolean;
+      preorderLeadTime?: string | null;
     },
   ) {
     const tracked = input.stock !== undefined && input.stock !== null;
@@ -289,6 +330,8 @@ export class ShopService {
           // Colonne morte (ADR-0012) : plus jamais écrite.
           stock: null,
           active: input.active !== false,
+          preorderEnabled: input.preorderEnabled === true,
+          preorderLeadTime: leadTimeOf(input.preorderLeadTime),
         },
       });
       const variant = await tx.shopProductVariant.create({
@@ -334,6 +377,8 @@ export class ShopService {
       stock?: number | null;
       active?: boolean;
       reorderThreshold?: number | null;
+      preorderEnabled?: boolean | null;
+      preorderLeadTime?: string | null;
     },
   ) {
     const existing = await this.prisma.shopProduct.findFirst({
@@ -348,6 +393,14 @@ export class ShopService {
     if (input.imageUrl !== undefined) data.imageUrl = input.imageUrl;
     if (input.priceCents !== undefined) data.priceCents = input.priceCents;
     if (input.active !== undefined) data.active = input.active;
+    // Un `null` venu du formulaire ne décoche rien : seul un booléen change la
+    // précommande. Le délai, lui, s'efface par une chaîne vide ou `null`.
+    if (typeof input.preorderEnabled === 'boolean') {
+      data.preorderEnabled = input.preorderEnabled;
+    }
+    if (input.preorderLeadTime !== undefined) {
+      data.preorderLeadTime = leadTimeOf(input.preorderLeadTime);
+    }
     // `stock` n'est PLUS écrit sur le produit (colonne morte, ADR-0012).
     // Deux sources de vérité concurrentes seraient pires que tout.
 
@@ -386,6 +439,9 @@ export class ShopService {
           reason: 'Saisie depuis la fiche produit',
         });
       }
+      // Du stock a pu redevenir vendable, ou cesser d'être compté : les
+      // précommandes en attente passent avant tout nouvel acheteur (ADR-0018).
+      await this.preorders.allocateQuietly(clubId, [def.id]);
     }
 
     // Un seuil modifié doit pouvoir alerter de nouveau : sans cette remise à
@@ -518,7 +574,11 @@ export class ShopService {
         active: true,
         product: { active: true },
       },
-      include: { product: { select: { id: true, name: true, priceCents: true } } },
+      include: {
+        product: {
+          select: { id: true, name: true, priceCents: true, preorderEnabled: true },
+        },
+      },
     });
     if (variants.length !== wanted.size) {
       throw new BadRequestException('Article indisponible.');
@@ -573,14 +633,31 @@ export class ShopService {
     // La réservation lève si le stock manque, ce qui annule TOUTE la
     // transaction — pas de commande sans stock pris, pas de stock pris sans
     // commande.
+    //
+    // Sauf précommande (ADR-0018) : l'article reste commandable épuisé. On
+    // réserve ce qui reste, et le manque attend l'arrivage sur la ligne — dans
+    // la même transaction, donc jamais visible à moitié.
     for (const line of created.lines) {
-      await this.stock.reserve(tx, {
+      const reservation = {
         clubId,
         variantId: line.variantId!,
         qty: line.quantity,
         orderId: created.id,
         orderLineId: line.id,
-      });
+      };
+      if (!byVariantId.get(line.variantId!)!.product.preorderEnabled) {
+        await this.stock.reserve(tx, reservation);
+        continue;
+      }
+      const awaiting =
+        line.quantity - (await this.stock.reserveUpTo(tx, reservation));
+      if (awaiting > 0) {
+        await tx.shopOrderLine.update({
+          where: { id: line.id },
+          data: { awaitingStockQty: awaiting },
+        });
+        line.awaitingStockQty = awaiting;
+      }
     }
     return created;
   }
@@ -662,10 +739,14 @@ export class ShopService {
     });
     for (const line of row.lines) {
       if (!line.variantId) continue; // ligne antérieure aux variantes
+      // Seules les unités RÉSERVÉES sortent. Celles qui attendent l'arrivage
+      // sortiront quand il les servira (ADR-0018) — pas deux fois.
+      const qty = line.quantity - line.awaitingStockQty;
+      if (qty <= 0) continue;
       await this.stock.fulfill(tx, {
         clubId,
         variantId: line.variantId,
-        qty: line.quantity,
+        qty,
         orderId: row.id,
         orderLineId: line.id,
       });
@@ -1078,7 +1159,7 @@ export class ShopService {
    * rembourser, et aucun chemin de remboursement n'existe côté boutique.
    */
   async cancelOrder(clubId: string, orderId: string) {
-    const updated = await this.prisma.$transaction(async (tx) => {
+    const { row: updated, released } = await this.prisma.$transaction(async (tx) => {
       // `fulfilledAt: null` : une commande REMISE avant d'être payée n'a plus de
       // réservation à libérer — la marchandise est partie. L'annuler rendrait au
       // stock vendable des articles qui ne sont plus dans le placard.
@@ -1103,18 +1184,11 @@ export class ShopService {
         include: { lines: true },
       });
 
-      for (const line of row.lines) {
-        if (!line.variantId) continue;
-        await this.stock.release(tx, {
-          clubId,
-          variantId: line.variantId,
-          qty: line.quantity,
-          orderId: row.id,
-          orderLineId: line.id,
-        });
-      }
-      return row;
+      const freed = await this.releaseReservationsInTx(tx, clubId, row);
+      return { row, released: freed };
     });
+    // Le stock rendu sert d'abord les précommandes en attente (ADR-0018).
+    await this.preorders.allocateQuietly(clubId, released);
     return (await this.hydrateBuyers([updated]))[0];
   }
 
@@ -1150,7 +1224,7 @@ export class ShopService {
     if (!memberId && !contactId) {
       throw new ForbiddenException('Profil requis pour annuler une commande.');
     }
-    const updated = await this.prisma.$transaction(async (tx) => {
+    const { row: updated, released } = await this.prisma.$transaction(async (tx) => {
       const claimed = await tx.shopOrder.updateMany({
         where: {
           id: orderId,
@@ -1176,16 +1250,7 @@ export class ShopService {
 
       // Libère la réservation faite au checkout. `available` remonte, `onHand`
       // n'a jamais bougé (la marchandise n'était que réservée).
-      for (const line of row.lines) {
-        if (!line.variantId) continue;
-        await this.stock.release(tx, {
-          clubId,
-          variantId: line.variantId,
-          qty: line.quantity,
-          orderId: row.id,
-          orderLineId: line.id,
-        });
-      }
+      const freed = await this.releaseReservationsInTx(tx, clubId, row);
 
       // Facture liée → VOID, dans la MÊME transaction. Scopée par
       // `shopOrderId` + `clubId` + `status OPEN` : une facture déjà PAID n'est
@@ -1203,9 +1268,48 @@ export class ShopService {
         },
       });
 
-      return row;
+      return { row, released: freed };
     });
+    await this.preorders.allocateQuietly(clubId, released);
     return (await this.hydrateBuyers([updated]))[0];
+  }
+
+  /**
+   * Libère ce qu'une commande annulée tenait en réserve, et renvoie les
+   * déclinaisons dont du stock est redevenu vendable.
+   *
+   * Seules les unités RÉSERVÉES sont rendues : celles qui attendaient
+   * l'arrivage n'ont jamais été prises (ADR-0018). Leur attente est remise à
+   * zéro dans la même transaction — une commande annulée n'attend plus rien,
+   * et aucun arrivage ne doit plus la servir.
+   */
+  private async releaseReservationsInTx(
+    tx: Prisma.TransactionClient,
+    clubId: string,
+    order: Prisma.ShopOrderGetPayload<{ include: { lines: true } }>,
+  ): Promise<string[]> {
+    const released: string[] = [];
+    for (const line of order.lines) {
+      if (!line.variantId) continue;
+      const qty = line.quantity - line.awaitingStockQty;
+      if (qty <= 0) continue;
+      await this.stock.release(tx, {
+        clubId,
+        variantId: line.variantId,
+        qty,
+        orderId: order.id,
+        orderLineId: line.id,
+      });
+      released.push(line.variantId);
+    }
+    if (order.lines.some((l) => l.awaitingStockQty > 0)) {
+      await tx.shopOrderLine.updateMany({
+        where: { orderId: order.id, awaitingStockQty: { gt: 0 } },
+        data: { awaitingStockQty: 0 },
+      });
+      for (const line of order.lines) line.awaitingStockQty = 0;
+    }
+    return released;
   }
 
   // --- Remise signée (ADR-0017) ---
@@ -1228,7 +1332,9 @@ export class ShopService {
    * deux actions.
    *
    * Remise AVANT paiement permise : le règlement peut suivre, en ligne ou sur
-   * place. Commande annulée : refusée.
+   * place. Commande annulée : refusée. Commande dont un article attend encore
+   * l'arrivage (ADR-0018) : refusée aussi — la personne signerait un bon qui
+   * ne dit pas ce qui reste dû.
    *
    * Vente au comptoir, ou commande antérieure aux CGV : si le club a des CGV en
    * ligne et que la commande n'en porte aucune acceptation, c'est la signature
@@ -1270,6 +1376,8 @@ export class ShopService {
           clubId,
           deliveredAt: null,
           status: { in: [ShopOrderStatus.PENDING, ShopOrderStatus.PAID] },
+          // Précommande (ADR-0018) : on ne remet pas ce qui n'est pas arrivé.
+          lines: { none: { awaitingStockQty: { gt: 0 } } },
         },
         data: {
           deliveredAt: now,
@@ -1282,13 +1390,22 @@ export class ShopService {
         // Lecture APRÈS l'échec : elle n'arbitre rien, elle nomme le refus.
         const current = await tx.shopOrder.findFirst({
           where: { id: input.orderId, clubId },
-          select: { status: true, deliveredAt: true },
+          select: {
+            status: true,
+            deliveredAt: true,
+            lines: { select: { awaitingStockQty: true } },
+          },
         });
         if (!current) throw new NotFoundException('Commande introuvable');
         throw new BadRequestException(
           current.status === ShopOrderStatus.CANCELLED
             ? 'Impossible de remettre cette commande : elle est annulée.'
-            : 'Cette commande a déjà été remise.',
+            : current.deliveredAt
+              ? 'Cette commande a déjà été remise.'
+              : current.lines.some((l) => l.awaitingStockQty > 0)
+                ? 'Impossible de remettre cette commande : des articles sont ' +
+                  'encore en attente d’arrivage. Remets-la quand tout est arrivé.'
+                : 'Cette commande vient de changer : recharge la page.',
         );
       }
 
@@ -1550,6 +1667,7 @@ export class ShopService {
           quantity: l.quantity,
           unitPriceCents: l.unitPriceCents,
           label: l.label,
+          awaitingStockQty: l.awaitingStockQty,
         })),
         buyerFirstName: first,
         buyerLastName: last,

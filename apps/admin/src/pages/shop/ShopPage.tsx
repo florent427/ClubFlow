@@ -431,6 +431,7 @@ function VariantsDrawer({
                     <th>Stock compté</th>
                     <th>Vendable</th>
                     <th>En commande</th>
+                    <th>Précommandées</th>
                     <th>Coût moyen</th>
                     <th>Marge</th>
                     <th>Seuil d’alerte</th>
@@ -514,6 +515,16 @@ function VariantsDrawer({
                           {v.onOrder === null || v.onOrder === 0
                             ? '—'
                             : `+${v.onOrder} attendus`}
+                        </td>
+                        {/*
+                          Précommandes en attente d'arrivage (ADR-0018) : ce
+                          que le club doit encore aux adhérents. À recommander
+                          en plus du seuil.
+                        */}
+                        <td className="cf-muted">
+                          {v.preorderedQty === null || v.preorderedQty === 0
+                            ? '—'
+                            : `${v.preorderedQty} à servir`}
                         </td>
                         {/*
                           Coût moyen et marge : NULL veut dire « jamais
@@ -701,6 +712,8 @@ function CounterSaleDrawer({
               unitPriceCents: v.unitPriceCents,
               trackStock: v.trackStock,
               available: v.available,
+              preorder: p.preorderEnabled,
+              leadTime: p.preorderLeadTime,
             })),
         ),
     [products],
@@ -710,6 +723,15 @@ function CounterSaleDrawer({
   const qty = Number.parseInt(qtyStr, 10);
   const qtyOk = Number.isInteger(qty) && qty >= 1;
   const totalCents = chosen && qtyOk ? chosen.unitPriceCents * qty : 0;
+  /**
+   * Ce qui manque en stock pour cette vente. L'admin voit les quantités : on
+   * lui dit AVANT d'enregistrer si la vente passera en précommande (ADR-0018)
+   * ou sera refusée.
+   */
+  const missing =
+    chosen && qtyOk && chosen.trackStock && chosen.available !== null
+      ? Math.max(0, qty - chosen.available)
+      : 0;
 
   async function onSubmit(): Promise<void> {
     if (!memberId) {
@@ -804,7 +826,11 @@ function CounterSaleDrawer({
             <option key={v.id} value={v.id}>
               {v.label} · {fmtEuros(v.unitPriceCents)}
               {v.trackStock && v.available !== null
-                ? ` · ${v.available} en stock`
+                ? v.available > 0
+                  ? ` · ${v.available} en stock`
+                  : v.preorder
+                    ? ' · épuisé, sur commande'
+                    : ' · épuisé'
                 : ''}
             </option>
           ))}
@@ -825,6 +851,17 @@ function CounterSaleDrawer({
           onChange={(e) => setQtyStr(e.target.value)}
         />
       </label>
+      {missing > 0 && chosen ? (
+        <p className="cf-muted" style={{ margin: '-4px 0 12px' }}>
+          {chosen.preorder
+            ? `Il en manque ${missing} : ${
+                missing > 1 ? 'ils seront remis' : 'il sera remis'
+              } à l’arrivage (précommande${
+                chosen.leadTime ? `, délai indicatif : ${chosen.leadTime}` : ''
+              }).`
+            : `Il en manque ${missing} : la vente sera refusée.`}
+        </p>
+      ) : null}
 
       <label className="cf-field">
         <span>Note (optionnel)</span>
@@ -847,6 +884,11 @@ function CounterSaleDrawer({
       ) : null}
     </Drawer>
   );
+}
+
+/** Unités précommandées en attente d'arrivage, toutes déclinaisons (ADR-0018). */
+function preorderedOf(p: ShopProduct): number {
+  return p.variants.reduce((sum, v) => sum + (v.preorderedQty ?? 0), 0);
 }
 
 function ProductsTab() {
@@ -882,6 +924,9 @@ function ProductsTab() {
   const [priceEuros, setPriceEuros] = useState('');
   const [stockStr, setStockStr] = useState('');
   const [active, setActive] = useState(true);
+  /** Précommande (ADR-0018) : commandable une fois épuisé, servi à l'arrivage. */
+  const [preorderEnabled, setPreorderEnabled] = useState(false);
+  const [preorderLeadTime, setPreorderLeadTime] = useState('');
   /**
    * LA bascule de l'ADR-0012 : décochée par défaut, et tant qu'elle l'est, le
    * formulaire est exactement celui d'avant. La complexité du modèle ne remonte
@@ -904,6 +949,8 @@ function ProductsTab() {
     setPriceEuros('');
     setStockStr('');
     setActive(true);
+    setPreorderEnabled(false);
+    setPreorderLeadTime('');
     setWithVariants(false);
     setAiPanelOpen(false);
     setDrawerOpen(true);
@@ -917,6 +964,8 @@ function ProductsTab() {
     setPriceEuros((p.priceCents / 100).toString().replace('.', ','));
     setStockStr(p.stock === null ? '' : String(p.stock));
     setActive(p.active);
+    setPreorderEnabled(p.preorderEnabled);
+    setPreorderLeadTime(p.preorderLeadTime ?? '');
     setWithVariants(p.hasVariants);
     setAiPanelOpen(false);
     setDrawerOpen(true);
@@ -953,6 +1002,8 @@ function ProductsTab() {
               // porte le sien.
               stock: withVariants ? undefined : stockValue,
               active,
+              preorderEnabled,
+              preorderLeadTime: preorderLeadTime.trim() || null,
             },
           },
         });
@@ -969,6 +1020,8 @@ function ProductsTab() {
               priceCents,
               stock: withVariants ? undefined : stockValue,
               active,
+              preorderEnabled,
+              preorderLeadTime: preorderLeadTime.trim() || null,
             },
           },
         });
@@ -1139,6 +1192,24 @@ function ProductsTab() {
                     </>
                   ) : null}
                 </p>
+                {p.preorderEnabled || preorderedOf(p) > 0 ? (
+                  <p className="cf-product-card__stock">
+                    {p.preorderEnabled ? (
+                      <span className="cf-pill cf-pill--info">
+                        Précommande
+                        {p.preorderLeadTime ? ` · ${p.preorderLeadTime}` : ''}
+                      </span>
+                    ) : null}
+                    {preorderedOf(p) > 0 ? (
+                      <>
+                        {p.preorderEnabled ? ' ' : null}
+                        <span className="cf-pill cf-pill--warn">
+                          {preorderedOf(p)} à servir à l’arrivage
+                        </span>
+                      </>
+                    ) : null}
+                  </p>
+                ) : null}
                 {/*
                   Valeur du stock : c'est un PLANCHER, pas une estimation
                   (ADR-0013 §1). Les déclinaisons dont le coût d'achat n'a
@@ -1302,6 +1373,33 @@ function ProductsTab() {
           <label className="cf-checkbox">
             <input
               type="checkbox"
+              checked={preorderEnabled}
+              onChange={(e) => setPreorderEnabled(e.target.checked)}
+            />
+            <span>Commandable même épuisé (précommande)</span>
+          </label>
+          {preorderEnabled ? (
+            <label className="cf-field">
+              <span className="cf-field__label">Délai indicatif</span>
+              <input
+                type="text"
+                className="cf-input"
+                value={preorderLeadTime}
+                onChange={(e) => setPreorderLeadTime(e.target.value)}
+                maxLength={80}
+                placeholder="Ex. : 3 à 4 semaines"
+              />
+              <span className="cf-field__hint">
+                Montré à l’adhérent quand l’article est épuisé. La facture est
+                émise à la commande ; ce qui manque lui est remis à l’arrivage,
+                dès que vous enregistrez une entrée de stock ou une réception
+                fournisseur.
+              </span>
+            </label>
+          ) : null}
+          <label className="cf-checkbox">
+            <input
+              type="checkbox"
               checked={withVariants}
               onChange={(e) => setWithVariants(e.target.checked)}
             />
@@ -1455,6 +1553,11 @@ function OrdersTab() {
             const buyer =
               `${o.buyerFirstName ?? ''} ${o.buyerLastName ?? ''}`.trim() ||
               '—';
+            /** Unités en attente d'arrivage (ADR-0018). */
+            const awaiting = o.lines.reduce(
+              (sum, l) => sum + l.awaitingStockQty,
+              0,
+            );
             return (
               <li key={o.id} className="cf-order-card">
                 <div className="cf-order-card__head">
@@ -1462,13 +1565,28 @@ function OrdersTab() {
                     <strong>{buyer}</strong>
                     <span className="cf-muted"> · {fmtDate(o.createdAt)}</span>
                   </div>
-                  <span className={`cf-pill cf-pill--${pill.cls}`}>{pill.label}</span>
+                  <span>
+                    {awaiting > 0 ? (
+                      <>
+                        <span className="cf-pill cf-pill--info">
+                          En attente d’arrivage
+                        </span>{' '}
+                      </>
+                    ) : null}
+                    <span className={`cf-pill cf-pill--${pill.cls}`}>{pill.label}</span>
+                  </span>
                 </div>
                 <ul className="cf-order-lines">
                   {o.lines.map((l) => (
                     <li key={l.id}>
                       <span>
                         {l.quantity} × {l.label}
+                        {l.awaitingStockQty > 0 ? (
+                          <span className="cf-muted">
+                            {' '}
+                            ({l.awaitingStockQty} en attente d’arrivage)
+                          </span>
+                        ) : null}
                       </span>
                       <span>{fmtEuros(l.unitPriceCents * l.quantity)}</span>
                     </li>
@@ -1537,13 +1655,21 @@ function OrdersTab() {
                       </span>
                     ) : null}
                     {o.status !== 'CANCELLED' && !o.deliveredAt ? (
-                      <button
-                        type="button"
-                        className="cf-btn"
-                        onClick={() => setDeliveryOrder(o)}
-                      >
-                        Remettre
-                      </button>
+                      awaiting > 0 ? (
+                        // Précommande (ADR-0018) : on ne remet pas ce qui
+                        // n'est pas arrivé — le serveur le refuse aussi.
+                        <span className="cf-muted">
+                          Remise possible à l’arrivage
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="cf-btn"
+                          onClick={() => setDeliveryOrder(o)}
+                        >
+                          Remettre
+                        </button>
+                      )
                     ) : null}
                     {o.deliveredAt ? (
                       <>

@@ -198,31 +198,55 @@ déploiement, l'application mobile seulement à sa publication suivante.
 
 ---
 
-## Lot 3 — Commande sur rupture
+## Lot 3 — Commande sur rupture (précommande)
+
+Nommée « précommande » dans le code : `BACKORDER` y désigne déjà le reliquat
+d'une commande fournisseur (ADR-0013). Décision :
+[ADR-0018](../../memory/decisions/0018-boutique-precommande.md).
 
 ### Task 3.1 : Schéma
 
-- [ ] `ShopProduct.backorderAllowed Boolean @default(false)` et
-  `ShopProduct.backorderLeadTime String? @db.VarChar(80)`.
-- [ ] `ShopOrderLine.backorderedQty Int @default(0)` : quantité en attente
+- [x] `ShopProduct.preorderEnabled Boolean @default(false)` et
+  `ShopProduct.preorderLeadTime String? @db.VarChar(80)`.
+- [x] `ShopOrderLine.awaitingStockQty Int @default(0)` : unités en attente
   d'arrivage.
 
 ### Task 3.2 : Disponibilité côté adhérent
 
-- [ ] `availability` : `IN_STOCK`, `OUT_OF_STOCK` ou `BACKORDER`, avec le délai
-  indicatif. Toujours **aucun compteur** exposé à l'adhérent (ADR-0012).
+- [x] `availability` : `IN_STOCK`, `PREORDER` ou `SOLD_OUT`, calculée par une
+  seule fonction (`availabilityOf`), avec le délai indicatif du produit.
+  Toujours **aucun compteur** exposé à l'adhérent (ADR-0012) ; `preorderedQty`
+  reste réservé à l'administration.
 
 ### Task 3.3 : Passage de commande
 
-- [ ] Sur un produit commandable en rupture : ce qui existe est réservé, le reste
-  est mis en attente. Facture émise à la commande.
+- [x] Sur un produit en précommande, `reserveUpTo` réserve ce qui existe et le
+  reste va dans `awaitingStockQty`. Facture émise à la commande.
+- [x] Au règlement, seules les unités réservées sortent du stock. La remise est
+  refusée tant qu'un article attend. À l'annulation, seules les unités
+  réservées reviennent au stock, et l'attente est remise à zéro.
 
 ### Task 3.4 : Arrivage
 
-- [ ] À la réception fournisseur : affectation aux lignes en attente par
-  ancienneté, puis sortie immédiate pour les commandes déjà réglées.
+- [x] `ShopPreorderService` attribue les unités par ancienneté de commande. Les
+  unités d'une commande déjà sortie du stock sortent tout de suite.
+- [x] Attribution appelée après la réception fournisseur, l'entrée ou la
+  correction de stock, la fiche produit et l'annulation. Le balayage quotidien
+  rattrape une attribution manquée.
 
 ### Task 3.5 : Admin, portail, mobile, vérification staging
+
+- [x] Admin, fiche produit : case « Commandable même épuisé » et délai
+  indicatif.
+- [x] Admin, catalogue : colonne « Précommandées » dans la matrice des
+  déclinaisons.
+- [x] Admin, commandes : « En attente d'arrivage », et « Remettre » masqué tant
+  qu'un article attend. La vente au comptoir signale un manque avant
+  l'enregistrement.
+- [x] Portail : « sur commande » et délai sur la fiche, dans le panier et au
+  règlement ; unités en attente sur « Mes commandes ».
+- [x] Application mobile : même chose, à sa prochaine publication.
+- [ ] Vérification staging.
 
 ---
 

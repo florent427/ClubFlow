@@ -11,6 +11,7 @@ import {
 } from '@prisma/client';
 import { AccountingMappingService } from '../accounting/accounting-mapping.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { ShopPreorderService } from './shop-preorder.service';
 import { ShopStockService } from './shop-stock.service';
 
 /**
@@ -90,6 +91,7 @@ export class ShopPurchaseOrdersService {
     private readonly prisma: PrismaService,
     private readonly stock: ShopStockService,
     private readonly mapping: AccountingMappingService,
+    private readonly preorders: ShopPreorderService,
   ) {}
 
   // ------------------------------------------------------------------
@@ -529,7 +531,7 @@ export class ShopPurchaseOrdersService {
       }
     }
 
-    await this.prisma.$transaction(async (tx) => {
+    const arrived = await this.prisma.$transaction(async (tx) => {
       // LA garantie d'état, de tenant et de sérialisation, en une requête.
       // Une commande RECEIVED, CANCELLED, encore DRAFT, ou appartenant à un
       // autre club : `count` vaut 0 et rien n'est écrit. `updatedAt` est
@@ -690,7 +692,17 @@ export class ShopPurchaseOrdersService {
           'Le statut de la commande a changé pendant la réception.',
         );
       }
+
+      return planned
+        .filter(({ entry }) => entry.receivedQty > 0)
+        .map(({ line }) => line.variantId);
     });
+
+    // L'arrivage sert d'abord les précommandes qui l'attendaient (ADR-0018).
+    // Après le commit et dans sa propre transaction : l'attribution verrouille
+    // des commandes, ce qu'elle ne peut pas faire derrière le verrou de
+    // déclinaison que cette réception tenait.
+    await this.preorders.allocateQuietly(clubId, arrived);
 
     return this.getOrder(clubId, input.orderId);
   }

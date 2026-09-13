@@ -67,4 +67,17 @@ export class UpdateShopProductInput {
   @IsOptional()
   @IsBoolean()
   active?: boolean;
+
+  /** Commandable une fois épuisé, servi à l'arrivage (ADR-0018). */
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  preorderEnabled?: boolean;
+
+  /** Délai indicatif annoncé à l'adhérent. Vide ou null : aucun délai. */
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  preorderLeadTime?: string | null;
 }

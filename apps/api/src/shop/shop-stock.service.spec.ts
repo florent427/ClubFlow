@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, Logger } from '@nestjs/common';
 import { ShopStockMovementKind } from '@prisma/client';
 import { ShopStockService } from './shop-stock.service';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -351,5 +351,119 @@ describe('ShopStockService.adjust', () => {
 
     expect(h.rows[0].onHand).toBe(0);
     expect(h.rows[0].available).toBe(0);
+  });
+});
+
+describe('ShopStockService.reserveUpTo — précommande (ADR-0018)', () => {
+  const reserveUpTo = (h: ReturnType<typeof makeHarness>, qty: number) =>
+    h.svc.reserveUpTo(h.tx as never, {
+      clubId: 'club-1',
+      variantId: 'v-1',
+      qty,
+      ...ORDER,
+    });
+
+  it('réserve tout quand le stock suffit', async () => {
+    const h = makeHarness([VARIANT({ onHand: 5, available: 5 })]);
+
+    await expect(reserveUpTo(h, 3)).resolves.toBe(3);
+
+    expect(h.rows[0].available).toBe(2);
+    expect(h.rows[0].onHand).toBe(5);
+    expect(h.movements).toEqual([
+      expect.objectContaining({
+        kind: ShopStockMovementKind.RESERVE,
+        onHandDelta: 0,
+        availableDelta: -3,
+        ...ORDER,
+      }),
+    ]);
+  });
+
+  it('réserve CE QUI RESTE et le dit, sans jamais descendre sous zéro', async () => {
+    const h = makeHarness([VARIANT({ onHand: 2, available: 2 })]);
+
+    await expect(reserveUpTo(h, 5)).resolves.toBe(2);
+
+    expect(h.rows[0].available).toBe(0);
+    expect(h.movements).toEqual([
+      expect.objectContaining({ availableDelta: -2 }),
+    ]);
+  });
+
+  it('épuisé : ne réserve rien et n’archive rien', async () => {
+    const h = makeHarness([VARIANT({ onHand: 0, available: 0 })]);
+
+    await expect(reserveUpTo(h, 2)).resolves.toBe(0);
+
+    expect(h.rows[0].available).toBe(0);
+    expect(h.movements).toHaveLength(0);
+  });
+
+  it('course perdue : relit, et ne prend que ce qui reste vraiment', async () => {
+    // Entre la lecture et l'écriture, une vente concurrente a pris 3 des 4
+    // unités lues. L'écriture conditionnelle refuse d'en prendre 3 ; on relit
+    // et l'on ne prend que la dernière.
+    const h = makeHarness([VARIANT({ available: 1 })]);
+    h.tx.shopProductVariant.findFirst.mockImplementationOnce(async () => ({
+      ...h.rows[0],
+      available: 4,
+    }));
+
+    await expect(reserveUpTo(h, 3)).resolves.toBe(1);
+
+    expect(h.rows[0].available).toBe(0);
+    expect(h.movements).toEqual([
+      expect.objectContaining({ availableDelta: -1 }),
+    ]);
+  });
+
+  it('abandonne après trois courses perdues : tout attend l’arrivage, rien n’est pris', async () => {
+    const h = makeHarness([VARIANT({ available: 1 })]);
+    h.tx.shopProductVariant.findFirst.mockImplementation(async () => ({
+      ...h.rows[0],
+      available: 10,
+    }));
+    const journal = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+
+    try {
+      await expect(reserveUpTo(h, 5)).resolves.toBe(0);
+    } finally {
+      journal.mockRestore();
+    }
+
+    expect(h.tx.shopProductVariant.findFirst).toHaveBeenCalledTimes(3);
+    expect(h.rows[0].available).toBe(1);
+    expect(h.movements).toHaveLength(0);
+  });
+
+  it('stock non suivi : tout est servi, rien n’est décompté ni archivé', async () => {
+    const h = makeHarness([
+      VARIANT({ trackStock: false, onHand: 0, available: 0 }),
+    ]);
+
+    await expect(reserveUpTo(h, 4)).resolves.toBe(4);
+
+    expect(h.rows[0].available).toBe(0);
+    expect(h.movements).toHaveLength(0);
+  });
+
+  it('refuse la déclinaison d’un AUTRE club, sans rien écrire', async () => {
+    const h = makeHarness([VARIANT({ clubId: 'club-2', available: 10 })]);
+
+    await expect(reserveUpTo(h, 2)).rejects.toThrow(BadRequestException);
+
+    expect(h.rows[0].available).toBe(10);
+    expect(h.movements).toHaveLength(0);
+  });
+
+  it('sert une déclinaison retirée de la vente : une précommande acceptée doit pouvoir l’être', async () => {
+    const h = makeHarness([VARIANT({ active: false, available: 3 })]);
+
+    await expect(reserveUpTo(h, 2)).resolves.toBe(2);
+
+    expect(h.rows[0].available).toBe(1);
   });
 });

@@ -100,6 +100,7 @@
 | [`0015-cheques-a-encaisser-5112.md`](decisions/0015-cheques-a-encaisser-5112.md) | ADR-0015 — Les chèques transitent par 5112 jusqu'à la remise |
 | [`0016-frais-avances-benevoles-467.md`](decisions/0016-frais-avances-benevoles-467.md) | ADR-0016 — Les frais avancés par un bénévole passent par un compte de tiers |
 | [`0017-boutique-paiement-sortie-remise.md`](decisions/0017-boutique-paiement-sortie-remise.md) | ADR-0017 — Boutique : règlement, sortie de stock et remise sont trois faits distincts |
+| [`0018-boutique-precommande.md`](decisions/0018-boutique-precommande.md) | ADR-0018 — Boutique : un article épuisé reste commandable, et chaque arrivage sert d'abord les précommandes |
 
 ## 🔄 Workflows métier
 
@@ -113,7 +114,7 @@
 
 ---
 
-_Index généré le 2026-09-13 06:54 UTC par `bin/memory-index`._
+_Index généré le 2026-09-13 10:57 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`

@@ -1,5 +1,6 @@
 import { ShopService } from './shop.service';
 import type { PrismaService } from '../prisma/prisma.service';
+import { ShopAvailability } from './enums/shop-availability.enum';
 import type { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
 import type { ShopStockService } from './shop-stock.service';
 
@@ -36,6 +37,9 @@ const INTERDITS = [
   'marginCents',
   'marginRate',
   'stockValueCents',
+  // ADR-0018 : « 3 précommandées » est une quantité, et dit à un adhérent
+  // combien d'autres attendent le même article.
+  'preorderedQty',
 ];
 
 /** Remonte tout chemin portant une valeur numérique ou vraie sur une clé interdite. */
@@ -67,6 +71,8 @@ function makeSvc() {
     priceCents: 1800,
     stock: null,
     active: true,
+    preorderEnabled: false,
+    preorderLeadTime: null as string | null,
     createdAt: new Date('2026-07-01'),
     updatedAt: new Date('2026-07-01'),
     variants: [
@@ -108,12 +114,18 @@ function makeSvc() {
   const purchases = {
     onOrderByVariant: jest.fn().mockResolvedValue(new Map([['v-1', 20]])),
   };
+  // NON NUL, pour la même raison que l'encours : un stub à zéro rendrait le
+  // test de fuite vert quoi qu'il arrive.
+  const preorders = {
+    preorderedByVariant: jest.fn().mockResolvedValue(new Map([['v-1', 3]])),
+  };
   const svc = new ShopService(
     prisma as unknown as PrismaService,
     {} as unknown as ShopStockService,
     purchases as unknown as ShopPurchaseOrdersService,
+    preorders as never,
   );
-  return { svc, produit, purchases };
+  return { svc, produit, purchases, preorders };
 }
 
 describe('listProductsPublic — ce que voit un adhérent', () => {
@@ -231,5 +243,43 @@ describe('listProductsAdmin — ce que voit le trésorier', () => {
     await svc.listProductsPublic('club-1');
 
     expect(purchases.onOrderByVariant).not.toHaveBeenCalled();
+  });
+});
+
+describe('précommande (ADR-0018) — ce que voient l’adhérent et le trésorier', () => {
+  it('annonce « sur commande » et le délai d’un article épuisé commandable, sans aucune quantité', async () => {
+    const { svc, produit, preorders } = makeSvc();
+    produit.variants[0].available = 0;
+    produit.preorderEnabled = true;
+    produit.preorderLeadTime = '3 semaines';
+
+    const [p] = await svc.listProductsPublic('club-1');
+
+    expect(p.preorderEnabled).toBe(true);
+    expect(p.preorderLeadTime).toBe('3 semaines');
+    expect(p.variants[0].inStock).toBe(false);
+    expect(p.variants[0].availability).toBe(ShopAvailability.PREORDER);
+    expect(fuites([p])).toEqual([]);
+    // Le compte des précommandes n'est même pas calculé sur ce chemin.
+    expect(preorders.preorderedByVariant).not.toHaveBeenCalled();
+  });
+
+  it('épuisé et non commandable : « épuisé »', async () => {
+    const { svc, produit } = makeSvc();
+    produit.variants[0].available = 0;
+
+    const [p] = await svc.listProductsPublic('club-1');
+
+    expect(p.variants[0].availability).toBe(ShopAvailability.SOLD_OUT);
+  });
+
+  it('le trésorier voit combien d’unités sont précommandées — sinon il ne sait pas combien recommander', async () => {
+    const { svc, preorders } = makeSvc();
+
+    const [p] = await svc.listProductsAdmin('club-1');
+
+    expect(p.variants[0].preorderedQty).toBe(3);
+    expect(p.variants[0].availability).toBe(ShopAvailability.IN_STOCK);
+    expect(preorders.preorderedByVariant).toHaveBeenCalledWith('club-1', ['v-1']);
   });
 });

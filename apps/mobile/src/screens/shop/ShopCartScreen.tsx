@@ -30,6 +30,10 @@ import {
   shopTermsGate,
 } from '../../lib/shop-cart';
 import {
+  availabilityPill,
+  cartPreorderNotice,
+} from '../../lib/shop-availability';
+import {
   VIEWER_CHECKOUT_SHOP_CART,
   VIEWER_CHECKOUT_SHOP_CART_ON_SITE,
   VIEWER_CLEAR_SHOP_CART,
@@ -335,6 +339,7 @@ export function ShopCartScreen() {
   const items = cart?.items ?? [];
   const hasBlocking = shopCartHasBlockingItems(items);
   const checkoutable = canCheckoutShopCart(cart);
+  const preorderText = cartPreorderNotice(items);
 
   return (
     <View style={styles.flex}>
@@ -396,6 +401,10 @@ export function ShopCartScreen() {
                           </Text>
                           <Text style={styles.lineUnit}>
                             {formatEuroCents(item.unitPriceCents)} l’unité
+                            {item.availability === 'PREORDER' &&
+                            item.preorderLeadTime
+                              ? ` · délai indicatif : ${item.preorderLeadTime}`
+                              : ''}
                           </Text>
                           <View style={styles.lineBadgeRow}>
                             {item.unavailable ? (
@@ -405,15 +414,7 @@ export function ShopCartScreen() {
                                 icon="close-circle-outline"
                               />
                             ) : (
-                              <Pill
-                                label={item.inStock ? 'Disponible' : 'Épuisé'}
-                                tone={item.inStock ? 'success' : 'neutral'}
-                                icon={
-                                  item.inStock
-                                    ? 'checkmark-circle-outline'
-                                    : 'close-circle-outline'
-                                }
-                              />
+                              <Pill {...availabilityPill(item.availability)} />
                             )}
                           </View>
                         </View>
@@ -497,6 +498,19 @@ export function ShopCartScreen() {
                     Un ou plusieurs articles sont épuisés ou indisponibles.
                     Retirez-les avant de régler, sinon le paiement sera refusé.
                   </Text>
+                </View>
+              </Card>
+            ) : null}
+
+            {preorderText ? (
+              <Card flat style={styles.warnCard}>
+                <View style={styles.warnRow}>
+                  <Ionicons
+                    name="time-outline"
+                    size={18}
+                    color={palette.warningText}
+                  />
+                  <Text style={styles.warnText}>{preorderText}</Text>
                 </View>
               </Card>
             ) : null}

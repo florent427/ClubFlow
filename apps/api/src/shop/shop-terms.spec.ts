@@ -100,6 +100,7 @@ function makeHarness(seed: { assets: Asset[]; club?: Partial<ClubRow> }) {
     db as unknown as PrismaService,
     {} as unknown as ShopStockService,
     {} as unknown as ShopPurchaseOrdersService,
+    {} as never,
   );
   return { svc, assets, club: () => clubs[0] };
 }

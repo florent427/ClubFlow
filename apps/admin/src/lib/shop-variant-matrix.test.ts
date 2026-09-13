@@ -24,10 +24,12 @@ function variant(over: Partial<ShopProductVariant> = {}): ShopProductVariant {
     // cours » / « coût jamais renseigné ». La matrice ne s'en sert pas, mais
     // le type l'exige — et null est la valeur honnête par défaut.
     onOrder: null,
+    preorderedQty: null,
     avgCostCents: null,
     marginCents: null,
     marginRate: null,
     inStock: true,
+    availability: 'IN_STOCK',
     belowThreshold: false,
     active: true,
     ...over,

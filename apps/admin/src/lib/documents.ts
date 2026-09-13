@@ -2031,10 +2031,12 @@ const SHOP_PRODUCT_VARIANT_FIELDS = `
   onHand
   reorderThreshold
   onOrder
+  preorderedQty
   avgCostCents
   marginCents
   marginRate
   inStock
+  availability
   belowThreshold
   active
 `;
@@ -2052,6 +2054,8 @@ const SHOP_PRODUCT_FIELDS = `
   description
   imageUrl
   priceCents
+  preorderEnabled
+  preorderLeadTime
   stock
   hasVariants
   priceFromCents
@@ -2092,6 +2096,7 @@ const SHOP_ORDER_FIELDS = `
     quantity
     unitPriceCents
     label
+    awaitingStockQty
   }
 `;
 

@@ -1,4 +1,5 @@
 import { Field, Float, ID, Int, ObjectType } from '@nestjs/graphql';
+import { ShopAvailability } from '../enums/shop-availability.enum';
 
 /** Une déclinaison vendable : c'est elle qui porte le stock (ADR-0012). */
 @ObjectType()
@@ -57,6 +58,17 @@ export class ShopProductVariantGraph {
   onOrder!: number | null;
 
   /**
+   * Unités PRÉCOMMANDÉES en attente d'arrivage : somme des `awaitingStockQty`
+   * des commandes en cours (ADR-0018). « 3 précommandées » dit au trésorier
+   * combien recommander, en plus de ce qui manque au seuil.
+   *
+   * DÉRIVÉE, et réservée à l'ADMINISTRATION au même titre qu'`available` :
+   * c'est une quantité.
+   */
+  @Field(() => Int, { nullable: true })
+  preorderedQty!: number | null;
+
+  /**
    * Coût moyen pondéré d'acquisition, en CENTIMES (ADR-0013 §1).
    *
    * ADMINISTRATION SEULEMENT, comme `available` — et pour une raison de plus :
@@ -79,9 +91,20 @@ export class ShopProductVariantGraph {
   @Field(() => Float, { nullable: true })
   marginRate!: number | null;
 
-  /** Vrai si la variante peut être commandée maintenant. */
+  /**
+   * Vrai si la variante est en stock, ou non suivie. Une variante épuisée peut
+   * rester commandable : c'est `availability` qui le dit.
+   */
   @Field()
   inStock!: boolean;
+
+  /**
+   * En stock, sur commande (précommande) ou épuisée (ADR-0018). L'information
+   * de disponibilité à montrer à l'adhérent : elle ne dit jamais combien il en
+   * reste.
+   */
+  @Field(() => ShopAvailability)
+  availability!: ShopAvailability;
 
   /** Vrai si le stock est passé sous le seuil de réapprovisionnement. */
   @Field()
@@ -113,6 +136,14 @@ export class ShopProductGraph {
 
   @Field(() => Int)
   priceCents!: number;
+
+  /** Commandable une fois épuisé, servi à l'arrivage (ADR-0018). */
+  @Field()
+  preorderEnabled!: boolean;
+
+  /** Délai indicatif annoncé à l'adhérent. Null : aucun délai annoncé. */
+  @Field(() => String, { nullable: true })
+  preorderLeadTime!: string | null;
 
   /**
    * @deprecated ADR-0012 — champ DÉRIVÉ, plus une colonne.

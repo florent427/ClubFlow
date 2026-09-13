@@ -194,6 +194,7 @@ function makeHarness() {
     prisma as unknown as PrismaService,
     stock,
     {} as unknown as ShopPurchaseOrdersService,
+    {} as never,
   );
 
   return { svc, invoices, orders, reserved, tx };

@@ -3,6 +3,14 @@ import { Prisma, ShopStockMovementKind } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
+ * Relectures de `reserveUpTo` avant de laisser la ligne attendre l'arrivage.
+ * Chaque échec est une vente concurrente réellement passée entre la lecture et
+ * l'écriture : trois d'affilée sur la même déclinaison ne se voient pas dans un
+ * club.
+ */
+const RESERVE_UP_TO_ATTEMPTS = 3;
+
+/**
  * Le SEUL point d'écriture du stock (ADR-0012).
  *
  * Aucune autre méthode du dépôt ne doit toucher `onHand` ni `available` :
@@ -108,6 +116,94 @@ export class ShopStockService {
     throw new BadRequestException(
       'Article indisponible ou stock insuffisant pour cette déclinaison.',
     );
+  }
+
+  /**
+   * Réserve AU PLUS `qty` unités et renvoie le nombre réellement réservé : la
+   * précommande (ADR-0018), où ce qui manque attend l'arrivage au lieu de faire
+   * échouer la commande.
+   *
+   * La garantie est celle de `reserve`, tenue par le même moyen : l'écriture
+   * reste conditionnelle sur `available: { gte: take }`, donc `available` ne
+   * descend jamais sous zéro. La lecture qui la précède ne fait que CHOISIR
+   * `take`, elle n'arbitre rien. Si une vente concurrente prend des unités
+   * entre les deux, `count` vaut 0 et l'on relit. Après quelques courses
+   * perdues d'affilée, on réserve zéro : faire attendre l'arrivage est toujours
+   * permis, survendre jamais.
+   *
+   * Ne filtre PAS sur `active`, à la différence de `reserve` : le passage de
+   * commande l'a vérifié dans sa transaction, et l'attribution d'un arrivage
+   * doit pouvoir servir une précommande acceptée sur une déclinaison retirée
+   * de la vente depuis.
+   *
+   * Stock non suivi : tout est servi, rien n'est décompté — confirmé par un
+   * ordre conditionnel, comme dans `reserve`.
+   */
+  async reserveUpTo(
+    tx: Prisma.TransactionClient,
+    args: {
+      clubId: string;
+      variantId: string;
+      qty: number;
+      orderId: string;
+      orderLineId: string;
+    },
+  ): Promise<number> {
+    const { clubId, variantId, qty, orderId, orderLineId } = args;
+
+    for (let attempt = 1; ; attempt++) {
+      const current = await tx.shopProductVariant.findFirst({
+        where: { id: variantId, clubId, trackStock: true },
+        select: { available: true },
+      });
+      if (!current) {
+        const untracked = await tx.shopProductVariant.updateMany({
+          where: { id: variantId, clubId, trackStock: false },
+          data: { updatedAt: new Date() },
+        });
+        if (untracked.count === 1) return qty;
+        throw new BadRequestException(
+          'Article indisponible ou stock insuffisant pour cette déclinaison.',
+        );
+      }
+
+      const take = Math.min(qty, current.available);
+      if (take <= 0) return 0;
+
+      const claimed = await tx.shopProductVariant.updateMany({
+        where: {
+          id: variantId,
+          clubId,
+          trackStock: true,
+          available: { gte: take },
+        },
+        data: { available: { decrement: take } },
+      });
+      if (claimed.count === 1) {
+        await tx.shopStockMovement.create({
+          data: {
+            clubId,
+            variantId,
+            kind: ShopStockMovementKind.RESERVE,
+            onHandDelta: 0,
+            availableDelta: -take,
+            orderId,
+            orderLineId,
+          },
+        });
+        return take;
+      }
+
+      // Course perdue : une vente concurrente est passée entre la lecture et
+      // l'écriture.
+      if (attempt >= RESERVE_UP_TO_ATTEMPTS) {
+        this.logger.warn(
+          `[boutique] réservation perdue ${attempt} fois sur ${variantId} : ` +
+            'la ligne attendra l’arrivage.',
+        );
+        return 0;
+      }
+    }
   }
 
   /**

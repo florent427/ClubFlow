@@ -282,11 +282,19 @@ function makeHarness(seed: {
     accountingEntry: table(entries, 'ae'),
   };
 
+  // Profondeur de transaction : l'attribution des arrivages part APRÈS la
+  // réception, jamais dedans (ADR-0018).
+  let depth = 0;
   const prisma = {
     ...tx,
-    $transaction: jest.fn(async (fn: (t: typeof tx) => Promise<unknown>) =>
-      fn(tx),
-    ),
+    $transaction: jest.fn(async (fn: (t: typeof tx) => Promise<unknown>) => {
+      depth += 1;
+      try {
+        return await fn(tx);
+      } finally {
+        depth -= 1;
+      }
+    }),
   };
 
   const stock = new ShopStockService(prisma as unknown as PrismaService);
@@ -297,13 +305,24 @@ function makeHarness(seed: {
       .fn()
       .mockResolvedValue({ code: '607000', label: 'Achats de marchandises' }),
   };
+  // L'attribution elle-même a sa spec (shop-preorder.service.spec) : ici, on
+  // vérifie QUAND et AVEC QUOI la réception la déclenche.
+  const preorders = {
+    allocateQuietly: jest.fn(
+      async (_clubId: string, _variantIds: Iterable<string>): Promise<void> =>
+        undefined,
+    ),
+  };
   const svc = new ShopPurchaseOrdersService(
     prisma as unknown as PrismaService,
     stock,
     mapping as unknown as AccountingMappingService,
+    preorders as never,
   );
   return {
     svc,
+    preorders,
+    txDepth: () => depth,
     orders,
     lines,
     variants,
@@ -1302,5 +1321,57 @@ describe('createOrder — la référence est arbitrée par la base', () => {
       }),
     ).rejects.toThrow(BadRequestException);
     expect(h.orders).toHaveLength(0);
+  });
+});
+
+describe('receiveOrder — l’arrivage sert les précommandes (ADR-0018)', () => {
+  it('déclenche l’attribution APRÈS la réception, pour les seules déclinaisons arrivées', async () => {
+    const h = makeHarness({
+      orders: [ordre()],
+      lines: [
+        ligne({ id: 'pol-1', variantId: 'v-1', orderedQty: 5 }),
+        ligne({ id: 'pol-2', variantId: 'v-2', orderedQty: 5 }),
+      ],
+      variants: [variante({ id: 'v-1' }), variante({ id: 'v-2' })],
+    });
+    let depthAtCall = -1;
+    let onHandAtCall = -1;
+    h.preorders.allocateQuietly.mockImplementation(async () => {
+      depthAtCall = h.txDepth();
+      onHandAtCall = h.variants[0].onHand;
+    });
+
+    await h.svc.receiveOrder(CLUB, {
+      orderId: 'po-1',
+      lines: [
+        { orderLineId: 'pol-1', receivedQty: 5 },
+        {
+          orderLineId: 'pol-2',
+          receivedQty: 0,
+          discrepancyReason: ShopReceiptDiscrepancyReason.BACKORDER,
+        },
+      ],
+    });
+
+    expect(h.preorders.allocateQuietly).toHaveBeenCalledTimes(1);
+    expect(h.preorders.allocateQuietly).toHaveBeenCalledWith(CLUB, ['v-1']);
+    expect(depthAtCall).toBe(0);
+    expect(onHandAtCall).toBe(5);
+  });
+
+  it('une réception refusée ne sert rien', async () => {
+    const h = makeHarness({
+      orders: [ordre()],
+      lines: [ligne({ orderedQty: 20 })],
+    });
+
+    await expect(
+      h.svc.receiveOrder(CLUB, {
+        orderId: 'po-1',
+        lines: [{ orderLineId: 'pol-1', receivedQty: 17 }],
+      }),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(h.preorders.allocateQuietly).not.toHaveBeenCalled();
   });
 });

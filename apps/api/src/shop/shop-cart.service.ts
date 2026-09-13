@@ -10,6 +10,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { availabilityOf, ShopAvailability } from './enums/shop-availability.enum';
 import { ShopService } from './shop.service';
 
 /** Identité du viewer propriétaire d'un panier boutique. */
@@ -34,6 +35,13 @@ export type ShopCartItemView = {
    * `available` ici trahirait le stock exact du club.
    */
   inStock: boolean;
+  /**
+   * En stock, sur commande ou épuisé : la règle du catalogue, lue au même
+   * endroit (ADR-0018). Pas plus bavarde que `inStock` sur les quantités.
+   */
+  availability: ShopAvailability;
+  /** Délai indicatif du produit, à montrer quand l'article est sur commande. */
+  preorderLeadTime: string | null;
   /** Le produit ou la déclinaison n'est plus vendable (désactivé/supprimé). */
   unavailable: boolean;
 };
@@ -149,6 +157,8 @@ export class ShopCartService {
                     priceCents: true,
                     imageUrl: true,
                     active: true,
+                    preorderEnabled: true,
+                    preorderLeadTime: true,
                   },
                 },
               },
@@ -177,6 +187,8 @@ export class ShopCartService {
                     priceCents: true;
                     imageUrl: true;
                     active: true;
+                    preorderEnabled: true;
+                    preorderLeadTime: true;
                   };
                 };
               };
@@ -201,6 +213,10 @@ export class ShopCartService {
       // suivie est toujours en stock ; une variante suivie l'est si
       // `available > 0`. `available` NE SORT PAS d'ici.
       const inStock = !unavailable && (!v.trackStock || v.available > 0);
+      // Même règle que le catalogue, lue au même endroit (ADR-0018).
+      const availability = unavailable
+        ? ShopAvailability.SOLD_OUT
+        : availabilityOf(v, p.preorderEnabled);
       if (!unavailable) totalCents += lineTotalCents;
       return {
         id: it.id,
@@ -212,6 +228,8 @@ export class ShopCartService {
         unitPriceCents,
         lineTotalCents,
         inStock,
+        availability,
+        preorderLeadTime: p.preorderLeadTime,
         unavailable,
       };
     });
@@ -220,8 +238,8 @@ export class ShopCartService {
 
   /**
    * Ajoute (ou CUMULE) une déclinaison au panier. Valide que la variante
-   * appartient au club, est active, son produit actif, et qu'elle est
-   * `inStock` — sans rien réserver.
+   * appartient au club, est active, son produit actif, et qu'elle est en
+   * stock ou en précommande — sans rien réserver.
    */
   async addItem(
     clubId: string,
@@ -235,15 +253,23 @@ export class ShopCartService {
     }
     const variant = await this.prisma.shopProductVariant.findFirst({
       where: { id: variantId, clubId, active: true, product: { active: true } },
-      select: { id: true, trackStock: true, available: true },
+      select: {
+        id: true,
+        trackStock: true,
+        available: true,
+        product: { select: { preorderEnabled: true } },
+      },
     });
     if (!variant) {
       throw new NotFoundException('Article introuvable ou indisponible.');
     }
-    // Constat de disponibilité (booléen), PAS une réservation : on refuse
-    // seulement d'ajouter un article manifestement épuisé. La garantie
-    // anti-survente reste au checkout.
-    if (variant.trackStock && variant.available <= 0) {
+    // Constat de disponibilité, PAS une réservation : on refuse seulement
+    // d'ajouter un article épuisé ET non commandable. Un article en précommande
+    // s'ajoute (ADR-0018) ; la garantie anti-survente reste au checkout.
+    if (
+      availabilityOf(variant, variant.product.preorderEnabled) ===
+      ShopAvailability.SOLD_OUT
+    ) {
       throw new BadRequestException('Cet article est épuisé.');
     }
     const cart = await this.getOrCreateCart(clubId, owner);

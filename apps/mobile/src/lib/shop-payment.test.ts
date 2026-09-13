@@ -107,3 +107,32 @@ describe('commande retirée au club (ADR-0017)', () => {
     expect(shopOrderPickupLabel({ status: 'CANCELLED', deliveredAt: null })).toBeNull();
   });
 });
+
+describe('commande en précommande (ADR-0018)', () => {
+  const attend = [{ awaitingStockQty: 0 }, { awaitingStockQty: 1 }];
+
+  it('un article attend l’arrivage : « en attente d’arrivage », payée ou non', () => {
+    expect(
+      shopOrderPickupLabel({ status: 'PAID', deliveredAt: null, lines: attend }),
+    ).toEqual({ kind: 'AWAITING_STOCK' });
+    expect(
+      shopOrderPickupLabel({ status: 'PENDING', deliveredAt: null, lines: attend }),
+    ).toEqual({ kind: 'AWAITING_STOCK' });
+  });
+
+  it('tout est arrivé : de nouveau « à retirer » une fois payée', () => {
+    expect(
+      shopOrderPickupLabel({
+        status: 'PAID',
+        deliveredAt: null,
+        lines: [{ awaitingStockQty: 0 }],
+      }),
+    ).toEqual({ kind: 'TO_COLLECT' });
+  });
+
+  it('une commande annulée n’attend plus rien', () => {
+    expect(
+      shopOrderPickupLabel({ status: 'CANCELLED', deliveredAt: null, lines: attend }),
+    ).toBeNull();
+  });
+});

@@ -55,6 +55,7 @@ type OrderRow = {
     quantity: number;
     unitPriceCents: number;
     label: string;
+    awaitingStockQty: number;
   }>;
 };
 
@@ -122,13 +123,21 @@ function makeStore(seed: {
     (where.contactId === undefined || o.contactId === where.contactId) &&
     nullableMatches(o.fulfilledAt, where.fulfilledAt) &&
     nullableMatches(o.deliveredAt, where.deliveredAt) &&
-    nullableMatches(o.termsAcceptedAt, where.termsAcceptedAt);
+    nullableMatches(o.termsAcceptedAt, where.termsAcceptedAt) &&
+    // `lines: { none: { awaitingStockQty: { gt } } }` (ADR-0018), appliquée
+    // pour de vrai : sans elle, la remise d'une commande qui attend encore un
+    // arrivage passerait ici quoi qu'écrive le service.
+    (where.lines === undefined ||
+      !o.lines.some(
+        (l) => l.awaitingStockQty > where.lines.none.awaitingStockQty.gt,
+      ));
 
   const invoiceMatches = (i: InvoiceRow, where: any): boolean =>
     (where.shopOrderId === undefined || i.shopOrderId === where.shopOrderId) &&
     (where.clubId === undefined || i.clubId === where.clubId) &&
     (where.status === undefined || i.status === where.status);
 
+  let depth = 0;
   const db: any = {
     club: {
       findUnique: jest.fn(
@@ -186,6 +195,24 @@ function makeStore(seed: {
         return { ...o, lines: o.lines.map((l) => ({ ...l })) };
       }),
     },
+    // Annulation d'une précommande (ADR-0018) : l'attente est remise à zéro sur
+    // les lignes de la commande. Toutes les clauses présentes sont appliquées.
+    shopOrderLine: {
+      updateMany: jest.fn(async ({ where, data }: any) => {
+        const hit = orders
+          .flatMap((o) => o.lines)
+          .filter(
+            (l) =>
+              (where.orderId === undefined || l.orderId === where.orderId) &&
+              (where.awaitingStockQty?.gt === undefined ||
+                l.awaitingStockQty > where.awaitingStockQty.gt),
+          );
+        hit.forEach((l) => {
+          l.awaitingStockQty = data.awaitingStockQty;
+        });
+        return { count: hit.length };
+      }),
+    },
     shopProductVariant: {
       updateMany: jest.fn(async ({ where, data }: any) => {
         const hit = [variant].filter(
@@ -214,6 +241,7 @@ function makeStore(seed: {
         variant: { ...variant },
         movements: structuredClone(movements),
       };
+      depth += 1;
       try {
         return await fn(db);
       } catch (e) {
@@ -222,17 +250,36 @@ function makeStore(seed: {
         movements.splice(0, movements.length, ...snap.movements);
         Object.assign(variant, snap.variant);
         throw e;
+      } finally {
+        depth -= 1;
       }
     }),
   };
 
+  const preorders = {
+    allocateQuietly: jest.fn(
+      async (_clubId: string, _variantIds: Iterable<string>): Promise<void> =>
+        undefined,
+    ),
+  };
   const stock = new ShopStockService(db as unknown as PrismaService);
   const shop = new ShopService(
     db as unknown as PrismaService,
     stock,
     {} as unknown as ShopPurchaseOrdersService,
+    preorders as never,
   );
-  return { db, shop, orders, variant, movements };
+  return {
+    db,
+    shop,
+    orders,
+    variant,
+    movements,
+    invoices,
+    preorders,
+    /** Transactions ouvertes à cet instant : 0 hors de toute transaction. */
+    txDepth: () => depth,
+  };
 }
 
 const ORDER = (over: Partial<OrderRow> = {}): OrderRow => ({
@@ -263,6 +310,7 @@ const ORDER = (over: Partial<OrderRow> = {}): OrderRow => ({
       quantity: 2,
       unitPriceCents: 1250,
       label: 'Kimono — 120/130',
+      awaitingStockQty: 0,
     },
   ],
   ...over,
@@ -529,5 +577,128 @@ describe('ShopService.getDeliveryNote', () => {
     await deliver(h);
 
     await expect(h.shop.getDeliveryNote('club-2', 'order-1')).resolves.toBeNull();
+  });
+});
+
+describe('précommande : ce qui attend l’arrivage (ADR-0018)', () => {
+  /** Kimono ×2 dont `awaiting` attendent l'arrivage — le reste est réservé. */
+  const PREORDER = (awaiting: number, over: Partial<OrderRow> = {}) =>
+    ORDER({
+      ...over,
+      lines: [{ ...ORDER().lines[0], awaitingStockQty: awaiting }],
+    });
+
+  it('au règlement, seules les unités RÉSERVÉES sortent du stock', async () => {
+    const h = makeStore({ orders: [PREORDER(1)], onHand: 1, available: 0 });
+
+    await payByCard(h);
+
+    expect(h.orders[0].status).toBe(ShopOrderStatus.PAID);
+    expect(h.variant.onHand).toBe(0);
+    expect(h.movements).toEqual([
+      expect.objectContaining({
+        kind: ShopStockMovementKind.FULFILL,
+        onHandDelta: -1,
+      }),
+    ]);
+  });
+
+  it('tout en attente : le règlement ne sort rien, mais la commande est marquée sortie', async () => {
+    const h = makeStore({ orders: [PREORDER(2)], onHand: 0, available: 0 });
+
+    await payByCard(h);
+
+    expect(h.variant.onHand).toBe(0);
+    expect(fulfils(h)).toBe(0);
+    // `fulfilledAt` posé : l'arrivage saura qu'il doit sortir ces unités.
+    expect(h.orders[0].fulfilledAt).toBeInstanceOf(Date);
+  });
+
+  it('la commande dit, ligne par ligne, ce qui attend l’arrivage', async () => {
+    const h = makeStore({ orders: [PREORDER(1)], onHand: 1, available: 0 });
+
+    const shaped = await h.shop.markOrderPaid('club-1', 'order-1');
+
+    expect(shaped.lines[0]).toMatchObject({ quantity: 2, awaitingStockQty: 1 });
+  });
+
+  it('refuse de remettre une commande dont un article attend l’arrivage, sans rien écrire', async () => {
+    const h = makeStore({ orders: [PREORDER(1)], onHand: 1, available: 0 });
+
+    await expect(deliver(h)).rejects.toThrow(/attente d’arrivage/);
+
+    expect(h.orders[0].deliveredAt).toBeNull();
+    expect(h.orders[0].deliverySignaturePng).toBeNull();
+    expect(fulfils(h)).toBe(0);
+  });
+
+  it('le club annule : ne rend que les unités réservées, et l’attente s’éteint', async () => {
+    const h = makeStore({ orders: [PREORDER(1)], onHand: 1, available: 0 });
+
+    const res = await h.shop.cancelOrder('club-1', 'order-1');
+
+    expect(h.orders[0].status).toBe(ShopOrderStatus.CANCELLED);
+    expect(h.variant.available).toBe(1); // l'unité réservée, pas les deux
+    expect(h.orders[0].lines[0].awaitingStockQty).toBe(0);
+    expect(res.lines[0].awaitingStockQty).toBe(0);
+    // Le stock rendu sert d'abord les précommandes des autres.
+    expect(h.preorders.allocateQuietly).toHaveBeenCalledWith('club-1', ['v-1']);
+  });
+
+  it('sert les précommandes APRÈS la transaction d’annulation, jamais dedans', async () => {
+    // L'attribution verrouille d'autres commandes : prise dans cette
+    // transaction, elle inverserait l'ordre des verrous (ShopPreorderService).
+    const h = makeStore({ orders: [PREORDER(1)], onHand: 1, available: 0 });
+    let depthAtCall = -1;
+    h.preorders.allocateQuietly.mockImplementation(async () => {
+      depthAtCall = h.txDepth();
+    });
+
+    await h.shop.cancelOrder('club-1', 'order-1');
+
+    expect(depthAtCall).toBe(0);
+  });
+
+  it('annuler une commande qui attendait TOUT ne rend rien au stock', async () => {
+    const h = makeStore({ orders: [PREORDER(2)], onHand: 0, available: 0 });
+
+    await h.shop.cancelOrder('club-1', 'order-1');
+
+    expect(h.variant.available).toBe(0);
+    expect(h.movements).toHaveLength(0);
+    expect(h.orders[0].lines[0].awaitingStockQty).toBe(0);
+    expect(h.preorders.allocateQuietly).toHaveBeenCalledWith('club-1', []);
+  });
+
+  it('l’adhérent annule : même règle, et sa facture est annulée', async () => {
+    const h = makeStore({
+      orders: [PREORDER(1)],
+      onHand: 1,
+      available: 0,
+      invoices: [
+        {
+          id: 'inv-1',
+          clubId: 'club-1',
+          shopOrderId: 'order-1',
+          status: InvoiceStatus.OPEN,
+        },
+      ],
+    });
+    let depthAtCall = -1;
+    h.preorders.allocateQuietly.mockImplementation(async () => {
+      depthAtCall = h.txDepth();
+    });
+
+    await h.shop.cancelOrderForViewer(
+      'club-1',
+      { memberId: 'm-1', contactId: null },
+      'order-1',
+    );
+
+    expect(h.variant.available).toBe(1);
+    expect(h.orders[0].lines[0].awaitingStockQty).toBe(0);
+    expect(h.invoices[0].status).toBe(InvoiceStatus.VOID);
+    expect(h.preorders.allocateQuietly).toHaveBeenCalledWith('club-1', ['v-1']);
+    expect(depthAtCall).toBe(0);
   });
 });

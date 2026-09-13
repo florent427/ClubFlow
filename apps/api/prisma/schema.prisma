@@ -3174,6 +3174,15 @@ model ShopProduct {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  /// Précommande (ADR-0018) : l'article reste commandable une fois épuisé. Les
+  /// unités manquantes attendent l'arrivage sur la ligne de commande
+  /// (`ShopOrderLine.awaitingStockQty`) ; `available` ne descend jamais sous
+  /// zéro pour autant.
+  preorderEnabled  Boolean @default(false)
+  /// Délai indicatif montré à l'adhérent (« 3 à 4 semaines »). Texte libre :
+  /// une annonce du club, pas une date calculée.
+  preorderLeadTime String? @db.VarChar(80)
+
   /// Rattrapage ADR-0012 : ShopProduct et ShopOrder étaient les seuls modèles
   /// du schéma à porter un clubId sans relation vers Club — l'isolation
   /// multi-tenant reposait sur le seul WHERE applicatif, sans FK.
@@ -3613,6 +3622,13 @@ model ShopOrderLine {
   /// (« T-shirt — L / Rouge »). Il n'existe aucun autre chemin d'affichage du
   /// détail de ligne, et le snapshot survit au renommage du produit.
   label          String
+
+  /// Unités EN ATTENTE D'ARRIVAGE (ADR-0018). Zéro pour une ligne servie sur
+  /// le stock, et pour toute ligne antérieure à la précommande. Seules les
+  /// unités réservées (`quantity − awaitingStockQty`) sortent du stock au
+  /// règlement ou à la remise ; les autres sortent quand l'arrivage les sert.
+  /// Remis à zéro à l'annulation : une commande annulée n'attend plus rien.
+  awaitingStockQty Int @default(0)
 
   order   ShopOrder           @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product ShopProduct         @relation(fields: [productId], references: [id], onDelete: Restrict)
