@@ -9,6 +9,8 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { ShopAdminResolver, ShopViewerResolver } from './shop.resolver';
 import { ShopCartService } from './shop-cart.service';
 import { ShopDeliveryNoteController } from './shop-delivery-note.controller';
+import { ShopDeliveryNoteLinkService } from './shop-delivery-note-link.service';
+import { ShopDeliveryNoteService } from './shop-delivery-note.service';
 import { ShopLowStockNotifierService } from './shop-low-stock-notifier.service';
 import { ShopService } from './shop.service';
 import { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
@@ -34,6 +36,8 @@ import { ShopVariantsService } from './shop-variants.service';
   providers: [
     ShopService,
     ShopCartService,
+    ShopDeliveryNoteService,
+    ShopDeliveryNoteLinkService,
     ShopStockService,
     ShopPurchaseOrdersService,
     ShopVariantsService,

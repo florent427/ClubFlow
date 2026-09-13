@@ -1457,13 +1457,18 @@ export class ShopService {
       memberIds.length > 0
         ? this.prisma.member.findMany({
             where: { id: { in: memberIds } },
-            select: { id: true, firstName: true, lastName: true },
+            select: { id: true, firstName: true, lastName: true, email: true },
           })
         : Promise.resolve([]),
       contactIds.length > 0
         ? this.prisma.contact.findMany({
             where: { id: { in: contactIds } },
-            select: { id: true, firstName: true, lastName: true },
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              user: { select: { email: true } },
+            },
           })
         : Promise.resolve([]),
     ]);
@@ -1505,14 +1510,18 @@ export class ShopService {
     return orders.map((o) => {
       let first: string | null = null;
       let last: string | null = null;
+      let email: string | null = null;
       if (o.memberId && memberById.has(o.memberId)) {
         const m = memberById.get(o.memberId)!;
         first = m.firstName;
         last = m.lastName;
+        email = m.email ?? null;
       } else if (o.contactId && contactById.has(o.contactId)) {
         const c = contactById.get(o.contactId)!;
         first = c.firstName;
         last = c.lastName;
+        // Un contact n'a pas d'adresse propre : c'est celle de son compte.
+        email = c.user?.email ?? null;
       }
       return {
         id: o.id,
@@ -1544,6 +1553,7 @@ export class ShopService {
         })),
         buyerFirstName: first,
         buyerLastName: last,
+        buyerEmail: email,
       };
     });
   }

@@ -17,6 +17,7 @@ import {
 } from './dto/shop-cart.input';
 import { CreateShopProductInput } from './dto/create-shop-product.input';
 import { DeliverShopOrderInput } from './dto/deliver-shop-order.input';
+import { SendShopDeliveryNoteInput } from './dto/send-shop-delivery-note.input';
 import {
   PlaceShopOrderInput,
   RecordShopCounterSaleInput,
@@ -58,6 +59,7 @@ import {
 import { ShopTermsGraph } from './models/shop-terms.model';
 import { ShopService } from './shop.service';
 import { ShopCartService } from './shop-cart.service';
+import { ShopDeliveryNoteService } from './shop-delivery-note.service';
 import { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
 import { ShopStockSweepService } from './shop-stock-sweep.service';
 import { ShopVariantsService } from './shop-variants.service';
@@ -76,6 +78,7 @@ export class ShopAdminResolver {
     private readonly variants: ShopVariantsService,
     private readonly sweep: ShopStockSweepService,
     private readonly purchases: ShopPurchaseOrdersService,
+    private readonly deliveryNotes: ShopDeliveryNoteService,
   ) {}
 
   @Query(() => [ShopProductGraph], { name: 'shopProducts' })
@@ -172,6 +175,27 @@ export class ShopAdminResolver {
       user.userId,
       input,
     ) as Promise<ShopOrderGraph>;
+  }
+
+  /**
+   * Lien signé et court vers le bon de livraison : l'écran l'ouvre dans un
+   * nouvel onglet, où le navigateur propose d'enregistrer ou de partager.
+   */
+  @Mutation(() => String, { name: 'createShopDeliveryNoteLink' })
+  createShopDeliveryNoteLink(
+    @CurrentClub() club: Club,
+    @Args('orderId', { type: () => ID }) orderId: string,
+  ): Promise<string> {
+    return this.deliveryNotes.link(club.id, orderId);
+  }
+
+  /** Envoie le bon de livraison en pièce jointe ; rend l'adresse utilisée. */
+  @Mutation(() => String, { name: 'sendShopDeliveryNote' })
+  sendShopDeliveryNote(
+    @CurrentClub() club: Club,
+    @Args('input') input: SendShopDeliveryNoteInput,
+  ): Promise<string> {
+    return this.deliveryNotes.sendByEmail(club.id, input.orderId, input.email);
   }
 
   // --- Configuration du 3× boutique ---

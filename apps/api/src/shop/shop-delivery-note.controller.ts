@@ -5,6 +5,7 @@ import {
   Get,
   NotFoundException,
   Param,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -12,28 +13,40 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import type { Request, Response } from 'express';
 import { userHasClubBackOfficeRole } from '../common/club-back-office-role';
-import { ShopDeliveryNotePdfService } from '../pdf/shop-delivery-note-pdf.service';
+import {
+  ShopDeliveryNotePdfService,
+  type ShopDeliveryNoteData,
+} from '../pdf/shop-delivery-note-pdf.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { ShopDeliveryNoteLinkService } from './shop-delivery-note-link.service';
 import { ShopService } from './shop.service';
+
+const NON_REMISE =
+  'Bon de livraison introuvable : cette commande n’a pas été remise.';
 
 /**
  * Bon de livraison PDF d'une commande remise (ADR-0017).
  *
- * REST et non GraphQL, comme les factures : le navigateur télécharge un
- * fichier. Réservé au BACK-OFFICE du club — le bon porte la signature de
- * l'adhérent, et un `X-Club-Id` envoyé par l'appelant ne prouve rien à lui
- * seul : le rôle est vérifié pour ce club précis.
+ * REST et non GraphQL, comme les factures : le navigateur affiche un fichier.
+ * Deux portes, un seul document :
+ *  - par EN-TÊTES (JWT + `X-Club-Id`), réservée au back-office du club — un
+ *    `X-Club-Id` envoyé par l'appelant ne prouve rien à lui seul, le rôle est
+ *    vérifié pour ce club précis ;
+ *  - par LIEN SIGNÉ, que l'écran ouvre dans un nouvel onglet. Le lien est émis
+ *    par une mutation réservée au back-office et porte le club et la commande
+ *    dans sa signature.
  */
 @Controller('shop/orders')
-@UseGuards(AuthGuard('jwt'))
 export class ShopDeliveryNoteController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly shop: ShopService,
     private readonly pdf: ShopDeliveryNotePdfService,
+    private readonly links: ShopDeliveryNoteLinkService,
   ) {}
 
   @Get(':id/delivery-note.pdf')
+  @UseGuards(AuthGuard('jwt'))
   async deliveryNote(
     @Req() req: Request,
     @Param('id') id: string,
@@ -53,11 +66,34 @@ export class ShopDeliveryNoteController {
     }
 
     const data = await this.shop.getDeliveryNote(clubId, id);
-    if (!data) {
-      throw new NotFoundException(
-        'Bon de livraison introuvable : cette commande n’a pas été remise.',
+    if (!data) throw new NotFoundException(NON_REMISE);
+    await this.send(res, data);
+  }
+
+  /**
+   * Même bon, par lien signé : un onglet n'envoie aucun en-tête. Le club vient
+   * du lien, et c'est la signature qui le rend digne de foi — un club modifié à
+   * la main l'invalide avant toute lecture.
+   */
+  @Get(':id/delivery-note/signed.pdf')
+  async signedDeliveryNote(
+    @Param('id') id: string,
+    @Query('club') club: string | undefined,
+    @Query('exp') exp: string | undefined,
+    @Query('sig') sig: string | undefined,
+    @Res() res: Response,
+  ): Promise<void> {
+    if (!club || !this.links.verify(club, id, exp, sig)) {
+      throw new ForbiddenException(
+        'Lien expiré ou invalide : rouvrez le bon de livraison depuis la commande.',
       );
     }
+    const data = await this.shop.getDeliveryNote(club, id);
+    if (!data) throw new NotFoundException(NON_REMISE);
+    await this.send(res, data);
+  }
+
+  private async send(res: Response, data: ShopDeliveryNoteData): Promise<void> {
     const pdf = await this.pdf.build(data);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(

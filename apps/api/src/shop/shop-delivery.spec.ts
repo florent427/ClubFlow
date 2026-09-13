@@ -106,7 +106,9 @@ function makeStore(seed: {
     { id: 'cgv-v1', fileName: 'cgv-v1.pdf' },
     { id: 'cgv-v2', fileName: 'cgv-v2.pdf' },
   ];
-  const members = [{ id: 'm-1', firstName: 'Camillah', lastName: 'ABDILLAH' }];
+  const members = [
+    { id: 'm-1', firstName: 'Camillah', lastName: 'ABDILLAH', email: 'famille.abdillah@example.fr' },
+  ];
   const movements: Array<Record<string, unknown>> = [];
 
   const orderMatches = (o: OrderRow, where: any): boolean =>
@@ -302,6 +304,8 @@ describe('ShopService.deliverOrder — remise signée (ADR-0017)', () => {
     expect(o.deliverySignaturePng).toBe(PNG);
     expect(shaped.deliveredAt).toEqual(o.deliveredAt);
     expect(shaped.deliverySignerName).toBe('Camillah ABDILLAH');
+    // Préremplit l'envoi du bon par e-mail.
+    expect(shaped.buyerEmail).toBe('famille.abdillah@example.fr');
   });
 
   it('une commande EN ATTENTE sort du stock à la remise : la première des deux actions', async () => {

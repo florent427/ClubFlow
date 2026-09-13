@@ -1258,6 +1258,8 @@ export type ShopOrder = {
   lines: ShopOrderLine[];
   buyerFirstName: string | null;
   buyerLastName: string | null;
+  /** Adresse de l'acheteur : préremplit l'envoi du bon de livraison. */
+  buyerEmail: string | null;
   /** La facture de la commande : c'est sur elle que le club encaisse. */
   invoiceId: string | null;
   invoiceStatus: InvoiceStatusStr | null;
@@ -1273,6 +1275,10 @@ export type ShopTerms = {
 export type ShopTermsQueryData = { shopTerms: ShopTerms | null };
 export type SetShopTermsMutationData = { setShopTerms: ShopTerms | null };
 export type DeliverShopOrderMutationData = { deliverShopOrder: ShopOrder };
+export type CreateShopDeliveryNoteLinkMutationData = {
+  createShopDeliveryNoteLink: string;
+};
+export type SendShopDeliveryNoteMutationData = { sendShopDeliveryNote: string };
 
 export type ShopProductsQueryData = { shopProducts: ShopProduct[] };
 export type CreateShopProductMutationData = { createShopProduct: ShopProduct };

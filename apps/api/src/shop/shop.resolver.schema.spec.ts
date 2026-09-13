@@ -67,6 +67,13 @@ describe('ShopAdminResolver — schéma GraphQL', () => {
     expect(corpsCommande).toContain('deliverySignerName: String');
     // La signature ne sort JAMAIS par GraphQL : seulement dans le bon PDF.
     expect(sdl).not.toContain('deliverySignaturePng');
+    // Bon de livraison : lien signé et envoi par e-mail.
+    expect(sdl).toContain('createShopDeliveryNoteLink(orderId: ID!): String!');
+    expect(sdl).toContain(
+      'sendShopDeliveryNote(input: SendShopDeliveryNoteInput!): String!',
+    );
+    expect(corpsCommande).toContain('buyerEmail: String');
+    expect(corpsCommande).not.toContain('buyerEmail: String!');
 
     // CGV (ADR-0017) : nullables — un club peut ne pas en avoir, et `null`
     // les retire.

@@ -165,6 +165,10 @@ déploiement, l'application mobile seulement à sa publication suivante.
   aucune ; puis `claimFulfilmentInTx(…, 'DELIVERY')`.
 - [ ] Bon de livraison PDF produit à la demande :
   `GET /shop/orders/:id/delivery-note.pdf`, réservé au back-office du club.
+- [ ] Ouvert par un **lien signé** (club + commande dans la signature, 10 min),
+  dans un onglet ouvert pendant le clic : le téléchargement par Blob restait
+  sans effet sur staging (2026-09-13). Envoi par e-mail en pièce jointe, à la
+  remise ou depuis la commande, à l'adresse de l'acheteur ou à une autre.
 - [ ] Refus si la commande est annulée ou déjà remise ; au lot 3, si une ligne
   attend un arrivage.
 

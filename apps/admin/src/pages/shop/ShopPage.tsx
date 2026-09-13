@@ -56,7 +56,11 @@ import { SuppliersTab } from './SuppliersTab';
 import { PurchaseOrdersTab } from './PurchaseOrdersTab';
 import { ShopSettingsTab } from './ShopSettingsTab';
 import { InvoiceDetailDrawer } from '../billing/InvoiceDetailDrawer';
-import { ShopDeliveryDrawer, downloadDeliveryNote } from './ShopDeliveryDrawer';
+import {
+  ShopDeliveryDrawer,
+  ShopDeliveryNoteMailDrawer,
+  useOpenDeliveryNote,
+} from './ShopDeliveryDrawer';
 import {
   fmtCostOrUnknown,
   fmtDate,
@@ -1381,6 +1385,9 @@ function OrdersTab() {
   const [invoiceOpenId, setInvoiceOpenId] = useState<string | null>(null);
   /** Commande en cours de remise signée. Null = tiroir fermé. */
   const [deliveryOrder, setDeliveryOrder] = useState<ShopOrder | null>(null);
+  /** Commande dont on envoie le bon de livraison par e-mail. */
+  const [mailOrder, setMailOrder] = useState<ShopOrder | null>(null);
+  const openDeliveryNote = useOpenDeliveryNote();
 
   const orders = data?.shopOrders ?? [];
   const [filter, setFilter] = useState<'ALL' | ShopOrder['status']>('ALL');
@@ -1409,7 +1416,8 @@ function OrdersTab() {
   }
   async function onDownloadNote(o: ShopOrder) {
     try {
-      await downloadDeliveryNote(o.id);
+      // Aucun `await` avant : l'onglet doit s'ouvrir pendant le clic.
+      await openDeliveryNote(o.id);
     } catch (err) {
       showToast(
         err instanceof Error ? err.message : 'Téléchargement impossible',
@@ -1552,6 +1560,13 @@ function OrdersTab() {
                         >
                           Bon de livraison
                         </button>
+                        <button
+                          type="button"
+                          className="cf-btn"
+                          onClick={() => setMailOrder(o)}
+                        >
+                          Envoyer par e-mail
+                        </button>
                       </>
                     ) : null}
                   </div>
@@ -1582,6 +1597,13 @@ function OrdersTab() {
             setDeliveryOrder(null);
             void refetch();
           }}
+        />
+      ) : null}
+
+      {mailOrder ? (
+        <ShopDeliveryNoteMailDrawer
+          order={mailOrder}
+          onClose={() => setMailOrder(null)}
         />
       ) : null}
     </div>

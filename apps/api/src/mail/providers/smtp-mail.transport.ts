@@ -138,6 +138,7 @@ export class SmtpMailTransport implements MailTransport {
         text: params.text,
         html: params.html,
         replyTo: params.replyTo,
+        attachments: params.attachments,
         headers,
       });
       const mid =

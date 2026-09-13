@@ -109,3 +109,51 @@ describe('TransactionalMailService.sendVitrineContactMessage', () => {
     expect(sent.subject).toContain('Jean Bcc: victime@example.fr');
   });
 });
+
+describe('TransactionalMailService.sendShopDeliveryNote', () => {
+  const PDF = Buffer.from('%PDF-bon');
+  const OPTS = {
+    clubName: 'Dojo <Sud>',
+    buyerName: 'Camillah & co',
+    orderReference: 'CMD-ABCDEF12',
+    deliveredAt: new Date('2026-09-13T15:00:00Z'),
+    pdf: PDF,
+  };
+
+  it('refuse une adresse invalide sans rien envoyer', async () => {
+    const { svc, transport } = makeService();
+
+    await expect(
+      svc.sendShopDeliveryNote('club-1', 'pas-un-email', OPTS),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(transport.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('joint le PDF, depuis le profil du club, contenu échappé', async () => {
+    const { svc, domains, transport } = makeService();
+
+    await svc.sendShopDeliveryNote('club-1', ' maman@example.fr ', OPTS);
+
+    expect(domains.getAuthMailProfile).toHaveBeenCalledWith('club-1');
+    const sent = transport.sendEmail.mock.calls[0][0];
+    expect(sent).toMatchObject({
+      clubId: 'club-1',
+      kind: 'transactional',
+      from: { name: 'Demo', address: 'noreply@mail.demo.fr' },
+      to: 'maman@example.fr',
+      subject: 'Bon de livraison — Dojo <Sud>',
+    });
+    expect(sent.attachments).toEqual([
+      {
+        filename: 'Bon_de_livraison_CMD-ABCDEF12.pdf',
+        content: PDF,
+        contentType: 'application/pdf',
+      },
+    ]);
+    expect(sent.html).toContain('Dojo &lt;Sud&gt;');
+    expect(sent.html).toContain('Camillah &amp; co');
+    expect(sent.html).not.toContain('<Sud>');
+    expect(sent.text).toContain('retirée le 13/09/2026');
+  });
+});

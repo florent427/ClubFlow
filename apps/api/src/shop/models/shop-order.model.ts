@@ -114,6 +114,13 @@ export class ShopOrderGraph {
 
   @Field(() => String, { nullable: true })
   buyerLastName!: string | null;
+
+  /**
+   * Adresse de l'acheteur — sa fiche d'adhérent, ou le compte du contact.
+   * Préremplit l'envoi du bon de livraison ; l'admin peut la remplacer.
+   */
+  @Field(() => String, { nullable: true })
+  buyerEmail!: string | null;
 }
 
 /**

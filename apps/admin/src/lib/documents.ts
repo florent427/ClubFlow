@@ -2082,6 +2082,7 @@ const SHOP_ORDER_FIELDS = `
   deliverySignerName
   buyerFirstName
   buyerLastName
+  buyerEmail
   invoiceId
   invoiceStatus
   lines {
@@ -2171,6 +2172,20 @@ export const DELIVER_SHOP_ORDER = gql`
     deliverShopOrder(input: $input) {
       ${SHOP_ORDER_FIELDS}
     }
+  }
+`;
+
+/** Lien signé et court vers le bon de livraison, à ouvrir dans un onglet. */
+export const CREATE_SHOP_DELIVERY_NOTE_LINK = gql`
+  mutation CreateShopDeliveryNoteLink($orderId: ID!) {
+    createShopDeliveryNoteLink(orderId: $orderId)
+  }
+`;
+
+/** Envoie le bon de livraison en pièce jointe ; rend l'adresse utilisée. */
+export const SEND_SHOP_DELIVERY_NOTE = gql`
+  mutation SendShopDeliveryNote($input: SendShopDeliveryNoteInput!) {
+    sendShopDeliveryNote(input: $input)
   }
 `;
 
