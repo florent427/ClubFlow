@@ -1251,6 +1251,9 @@ export type ShopOrder = {
   lines: ShopOrderLine[];
   buyerFirstName: string | null;
   buyerLastName: string | null;
+  /** La facture de la commande : c'est sur elle que le club encaisse. */
+  invoiceId: string | null;
+  invoiceStatus: InvoiceStatusStr | null;
 };
 
 export type ShopProductsQueryData = { shopProducts: ShopProduct[] };
