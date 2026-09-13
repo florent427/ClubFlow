@@ -4,6 +4,7 @@ import {
   computeShopCartTotalCents,
   shopCartHasBlockingItems,
   shopCartItemCount,
+  shopTermsGate,
 } from './shop-cart';
 import type { ShopCartItem } from './shop-documents';
 
@@ -88,5 +89,35 @@ describe('canCheckoutShopCart', () => {
     expect(canCheckoutShopCart({ items: [] })).toBe(false);
     expect(canCheckoutShopCart(null)).toBe(false);
     expect(canCheckoutShopCart(undefined)).toBe(false);
+  });
+});
+
+describe('shopTermsGate — les CGV devant les boutons de commande (ADR-0017)', () => {
+  const CGV = { id: 'cgv-v2' };
+  const base = { loading: false, terms: null, accepted: false };
+
+  it('club sans CGV : on commande comme avant, sans rien envoyer', () => {
+    expect(shopTermsGate(base)).toEqual({ blocked: false, acceptedTermsId: null });
+  });
+
+  it('CGV en ligne, case non cochée : bloqué', () => {
+    expect(shopTermsGate({ ...base, terms: CGV })).toEqual({
+      blocked: true,
+      acceptedTermsId: null,
+    });
+  });
+
+  it('case cochée : débloqué, et c’est la version AFFICHÉE qui part', () => {
+    expect(shopTermsGate({ ...base, terms: CGV, accepted: true })).toEqual({
+      blocked: false,
+      acceptedTermsId: 'cgv-v2',
+    });
+  });
+
+  it('tant que la requête n’a rien rendu : bloqué, le serveur refuserait', () => {
+    expect(shopTermsGate({ ...base, loading: true })).toEqual({
+      blocked: true,
+      acceptedTermsId: null,
+    });
   });
 });

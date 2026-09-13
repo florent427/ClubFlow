@@ -99,6 +99,7 @@
 | [`0014-rapprochement-bancaire-par-releves.md`](decisions/0014-rapprochement-bancaire-par-releves.md) | ADR-0014 — Rapprochement bancaire piloté par les relevés |
 | [`0015-cheques-a-encaisser-5112.md`](decisions/0015-cheques-a-encaisser-5112.md) | ADR-0015 — Les chèques transitent par 5112 jusqu'à la remise |
 | [`0016-frais-avances-benevoles-467.md`](decisions/0016-frais-avances-benevoles-467.md) | ADR-0016 — Les frais avancés par un bénévole passent par un compte de tiers |
+| [`0017-boutique-paiement-sortie-remise.md`](decisions/0017-boutique-paiement-sortie-remise.md) | ADR-0017 — Boutique : règlement, sortie de stock et remise sont trois faits distincts |
 
 ## 🔄 Workflows métier
 
@@ -112,7 +113,7 @@
 
 ---
 
-_Index généré le 2026-09-11 14:44 UTC par `bin/memory-index`._
+_Index généré le 2026-09-13 06:54 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`

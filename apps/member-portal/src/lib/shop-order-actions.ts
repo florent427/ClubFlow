@@ -39,7 +39,7 @@ export function canCancelOrder(status: ViewerShopOrderStatus): boolean {
  *
  * Oui UNIQUEMENT à la validation du panier, jamais à la reprise de paiement
  * d'une commande déjà passée. Deux raisons concordantes : `viewerCheckout
- * ShopCartOnSite` opère sur le panier courant (sans argument) et non sur une
+ * ShopCartOnSite` opère sur le panier courant et non sur une
  * commande précise ; et une commande PENDING a déjà arbitré son mode à sa
  * création — la reprise ne concerne que le paiement Stripe de sa facture. La
  * modale distingue les deux cas par la présence d'un `orderId` (mode repay).

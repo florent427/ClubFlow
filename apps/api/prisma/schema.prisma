@@ -111,6 +111,15 @@ model Club {
   /// seuil — le choix vient du membre mais n'est jamais arbitré par le client.
   shopInstallmentThresholdCents Int?
 
+  /// Conditions générales de vente de la boutique (ADR-0017) : un PDF public.
+  /// Dès qu'il existe, AUCUNE commande d'adhérent ne passe sans l'acceptation
+  /// de CETTE version — contrôlée au passage de commande, jamais par le client.
+  /// NoAction : la base refuse de supprimer le PDF tant qu'il est en vigueur.
+  shopTermsAssetId   String?
+  shopTermsAsset     MediaAsset? @relation("ClubShopTerms", fields: [shopTermsAssetId], references: [id], onDelete: NoAction)
+  /// Mise en ligne de la version en vigueur.
+  shopTermsUpdatedAt DateTime?
+
   /// Domaine personnalisé pour le site vitrine public (ex. www.mondojo.fr).
   /// CNAME à poser vers le serveur Next.js ; HTTPS géré par le reverse-proxy.
   customDomain             String?             @unique
@@ -3555,9 +3564,16 @@ model ShopOrder {
   /// annulée d'une commande annulée puis rouverte — ce dernier cas n'existe
   /// pas, la machine à états ne permettant aucune transition depuis CANCELLED.
   cancelledAt DateTime?
+  /// Version des CGV acceptée au passage de commande (ADR-0017). NULL : aucune
+  /// CGV en vigueur à ce moment, ou vente au comptoir — la remise signée
+  /// portera alors l'acceptation. La relation est la preuve : NoAction interdit
+  /// de supprimer un PDF qu'une commande a accepté.
+  termsAssetId    String?
+  termsAcceptedAt DateTime?
 
-  club    Club            @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  lines   ShopOrderLine[]
+  club       Club            @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  termsAsset MediaAsset?     @relation("ShopOrderTerms", fields: [termsAssetId], references: [id], onDelete: NoAction)
+  lines      ShopOrderLine[]
   /// Facture qui finance cette commande (paiement en ligne). Back-relation du
   /// lien porté par `Invoice.shopOrderId`. NULL tant qu'aucune facture n'a été
   /// émise — une commande créée à la main par l'admin n'en a pas.
@@ -3566,6 +3582,7 @@ model ShopOrder {
   @@index([clubId, status])
   @@index([memberId])
   @@index([contactId])
+  @@index([termsAssetId])
 }
 
 model ShopOrderLine {
@@ -4122,6 +4139,10 @@ model MediaAsset {
   chequeImages          Cheque[]                @relation("ChequeImage")
   chequeDepositSlips    ChequeDeposit[]         @relation("ChequeDepositSlip")
   bankStatements        BankStatement[]         @relation("BankStatementFile")
+  /// CGV de boutique (ADR-0017) : en vigueur pour un club, acceptées sur des
+  /// commandes. Deux raisons de refuser la suppression du fichier.
+  clubShopTerms         Club[]                  @relation("ClubShopTerms")
+  shopOrderTerms        ShopOrder[]             @relation("ShopOrderTerms")
 
   @@index([clubId, ownerKind, ownerId])
   @@index([clubId, sha256])

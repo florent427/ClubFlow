@@ -550,6 +550,16 @@ export type ViewerCheckoutShopCartOnSiteData = {
   viewerCheckoutShopCartOnSite: ViewerShopOrder;
 };
 
+/** CGV de la boutique (ADR-0017). */
+export type ViewerShopTerms = {
+  /** À renvoyer au passage de commande : la version acceptée. */
+  id: string;
+  fileName: string;
+  url: string;
+  updatedAt: string | null;
+};
+export type ViewerShopTermsData = { viewerShopTerms: ViewerShopTerms | null };
+
 /**
  * Résultat de la reprise de paiement. Même forme que le checkout : on ne lit
  * que `stripeCheckoutUrl` côté web, vers lequel on redirige comme au checkout.

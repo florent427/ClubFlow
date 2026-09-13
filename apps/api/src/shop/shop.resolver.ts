@@ -54,6 +54,7 @@ import {
   ShopStockMovementGraph,
   ShopStockSweepReportGraph,
 } from './models/shop-stock.model';
+import { ShopTermsGraph } from './models/shop-terms.model';
 import { ShopService } from './shop.service';
 import { ShopCartService } from './shop-cart.service';
 import { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
@@ -188,6 +189,34 @@ export class ShopAdminResolver {
       club.id,
       thresholdCents ?? null,
     );
+  }
+
+  // --- Conditions générales de vente (ADR-0017) ---
+  //
+  // Résolveur ADMIN : mettre des CGV en ligne change ce que tout adhérent doit
+  // accepter pour commander.
+
+  @Query(() => ShopTermsGraph, {
+    name: 'shopTerms',
+    nullable: true,
+    description: 'CGV de la boutique en vigueur. NULL = aucune.',
+  })
+  shopTerms(@CurrentClub() club: Club): Promise<ShopTermsGraph | null> {
+    return this.service.getShopTerms(club.id);
+  }
+
+  @Mutation(() => ShopTermsGraph, {
+    name: 'setShopTerms',
+    nullable: true,
+    description:
+      'Met en ligne les CGV de la boutique : un PDF du club déjà téléversé, rendu public. `null` les retire. Dès qu’elles existent, toute commande d’adhérent exige leur acceptation.',
+  })
+  setShopTerms(
+    @CurrentClub() club: Club,
+    @Args('mediaAssetId', { type: () => ID, nullable: true })
+    mediaAssetId?: string | null,
+  ): Promise<ShopTermsGraph | null> {
+    return this.service.setShopTerms(club.id, mediaAssetId ?? null);
   }
 
   // --- Déclinaisons (ADR-0012) ---
@@ -559,6 +588,16 @@ export class ShopViewerResolver {
     return this.service.listProductsPublic(club.id) as Promise<ShopProductGraph[]>;
   }
 
+  @Query(() => ShopTermsGraph, {
+    name: 'viewerShopTerms',
+    nullable: true,
+    description:
+      'CGV de la boutique à accepter avant de commander : renvoyer leur `id` au passage de commande. NULL = aucune.',
+  })
+  viewerShopTerms(@CurrentClub() club: Club): Promise<ShopTermsGraph | null> {
+    return this.service.getShopTerms(club.id);
+  }
+
   @Query(() => [ShopOrderGraph], { name: 'viewerShopOrders' })
   viewerShopOrders(
     @CurrentClub() club: Club,
@@ -670,17 +709,23 @@ export class ShopViewerResolver {
   @Mutation(() => ShopOrderGraph, {
     name: 'viewerCheckoutShopCartOnSite',
     description:
-      'Valide le panier SANS paiement en ligne (« régler sur place ») : crée la commande et RÉSERVE le stock, mais aucune facture ni session Stripe. La commande reste EN ATTENTE (PENDING) jusqu’à ce que le club la marque payée quand l’adhérent règle au club. Le panier est vidé. L’adhérent peut annuler (le stock est alors libéré).',
+      'Valide le panier SANS paiement en ligne (« régler sur place ») : crée la commande, RÉSERVE le stock et émet la facture, sans session Stripe. La commande reste EN ATTENTE (PENDING) jusqu’à l’encaissement de sa facture au club. Le panier est vidé. `acceptedTermsId` : les CGV acceptées, exigées dès que le club en a (ADR-0017). L’adhérent peut annuler (le stock est alors libéré).',
   })
   async viewerCheckoutShopCartOnSite(
     @CurrentClub() club: Club,
     @CurrentUser() user: RequestUser,
+    @Args('acceptedTermsId', { type: () => ID, nullable: true })
+    acceptedTermsId?: string | null,
   ): Promise<ShopOrderGraph> {
     const viewer = {
       memberId: user.activeProfileMemberId,
       contactId: user.activeProfileContactId,
     };
-    const { orderId } = await this.cart.checkoutOnSite(club.id, viewer);
+    const { orderId } = await this.cart.checkoutOnSite(
+      club.id,
+      viewer,
+      acceptedTermsId ?? null,
+    );
     // Recharge la commande mise en forme (avec ses lignes + l'acheteur) via le
     // chemin existant, plutôt que d'exposer un second point de mise en forme.
     const orders = (await this.service.listOrdersForViewer(

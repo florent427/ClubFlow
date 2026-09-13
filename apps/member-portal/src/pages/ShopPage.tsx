@@ -14,6 +14,7 @@ import {
   VIEWER_SHOP_CART,
   VIEWER_SHOP_ORDERS,
   VIEWER_SHOP_PRODUCTS,
+  VIEWER_SHOP_TERMS,
 } from '../lib/viewer-documents';
 import { canCheckout, countCartUnits, partitionCart } from '../lib/shop-cart';
 import {
@@ -33,6 +34,7 @@ import type {
   ViewerShopOrdersData,
   ViewerShopProduct,
   ViewerShopProductsData,
+  ViewerShopTermsData,
   ViewerShopVariant,
 } from '../lib/viewer-types';
 
@@ -130,6 +132,12 @@ export function ShopPage() {
     useMutation<ViewerClearShopCartData>(VIEWER_CLEAR_SHOP_CART);
   const [cancelOrder, { loading: cancelling }] =
     useMutation<ViewerCancelShopOrderData>(VIEWER_CANCEL_SHOP_ORDER);
+  // Les CGV se consultent depuis la boutique, pas seulement au moment de payer
+  // (ADR-0017). Même requête que la modale de règlement : un seul cache.
+  const { data: termsData } = useQuery<ViewerShopTermsData>(VIEWER_SHOP_TERMS, {
+    fetchPolicy: 'cache-and-network',
+  });
+  const shopTerms = termsData?.viewerShopTerms ?? null;
 
   const cartBusy = adding || settingQty || removing || clearing;
 
@@ -228,6 +236,13 @@ export function ShopPage() {
         <p className="mp-page-subtitle">
           Ajoutez des articles à votre panier, puis réglez en ligne par carte.
         </p>
+        {shopTerms ? (
+          <p className="mp-hint" style={{ margin: '4px 0 0' }}>
+            <a href={shopTerms.url} target="_blank" rel="noreferrer">
+              Conditions générales de vente
+            </a>
+          </p>
+        ) : null}
       </header>
 
       {prodLoading && products.length === 0 ? (

@@ -626,14 +626,35 @@ export const VIEWER_CLEAR_SHOP_CART = gql`
 `;
 
 /**
+ * CGV de la boutique à accepter avant de commander (ADR-0017). `id` est à
+ * renvoyer au passage de commande ; `null` = le club n'en a pas.
+ */
+export const VIEWER_SHOP_TERMS = gql`
+  query ViewerShopTerms {
+    viewerShopTerms {
+      id
+      fileName
+      url
+      updatedAt
+    }
+  }
+`;
+
+/**
  * Checkout panier → commande + facture + session Stripe. `wantsInstallments`
  * DEMANDE le 3× ; le serveur le REFUSE (erreur) si le total est sous le seuil
  * du club ou si le 3× est désactivé. On redirige ensuite vers
  * `stripeCheckoutUrl` (même pattern que le paiement de facture).
  */
 export const VIEWER_CHECKOUT_SHOP_CART = gql`
-  mutation ViewerCheckoutShopCart($wantsInstallments: Boolean) {
-    viewerCheckoutShopCart(wantsInstallments: $wantsInstallments) {
+  mutation ViewerCheckoutShopCart(
+    $wantsInstallments: Boolean
+    $acceptedTermsId: ID
+  ) {
+    viewerCheckoutShopCart(
+      wantsInstallments: $wantsInstallments
+      acceptedTermsId: $acceptedTermsId
+    ) {
       orderId
       invoiceId
       totalCents
@@ -644,16 +665,16 @@ export const VIEWER_CHECKOUT_SHOP_CART = gql`
 `;
 
 /**
- * Validation « sur place » : crée la commande et RÉSERVE le stock SANS paiement
- * en ligne — ni facture, ni session Stripe. La commande reste EN ATTENTE
- * (PENDING) jusqu'à ce que le club la marque payée quand l'adhérent règle au
- * club ; le panier est vidé côté serveur. Aucun argument : opère sur le panier
- * courant du viewer. Le 3× ne concerne QUE le paiement par carte — il n'a aucun
- * sens ici. Renvoie la commande créée (même forme que « Mes commandes »).
+ * Validation « sur place » : crée la commande, RÉSERVE le stock et émet la
+ * facture, SANS paiement en ligne. La commande reste EN ATTENTE (PENDING)
+ * jusqu'à l'encaissement de sa facture au club ; le panier est vidé côté
+ * serveur. `acceptedTermsId` : les CGV acceptées, exigées dès que le club en a.
+ * Le 3× ne concerne QUE le paiement par carte — il n'a aucun sens ici. Renvoie
+ * la commande créée (même forme que « Mes commandes »).
  */
 export const VIEWER_CHECKOUT_SHOP_CART_ON_SITE = gql`
-  mutation ViewerCheckoutShopCartOnSite {
-    viewerCheckoutShopCartOnSite {
+  mutation ViewerCheckoutShopCartOnSite($acceptedTermsId: ID) {
+    viewerCheckoutShopCartOnSite(acceptedTermsId: $acceptedTermsId) {
       ${VIEWER_SHOP_ORDER_FIELDS}
     }
   }

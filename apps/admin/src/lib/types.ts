@@ -1248,6 +1248,8 @@ export type ShopOrder = {
   createdAt: string;
   updatedAt: string;
   paidAt: string | null;
+  /** Acceptation des CGV au passage de commande — null au comptoir. */
+  termsAcceptedAt: string | null;
   lines: ShopOrderLine[];
   buyerFirstName: string | null;
   buyerLastName: string | null;
@@ -1255,6 +1257,16 @@ export type ShopOrder = {
   invoiceId: string | null;
   invoiceStatus: InvoiceStatusStr | null;
 };
+
+/** CGV de la boutique (ADR-0017). */
+export type ShopTerms = {
+  id: string;
+  fileName: string;
+  url: string;
+  updatedAt: string | null;
+};
+export type ShopTermsQueryData = { shopTerms: ShopTerms | null };
+export type SetShopTermsMutationData = { setShopTerms: ShopTerms | null };
 
 export type ShopProductsQueryData = { shopProducts: ShopProduct[] };
 export type CreateShopProductMutationData = { createShopProduct: ShopProduct };

@@ -133,7 +133,18 @@ export function MediaLibraryPage() {
           'X-Club-Id': clubId,
         },
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        // Le serveur dit POURQUOI il refuse — CGV de la boutique en vigueur ou
+        // acceptées sur des commandes : on l'affiche plutôt qu'un code HTTP.
+        const body = (await res.json().catch(() => null)) as {
+          message?: unknown;
+        } | null;
+        throw new Error(
+          typeof body?.message === 'string'
+            ? body.message
+            : `HTTP ${res.status}`,
+        );
+      }
       setAssets((prev) => prev.filter((a) => a.id !== id));
       showToast('Supprimé.', 'success');
     } catch (err) {

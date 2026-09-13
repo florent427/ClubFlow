@@ -679,14 +679,65 @@ export class MediaAssetsService {
     return { row, stream, isPublic };
   }
 
+  /**
+   * Supprime un asset du club : la ligne, puis le fichier.
+   *
+   * La base D'ABORD. Une clé étrangère peut refuser la suppression — CGV de la
+   * boutique acceptées par une commande (ADR-0017), document à signer — et le
+   * fichier effacé avant ce refus laissait une ligne pointant vers le vide : la
+   * preuve perdue, sans erreur visible. Dans cet ordre, un refus ne touche à
+   * rien, et un échec du stockage ne laisse qu'un fichier orphelin.
+   */
   async delete(clubId: string, assetId: string): Promise<boolean> {
     const row = await this.prisma.mediaAsset.findFirst({
       where: { id: assetId, clubId },
     });
     if (!row) return false;
-    await this.storage.deleteObject(row.storagePath);
+    await this.assertNotShopTerms(clubId, row.id);
     await this.prisma.mediaAsset.delete({ where: { id: row.id } });
+    try {
+      await this.storage.deleteObject(row.storagePath);
+    } catch (err) {
+      this.logger.warn(
+        `Asset ${row.id} supprimé, fichier ${row.storagePath} resté orphelin : ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
     return true;
+  }
+
+  /**
+   * Les CGV de la boutique sont une preuve (ADR-0017) : ce que l'adhérent a
+   * accepté en commandant. La clé étrangère refuse déjà leur suppression ; ce
+   * contrôle, fait avant elle, dit POURQUOI au lieu d'une erreur 500.
+   */
+  private async assertNotShopTerms(
+    clubId: string,
+    assetId: string,
+  ): Promise<void> {
+    const [enVigueur, commandes] = await Promise.all([
+      this.prisma.club.count({
+        where: { id: clubId, shopTermsAssetId: assetId },
+      }),
+      this.prisma.shopOrder.count({
+        where: { clubId, termsAssetId: assetId },
+      }),
+    ]);
+    if (enVigueur > 0) {
+      throw new BadRequestException(
+        'Ce PDF est en ligne comme conditions générales de vente de la ' +
+          'boutique : remplacez-les ou retirez-les dans Boutique → Réglages ' +
+          'avant de le supprimer.',
+      );
+    }
+    if (commandes > 0) {
+      throw new BadRequestException(
+        `Ces conditions générales de vente ont été acceptées sur ${commandes} ` +
+          `commande${commandes > 1 ? 's' : ''} : le PDF en est la preuve et ne ` +
+          'peut pas être supprimé.',
+      );
+    }
   }
 
   async listByClub(

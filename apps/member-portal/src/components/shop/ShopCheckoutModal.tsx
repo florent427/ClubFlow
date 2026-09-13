@@ -1,17 +1,19 @@
-import { useMemo, useState } from 'react';
-import { useMutation } from '@apollo/client/react';
+import { useEffect, useMemo, useState } from 'react';
+import { useMutation, useQuery } from '@apollo/client/react';
 import {
   VIEWER_CHECKOUT_SHOP_CART,
   VIEWER_CHECKOUT_SHOP_CART_ON_SITE,
   VIEWER_REPAY_SHOP_ORDER,
+  VIEWER_SHOP_TERMS,
 } from '../../lib/viewer-documents';
 import type {
   ViewerCheckoutShopCartData,
   ViewerCheckoutShopCartOnSiteData,
   ViewerRepayShopOrderData,
+  ViewerShopTermsData,
 } from '../../lib/viewer-types';
 import { formatEuroCents } from '../../lib/format';
-import { installmentsPreview } from '../../lib/shop-cart';
+import { installmentsPreview, shopTermsGate } from '../../lib/shop-cart';
 import { canPayOnSiteAtCheckout } from '../../lib/shop-order-actions';
 import { useToast } from '../ToastProvider';
 
@@ -76,6 +78,28 @@ export function ShopCheckoutModal({
   const stripeLoading = checkoutLoading || repayLoading;
   const loading = stripeLoading || onSiteLoading;
 
+  // CGV (ADR-0017) : à accepter avant de valider le PANIER. Pas en reprise de
+  // paiement : la commande existe déjà, ses CGV ont été acceptées à sa création.
+  const { data: termsData, loading: termsLoading } =
+    useQuery<ViewerShopTermsData>(VIEWER_SHOP_TERMS, {
+      skip: Boolean(orderId),
+      fetchPolicy: 'cache-and-network',
+    });
+  const terms = orderId ? null : (termsData?.viewerShopTerms ?? null);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  // Une AUTRE version arrive (CGV remplacées pendant que l'écran est ouvert) :
+  // l'acceptation donnée portait sur l'ancienne, elle ne vaut pas pour celle-ci.
+  const termsId = terms?.id ?? null;
+  useEffect(() => {
+    setTermsAccepted(false);
+  }, [termsId]);
+  const { blocked: blockedByTerms, acceptedTermsId } = shopTermsGate({
+    repay: Boolean(orderId),
+    loading: termsLoading && !termsData,
+    terms,
+    accepted: termsAccepted,
+  });
+
   // « Régler sur place » : proposé à la validation du panier, jamais en reprise
   // de paiement (mode repay = `orderId` renseigné). Cf. canPayOnSiteAtCheckout.
   const showOnSite = canPayOnSiteAtCheckout(orderId);
@@ -94,7 +118,7 @@ export function ShopCheckoutModal({
             await repay({ variables: { orderId, wantsInstallments } })
           ).data?.viewerRepayShopOrder.stripeCheckoutUrl
         : (
-            await checkout({ variables: { wantsInstallments } })
+            await checkout({ variables: { wantsInstallments, acceptedTermsId } })
           ).data?.viewerCheckoutShopCart.stripeCheckoutUrl;
       if (!stripeCheckoutUrl) {
         throw new Error(
@@ -122,7 +146,7 @@ export function ShopCheckoutModal({
     if (loading) return;
     setServerError(null);
     try {
-      await checkoutOnSite();
+      await checkoutOnSite({ variables: { acceptedTermsId } });
       showToast(
         'Commande validée. Réglez sur place au club — elle sera confirmée après paiement.',
         'success',
@@ -208,6 +232,33 @@ export function ShopCheckoutModal({
           ) : null}
         </fieldset>
 
+        {terms ? (
+          <label
+            className="mp-checkbox"
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 8,
+              marginTop: 12,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={termsAccepted}
+              disabled={loading}
+              onChange={(e) => setTermsAccepted(e.target.checked)}
+              style={{ marginTop: 3 }}
+            />
+            <span>
+              J’ai lu et j’accepte les{' '}
+              <a href={terms.url} target="_blank" rel="noreferrer">
+                conditions générales de vente
+              </a>{' '}
+              de la boutique.
+            </span>
+          </label>
+        ) : null}
+
         {serverError ? (
           <p
             className="mp-product-card__oos"
@@ -231,7 +282,7 @@ export function ShopCheckoutModal({
             <button
               type="button"
               className="mp-btn mp-btn-outline"
-              disabled={loading}
+              disabled={loading || blockedByTerms}
               onClick={() => void handlePayOnSite()}
             >
               <span className="material-symbols-outlined" aria-hidden="true">
@@ -243,7 +294,7 @@ export function ShopCheckoutModal({
           <button
             type="button"
             className="mp-btn mp-btn-primary"
-            disabled={loading}
+            disabled={loading || blockedByTerms}
             onClick={() => void handlePay()}
           >
             <span className="material-symbols-outlined" aria-hidden="true">

@@ -342,6 +342,11 @@ export class ShopCartService {
     viewer: ViewerIdentity,
     /** true = le membre demande le 3×. Le serveur peut le refuser. */
     wantsInstallments: boolean,
+    /**
+     * Version des CGV montrée à l'adhérent et acceptée par lui (ADR-0017).
+     * Refusée par `placeOrderInTx` si elle n'est pas celle en vigueur.
+     */
+    acceptedTermsId: string | null,
   ): Promise<ShopCartCheckoutResult> {
     const owner = this.assertViewer(viewer);
     const cart = await this.prisma.shopCart.findFirst({
@@ -365,7 +370,13 @@ export class ShopCartService {
 
     const result = await this.prisma.$transaction(async (tx) => {
       // 1. Commande + réservation (chemin atomique existant).
-      const order = await this.shop.placeOrderInTx(tx, clubId, owner, { lines });
+      const order = await this.shop.placeOrderInTx(
+        tx,
+        clubId,
+        owner,
+        { lines },
+        { kind: 'MEMBER', acceptedTermsId },
+      );
 
       // 2. Arbitrage 3× par le SERVEUR — jamais par le client. Le 3× exige un
       // seuil configuré ET un total qui l'atteint. Sinon : comptant.
@@ -427,6 +438,8 @@ export class ShopCartService {
   async checkoutOnSite(
     clubId: string,
     viewer: ViewerIdentity,
+    /** Version des CGV acceptée, comme pour le checkout en ligne. */
+    acceptedTermsId: string | null,
   ): Promise<{ orderId: string; invoiceId: string }> {
     const owner = this.assertViewer(viewer);
     const cart = await this.prisma.shopCart.findFirst({
@@ -442,7 +455,13 @@ export class ShopCartService {
     }));
 
     return this.prisma.$transaction(async (tx) => {
-      const order = await this.shop.placeOrderInTx(tx, clubId, owner, { lines });
+      const order = await this.shop.placeOrderInTx(
+        tx,
+        clubId,
+        owner,
+        { lines },
+        { kind: 'MEMBER', acceptedTermsId },
+      );
       const invoice = await this.shop.createOrderInvoiceInTx(tx, clubId, order);
       await tx.shopCartItem.deleteMany({ where: { cartId: cart.id, clubId } });
       return { orderId: order.id, invoiceId: invoice.id };

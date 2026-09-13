@@ -2076,6 +2076,7 @@ const SHOP_ORDER_FIELDS = `
   createdAt
   updatedAt
   paidAt
+  termsAcceptedAt
   buyerFirstName
   buyerLastName
   invoiceId
@@ -2299,6 +2300,33 @@ export const SHOP_INSTALLMENT_THRESHOLD = gql`
 export const SET_SHOP_INSTALLMENT_THRESHOLD = gql`
   mutation SetShopInstallmentThreshold($thresholdCents: Int) {
     setShopInstallmentThreshold(thresholdCents: $thresholdCents)
+  }
+`;
+
+/** CGV de la boutique en vigueur (ADR-0017). */
+export const SHOP_TERMS = gql`
+  query ShopTerms {
+    shopTerms {
+      id
+      fileName
+      url
+      updatedAt
+    }
+  }
+`;
+
+/**
+ * Met en ligne un PDF déjà téléversé comme CGV de la boutique, ou les retire
+ * (`null`). Le serveur le rend public.
+ */
+export const SET_SHOP_TERMS = gql`
+  mutation SetShopTerms($mediaAssetId: ID) {
+    setShopTerms(mediaAssetId: $mediaAssetId) {
+      id
+      fileName
+      url
+      updatedAt
+    }
   }
 `;
 
