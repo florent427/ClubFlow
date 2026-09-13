@@ -2080,6 +2080,8 @@ const SHOP_ORDER_FIELDS = `
   createdAt
   updatedAt
   paidAt
+  cancelledAt
+  cancelReason
   termsAcceptedAt
   fulfilledAt
   deliveredAt
@@ -2160,10 +2162,52 @@ export const MARK_SHOP_ORDER_PAID = gql`
   }
 `;
 
-export const CANCEL_SHOP_ORDER = gql`
-  mutation CancelShopOrder($id: ID!) {
-    cancelShopOrder(id: $id) {
-      ${SHOP_ORDER_FIELDS}
+/**
+ * Annulation d'une commande par le club (ADR-0019). L'aperçu montre le plan —
+ * remboursement par moyen de paiement, reste dû éteint, marchandise reprise —
+ * avant que l'admin confirme ; le serveur exécute ce même plan.
+ */
+export const SHOP_ORDER_CANCELLATION_PREVIEW = gql`
+  query ShopOrderCancellationPreview($orderId: ID!) {
+    shopOrderCancellationPreview(orderId: $orderId) {
+      blockers
+      delivered
+      exited
+      writeOffCents
+      voidInvoice
+      refunds {
+        kind
+        paymentId
+        amountCents
+        chequeNumber
+      }
+      lines {
+        lineId
+        label
+        returnUnits
+        releaseUnits
+        awaitingUnits
+      }
+    }
+  }
+`;
+
+export const CANCEL_AND_REFUND_SHOP_ORDER = gql`
+  mutation CancelAndRefundShopOrder($input: CancelAndRefundShopOrderInput!) {
+    cancelAndRefundShopOrder(input: $input) {
+      order {
+        ${SHOP_ORDER_FIELDS}
+      }
+      cardRefunds {
+        paymentId
+        amountCents
+        ok
+        error
+      }
+      manualRefundedCents
+      chequesReturned
+      writtenOffCents
+      invoiceVoided
     }
   }
 `;

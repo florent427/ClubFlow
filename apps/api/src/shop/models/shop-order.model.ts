@@ -69,6 +69,16 @@ export class ShopOrderGraph {
   @Field(() => Date, { nullable: true })
   paidAt!: Date | null;
 
+  @Field(() => Date, { nullable: true })
+  cancelledAt!: Date | null;
+
+  /**
+   * Motif d'une annulation par le club (ADR-0019). Réservé à l'administration :
+   * toujours null côté adhérent.
+   */
+  @Field(() => String, { nullable: true })
+  cancelReason!: string | null;
+
   /**
    * Acceptation des CGV au passage de commande (ADR-0017). Null : aucune CGV
    * en vigueur à ce moment, ou vente au comptoir.

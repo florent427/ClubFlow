@@ -3149,6 +3149,10 @@ enum ShopStockMovementKind {
   ADJUSTMENT
   /// Perte, casse, vol.
   SHRINKAGE
+  /// Retour client (ADR-0019) : un article sorti du stock revient au club à
+  /// l'annulation de sa commande. Remonte `onHand` ET `available` ; une perte
+  /// (SHRINKAGE) le suit si l'article rendu est abîmé.
+  RETURN
 }
 
 model ShopProduct {
@@ -3573,6 +3577,10 @@ model ShopOrder {
   /// annulée d'une commande annulée puis rouverte — ce dernier cas n'existe
   /// pas, la machine à états ne permettant aucune transition depuis CANCELLED.
   cancelledAt DateTime?
+  /// Motif de l'annulation par le club (ADR-0019), repris sur les avoirs.
+  /// NULL pour une annulation par l'adhérent ou antérieure au lot.
+  cancelReason      String? @db.VarChar(500)
+  cancelledByUserId String?
   /// Version des CGV acceptée au passage de commande (ADR-0017). NULL : aucune
   /// CGV en vigueur à ce moment, ou vente au comptoir — la remise signée
   /// portera alors l'acceptation. La relation est la preuve : NoAction interdit

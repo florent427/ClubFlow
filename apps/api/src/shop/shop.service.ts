@@ -55,6 +55,18 @@ export type ShopTermsView = {
 };
 
 /**
+ * Garde « aucun encaissement » d'une annulation sans remboursement (ADR-0019),
+ * portée par l'écriture conditionnelle elle-même : commande sans facture, ou
+ * facture sans aucun paiement.
+ */
+const WITHOUT_PAYMENT = {
+  OR: [
+    { invoice: { is: null } },
+    { invoice: { is: { payments: { none: {} } } } },
+  ],
+} satisfies Prisma.ShopOrderWhereInput;
+
+/**
  * Délai indicatif de précommande tel que saisi : les blancs sont retirés, et un
  * champ vide se lit « aucun délai annoncé » plutôt qu'une chaîne vide.
  */
@@ -502,7 +514,12 @@ export class ShopService {
       orderBy: [{ createdAt: 'desc' }],
       include: { lines: true },
     });
-    return this.hydrateBuyers(rows);
+    // Le motif d'une annulation par le club est une note interne : il reste
+    // à l'administration.
+    return (await this.hydrateBuyers(rows)).map((o) => ({
+      ...o,
+      cancelReason: null,
+    }));
   }
 
   async placeOrder(
@@ -1155,8 +1172,9 @@ export class ShopService {
   }
 
   /**
-   * PENDING → CANCELLED. Une commande PAYÉE ne s'annule pas ici : il faudrait
-   * rembourser, et aucun chemin de remboursement n'existe côté boutique.
+   * PENDING → CANCELLED, sans aucun encaissement. Une commande payée, ou
+   * partiellement réglée, passe par « Annuler et rembourser »
+   * (`ShopOrderRefundsService`, ADR-0019) : il faut rendre l'argent.
    */
   async cancelOrder(clubId: string, orderId: string) {
     const { row: updated, released } = await this.prisma.$transaction(async (tx) => {
@@ -1169,6 +1187,7 @@ export class ShopService {
           clubId,
           status: ShopOrderStatus.PENDING,
           fulfilledAt: null,
+          ...WITHOUT_PAYMENT,
         },
         data: {
           status: ShopOrderStatus.CANCELLED,
@@ -1185,6 +1204,22 @@ export class ShopService {
       });
 
       const freed = await this.releaseReservationsInTx(tx, clubId, row);
+
+      // La facture suit, comme à l'annulation par l'adhérent (ADR-0019). La
+      // garde « aucun encaissement » est aussi dans CETTE écriture : une
+      // facture qui porte un paiement ne s'annule jamais.
+      await tx.invoice.updateMany({
+        where: {
+          shopOrderId: row.id,
+          clubId,
+          status: InvoiceStatus.OPEN,
+          payments: { none: {} },
+        },
+        data: {
+          status: InvoiceStatus.VOID,
+          voidReason: 'Commande annulée par le club.',
+        },
+      });
       return { row, released: freed };
     });
     // Le stock rendu sert d'abord les précommandes en attente (ADR-0018).
@@ -1233,6 +1268,9 @@ export class ShopService {
           // Remise avant paiement : la marchandise est partie, rien à libérer.
           fulfilledAt: null,
           ...(memberId ? { memberId } : { contactId }),
+          // Un règlement déjà encaissé se rend : c'est un geste du club
+          // (ADR-0019), pas une annulation depuis le portail.
+          ...WITHOUT_PAYMENT,
         },
         data: {
           status: ShopOrderStatus.CANCELLED,
@@ -1261,6 +1299,7 @@ export class ShopService {
           shopOrderId: row.id,
           clubId,
           status: InvoiceStatus.OPEN,
+          payments: { none: {} },
         },
         data: {
           status: InvoiceStatus.VOID,
@@ -1302,14 +1341,171 @@ export class ShopService {
       });
       released.push(line.variantId);
     }
-    if (order.lines.some((l) => l.awaitingStockQty > 0)) {
-      await tx.shopOrderLine.updateMany({
-        where: { orderId: order.id, awaitingStockQty: { gt: 0 } },
-        data: { awaitingStockQty: 0 },
-      });
-      for (const line of order.lines) line.awaitingStockQty = 0;
-    }
+    await this.clearAwaitingInTx(tx, order);
     return released;
+  }
+
+  /** Une commande annulée n'attend plus rien : aucun arrivage ne doit la servir. */
+  private async clearAwaitingInTx(
+    tx: Prisma.TransactionClient,
+    order: Prisma.ShopOrderGetPayload<{ include: { lines: true } }>,
+  ): Promise<void> {
+    if (!order.lines.some((l) => l.awaitingStockQty > 0)) return;
+    await tx.shopOrderLine.updateMany({
+      where: { orderId: order.id, awaitingStockQty: { gt: 0 } },
+      data: { awaitingStockQty: 0 },
+    });
+    for (const line of order.lines) line.awaitingStockQty = 0;
+  }
+
+  /**
+   * Annulation par le CLUB d'une commande, payée ou non, remise ou non
+   * (ADR-0019) : la commande et le stock. L'argent est traité par l'appelant
+   * (`ShopOrderRefundsService`, module paiements), dans la MÊME transaction.
+   *
+   * L'écriture conditionnelle porte l'état LU pour le plan montré à l'admin —
+   * statut, sortie du stock, remise. Si la commande a changé entre l'aperçu et
+   * la confirmation, rien n'est écrit : le plan ne vaut plus.
+   *
+   * Marchandise :
+   *  - seulement réservée : libérée ;
+   *  - sortie du stock (payée, ou remise) : retour client, suivi d'une perte
+   *    pour les lignes que l'admin déclare abîmées ;
+   *  - en attente d'arrivage : l'attente s'éteint.
+   *
+   * Une commande remise exige que l'adhérent ait rapporté les articles : le
+   * club ne reprend en stock que ce qu'il a récupéré.
+   *
+   * Renvoie la commande annulée et les déclinaisons redevenues vendables,
+   * servies aux précommandes APRÈS le commit (ADR-0018).
+   */
+  async cancelWithReturnInTx(
+    tx: Prisma.TransactionClient,
+    clubId: string,
+    userId: string,
+    input: {
+      orderId: string;
+      reason: string;
+      goodsReturned: boolean;
+      /** Lignes dont l'article rendu est déclaré perdu. */
+      lostLineIds: string[];
+      expected: {
+        status: ShopOrderStatus;
+        fulfilled: boolean;
+        delivered: boolean;
+      };
+    },
+  ): Promise<{
+    order: Prisma.ShopOrderGetPayload<{ include: { lines: true } }>;
+    released: string[];
+  }> {
+    const reason = input.reason.trim();
+    if (!reason) {
+      throw new BadRequestException('Indique le motif de l’annulation.');
+    }
+    if (input.expected.status === ShopOrderStatus.CANCELLED) {
+      throw new BadRequestException('Cette commande est déjà annulée.');
+    }
+    if (input.expected.delivered && !input.goodsReturned) {
+      throw new BadRequestException(
+        'Cette commande a été remise : l’adhérent doit rapporter les articles pour qu’elle soit annulée.',
+      );
+    }
+
+    const claimed = await tx.shopOrder.updateMany({
+      where: {
+        id: input.orderId,
+        clubId,
+        status: input.expected.status,
+        fulfilledAt: input.expected.fulfilled ? { not: null } : null,
+        deliveredAt: input.expected.delivered ? { not: null } : null,
+      },
+      data: {
+        status: ShopOrderStatus.CANCELLED,
+        cancelledAt: new Date(),
+        cancelReason: reason,
+        cancelledByUserId: userId,
+      },
+    });
+    if (claimed.count !== 1) {
+      const current = await tx.shopOrder.findFirst({
+        where: { id: input.orderId, clubId },
+        select: { status: true },
+      });
+      if (!current) throw new NotFoundException('Commande introuvable');
+      throw new BadRequestException(
+        current.status === ShopOrderStatus.CANCELLED
+          ? 'Cette commande est déjà annulée.'
+          : 'Cette commande vient de changer : recharge la page avant de l’annuler.',
+      );
+    }
+
+    const order = await tx.shopOrder.findFirstOrThrow({
+      where: { id: input.orderId, clubId },
+      include: { lines: true },
+    });
+    const lost = new Set(input.lostLineIds);
+    for (const lineId of lost) {
+      if (!order.lines.some((l) => l.id === lineId)) {
+        throw new BadRequestException('Une ligne déclarée perdue n’appartient pas à cette commande.');
+      }
+    }
+
+    const exited =
+      input.expected.status === ShopOrderStatus.PAID || input.expected.fulfilled;
+    if (!exited) {
+      if (lost.size > 0) {
+        throw new BadRequestException(
+          'Rien n’a quitté le club sur cette commande : aucun article ne peut être déclaré perdu.',
+        );
+      }
+      const released = await this.releaseReservationsInTx(tx, clubId, order);
+      return { order, released };
+    }
+
+    const released: string[] = [];
+    for (const line of order.lines) {
+      if (!line.variantId) continue;
+      const qty = line.quantity - line.awaitingStockQty;
+      if (qty <= 0) continue;
+      const tracked = await this.stock.returnToStock(tx, {
+        clubId,
+        variantId: line.variantId,
+        qty,
+        orderId: order.id,
+        orderLineId: line.id,
+        userId,
+        reason: `Retour client : ${reason}`,
+      });
+      if (!tracked) continue;
+      if (lost.has(line.id)) {
+        await this.stock.recordShrinkage(
+          {
+            clubId,
+            variantId: line.variantId,
+            qty,
+            userId,
+            reason: `Article rendu déclaré perdu : ${reason}`,
+            orderId: order.id,
+            orderLineId: line.id,
+          },
+          tx,
+        );
+      } else {
+        released.push(line.variantId);
+      }
+    }
+    await this.clearAwaitingInTx(tx, order);
+    return { order, released };
+  }
+
+  /** Une commande sous sa forme d'administration, après un geste fait hors de ce service. */
+  async getOrderAdmin(clubId: string, orderId: string) {
+    const row = await this.prisma.shopOrder.findFirstOrThrow({
+      where: { id: orderId, clubId },
+      include: { lines: true },
+    });
+    return (await this.hydrateBuyers([row]))[0];
   }
 
   // --- Remise signée (ADR-0017) ---
@@ -1510,7 +1706,11 @@ export class ShopService {
         clubId,
         ...(memberId ? { memberId } : { contactId }),
       },
-      select: { status: true, deliveredAt: true },
+      select: {
+        status: true,
+        deliveredAt: true,
+        invoice: { select: { payments: { select: { id: true }, take: 1 } } },
+      },
     });
     if (!current) throw new NotFoundException('Commande introuvable');
     const raison =
@@ -1520,7 +1720,9 @@ export class ShopService {
           ? 'elle est déjà annulée'
           : current.deliveredAt
             ? 'elle vous a déjà été remise, adressez-vous au club'
-            : 'elle vient de changer, rechargez la page';
+            : (current.invoice?.payments.length ?? 0) > 0
+              ? 'un règlement a déjà été encaissé, adressez-vous au club pour être remboursé'
+              : 'elle vient de changer, rechargez la page';
     throw new BadRequestException(
       `Impossible d’annuler cette commande : ${raison}.`,
     );
@@ -1542,7 +1744,11 @@ export class ShopService {
   ): Promise<never> {
     const current = await tx.shopOrder.findFirst({
       where: { id: orderId, clubId },
-      select: { status: true, deliveredAt: true },
+      select: {
+        status: true,
+        deliveredAt: true,
+        invoice: { select: { payments: { select: { id: true }, take: 1 } } },
+      },
     });
     if (!current) throw new NotFoundException('Commande introuvable');
     const raison =
@@ -1552,7 +1758,9 @@ export class ShopService {
           ? 'elle est déjà annulée'
           : current.deliveredAt
             ? 'elle a déjà été remise à l’adhérent'
-            : 'elle vient de changer, rechargez la page';
+            : (current.invoice?.payments.length ?? 0) > 0
+              ? 'un règlement a été encaissé, utilise « Annuler et rembourser »'
+              : 'elle vient de changer, rechargez la page';
     const de = /^[aeiou]/.test(verb) ? 'd’' : 'de ';
     throw new BadRequestException(
       `Impossible ${de}${verb} cette commande : ${raison}.`,
@@ -1651,6 +1859,8 @@ export class ShopService {
         createdAt: o.createdAt,
         updatedAt: o.updatedAt,
         paidAt: o.paidAt,
+        cancelledAt: o.cancelledAt,
+        cancelReason: o.cancelReason,
         termsAcceptedAt: o.termsAcceptedAt,
         fulfilledAt: o.fulfilledAt,
         deliveredAt: o.deliveredAt,

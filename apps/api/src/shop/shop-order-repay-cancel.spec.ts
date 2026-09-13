@@ -61,6 +61,8 @@ type InvoiceRow = {
   shopOrderId: string | null;
   status: InvoiceStatus;
   voidReason: string | null;
+  /** Encaissements portés par la facture (ADR-0019) : seul leur nombre compte. */
+  payments?: Array<{ id: string }>;
 };
 
 function makeStore(opts: {
@@ -76,7 +78,33 @@ function makeStore(opts: {
   let seq = 0;
   const uid = (p: string) => `${p}-${++seq}`;
 
+  const ORDER_CLAUSES = new Set([
+    'id',
+    'clubId',
+    'status',
+    'memberId',
+    'contactId',
+    'fulfilledAt',
+    'deliveredAt',
+    'OR',
+  ]);
+  // Garde « aucun encaissement » (ADR-0019) : commande sans facture, ou
+  // facture sans paiement. Chaque branche est appliquée pour de vrai.
+  const orderBranchMatches = (o: OrderRow, branch: any): boolean => {
+    const keys = Object.keys(branch);
+    if (keys.length !== 1 || keys[0] !== 'invoice') {
+      throw new Error(`branche OR non simulée : ${keys.join(', ')}`);
+    }
+    const inv = invoiceForOrder(o.id);
+    const is = branch.invoice.is;
+    if (is === null) return inv === null;
+    return inv !== null && invMatches(inv, is);
+  };
+
   const orderMatches = (o: OrderRow, where: any): boolean => {
+    for (const k of Object.keys(where)) {
+      if (!ORDER_CLAUSES.has(k)) throw new Error(`clause non simulée : ${k}`);
+    }
     if (where.id !== undefined && o.id !== where.id) return false;
     if (where.clubId !== undefined && o.clubId !== where.clubId) return false;
     if (where.status !== undefined && o.status !== where.status) return false;
@@ -96,10 +124,19 @@ function makeStore(opts: {
       (o.deliveredAt ?? null) !== where.deliveredAt
     )
       return false;
+    if (
+      where.OR !== undefined &&
+      !where.OR.some((branch: any) => orderBranchMatches(o, branch))
+    )
+      return false;
     return true;
   };
 
+  const INVOICE_CLAUSES = new Set(['id', 'clubId', 'status', 'shopOrderId', 'payments']);
   const invMatches = (i: InvoiceRow, where: any): boolean => {
+    for (const k of Object.keys(where)) {
+      if (!INVOICE_CLAUSES.has(k)) throw new Error(`clause non simulée : ${k}`);
+    }
     if (where.id !== undefined && i.id !== where.id) return false;
     if (where.clubId !== undefined && i.clubId !== where.clubId) return false;
     if (where.status !== undefined && i.status !== where.status) return false;
@@ -108,6 +145,12 @@ function makeStore(opts: {
       i.shopOrderId !== where.shopOrderId
     )
       return false;
+    if (where.payments !== undefined) {
+      if (JSON.stringify(where.payments) !== '{"none":{}}') {
+        throw new Error('clause payments non simulée');
+      }
+      if ((i.payments ?? []).length > 0) return false;
+    }
     return true;
   };
 
@@ -142,7 +185,10 @@ function makeStore(opts: {
         // Résout la relation `invoice` quel que soit le `select` : la méthode
         // ne lit que `o.invoice?.id`, `o.totalCents`, `o.status`.
         const inv = invoiceForOrder(o.id);
-        return { ...o, invoice: inv ? { id: inv.id } : null };
+        return {
+          ...o,
+          invoice: inv ? { id: inv.id, payments: inv.payments ?? [] } : null,
+        };
       }),
       updateMany: jest.fn(async ({ where, data }: any) => {
         const hit = orders.filter((o) => orderMatches(o, where));
@@ -650,5 +696,91 @@ describe('markOrderPaid — ne plus marquer payée une facture non encaissée', 
     expect(res.invoiceStatus).toBe(InvoiceStatus.PAID);
     // …mais une facture payée n'est plus « payable ».
     expect(res.payableOnline).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ADR-0019 — un règlement encaissé ne s'annule pas sans être rendu
+// ---------------------------------------------------------------------------
+
+describe('annulation sans remboursement — la garde « aucun encaissement »', () => {
+  const ENCAISSEE = () => INVOICE({ payments: [{ id: 'pay-1' }] });
+
+  it('adhérent : refuse une commande dont un acompte est encaissé, sans rien toucher', async () => {
+    const h = makeStore({
+      orders: [ORDER()],
+      variants: [VARIANT({ available: 3 })],
+      invoices: [ENCAISSEE()],
+    });
+
+    await expect(
+      h.shop.cancelOrderForViewer('club-1', MEMBER, 'order-1'),
+    ).rejects.toThrow(/règlement a déjà été encaissé, adressez-vous au club/);
+
+    expect(h.orders[0].status).toBe(ShopOrderStatus.PENDING);
+    expect(h.variants[0].available).toBe(3);
+    // La facture n'est surtout pas annulée : elle porte un paiement.
+    expect(h.invoices[0].status).toBe(InvoiceStatus.OPEN);
+    expect(h.movements).toHaveLength(0);
+  });
+
+  it('adhérent : une commande sans facture reste annulable', async () => {
+    const h = makeStore({
+      orders: [ORDER()],
+      variants: [VARIANT({ available: 3 })],
+      invoices: [],
+    });
+
+    const res = await h.shop.cancelOrderForViewer('club-1', MEMBER, 'order-1');
+
+    expect(res.status).toBe(ShopOrderStatus.CANCELLED);
+    expect(h.variants[0].available).toBe(5);
+  });
+
+  it('club : refuse et renvoie vers « Annuler et rembourser »', async () => {
+    const h = makeStore({
+      orders: [ORDER()],
+      variants: [VARIANT({ available: 3 })],
+      invoices: [ENCAISSEE()],
+    });
+
+    await expect(h.shop.cancelOrder('club-1', 'order-1')).rejects.toThrow(
+      /Annuler et rembourser/,
+    );
+
+    expect(h.orders[0].status).toBe(ShopOrderStatus.PENDING);
+    expect(h.variants[0].available).toBe(3);
+    expect(h.invoices[0].status).toBe(InvoiceStatus.OPEN);
+    expect(h.movements).toHaveLength(0);
+  });
+
+  it('club : annule une commande sans encaissement, libère le stock et annule la facture', async () => {
+    const h = makeStore({
+      orders: [ORDER()],
+      variants: [VARIANT({ available: 3 })],
+      invoices: [INVOICE()],
+    });
+
+    const res = await h.shop.cancelOrder('club-1', 'order-1');
+
+    expect(res.status).toBe(ShopOrderStatus.CANCELLED);
+    expect(h.variants[0].available).toBe(5);
+    // Avant l'ADR-0019, la facture restait OUVERTE derrière une commande
+    // annulée : un paiement tardif l'aurait soldée.
+    expect(h.invoices[0].status).toBe(InvoiceStatus.VOID);
+    expect(h.invoices[0].voidReason).toBe('Commande annulée par le club.');
+  });
+
+  it('club : une commande sans facture reste annulable', async () => {
+    const h = makeStore({
+      orders: [ORDER()],
+      variants: [VARIANT({ available: 3 })],
+      invoices: [],
+    });
+
+    await h.shop.cancelOrder('club-1', 'order-1');
+
+    expect(h.orders[0].status).toBe(ShopOrderStatus.CANCELLED);
+    expect(h.variants[0].available).toBe(5);
   });
 });

@@ -1201,7 +1201,9 @@ export type ShopStockMovementKindGql =
   | 'RELEASE'
   | 'FULFILL'
   | 'ADJUSTMENT'
-  | 'SHRINKAGE';
+  | 'SHRINKAGE'
+  /** Retour client à l'annulation d'une commande (ADR-0019). */
+  | 'RETURN';
 
 /** Une ligne du journal de stock (ADR-0012 §4). */
 export type ShopStockMovement = {
@@ -1264,6 +1266,9 @@ export type ShopOrder = {
   createdAt: string;
   updatedAt: string;
   paidAt: string | null;
+  cancelledAt: string | null;
+  /** Motif d'une annulation par le club (ADR-0019) — null sinon. */
+  cancelReason: string | null;
   /** Acceptation des CGV au passage de commande — null au comptoir. */
   termsAcceptedAt: string | null;
   /** Sortie de stock — null sur une commande payée avant le 2026-09-13. */
@@ -1302,7 +1307,64 @@ export type UpdateShopProductMutationData = { updateShopProduct: ShopProduct };
 export type DeleteShopProductMutationData = { deleteShopProduct: boolean };
 export type ShopOrdersQueryData = { shopOrders: ShopOrder[] };
 export type MarkShopOrderPaidMutationData = { markShopOrderPaid: ShopOrder };
-export type CancelShopOrderMutationData = { cancelShopOrder: ShopOrder };
+/** Comment un encaissement est rendu à l'annulation (ADR-0019). */
+export type ShopOrderRefundKindGql =
+  | 'CARD'
+  | 'CASH'
+  | 'TRANSFER'
+  | 'CHEQUE_RETURN'
+  | 'CHEQUE_DEPOSITED';
+
+export type ShopOrderRefundAction = {
+  kind: ShopOrderRefundKindGql;
+  paymentId: string;
+  /** Ce qui reste à rendre sur cet encaissement. */
+  amountCents: number;
+  chequeNumber: string | null;
+};
+
+export type ShopOrderCancellationLine = {
+  lineId: string;
+  label: string;
+  /** Unités sorties du stock, qui reviennent au club. */
+  returnUnits: number;
+  /** Unités seulement réservées, libérées. */
+  releaseUnits: number;
+  /** Unités en attente d'arrivage : l'attente s'éteint. */
+  awaitingUnits: number;
+};
+
+/** Ce que ferait l'annulation, montré avant de confirmer. */
+export type ShopOrderCancellationPreview = {
+  /** Raisons de refuser. Vide : l'annulation peut avoir lieu. */
+  blockers: string[];
+  delivered: boolean;
+  exited: boolean;
+  writeOffCents: number;
+  voidInvoice: boolean;
+  refunds: ShopOrderRefundAction[];
+  lines: ShopOrderCancellationLine[];
+};
+export type ShopOrderCancellationPreviewQueryData = {
+  shopOrderCancellationPreview: ShopOrderCancellationPreview;
+};
+
+export type ShopOrderCancellationResult = {
+  order: ShopOrder;
+  cardRefunds: Array<{
+    paymentId: string;
+    amountCents: number;
+    ok: boolean;
+    error: string | null;
+  }>;
+  manualRefundedCents: number;
+  chequesReturned: number;
+  writtenOffCents: number;
+  invoiceVoided: boolean;
+};
+export type CancelAndRefundShopOrderMutationData = {
+  cancelAndRefundShopOrder: ShopOrderCancellationResult;
+};
 
 export type ShopProductOptionsQueryData = {
   shopProductOptions: ShopProductOption[];

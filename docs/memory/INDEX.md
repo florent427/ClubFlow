@@ -101,6 +101,7 @@
 | [`0016-frais-avances-benevoles-467.md`](decisions/0016-frais-avances-benevoles-467.md) | ADR-0016 — Les frais avancés par un bénévole passent par un compte de tiers |
 | [`0017-boutique-paiement-sortie-remise.md`](decisions/0017-boutique-paiement-sortie-remise.md) | ADR-0017 — Boutique : règlement, sortie de stock et remise sont trois faits distincts |
 | [`0018-boutique-precommande.md`](decisions/0018-boutique-precommande.md) | ADR-0018 — Boutique : un article épuisé reste commandable, et chaque arrivage sert d'abord les précommandes |
+| [`0019-boutique-annulation-remboursement.md`](decisions/0019-boutique-annulation-remboursement.md) | ADR-0019 — Boutique : annuler une commande, c'est reprendre la marchandise et rendre chaque règlement par son propre moyen |
 
 ## 🔄 Workflows métier
 
@@ -114,7 +115,7 @@
 
 ---
 
-_Index généré le 2026-09-13 10:57 UTC par `bin/memory-index`._
+_Index généré le 2026-09-13 15:09 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`

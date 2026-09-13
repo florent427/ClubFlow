@@ -288,6 +288,58 @@ export class ShopStockService {
   }
 
   /**
+   * Retour client (ADR-0019) : un article déjà sorti du stock revient au club
+   * à l'annulation de sa commande. Les deux compteurs remontent — il est de
+   * nouveau dans le placard, et vendable.
+   *
+   * Renvoie `false` pour une déclinaison non suivie : rien à remonter, donc
+   * rien à archiver, ni retour ni perte derrière lui.
+   */
+  async returnToStock(
+    tx: Prisma.TransactionClient,
+    args: {
+      clubId: string;
+      variantId: string;
+      qty: number;
+      orderId: string;
+      orderLineId: string;
+      userId?: string | null;
+      reason?: string | null;
+    },
+  ): Promise<boolean> {
+    const { clubId, variantId, qty, orderId, orderLineId } = args;
+    if (qty < 1) {
+      throw new BadRequestException('La quantité rendue doit être positive.');
+    }
+
+    const restored = await tx.shopProductVariant.updateMany({
+      where: { id: variantId, clubId, trackStock: true },
+      data: {
+        onHand: { increment: qty },
+        available: { increment: qty },
+        // Réarmement, comme à toute remontée du stock.
+        lowStockAlertedAt: null,
+      },
+    });
+    if (restored.count === 0) return false;
+
+    await tx.shopStockMovement.create({
+      data: {
+        clubId,
+        variantId,
+        kind: ShopStockMovementKind.RETURN,
+        onHandDelta: qty,
+        availableDelta: qty,
+        orderId,
+        orderLineId,
+        reason: args.reason ?? null,
+        userId: args.userId ?? null,
+      },
+    });
+    return true;
+  }
+
+  /**
    * Réception fournisseur : les deux compteurs montent ensemble.
    *
    * PARAMÈTRE `tx` OPTIONNEL — ajouté pour la réception de commande
@@ -418,17 +470,28 @@ export class ShopStockService {
   /**
    * Perte, casse, vol : les deux compteurs descendent.
    */
-  async recordShrinkage(args: {
-    clubId: string;
-    variantId: string;
-    qty: number;
-    userId?: string | null;
-    reason: string;
-  }): Promise<void> {
+  async recordShrinkage(
+    args: {
+      clubId: string;
+      variantId: string;
+      qty: number;
+      userId?: string | null;
+      reason: string;
+      /** Commande dont l'article rendu est déclaré perdu (ADR-0019). */
+      orderId?: string | null;
+      orderLineId?: string | null;
+    },
+    /**
+     * Transaction de l'appelant : l'annulation d'une commande déclare la perte
+     * d'un article rendu dans SA transaction, avec le retour qui la précède.
+     * Sans elle, la méthode ouvre la sienne, exactement comme avant.
+     */
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
     if (args.qty < 1) {
       throw new BadRequestException('La quantité perdue doit être positive.');
     }
-    await this.prisma.$transaction(async (tx) => {
+    const run = async (tx: Prisma.TransactionClient) => {
       // Conditionnel : on ne déclare pas plus de pertes qu'il n'y a de
       // marchandise. Même forme que la réservation.
       const removed = await tx.shopProductVariant.updateMany({
@@ -457,9 +520,12 @@ export class ShopStockService {
           availableDelta: -args.qty,
           reason: args.reason,
           userId: args.userId ?? null,
+          orderId: args.orderId ?? null,
+          orderLineId: args.orderLineId ?? null,
         },
       });
-    });
+    };
+    await (tx ? run(tx) : this.prisma.$transaction(run));
   }
 
   /**
