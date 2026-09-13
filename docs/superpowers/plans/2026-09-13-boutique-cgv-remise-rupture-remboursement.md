@@ -343,12 +343,19 @@ Choix de Florent (2026-09-13) :
 
   Un échec du remboursement carte est signalé.
 - [x] Journal de stock : « Retour client ».
-- [ ] Vérification staging :
-  - espèces ;
-  - chèque en portefeuille ;
-  - carte en mode test ;
-  - commande remise rapportée ;
-  - article déclaré en perte.
+- [x] Vérification staging (2026-09-13, club-demo et QA Test Club) :
+  - espèces, depuis le tiroir : 30 € rendus, avoir, retour en stock,
+    contre-passation sur la caisse ;
+  - chèque en portefeuille : chèque rendu (annulé), contre-passation sur
+    511200 ;
+  - carte en mode test : remboursement Stripe ; paiement négatif et avoir
+    enregistrés par le webhook ; contre-passation sur le transit Stripe ;
+  - commande remise rapportée, article déclaré en perte, depuis le tiroir :
+    retour puis perte, facture annulée ;
+  - acompte par virement : refusé à l'adhérent et à l'annulation simple, puis
+    10 € rendus et 20 € de reste dû éteints par un avoir ;
+  - annulation simple (application mobile) : facture annulée ;
+  - journal de stock égal aux compteurs ; aucune nouvelle exception API.
 
 ---
 
