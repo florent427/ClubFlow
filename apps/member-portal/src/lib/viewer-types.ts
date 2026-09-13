@@ -412,6 +412,8 @@ export type ViewerShopOrder = {
   note: string | null;
   createdAt: string;
   paidAt: string | null;
+  /** Retrait au club, signé (ADR-0017). */
+  deliveredAt: string | null;
   /** Vrai si la commande porte une facture ouverte (payable en ligne). */
   payableOnline: boolean;
   buyerFirstName: string | null;

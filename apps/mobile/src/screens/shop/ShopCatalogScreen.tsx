@@ -25,7 +25,11 @@ import {
 import { absolutizeMediaUrl } from '../../lib/absolutize-url';
 import { formatEuroCents } from '../../lib/format';
 import { shopCartItemCount } from '../../lib/shop-cart';
-import { canCancelShopOrder, canPayShopOrder } from '../../lib/shop-payment';
+import {
+  canCancelShopOrder,
+  canPayShopOrder,
+  shopOrderPickupLabel,
+} from '../../lib/shop-payment';
 import {
   VIEWER_ADD_SHOP_CART_ITEM,
   VIEWER_CANCEL_SHOP_ORDER,
@@ -458,9 +462,10 @@ export function ShopCatalogScreen() {
           ) : (
             orders.map((o) => {
               const pill = statusPill(o.status);
+              const pickup = shopOrderPickupLabel(o);
               const busyThis = actioningOrderId === o.id;
               const showActions =
-                canPayShopOrder(o) || canCancelShopOrder(o.status);
+                canPayShopOrder(o) || canCancelShopOrder(o.status, o.deliveredAt);
               return (
                 <View key={o.id} style={styles.orderCard}>
                   <View style={styles.orderHead}>
@@ -482,6 +487,13 @@ export function ShopCatalogScreen() {
                   <Text style={styles.orderTotal}>
                     Total : {formatEuroCents(o.totalCents)}
                   </Text>
+                  {pickup ? (
+                    <Text style={styles.orderPickup}>
+                      {pickup.kind === 'DELIVERED'
+                        ? `Retirée au club le ${frDateTime(pickup.at)}`
+                        : 'À retirer au club'}
+                    </Text>
+                  ) : null}
 
                   {/* Actions réservées aux commandes EN ATTENTE (PENDING). Une
                       commande payée ou annulée n'en a aucune. */}
@@ -498,7 +510,7 @@ export function ShopCatalogScreen() {
                           style={styles.orderActionBtn}
                         />
                       ) : null}
-                      {canCancelShopOrder(o.status) ? (
+                      {canCancelShopOrder(o.status, o.deliveredAt) ? (
                         <Button
                           label="Annuler"
                           icon="close-circle-outline"
@@ -609,6 +621,7 @@ const styles = StyleSheet.create({
     color: palette.ink,
     marginTop: spacing.xs,
   },
+  orderPickup: { ...typography.small, color: palette.muted, marginTop: 2 },
   orderActions: {
     flexDirection: 'row',
     gap: spacing.sm,

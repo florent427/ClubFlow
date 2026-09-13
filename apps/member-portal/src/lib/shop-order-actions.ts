@@ -29,9 +29,16 @@ export function canRepayOrder(order: {
   return order.status === 'PENDING' && order.payableOnline;
 }
 
-/** Peut-on annuler cette commande (bouton « Annuler ») ? */
-export function canCancelOrder(status: ViewerShopOrderStatus): boolean {
-  return status === 'PENDING';
+/**
+ * Peut-on annuler cette commande (bouton « Annuler ») ? Une commande REMISE ne
+ * s'annule plus, même non payée : la marchandise est partie (ADR-0017). Le
+ * serveur le refuse, l'écran ne le propose donc pas.
+ */
+export function canCancelOrder(
+  status: ViewerShopOrderStatus,
+  deliveredAt: string | null = null,
+): boolean {
+  return status === 'PENDING' && deliveredAt === null;
 }
 
 /**
@@ -60,4 +67,19 @@ export function orderStatusBadge(
   if (status === 'PAID') return { label: 'Payée', cls: 'ok' };
   if (status === 'CANCELLED') return { label: 'Annulée', cls: 'muted' };
   return { label: 'En attente', cls: 'warn' };
+}
+
+/**
+ * Où en est le RETRAIT de la commande au club (ADR-0017). Le paiement et la
+ * remise sont deux faits distincts : l'adhérent doit voir les deux — une
+ * commande payée n'est pas forcément retirée, une commande retirée n'est pas
+ * forcément payée. `null` : rien à dire (annulée, ou en attente non retirée).
+ */
+export function orderPickupLabel(order: {
+  status: ViewerShopOrderStatus;
+  deliveredAt: string | null;
+}): { kind: 'DELIVERED'; at: string } | { kind: 'TO_COLLECT' } | null {
+  if (order.deliveredAt) return { kind: 'DELIVERED', at: order.deliveredAt };
+  if (order.status === 'PAID') return { kind: 'TO_COLLECT' };
+  return null;
 }

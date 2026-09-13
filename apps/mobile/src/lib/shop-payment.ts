@@ -70,9 +70,28 @@ export function canPayShopOrder(order: {
 
 /**
  * Une commande peut être annulée par l'adhérent uniquement tant qu'elle est
- * EN ATTENTE. Le serveur libère alors le stock réservé. PAID et CANCELLED ne
- * sont pas annulables côté viewer.
+ * EN ATTENTE et pas encore retirée. Le serveur libère alors le stock réservé.
+ * PAID et CANCELLED ne sont pas annulables côté viewer, et une commande
+ * remise non plus : la marchandise est partie (ADR-0017).
  */
-export function canCancelShopOrder(status: ViewerShopOrderStatus): boolean {
-  return status === 'PENDING';
+export function canCancelShopOrder(
+  status: ViewerShopOrderStatus,
+  deliveredAt: string | null = null,
+): boolean {
+  return status === 'PENDING' && deliveredAt === null;
+}
+
+/**
+ * Où en est le RETRAIT de la commande au club (ADR-0017). Le paiement et la
+ * remise sont deux faits distincts : une commande payée n'est pas forcément
+ * retirée, une commande retirée n'est pas forcément payée. `null` : rien à
+ * dire (annulée, ou en attente non retirée).
+ */
+export function shopOrderPickupLabel(order: {
+  status: ViewerShopOrderStatus;
+  deliveredAt: string | null;
+}): { kind: 'DELIVERED'; at: string } | { kind: 'TO_COLLECT' } | null {
+  if (order.deliveredAt) return { kind: 'DELIVERED', at: order.deliveredAt };
+  if (order.status === 'PAID') return { kind: 'TO_COLLECT' };
+  return null;
 }

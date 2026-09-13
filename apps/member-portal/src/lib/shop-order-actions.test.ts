@@ -3,6 +3,7 @@ import {
   canCancelOrder,
   canPayOnSiteAtCheckout,
   canRepayOrder,
+  orderPickupLabel,
   orderStatusBadge,
 } from './shop-order-actions';
 import type { ViewerShopOrderStatus } from './viewer-types';
@@ -76,5 +77,34 @@ describe('orderStatusBadge — libellé lisible par statut', () => {
       expect(b.label.length).toBeGreaterThan(0);
       expect(['ok', 'warn', 'muted']).toContain(b.cls);
     }
+  });
+});
+
+describe('canCancelOrder — une commande remise ne s’annule plus (ADR-0017)', () => {
+  it('une commande en attente mais déjà retirée n’est plus annulable', () => {
+    expect(canCancelOrder('PENDING', '2026-09-13T15:00:00.000Z')).toBe(false);
+    expect(canCancelOrder('PENDING', null)).toBe(true);
+  });
+});
+
+describe('orderPickupLabel — le retrait, distinct du paiement (ADR-0017)', () => {
+  it('retirée : la date du retrait, que la commande soit payée ou non', () => {
+    expect(
+      orderPickupLabel({ status: 'PENDING', deliveredAt: '2026-09-13T15:00:00.000Z' }),
+    ).toEqual({ kind: 'DELIVERED', at: '2026-09-13T15:00:00.000Z' });
+    expect(
+      orderPickupLabel({ status: 'PAID', deliveredAt: '2026-09-13T15:00:00.000Z' }),
+    ).toEqual({ kind: 'DELIVERED', at: '2026-09-13T15:00:00.000Z' });
+  });
+
+  it('payée mais pas retirée : à retirer au club', () => {
+    expect(orderPickupLabel({ status: 'PAID', deliveredAt: null })).toEqual({
+      kind: 'TO_COLLECT',
+    });
+  });
+
+  it('rien à dire sur une commande en attente ou annulée non retirée', () => {
+    expect(orderPickupLabel({ status: 'PENDING', deliveredAt: null })).toBeNull();
+    expect(orderPickupLabel({ status: 'CANCELLED', deliveredAt: null })).toBeNull();
   });
 });

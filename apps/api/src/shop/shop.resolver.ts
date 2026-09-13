@@ -16,6 +16,7 @@ import {
   SetShopCartItemQuantityInput,
 } from './dto/shop-cart.input';
 import { CreateShopProductInput } from './dto/create-shop-product.input';
+import { DeliverShopOrderInput } from './dto/deliver-shop-order.input';
 import {
   PlaceShopOrderInput,
   RecordShopCounterSaleInput,
@@ -154,6 +155,23 @@ export class ShopAdminResolver {
     @Args('id', { type: () => ID }) id: string,
   ): Promise<ShopOrderGraph> {
     return this.service.cancelOrder(club.id, id) as Promise<ShopOrderGraph>;
+  }
+
+  /**
+   * Remise signée (ADR-0017) : l'adhérent signe sur le téléphone de l'admin.
+   * La marchandise sort du stock si la commande n'était pas encore payée.
+   */
+  @Mutation(() => ShopOrderGraph)
+  deliverShopOrder(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('input') input: DeliverShopOrderInput,
+  ): Promise<ShopOrderGraph> {
+    return this.service.deliverOrder(
+      club.id,
+      user.userId,
+      input,
+    ) as Promise<ShopOrderGraph>;
   }
 
   // --- Configuration du 3× boutique ---

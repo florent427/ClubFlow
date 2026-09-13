@@ -29,6 +29,9 @@ type OrderRow = {
   totalCents: number;
   paidAt: Date | null;
   cancelledAt: Date | null;
+  /** ADR-0017 : absentes des lignes anciennes, elles valent NULL. */
+  fulfilledAt?: Date | null;
+  deliveredAt?: Date | null;
   note: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -79,6 +82,18 @@ function makeStore(opts: {
     if (where.memberId !== undefined && o.memberId !== where.memberId)
       return false;
     if (where.contactId !== undefined && o.contactId !== where.contactId)
+      return false;
+    // Clauses `null` de l'ADR-0017 : appliquées pour de vrai, une ligne sans la
+    // colonne valant NULL.
+    if (
+      where.fulfilledAt !== undefined &&
+      (o.fulfilledAt ?? null) !== where.fulfilledAt
+    )
+      return false;
+    if (
+      where.deliveredAt !== undefined &&
+      (o.deliveredAt ?? null) !== where.deliveredAt
+    )
       return false;
     return true;
   };
@@ -134,6 +149,7 @@ function makeStore(opts: {
           if (data.status) o.status = data.status;
           if (data.cancelledAt) o.cancelledAt = data.cancelledAt;
           if (data.paidAt) o.paidAt = data.paidAt;
+          if (data.fulfilledAt) o.fulfilledAt = data.fulfilledAt;
         });
         return { count: hit.length };
       }),

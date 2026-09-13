@@ -2077,6 +2077,9 @@ const SHOP_ORDER_FIELDS = `
   updatedAt
   paidAt
   termsAcceptedAt
+  fulfilledAt
+  deliveredAt
+  deliverySignerName
   buyerFirstName
   buyerLastName
   invoiceId
@@ -2154,6 +2157,18 @@ export const MARK_SHOP_ORDER_PAID = gql`
 export const CANCEL_SHOP_ORDER = gql`
   mutation CancelShopOrder($id: ID!) {
     cancelShopOrder(id: $id) {
+      ${SHOP_ORDER_FIELDS}
+    }
+  }
+`;
+
+/**
+ * Remise signée (ADR-0017) : la signature PNG part en data URL. Elle ne revient
+ * jamais par GraphQL, seulement dans le bon de livraison PDF.
+ */
+export const DELIVER_SHOP_ORDER = gql`
+  mutation DeliverShopOrder($input: DeliverShopOrderInput!) {
+    deliverShopOrder(input: $input) {
       ${SHOP_ORDER_FIELDS}
     }
   }

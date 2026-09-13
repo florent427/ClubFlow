@@ -3570,6 +3570,19 @@ model ShopOrder {
   /// de supprimer un PDF qu'une commande a accepté.
   termsAssetId    String?
   termsAcceptedAt DateTime?
+  /// Sortie de stock (ADR-0017), posée par la PREMIÈRE des deux actions :
+  /// règlement complet, ou remise signée d'une commande encore en attente.
+  /// NULL sur une commande payée avant le 2026-09-13 : elle est sortie à son
+  /// paiement, par construction. « Sortie » se lit donc
+  /// `status = PAID OR fulfilledAt IS NOT NULL` — aucun rattrapage requis.
+  fulfilledAt          DateTime?
+  /// Remise physique à l'adhérent, prouvée par sa signature (ADR-0017).
+  deliveredAt          DateTime?
+  deliveredByUserId    String?
+  deliverySignerName   String?   @db.VarChar(160)
+  /// Signature PNG en data URL, figée par la MÊME écriture que la remise. Le
+  /// bon de livraison PDF se reproduit à la demande à partir de ces données.
+  deliverySignaturePng String?   @db.Text
 
   club       Club            @relation(fields: [clubId], references: [id], onDelete: Cascade)
   termsAsset MediaAsset?     @relation("ShopOrderTerms", fields: [termsAssetId], references: [id], onDelete: NoAction)

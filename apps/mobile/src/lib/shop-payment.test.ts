@@ -3,6 +3,7 @@ import {
   canCancelShopOrder,
   canPayShopOrder,
   interpretStripeReturn,
+  shopOrderPickupLabel,
 } from './shop-payment';
 
 /**
@@ -80,5 +81,29 @@ describe('canPayShopOrder / canCancelShopOrder', () => {
       false,
     );
     expect(canCancelShopOrder('CANCELLED')).toBe(false);
+  });
+});
+
+describe('commande retirée au club (ADR-0017)', () => {
+  it('une commande en attente mais déjà retirée ne s’annule plus', () => {
+    expect(canCancelShopOrder('PENDING', '2026-09-13T15:00:00.000Z')).toBe(false);
+    expect(canCancelShopOrder('PENDING', null)).toBe(true);
+  });
+
+  it('retirée : la date du retrait, payée ou non', () => {
+    expect(
+      shopOrderPickupLabel({ status: 'PENDING', deliveredAt: '2026-09-13T15:00:00.000Z' }),
+    ).toEqual({ kind: 'DELIVERED', at: '2026-09-13T15:00:00.000Z' });
+  });
+
+  it('payée mais pas retirée : à retirer au club', () => {
+    expect(shopOrderPickupLabel({ status: 'PAID', deliveredAt: null })).toEqual({
+      kind: 'TO_COLLECT',
+    });
+  });
+
+  it('rien à dire sur une commande en attente ou annulée non retirée', () => {
+    expect(shopOrderPickupLabel({ status: 'PENDING', deliveredAt: null })).toBeNull();
+    expect(shopOrderPickupLabel({ status: 'CANCELLED', deliveredAt: null })).toBeNull();
   });
 });

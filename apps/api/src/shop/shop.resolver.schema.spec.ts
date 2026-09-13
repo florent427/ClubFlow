@@ -53,6 +53,21 @@ describe('ShopAdminResolver — schéma GraphQL', () => {
     expect(corpsCommande).toContain('termsAcceptedAt: DateTime');
     expect(corpsCommande).not.toContain('termsAcceptedAt: DateTime!');
 
+    // Remise signée (ADR-0017).
+    expect(sdl).toContain(
+      'deliverShopOrder(input: DeliverShopOrderInput!): ShopOrderGraph!',
+    );
+    const remise = sdl.slice(sdl.indexOf('input DeliverShopOrderInput {'));
+    const corpsRemise = remise.slice(0, remise.indexOf('}'));
+    expect(corpsRemise).toContain('orderId: ID!');
+    expect(corpsRemise).toContain('signerName: String!');
+    expect(corpsRemise).toContain('signaturePng: String!');
+    expect(corpsCommande).toContain('fulfilledAt: DateTime');
+    expect(corpsCommande).toContain('deliveredAt: DateTime');
+    expect(corpsCommande).toContain('deliverySignerName: String');
+    // La signature ne sort JAMAIS par GraphQL : seulement dans le bon PDF.
+    expect(sdl).not.toContain('deliverySignaturePng');
+
     // CGV (ADR-0017) : nullables — un club peut ne pas en avoir, et `null`
     // les retire.
     expect(sdl).toContain('shopTerms: ShopTermsGraph');

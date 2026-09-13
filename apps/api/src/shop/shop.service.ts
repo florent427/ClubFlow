@@ -11,6 +11,7 @@ import {
   Prisma,
   ShopOrderStatus,
 } from '@prisma/client';
+import type { ShopDeliveryNoteData } from '../pdf/shop-delivery-note-pdf.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
 import { ShopStockService } from './shop-stock.service';
@@ -614,6 +615,47 @@ export class ShopService {
     // une exception qui casserait le webhook.
     if (claimed.count !== 1) return;
 
+    await this.claimFulfilmentInTx(tx, clubId, orderId, 'PAYMENT');
+  }
+
+  /**
+   * LA règle de sortie de stock (ADR-0017) : la marchandise quitte le placard à
+   * la PREMIÈRE des deux actions — règlement complet ou remise signée.
+   *
+   * Un seul endroit décide, pour tous les chemins : webhook carte, encaissement
+   * manuel, « Clôturer la commande », remise signée. Arbitré par la base :
+   * `fulfilledAt` n'est posé que s'il est encore NULL, et c'est le `count` de
+   * cette écriture conditionnelle qui autorise la sortie. Le second des deux
+   * gestes retrouve `fulfilledAt` posé et ne décompte rien.
+   *
+   * Le statut attendu dépend du geste, et c'est ce qui dispense de tout
+   * rattrapage des commandes antérieures :
+   *  - au règlement, la commande vient de passer PAID dans la même
+   *    transaction ;
+   *  - à la remise, seule une commande encore EN ATTENTE sort ici. Une
+   *    commande déjà PAYÉE est sortie à son paiement — y compris celles payées
+   *    avant l'existence de `fulfilledAt`, qui l'ont toujours NULL.
+   */
+  private async claimFulfilmentInTx(
+    tx: Prisma.TransactionClient,
+    clubId: string,
+    orderId: string,
+    trigger: 'PAYMENT' | 'DELIVERY',
+  ): Promise<void> {
+    const claimed = await tx.shopOrder.updateMany({
+      where: {
+        id: orderId,
+        clubId,
+        fulfilledAt: null,
+        status:
+          trigger === 'PAYMENT'
+            ? ShopOrderStatus.PAID
+            : ShopOrderStatus.PENDING,
+      },
+      data: { fulfilledAt: new Date() },
+    });
+    if (claimed.count !== 1) return;
+
     const row = await tx.shopOrder.findFirstOrThrow({
       where: { id: orderId, clubId },
       include: { lines: true },
@@ -1020,24 +1062,13 @@ export class ShopService {
         await this.assertTransitionRefused(tx, clubId, orderId, 'payer');
       }
 
-      const row = await tx.shopOrder.findFirstOrThrow({
+      // Sortie physique, sauf si la remise signée l'a déjà faite.
+      await this.claimFulfilmentInTx(tx, clubId, orderId, 'PAYMENT');
+
+      return tx.shopOrder.findFirstOrThrow({
         where: { id: orderId, clubId },
         include: { lines: true },
       });
-
-      // Sortie physique : la marchandise quitte le placard. `available` n'est
-      // pas retouché, il avait déjà baissé à la réservation.
-      for (const line of row.lines) {
-        if (!line.variantId) continue; // ligne antérieure aux variantes
-        await this.stock.fulfill(tx, {
-          clubId,
-          variantId: line.variantId,
-          qty: line.quantity,
-          orderId: row.id,
-          orderLineId: line.id,
-        });
-      }
-      return row;
     });
     return (await this.hydrateBuyers([updated]))[0];
   }
@@ -1048,8 +1079,16 @@ export class ShopService {
    */
   async cancelOrder(clubId: string, orderId: string) {
     const updated = await this.prisma.$transaction(async (tx) => {
+      // `fulfilledAt: null` : une commande REMISE avant d'être payée n'a plus de
+      // réservation à libérer — la marchandise est partie. L'annuler rendrait au
+      // stock vendable des articles qui ne sont plus dans le placard.
       const claimed = await tx.shopOrder.updateMany({
-        where: { id: orderId, clubId, status: ShopOrderStatus.PENDING },
+        where: {
+          id: orderId,
+          clubId,
+          status: ShopOrderStatus.PENDING,
+          fulfilledAt: null,
+        },
         data: {
           status: ShopOrderStatus.CANCELLED,
           cancelledAt: new Date(),
@@ -1117,6 +1156,8 @@ export class ShopService {
           id: orderId,
           clubId,
           status: ShopOrderStatus.PENDING,
+          // Remise avant paiement : la marchandise est partie, rien à libérer.
+          fulfilledAt: null,
           ...(memberId ? { memberId } : { contactId }),
         },
         data: {
@@ -1167,6 +1208,171 @@ export class ShopService {
     return (await this.hydrateBuyers([updated]))[0];
   }
 
+  // --- Remise signée (ADR-0017) ---
+
+  /** Au-delà, ce n'est plus une signature au doigt : on refuse. */
+  static readonly DELIVERY_SIGNATURE_MAX_CHARS = 400_000;
+
+  /** Les 8 octets par lesquels commence tout fichier PNG. */
+  private static readonly PNG_SIGNATURE = Buffer.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+  ]);
+
+  /**
+   * Remet la commande à l'adhérent, qui signe sur le téléphone de l'admin.
+   *
+   * Une seule écriture porte toute la preuve : date, admin, signataire et
+   * signature PNG, conditionnés à `deliveredAt: null` — c'est aussi elle qui
+   * arbitre une double remise. La marchandise sort ensuite du stock si la
+   * commande n'était pas encore payée : la remise est alors la première des
+   * deux actions.
+   *
+   * Remise AVANT paiement permise : le règlement peut suivre, en ligne ou sur
+   * place. Commande annulée : refusée.
+   *
+   * Vente au comptoir, ou commande antérieure aux CGV : si le club a des CGV en
+   * ligne et que la commande n'en porte aucune acceptation, c'est la signature
+   * qui la porte. L'écran de remise le dit à la personne qui signe, et le bon
+   * de livraison l'écrit.
+   */
+  async deliverOrder(
+    clubId: string,
+    userId: string,
+    input: { orderId: string; signerName: string; signaturePng: string },
+  ) {
+    const signerName = input.signerName.trim();
+    if (signerName.length === 0 || signerName.length > 160) {
+      throw new BadRequestException(
+        'Indique le nom de la personne qui retire la commande (160 caractères au plus).',
+      );
+    }
+    // Un base64 bien formé ne suffit pas : on vérifie que ce sont bien les
+    // octets d'un PNG. Le bon de livraison sait survivre à une image abîmée,
+    // mais ce qui est figé comme preuve doit au moins être une image.
+    const base64 = input.signaturePng.slice(input.signaturePng.indexOf(',') + 1);
+    if (
+      input.signaturePng.length > ShopService.DELIVERY_SIGNATURE_MAX_CHARS ||
+      !/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(input.signaturePng) ||
+      !Buffer.from(base64.slice(0, 12), 'base64')
+        .subarray(0, 8)
+        .equals(ShopService.PNG_SIGNATURE)
+    ) {
+      throw new BadRequestException(
+        'Signature illisible : fais signer de nouveau.',
+      );
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+      const claimed = await tx.shopOrder.updateMany({
+        where: {
+          id: input.orderId,
+          clubId,
+          deliveredAt: null,
+          status: { in: [ShopOrderStatus.PENDING, ShopOrderStatus.PAID] },
+        },
+        data: {
+          deliveredAt: now,
+          deliveredByUserId: userId,
+          deliverySignerName: signerName,
+          deliverySignaturePng: input.signaturePng,
+        },
+      });
+      if (claimed.count !== 1) {
+        // Lecture APRÈS l'échec : elle n'arbitre rien, elle nomme le refus.
+        const current = await tx.shopOrder.findFirst({
+          where: { id: input.orderId, clubId },
+          select: { status: true, deliveredAt: true },
+        });
+        if (!current) throw new NotFoundException('Commande introuvable');
+        throw new BadRequestException(
+          current.status === ShopOrderStatus.CANCELLED
+            ? 'Impossible de remettre cette commande : elle est annulée.'
+            : 'Cette commande a déjà été remise.',
+        );
+      }
+
+      const club = await tx.club.findUnique({
+        where: { id: clubId },
+        select: { shopTermsAssetId: true },
+      });
+      if (club?.shopTermsAssetId) {
+        // Conditionnel : une acceptation déjà donnée à la commande reste celle
+        // qui fait foi, même si le club a remplacé ses CGV depuis.
+        await tx.shopOrder.updateMany({
+          where: { id: input.orderId, clubId, termsAcceptedAt: null },
+          data: { termsAssetId: club.shopTermsAssetId, termsAcceptedAt: now },
+        });
+      }
+
+      await this.claimFulfilmentInTx(tx, clubId, input.orderId, 'DELIVERY');
+
+      return tx.shopOrder.findFirstOrThrow({
+        where: { id: input.orderId, clubId },
+        include: { lines: true },
+      });
+    });
+    return (await this.hydrateBuyers([updated]))[0];
+  }
+
+  /**
+   * Les données du bon de livraison, telles que figées à la remise. `null` si
+   * la commande n'existe pas dans ce club ou n'a pas été remise : le bon
+   * n'existe qu'une fois la signature recueillie.
+   */
+  async getDeliveryNote(
+    clubId: string,
+    orderId: string,
+  ): Promise<ShopDeliveryNoteData | null> {
+    const order = await this.prisma.shopOrder.findFirst({
+      where: { id: orderId, clubId, deliveredAt: { not: null } },
+      include: {
+        lines: true,
+        club: { select: { name: true, siret: true, address: true } },
+        termsAsset: { select: { fileName: true } },
+      },
+    });
+    if (!order?.deliveredAt || !order.deliverySignaturePng) return null;
+
+    const [shaped] = await this.hydrateBuyers([order]);
+    const buyerName =
+      `${shaped.buyerFirstName ?? ''} ${shaped.buyerLastName ?? ''}`.trim() ||
+      null;
+    const png = order.deliverySignaturePng;
+    return {
+      club: {
+        name: order.club.name,
+        siret: order.club.siret ?? null,
+        address: order.club.address ?? null,
+      },
+      order: {
+        reference: `CMD-${order.id.slice(0, 8).toUpperCase()}`,
+        createdAt: order.createdAt,
+        totalCents: order.totalCents,
+        paid: order.status === ShopOrderStatus.PAID,
+        paidAt: order.paidAt,
+        lines: order.lines.map((l) => ({
+          quantity: l.quantity,
+          label: l.label,
+          unitPriceCents: l.unitPriceCents,
+        })),
+      },
+      buyerName,
+      delivery: {
+        deliveredAt: order.deliveredAt,
+        signerName: order.deliverySignerName ?? '',
+        signaturePng: Buffer.from(png.slice(png.indexOf(',') + 1), 'base64'),
+      },
+      terms:
+        order.termsAcceptedAt && order.termsAsset
+          ? {
+              fileName: order.termsAsset.fileName,
+              acceptedAt: order.termsAcceptedAt,
+            }
+          : null,
+    };
+  }
+
   /**
    * Explique POURQUOI l'annulation viewer a été refusée, une fois qu'elle l'a
    * été. Scopée par `clubId` + identité viewer pour ne pas divulguer la
@@ -1187,13 +1393,19 @@ export class ShopService {
         clubId,
         ...(memberId ? { memberId } : { contactId }),
       },
-      select: { status: true },
+      select: { status: true, deliveredAt: true },
     });
     if (!current) throw new NotFoundException('Commande introuvable');
-    const label =
-      current.status === ShopOrderStatus.PAID ? 'déjà payée' : 'déjà annulée';
+    const raison =
+      current.status === ShopOrderStatus.PAID
+        ? 'elle est déjà payée'
+        : current.status === ShopOrderStatus.CANCELLED
+          ? 'elle est déjà annulée'
+          : current.deliveredAt
+            ? 'elle vous a déjà été remise, adressez-vous au club'
+            : 'elle vient de changer, rechargez la page';
     throw new BadRequestException(
-      `Impossible d’annuler cette commande : elle est ${label}.`,
+      `Impossible d’annuler cette commande : ${raison}.`,
     );
   }
 
@@ -1213,13 +1425,20 @@ export class ShopService {
   ): Promise<never> {
     const current = await tx.shopOrder.findFirst({
       where: { id: orderId, clubId },
-      select: { status: true },
+      select: { status: true, deliveredAt: true },
     });
     if (!current) throw new NotFoundException('Commande introuvable');
-    const label =
-      current.status === ShopOrderStatus.PAID ? 'déjà payée' : 'déjà annulée';
+    const raison =
+      current.status === ShopOrderStatus.PAID
+        ? 'elle est déjà payée'
+        : current.status === ShopOrderStatus.CANCELLED
+          ? 'elle est déjà annulée'
+          : current.deliveredAt
+            ? 'elle a déjà été remise à l’adhérent'
+            : 'elle vient de changer, rechargez la page';
+    const de = /^[aeiou]/.test(verb) ? 'd’' : 'de ';
     throw new BadRequestException(
-      `Impossible de ${verb} cette commande : elle est ${label}.`,
+      `Impossible ${de}${verb} cette commande : ${raison}.`,
     );
   }
 
@@ -1307,6 +1526,9 @@ export class ShopService {
         updatedAt: o.updatedAt,
         paidAt: o.paidAt,
         termsAcceptedAt: o.termsAcceptedAt,
+        fulfilledAt: o.fulfilledAt,
+        deliveredAt: o.deliveredAt,
+        deliverySignerName: o.deliverySignerName,
         payableOnline:
           invoiceByOrderId.get(o.id)?.status === InvoiceStatus.OPEN,
         invoiceId: invoiceByOrderId.get(o.id)?.id ?? null,
