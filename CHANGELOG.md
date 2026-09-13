@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.62.1](https://github.com/florent427/ClubFlow/compare/v0.62.0...v0.62.1) (2026-09-13)
+
+
+### 🐛 Bug Fixes
+
+* **boutique:** réserver les commandes déjà passées quand le suivi du stock reprend ([d69e0b8](https://github.com/florent427/ClubFlow/commit/d69e0b84f9a473df8104a20fb9fd517bfbfde482))
+* **boutique:** réserver les commandes déjà passées quand le suivi du stock reprend ([fec1096](https://github.com/florent427/ClubFlow/commit/fec1096294beeff59109227c8a0b9c17b7788214))
+
 ## [0.62.0](https://github.com/florent427/ClubFlow/compare/v0.61.0...v0.62.0) (2026-09-13)
 
 
