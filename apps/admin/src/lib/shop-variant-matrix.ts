@@ -1,4 +1,4 @@
-import type { ShopProductVariant } from './types';
+import type { ShopProduct, ShopProductVariant } from './types';
 
 /**
  * Le calcul des écritures à émettre depuis la matrice des déclinaisons.
@@ -169,4 +169,45 @@ export function planMatrixSave(args: {
   }
 
   return { ok: true, steps };
+}
+
+/**
+ * Le champ « Stock » de la fiche d'un produit SIMPLE : le stock PHYSIQUE de sa
+ * déclinaison par défaut, comme la colonne « Stock compté » de la matrice.
+ *
+ * Pas `ShopProduct.stock`, qui additionne les quantités VENDABLES. Dès qu'une
+ * commande réserve des articles — et une précommande réserve souvent tout ce qui
+ * reste (ADR-0018) —, les deux divergent : renvoyer le vendable comme stock
+ * compté ferait fondre le stock physique du montant des réservations, en
+ * silence, au premier enregistrement de la fiche.
+ */
+export function productCountedStock(p: Pick<ShopProduct, 'variants'>): string {
+  const def = p.variants.find((v) => v.isDefault);
+  if (!def || !def.trackStock || def.onHand === null) return '';
+  return String(def.onHand);
+}
+
+/** Articles de la déclinaison par défaut réservés pour des commandes en cours. */
+export function productReservedUnits(p: Pick<ShopProduct, 'variants'>): number {
+  const def = p.variants.find((v) => v.isDefault);
+  if (!def || !def.trackStock || def.onHand === null || def.available === null) {
+    return 0;
+  }
+  return Math.max(0, def.onHand - def.available);
+}
+
+/**
+ * Ce que la fiche produit envoie pour le stock, par comparaison au stock compté
+ * affiché à l'ouverture — la règle de la matrice. Rien si le champ n'a pas
+ * bougé : enregistrer la fiche pour changer un délai ou un prix ne dépose
+ * aucune correction d'inventaire. Vide : stock illimité.
+ */
+export function planProductStock(
+  initial: string,
+  current: string,
+): { ok: true; stock: number | null | undefined } | { ok: false } {
+  if (current.trim() === initial.trim()) return { ok: true, stock: undefined };
+  const parsed = parseOptionalInt(current);
+  if (!parsed.ok) return { ok: false };
+  return { ok: true, stock: parsed.value };
 }

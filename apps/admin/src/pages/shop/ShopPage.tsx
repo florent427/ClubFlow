@@ -46,6 +46,9 @@ import {
   parseOptionalInt,
   planMatrixSave,
   seedRow,
+  planProductStock,
+  productCountedStock,
+  productReservedUnits,
 } from '../../lib/shop-variant-matrix';
 import type { MatrixRowDraft } from '../../lib/shop-variant-matrix';
 import { useToast } from '../../components/ToastProvider';
@@ -923,6 +926,8 @@ function ProductsTab() {
   const [imageUrl, setImageUrl] = useState('');
   const [priceEuros, setPriceEuros] = useState('');
   const [stockStr, setStockStr] = useState('');
+  /** Stock compté affiché à l'ouverture : seul un changement part en correction. */
+  const [stockInitialStr, setStockInitialStr] = useState('');
   const [active, setActive] = useState(true);
   /** Précommande (ADR-0018) : commandable une fois épuisé, servi à l'arrivage. */
   const [preorderEnabled, setPreorderEnabled] = useState(false);
@@ -948,6 +953,7 @@ function ProductsTab() {
     setImageUrl('');
     setPriceEuros('');
     setStockStr('');
+    setStockInitialStr('');
     setActive(true);
     setPreorderEnabled(false);
     setPreorderLeadTime('');
@@ -962,7 +968,10 @@ function ProductsTab() {
     setDescription(p.description ?? '');
     setImageUrl(p.imageUrl ?? '');
     setPriceEuros((p.priceCents / 100).toString().replace('.', ','));
-    setStockStr(p.stock === null ? '' : String(p.stock));
+    // Le stock PHYSIQUE, comme la matrice : `p.stock` est le vendable, et le
+    // renvoyer comme stock compté ferait fondre les articles réservés.
+    setStockStr(productCountedStock(p));
+    setStockInitialStr(productCountedStock(p));
     setActive(p.active);
     setPreorderEnabled(p.preorderEnabled);
     setPreorderLeadTime(p.preorderLeadTime ?? '');
@@ -980,8 +989,10 @@ function ProductsTab() {
       showToast('Nom et prix requis', 'error');
       return;
     }
-    const stockValue = stockStr.trim() === '' ? undefined : Number(stockStr);
-    if (stockStr.trim() !== '' && (isNaN(stockValue!) || stockValue! < 0)) {
+    // Rien n'est envoyé si le stock compté n'a pas bougé : changer un délai ou
+    // un prix ne dépose aucune correction d'inventaire.
+    const stockPlan = planProductStock(stockInitialStr, stockStr);
+    if (!stockPlan.ok) {
       showToast('Stock invalide', 'error');
       return;
     }
@@ -1000,7 +1011,7 @@ function ProductsTab() {
               // Le stock du produit pilote la déclinaison par défaut. Il n'a
               // plus de sens dès qu'il y a une matrice : chaque combinaison
               // porte le sien.
-              stock: withVariants ? undefined : stockValue,
+              stock: withVariants ? undefined : stockPlan.stock,
               active,
               preorderEnabled,
               preorderLeadTime: preorderLeadTime.trim() || null,
@@ -1018,7 +1029,7 @@ function ProductsTab() {
               description: description.trim() || undefined,
               imageUrl: imageUrl.trim() || undefined,
               priceCents,
-              stock: withVariants ? undefined : stockValue,
+              stock: withVariants ? undefined : (stockPlan.stock ?? undefined),
               active,
               preorderEnabled,
               preorderLeadTime: preorderLeadTime.trim() || null,
@@ -1351,7 +1362,9 @@ function ProductsTab() {
               </div>
             ) : (
               <label className="cf-field">
-                <span className="cf-field__label">Stock (vide = illimité)</span>
+                <span className="cf-field__label">
+                  Stock compté (vide = illimité)
+                </span>
                 <input
                   type="number"
                   min="0"
@@ -1359,6 +1372,15 @@ function ProductsTab() {
                   value={stockStr}
                   onChange={(e) => setStockStr(e.target.value)}
                 />
+                <span className="cf-field__hint">
+                  Articles présents au club, réservés compris
+                  {editing && productReservedUnits(editing) > 0
+                    ? ` — dont ${productReservedUnits(editing)} réservé${
+                        productReservedUnits(editing) > 1 ? 's' : ''
+                      } pour des commandes en cours`
+                    : ''}
+                  .
+                </span>
               </label>
             )}
           </div>
