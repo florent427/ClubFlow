@@ -9,6 +9,19 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.60.0](https://github.com/florent427/ClubFlow/compare/v0.59.0...v0.60.0) (2026-09-13)
+
+
+### ✨ Features
+
+* **boutique:** remise signée et bon de livraison (lot 2, ADR-0017) ([d4cc770](https://github.com/florent427/ClubFlow/commit/d4cc7700a43a2f4a3fd3b1a0c9323554c7dd7500))
+* **boutique:** remise signée sur le téléphone de l'admin, bon de livraison ([bb1035f](https://github.com/florent427/ClubFlow/commit/bb1035f730f530edfb89312553097c4b23fa3792))
+
+
+### 🐛 Bug Fixes
+
+* **boutique:** bon de livraison ouvert par lien signé, et envoyé par e-mail ([ad887fc](https://github.com/florent427/ClubFlow/commit/ad887fc1fdc496447a6b5b6d5e3b7edbc13a4638))
+
 ## [0.59.0](https://github.com/florent427/ClubFlow/compare/v0.58.0...v0.59.0) (2026-09-13)
 
 
