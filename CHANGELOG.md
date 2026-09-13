@@ -9,6 +9,19 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.59.0](https://github.com/florent427/ClubFlow/compare/v0.58.0...v0.59.0) (2026-09-13)
+
+
+### ✨ Features
+
+* **boutique:** CGV à accepter avant toute commande (lot 1, ADR-0017) ([082b4dd](https://github.com/florent427/ClubFlow/commit/082b4ddacb2e6298c3df3ecee70a6a079ef083ec))
+* **boutique:** conditions générales de vente à accepter avant toute commande ([b97e39d](https://github.com/florent427/ClubFlow/commit/b97e39dc08c2b14ac92afa14d24f8cbe99d90f50))
+
+
+### ♻️ Refactor
+
+* **boutique:** règle des CGV sortie des écrans et testée ([5414edc](https://github.com/florent427/ClubFlow/commit/5414edc60af4174af710770ae35d56047a7b4366))
+
 ## [0.58.0](https://github.com/florent427/ClubFlow/compare/v0.57.0...v0.58.0) (2026-09-13)
 
 
