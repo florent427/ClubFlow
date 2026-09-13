@@ -139,53 +139,62 @@ déploiement, l'application mobile seulement à sa publication suivante.
 
 ### Task 2.1 : Schéma
 
-- [ ] `ShopOrder.fulfilledAt DateTime?`, `deliveredAt DateTime?`,
+- [x] `ShopOrder.fulfilledAt DateTime?`, `deliveredAt DateTime?`,
   `deliveredByUserId String?`, `deliverySignerName String? @db.VarChar(160)`,
   `deliverySignaturePng String? @db.Text`.
-- [ ] Pas de rattrapage : une commande payée est sortie à son paiement, par
+- [x] Pas de rattrapage : une commande payée est sortie à son paiement, par
   construction. « Sortie » se lit `status = PAID OR fulfilledAt IS NOT NULL`.
 
 ### Task 2.2 : La règle en un seul endroit
 
-- [ ] `claimFulfilmentInTx(tx, clubId, orderId, trigger)` : pose `fulfilledAt`
+- [x] `claimFulfilmentInTx(tx, clubId, orderId, trigger)` : pose `fulfilledAt`
   s'il est NULL — sur une commande PAYÉE au règlement, EN ATTENTE à la remise —
   puis sort la marchandise réservée. Idempotente, jamais d'exception.
-- [ ] Appelée par la facture soldée (webhook carte, encaissement manuel,
+- [x] Appelée par la facture soldée (webhook carte, encaissement manuel,
   « Clôturer la commande ») et par la remise signée.
-- [ ] **Invariant** : payer puis remettre, ou remettre puis payer, sortent le
+- [x] **Invariant** : payer puis remettre, ou remettre puis payer, sortent le
   stock **une** fois — y compris sur une commande payée avant `fulfilledAt`.
-- [ ] **Invariant** : une commande remise ne s'annule plus (`fulfilledAt: null`
+- [x] **Invariant** : une commande remise ne s'annule plus (`fulfilledAt: null`
   dans l'écriture conditionnelle des deux annulations).
 
 ### Task 2.3 : Remise signée et bon de livraison
 
-- [ ] `deliverShopOrder(orderId, signerName, signaturePng)` : une écriture
+- [x] `deliverShopOrder(orderId, signerName, signaturePng)` : une écriture
   conditionnelle (`deliveredAt: null`) fige date, admin, signataire et
   signature ; la signature porte l'acceptation des CGV si la commande n'en a
   aucune ; puis `claimFulfilmentInTx(…, 'DELIVERY')`.
-- [ ] Bon de livraison PDF produit à la demande :
+- [x] Bon de livraison PDF produit à la demande :
   `GET /shop/orders/:id/delivery-note.pdf`, réservé au back-office du club.
-- [ ] Ouvert par un **lien signé** (club + commande dans la signature, 10 min),
+- [x] Ouvert par un **lien signé** (club + commande dans la signature, 10 min),
   dans un onglet ouvert pendant le clic : le téléchargement par Blob restait
   sans effet sur staging (2026-09-13). Envoi par e-mail en pièce jointe, à la
   remise ou depuis la commande, à l'adresse de l'acheteur ou à une autre.
-- [ ] Refus si la commande est annulée ou déjà remise ; au lot 3, si une ligne
+- [x] Refus si la commande est annulée ou déjà remise ; au lot 3, si une ligne
   attend un arrivage.
 
 ### Task 2.4 : Admin web, pensée pour le téléphone
 
-- [ ] « Remettre » sur la carte de commande → tiroir plein écran sur téléphone,
+- [x] « Remettre » sur la carte de commande → tiroir plein écran sur téléphone,
   pavé de signature canvas sans dépendance → « Bon de livraison » téléchargeable
   depuis la commande.
 
 ### Task 2.5 : Portail membre
 
-- [ ] « À retirer » / « Retirée le … » sur Mes commandes.
+- [x] « À retirer » / « Retirée le … » sur Mes commandes ; « Annuler »
+  masqué sur une commande retirée. Application mobile : même chose, à sa
+  prochaine publication.
 
-### Task 2.6 : Vérification staging
+### Task 2.6 : Vérification staging (2026-09-13)
 
-- [ ] Payer puis remettre ; remettre puis payer : une seule sortie de stock
-  chaque fois, bon de livraison lisible et signé.
+- [x] Remettre puis payer : une seule sortie de stock, constatée en base ;
+  payer puis remettre : couvert par les tests.
+- [x] Remise signée depuis l'admin et depuis le téléphone de Florent ;
+  annulation d'une commande remise refusée ; journal d'erreurs inchangé.
+- [x] Bon de livraison : PDF d'une page avec la signature, ouvert dans un nouvel
+  onglet par un vrai clic ; lien signé refusé (403) pour un autre club, une
+  autre commande, une échéance prolongée, une signature altérée ou absente.
+- [ ] Envoi par e-mail : couvert par les tests, pas déclenché sur staging (il
+  part vers une vraie adresse).
 
 ---
 
