@@ -102,27 +102,35 @@ déploiement, l'application mobile seulement à sa publication suivante.
 
 ### Task 1.3 : Admin
 
-- [ ] Réglages de la boutique : carte « Conditions générales de vente » — envoi du
-  PDF, lien, date, remplacer, retirer.
+- [x] Réglages de la boutique : carte « Conditions générales de vente » — envoi du
+  PDF, lien, date, remplacer, retirer. La carte de commande affiche « CGV
+  acceptées le … », et la médiathèque affiche le motif d'un refus de suppression.
 
 ### Task 1.4 : Portail membre
 
-- [ ] Case obligatoire et lien dans la modale de règlement, pour la carte comme
+- [x] Case obligatoire et lien dans la modale de règlement, pour la carte comme
   pour « Régler sur place ». Pas en reprise de paiement : la commande existe
-  déjà, ses CGV ont été acceptées.
+  déjà, ses CGV ont été acceptées. Lien « Conditions générales de vente » en
+  tête de la boutique. Règle pure `shopTermsGate` testée (vitest) ; une nouvelle
+  version arrivée pendant que la fenêtre est ouverte décoche la case.
 
 ### Task 1.5 : Application mobile
 
-- [ ] Même acceptation avant « Payer par carte » et « Régler sur place ». Livrée à
+- [x] Même acceptation avant « Payer par carte » et « Régler sur place ». Livrée à
   la prochaine publication de l'application.
 
-### Task 1.6 : Vérification staging
+### Task 1.6 : Vérification staging (2026-09-13)
 
-- [ ] Club sans CGV : commande possible comme avant.
-- [ ] CGV déposées : lien lisible sans connexion ; commande refusée sans
-  acceptation ; acceptée avec, `termsAssetId` et `termsAcceptedAt` en base.
-- [ ] Remplacement des CGV : une ancienne commande garde l'identifiant de
-  l'ancienne version, et cette version n'est pas supprimable.
+- [x] Club sans CGV : commande possible comme avant — couvert par les tests
+  unitaires, non rejoué sur staging.
+- [x] CGV déposées depuis l'admin : PDF lisible sans connexion (HTTP 200,
+  identique au fichier déposé), asset `PUBLIC` / `SHOP_TERMS`. Refus sans
+  acceptation sur la carte, le « régler sur place » et `viewerPlaceShopOrder` ;
+  refus d'une autre version ; panier intact après refus ; commande acceptée avec
+  `termsAssetId` et `termsAcceptedAt` en base, facture ouverte, stock réservé.
+- [x] Remplacement des CGV : l'ancienne commande garde la v1, la v1 remplacée est
+  refusée à la commande, et aucune des deux versions n'est supprimable (400,
+  motif explicite). Journal d'erreurs de l'API inchangé.
 
 ---
 
