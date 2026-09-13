@@ -9,6 +9,19 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.61.0](https://github.com/florent427/ClubFlow/compare/v0.60.0...v0.61.0) (2026-09-13)
+
+
+### ✨ Features
+
+* **boutique:** précommande d'un article épuisé, servie à l'arrivage ([340ff3c](https://github.com/florent427/ClubFlow/commit/340ff3c4296abaef0de8d0be437b70050ceacacd))
+* **boutique:** précommande d'un article épuisé, servie à l'arrivage (lot 3) ([7f2e606](https://github.com/florent427/ClubFlow/commit/7f2e60697223df2bfaea59fbe85c49231291a2d1))
+
+
+### 🐛 Bug Fixes
+
+* **boutique:** la fiche produit corrige le stock physique, et seulement s'il change ([87c4f92](https://github.com/florent427/ClubFlow/commit/87c4f9294c6c9e4875dbe1d625be2035375bb477))
+
 ## [0.60.0](https://github.com/florent427/ClubFlow/compare/v0.59.0...v0.60.0) (2026-09-13)
 
 
