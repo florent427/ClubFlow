@@ -2493,6 +2493,8 @@ export class ViewerService {
     wantsInstallments: boolean;
     /** Retour via lien profond `clubflow://` (app mobile) plutôt que https. */
     nativeApp?: boolean;
+    /** Version des CGV acceptée par l'adhérent (ADR-0017). */
+    acceptedTermsId: string | null;
   }): Promise<{
     orderId: string;
     invoiceId: string;
@@ -2508,6 +2510,7 @@ export class ViewerService {
         contactId: args.activeProfile.contactId,
       },
       args.wantsInstallments,
+      args.acceptedTermsId,
     );
     const session = await this.stripeCheckout.createInvoiceCheckoutSession({
       invoiceId: checkout.invoiceId,

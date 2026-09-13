@@ -50,6 +50,15 @@ export class PlaceShopOrderInput {
   @IsString()
   @MaxLength(500)
   note?: string;
+
+  /**
+   * Version des CGV montrée à l'adhérent et acceptée par lui (ADR-0017).
+   * Exigée par le serveur dès que le club a des CGV en ligne.
+   */
+  @Field(() => ID, { nullable: true })
+  @IsOptional()
+  @IsUUID()
+  acceptedTermsId?: string;
 }
 
 /**

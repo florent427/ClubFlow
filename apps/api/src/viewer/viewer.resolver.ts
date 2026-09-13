@@ -820,7 +820,7 @@ export class ViewerResolver {
   @Mutation(() => ShopCartCheckoutGraph, {
     name: 'viewerCheckoutShopCart',
     description:
-      'Transforme le panier boutique en commande (réservation de stock atomique) + facture, puis crée la session Stripe Checkout et renvoie l’URL. `wantsInstallments=true` demande le 3× — le serveur le REFUSE si le total est sous le seuil configuré par le club (ou si le 3× est désactivé).',
+      'Transforme le panier boutique en commande (réservation de stock atomique) + facture, puis crée la session Stripe Checkout et renvoie l’URL. `wantsInstallments=true` demande le 3× — le serveur le REFUSE si le total est sous le seuil configuré par le club (ou si le 3× est désactivé). `acceptedTermsId` : les CGV acceptées, exigées dès que le club en a (ADR-0017).',
   })
   @RequireClubModule(ModuleCode.SHOP)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
@@ -831,6 +831,8 @@ export class ViewerResolver {
     wantsInstallments?: boolean,
     @Args('nativeApp', { type: () => Boolean, nullable: true })
     nativeApp?: boolean,
+    @Args('acceptedTermsId', { type: () => ID, nullable: true })
+    acceptedTermsId?: string | null,
   ): Promise<ShopCartCheckoutGraph> {
     return this.viewer.viewerCheckoutShopCart({
       clubId: club.id,
@@ -840,6 +842,7 @@ export class ViewerResolver {
       },
       wantsInstallments: wantsInstallments === true,
       nativeApp: nativeApp ?? false,
+      acceptedTermsId: acceptedTermsId ?? null,
     });
   }
 

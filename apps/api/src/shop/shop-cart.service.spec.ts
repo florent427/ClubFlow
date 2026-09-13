@@ -44,6 +44,8 @@ type OrderRow = {
   totalCents: number;
   paidAt: Date | null;
   note: string | null;
+  termsAssetId: string | null;
+  termsAcceptedAt: Date | null;
   lines: Array<{
     id: string;
     orderId: string;
@@ -95,6 +97,8 @@ function makeStore(opts: {
   variants: VariantRow[];
   thresholdCents?: number | null;
   clubName?: string;
+  /** CGV en vigueur du club (ADR-0017). */
+  termsAssetId?: string | null;
 }) {
   const variants = opts.variants;
   const orders: OrderRow[] = [];
@@ -153,6 +157,7 @@ function makeStore(opts: {
         return {
           id: 'club-1',
           shopInstallmentThresholdCents: opts.thresholdCents ?? null,
+          shopTermsAssetId: opts.termsAssetId ?? null,
           name: opts.clubName ?? 'Dojo',
         };
       }),
@@ -191,6 +196,10 @@ function makeStore(opts: {
           totalCents: data.totalCents,
           paidAt: null,
           note: data.note ?? null,
+          // Un double qui jetterait ces champs certifierait n'importe quoi sur
+          // eux : ils sont la preuve de l'acceptation.
+          termsAssetId: data.termsAssetId ?? null,
+          termsAcceptedAt: data.termsAcceptedAt ?? null,
           lines: (data.lines?.create ?? []).map((l: any) => ({
             id: uid('line'),
             orderId: id,
@@ -244,6 +253,15 @@ function makeStore(opts: {
         invoices.push(row);
         return { id: row.id };
       }),
+      findMany: jest.fn(async ({ where }: any) =>
+        invoices
+          .filter(
+            (i) =>
+              where.shopOrderId?.in === undefined ||
+              where.shopOrderId.in.includes(i.shopOrderId),
+          )
+          .map((i) => ({ id: i.id, shopOrderId: i.shopOrderId, status: i.status })),
+      ),
     },
     // La facture d'une commande nomme son acheteur et le rattache à son foyer :
     // le service lit donc ces tables DANS la transaction. Ces tests ne parlent
@@ -251,6 +269,7 @@ function makeStore(opts: {
     // sa valeur de repli, ce qui n'ôte rien à ce qu'ils vérifient.
     member: {
       findFirst: jest.fn(async () => null),
+      findMany: jest.fn(async () => []),
     },
     contact: {
       findFirst: jest.fn(async () => null),
@@ -499,7 +518,7 @@ describe('ShopCartService.checkout — commande + facture + 3×', () => {
   it('transforme le panier en commande PENDING + facture, et RÉSERVE le stock', async () => {
     const h = await seededCart({ available: 5, price: 2000, qty: 2 });
 
-    const res = await h.cart.checkout('club-1', MEMBER, false);
+    const res = await h.cart.checkout('club-1', MEMBER, false, null);
 
     // Commande créée, stock réservé (available 5 → 3), onHand intact.
     expect(h.orders).toHaveLength(1);
@@ -522,7 +541,7 @@ describe('ShopCartService.checkout — commande + facture + 3×', () => {
     // aucune facture ne subsiste.
     const h = await seededCart({ threshold: 10_000, available: 5, price: 2000, qty: 2 });
 
-    await expect(h.cart.checkout('club-1', MEMBER, true)).rejects.toThrow(
+    await expect(h.cart.checkout('club-1', MEMBER, true, null)).rejects.toThrow(
       BadRequestException,
     );
 
@@ -534,7 +553,7 @@ describe('ShopCartService.checkout — commande + facture + 3×', () => {
 
   it('REFUSE le 3× quand le seuil est null (3× désactivé)', async () => {
     const h = await seededCart({ threshold: null, price: 50_000, qty: 1 });
-    await expect(h.cart.checkout('club-1', MEMBER, true)).rejects.toThrow(
+    await expect(h.cart.checkout('club-1', MEMBER, true, null)).rejects.toThrow(
       BadRequestException,
     );
     expect(h.orders).toHaveLength(0);
@@ -542,7 +561,7 @@ describe('ShopCartService.checkout — commande + facture + 3×', () => {
 
   it('ACCORDE le 3× quand le total atteint le seuil', async () => {
     const h = await seededCart({ threshold: 10_000, price: 6000, qty: 2 }); // total 12 000
-    const res = await h.cart.checkout('club-1', MEMBER, true);
+    const res = await h.cart.checkout('club-1', MEMBER, true, null);
     expect(res.installmentsCount).toBe(3);
     expect(h.invoices[0].installmentsCount).toBe(3);
   });
@@ -553,7 +572,7 @@ describe('ShopCartService.checkout — commande + facture + 3×', () => {
     const h = await seededCart({ available: 5, qty: 2 });
     h.variants[0].available = 1;
 
-    await expect(h.cart.checkout('club-1', MEMBER, false)).rejects.toThrow(
+    await expect(h.cart.checkout('club-1', MEMBER, false, null)).rejects.toThrow(
       BadRequestException,
     );
 
@@ -564,7 +583,7 @@ describe('ShopCartService.checkout — commande + facture + 3×', () => {
 
   it('refuse un panier vide', async () => {
     const h = makeStore({ variants: [VARIANT()] });
-    await expect(h.cart.checkout('club-1', MEMBER, false)).rejects.toThrow(
+    await expect(h.cart.checkout('club-1', MEMBER, false, null)).rejects.toThrow(
       BadRequestException,
     );
   });
@@ -604,7 +623,7 @@ describe('ShopCartService.checkoutOnSite — « régler sur place »', () => {
   it('émet une facture liée à la commande — sans elle, la recette n’existe pas', async () => {
     const h = await seededCart({ available: 5, price: 2500, qty: 1 });
 
-    const res = await h.cart.checkoutOnSite('club-1', MEMBER);
+    const res = await h.cart.checkoutOnSite('club-1', MEMBER, null);
 
     expect(h.invoices).toHaveLength(1);
     expect(h.invoices[0].shopOrderId).toBe(res.orderId);
@@ -616,7 +635,7 @@ describe('ShopCartService.checkoutOnSite — « régler sur place »', () => {
   it('ne fige AUCUN mode de paiement : on règle sur place, pas par carte', async () => {
     const h = await seededCart();
 
-    await h.cart.checkoutOnSite('club-1', MEMBER);
+    await h.cart.checkoutOnSite('club-1', MEMBER, null);
 
     expect(h.invoices[0].lockedPaymentMethod).toBeNull();
   });
@@ -624,7 +643,7 @@ describe('ShopCartService.checkoutOnSite — « régler sur place »', () => {
   it('réserve le stock comme le checkout en ligne, et vide le panier', async () => {
     const h = await seededCart({ available: 5, price: 2000, qty: 2 });
 
-    await h.cart.checkoutOnSite('club-1', MEMBER);
+    await h.cart.checkoutOnSite('club-1', MEMBER, null);
 
     expect(h.orders).toHaveLength(1);
     expect(h.orders[0].status).toBe(ShopOrderStatus.PENDING);
@@ -636,7 +655,7 @@ describe('ShopCartService.checkoutOnSite — « régler sur place »', () => {
   it('refuse un panier vide', async () => {
     const h = makeStore({ variants: [VARIANT({ available: 5 })] });
 
-    await expect(h.cart.checkoutOnSite('club-1', MEMBER)).rejects.toThrow(
+    await expect(h.cart.checkoutOnSite('club-1', MEMBER, null)).rejects.toThrow(
       /panier est vide/i,
     );
     expect(h.invoices).toHaveLength(0);
@@ -648,7 +667,7 @@ describe('ShopService.fulfillPaidShopOrderInTx — idempotence webhook', () => {
     const h = await (async () => {
       const s = makeStore({ variants: [VARIANT({ available: 5, onHand: 5 })] });
       await s.cart.addItem('club-1', MEMBER, 'v-1', 2);
-      await s.cart.checkout('club-1', MEMBER, false);
+      await s.cart.checkout('club-1', MEMBER, false, null);
       return s;
     })();
     return h;
@@ -699,5 +718,101 @@ describe('ShopService.fulfillPaidShopOrderInTx — idempotence webhook', () => {
     // clubId dans le WHERE de la transition : rien ne bascule.
     expect(h.orders[0].status).toBe(ShopOrderStatus.PENDING);
     expect(h.variants[0].onHand).toBe(5);
+  });
+});
+
+describe('CGV de la boutique (ADR-0017) — l’acceptation se décide au passage de commande', () => {
+  /**
+   * Trois chemins créent la commande d'un adhérent : le panier payé en ligne,
+   * le panier « réglé sur place », et `viewerPlaceShopOrder`, qui commande sans
+   * panier. La règle vit dans `placeOrderInTx`, où ils se rejoignent ; ces tests
+   * passent par chacun d'eux.
+   */
+  async function seeded(termsAssetId: string | null) {
+    const h = makeStore({ variants: [VARIANT({ available: 5 })], termsAssetId });
+    await h.cart.addItem('club-1', MEMBER, 'v-1', 1);
+    return h;
+  }
+
+  it('sans CGV en ligne, on commande comme avant, et aucune acceptation n’est inventée', async () => {
+    const h = await seeded(null);
+
+    await h.cart.checkout('club-1', MEMBER, false, null);
+
+    expect(h.orders).toHaveLength(1);
+    expect(h.orders[0].termsAssetId).toBeNull();
+    expect(h.orders[0].termsAcceptedAt).toBeNull();
+  });
+
+  it('CGV en ligne : le paiement en ligne est REFUSÉ sans acceptation, et rien n’est écrit', async () => {
+    const h = await seeded('cgv-v2');
+
+    await expect(h.cart.checkout('club-1', MEMBER, false, null)).rejects.toThrow(
+      /Acceptez les conditions générales de vente/,
+    );
+
+    expect(h.orders).toHaveLength(0);
+    expect(h.invoices).toHaveLength(0);
+    expect(h.variants[0].available).toBe(5);
+    expect(h.items).toHaveLength(1);
+  });
+
+  it('CGV acceptées : la commande garde la version acceptée et l’heure de l’acceptation', async () => {
+    const h = await seeded('cgv-v2');
+    const avant = Date.now();
+
+    await h.cart.checkout('club-1', MEMBER, false, 'cgv-v2');
+
+    expect(h.orders[0].termsAssetId).toBe('cgv-v2');
+    expect(h.orders[0].termsAcceptedAt).toBeInstanceOf(Date);
+    expect(h.orders[0].termsAcceptedAt!.getTime()).toBeGreaterThanOrEqual(avant);
+  });
+
+  it('REFUSE une version remplacée pendant que l’adhérent réglait', async () => {
+    // L'adhérent a lu et accepté la v1 ; le club a mis la v2 en ligne entre-
+    // temps. Enregistrer la v2 lui ferait accepter un texte qu'il n'a pas lu.
+    const h = await seeded('cgv-v2');
+
+    await expect(
+      h.cart.checkout('club-1', MEMBER, false, 'cgv-v1'),
+    ).rejects.toThrow(/mises à jour/);
+
+    expect(h.orders).toHaveLength(0);
+    expect(h.invoices).toHaveLength(0);
+  });
+
+  it('« régler sur place » obéit à la même règle', async () => {
+    const h = await seeded('cgv-v2');
+
+    await expect(h.cart.checkoutOnSite('club-1', MEMBER, null)).rejects.toThrow(
+      /Acceptez les conditions générales de vente/,
+    );
+    expect(h.orders).toHaveLength(0);
+    expect(h.invoices).toHaveLength(0);
+
+    await h.cart.checkoutOnSite('club-1', MEMBER, 'cgv-v2');
+    expect(h.orders[0].termsAssetId).toBe('cgv-v2');
+  });
+
+  it('`viewerPlaceShopOrder`, qui commande SANS panier, n’y échappe pas', async () => {
+    const h = makeStore({
+      variants: [VARIANT({ available: 5 })],
+      termsAssetId: 'cgv-v2',
+    });
+    const lines = [{ variantId: 'v-1', quantity: 1 }];
+
+    await expect(h.shop.placeOrder('club-1', MEMBER, { lines })).rejects.toThrow(
+      /Acceptez les conditions générales de vente/,
+    );
+    expect(h.orders).toHaveLength(0);
+    expect(h.variants[0].available).toBe(5);
+
+    const commande = await h.shop.placeOrder('club-1', MEMBER, {
+      lines,
+      acceptedTermsId: 'cgv-v2',
+    });
+    expect(h.orders[0].termsAssetId).toBe('cgv-v2');
+    // Et la commande rendue le dit : c'est ce que l'admin affiche.
+    expect(commande.termsAcceptedAt).toBeInstanceOf(Date);
   });
 });

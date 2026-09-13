@@ -2,7 +2,7 @@ import { GraphQLSchemaBuilderModule, GraphQLSchemaFactory } from '@nestjs/graphq
 import { Test } from '@nestjs/testing';
 import { printSchema } from 'graphql';
 import '../graphql/register-enums';
-import { ShopAdminResolver } from './shop.resolver';
+import { ShopAdminResolver, ShopViewerResolver } from './shop.resolver';
 
 /**
  * Le schéma ne se construit qu'au démarrage de l'API : un champ nullable sans
@@ -50,5 +50,39 @@ describe('ShopAdminResolver — schéma GraphQL', () => {
     expect(corpsCommande).not.toContain('invoiceId: ID!');
     expect(corpsCommande).toContain('invoiceStatus: InvoiceStatus');
     expect(corpsCommande).not.toContain('invoiceStatus: InvoiceStatus!');
+    expect(corpsCommande).toContain('termsAcceptedAt: DateTime');
+    expect(corpsCommande).not.toContain('termsAcceptedAt: DateTime!');
+
+    // CGV (ADR-0017) : nullables — un club peut ne pas en avoir, et `null`
+    // les retire.
+    expect(sdl).toContain('shopTerms: ShopTermsGraph');
+    expect(sdl).not.toContain('shopTerms: ShopTermsGraph!');
+    expect(sdl).toContain('setShopTerms(mediaAssetId: ID): ShopTermsGraph');
+  });
+});
+
+describe('ShopViewerResolver — schéma GraphQL', () => {
+  it('se construit et expose les CGV et leur acceptation', async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [GraphQLSchemaBuilderModule],
+    }).compile();
+    const factory = moduleRef.get(GraphQLSchemaFactory);
+    const schema = await factory.create([ShopViewerResolver]);
+    const sdl = printSchema(schema);
+
+    expect(sdl).toContain('viewerShopTerms: ShopTermsGraph');
+    expect(sdl).not.toContain('viewerShopTerms: ShopTermsGraph!');
+
+    // Argument FACULTATIF, sur les deux chemins de commande sans Stripe : une
+    // version de l'application qui ne l'envoie pas reste valide pour le
+    // schéma, et c'est le service qui la refuse avec un message demandant la
+    // mise à jour — pas une erreur de validation GraphQL illisible.
+    expect(sdl).toContain(
+      'viewerCheckoutShopCartOnSite(acceptedTermsId: ID): ShopOrderGraph!',
+    );
+    const entree = sdl.slice(sdl.indexOf('input PlaceShopOrderInput {'));
+    const corps = entree.slice(0, entree.indexOf('}'));
+    expect(corps).toContain('acceptedTermsId: ID');
+    expect(corps).not.toContain('acceptedTermsId: ID!');
   });
 });

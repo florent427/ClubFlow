@@ -4,19 +4,32 @@ import {
   SET_SHOP_INSTALLMENT_THRESHOLD,
   SHOP_INSTALLMENT_THRESHOLD,
 } from '../../lib/documents';
+import { ShopTermsCard } from './ShopTermsCard';
 
 type ThresholdData = { shopInstallmentThresholdCents: number | null };
 type SetData = { setShopInstallmentThreshold: number | null };
 
 /**
- * Réglages de la boutique — pour l'instant, le seuil du paiement en 3×.
+ * Réglages de la boutique : conditions générales de vente, puis seuil du 3×.
+ */
+export function ShopSettingsTab() {
+  return (
+    <div style={{ display: 'grid', gap: 16, maxWidth: 520 }}>
+      <ShopTermsCard />
+      <InstallmentThresholdCard />
+    </div>
+  );
+}
+
+/**
+ * Seuil du paiement en 3× de la boutique.
  *
  * Le seuil vit en CENTIMES côté serveur (source de vérité), mais l'admin
  * raisonne en euros : la saisie est en euros et convertie au dernier moment.
  * Un champ VIDE signifie « pas de 3× », et c'est distinct de « 0 € » — d'où un
  * état `string` (et non un nombre) pour ne pas confondre le vide avec zéro.
  */
-export function ShopSettingsTab() {
+function InstallmentThresholdCard() {
   const { data, loading } = useQuery<ThresholdData>(SHOP_INSTALLMENT_THRESHOLD, {
     fetchPolicy: 'cache-and-network',
   });
@@ -66,7 +79,7 @@ export function ShopSettingsTab() {
   if (loading && !data) return <p className="cf-muted">Chargement…</p>;
 
   return (
-    <div className="cf-card" style={{ maxWidth: 520 }}>
+    <div className="cf-card">
       <h3>Paiement en plusieurs fois</h3>
       <p className="cf-field__hint">
         À partir de ce montant de commande, l’adhérent peut choisir de régler en

@@ -170,6 +170,21 @@ export const VIEWER_CLEAR_SHOP_CART = gql`
 `;
 
 /**
+ * CGV de la boutique à accepter avant de commander (ADR-0017). `id` est à
+ * renvoyer au passage de commande ; `null` = le club n'en a pas.
+ */
+export const VIEWER_SHOP_TERMS = gql`
+  query ViewerShopTerms {
+    viewerShopTerms {
+      id
+      fileName
+      url
+      updatedAt
+    }
+  }
+`;
+
+/**
  * Champs communs au checkout ET au repay : les deux renvoient un
  * `ShopCartCheckout`. `paymentReturnUrl` est le préfixe d'URL de SUCCÈS posé
  * sur la session Stripe (`…/boutique?paid=1`) : ce N'EST PAS l'URL à ouvrir
@@ -192,8 +207,12 @@ const VIEWER_SHOP_CART_CHECKOUT_FIELDS = `
  * désactivé. `installmentsCount` reflète ce que le serveur a ACCORDÉ (1 ou 3).
  */
 export const VIEWER_CHECKOUT_SHOP_CART = gql`
-  mutation ViewerCheckoutShopCart($wantsInstallments: Boolean) {
-    viewerCheckoutShopCart(wantsInstallments: $wantsInstallments, nativeApp: true) {
+  mutation ViewerCheckoutShopCart($wantsInstallments: Boolean, $acceptedTermsId: ID) {
+    viewerCheckoutShopCart(
+      wantsInstallments: $wantsInstallments
+      nativeApp: true
+      acceptedTermsId: $acceptedTermsId
+    ) {
       ${VIEWER_SHOP_CART_CHECKOUT_FIELDS}
     }
   }
@@ -201,17 +220,17 @@ export const VIEWER_CHECKOUT_SHOP_CART = gql`
 
 /**
  * Validation « régler sur place » : transforme le panier en commande PENDING et
- * RÉSERVE le stock (même réservation atomique que le checkout Stripe), mais SANS
- * paiement en ligne — aucune facture ni session Stripe. Aucun argument.
- * L'adhérent règlera au club (espèces/chèque) ; le club marquera la commande
- * payée plus tard. Le panier est vidé côté serveur. Renvoie la commande créée
+ * RÉSERVE le stock (même réservation atomique que le checkout Stripe) et émet la
+ * facture, SANS paiement en ligne. `acceptedTermsId` : les CGV acceptées,
+ * exigées dès que le club en a. L'adhérent règlera au club (espèces/chèque), qui
+ * encaissera la facture. Le panier est vidé côté serveur. Renvoie la commande créée
  * (`status: PENDING`), même forme que `viewerShopOrders`. Porté par
  * `ShopViewerResolver.viewerCheckoutShopCartOnSite` (gardes viewer + gating
  * SHOP), jamais admin.
  */
 export const VIEWER_CHECKOUT_SHOP_CART_ON_SITE = gql`
-  mutation ViewerCheckoutShopCartOnSite {
-    viewerCheckoutShopCartOnSite {
+  mutation ViewerCheckoutShopCartOnSite($acceptedTermsId: ID) {
+    viewerCheckoutShopCartOnSite(acceptedTermsId: $acceptedTermsId) {
       ${VIEWER_SHOP_ORDER_FIELDS}
     }
   }
@@ -392,6 +411,16 @@ export type ViewerCheckoutShopCartData = {
 export type ViewerCheckoutShopCartOnSiteData = {
   viewerCheckoutShopCartOnSite: ViewerShopOrder;
 };
+
+/** CGV de la boutique (ADR-0017). */
+export type ViewerShopTerms = {
+  /** À renvoyer au passage de commande : la version acceptée. */
+  id: string;
+  fileName: string;
+  url: string;
+  updatedAt: string | null;
+};
+export type ViewerShopTermsData = { viewerShopTerms: ViewerShopTerms | null };
 export type ViewerRepayShopOrderData = {
   viewerRepayShopOrder: ViewerShopCartCheckout;
 };

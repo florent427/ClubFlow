@@ -1,9 +1,11 @@
 import { useMutation, useQuery } from '@apollo/client/react';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Image,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -34,6 +36,7 @@ import {
   VIEWER_SET_SHOP_CART_ITEM_QUANTITY,
   VIEWER_SHOP_CART,
   VIEWER_SHOP_ORDERS,
+  VIEWER_SHOP_TERMS,
   type ShopCartItem,
   type ViewerCheckoutShopCartData,
   type ViewerCheckoutShopCartOnSiteData,
@@ -41,6 +44,7 @@ import {
   type ViewerRemoveShopCartItemData,
   type ViewerSetShopCartItemQuantityData,
   type ViewerShopCartData,
+  type ViewerShopTermsData,
 } from '../../lib/shop-documents';
 import { palette, radius, spacing, typography } from '../../lib/theme';
 import { useStripePayment } from '../../lib/useStripePayment';
@@ -70,6 +74,28 @@ export function ShopCartScreen() {
     { fetchPolicy: 'cache-and-network', errorPolicy: 'all' },
   );
   const cart = data?.viewerShopCart ?? null;
+
+  // CGV (ADR-0017) : à accepter avant de valider le panier. Le serveur refuse
+  // toute commande sans elles dès que le club en a mis en ligne.
+  const { data: termsData, loading: termsLoading } =
+    useQuery<ViewerShopTermsData>(VIEWER_SHOP_TERMS, {
+      fetchPolicy: 'cache-and-network',
+      errorPolicy: 'all',
+    });
+  const terms = termsData?.viewerShopTerms ?? null;
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  // Une AUTRE version arrive (CGV remplacées pendant que l'écran est ouvert) :
+  // l'acceptation donnée portait sur l'ancienne, elle ne vaut pas pour celle-ci.
+  const termsId = terms?.id ?? null;
+  useEffect(() => {
+    setTermsAccepted(false);
+  }, [termsId]);
+  // Tant qu'on ne sait pas s'il y a des CGV, on attend plutôt que d'envoyer une
+  // commande que le serveur refuserait.
+  const termsBlocking =
+    (termsLoading && !termsData) || (terms !== null && !termsAccepted);
+  // L'identifiant de la version AFFICHÉE : le serveur refuse s'il a changé.
+  const acceptedTermsId = terms && termsAccepted ? terms.id : null;
 
   // set / remove / clear renvoient le MÊME panier (id stable une fois
   // matérialisé) : Apollo fusionne le résultat dans le cache normalisé et la
@@ -179,7 +205,9 @@ export function ShopCartScreen() {
   async function doCheckout(wantsInstallments: boolean) {
     let checkoutRes;
     try {
-      const { data: res } = await checkout({ variables: { wantsInstallments } });
+      const { data: res } = await checkout({
+        variables: { wantsInstallments, acceptedTermsId },
+      });
       checkoutRes = res?.viewerCheckoutShopCart;
     } catch (err) {
       // Cœur de l'exigence : le refus vient du SERVEUR (3× sous le seuil, 3×
@@ -261,9 +289,20 @@ export function ShopCartScreen() {
    * 3× ici (le 3× ne concerne que la carte). Le refus serveur (panier vide,
    * article épuisé au moment de réserver) est affiché TEL QUEL.
    */
+  function openTerms(url: string) {
+    const target = absolutizeMediaUrl(url);
+    if (!target) return;
+    void Linking.openURL(target).catch(() => {
+      Alert.alert(
+        'Impossible d’ouvrir',
+        'Le PDF des conditions générales de vente n’a pas pu s’ouvrir.',
+      );
+    });
+  }
+
   async function doCheckoutOnSite() {
     try {
-      await checkoutOnSite();
+      await checkoutOnSite({ variables: { acceptedTermsId } });
     } catch (err) {
       Alert.alert(
         'Validation impossible',
@@ -473,6 +512,42 @@ export function ShopCartScreen() {
                   valider. Le 3× ne concerne que la carte (arbitré au checkout
                   Stripe) ; « sur place » crée une commande PENDING sans
                   paiement en ligne. */}
+              {terms ? (
+                <View style={styles.termsBlock}>
+                  <Pressable
+                    onPress={() => setTermsAccepted((v) => !v)}
+                    disabled={busy}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: termsAccepted }}
+                    accessibilityLabel="J’accepte les conditions générales de vente de la boutique"
+                    style={styles.termsRow}
+                  >
+                    <View
+                      style={[
+                        styles.termsBox,
+                        termsAccepted && styles.termsBoxChecked,
+                      ]}
+                    >
+                      {termsAccepted ? (
+                        <Ionicons name="checkmark" size={16} color="#ffffff" />
+                      ) : null}
+                    </View>
+                    <Text style={styles.termsText}>
+                      J’ai lu et j’accepte les conditions générales de vente de
+                      la boutique.
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => openTerms(terms.url)}
+                    accessibilityRole="link"
+                    hitSlop={8}
+                  >
+                    <Text style={styles.termsLink}>
+                      Lire les conditions générales de vente
+                    </Text>
+                  </Pressable>
+                </View>
+              ) : null}
               <Text style={styles.choiceLabel}>Mode de règlement</Text>
               <View style={{ marginTop: spacing.sm, gap: spacing.sm }}>
                 <GradientButton
@@ -480,7 +555,7 @@ export function ShopCartScreen() {
                   icon="card-outline"
                   onPress={openCardPaymentChoice}
                   loading={checkingOut}
-                  disabled={!checkoutable || busy}
+                  disabled={!checkoutable || busy || termsBlocking}
                   fullWidth
                 />
                 <Button
@@ -489,7 +564,7 @@ export function ShopCartScreen() {
                   variant="ghost"
                   onPress={confirmOnSite}
                   loading={checkingOutOnSite}
-                  disabled={!checkoutable || busy}
+                  disabled={!checkoutable || busy || termsBlocking}
                   fullWidth
                 />
               </View>
@@ -592,6 +667,28 @@ const styles = StyleSheet.create({
   },
   totalLabel: { ...typography.bodyStrong, color: palette.body },
   totalValue: { ...typography.h2, color: palette.ink },
+  termsBlock: { marginTop: spacing.md, gap: spacing.sm },
+  termsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  termsBox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: palette.borderStrong,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.surface,
+  },
+  termsBoxChecked: {
+    backgroundColor: palette.primary,
+    borderColor: palette.primary,
+  },
+  termsText: { ...typography.small, color: palette.ink, flex: 1 },
+  termsLink: {
+    ...typography.smallStrong,
+    color: palette.primary,
+    textDecorationLine: 'underline',
+  },
   choiceLabel: {
     ...typography.smallStrong,
     color: palette.body,

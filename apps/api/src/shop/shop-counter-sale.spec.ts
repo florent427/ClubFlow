@@ -128,6 +128,16 @@ function makeHarness() {
 
   const tx = {
     ...lookups,
+    // Le club a des CGV en ligne (ADR-0017). Une vente au comptoir ne doit pas
+    // pour autant exiger leur acceptation : l'adhérent n'est pas devant
+    // l'écran, c'est la remise signée qui la portera.
+    club: {
+      findUnique: jest.fn(async ({ where }: { where: { id?: string } }) =>
+        where.id === undefined || where.id === CLUB
+          ? { id: CLUB, shopTermsAssetId: 'cgv-v2' }
+          : null,
+      ),
+    },
     shopProductVariant: {
       // Double écrit EN FACE de la requête : Prisma n'applique que les clauses
       // présentes, et toutes celles présentes.
@@ -200,6 +210,21 @@ describe('ShopService.recordCounterSale', () => {
 
     expect(h.invoices).toHaveLength(1);
     expect(h.invoices[0].shopOrderId).toBe(res.orderId);
+  });
+
+  it('n’exige pas l’acceptation des CGV, et n’en invente aucune', async () => {
+    // Le club a des CGV en ligne (cf. le double) : un chemin adhérent serait
+    // refusé ici. Au comptoir, l'acceptation viendra de la remise signée.
+    const h = makeHarness();
+
+    await h.svc.recordCounterSale(CLUB, {
+      memberId: 'm-1',
+      lines: [{ variantId: 'v-120', quantity: 1 }],
+    });
+
+    expect(h.orders).toHaveLength(1);
+    expect(h.orders[0].termsAssetId ?? null).toBeNull();
+    expect(h.orders[0].termsAcceptedAt ?? null).toBeNull();
   });
 
   it('ne fige pas le mode de paiement : au comptoir on paie en chèque', async () => {

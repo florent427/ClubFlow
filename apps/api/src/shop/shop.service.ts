@@ -7,6 +7,7 @@ import {
 import {
   ClubPaymentMethod,
   InvoiceStatus,
+  MediaVisibility,
   Prisma,
   ShopOrderStatus,
 } from '@prisma/client';
@@ -17,6 +18,29 @@ import { ShopStockService } from './shop-stock.service';
 type ViewerIdentity = {
   memberId?: string | null;
   contactId?: string | null;
+};
+
+/**
+ * Comment une commande traite les CGV de la boutique (ADR-0017).
+ *
+ * Paramètre OBLIGATOIRE de `placeOrderInTx` : tout chemin qui crée une commande
+ * doit le dire, et un chemin oublié ne compile pas. Ce n'est pas une précaution
+ * abstraite — `viewerPlaceShopOrder` commande sans panier, à côté du checkout,
+ * et une règle posée sur le seul checkout l'aurait laissé passer.
+ */
+export type ShopTermsConsent =
+  /** L'adhérent commande : il doit avoir accepté la version EN VIGUEUR. */
+  | { kind: 'MEMBER'; acceptedTermsId: string | null }
+  /** Vente au comptoir : l'acceptation sera portée par la remise signée. */
+  | { kind: 'COUNTER' };
+
+/** Les CGV de la boutique, telles que les voient l'admin et l'adhérent. */
+export type ShopTermsView = {
+  /** Identifiant du PDF : c'est lui que l'adhérent renvoie en acceptant. */
+  id: string;
+  fileName: string;
+  url: string;
+  updatedAt: Date | null;
 };
 
 @Injectable()
@@ -430,10 +454,15 @@ export class ShopService {
     input: {
       lines: Array<{ variantId: string; quantity: number }>;
       note?: string;
+      /** Version des CGV montrée à l'adhérent et acceptée par lui. */
+      acceptedTermsId?: string | null;
     },
   ) {
     const order = await this.prisma.$transaction((tx) =>
-      this.placeOrderInTx(tx, clubId, viewer, input),
+      this.placeOrderInTx(tx, clubId, viewer, input, {
+        kind: 'MEMBER',
+        acceptedTermsId: input.acceptedTermsId ?? null,
+      }),
     );
     return (await this.hydrateBuyers([order]))[0];
   }
@@ -457,6 +486,7 @@ export class ShopService {
       lines: Array<{ variantId: string; quantity: number }>;
       note?: string;
     },
+    terms: ShopTermsConsent,
   ): Promise<Prisma.ShopOrderGetPayload<{ include: { lines: true } }>> {
     if (!viewer.memberId && !viewer.contactId) {
       throw new ForbiddenException('Profil requis pour commander.');
@@ -464,6 +494,7 @@ export class ShopService {
     if (input.lines.length === 0) {
       throw new BadRequestException('Commande vide.');
     }
+    const accepted = await this.resolveTermsConsentInTx(tx, clubId, terms);
 
     // AGRÉGATION AVANT TOUT, et c'est un correctif, pas une optimisation.
     //
@@ -519,6 +550,8 @@ export class ShopService {
         status: ShopOrderStatus.PENDING,
         totalCents,
         note: input.note ?? null,
+        termsAssetId: accepted?.termsAssetId ?? null,
+        termsAcceptedAt: accepted?.termsAcceptedAt ?? null,
         lines: {
           create: orderedIds.map((variantId) => {
             const v = byVariantId.get(variantId)!;
@@ -628,6 +661,124 @@ export class ShopService {
     return club?.shopInstallmentThresholdCents ?? null;
   }
 
+  // --- Conditions générales de vente (ADR-0017) ---
+
+  /**
+   * Les CGV en vigueur, ou null. Les mêmes pour l'admin et pour l'adhérent :
+   * l'identifiant rendu est celui que l'adhérent renverra en les acceptant.
+   */
+  async getShopTerms(clubId: string): Promise<ShopTermsView | null> {
+    const club = await this.prisma.club.findUnique({
+      where: { id: clubId },
+      select: {
+        shopTermsUpdatedAt: true,
+        shopTermsAsset: {
+          select: { id: true, fileName: true, publicUrl: true },
+        },
+      },
+    });
+    const asset = club?.shopTermsAsset ?? null;
+    if (!club || !asset) return null;
+    return {
+      id: asset.id,
+      fileName: asset.fileName,
+      url: asset.publicUrl,
+      updatedAt: club.shopTermsUpdatedAt,
+    };
+  }
+
+  /**
+   * Met en ligne les CGV de la boutique, ou les retire (`null`).
+   *
+   * Le PDF doit appartenir au club — `clubId` DANS le `where` de la lecture — et
+   * il est rendu PUBLIC dans la même transaction : l'adhérent l'ouvre dans un
+   * nouvel onglet, sans jeton, et un lien en 404 lui ferait accepter un texte
+   * qu'il ne peut pas lire.
+   *
+   * Remplacer les CGV ne supprime rien : l'ancienne version reste la preuve de
+   * ce qu'ont accepté les commandes passées sous elle.
+   */
+  async setShopTerms(
+    clubId: string,
+    mediaAssetId: string | null,
+  ): Promise<ShopTermsView | null> {
+    if (mediaAssetId === null) {
+      await this.prisma.club.update({
+        where: { id: clubId },
+        data: { shopTermsAssetId: null, shopTermsUpdatedAt: null },
+      });
+      return null;
+    }
+    await this.prisma.$transaction(async (tx) => {
+      const asset = await tx.mediaAsset.findFirst({
+        where: { id: mediaAssetId, clubId },
+        select: { id: true, mimeType: true },
+      });
+      if (!asset) {
+        throw new NotFoundException('Document introuvable.');
+      }
+      if (asset.mimeType !== 'application/pdf') {
+        throw new BadRequestException(
+          'Les conditions générales de vente doivent être un fichier PDF.',
+        );
+      }
+      await tx.mediaAsset.updateMany({
+        where: { id: asset.id, clubId },
+        data: { visibility: MediaVisibility.PUBLIC },
+      });
+      const club = await tx.club.findUnique({
+        where: { id: clubId },
+        select: { shopTermsAssetId: true },
+      });
+      // Re-désigner la version en vigueur ne la redate pas : sa date dit
+      // depuis quand les adhérents l'acceptent.
+      if (club?.shopTermsAssetId === asset.id) return;
+      await tx.club.update({
+        where: { id: clubId },
+        data: { shopTermsAssetId: asset.id, shopTermsUpdatedAt: new Date() },
+      });
+    });
+    return this.getShopTerms(clubId);
+  }
+
+  /**
+   * Décide, au passage de commande, de l'acceptation des CGV (ADR-0017).
+   *
+   * Lue DANS la transaction de la commande : la version contrôlée est celle
+   * que la commande enregistre. Et c'est l'identifiant du PDF montré à
+   * l'adhérent qui est comparé, pas un simple « j'accepte » : si le club a
+   * remplacé ses CGV pendant que la fenêtre de règlement était ouverte,
+   * l'adhérent a accepté un texte qui n'est plus en vigueur, et la commande
+   * enregistrerait une acceptation qu'il n'a jamais donnée.
+   */
+  private async resolveTermsConsentInTx(
+    tx: Prisma.TransactionClient,
+    clubId: string,
+    consent: ShopTermsConsent,
+  ): Promise<{ termsAssetId: string; termsAcceptedAt: Date } | null> {
+    if (consent.kind === 'COUNTER') return null;
+    const club = await tx.club.findUnique({
+      where: { id: clubId },
+      select: { shopTermsAssetId: true },
+    });
+    const enVigueur = club?.shopTermsAssetId ?? null;
+    if (enVigueur === null) return null;
+    if (consent.acceptedTermsId === null) {
+      throw new BadRequestException(
+        'Acceptez les conditions générales de vente de la boutique pour ' +
+          'commander. Si elles ne vous sont pas proposées, mettez à jour ' +
+          'l’application.',
+      );
+    }
+    if (consent.acceptedTermsId !== enVigueur) {
+      throw new BadRequestException(
+        'Les conditions générales de vente de la boutique viennent d’être ' +
+          'mises à jour : relisez-les et acceptez-les à nouveau.',
+      );
+    }
+    return { termsAssetId: enVigueur, termsAcceptedAt: new Date() };
+  }
+
   /**
    * Vente au comptoir : le club vend un article sur place, sans que l'adhérent
    * passe par son panier.
@@ -670,6 +821,7 @@ export class ShopService {
         clubId,
         { memberId: buyer.memberId, contactId: buyer.contactId },
         { lines: input.lines, note: input.note ?? undefined },
+        { kind: 'COUNTER' },
       );
       const invoice = await this.createOrderInvoiceInTx(tx, clubId, order, {
         labelPrefix: 'Vente boutique',
@@ -1154,6 +1306,7 @@ export class ShopService {
         createdAt: o.createdAt,
         updatedAt: o.updatedAt,
         paidAt: o.paidAt,
+        termsAcceptedAt: o.termsAcceptedAt,
         payableOnline:
           invoiceByOrderId.get(o.id)?.status === InvoiceStatus.OPEN,
         invoiceId: invoiceByOrderId.get(o.id)?.id ?? null,

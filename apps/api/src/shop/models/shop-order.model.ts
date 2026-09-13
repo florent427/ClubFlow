@@ -62,6 +62,13 @@ export class ShopOrderGraph {
   paidAt!: Date | null;
 
   /**
+   * Acceptation des CGV au passage de commande (ADR-0017). Null : aucune CGV
+   * en vigueur à ce moment, ou vente au comptoir.
+   */
+  @Field(() => Date, { nullable: true })
+  termsAcceptedAt!: Date | null;
+
+  /**
    * Vrai si la commande porte une facture OUVERTE, donc payable : « Payer »
    * côté adhérent, « Encaisser » côté club. Depuis le 2026-09-12 toute commande
    * reçoit sa facture, « régler sur place » compris : seules les commandes

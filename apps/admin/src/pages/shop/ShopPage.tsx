@@ -1456,6 +1456,14 @@ function OrdersTab() {
                 {o.note ? (
                   <p className="cf-order-card__note">« {o.note} »</p>
                 ) : null}
+                {o.termsAcceptedAt ? (
+                  <p
+                    className="cf-muted"
+                    style={{ margin: '4px 0 0', fontSize: 12 }}
+                  >
+                    CGV acceptées le {fmtDate(o.termsAcceptedAt)}
+                  </p>
+                ) : null}
                 <div className="cf-order-card__foot">
                   <strong>Total : {fmtEuros(o.totalCents)}</strong>
                   <div className="cf-order-card__actions">
