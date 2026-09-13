@@ -246,7 +246,26 @@ d'une commande fournisseur (ADR-0013). Décision :
 - [x] Portail : « sur commande » et délai sur la fiche, dans le panier et au
   règlement ; unités en attente sur « Mes commandes ».
 - [x] Application mobile : même chose, à sa prochaine publication.
-- [ ] Vérification staging.
+- [x] Vérification staging (2026-09-13) :
+  - fiche produit : case et délai enregistrés depuis l'admin, pastille
+    « Précommande · 2 à 3 semaines » sur la carte ;
+  - commande adhérent de 5 unités sur 3 en stock : 3 réservées, 2 en attente
+    d'arrivage, facture de 75 € ouverte, article ensuite « sur commande » ;
+  - admin : « En attente d'arrivage » et « (2 en attente d'arrivage) » ;
+    « Remettre » remplacé par « Remise possible à l'arrivage », et la remise
+    refusée aussi par le serveur ;
+  - entrée de stock de 2 unités : attribution immédiate, mouvements
+    RESERVE −3, RESTOCK +2, RESERVE −2 ; stock physique 5, vendable 0 ;
+    « Remettre » revient ;
+  - journal d'erreurs de l'API inchangé.
+- [x] Correctif trouvé pendant la recette : la fiche produit pré-remplissait le
+  stock avec le VENDABLE et le renvoyait comme stock compté à chaque
+  enregistrement, ce qui faisait fondre le stock physique du montant des
+  réservations. Elle part désormais du stock physique et n'envoie une
+  correction que si le chiffre change. Vérifié : enregistrement sans
+  changement, aucune correction en base.
+- [ ] Portail vu à l'écran : la session Chrome n'y est pas connectée ; ses
+  données (disponibilité, délai, unités en attente) sont vérifiées par l'API.
 
 ---
 
