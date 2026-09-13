@@ -40,5 +40,15 @@ describe('ShopAdminResolver — schéma GraphQL', () => {
     expect(corpsSortie).toContain('orderId: ID!');
     expect(corpsSortie).toContain('invoiceId: ID!');
     expect(corpsSortie).toContain('totalCents: Int!');
+
+    // La commande expose sa facture : c'est ce qui permet à l'écran de
+    // proposer « Encaisser » et d'ouvrir la facture directement. Nullable —
+    // une commande antérieure à la facturation systématique n'en a pas.
+    const commande = sdl.slice(sdl.indexOf('type ShopOrderGraph {'));
+    const corpsCommande = commande.slice(0, commande.indexOf('}'));
+    expect(corpsCommande).toContain('invoiceId: ID');
+    expect(corpsCommande).not.toContain('invoiceId: ID!');
+    expect(corpsCommande).toContain('invoiceStatus: InvoiceStatus');
+    expect(corpsCommande).not.toContain('invoiceStatus: InvoiceStatus!');
   });
 });

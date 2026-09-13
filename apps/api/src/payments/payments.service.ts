@@ -683,6 +683,28 @@ export class PaymentsService {
           data: { status: InvoiceStatus.PAID },
         });
       }
+
+      // Facture d'une commande boutique soldée : la commande passe payée et la
+      // marchandise sort du placard — exactement ce que fait déjà l'encaissement
+      // par carte (webhook Stripe). Sans cet appel, encaisser un chèque sur une
+      // vente laissait la commande EN ATTENTE et le stock intact : il fallait un
+      // second geste, « Marquer payée », qui lui n'enregistrait aucun argent.
+      //
+      // Dans la transaction, pour la même raison que côté Stripe : la sortie de
+      // stock est une garantie, pas un accessoire. Elle ne peut pas empêcher la
+      // saisie d'un vrai chèque — `fulfill` ne lève jamais, il ignore un article
+      // non suivi en stock — et elle est idempotente.
+      //
+      // Le critère est le SOLDE, avoirs déduits, comme pour la clôture de
+      // l'échéancier ci-dessous et comme côté Stripe : l'égalité stricte au
+      // montant nominal ne couvre pas le cas d'un avoir.
+      if (balanceCents - input.amountCents <= 0 && invoice.shopOrderId) {
+        await this.shop.fulfillPaidShopOrderInTx(
+          tx,
+          clubId,
+          invoice.shopOrderId,
+        );
+      }
       return p;
     });
 

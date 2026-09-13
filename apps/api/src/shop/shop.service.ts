@@ -836,6 +836,30 @@ export class ShopService {
    */
   async markOrderPaid(clubId: string, orderId: string) {
     const updated = await this.prisma.$transaction(async (tx) => {
+      // Une commande qui a une facture À ENCAISSER ne se marque plus payée
+      // d'un clic. Ce raccourci basculait le statut et sortait le stock sans
+      // créer aucun paiement : la commande affichait « Payée », la facture
+      // restait « À payer », et la comptabilité ne recevait rien. Encaisser la
+      // facture fait désormais tout — argent, n° de chèque, écriture ET
+      // clôture de la commande.
+      //
+      // Restent permises : la commande sans facture (antérieure au 2026-09-12,
+      // quand « régler sur place » n'en produisait pas) et la commande dont la
+      // facture est déjà payée, où il ne reste qu'à sortir la marchandise. Le
+      // contrôle vit côté serveur pour valoir aussi pour un onglet
+      // d'administration resté ouvert sur l'ancien écran.
+      const aEncaisser = await tx.invoice.findFirst({
+        where: { shopOrderId: orderId, clubId, status: InvoiceStatus.OPEN },
+        select: { id: true },
+      });
+      if (aEncaisser) {
+        throw new BadRequestException(
+          'Cette commande a une facture à encaisser : enregistre le paiement ' +
+            'dans Facturation. C’est lui qui clôture la commande et écrit la ' +
+            'comptabilité.',
+        );
+      }
+
       const claimed = await tx.shopOrder.updateMany({
         where: { id: orderId, clubId, status: ShopOrderStatus.PENDING },
         data: { status: ShopOrderStatus.PAID, paidAt: new Date() },
@@ -1086,19 +1110,26 @@ export class ShopService {
     // le double règlement est impossible, la seconde saisie se heurtant à une
     // facture déjà soldée.
     const orderIds = orders.map((o) => o.id);
-    const openInvoices =
+    // LA facture de chaque commande (`shopOrderId` est unique), quel que soit
+    // son statut. L'écran d'administration en a besoin pour proposer
+    // « Encaisser » et ouvrir directement le tiroir de la facture, au lieu de
+    // la chercher parmi toutes celles du club.
+    const orderInvoices =
       orderIds.length > 0
         ? await this.prisma.invoice.findMany({
-            where: {
-              shopOrderId: { in: orderIds },
-              status: InvoiceStatus.OPEN,
-            },
-            select: { shopOrderId: true },
+            where: { shopOrderId: { in: orderIds } },
+            select: { id: true, shopOrderId: true, status: true },
           })
         : [];
-    const payableOnlineOrderIds = new Set(
-      openInvoices.map((i) => i.shopOrderId).filter((v): v is string => !!v),
-    );
+    const invoiceByOrderId = new Map<
+      string,
+      { id: string; status: InvoiceStatus }
+    >();
+    for (const inv of orderInvoices) {
+      if (inv.shopOrderId) {
+        invoiceByOrderId.set(inv.shopOrderId, { id: inv.id, status: inv.status });
+      }
+    }
 
     return orders.map((o) => {
       let first: string | null = null;
@@ -1123,7 +1154,10 @@ export class ShopService {
         createdAt: o.createdAt,
         updatedAt: o.updatedAt,
         paidAt: o.paidAt,
-        payableOnline: payableOnlineOrderIds.has(o.id),
+        payableOnline:
+          invoiceByOrderId.get(o.id)?.status === InvoiceStatus.OPEN,
+        invoiceId: invoiceByOrderId.get(o.id)?.id ?? null,
+        invoiceStatus: invoiceByOrderId.get(o.id)?.status ?? null,
         lines: o.lines.map((l) => ({
           id: l.id,
           orderId: l.orderId,

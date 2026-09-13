@@ -30,11 +30,13 @@ describe('PaymentsService / encaissements manuels', () => {
   let documentsGating: { hasUnsignedRequiredDocuments: jest.Mock };
   let closeSchedule: jest.Mock;
   let sumInFlight: jest.Mock;
+  let shop: { fulfillPaidShopOrderInTx: jest.Mock };
 
   beforeEach(async () => {
     closeSchedule = jest.fn().mockResolvedValue(undefined);
     // Par défaut : aucun prélèvement en vol sur la facture.
     sumInFlight = jest.fn().mockResolvedValue(0);
+    shop = { fulfillPaidShopOrderInTx: jest.fn().mockResolvedValue(undefined) };
     accounting = { recordIncomeFromPayment: jest.fn().mockResolvedValue(undefined) };
     documentsGating = {
       hasUnsignedRequiredDocuments: jest
@@ -98,7 +100,7 @@ describe('PaymentsService / encaissements manuels', () => {
             sumInFlightForInvoice: sumInFlight,
           },
         },
-        { provide: ShopService, useValue: { fulfillPaidShopOrderInTx: jest.fn() } },
+        { provide: ShopService, useValue: shop },
       ],
     }).compile();
 
@@ -380,6 +382,110 @@ describe('PaymentsService / encaissements manuels', () => {
     });
 
     expect(tx.cheque.create).not.toHaveBeenCalled();
+  });
+
+  describe('vente boutique : encaisser la facture clôture la commande', () => {
+    /**
+     * Seul l'encaissement par carte (webhook Stripe) clôturait la commande. Un
+     * chèque ou des espèces saisis sur la facture d'une vente laissaient la
+     * commande EN ATTENTE et le stock intact — il fallait un second geste,
+     * « Marquer payée », qui n'enregistrait aucun argent.
+     */
+    const shopInvoice = {
+      ...openInvoice,
+      id: 'inv-shop',
+      amountCents: 2500,
+      label: 'Vente boutique — Camillah ABDILLAH',
+      shopOrderId: 'so-1',
+    };
+
+    it('solder la facture clôture la commande DANS la transaction de l’encaissement', async () => {
+      prisma.invoice.findFirst.mockResolvedValue(shopInvoice);
+      prisma.payment.aggregate.mockResolvedValue({ _sum: { amountCents: null } });
+      const tx = makeTx('pay-shop', 2500);
+      prisma.$transaction.mockImplementation(
+        async (fn: (t: InvoiceTx) => Promise<unknown>) => {
+          const result = await fn(tx);
+          // Appelé PENDANT le callback, avec la transaction elle-même : un
+          // échec de la sortie de stock annule l'encaissement, au lieu de
+          // laisser une commande en attente sur une facture payée.
+          expect(shop.fulfillPaidShopOrderInTx).toHaveBeenCalledWith(
+            tx,
+            'club-1',
+            'so-1',
+          );
+          return result;
+        },
+      );
+
+      await service.recordManualPayment('club-1', {
+        invoiceId: 'inv-shop',
+        amountCents: 2500,
+        method: ClubPaymentMethod.MANUAL_CHECK,
+        externalRef: '4917496',
+      });
+
+      expect(shop.fulfillPaidShopOrderInTx).toHaveBeenCalledTimes(1);
+    });
+
+    it('un acompte sur une vente ne clôture PAS la commande', async () => {
+      prisma.invoice.findFirst.mockResolvedValue(shopInvoice);
+      prisma.payment.aggregate.mockResolvedValue({ _sum: { amountCents: null } });
+      const tx = makeTx('pay-part', 1000);
+      prisma.$transaction.mockImplementation(
+        async (fn: (t: InvoiceTx) => Promise<unknown>) => fn(tx),
+      );
+
+      await service.recordManualPayment('club-1', {
+        invoiceId: 'inv-shop',
+        amountCents: 1000,
+        method: ClubPaymentMethod.MANUAL_CASH,
+      });
+
+      expect(shop.fulfillPaidShopOrderInTx).not.toHaveBeenCalled();
+    });
+
+    it('le SOLDE décide, avoirs déduits — pas le montant nominal', async () => {
+      // Facture de 25 €, avoir de 5 € déjà émis : il ne reste que 20 € dus.
+      // Encaisser ces 20 € solde la vente. Comparer au montant nominal
+      // (20 ≠ 25) laisserait la commande en attente pour toujours.
+      prisma.invoice.findFirst.mockResolvedValue(shopInvoice);
+      prisma.payment.aggregate.mockResolvedValue({ _sum: { amountCents: null } });
+      prisma.invoice.aggregate.mockResolvedValue({ _sum: { amountCents: 500 } });
+      const tx = makeTx('pay-avoir', 2000);
+      prisma.$transaction.mockImplementation(
+        async (fn: (t: InvoiceTx) => Promise<unknown>) => fn(tx),
+      );
+
+      await service.recordManualPayment('club-1', {
+        invoiceId: 'inv-shop',
+        amountCents: 2000,
+        method: ClubPaymentMethod.MANUAL_CASH,
+      });
+
+      expect(shop.fulfillPaidShopOrderInTx).toHaveBeenCalledWith(
+        tx,
+        'club-1',
+        'so-1',
+      );
+    });
+
+    it('une facture hors boutique ne touche jamais la boutique', async () => {
+      prisma.invoice.findFirst.mockResolvedValue(openInvoice);
+      prisma.payment.aggregate.mockResolvedValue({ _sum: { amountCents: null } });
+      const tx = makeTx('pay-cotis', 10_000);
+      prisma.$transaction.mockImplementation(
+        async (fn: (t: InvoiceTx) => Promise<unknown>) => fn(tx),
+      );
+
+      await service.recordManualPayment('club-1', {
+        invoiceId: 'inv-1',
+        amountCents: 10_000,
+        method: ClubPaymentMethod.MANUAL_CASH,
+      });
+
+      expect(shop.fulfillPaidShopOrderInTx).not.toHaveBeenCalled();
+    });
   });
 });
 
