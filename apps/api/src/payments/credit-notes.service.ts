@@ -108,11 +108,14 @@ export class CreditNotesService {
      * facture — pas nécessairement celui remboursé, ni sur le même compte.
      */
     sourcePaymentId?: string | null,
+    /** Compte d'où l'argent est rendu, s'il diffère de l'encaissement. */
+    refundFinancialAccountId?: string | null,
   ): Promise<void> {
     await this.accounting.createContraEntryForCreditNote(
       clubId,
       creditNoteId,
       sourcePaymentId,
+      refundFinancialAccountId,
     );
   }
 }

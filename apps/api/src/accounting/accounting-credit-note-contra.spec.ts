@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { AccountingEntryKind, AccountingEntryStatus } from '@prisma/client';
 import { AccountingService } from './accounting.service';
 import type { PrismaService } from '../prisma/prisma.service';
@@ -52,6 +53,8 @@ function makeHarness(args: {
    * celui-là, pas en recalculer un.
    */
   compteProduit?: string;
+  /** Compte financier figé sur l'écriture de recette d'origine. */
+  financialAccountIdOrigine?: string;
 }) {
   // L'écriture de recette née de l'encaissement d'origine.
   const original: Entry = {
@@ -139,6 +142,7 @@ function makeHarness(args: {
         if (args.compteEncaissement === undefined && args.sansRecette) return null;
         return {
           ...original,
+          financialAccountId: args.financialAccountIdOrigine ?? null,
           // L'écriture de recette porte UNE ligne au crédit : son compte de
           // produit. Sans elle, le code retombe sur le mapping.
           lines: args.compteProduit
@@ -173,6 +177,20 @@ function makeHarness(args: {
     $transaction: jest.fn(async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx)),
   };
 
+  // Remboursement depuis un autre compte que celui de l'encaissement
+  // (ADR-0019) : un chèque remis se rembourse depuis la banque de sa remise.
+  const financialAccounts = {
+    getById: jest.fn(async (_clubId: string, id: string) => ({
+      id,
+      accountingAccount: { code: '512100', label: 'Banque de la remise' },
+    })),
+  };
+  const reconciliation = {
+    onEntryPosted: jest.fn(async () => null),
+    refreshStatementStatus: jest.fn(async () => undefined),
+    matchExistingLineForEntry: jest.fn(async (): Promise<string | null> => null),
+  };
+
   const svc = new AccountingService(
     prisma as unknown as PrismaService,
     {} as never,
@@ -187,16 +205,13 @@ function makeHarness(args: {
     { log: jest.fn().mockResolvedValue(undefined) } as never,
     {} as never,
     {} as never,
-    {} as never,
+    financialAccounts as never,
     // Rapprochement (lot 3) : ces tests ne passent aucune écriture en POSTED
     // depuis une proposition de relevé.
-    {
-      onEntryPosted: jest.fn(async () => null),
-      refreshStatementStatus: jest.fn(async () => undefined),
-    } as never,
+    reconciliation as never,
   );
 
-  return { svc, entries, original, tx, lines };
+  return { svc, entries, original, tx, lines, financialAccounts, reconciliation };
 }
 
 describe('createContraEntryForCreditNote — effet sur le résultat', () => {
@@ -396,5 +411,91 @@ describe('createContraEntryForCreditNote — compte de produit', () => {
 
     const debit = h.lines.find((l) => l.side === 'DEBIT');
     expect(debit?.accountCode).toBe('706100');
+  });
+});
+
+describe('createContraEntryForCreditNote — compte de la sortie (ADR-0019)', () => {
+  it('rembourse depuis le compte imposé : crédit ET compte financier de l’écriture', async () => {
+    const h = makeHarness({
+      encaissementCents: 4000,
+      avoirCents: 4000,
+      compteEncaissement: { code: '511200', label: 'Chèques à encaisser' },
+      financialAccountIdOrigine: 'fa-cheques',
+    });
+
+    await h.svc.createContraEntryForCreditNote('club-1', 'cn-1', 'pay-1', 'fa-banque');
+
+    expect(h.financialAccounts.getById).toHaveBeenCalledWith('club-1', 'fa-banque');
+    // Le chèque est sorti de 511200 à la remise : y contre-passer ferait
+    // passer le portefeuille sous zéro.
+    expect(h.lines.find((l) => l.side === 'CREDIT')?.accountCode).toBe('512100');
+    expect(h.tx.accountingEntry.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ financialAccountId: 'fa-banque' }),
+      }),
+    );
+  });
+
+  it('sans compte imposé, porte le compte financier de l’encaissement d’origine', async () => {
+    const h = makeHarness({
+      encaissementCents: 4000,
+      avoirCents: 4000,
+      compteEncaissement: { code: '530000', label: 'Caisse' },
+      financialAccountIdOrigine: 'fa-caisse',
+    });
+
+    await h.svc.createContraEntryForCreditNote('club-1', 'cn-1');
+
+    expect(h.financialAccounts.getById).not.toHaveBeenCalled();
+    expect(h.lines.find((l) => l.side === 'CREDIT')?.accountCode).toBe('530000');
+    // Sans ce compte, la sortie n'est candidate à aucune ligne de relevé.
+    expect(h.tx.accountingEntry.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ financialAccountId: 'fa-caisse' }),
+      }),
+    );
+  });
+
+  it('cherche la ligne de relevé déjà importée qui porte la sortie', async () => {
+    const h = makeHarness({ encaissementCents: 4000, avoirCents: 4000 });
+
+    await h.svc.createContraEntryForCreditNote('club-1', 'cn-1');
+
+    expect(h.reconciliation.matchExistingLineForEntry).toHaveBeenCalledWith(
+      'club-1',
+      'entry-contra',
+    );
+  });
+
+  it('un rapprochement impossible ne fait pas échouer la contre-passation', async () => {
+    const h = makeHarness({ encaissementCents: 4000, avoirCents: 4000 });
+    h.reconciliation.matchExistingLineForEntry.mockRejectedValueOnce(
+      new Error('relevé illisible'),
+    );
+    const warn = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+
+    try {
+      await expect(
+        h.svc.createContraEntryForCreditNote('club-1', 'cn-1'),
+      ).resolves.toBeUndefined();
+    } finally {
+      warn.mockRestore();
+    }
+
+    expect(h.entries.find((e) => e.id === 'entry-contra')).toBeDefined();
+  });
+
+  it('facture jamais réglée : aucun rapprochement cherché', async () => {
+    const h = makeHarness({
+      encaissementCents: 4000,
+      avoirCents: 4000,
+      sansRecette: true,
+    });
+
+    await h.svc.createContraEntryForCreditNote('club-1', 'cn-1');
+
+    expect(h.reconciliation.matchExistingLineForEntry).not.toHaveBeenCalled();
   });
 });

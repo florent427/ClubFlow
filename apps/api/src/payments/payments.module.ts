@@ -24,6 +24,8 @@ import { StripeRefundsService } from './stripe-refunds.service';
 import { StripeTransitResolver } from './stripe-transit.resolver';
 import { StripeTransitSyncService } from './stripe-transit-sync.service';
 import { CreditNotesService } from './credit-notes.service';
+import { ShopOrderRefundsResolver } from './shop-order-refunds.resolver';
+import { ShopOrderRefundsService } from './shop-order-refunds.service';
 import { StripeWebhookController } from './stripe-webhook.controller';
 
 @Module({
@@ -52,6 +54,9 @@ import { StripeWebhookController } from './stripe-webhook.controller';
     StripeTransitSyncService,
     StripeTransitResolver,
     CreditNotesService,
+    // Annuler et rembourser une commande boutique (ADR-0019).
+    ShopOrderRefundsService,
+    ShopOrderRefundsResolver,
     PaymentScheduleService,
     PaymentScheduleEngineService,
     PaymentScheduleNotifierService,

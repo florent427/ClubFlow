@@ -271,19 +271,91 @@ d'une commande fournisseur (ADR-0013). Décision :
 
 ## Lot 4 — Annulation et remboursement d'une commande payée
 
-### Task 4.1 : Service
+Décision : [ADR-0019](../../memory/decisions/0019-boutique-annulation-remboursement.md).
+Choix de Florent (2026-09-13) :
 
-- [ ] Annulation totale ou par ligne, avec le mode de remboursement : carte
-  (`StripeRefundsService.refundPayment`), chèque encore en portefeuille (chèque
-  rendu), chèque remis ou espèces (remboursement enregistré). Avoir du montant
-  rendu (ADR-0011).
-- [ ] Stock : libération si la marchandise n'était que réservée ; retour en stock
-  par un mouvement dédié si elle était sortie.
-- [ ] L'annulation par le club laisse aujourd'hui la facture OUVERTE, là où
-  l'annulation par l'adhérent l'annule : l'aligner, en tenant compte d'un
-  règlement partiel déjà encaissé (constaté le 2026-09-13).
+- une commande remise s'annule si l'adhérent rapporte l'article ;
+- l'article rendu est remis en vente ou déclaré en perte, au choix de l'admin ;
+- l'argent est rendu par le même moyen que le paiement ;
+- la commande entière d'abord ; l'annulation d'une ligne viendra avec le lot 5.
 
-### Task 4.2 : Admin, vérification staging
+### Task 4.1 : Plan d'annulation (fonction pure)
+
+- [x] Pour chaque encaissement, calculer le remboursable (montant moins ses
+  remboursements) et le moyen :
+  - carte ;
+  - espèces ;
+  - virement ;
+  - chèque en portefeuille ;
+  - chèque remis (remboursé depuis la banque de sa remise).
+- [x] Reste dû à éteindre par un avoir ; facture à annuler si aucun
+  encaissement.
+- [x] Marchandise à libérer, à reprendre, ou en attente d'arrivage.
+- [x] Refus :
+  - commande déjà annulée ;
+  - prélèvement en cours ;
+  - chèque impayé ;
+  - carte sans référence Stripe.
+
+### Task 4.2 : Stock et commande
+
+- [x] Mouvement `RETURN` (« Retour client ») : `ShopStockService.returnToStock`.
+- [x] `recordShrinkage` accepte la transaction de l'appelant et le lien à la
+  commande.
+- [x] `ShopService.cancelWithReturnInTx` :
+  - écriture conditionnelle sur l'état lu pour le plan ;
+  - libération, retour, ou retour puis perte ;
+  - attente d'arrivage éteinte ;
+  - motif et auteur enregistrés sur la commande ;
+  - commande remise refusée sans ses articles.
+
+### Task 4.3 : Remboursement
+
+- [x] `ShopOrderRefundsService` (module paiements), une seule transaction pour :
+  - la commande et le stock ;
+  - les chèques rendus (écriture conditionnelle) ;
+  - les paiements négatifs et leurs avoirs ;
+  - l'avoir d'annulation, ou l'annulation de la facture.
+- [x] Après le commit :
+  - contre-passations (sur le compte de la remise pour un chèque remis) ;
+  - remboursements carte ;
+  - clôture de l'échéancier ;
+  - expiration de la session de paiement ;
+  - attribution des précommandes.
+- [x] Contre-passation d'un avoir : compte de trésorerie imposable
+  (`refundFinancialAccountId`).
+- [x] Annulation par l'adhérent refusée dès qu'un encaissement existe.
+- [x] L'ancienne annulation par le club annule la facture quand rien n'a été
+  encaissé, et renvoie sinon vers « Annuler et rembourser ».
+- [x] L'annulation simple (cancelShopOrder, application mobile d'administration)
+  passe dans le module paiements : elle ferme aussi la session de paiement et
+  l'échéancier de la facture annulée.
+- [x] La contre-passation d'un remboursement porte le compte financier d'où
+  l'argent sort, et cherche la ligne de relevé déjà importée (ADR-0014).
+
+### Task 4.4 : Admin, vérification staging
+
+- [x] Tiroir « Annuler la commande », qui affiche avant confirmation :
+  - l'aperçu du plan ;
+  - le motif ;
+  - les articles rapportés, remis en vente ou déclarés perdus ;
+  - les remboursements et avoirs prévus.
+
+  Un échec du remboursement carte est signalé.
+- [x] Journal de stock : « Retour client ».
+- [x] Vérification staging (2026-09-13, club-demo et QA Test Club) :
+  - espèces, depuis le tiroir : 30 € rendus, avoir, retour en stock,
+    contre-passation sur la caisse ;
+  - chèque en portefeuille : chèque rendu (annulé), contre-passation sur
+    511200 ;
+  - carte en mode test : remboursement Stripe ; paiement négatif et avoir
+    enregistrés par le webhook ; contre-passation sur le transit Stripe ;
+  - commande remise rapportée, article déclaré en perte, depuis le tiroir :
+    retour puis perte, facture annulée ;
+  - acompte par virement : refusé à l'adhérent et à l'annulation simple, puis
+    10 € rendus et 20 € de reste dû éteints par un avoir ;
+  - annulation simple (application mobile) : facture annulée ;
+  - journal de stock égal aux compteurs ; aucune nouvelle exception API.
 
 ---
 

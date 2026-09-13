@@ -467,3 +467,116 @@ describe('ShopStockService.reserveUpTo — précommande (ADR-0018)', () => {
     expect(h.rows[0].available).toBe(1);
   });
 });
+
+describe('ShopStockService.returnToStock — retour client (ADR-0019)', () => {
+  const retour = (h: ReturnType<typeof makeHarness>, qty = 2) =>
+    h.svc.returnToStock(h.tx as never, {
+      clubId: 'club-1',
+      variantId: 'v-1',
+      qty,
+      ...ORDER,
+      userId: 'u-1',
+      reason: 'Retour client : mauvaise taille',
+    });
+
+  it('remonte les deux compteurs, réarme l’alerte et archive le retour', async () => {
+    // L'article est de nouveau dans le placard ET vendable.
+    const h = makeHarness([
+      VARIANT({ onHand: 3, available: 1, lowStockAlertedAt: new Date('2026-09-01') }),
+    ]);
+
+    await expect(retour(h)).resolves.toBe(true);
+
+    expect(h.rows[0].onHand).toBe(5);
+    expect(h.rows[0].available).toBe(3);
+    expect(h.rows[0].lowStockAlertedAt).toBeNull();
+    expect(h.movements).toEqual([
+      expect.objectContaining({
+        kind: ShopStockMovementKind.RETURN,
+        onHandDelta: 2,
+        availableDelta: 2,
+        orderId: 'o-1',
+        orderLineId: 'ol-1',
+        userId: 'u-1',
+        reason: 'Retour client : mauvaise taille',
+      }),
+    ]);
+  });
+
+  it('déclinaison non suivie : rien à remonter ni à archiver', async () => {
+    const h = makeHarness([VARIANT({ trackStock: false, onHand: 0, available: 0 })]);
+
+    await expect(retour(h)).resolves.toBe(false);
+
+    expect(h.rows[0].onHand).toBe(0);
+    expect(h.movements).toHaveLength(0);
+  });
+
+  it('ne touche pas la déclinaison d’un AUTRE club', async () => {
+    const h = makeHarness([VARIANT({ clubId: 'club-2', onHand: 3, available: 3 })]);
+
+    await expect(retour(h)).resolves.toBe(false);
+
+    expect(h.rows[0].onHand).toBe(3);
+    expect(h.movements).toHaveLength(0);
+  });
+
+  it('refuse une quantité nulle, sans rien écrire', async () => {
+    const h = makeHarness([VARIANT()]);
+
+    await expect(retour(h, 0)).rejects.toThrow(BadRequestException);
+
+    expect(h.tx.shopProductVariant.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('ShopStockService.recordShrinkage — transaction de l’appelant', () => {
+  const prismaOf = (h: ReturnType<typeof makeHarness>) =>
+    (h.svc as unknown as { prisma: { $transaction: jest.Mock } }).prisma;
+
+  it('écrit dans la transaction fournie, sans en ouvrir une autre, et rattache la commande', async () => {
+    // L'article rendu puis déclaré perdu : le retour et la perte vivent ou
+    // meurent avec l'annulation qui les justifie.
+    const h = makeHarness([VARIANT({ onHand: 5, available: 5 })]);
+
+    await h.svc.recordShrinkage(
+      {
+        clubId: 'club-1',
+        variantId: 'v-1',
+        qty: 2,
+        reason: 'Article rendu déclaré perdu : taché',
+        ...ORDER,
+      },
+      h.tx as never,
+    );
+
+    expect(prismaOf(h).$transaction).not.toHaveBeenCalled();
+    expect(h.rows[0].onHand).toBe(3);
+    expect(h.rows[0].available).toBe(3);
+    expect(h.movements).toEqual([
+      expect.objectContaining({
+        kind: ShopStockMovementKind.SHRINKAGE,
+        onHandDelta: -2,
+        availableDelta: -2,
+        orderId: 'o-1',
+        orderLineId: 'ol-1',
+      }),
+    ]);
+  });
+
+  it('sans transaction fournie, ouvre la sienne comme avant', async () => {
+    const h = makeHarness([VARIANT({ onHand: 5, available: 5 })]);
+
+    await h.svc.recordShrinkage({
+      clubId: 'club-1',
+      variantId: 'v-1',
+      qty: 1,
+      reason: 'Casse',
+    });
+
+    expect(prismaOf(h).$transaction).toHaveBeenCalledTimes(1);
+    expect(h.movements).toEqual([
+      expect.objectContaining({ orderId: null, orderLineId: null }),
+    ]);
+  });
+});

@@ -56,6 +56,9 @@ import { ShopVariantsService } from './shop-variants.service';
     ShopStockService,
     ShopVariantsService,
     ShopPurchaseOrdersService,
+    // L'annulation avec remboursement (module paiements) sert les
+    // précommandes avec le stock rendu (ADR-0018, ADR-0019).
+    ShopPreorderService,
   ],
 })
 export class ShopModule {}

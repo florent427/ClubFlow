@@ -154,13 +154,8 @@ export class ShopAdminResolver {
     return this.service.markOrderPaid(club.id, id) as Promise<ShopOrderGraph>;
   }
 
-  @Mutation(() => ShopOrderGraph)
-  cancelShopOrder(
-    @CurrentClub() club: Club,
-    @Args('id', { type: () => ID }) id: string,
-  ): Promise<ShopOrderGraph> {
-    return this.service.cancelOrder(club.id, id) as Promise<ShopOrderGraph>;
-  }
+  // `cancelShopOrder` vit sur ShopOrderRefundsResolver (module paiements) :
+  // annuler ferme aussi la session de paiement de la facture (ADR-0019).
 
   /**
    * Remise signée (ADR-0017) : l'adhérent signe sur le téléphone de l'admin.

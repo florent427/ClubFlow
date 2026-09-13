@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
   ADJUST_SHOP_VARIANT_STOCK,
-  CANCEL_SHOP_ORDER,
   CLUB_MEMBERS,
   CREATE_SHOP_PRODUCT,
   DELETE_SHOP_PRODUCT,
@@ -64,6 +63,7 @@ import {
   ShopDeliveryNoteMailDrawer,
   useOpenDeliveryNote,
 } from './ShopDeliveryDrawer';
+import { ShopOrderCancelDrawer } from './ShopOrderCancelDrawer';
 import {
   fmtCostOrUnknown,
   fmtDate,
@@ -85,10 +85,11 @@ function orderStatusPill(s: ShopOrder['status']): {
 const MOVEMENT_LABELS: Record<ShopStockMovementKindGql, string> = {
   RESTOCK: 'Réception',
   RESERVE: 'Réservation',
-  RELEASE: 'Retour (commande annulée)',
-  FULFILL: 'Sortie (commande payée)',
+  RELEASE: 'Libération (commande annulée)',
+  FULFILL: 'Sortie (commande payée ou remise)',
   ADJUSTMENT: 'Correction d’inventaire',
   SHRINKAGE: 'Perte / casse / vol',
+  RETURN: 'Retour client (commande annulée)',
 };
 
 // ===========================================================================
@@ -1500,13 +1501,14 @@ function OrdersTab() {
     fetchPolicy: 'cache-and-network',
   });
   const [markPaid] = useMutation(MARK_SHOP_ORDER_PAID);
-  const [cancel] = useMutation(CANCEL_SHOP_ORDER);
   /** Facture ouverte dans le tiroir d'encaissement. Null = tiroir fermé. */
   const [invoiceOpenId, setInvoiceOpenId] = useState<string | null>(null);
   /** Commande en cours de remise signée. Null = tiroir fermé. */
   const [deliveryOrder, setDeliveryOrder] = useState<ShopOrder | null>(null);
   /** Commande dont on envoie le bon de livraison par e-mail. */
   const [mailOrder, setMailOrder] = useState<ShopOrder | null>(null);
+  /** Commande en cours d'annulation (ADR-0019). Null = tiroir fermé. */
+  const [cancelOrder, setCancelOrder] = useState<ShopOrder | null>(null);
   const openDeliveryNote = useOpenDeliveryNote();
 
   const orders = data?.shopOrders ?? [];
@@ -1520,15 +1522,6 @@ function OrdersTab() {
     try {
       await markPaid({ variables: { id: o.id } });
       showToast('Commande marquée payée', 'success');
-      await refetch();
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
-    }
-  }
-  async function onCancel(o: ShopOrder) {
-    try {
-      await cancel({ variables: { id: o.id } });
-      showToast('Commande annulée', 'success');
       await refetch();
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Erreur', 'error');
@@ -1653,17 +1646,6 @@ function OrdersTab() {
                             {o.invoiceId ? 'Clôturer la commande' : 'Marquer payée'}
                           </button>
                         )}
-                        {/* Une commande remise ne s'annule plus : la
-                            marchandise est partie (ADR-0017). */}
-                        {!o.deliveredAt ? (
-                          <button
-                            type="button"
-                            className="cf-btn cf-btn--danger"
-                            onClick={() => void onCancel(o)}
-                          >
-                            Annuler
-                          </button>
-                        ) : null}
                       </>
                     ) : null}
                     {o.status === 'PENDING' && !o.invoiceId ? (
@@ -1717,6 +1699,34 @@ function OrdersTab() {
                         </button>
                       </>
                     ) : null}
+                    {o.status === 'CANCELLED' ? (
+                      <>
+                        <span className="cf-muted">
+                          Annulée le {fmtDate(o.cancelledAt)}
+                          {o.cancelReason ? ` — ${o.cancelReason}` : ''}
+                        </span>
+                        {o.invoiceId ? (
+                          // Les avoirs et remboursements de l'annulation.
+                          <button
+                            type="button"
+                            className="cf-btn"
+                            onClick={() => setInvoiceOpenId(o.invoiceId)}
+                          >
+                            Facture
+                          </button>
+                        ) : null}
+                      </>
+                    ) : (
+                      // Payée, remise ou non : l'aperçu dit ce qui sera rendu
+                      // et repris avant de confirmer (ADR-0019).
+                      <button
+                        type="button"
+                        className="cf-btn cf-btn--danger"
+                        onClick={() => setCancelOrder(o)}
+                      >
+                        Annuler…
+                      </button>
+                    )}
                   </div>
                 </div>
               </li>
@@ -1752,6 +1762,17 @@ function OrdersTab() {
         <ShopDeliveryNoteMailDrawer
           order={mailOrder}
           onClose={() => setMailOrder(null)}
+        />
+      ) : null}
+
+      {cancelOrder ? (
+        <ShopOrderCancelDrawer
+          order={cancelOrder}
+          onClose={() => setCancelOrder(null)}
+          onCancelled={() => {
+            setCancelOrder(null);
+            void refetch();
+          }}
         />
       ) : null}
     </div>

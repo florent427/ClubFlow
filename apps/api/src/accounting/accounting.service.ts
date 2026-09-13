@@ -480,6 +480,13 @@ export class AccountingService {
      * aucun paiement en particulier.
      */
     sourcePaymentId?: string | null,
+    /**
+     * Compte d'où l'argent est RÉELLEMENT rendu, quand ce n'est pas celui de
+     * l'encaissement. Un chèque déjà remis a été encaissé sur 511200 mais se
+     * rembourse depuis la banque de sa remise (ADR-0019) : contre-passer sur
+     * 511200 ferait passer le portefeuille de chèques sous zéro.
+     */
+    refundFinancialAccountId?: string | null,
   ): Promise<void> {
     if (!(await this.isAccountingEnabled(clubId))) return;
 
@@ -540,7 +547,11 @@ export class AccountingService {
     // l'a jamais reçu, et laisserait le transit débiteur du montant remboursé,
     // indéfiniment. Le compte est déjà tranché et figé sur l'écriture de
     // recette — on le reprend, exactement comme le fait la charge de frais.
+    const refundAccount = refundFinancialAccountId
+      ? await this.financialAccounts.getById(clubId, refundFinancialAccountId)
+      : null;
     const cashCode =
+      refundAccount?.accountingAccount.code ??
       originalEntry.financialAccount?.accountingAccount.code ??
       // Encaissement antérieur au multi-comptes : le compte n'a pas été figé.
       (await this.mapping.resolveAccountCode(clubId, 'BANK_ACCOUNT'));
@@ -564,7 +575,7 @@ export class AccountingService {
 
     const amountCents = creditNote.amountCents;
 
-    await this.prisma.$transaction(async (tx) => {
+    const contraId = await this.prisma.$transaction(async (tx) => {
       const contra = await tx.accountingEntry.create({
         data: {
           clubId,
@@ -575,6 +586,11 @@ export class AccountingService {
           amountCents,
           contraEntryId: originalEntry.id,
           occurredAt: creditNote.createdAt,
+          // Le compte d'où l'argent sort. Sans lui, l'écriture n'est candidate
+          // à aucune ligne de relevé (ADR-0014) : la sortie resterait orpheline
+          // et finirait catégorisée en dépense une seconde fois.
+          financialAccountId:
+            refundAccount?.id ?? originalEntry.financialAccountId ?? null,
         },
       });
 
@@ -625,6 +641,7 @@ export class AccountingService {
       // sert de garde-fou « déjà contre-passée » à la contre-passation
       // manuelle, et un avoir partiel ne doit pas interdire un geste ultérieur
       // sur la même écriture.
+      return contra.id;
     });
 
     await this.audit.log({
@@ -638,6 +655,18 @@ export class AccountingService {
         parentInvoiceId: creditNote.parentInvoiceId,
       },
     });
+
+    // Le relevé qui porte cette sortie est peut-être déjà importé : sa ligne
+    // attend alors sans rien pour la rattacher. Hors transaction, car le
+    // rapprochement doit voir l'écriture commitée. Accessoire : un échec ici
+    // ne défait pas une contre-passation juste.
+    try {
+      await this.reconciliation.matchExistingLineForEntry(clubId, contraId);
+    } catch (err) {
+      this.logger.warn(
+        `[avoir] ${creditNoteInvoiceId} : rapprochement de la contre-passation ${contraId} impossible — ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   /**
