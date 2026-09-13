@@ -365,16 +365,29 @@ export class ShopVariantsService {
       data.lowStockAlertedAt = null;
     }
 
-    // `updateMany` scopé par clubId, et non `update` par identifiant : la
-    // frontière multi-tenant est portée par l'écriture elle-même, jamais par
-    // une lecture préalable qu'on pourrait oublier de faire.
-    const updated = await this.prisma.shopProductVariant.updateMany({
-      where: { id: variantId, clubId },
-      data,
+    await this.prisma.$transaction(async (tx) => {
+      // La REPRISE du suivi d'abord : les commandes passées pendant que le
+      // stock n'était pas suivi n'ont rien réservé, elles sont remises en
+      // attente et servies sur le stock compté. Elle verrouille ces commandes
+      // avant la déclinaison, dans l'ordre du règlement.
+      if (input.trackStock === true) {
+        await this.preorders.resumeTrackingInTx(tx, {
+          clubId,
+          variantId,
+          reason: 'Reprise du suivi du stock : les commandes en cours sont réservées de nouveau',
+        });
+      }
+      // `updateMany` scopé par clubId, et non `update` par identifiant : la
+      // frontière multi-tenant est portée par l'écriture elle-même, jamais par
+      // une lecture préalable qu'on pourrait oublier de faire.
+      const updated = await tx.shopProductVariant.updateMany({
+        where: { id: variantId, clubId },
+        data,
+      });
+      if (updated.count !== 1) {
+        throw new BadRequestException('Déclinaison introuvable.');
+      }
     });
-    if (updated.count !== 1) {
-      throw new BadRequestException('Déclinaison introuvable.');
-    }
     // Stock devenu illimité, ou de nouveau compté : les précommandes en attente
     // sont servies sur ce qui est vendable (ADR-0018).
     if (input.trackStock !== undefined) {

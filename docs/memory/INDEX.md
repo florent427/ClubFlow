@@ -74,6 +74,7 @@
 | [`souin-respects-origin-no-store.md`](pitfalls/souin-respects-origin-no-store.md) | Piège — Souin (cache-handler Caddy) refuse de cacher malgré default_cache_control |
 | [`ssh-passphrase-non-tty.md`](pitfalls/ssh-passphrase-non-tty.md) | Piège — SSH `Permission denied` quand la clé a une passphrase |
 | [`staging-supprimee-au-merge.md`](pitfalls/staging-supprimee-au-merge.md) | Piège — `staging` disparaît à chaque promotion vers `main` |
+| [`stock-vendu-avant-le-suivi.md`](pitfalls/stock-vendu-avant-le-suivi.md) | Piège — un article vendu avant le suivi du stock reste en vente |
 | [`test-verifie-la-forme-pas-le-comportement.md`](pitfalls/test-verifie-la-forme-pas-le-comportement.md) | Piège — un test vert qui certifie un invariant que le code n'a pas |
 | [`typecheck-noop-solution-tsconfig.md`](pitfalls/typecheck-noop-solution-tsconfig.md) | Piège — `npx tsc --noEmit` qui vérifie 0 fichier et sort 0 |
 | [`une-supposition-survit-a-la-decision.md`](pitfalls/une-supposition-survit-a-la-decision.md) | Piège — une supposition qui survit à la décision compte deux fois |
@@ -115,7 +116,7 @@
 
 ---
 
-_Index généré le 2026-09-13 15:09 UTC par `bin/memory-index`._
+_Index généré le 2026-09-13 17:26 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`

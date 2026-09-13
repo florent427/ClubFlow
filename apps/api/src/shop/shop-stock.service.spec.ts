@@ -58,6 +58,11 @@ function makeHarness(rows: VariantRow[]) {
     if (where.onHand?.gte !== undefined && !(r.onHand >= where.onHand.gte)) {
       return false;
     }
+    // Égalité stricte : la reprise du suivi n'écrit que sur l'état qu'elle a lu.
+    if (typeof where.onHand === 'number' && r.onHand !== where.onHand) return false;
+    if (typeof where.available === 'number' && r.available !== where.available) {
+      return false;
+    }
     if (
       where.lowStockAlertedAt === null &&
       r.lowStockAlertedAt !== null
@@ -92,8 +97,11 @@ function makeHarness(rows: VariantRow[]) {
       applyData(r, data);
       return r;
     }),
+    // Une COPIE, comme Prisma : une lecture ne suit pas les écritures qui
+    // la suivent.
     findFirst: jest.fn(async ({ where }: { where: any }) => {
-      return rows.find((r) => matches(r, where)) ?? null;
+      const hit = rows.find((r) => matches(r, where));
+      return hit ? { ...hit } : null;
     }),
   };
 
@@ -578,5 +586,89 @@ describe('ShopStockService.recordShrinkage — transaction de l’appelant', () 
     expect(h.movements).toEqual([
       expect.objectContaining({ orderId: null, orderLineId: null }),
     ]);
+  });
+});
+
+describe('ShopStockService.resumeTracking — reprise du suivi', () => {
+  const reprise = (h: ReturnType<typeof makeHarness>, clubId = 'club-1') =>
+    h.svc.resumeTracking(h.tx as never, {
+      clubId,
+      variantId: 'v-1',
+      userId: 'u-1',
+      reason: 'Reprise du suivi du stock',
+    });
+
+  it('efface l’écart qui ne désigne plus aucune réservation, et l’archive', async () => {
+    // Pendant la période non suivie, ni les annulations ni les règlements
+    // n'ont touché aux compteurs : les 3 « réservés » ne veulent plus rien dire.
+    const h = makeHarness([
+      VARIANT({
+        trackStock: false,
+        onHand: 5,
+        available: 2,
+        lowStockAlertedAt: new Date('2026-09-01'),
+      }),
+    ]);
+
+    await expect(reprise(h)).resolves.toBe(true);
+
+    expect(h.rows[0]).toMatchObject({
+      trackStock: true,
+      onHand: 5,
+      available: 5,
+      lowStockAlertedAt: null,
+    });
+    expect(h.movements).toEqual([
+      expect.objectContaining({
+        kind: ShopStockMovementKind.ADJUSTMENT,
+        onHandDelta: 0,
+        availableDelta: 3,
+        reason: 'Reprise du suivi du stock',
+        userId: 'u-1',
+      }),
+    ]);
+  });
+
+  it('jamais suivie : compteurs à zéro, la reprise est archivée quand même', async () => {
+    const h = makeHarness([VARIANT({ trackStock: false, onHand: 0, available: 0 })]);
+
+    await expect(reprise(h)).resolves.toBe(true);
+
+    expect(h.rows[0]).toMatchObject({ trackStock: true, onHand: 0, available: 0 });
+    expect(h.movements).toEqual([
+      expect.objectContaining({ onHandDelta: 0, availableDelta: 0 }),
+    ]);
+  });
+
+  it('déjà suivie : ne touche à rien', async () => {
+    const h = makeHarness([VARIANT({ onHand: 5, available: 2 })]);
+
+    await expect(reprise(h)).resolves.toBe(false);
+
+    expect(h.rows[0]).toMatchObject({ onHand: 5, available: 2 });
+    expect(h.tx.shopProductVariant.updateMany).not.toHaveBeenCalled();
+    expect(h.movements).toHaveLength(0);
+  });
+
+  it('ne reprend pas la déclinaison d’un AUTRE club', async () => {
+    const h = makeHarness([VARIANT({ trackStock: false, onHand: 5, available: 2 })]);
+
+    await expect(reprise(h, 'club-2')).resolves.toBe(false);
+
+    expect(h.rows[0]).toMatchObject({ trackStock: false, available: 2 });
+    expect(h.movements).toHaveLength(0);
+  });
+
+  it('compteurs changés entre la lecture et l’écriture : ne reprend rien', async () => {
+    const h = makeHarness([VARIANT({ trackStock: false, onHand: 5, available: 2 })]);
+    h.tx.shopProductVariant.findFirst.mockImplementationOnce(async () => ({
+      ...h.rows[0],
+      onHand: 7,
+    }));
+
+    await expect(reprise(h)).resolves.toBe(false);
+
+    expect(h.rows[0]).toMatchObject({ trackStock: false, onHand: 5, available: 2 });
+    expect(h.movements).toHaveLength(0);
   });
 });
