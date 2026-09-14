@@ -11,6 +11,7 @@ import {
 } from '@prisma/client';
 import { AccountingMappingService } from '../accounting/accounting-mapping.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { effectiveTerms } from './restock-plan';
 import { ShopPreorderService } from './shop-preorder.service';
 import { ShopStockService } from './shop-stock.service';
 
@@ -305,6 +306,211 @@ export class ShopPurchaseOrdersService {
   }
 
   /**
+   * Crée les brouillons d'un réapprovisionnement (ADR-0021 §4) : un par
+   * fournisseur, ou le brouillon déjà ouvert chez lui, COMPLÉTÉ.
+   *
+   * L'aperçu est une proposition, jamais une autorité : chaque ligne est
+   * revalidée ici — déclinaison du club, fournisseur du club, actif et rattaché
+   * au produit. Tout est validé avant la transaction, et tout s'écrit dans UNE
+   * transaction : un réapprovisionnement réparti chez trois fournisseurs n'en
+   * laisse jamais deux faits et un manquant.
+   *
+   * La référence d'un brouillon neuf est arbitrée par la base, comme à la
+   * création manuelle. Mais un P2002 annule la transaction entière : c'est donc
+   * elle qu'on rejoue, pas la seule insertion.
+   */
+  async createRestockOrders(
+    clubId: string,
+    input: Array<{
+      variantId: string;
+      supplierId: string;
+      qty: number;
+      unitCostCents?: number | null;
+    }>,
+  ) {
+    if (input.length === 0) {
+      throw new BadRequestException('Rien à commander : aucune ligne.');
+    }
+    const seen = new Set<string>();
+    for (const l of input) {
+      if (!Number.isInteger(l.qty) || l.qty < 1) {
+        throw new BadRequestException(
+          'Une ligne de commande porte au moins une unité.',
+        );
+      }
+      if (
+        l.unitCostCents != null &&
+        (!Number.isInteger(l.unitCostCents) || l.unitCostCents < 0)
+      ) {
+        throw new BadRequestException(
+          'Le prix d’achat ne peut pas être négatif.',
+        );
+      }
+      if (seen.has(l.variantId)) {
+        throw new BadRequestException(
+          'Une même déclinaison figure deux fois : le rapprochement serait ambigu.',
+        );
+      }
+      seen.add(l.variantId);
+    }
+
+    const variants = await this.prisma.shopProductVariant.findMany({
+      where: { id: { in: [...seen] }, clubId },
+      select: { id: true, productId: true },
+    });
+    if (variants.length !== seen.size) {
+      throw new BadRequestException('Déclinaison introuvable.');
+    }
+    const productOf = new Map(variants.map((v) => [v.id, v.productId]));
+
+    const supplierIds = [...new Set(input.map((l) => l.supplierId))];
+    const suppliers = await this.prisma.shopSupplier.findMany({
+      where: { id: { in: supplierIds }, clubId },
+      select: { id: true, name: true, active: true },
+    });
+    for (const supplierId of supplierIds) {
+      const supplier = suppliers.find((s) => s.id === supplierId);
+      if (!supplier) throw new BadRequestException('Fournisseur introuvable.');
+      if (!supplier.active) {
+        throw new BadRequestException(
+          `« ${supplier.name} » est désactivé : on ne lui commande plus rien.`,
+        );
+      }
+    }
+
+    const offers = await this.prisma.shopProductSupplier.findMany({
+      where: {
+        clubId,
+        supplierId: { in: supplierIds },
+        productId: { in: [...new Set(productOf.values())] },
+      },
+      select: { productId: true, supplierId: true },
+    });
+    for (const l of input) {
+      const linked = offers.some(
+        (o) =>
+          o.productId === productOf.get(l.variantId) &&
+          o.supplierId === l.supplierId,
+      );
+      if (!linked) {
+        throw new BadRequestException(
+          'Ce fournisseur n’est pas rattaché au produit : rattachez-le avant de lui commander.',
+        );
+      }
+    }
+
+    // Prix par défaut : des propositions, lues hors transaction.
+    const costs = new Map<string, Map<string, number>>();
+    for (const supplierId of supplierIds) {
+      costs.set(
+        supplierId,
+        await this.defaultUnitCosts(
+          this.prisma,
+          clubId,
+          supplierId,
+          input
+            .filter((l) => l.supplierId === supplierId && l.unitCostCents == null)
+            .map((l) => l.variantId),
+        ),
+      );
+    }
+
+    for (let attempt = 0; attempt < REFERENCE_ATTEMPTS; attempt++) {
+      try {
+        const touched = await this.prisma.$transaction(async (tx) => {
+          const results: Array<{
+            orderId: string;
+            created: boolean;
+            lineCount: number;
+          }> = [];
+          for (const supplierId of supplierIds) {
+            const lines = input.filter((l) => l.supplierId === supplierId);
+            const draft = await tx.shopPurchaseOrder.findFirst({
+              where: {
+                clubId,
+                supplierId,
+                status: ShopPurchaseOrderStatus.DRAFT,
+              },
+              orderBy: { updatedAt: 'desc' },
+              select: { id: true },
+            });
+            let orderId: string;
+            if (draft) {
+              await this.claimDraft(tx, clubId, draft.id, 'compléter');
+              orderId = draft.id;
+            } else {
+              const order = await tx.shopPurchaseOrder.create({
+                data: {
+                  clubId,
+                  supplierId,
+                  reference: await this.nextReference(tx, clubId),
+                  status: ShopPurchaseOrderStatus.DRAFT,
+                },
+                select: { id: true },
+              });
+              orderId = order.id;
+            }
+            for (const l of lines) {
+              const unitCostCents =
+                l.unitCostCents ?? costs.get(supplierId)?.get(l.variantId) ?? 0;
+              const existing = await tx.shopPurchaseOrderLine.findFirst({
+                where: { orderId, variantId: l.variantId, clubId },
+                select: { id: true, unitCostCents: true },
+              });
+              if (existing) {
+                // `@@unique([orderId, variantId])` : la ligne se complète. Un
+                // prix déjà saisi reste ; un prix inconnu (0) se voit renseigné.
+                await tx.shopPurchaseOrderLine.updateMany({
+                  where: { id: existing.id, clubId },
+                  data: {
+                    orderedQty: { increment: l.qty },
+                    ...(existing.unitCostCents === 0 && unitCostCents > 0
+                      ? { unitCostCents }
+                      : {}),
+                  },
+                });
+              } else {
+                await tx.shopPurchaseOrderLine.create({
+                  data: {
+                    clubId,
+                    orderId,
+                    variantId: l.variantId,
+                    orderedQty: l.qty,
+                    unitCostCents,
+                  },
+                });
+              }
+            }
+            results.push({ orderId, created: !draft, lineCount: lines.length });
+          }
+          return results;
+        });
+        return Promise.all(
+          touched.map(async (t) => ({
+            created: t.created,
+            lineCount: t.lineCount,
+            order: await this.getOrder(clubId, t.orderId),
+          })),
+        );
+      } catch (err: unknown) {
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2002'
+        ) {
+          this.logger.log(
+            `[appro] réapprovisionnement de ${clubId} : collision de référence — la transaction est rejouée`,
+          );
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw new BadRequestException(
+      'Impossible d’attribuer une référence de commande. Réessayez.',
+    );
+  }
+
+  /**
    * Attribue une référence lisible et crée la commande.
    *
    * PAS de `count() + 1` lu puis écrit : c'est le check-then-act que tout ce
@@ -324,18 +530,8 @@ export class ShopPurchaseOrdersService {
     clubId: string,
     data: Omit<Prisma.ShopPurchaseOrderUncheckedCreateInput, 'clubId' | 'reference'>,
   ) {
-    const prefix = `CF-${new Date().getFullYear()}-`;
-
     for (let attempt = 0; attempt < REFERENCE_ATTEMPTS; attempt++) {
-      const taken = await this.prisma.shopPurchaseOrder.findMany({
-        where: { clubId, reference: { startsWith: prefix } },
-        select: { reference: true },
-      });
-      const max = taken.reduce((acc, row) => {
-        const n = Number.parseInt(row.reference.slice(prefix.length), 10);
-        return Number.isFinite(n) && n > acc ? n : acc;
-      }, 0);
-      const reference = `${prefix}${String(max + 1).padStart(3, '0')}`;
+      const reference = await this.nextReference(this.prisma, clubId);
 
       try {
         return await this.prisma.shopPurchaseOrder.create({
@@ -357,6 +553,27 @@ export class ShopPurchaseOrdersService {
     throw new BadRequestException(
       'Impossible d’attribuer une référence de commande. Réessayez.',
     );
+  }
+
+  /**
+   * Référence PROPOSÉE pour un nouveau bon : le maximum observé plus un. Une
+   * proposition seulement — c'est `@@unique([clubId, reference])` qui arbitre.
+   * Le maximum est calculé en mémoire (cf. `createWithReference`).
+   */
+  private async nextReference(
+    db: Pick<Prisma.TransactionClient, 'shopPurchaseOrder'>,
+    clubId: string,
+  ): Promise<string> {
+    const prefix = `CF-${new Date().getFullYear()}-`;
+    const taken = await db.shopPurchaseOrder.findMany({
+      where: { clubId, reference: { startsWith: prefix } },
+      select: { reference: true },
+    });
+    const max = taken.reduce((acc, row) => {
+      const n = Number.parseInt(row.reference.slice(prefix.length), 10);
+      return Number.isFinite(n) && n > acc ? n : acc;
+    }, 0);
+    return `${prefix}${String(max + 1).padStart(3, '0')}`;
   }
 
   /**
@@ -943,6 +1160,34 @@ export class ShopPurchaseOrdersService {
     return byVariant;
   }
 
+  /**
+   * Quantités déjà portées par un BROUILLON, par déclinaison (ADR-0021 §3).
+   *
+   * Un brouillon n'entre pas dans l'encours — rien n'est commandé tant qu'il
+   * n'est pas envoyé (ADR-0013 §4) —, mais le réapprovisionnement doit le
+   * compter : sans lui, relancer le calcul doublerait un brouillon en attente.
+   */
+  async draftQtyByVariant(
+    clubId: string,
+    variantIds?: string[],
+  ): Promise<Map<string, number>> {
+    const byVariant = new Map<string, number>();
+    if (variantIds && variantIds.length === 0) return byVariant;
+
+    const lines = await this.prisma.shopPurchaseOrderLine.findMany({
+      where: {
+        clubId,
+        ...(variantIds ? { variantId: { in: variantIds } } : {}),
+        order: { status: ShopPurchaseOrderStatus.DRAFT },
+      },
+      select: { variantId: true, orderedQty: true },
+    });
+    for (const l of lines) {
+      byVariant.set(l.variantId, (byVariant.get(l.variantId) ?? 0) + l.orderedQty);
+    }
+    return byVariant;
+  }
+
   // ------------------------------------------------------------------
   // Utilitaires
   // ------------------------------------------------------------------
@@ -1030,7 +1275,7 @@ export class ShopPurchaseOrdersService {
         supplierId,
         productId: { in: [...new Set(variants.map((v) => v.productId))] },
       },
-      select: { id: true, productId: true, unitCostCents: true },
+      select: { id: true, productId: true, supplierRef: true, unitCostCents: true },
     });
     const overrides = await db.shopProductSupplierVariant.findMany({
       where: {
@@ -1038,14 +1283,14 @@ export class ShopPurchaseOrdersService {
         offerId: { in: offers.map((o) => o.id) },
         variantId: { in: variantIds },
       },
-      select: { variantId: true, unitCostCents: true },
+      select: { variantId: true, supplierRef: true, unitCostCents: true },
     });
 
     for (const v of variants) {
       const offer = offers.find((o) => o.productId === v.productId);
       if (!offer) continue;
       const override = overrides.find((x) => x.variantId === v.id);
-      const cost = override?.unitCostCents ?? offer.unitCostCents;
+      const cost = effectiveTerms(offer, override).unitCostCents;
       if (cost !== null) costs.set(v.id, cost);
     }
     return costs;

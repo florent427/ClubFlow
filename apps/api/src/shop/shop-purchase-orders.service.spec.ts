@@ -1,5 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import {
+  Prisma,
   ShopPurchaseOrderStatus,
   ShopReceiptDiscrepancyReason,
   ShopStockMovementKind,
@@ -290,6 +291,23 @@ function makeHarness(seed: {
     },
   );
 
+  // Le brouillon à compléter est le plus récemment modifié (ADR-0021 §4) : le
+  // double applique le tri demandé, sans quoi il rendrait le premier venu.
+  orderTable.findFirst = jest.fn(
+    async ({ where, orderBy }: { where?: any; orderBy?: Record<string, 'asc' | 'desc'> } = {}) => {
+      const hits = orders.filter((x) => correspond(x, where ?? {}));
+      if (orderBy) {
+        const [field, dir] = Object.entries(orderBy)[0];
+        hits.sort((a, b) => {
+          const d =
+            new Date((a as any)[field]).getTime() - new Date((b as any)[field]).getTime();
+          return dir === 'desc' ? -d : d;
+        });
+      }
+      return hits[0] ? { ...hits[0] } : null;
+    },
+  ) as unknown as typeof orderTable.findFirst;
+
   const tx = {
     shopPurchaseOrder: orderTable,
     shopPurchaseOrderLine: table(lines, 'pol', { order: parentOrder }),
@@ -306,14 +324,53 @@ function makeHarness(seed: {
   // Profondeur de transaction : l'attribution des arrivages part APRÈS la
   // réception, jamais dedans (ADR-0018).
   let depth = 0;
+  // ROLLBACK réel : une transaction qui lève n'a rien écrit. Sans lui, un
+  // réapprovisionnement réparti chez plusieurs fournisseurs qui échoue en route
+  // laisserait des brouillons à moitié faits — ce que PostgreSQL n'autorise pas.
+  const tables = [
+    orders,
+    lines,
+    receptions,
+    receptionLines,
+    movements,
+    variants,
+    entries,
+    offers,
+    overrides,
+  ] as Array<Array<Record<string, any>>>;
+  // Commandes créées DANS une transaction pas encore committée : une lecture
+  // faite HORS de la transaction ne les voit pas, comme sous PostgreSQL. Sans
+  // cela, une référence proposée hors transaction paraîtrait libre alors que
+  // la transaction vient de la prendre.
+  const pendingOrderIds = new Set<string>();
+  const insertOrder = orderTable.create.getMockImplementation()!;
+  orderTable.create.mockImplementation(async (args: { data: any }) => {
+    const row = await insertOrder(args);
+    if (depth > 0) pendingOrderIds.add(row.id);
+    return row;
+  });
+  const committedOrders = {
+    ...orderTable,
+    findMany: jest.fn(async (args: { where?: any } = {}) => {
+      const rows = await orderTable.findMany(args);
+      return depth > 0 ? rows.filter((r) => !pendingOrderIds.has(r.id)) : rows;
+    }),
+  };
+
   const prisma = {
     ...tx,
+    shopPurchaseOrder: committedOrders,
     $transaction: jest.fn(async (fn: (t: typeof tx) => Promise<unknown>) => {
       depth += 1;
+      const saved = tables.map((rows) => rows.map((r) => ({ ...r })));
       try {
         return await fn(tx);
+      } catch (err) {
+        tables.forEach((rows, i) => rows.splice(0, rows.length, ...saved[i]));
+        throw err;
       } finally {
         depth -= 1;
+        if (depth === 0) pendingOrderIds.clear();
       }
     }),
   };
@@ -352,6 +409,7 @@ function makeHarness(seed: {
     movements,
     entries,
     mapping,
+    orderTable,
   };
 }
 
@@ -1428,6 +1486,304 @@ describe('createOrder — la référence est arbitrée par la base', () => {
       }),
     ).rejects.toThrow(BadRequestException);
     expect(h.orders).toHaveLength(0);
+  });
+});
+
+describe('createRestockOrders — un brouillon par fournisseur (ADR-0021 §4)', () => {
+  const annee = new Date().getFullYear();
+  const catalogue = () => ({
+    variants: [
+      variante({ id: 'v-1', productId: 'p-1' }),
+      variante({ id: 'v-2', productId: 'p-2' }),
+    ],
+    suppliers: [
+      { id: 'sup-1', clubId: CLUB, active: true, leadTimeDays: 7 },
+      { id: 'sup-2', clubId: CLUB, active: true, leadTimeDays: null },
+    ],
+    offers: [
+      { id: 'off-1', clubId: CLUB, productId: 'p-1', supplierId: 'sup-1', unitCostCents: 850 },
+      { id: 'off-2', clubId: CLUB, productId: 'p-2', supplierId: 'sup-2', unitCostCents: 700 },
+    ],
+  });
+
+  it('crée un brouillon par fournisseur, au prix de l’offre quand aucun n’est saisi', async () => {
+    const base = catalogue();
+    const h = makeHarness({
+      orders: [],
+      lines: [],
+      ...base,
+      variants: [...base.variants, variante({ id: 'v-3', productId: 'p-1' })],
+    });
+
+    const res = await h.svc.createRestockOrders(CLUB, [
+      { variantId: 'v-1', supplierId: 'sup-1', qty: 10 },
+      { variantId: 'v-2', supplierId: 'sup-2', qty: 5, unitCostCents: 650 },
+      { variantId: 'v-3', supplierId: 'sup-1', qty: 4 },
+    ]);
+
+    expect(res.map((r) => [r.created, r.lineCount])).toEqual([
+      [true, 2],
+      [true, 1],
+    ]);
+    expect(h.orders.map((o) => [o.supplierId, o.reference, o.status])).toEqual([
+      ['sup-1', `CF-${annee}-001`, ShopPurchaseOrderStatus.DRAFT],
+      ['sup-2', `CF-${annee}-002`, ShopPurchaseOrderStatus.DRAFT],
+    ]);
+    expect(h.lines.map((l) => [l.orderId, l.variantId, l.orderedQty, l.unitCostCents])).toEqual([
+      [h.orders[0].id, 'v-1', 10, 850],
+      [h.orders[0].id, 'v-3', 4, 850],
+      [h.orders[1].id, 'v-2', 5, 650],
+    ]);
+  });
+
+  it('complète le brouillon ouvert du fournisseur : la quantité s’ajoute, sans seconde ligne', async () => {
+    const h = makeHarness({
+      orders: [ordre({ status: ShopPurchaseOrderStatus.DRAFT, supplierId: 'sup-1' })],
+      lines: [ligne({ variantId: 'v-1', orderedQty: 4, unitCostCents: 0 })],
+      ...catalogue(),
+    });
+
+    const res = await h.svc.createRestockOrders(CLUB, [
+      { variantId: 'v-1', supplierId: 'sup-1', qty: 6 },
+    ]);
+
+    expect(res.map((r) => r.created)).toEqual([false]);
+    expect(h.orders).toHaveLength(1);
+    // Le prix inconnu (0) de la ligne existante est renseigné au passage.
+    expect(h.lines.map((l) => [l.orderedQty, l.unitCostCents])).toEqual([[10, 850]]);
+  });
+
+  it('garde le prix déjà saisi sur la ligne qu’il complète', async () => {
+    const h = makeHarness({
+      orders: [ordre({ status: ShopPurchaseOrderStatus.DRAFT, supplierId: 'sup-1' })],
+      lines: [ligne({ variantId: 'v-1', orderedQty: 4, unitCostCents: 900 })],
+      ...catalogue(),
+    });
+
+    await h.svc.createRestockOrders(CLUB, [{ variantId: 'v-1', supplierId: 'sup-1', qty: 6 }]);
+
+    expect(h.lines.map((l) => [l.orderedQty, l.unitCostCents])).toEqual([[10, 900]]);
+  });
+
+  it('complète le brouillon le plus récemment modifié du fournisseur', async () => {
+    const h = makeHarness({
+      orders: [
+        ordre({
+          id: 'po-ancien',
+          status: ShopPurchaseOrderStatus.DRAFT,
+          reference: `CF-${annee}-010`,
+          updatedAt: new Date('2026-09-01'),
+        }),
+        ordre({
+          id: 'po-recent',
+          status: ShopPurchaseOrderStatus.DRAFT,
+          reference: `CF-${annee}-011`,
+          updatedAt: new Date('2026-09-10'),
+        }),
+      ],
+      lines: [],
+      ...catalogue(),
+    });
+
+    await h.svc.createRestockOrders(CLUB, [{ variantId: 'v-1', supplierId: 'sup-1', qty: 3 }]);
+
+    expect(h.lines.map((l) => l.orderId)).toEqual(['po-recent']);
+  });
+
+  it('refuse un fournisseur qui n’est pas rattaché au produit, sans rien créer', async () => {
+    const h = makeHarness({ orders: [], lines: [], ...catalogue() });
+
+    await expect(
+      h.svc.createRestockOrders(CLUB, [
+        { variantId: 'v-1', supplierId: 'sup-1', qty: 10 },
+        // p-2 ne se fournit pas chez sup-1.
+        { variantId: 'v-2', supplierId: 'sup-1', qty: 5 },
+      ]),
+    ).rejects.toThrow('n’est pas rattaché');
+    expect(h.orders).toHaveLength(0);
+    expect(h.lines).toHaveLength(0);
+  });
+
+  it('refuse un fournisseur désactivé', async () => {
+    const base = catalogue();
+    const h = makeHarness({
+      orders: [],
+      lines: [],
+      ...base,
+      suppliers: [{ ...base.suppliers[0], active: false }, base.suppliers[1]],
+    });
+
+    await expect(
+      h.svc.createRestockOrders(CLUB, [{ variantId: 'v-1', supplierId: 'sup-1', qty: 10 }]),
+    ).rejects.toThrow('désactivé');
+    expect(h.orders).toHaveLength(0);
+  });
+
+  it('refuse une déclinaison d’un autre club, et une même déclinaison deux fois', async () => {
+    const base = catalogue();
+    const autreClub = makeHarness({
+      orders: [],
+      lines: [],
+      ...base,
+      variants: [variante({ id: 'v-1', productId: 'p-1', clubId: 'club-2' }), base.variants[1]],
+    });
+    await expect(
+      autreClub.svc.createRestockOrders(CLUB, [{ variantId: 'v-1', supplierId: 'sup-1', qty: 10 }]),
+    ).rejects.toThrow('Déclinaison introuvable.');
+
+    const doublon = makeHarness({ orders: [], lines: [], ...base });
+    await expect(
+      doublon.svc.createRestockOrders(CLUB, [
+        { variantId: 'v-1', supplierId: 'sup-1', qty: 10 },
+        { variantId: 'v-1', supplierId: 'sup-1', qty: 2 },
+      ]),
+    ).rejects.toThrow('deux fois');
+
+    expect([...autreClub.orders, ...doublon.orders]).toHaveLength(0);
+  });
+
+  it('ne complète ni une commande déjà envoyée, ni le brouillon d’un autre fournisseur', async () => {
+    const h = makeHarness({
+      orders: [
+        ordre({
+          id: 'po-envoyee',
+          status: ShopPurchaseOrderStatus.ORDERED,
+          reference: `CF-${annee}-001`,
+        }),
+        ordre({
+          id: 'po-autre',
+          status: ShopPurchaseOrderStatus.DRAFT,
+          supplierId: 'sup-2',
+          reference: `CF-${annee}-002`,
+        }),
+      ],
+      lines: [ligne({ id: 'pol-envoyee', orderId: 'po-envoyee', variantId: 'v-1', orderedQty: 20 })],
+      ...catalogue(),
+    });
+
+    const res = await h.svc.createRestockOrders(CLUB, [
+      { variantId: 'v-1', supplierId: 'sup-1', qty: 3 },
+    ]);
+
+    expect(res.map((r) => r.created)).toEqual([true]);
+    expect(h.orders.map((o) => [o.supplierId, o.reference, o.status])).toEqual([
+      ['sup-1', `CF-${annee}-001`, ShopPurchaseOrderStatus.ORDERED],
+      ['sup-2', `CF-${annee}-002`, ShopPurchaseOrderStatus.DRAFT],
+      ['sup-1', `CF-${annee}-003`, ShopPurchaseOrderStatus.DRAFT],
+    ]);
+    // La ligne de la commande envoyée reste intacte : la quantité va au brouillon neuf.
+    expect(h.lines.map((l) => [l.orderId, l.orderedQty])).toEqual([
+      ['po-envoyee', 20],
+      [h.orders[2].id, 3],
+    ]);
+  });
+
+  it('un envoi qui se glisse entre la lecture et la réclamation : refus, rien ne s’ajoute à une commande partie', async () => {
+    const h = makeHarness({
+      orders: [ordre({ status: ShopPurchaseOrderStatus.DRAFT })],
+      lines: [],
+      ...catalogue(),
+    });
+    const lire = h.orderTable.findFirst.getMockImplementation()!;
+    h.orderTable.findFirst.mockImplementationOnce(async (args) => {
+      const brouillon = await lire(args);
+      // L’envoi fait depuis un autre onglet se committe juste après la lecture.
+      h.orders[0].status = ShopPurchaseOrderStatus.ORDERED;
+      return brouillon;
+    });
+
+    await expect(
+      h.svc.createRestockOrders(CLUB, [{ variantId: 'v-1', supplierId: 'sup-1', qty: 6 }]),
+    ).rejects.toThrow('déjà envoyée');
+    expect(h.lines).toHaveLength(0);
+  });
+
+  it('refuse une liste vide, une quantité nulle et un prix négatif, sans rien créer', async () => {
+    const h = makeHarness({ orders: [], lines: [], ...catalogue() });
+    const v1 = { variantId: 'v-1', supplierId: 'sup-1' };
+
+    await expect(h.svc.createRestockOrders(CLUB, [])).rejects.toThrow('aucune ligne');
+    await expect(h.svc.createRestockOrders(CLUB, [{ ...v1, qty: 0 }])).rejects.toThrow(
+      'au moins une unité',
+    );
+    await expect(
+      h.svc.createRestockOrders(CLUB, [{ ...v1, qty: 2, unitCostCents: -1 }]),
+    ).rejects.toThrow('négatif');
+    expect(h.orders).toHaveLength(0);
+    expect(h.lines).toHaveLength(0);
+  });
+
+  it('refuse le fournisseur d’un autre club', async () => {
+    const base = catalogue();
+    const h = makeHarness({
+      orders: [],
+      lines: [],
+      ...base,
+      suppliers: [{ ...base.suppliers[0], clubId: 'club-2' }, base.suppliers[1]],
+    });
+
+    await expect(
+      h.svc.createRestockOrders(CLUB, [{ variantId: 'v-1', supplierId: 'sup-1', qty: 10 }]),
+    ).rejects.toThrow('Fournisseur introuvable.');
+    expect(h.orders).toHaveLength(0);
+  });
+
+  it('une référence perdue à la course : toute la transaction est rejouée, rien n’est doublé', async () => {
+    const h = makeHarness({ orders: [], lines: [], ...catalogue() });
+    const original = h.orderTable.create.getMockImplementation()!;
+    let lost = false;
+    h.orderTable.create.mockImplementation(async (args: { data: any }) => {
+      if (!lost && args.data.supplierId === 'sup-2') {
+        lost = true;
+        throw new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: 'test',
+        });
+      }
+      return original(args);
+    });
+
+    await h.svc.createRestockOrders(CLUB, [
+      { variantId: 'v-1', supplierId: 'sup-1', qty: 10 },
+      { variantId: 'v-2', supplierId: 'sup-2', qty: 5 },
+    ]);
+
+    expect(lost).toBe(true);
+    expect(h.orders.map((o) => o.supplierId)).toEqual(['sup-1', 'sup-2']);
+    // Chaque ligne au prix de SON fournisseur : l’offre d’un autre ne sert jamais.
+    expect(h.lines.map((l) => [l.variantId, l.unitCostCents])).toEqual([
+      ['v-1', 850],
+      ['v-2', 700],
+    ]);
+  });
+});
+
+describe('draftQtyByVariant — ce que les brouillons portent déjà (ADR-0021 §3)', () => {
+  it('compte les brouillons, pas les commandes envoyées ni annulées', async () => {
+    const h = makeHarness({
+      orders: [
+        ordre({ id: 'po-b', status: ShopPurchaseOrderStatus.DRAFT }),
+        ordre({
+          id: 'po-b2',
+          status: ShopPurchaseOrderStatus.DRAFT,
+          supplierId: 'sup-2',
+          reference: 'CF-2026-007',
+        }),
+        ordre({ id: 'po-e', status: ShopPurchaseOrderStatus.ORDERED, reference: 'CF-2026-005' }),
+        ordre({ id: 'po-a', status: ShopPurchaseOrderStatus.CANCELLED, reference: 'CF-2026-006' }),
+      ],
+      lines: [
+        ligne({ id: 'l-1', orderId: 'po-b', variantId: 'v-1', orderedQty: 4 }),
+        ligne({ id: 'l-2', orderId: 'po-e', variantId: 'v-1', orderedQty: 20 }),
+        ligne({ id: 'l-3', orderId: 'po-a', variantId: 'v-1', orderedQty: 7 }),
+        ligne({ id: 'l-4', orderId: 'po-b2', variantId: 'v-1', orderedQty: 3 }),
+      ],
+    });
+
+    const drafts = await h.svc.draftQtyByVariant(CLUB);
+
+    // 4 + 3 : deux brouillons, chez deux fournisseurs ; ni l’envoyée ni l’annulée.
+    expect(drafts.get('v-1')).toBe(7);
   });
 });
 

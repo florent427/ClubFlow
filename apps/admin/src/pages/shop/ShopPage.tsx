@@ -10,14 +10,11 @@ import {
   GENERATE_SHOP_PRODUCT_VARIANTS,
   MARK_SHOP_ORDER_PAID,
   RECORD_SHOP_COUNTER_SALE,
-  RESTOCK_SHOP_VARIANT,
   SET_SHOP_PRODUCT_OPTIONS,
-  SHOP_LOW_STOCK_VARIANTS,
   SHOP_ORDERS,
   SHOP_PRODUCT_OPTIONS,
   SHOP_PRODUCTS,
   SHOP_STOCK_MOVEMENTS,
-  TRIGGER_SHOP_STOCK_SWEEP,
   UPDATE_SHOP_PRODUCT,
   UPDATE_SHOP_PRODUCT_VARIANT,
 } from '../../lib/documents';
@@ -26,10 +23,7 @@ import type {
   CreateShopProductMutationData,
   MembersQueryData,
   GenerateShopProductVariantsMutationData,
-  RestockShopVariantMutationData,
   SetShopProductOptionsMutationData,
-  ShopLowStockVariant,
-  ShopLowStockVariantsQueryData,
   ShopOrder,
   ShopOrderLine,
   ShopOrdersQueryData,
@@ -38,12 +32,10 @@ import type {
   ShopProductsQueryData,
   ShopStockMovementKindGql,
   ShopStockMovementsQueryData,
-  TriggerShopStockSweepMutationData,
   UpdateShopProductMutationData,
   UpdateShopProductVariantMutationData,
 } from '../../lib/types';
 import {
-  parseOptionalInt,
   planMatrixSave,
   seedRow,
   planProductStock,
@@ -57,6 +49,7 @@ import { ConfirmModal, Drawer, EmptyState } from '../../components/ui';
 import { ProductImageField } from '../../components/ProductImageField';
 import { AiProductDescriptionPanel } from '../../components/AiProductDescriptionPanel';
 import { SuppliersTab } from './SuppliersTab';
+import { RestockTab } from './RestockTab';
 import { ProductSuppliersDrawer } from './ProductSuppliersDrawer';
 import { PurchaseOrdersTab } from './PurchaseOrdersTab';
 import { ShopSettingsTab } from './ShopSettingsTab';
@@ -2103,232 +2096,6 @@ function MovementsTab() {
   );
 }
 
-// ===========================================================================
-// À réapprovisionner
-//
-// Vue transversale, tous produits confondus : c'est la liste de courses du
-// trésorier, celle qui rend le suivi de stock utile à quelqu'un qui ne lit pas
-// la boîte mail du club.
-// ===========================================================================
-
-function RestockTab() {
-  const { showToast } = useToast();
-  const { data, refetch, loading } = useQuery<ShopLowStockVariantsQueryData>(
-    SHOP_LOW_STOCK_VARIANTS,
-    { fetchPolicy: 'cache-and-network' },
-  );
-  const [restock, { loading: restocking }] =
-    useMutation<RestockShopVariantMutationData>(RESTOCK_SHOP_VARIANT);
-  const [triggerSweep, { loading: sweeping }] =
-    useMutation<TriggerShopStockSweepMutationData>(TRIGGER_SHOP_STOCK_SWEEP);
-
-  const [target, setTarget] = useState<ShopLowStockVariant | null>(null);
-  const [qtyStr, setQtyStr] = useState('');
-  const [reason, setReason] = useState('');
-
-  const rows = data?.shopLowStockVariants ?? [];
-
-  function openRestock(row: ShopLowStockVariant) {
-    setTarget(row);
-    // Quantité suggérée : de quoi revenir à la cible de réapprovisionnement,
-    // sinon une unité de plus que le seuil.
-    const goal = row.reorderTargetQty ?? row.reorderThreshold + 1;
-    setQtyStr(String(Math.max(1, goal - row.available)));
-    setReason('');
-  }
-
-  async function onRestock(e: FormEvent) {
-    e.preventDefault();
-    if (!target) return;
-    const parsed = parseOptionalInt(qtyStr);
-    if (!parsed.ok || parsed.value === null || parsed.value < 1) {
-      showToast('Quantité reçue invalide', 'error');
-      return;
-    }
-    try {
-      await restock({
-        variables: {
-          input: {
-            variantId: target.variantId,
-            qty: parsed.value,
-            reason: reason.trim() || undefined,
-          },
-        },
-      });
-      showToast('Réception enregistrée', 'success');
-      setTarget(null);
-      await refetch();
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
-    }
-  }
-
-  async function onSweep() {
-    try {
-      const res = await triggerSweep();
-      const r = res.data?.triggerShopStockSweep;
-      // `null` = un balayage est déjà en cours (le cron de 7h, ou un autre
-      // onglet). Le confondre avec un rapport à zéro afficherait un message
-      // VERT « 0 déclinaison examinée » à un trésorier dont le catalogue est
-      // en rupture — il en conclurait que tout va bien.
-      if (!r) {
-        showToast(
-          'Un balayage est déjà en cours, réessayez dans un instant.',
-          'error',
-        );
-        return;
-      }
-      showToast(
-        `${r.examined} déclinaison(s) examinée(s), ${r.alerted} alerte(s) envoyée(s), ` +
-          `${r.rearmed} réarmée(s)${r.failed > 0 ? `, ${r.failed} perdue(s)` : ''}`,
-        r.failed > 0 ? 'error' : 'success',
-      );
-      await refetch();
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
-    }
-  }
-
-  return (
-    <div>
-      <div className="cf-toolbar">
-        <button
-          type="button"
-          className="cf-btn"
-          disabled={sweeping}
-          onClick={() => void onSweep()}
-        >
-          Relancer le contrôle des seuils
-        </button>
-        <span className="cf-muted">
-          Le contrôle tourne chaque jour à 7 h ; ce bouton évite de l’attendre.
-        </span>
-      </div>
-
-      {loading && rows.length === 0 ? (
-        <p className="cf-muted">Chargement…</p>
-      ) : rows.length === 0 ? (
-        <EmptyState
-          icon="inventory_2"
-          title="Rien à réapprovisionner"
-          message="Aucun article n’est passé sous son seuil d’alerte."
-        />
-      ) : (
-        <div className="cf-variant-matrix">
-          <table className="cf-data-table">
-            <thead>
-              <tr>
-                <th>Article</th>
-                <th>Vendable</th>
-                <th>Physique</th>
-                <th>Seuil</th>
-                <th>Cible</th>
-                <th>Club prévenu</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.variantId}>
-                  <td>
-                    <strong>{variantDisplay(row.productName, row.label)}</strong>
-                    {row.sku ? (
-                      <>
-                        {' '}
-                        <code className="cf-product-card__sku">{row.sku}</code>
-                      </>
-                    ) : null}
-                  </td>
-                  <td>
-                    <span
-                      className={`cf-pill cf-pill--${
-                        row.available === 0 ? 'danger' : 'warn'
-                      }`}
-                    >
-                      {row.available}
-                    </span>
-                  </td>
-                  <td>{row.onHand}</td>
-                  <td>{row.reorderThreshold}</td>
-                  <td>{row.reorderTargetQty ?? '—'}</td>
-                  <td className="cf-muted">
-                    {row.alertedAt ? fmtDate(row.alertedAt) : 'pas encore'}
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      className="cf-btn cf-btn--sm"
-                      onClick={() => openRestock(row)}
-                    >
-                      Réapprovisionner
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <Drawer
-        open={target !== null}
-        title={
-          target
-            ? `Réception — ${variantDisplay(target.productName, target.label)}`
-            : ''
-        }
-        onClose={() => setTarget(null)}
-      >
-        <form onSubmit={(e) => void onRestock(e)} className="cf-form">
-          <label className="cf-field">
-            <span className="cf-field__label">Quantité reçue</span>
-            <input
-              type="number"
-              min="1"
-              className="cf-input"
-              value={qtyStr}
-              onChange={(e) => setQtyStr(e.target.value)}
-              required
-            />
-            <span className="cf-field__hint">
-              Une réception fait monter le physique et le vendable ensemble. Pour
-              corriger un écart après comptage, passez plutôt par la matrice des
-              déclinaisons.
-            </span>
-          </label>
-          <label className="cf-field">
-            <span className="cf-field__label">Motif (facultatif)</span>
-            <input
-              type="text"
-              className="cf-input"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              maxLength={300}
-              placeholder="Livraison fournisseur du 12/03"
-            />
-          </label>
-          <div className="cf-form-actions">
-            <button
-              type="button"
-              className="cf-btn"
-              onClick={() => setTarget(null)}
-            >
-              Annuler
-            </button>
-            <button
-              type="submit"
-              className="cf-btn cf-btn--primary"
-              disabled={restocking}
-            >
-              Enregistrer la réception
-            </button>
-          </div>
-        </form>
-      </Drawer>
-    </div>
-  );
-}
-
 type ShopTab =
   | 'products'
   | 'orders'
@@ -2340,6 +2107,12 @@ type ShopTab =
 
 export function ShopPage() {
   const [tab, setTab] = useState<ShopTab>('products');
+  /** Brouillon à ouvrir en arrivant sur les commandes fournisseur (ADR-0021 §4). */
+  const [purchaseToOpen, setPurchaseToOpen] = useState<string | null>(null);
+  function openPurchaseOrder(orderId: string) {
+    setPurchaseToOpen(orderId);
+    setTab('purchases');
+  }
   const tabs: Array<{ key: ShopTab; label: string }> = [
     { key: 'products', label: 'Produits' },
     { key: 'orders', label: 'Commandes membres' },
@@ -2365,7 +2138,10 @@ export function ShopPage() {
             key={t.key}
             type="button"
             className={`cf-tab${tab === t.key ? ' cf-tab--active' : ''}`}
-            onClick={() => setTab(t.key)}
+            onClick={() => {
+              setPurchaseToOpen(null);
+              setTab(t.key);
+            }}
           >
             {t.label}
           </button>
@@ -2374,9 +2150,13 @@ export function ShopPage() {
       {tab === 'products' ? <ProductsTab /> : null}
       {tab === 'orders' ? <OrdersTab /> : null}
       {tab === 'movements' ? <MovementsTab /> : null}
-      {tab === 'restock' ? <RestockTab /> : null}
+      {tab === 'restock' ? (
+        <RestockTab onOpenPurchaseOrder={openPurchaseOrder} />
+      ) : null}
       {tab === 'suppliers' ? <SuppliersTab /> : null}
-      {tab === 'purchases' ? <PurchaseOrdersTab /> : null}
+      {tab === 'purchases' ? (
+        <PurchaseOrdersTab initialOrderId={purchaseToOpen} />
+      ) : null}
       {tab === 'settings' ? <ShopSettingsTab /> : null}
     </div>
   );

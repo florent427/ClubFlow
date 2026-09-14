@@ -141,48 +141,80 @@ n'a pas d'écran d'achats : hors périmètre.
 
 ### Task 2.1 : Plan pur
 
-- [ ] `apps/api/src/shop/restock-plan.ts` : entrées = déclinaisons (compteurs,
+- [x] `apps/api/src/shop/restock-plan.ts` : entrées = déclinaisons (compteurs,
   seuil, cible, suivi, activité du produit), encours, précommandes, quantités en
   brouillon, offres avec exceptions, fournisseur choisi et son état.
-- [ ] Règle de l'ADR-0021 §3 :
+- [x] Règle de l'ADR-0021 §3 :
   `besoin = max(0, cible + précommandes − vendable − encours − brouillons)`,
   arrondi au multiple supérieur du colisage ; cible = `reorderTargetQty`, à
   défaut `reorderThreshold + 1`, à défaut 0 ; déclinaison retenue si sous son
   seuil **ou** porteuse de précommandes.
-- [ ] Sortie : groupes par fournisseur choisi (lignes avec référence et prix
+- [x] Sortie : groupes par fournisseur choisi (lignes avec référence et prix
   effectifs, prix manquant signalé), groupes « Sans fournisseur » et
-  « Fournisseur inactif », nombre d'articles déjà couverts.
-- [ ] Tests unitaires de chaque terme de la règle, puis mutations.
+  « Fournisseur inactif », articles déjà couverts. **Ajusté** : chaque ligne
+  porte toutes les offres du produit, chacune avec le manque arrondi à SON
+  colisage (`suggestedQty`) — basculer une ligne dans l'aperçu reprend cette
+  quantité, l'écran ne refait jamais l'arrondi. Les articles couverts sont une
+  liste, et la ligne garde le physique et la date d'alerte de l'ancien onglet.
+- [x] Tests unitaires de chaque terme de la règle, puis mutations : 19/19 sur
+  le plan, 2/2 sur `effectiveTerms` (2026-09-14).
 
 ### Task 2.2 : Service et GraphQL
 
-- [ ] Query `shopRestockPlan` : lit les compteurs, appelle le plan.
-- [ ] Mutation `createShopRestockOrders(lines: [{ variantId, supplierId, qty,
-  unitCostCents? }])` : revalide chaque ligne (déclinaison du club, fournisseur
-  rattaché au produit et actif, `qty ≥ 1`), regroupe par fournisseur et, en
-  **une** transaction, réclame le brouillon ouvert (`claimDraft`) ou en crée un
-  (`createWithReference`), crée les lignes ou augmente leur quantité ; renvoie
-  les commandes touchées.
-- [ ] Tests : une ligne invalide annule tout (aucun brouillon créé), un brouillon
+- [x] Query `shopRestockPlan` : lit les compteurs, appelle le plan. Mutations
+  18/18 sur `ShopRestockService` (filtres, compteurs, exception, recopie).
+- [x] Mutation `createShopRestockOrders(input: { lines: [{ variantId, supplierId,
+  qty, unitCostCents? }] })` : revalide chaque ligne (déclinaison du club,
+  fournisseur du club, rattaché au produit et actif, `qty ≥ 1`, pas de doublon),
+  regroupe par fournisseur et, en **une** transaction, réclame le brouillon
+  ouvert le plus récemment modifié (`claimDraft`) ou en crée un, crée les lignes
+  ou augmente leur quantité (un prix inconnu à 0 se renseigne, un prix saisi
+  reste) ; renvoie les commandes touchées. **Ajusté** : pas de
+  `createWithReference` dans la transaction — un P2002 y annule tout. La
+  référence est proposée DANS la transaction (`nextReference(tx)`), et c'est la
+  transaction entière qui est rejouée.
+- [x] Tests : une ligne invalide annule tout (aucun brouillon créé), un brouillon
   existant est complété sans seconde ligne, un fournisseur non rattaché est
-  refusé ; mutations notées.
+  refusé, ni une commande envoyée ni le brouillon d'un autre fournisseur ne sont
+  complétés, un envoi glissé entre la lecture et la réclamation est refusé ;
+  mutations 25/25, `draftQtyByVariant` compris. Le double masque désormais à
+  `prisma` les commandes pas encore committées : sans cela, la mutation « référence
+  lue hors transaction » restait verte (cf.
+  [pitfall](../../memory/pitfalls/double-transaction-rollback-trop-genereux.md)).
 
 ### Task 2.3 : Admin
 
-- [ ] Onglet « À réapprovisionner » : bouton global « Réapprovisionner » → aperçu
+- [x] Onglet « À réapprovisionner » : bouton global « Réapprovisionner » → aperçu
   groupé par fournisseur (quantité modifiable, bascule vers un autre fournisseur
-  du produit, prix manquant signalé, groupes « Sans fournisseur » et
-  « Fournisseur inactif » avec lien vers la fiche produit) → « Créer les
+  du produit, prix manquant signalé et total « d'au moins », groupes « Sans
+  fournisseur » et « Fournisseur inactif » qui ouvrent les fournisseurs du
+  produit — l'aperçu se relit ensuite pour ce seul produit) → « Créer les
   brouillons » → liens vers les commandes créées ou complétées.
-- [ ] Liste : colonnes « En commande », « Précommandes », « Fournisseur choisi » ;
-  l'entrée de stock hors commande devient une action secondaire.
-- [ ] Vitest : regroupement et bascule de fournisseur côté client.
+- [x] Liste : colonnes « En commande », « En brouillon », « Précommandes »,
+  « À commander », « Fournisseur choisi », plus le physique et « Club prévenu »
+  de l'ancien onglet ; l'entrée de stock hors commande devient une action
+  secondaire.
+- [x] Vitest : regroupement et bascule de fournisseur côté client ; mutations
+  16/16 sur `lib/shop-restock.ts`.
 
 ### Task 2.4 : Recette staging
 
-- [ ] Catalogue de test à trois fournisseurs (dont un inactif) et un article sans
+- [x] Catalogue de test à trois fournisseurs (dont un inactif) et un article sans
   fournisseur ; plan recoupé avec les compteurs en base ; brouillons créés ;
   relancer le réapprovisionnement ne double rien ; brouillon existant complété.
+  Fait le 2026-09-14 sur club-demo (« Recette lot 2 14h12 — … ») : plan de l'API
+  identique au calcul refait sur les compteurs en base (sweat : 20 − 2 − 6 en
+  commande = 12, proposé 20 par 10 ; ballon 5, proposé 6 par 6 ; bandeau couvert
+  par son brouillon ; casquette chez un fournisseur désactivé ; gourde sans
+  fournisseur). Dans l'aperçu : casquette basculée vers Sport Import (prix
+  inconnu, total « d'au moins »), fournisseur rattaché à la gourde depuis
+  l'aperçu, qui s'est relu pour elle seule en gardant la bascule. Création :
+  CF-2026-001 et CF-2026-002 complétés, CF-2026-004 et CF-2026-005 créés dans la
+  même transaction — deux références neuves sur PostgreSQL —, la commande
+  envoyée CF-2026-003 intacte ; plan relu tout « couvert », bouton grisé ;
+  « Ouvrir » mène au brouillon. Aucune nouvelle exception dans le log API.
+  Seuils des articles de recette retirés ensuite (pas d'alerte de stock bas à
+  7 h sur staging).
 
 ---
 

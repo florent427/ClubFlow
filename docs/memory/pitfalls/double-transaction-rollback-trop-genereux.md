@@ -44,6 +44,47 @@ $transaction: jest.fn(async (fn) => {
 
 Rejouée, la mutation fait rougir deux tests. C'est le test qu'on voulait.
 
+## Le miroir côté lecture : `prisma` voit ce que `tx` n'a pas encore committé
+
+Rencontré le 2026-09-14 sur `shop-purchase-orders.service.spec.ts`
+(ADR-0021, lot 2). `createRestockOrders` crée plusieurs brouillons dans
+**une** transaction et propose chaque référence `CF-…` à partir du maximum
+observé. La mutation qui déplace cette lecture HORS de la transaction —
+`nextReference(this.prisma, …)` au lieu de `nextReference(tx, …)` — **restait
+verte** : 68 tests sur 68.
+
+Le double faisait lire à `prisma` les tables mêmes où `tx` venait d'écrire.
+Sous PostgreSQL, la lecture hors transaction ne voit pas le premier
+brouillon, pas encore committé : le second aurait reçu la même référence, la
+contrainte unique aurait levé P2002, et la transaction rejouée serait
+retombée sur la même collision jusqu'à épuisement des tentatives. Tout
+réapprovisionnement chez deux fournisseurs sans brouillon aurait échoué.
+
+Correctif du double : une ligne créée pendant la transaction reste
+**masquée** aux lectures faites par `prisma`, jusqu'au commit.
+
+```ts
+const pendingOrderIds = new Set<string>();
+orderTable.create.mockImplementation(async (args) => {
+  const row = await insertOrder(args);
+  if (depth > 0) pendingOrderIds.add(row.id); // pas encore committée
+  return row;
+});
+const committedOrders = {
+  ...orderTable,
+  findMany: jest.fn(async (args = {}) => {
+    const rows = await orderTable.findMany(args);
+    return depth > 0 ? rows.filter((r) => !pendingOrderIds.has(r.id)) : rows;
+  }),
+};
+const prisma = { ...tx, shopPurchaseOrder: committedOrders, $transaction /* … */ };
+// … et `pendingOrderIds.clear()` quand la transaction se referme.
+```
+
+Contre-épreuve faite : double sans ce masquage + mutation → 68 verts ; avec
+→ « crée un brouillon par fournisseur » rougit (référence `-002` attendue,
+`-001` obtenue deux fois).
+
 ## Le réflexe à garder
 
 - Avant de faire confiance à un test d'atomicité, **appliquer la mutation
@@ -51,7 +92,11 @@ Rejouée, la mutation fait rougir deux tests. C'est le test qu'on voulait.
   double est trop généreux.
 - Un double doit reproduire **ce qui distingue** le bon code du mauvais,
   pas seulement le chemin heureux. Pour une transaction, ce qui distingue,
-  c'est : « les écritures hors `tx` ne sont pas annulées ».
+  c'est : « les écritures hors `tx` ne sont pas annulées » **et** « une
+  lecture hors `tx` ne voit pas ce que `tx` n'a pas encore committé ».
+- Une transaction qui LIT ce qu'elle vient d'écrire (référence, maximum + 1,
+  compteur) : appliquer la mutation qui déplace cette lecture sur `prisma`.
+  Verte = le double montre à `prisma` des écritures non committées.
 
 ## Lié
 

@@ -18,6 +18,7 @@ import { ShopService } from './shop.service';
 import { ShopPreorderService } from './shop-preorder.service';
 import { ShopProductSuppliersService } from './shop-product-suppliers.service';
 import { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
+import { ShopRestockService } from './shop-restock.service';
 import { ShopStockService } from './shop-stock.service';
 import { ShopStockSweepService } from './shop-stock-sweep.service';
 import { ShopVariantsService } from './shop-variants.service';
@@ -49,6 +50,8 @@ import { ShopVariantsService } from './shop-variants.service';
     ShopPurchaseOrdersService,
     // Fournisseurs d'un produit (ADR-0021).
     ShopProductSuppliersService,
+    // Réapprovisionnement multi-fournisseurs (ADR-0021).
+    ShopRestockService,
     ShopVariantsService,
     ShopStockSweepService,
     ShopLowStockNotifierService,

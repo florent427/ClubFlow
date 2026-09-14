@@ -46,6 +46,7 @@ import {
   SetShopProductSupplierVariantInput,
   UpsertShopProductSupplierInput,
 } from './dto/shop-product-supplier.input';
+import { CreateShopRestockOrdersInput } from './dto/shop-restock.input';
 import { UpdateShopProductInput } from './dto/update-shop-product.input';
 import { ShopCartGraph } from './models/shop-cart.model';
 import {
@@ -54,6 +55,10 @@ import {
 } from './models/shop-order.model';
 import { ShopProductGraph } from './models/shop-product.model';
 import { ShopSupplierProductCountGraph } from './models/shop-product-supplier.model';
+import {
+  ShopRestockOrderResultGraph,
+  ShopRestockPlanGraph,
+} from './models/shop-restock.model';
 import {
   ShopPurchaseInvoiceAccountGraph,
   ShopPurchaseOrderGraph,
@@ -71,6 +76,7 @@ import { ShopCartService } from './shop-cart.service';
 import { ShopDeliveryNoteService } from './shop-delivery-note.service';
 import { ShopProductSuppliersService } from './shop-product-suppliers.service';
 import { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
+import { ShopRestockService } from './shop-restock.service';
 import { ShopStockSweepService } from './shop-stock-sweep.service';
 import { ShopVariantsService } from './shop-variants.service';
 
@@ -91,6 +97,7 @@ export class ShopAdminResolver {
     private readonly deliveryNotes: ShopDeliveryNoteService,
     private readonly exchangeNotes: ShopExchangeNoteService,
     private readonly productSuppliers: ShopProductSuppliersService,
+    private readonly restock: ShopRestockService,
   ) {}
 
   @Query(() => [ShopProductGraph], { name: 'shopProducts' })
@@ -567,6 +574,31 @@ export class ShopAdminResolver {
       club.id,
       input,
     ) as Promise<ShopProductGraph>;
+  }
+
+  // --- Réapprovisionnement (ADR-0021 §3-4) ---
+
+  @Query(() => ShopRestockPlanGraph, {
+    name: 'shopRestockPlan',
+    description:
+      'Ce qu’il faut commander, déclinaison par déclinaison, réparti par fournisseur choisi. Calculé à chaque lecture : le plan ne se stocke pas.',
+  })
+  shopRestockPlan(@CurrentClub() club: Club): Promise<ShopRestockPlanGraph> {
+    return this.restock.plan(club.id);
+  }
+
+  @Mutation(() => [ShopRestockOrderResultGraph], {
+    description:
+      'Crée un brouillon par fournisseur, ou complète celui déjà ouvert, en une transaction. Chaque ligne est revalidée : déclinaison du club, fournisseur actif et rattaché au produit. Rien n’est envoyé.',
+  })
+  createShopRestockOrders(
+    @CurrentClub() club: Club,
+    @Args('input') input: CreateShopRestockOrdersInput,
+  ): Promise<ShopRestockOrderResultGraph[]> {
+    return this.purchases.createRestockOrders(
+      club.id,
+      input.lines,
+    ) as unknown as Promise<ShopRestockOrderResultGraph[]>;
   }
 
   @Query(() => [ShopPurchaseOrderGraph], { name: 'shopPurchaseOrders' })

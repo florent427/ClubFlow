@@ -1514,6 +1514,68 @@ export type ShopStockMovementsQueryData = {
 export type ShopLowStockVariantsQueryData = {
   shopLowStockVariants: ShopLowStockVariant[];
 };
+
+/** Conditions d'achat d'une déclinaison chez un fournisseur, exception appliquée (ADR-0021). */
+export type ShopRestockOffer = {
+  supplierId: string;
+  supplierName: string;
+  supplierActive: boolean;
+  supplierRef: string | null;
+  /** Prix d'achat HT en centimes. NULL = inconnu, jamais 0 €. */
+  unitCostCents: number | null;
+  packSize: number;
+  /** Le manque de la ligne arrondi au colisage de CE fournisseur. */
+  suggestedQty: number;
+};
+
+/** Une déclinaison du plan de réapprovisionnement (ADR-0021 §3). */
+export type ShopRestockLine = {
+  variantId: string;
+  productId: string;
+  productName: string;
+  label: string | null;
+  sku: string | null;
+  available: number;
+  /** Stock physique : le vendable, plus ce qui est réservé et pas encore remis. */
+  onHand: number;
+  reorderThreshold: number | null;
+  reorderTargetQty: number | null;
+  /** Null = le club n'a pas encore été prévenu. */
+  alertedAt: string | null;
+  onOrder: number;
+  preordered: number;
+  inDraft: number;
+  target: number;
+  /** Ce qui manque, avant arrondi. Zéro : déjà couvert. */
+  shortfall: number;
+  suggestedQty: number;
+  /** Fournisseur choisi du produit, actif ou non. */
+  supplier: ShopRestockOffer | null;
+  offers: ShopRestockOffer[];
+};
+
+export type ShopRestockGroup = {
+  supplierId: string;
+  supplierName: string;
+  lines: ShopRestockLine[];
+};
+
+export type ShopRestockPlan = {
+  groups: ShopRestockGroup[];
+  withoutSupplier: ShopRestockLine[];
+  inactiveSupplier: ShopRestockLine[];
+  covered: ShopRestockLine[];
+};
+
+export type ShopRestockPlanQueryData = { shopRestockPlan: ShopRestockPlan };
+
+export type CreateShopRestockOrdersMutationData = {
+  createShopRestockOrders: Array<{
+    created: boolean;
+    lineCount: number;
+    order: { id: string; reference: string; supplier: { name: string } | null };
+  }>;
+};
 export type TriggerShopStockSweepMutationData = {
   triggerShopStockSweep: ShopStockSweepReport;
 };
