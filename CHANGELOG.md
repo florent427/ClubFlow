@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.63.1](https://github.com/florent427/ClubFlow/compare/v0.63.0...v0.63.1) (2026-09-14)
+
+
+### 🐛 Bug Fixes
+
+* **payments:** déduire les avoirs du solde des relances et du tableau de bord ([80ac9c7](https://github.com/florent427/ClubFlow/commit/80ac9c75df1234f2057c5f194908973536e8b721))
+* **payments:** déduire les avoirs du solde des relances et du tableau de bord ([3ca42bb](https://github.com/florent427/ClubFlow/commit/3ca42bb163e2cf32f7bb10ef11366d6896a4d331))
+
 ## [0.63.0](https://github.com/florent427/ClubFlow/compare/v0.62.1...v0.63.0) (2026-09-14)
 
 
