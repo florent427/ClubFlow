@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.66.1](https://github.com/florent427/ClubFlow/compare/v0.66.0...v0.66.1) (2026-09-14)
+
+
+### 🐛 Bug Fixes
+
+* **auth:** inscription sur une adresse connue et débit par visiteur (audit 1.1 et 1.2) ([6f92b9e](https://github.com/florent427/ClubFlow/commit/6f92b9ec93b8538b315d04f65caaa3b6ca6b4cc3))
+* **auth:** inscription sur une adresse connue, et débit compté par visiteur derrière Caddy ([05584e1](https://github.com/florent427/ClubFlow/commit/05584e1e1b8837fa56336005cef8cf8165fdba5c))
+
 ## [0.66.0](https://github.com/florent427/ClubFlow/compare/v0.65.0...v0.66.0) (2026-09-14)
 
 
