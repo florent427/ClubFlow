@@ -9,9 +9,13 @@ import {
   InvoiceStatus,
   MediaVisibility,
   Prisma,
+  ShopOrderAdjustmentKind,
   ShopOrderStatus,
+  type ShopOrderLine,
 } from '@prisma/client';
+import { invoicePaymentTotals } from '../payments/invoice-totals';
 import type { ShopDeliveryNoteData } from '../pdf/shop-delivery-note-pdf.service';
+import type { ShopExchangeNoteData } from '../pdf/shop-exchange-note-pdf.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { availabilityOf } from './enums/shop-availability.enum';
 import { ShopPreorderService } from './shop-preorder.service';
@@ -64,7 +68,84 @@ const WITHOUT_PAYMENT = {
     { invoice: { is: null } },
     { invoice: { is: { payments: { none: {} } } } },
   ],
+  // Ni sur la facture du reste à payer d'un échange (ADR-0020).
+  adjustments: {
+    none: { supplementInvoice: { is: { payments: { some: {} } } } },
+  },
 } satisfies Prisma.ShopOrderWhereInput;
+
+/**
+ * Une commande telle que l'adhérent la voit : sans les notes internes du club —
+ * motif d'annulation, historique des ajustements (ADR-0019, ADR-0020).
+ */
+function forViewer<T extends { cancelReason: string | null; adjustments: unknown[] }>(
+  order: T,
+): T {
+  return { ...order, cancelReason: null, adjustments: [] };
+}
+
+/**
+ * Les factures OUVERTES d'une commande : la sienne, et celles du reste à payer
+ * de ses échanges (ADR-0020). Une commande annulée n'en laisse aucune à payer.
+ */
+function orderInvoicesOf(orderId: string, clubId: string) {
+  return {
+    clubId,
+    status: InvoiceStatus.OPEN,
+    isCreditNote: false,
+    OR: [{ shopOrderId: orderId }, { shopAdjustment: { is: { orderId } } }],
+  } satisfies Prisma.InvoiceWhereInput;
+}
+
+/** Les lignes remises, telles que le bon de livraison les imprime (ADR-0020). */
+export type DeliveredLines = {
+  lines: Array<{ label: string; quantity: number; unitPriceCents: number }>;
+  totalCents: number;
+};
+
+/** Les unités encore dans la commande, ligne par ligne. */
+export function deliveredLinesOf(order: {
+  lines: Array<{
+    label: string;
+    quantity: number;
+    cancelledQty: number;
+    unitPriceCents: number;
+  }>;
+}): DeliveredLines {
+  const lines = order.lines
+    .map((l) => ({
+      label: l.label,
+      quantity: l.quantity - l.cancelledQty,
+      unitPriceCents: l.unitPriceCents,
+    }))
+    .filter((l) => l.quantity > 0);
+  return {
+    lines,
+    totalCents: lines.reduce((sum, l) => sum + l.quantity * l.unitPriceCents, 0),
+  };
+}
+
+/** Relit les lignes figées ; `null` si absentes ou d'une forme inattendue. */
+export function readDeliveredLines(
+  value: Prisma.JsonValue | null,
+): DeliveredLines | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const { lines, totalCents } = value as Record<string, unknown>;
+  if (!Array.isArray(lines) || typeof totalCents !== 'number') return null;
+  const parsed = lines.map((l) => {
+    const row = (l ?? {}) as Record<string, unknown>;
+    return typeof row.label === 'string' &&
+      typeof row.quantity === 'number' &&
+      typeof row.unitPriceCents === 'number'
+      ? { label: row.label, quantity: row.quantity, unitPriceCents: row.unitPriceCents }
+      : null;
+  });
+  if (parsed.some((l) => l === null)) return null;
+  return {
+    lines: parsed as DeliveredLines['lines'],
+    totalCents,
+  };
+}
 
 /**
  * Délai indicatif de précommande tel que saisi : les blancs sont retirés, et un
@@ -512,12 +593,9 @@ export class ShopService {
       orderBy: [{ createdAt: 'desc' }],
       include: { lines: true },
     });
-    // Le motif d'une annulation par le club est une note interne : il reste
-    // à l'administration.
-    return (await this.hydrateBuyers(rows)).map((o) => ({
-      ...o,
-      cancelReason: null,
-    }));
+    // Le motif d'une annulation par le club et l'historique des ajustements
+    // sont des notes internes : ils restent à l'administration.
+    return (await this.hydrateBuyers(rows)).map(forViewer);
   }
 
   async placeOrder(
@@ -754,9 +832,10 @@ export class ShopService {
     });
     for (const line of row.lines) {
       if (!line.variantId) continue; // ligne antérieure aux variantes
-      // Seules les unités RÉSERVÉES sortent. Celles qui attendent l'arrivage
-      // sortiront quand il les servira (ADR-0018) — pas deux fois.
-      const qty = line.quantity - line.awaitingStockQty;
+      // Seules les unités RÉSERVÉES et encore dans la commande sortent. Celles
+      // qui attendent l'arrivage sortiront quand il les servira (ADR-0018) ;
+      // celles retirées de la commande (ADR-0020) ne sortent pas.
+      const qty = line.quantity - line.cancelledQty - line.awaitingStockQty;
       if (qty <= 0) continue;
       await this.stock.fulfill(tx, {
         clubId,
@@ -1207,12 +1286,7 @@ export class ShopService {
       // garde « aucun encaissement » est aussi dans CETTE écriture : une
       // facture qui porte un paiement ne s'annule jamais.
       await tx.invoice.updateMany({
-        where: {
-          shopOrderId: row.id,
-          clubId,
-          status: InvoiceStatus.OPEN,
-          payments: { none: {} },
-        },
+        where: { ...orderInvoicesOf(row.id, clubId), payments: { none: {} } },
         data: {
           status: InvoiceStatus.VOID,
           voidReason: 'Commande annulée par le club.',
@@ -1293,12 +1367,7 @@ export class ShopService {
       // pas rétrogradée (le cas ne peut d'ailleurs pas se produire, la commande
       // n'aurait pas été PENDING).
       await tx.invoice.updateMany({
-        where: {
-          shopOrderId: row.id,
-          clubId,
-          status: InvoiceStatus.OPEN,
-          payments: { none: {} },
-        },
+        where: { ...orderInvoicesOf(row.id, clubId), payments: { none: {} } },
         data: {
           status: InvoiceStatus.VOID,
           voidReason: 'Commande annulée par le membre.',
@@ -1308,7 +1377,7 @@ export class ShopService {
       return { row, released: freed };
     });
     await this.preorders.allocateQuietly(clubId, released);
-    return (await this.hydrateBuyers([updated]))[0];
+    return forViewer((await this.hydrateBuyers([updated]))[0]);
   }
 
   /**
@@ -1328,7 +1397,7 @@ export class ShopService {
     const released: string[] = [];
     for (const line of order.lines) {
       if (!line.variantId) continue;
-      const qty = line.quantity - line.awaitingStockQty;
+      const qty = line.quantity - line.cancelledQty - line.awaitingStockQty;
       if (qty <= 0) continue;
       await this.stock.release(tx, {
         clubId,
@@ -1464,7 +1533,7 @@ export class ShopService {
     const released: string[] = [];
     for (const line of order.lines) {
       if (!line.variantId) continue;
-      const qty = line.quantity - line.awaitingStockQty;
+      const qty = line.quantity - line.cancelledQty - line.awaitingStockQty;
       if (qty <= 0) continue;
       const tracked = await this.stock.returnToStock(tx, {
         clubId,
@@ -1506,6 +1575,345 @@ export class ShopService {
     return (await this.hydrateBuyers([row]))[0];
   }
 
+  // --- Échange et annulation d'un article (ADR-0020) ---
+
+  /**
+   * Une déclinaison telle qu'elle est en vente à cet instant : le libellé et le
+   * prix qu'une ligne de commande figera, et sa disponibilité.
+   */
+  async findSaleItem(
+    db: Prisma.TransactionClient,
+    clubId: string,
+    variantId: string,
+  ) {
+    const v = await db.shopProductVariant.findFirst({
+      where: { id: variantId, clubId },
+      include: {
+        product: {
+          select: {
+            name: true,
+            priceCents: true,
+            active: true,
+            preorderEnabled: true,
+          },
+        },
+      },
+    });
+    if (!v) return null;
+    return {
+      variantId: v.id,
+      productId: v.productId,
+      // Mêmes règles qu'au passage de commande : libellé figé suffixé de la
+      // déclinaison, prix de la déclinaison ou, à défaut, du produit.
+      label: v.label ? `${v.product.name} — ${v.label}` : v.product.name,
+      unitPriceCents: v.priceCents ?? v.product.priceCents,
+      active: v.active && v.product.active,
+      trackStock: v.trackStock,
+      available: v.available,
+      preorderEnabled: v.product.preorderEnabled,
+    };
+  }
+
+  /**
+   * Ajuste une ligne de commande, dans la transaction de l'appelant : retire des
+   * unités — annulées, ou échangées contre un autre article — (ADR-0020). La
+   * commande et le stock ; l'argent est traité par l'appelant
+   * (`ShopOrderAdjustmentsService`, module paiements), dans la même
+   * transaction.
+   *
+   * Les écritures conditionnelles portent l'état LU pour le plan : statut,
+   * sortie et remise de la commande ; unités retirées et en attente de la
+   * ligne ; prix du nouvel article. Si l'un d'eux a changé, rien n'est écrit.
+   *
+   * Marchandise rendue : l'attente d'arrivage d'abord, puis libération (rien
+   * n'est sorti) ou retour client, suivi d'une perte si l'admin la déclare.
+   * Nouvel article : réservé — en attente d'arrivage si son produit est en
+   * précommande et la commande pas encore remise —, et sorti aussitôt si la
+   * commande l'est déjà (ADR-0017).
+   *
+   * Renvoie l'ajustement et les déclinaisons redevenues vendables, servies aux
+   * précommandes APRÈS le commit (ADR-0018).
+   */
+  async adjustLineInTx(
+    tx: Prisma.TransactionClient,
+    clubId: string,
+    userId: string,
+    input: {
+      orderId: string;
+      lineId: string;
+      qty: number;
+      reason: string;
+      goodsReturned: boolean;
+      goodsLost: boolean;
+      exchange: null | { variantId: string; newQty: number; unitPriceCents: number };
+      signature: null | { signerName: string; signaturePng: string };
+      expected: {
+        status: ShopOrderStatus;
+        fulfilled: boolean;
+        delivered: boolean;
+        lineCancelledQty: number;
+        lineAwaitingStockQty: number;
+      };
+    },
+  ) {
+    const reason = input.reason.trim();
+    if (!reason) {
+      throw new BadRequestException('Indique le motif : il figure sur les avoirs.');
+    }
+    if (input.expected.status === ShopOrderStatus.CANCELLED) {
+      throw new BadRequestException('Cette commande est annulée.');
+    }
+    if (input.expected.delivered && !input.goodsReturned) {
+      throw new BadRequestException(
+        'Commande remise : l’adhérent doit rapporter l’article.',
+      );
+    }
+    const exited =
+      input.expected.status === ShopOrderStatus.PAID || input.expected.fulfilled;
+    if (input.goodsLost && !exited) {
+      throw new BadRequestException(
+        'Rien n’a quitté le club sur cette commande : l’article ne peut pas être déclaré perdu.',
+      );
+    }
+    let signerName: string | null = null;
+    if (input.exchange && input.expected.delivered) {
+      if (!input.signature) {
+        throw new BadRequestException(
+          'Commande déjà remise : fais signer l’échange par l’adhérent.',
+        );
+      }
+      signerName = this.checkSignature(
+        input.signature.signerName,
+        input.signature.signaturePng,
+        'Indique le nom de la personne qui signe l’échange (160 caractères au plus).',
+      );
+    }
+
+    // Verrou de la commande, sur l'état lu : la commande, puis les
+    // déclinaisons — l'ordre du règlement.
+    const claimed = await tx.shopOrder.updateMany({
+      where: {
+        id: input.orderId,
+        clubId,
+        status: input.expected.status,
+        fulfilledAt: input.expected.fulfilled ? { not: null } : null,
+        deliveredAt: input.expected.delivered ? { not: null } : null,
+      },
+      data: { updatedAt: new Date() },
+    });
+    if (claimed.count !== 1) {
+      throw new BadRequestException(
+        'Cette commande vient de changer : recharge la page.',
+      );
+    }
+
+    const order = await tx.shopOrder.findFirstOrThrow({
+      where: { id: input.orderId, clubId },
+      include: { lines: true },
+    });
+    const line = order.lines.find((l) => l.id === input.lineId);
+    if (!line) {
+      throw new NotFoundException('Article introuvable dans cette commande.');
+    }
+    const active = line.quantity - line.cancelledQty;
+    if (!Number.isInteger(input.qty) || input.qty < 1 || input.qty > active) {
+      throw new BadRequestException(`Quantité invalide : entre 1 et ${active}.`);
+    }
+    const activeUnits = order.lines.reduce(
+      (sum, l) => sum + l.quantity - l.cancelledQty,
+      0,
+    );
+    if (activeUnits - input.qty + (input.exchange?.newQty ?? 0) <= 0) {
+      throw new BadRequestException(
+        'C’est le dernier article de la commande : annule plutôt la commande.',
+      );
+    }
+
+    // Remise antérieure au lot : ce que la signature atteste est figé AVANT
+    // que la ligne change.
+    if (order.deliveredAt && order.deliveredLines === null) {
+      await tx.shopOrder.update({
+        where: { id: order.id },
+        data: {
+          deliveredLines: deliveredLinesOf(order) as Prisma.InputJsonObject,
+        },
+      });
+    }
+
+    const fromAwaiting = line.variantId
+      ? Math.min(input.qty, line.awaitingStockQty)
+      : 0;
+    const taken = await tx.shopOrderLine.updateMany({
+      where: {
+        id: line.id,
+        orderId: order.id,
+        cancelledQty: input.expected.lineCancelledQty,
+        awaitingStockQty: input.expected.lineAwaitingStockQty,
+      },
+      data: {
+        cancelledQty: { increment: input.qty },
+        ...(fromAwaiting > 0
+          ? { awaitingStockQty: { decrement: fromAwaiting } }
+          : {}),
+      },
+    });
+    if (taken.count !== 1) {
+      throw new BadRequestException(
+        'Cet article vient de changer : recharge la page.',
+      );
+    }
+
+    const released: string[] = [];
+    const rest = input.qty - fromAwaiting;
+    if (line.variantId && rest > 0) {
+      if (!exited) {
+        await this.stock.release(tx, {
+          clubId,
+          variantId: line.variantId,
+          qty: rest,
+          orderId: order.id,
+          orderLineId: line.id,
+        });
+        released.push(line.variantId);
+      } else {
+        const tracked = await this.stock.returnToStock(tx, {
+          clubId,
+          variantId: line.variantId,
+          qty: rest,
+          orderId: order.id,
+          orderLineId: line.id,
+          userId,
+          reason: `Retour client : ${reason}`,
+        });
+        if (tracked && input.goodsLost) {
+          await this.stock.recordShrinkage(
+            {
+              clubId,
+              variantId: line.variantId,
+              qty: rest,
+              userId,
+              reason: `Article rendu déclaré perdu : ${reason}`,
+              orderId: order.id,
+              orderLineId: line.id,
+            },
+            tx,
+          );
+        } else if (tracked) {
+          released.push(line.variantId);
+        }
+      }
+    }
+
+    let newLine: ShopOrderLine | null = null;
+    if (input.exchange) {
+      const item = await this.findSaleItem(tx, clubId, input.exchange.variantId);
+      if (!item || !item.active) {
+        throw new BadRequestException('Le nouvel article n’est pas en vente.');
+      }
+      if (item.unitPriceCents !== input.exchange.unitPriceCents) {
+        throw new BadRequestException(
+          'Le prix du nouvel article vient de changer : recharge la page.',
+        );
+      }
+      newLine = await tx.shopOrderLine.create({
+        data: {
+          orderId: order.id,
+          productId: item.productId,
+          variantId: item.variantId,
+          quantity: input.exchange.newQty,
+          unitPriceCents: item.unitPriceCents,
+          label: item.label,
+        },
+      });
+      const reservation = {
+        clubId,
+        variantId: item.variantId,
+        qty: input.exchange.newQty,
+        orderId: order.id,
+        orderLineId: newLine.id,
+      };
+      let reserved = input.exchange.newQty;
+      if (item.preorderEnabled && !input.expected.delivered) {
+        reserved = await this.stock.reserveUpTo(tx, reservation);
+        const awaiting = input.exchange.newQty - reserved;
+        if (awaiting > 0) {
+          newLine = await tx.shopOrderLine.update({
+            where: { id: newLine.id },
+            data: { awaitingStockQty: awaiting },
+          });
+        }
+      } else {
+        // Une commande remise emporte le nouvel article tout de suite : il doit
+        // être en stock, et `reserve` lève sinon.
+        await this.stock.reserve(tx, reservation);
+      }
+      if (exited && reserved > 0) {
+        await this.stock.fulfill(tx, { ...reservation, qty: reserved });
+      }
+    }
+
+    const removedCents = input.qty * line.unitPriceCents;
+    const addedCents = newLine ? newLine.quantity * newLine.unitPriceCents : 0;
+    await tx.shopOrder.update({
+      where: { id: order.id },
+      data: { totalCents: order.totalCents - removedCents + addedCents },
+    });
+
+    const adjustment = await tx.shopOrderAdjustment.create({
+      data: {
+        clubId,
+        orderId: order.id,
+        kind: input.exchange
+          ? ShopOrderAdjustmentKind.EXCHANGE
+          : ShopOrderAdjustmentKind.LINE_CANCEL,
+        reason,
+        userId,
+        returnedLineId: line.id,
+        returnedQty: input.qty,
+        returnedLabel: line.label,
+        returnedUnitPriceCents: line.unitPriceCents,
+        goodsLost: input.goodsLost,
+        newLineId: newLine?.id ?? null,
+        newQty: newLine?.quantity ?? null,
+        newLabel: newLine?.label ?? null,
+        newUnitPriceCents: newLine?.unitPriceCents ?? null,
+        differenceCents: addedCents - removedCents,
+        wasDelivered: input.expected.delivered,
+        signerName,
+        signaturePng: signerName ? input.signature!.signaturePng : null,
+        signedAt: signerName ? new Date() : null,
+      },
+    });
+    return { adjustment, released };
+  }
+
+  /**
+   * Facture du reste à payer d'un échange (ADR-0020) : la différence due,
+   * rattachée à l'échange et au foyer de l'acheteur, réglable en ligne ou au
+   * club comme la facture de la commande.
+   */
+  async createAdjustmentInvoiceInTx(
+    tx: Prisma.TransactionClient,
+    clubId: string,
+    order: { memberId: string | null; contactId: string | null },
+    adjustmentId: string,
+    amountCents: number,
+  ): Promise<{ id: string }> {
+    const buyer = await this.describeOrderBuyer(tx, clubId, order);
+    return tx.invoice.create({
+      data: {
+        clubId,
+        familyId: buyer.familyId,
+        label: `Échange boutique — reste à payer — ${buyer.label}`,
+        baseAmountCents: amountCents,
+        amountCents,
+        status: InvoiceStatus.OPEN,
+        shopAdjustmentId: adjustmentId,
+      },
+      select: { id: true },
+    });
+  }
+
   // --- Remise signée (ADR-0017) ---
 
   /** Au-delà, ce n'est plus une signature au doigt : on refuse. */
@@ -1540,27 +1948,11 @@ export class ShopService {
     userId: string,
     input: { orderId: string; signerName: string; signaturePng: string },
   ) {
-    const signerName = input.signerName.trim();
-    if (signerName.length === 0 || signerName.length > 160) {
-      throw new BadRequestException(
-        'Indique le nom de la personne qui retire la commande (160 caractères au plus).',
-      );
-    }
-    // Un base64 bien formé ne suffit pas : on vérifie que ce sont bien les
-    // octets d'un PNG. Le bon de livraison sait survivre à une image abîmée,
-    // mais ce qui est figé comme preuve doit au moins être une image.
-    const base64 = input.signaturePng.slice(input.signaturePng.indexOf(',') + 1);
-    if (
-      input.signaturePng.length > ShopService.DELIVERY_SIGNATURE_MAX_CHARS ||
-      !/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(input.signaturePng) ||
-      !Buffer.from(base64.slice(0, 12), 'base64')
-        .subarray(0, 8)
-        .equals(ShopService.PNG_SIGNATURE)
-    ) {
-      throw new BadRequestException(
-        'Signature illisible : fais signer de nouveau.',
-      );
-    }
+    const signerName = this.checkSignature(
+      input.signerName,
+      input.signaturePng,
+      'Indique le nom de la personne qui retire la commande (160 caractères au plus).',
+    );
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const now = new Date();
@@ -1618,8 +2010,17 @@ export class ShopService {
 
       await this.claimFulfilmentInTx(tx, clubId, input.orderId, 'DELIVERY');
 
-      return tx.shopOrder.findFirstOrThrow({
+      // Ce que la signature atteste, figé avec elle (ADR-0020) : un échange ou
+      // une annulation d'article après la remise ne réécrit pas le bon.
+      const remise = await tx.shopOrder.findFirstOrThrow({
         where: { id: input.orderId, clubId },
+        include: { lines: true },
+      });
+      return tx.shopOrder.update({
+        where: { id: remise.id },
+        data: {
+          deliveredLines: deliveredLinesOf(remise) as Prisma.InputJsonObject,
+        },
         include: { lines: true },
       });
     });
@@ -1650,6 +2051,10 @@ export class ShopService {
       `${shaped.buyerFirstName ?? ''} ${shaped.buyerLastName ?? ''}`.trim() ||
       null;
     const png = order.deliverySignaturePng;
+    // Les lignes figées à la remise ; à défaut — remise antérieure au lot 5,
+    // jamais ajustée depuis —, les lignes de la commande sont celles remises.
+    const remises =
+      readDeliveredLines(order.deliveredLines) ?? deliveredLinesOf(order);
     return {
       club: {
         name: order.club.name,
@@ -1659,14 +2064,10 @@ export class ShopService {
       order: {
         reference: `CMD-${order.id.slice(0, 8).toUpperCase()}`,
         createdAt: order.createdAt,
-        totalCents: order.totalCents,
+        totalCents: remises.totalCents,
         paid: order.status === ShopOrderStatus.PAID,
         paidAt: order.paidAt,
-        lines: order.lines.map((l) => ({
-          quantity: l.quantity,
-          label: l.label,
-          unitPriceCents: l.unitPriceCents,
-        })),
+        lines: remises.lines,
       },
       buyerName,
       delivery: {
@@ -1681,6 +2082,112 @@ export class ShopService {
               acceptedAt: order.termsAcceptedAt,
             }
           : null,
+    };
+  }
+
+  /**
+   * Une signature exploitable comme preuve, sinon refus — la même règle à la
+   * remise et à l'échange. Renvoie le nom du signataire, sans les blancs.
+   */
+  private checkSignature(
+    signerName: string,
+    signaturePng: string,
+    missingNameMessage: string,
+  ): string {
+    const name = signerName.trim();
+    if (name.length === 0 || name.length > 160) {
+      throw new BadRequestException(missingNameMessage);
+    }
+    // Un base64 bien formé ne suffit pas : on vérifie que ce sont bien les
+    // octets d'un PNG. Le bon sait survivre à une image abîmée, mais ce qui
+    // est figé comme preuve doit au moins être une image.
+    const base64 = signaturePng.slice(signaturePng.indexOf(',') + 1);
+    if (
+      signaturePng.length > ShopService.DELIVERY_SIGNATURE_MAX_CHARS ||
+      !/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(signaturePng) ||
+      !Buffer.from(base64.slice(0, 12), 'base64')
+        .subarray(0, 8)
+        .equals(ShopService.PNG_SIGNATURE)
+    ) {
+      throw new BadRequestException(
+        'Signature illisible : fais signer de nouveau.',
+      );
+    }
+    return name;
+  }
+
+  /**
+   * Les données du bon d'échange, figées à l'échange (ADR-0020). `null` si
+   * l'échange n'existe pas dans ce club ou n'a pas été signé : seul l'échange
+   * d'une commande remise produit un bon.
+   */
+  async getExchangeNote(
+    clubId: string,
+    adjustmentId: string,
+  ): Promise<ShopExchangeNoteData | null> {
+    const adj = await this.prisma.shopOrderAdjustment.findFirst({
+      where: {
+        id: adjustmentId,
+        clubId,
+        kind: ShopOrderAdjustmentKind.EXCHANGE,
+        signedAt: { not: null },
+      },
+      include: {
+        order: {
+          select: {
+            id: true,
+            createdAt: true,
+            memberId: true,
+            contactId: true,
+            club: { select: { name: true, siret: true, address: true } },
+          },
+        },
+      },
+    });
+    if (
+      !adj?.signedAt ||
+      !adj.signaturePng ||
+      adj.newQty === null ||
+      adj.newLabel === null ||
+      adj.newUnitPriceCents === null
+    ) {
+      return null;
+    }
+    const buyer = await this.describeOrderBuyer(this.prisma, clubId, adj.order);
+    const png = adj.signaturePng;
+    return {
+      club: {
+        name: adj.order.club.name,
+        siret: adj.order.club.siret ?? null,
+        address: adj.order.club.address ?? null,
+      },
+      order: {
+        reference: `CMD-${adj.order.id.slice(0, 8).toUpperCase()}`,
+        createdAt: adj.order.createdAt,
+      },
+      exchange: {
+        reference: `ECH-${adj.id.slice(0, 8).toUpperCase()}`,
+        at: adj.signedAt,
+        reason: adj.reason,
+        returned: {
+          quantity: adj.returnedQty,
+          label: adj.returnedLabel,
+          unitPriceCents: adj.returnedUnitPriceCents,
+        },
+        taken: {
+          quantity: adj.newQty,
+          label: adj.newLabel,
+          unitPriceCents: adj.newUnitPriceCents,
+        },
+        differenceCents: adj.differenceCents,
+        refundedCents: adj.refundedCents + adj.cardRefundCents,
+        writtenOffCents: adj.writtenOffCents,
+      },
+      buyerName: buyer.label,
+      signature: {
+        signerName: adj.signerName ?? '',
+        signaturePng: Buffer.from(png.slice(png.indexOf(',') + 1), 'base64'),
+      },
     };
   }
 
@@ -1708,6 +2215,12 @@ export class ShopService {
         status: true,
         deliveredAt: true,
         invoice: { select: { payments: { select: { id: true }, take: 1 } } },
+        // Ni sur le reste à payer d'un échange (ADR-0020).
+        adjustments: {
+          where: { supplementInvoice: { is: { payments: { some: {} } } } },
+          select: { id: true },
+          take: 1,
+        },
       },
     });
     if (!current) throw new NotFoundException('Commande introuvable');
@@ -1718,7 +2231,8 @@ export class ShopService {
           ? 'elle est déjà annulée'
           : current.deliveredAt
             ? 'elle vous a déjà été remise, adressez-vous au club'
-            : (current.invoice?.payments.length ?? 0) > 0
+            : (current.invoice?.payments.length ?? 0) > 0 ||
+                current.adjustments.length > 0
               ? 'un règlement a déjà été encaissé, adressez-vous au club pour être remboursé'
               : 'elle vient de changer, rechargez la page';
     throw new BadRequestException(
@@ -1746,6 +2260,12 @@ export class ShopService {
         status: true,
         deliveredAt: true,
         invoice: { select: { payments: { select: { id: true }, take: 1 } } },
+        // Ni sur le reste à payer d'un échange (ADR-0020).
+        adjustments: {
+          where: { supplementInvoice: { is: { payments: { some: {} } } } },
+          select: { id: true },
+          take: 1,
+        },
       },
     });
     if (!current) throw new NotFoundException('Commande introuvable');
@@ -1756,7 +2276,8 @@ export class ShopService {
           ? 'elle est déjà annulée'
           : current.deliveredAt
             ? 'elle a déjà été remise à l’adhérent'
-            : (current.invoice?.payments.length ?? 0) > 0
+            : (current.invoice?.payments.length ?? 0) > 0 ||
+                current.adjustments.length > 0
               ? 'un règlement a été encaissé, utilise « Annuler et rembourser »'
               : 'elle vient de changer, rechargez la page';
     const de = /^[aeiou]/.test(verb) ? 'd’' : 'de ';
@@ -1809,26 +2330,80 @@ export class ShopService {
     // le double règlement est impossible, la seconde saisie se heurtant à une
     // facture déjà soldée.
     const orderIds = orders.map((o) => o.id);
-    // LA facture de chaque commande (`shopOrderId` est unique), quel que soit
-    // son statut. L'écran d'administration en a besoin pour proposer
-    // « Encaisser » et ouvrir directement le tiroir de la facture, au lieu de
-    // la chercher parmi toutes celles du club.
+    // Les factures de chaque commande, quel que soit leur statut : LA sienne
+    // (`shopOrderId` est unique), que l'écran d'administration ouvre pour
+    // encaisser, et celles du reste à payer de ses échanges (ADR-0020). Le reste
+    // dû de la commande les additionne toutes.
     const orderInvoices =
       orderIds.length > 0
         ? await this.prisma.invoice.findMany({
-            where: { shopOrderId: { in: orderIds } },
-            select: { id: true, shopOrderId: true, status: true },
+            where: {
+              isCreditNote: false,
+              OR: [
+                { shopOrderId: { in: orderIds } },
+                { shopAdjustment: { is: { orderId: { in: orderIds } } } },
+              ],
+            },
+            select: {
+              id: true,
+              shopOrderId: true,
+              status: true,
+              amountCents: true,
+              shopAdjustment: { select: { orderId: true } },
+              payments: { select: { amountCents: true } },
+              creditNotes: {
+                where: { status: { not: InvoiceStatus.VOID } },
+                select: { amountCents: true },
+              },
+            },
           })
         : [];
     const invoiceByOrderId = new Map<
       string,
       { id: string; status: InvoiceStatus }
     >();
+    const dueByOrderId = new Map<string, number>();
     for (const inv of orderInvoices) {
+      const orderId = inv.shopOrderId ?? inv.shopAdjustment?.orderId;
+      if (!orderId) continue;
       if (inv.shopOrderId) {
         invoiceByOrderId.set(inv.shopOrderId, { id: inv.id, status: inv.status });
       }
+      if (inv.status !== InvoiceStatus.OPEN) continue;
+      const { balanceCents } = invoicePaymentTotals(
+        inv.amountCents,
+        inv.payments.reduce((sum, p) => sum + p.amountCents, 0),
+        inv.creditNotes.reduce((sum, c) => sum + c.amountCents, 0),
+      );
+      dueByOrderId.set(orderId, (dueByOrderId.get(orderId) ?? 0) + balanceCents);
     }
+
+    // Annulations d'articles et échanges, du plus ancien au plus récent. Sans
+    // la signature elle-même : seul le bon d'échange l'imprime.
+    const adjustments =
+      orderIds.length > 0
+        ? await this.prisma.shopOrderAdjustment.findMany({
+            where: { orderId: { in: orderIds } },
+            orderBy: { createdAt: 'asc' },
+            select: {
+              id: true,
+              orderId: true,
+              kind: true,
+              createdAt: true,
+              reason: true,
+              returnedLabel: true,
+              returnedQty: true,
+              newLabel: true,
+              newQty: true,
+              differenceCents: true,
+              refundedCents: true,
+              cardRefundCents: true,
+              writtenOffCents: true,
+              signedAt: true,
+              supplementInvoice: { select: { id: true, status: true } },
+            },
+          })
+        : [];
 
     return orders.map((o) => {
       let first: string | null = null;
@@ -1863,10 +2438,36 @@ export class ShopService {
         fulfilledAt: o.fulfilledAt,
         deliveredAt: o.deliveredAt,
         deliverySignerName: o.deliverySignerName,
+        // « Payable » : il reste de l'argent dû sur la commande, facture de la
+        // commande ou du reste à payer — « Payer » côté adhérent, « Encaisser »
+        // côté club.
         payableOnline:
-          invoiceByOrderId.get(o.id)?.status === InvoiceStatus.OPEN,
+          o.status !== ShopOrderStatus.CANCELLED &&
+          (dueByOrderId.get(o.id) ?? 0) > 0,
+        amountDueCents:
+          o.status === ShopOrderStatus.CANCELLED
+            ? 0
+            : (dueByOrderId.get(o.id) ?? 0),
         invoiceId: invoiceByOrderId.get(o.id)?.id ?? null,
         invoiceStatus: invoiceByOrderId.get(o.id)?.status ?? null,
+        adjustments: adjustments
+          .filter((a) => a.orderId === o.id)
+          .map((a) => ({
+            id: a.id,
+            kind: a.kind,
+            createdAt: a.createdAt,
+            reason: a.reason as string | null,
+            returnedLabel: a.returnedLabel,
+            returnedQty: a.returnedQty,
+            newLabel: a.newLabel,
+            newQty: a.newQty,
+            differenceCents: a.differenceCents,
+            refundedCents: a.refundedCents + a.cardRefundCents,
+            writtenOffCents: a.writtenOffCents,
+            supplementInvoiceId: a.supplementInvoice?.id ?? null,
+            supplementInvoiceStatus: a.supplementInvoice?.status ?? null,
+            signed: a.signedAt !== null,
+          })),
         lines: o.lines.map((l) => ({
           id: l.id,
           orderId: l.orderId,
@@ -1876,6 +2477,7 @@ export class ShopService {
           unitPriceCents: l.unitPriceCents,
           label: l.label,
           awaitingStockQty: l.awaitingStockQty,
+          cancelledQty: l.cancelledQty,
         })),
         buyerFirstName: first,
         buyerLastName: last,

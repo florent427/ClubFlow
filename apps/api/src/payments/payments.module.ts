@@ -24,6 +24,9 @@ import { StripeRefundsService } from './stripe-refunds.service';
 import { StripeTransitResolver } from './stripe-transit.resolver';
 import { StripeTransitSyncService } from './stripe-transit-sync.service';
 import { CreditNotesService } from './credit-notes.service';
+import { ShopOrderAdjustmentsResolver } from './shop-order-adjustments.resolver';
+import { ShopOrderAdjustmentsService } from './shop-order-adjustments.service';
+import { ShopOrderMoneyService } from './shop-order-money.service';
 import { ShopOrderRefundsResolver } from './shop-order-refunds.resolver';
 import { ShopOrderRefundsService } from './shop-order-refunds.service';
 import { StripeWebhookController } from './stripe-webhook.controller';
@@ -54,9 +57,14 @@ import { StripeWebhookController } from './stripe-webhook.controller';
     StripeTransitSyncService,
     StripeTransitResolver,
     CreditNotesService,
-    // Annuler et rembourser une commande boutique (ADR-0019).
+    // Annuler et rembourser une commande boutique (ADR-0019), ajuster une
+    // ligne (ADR-0020) : l'argent de la commande passe par un seul service.
+    ShopOrderMoneyService,
     ShopOrderRefundsService,
     ShopOrderRefundsResolver,
+    // Échanger ou annuler un article (ADR-0020).
+    ShopOrderAdjustmentsService,
+    ShopOrderAdjustmentsResolver,
     PaymentScheduleService,
     PaymentScheduleEngineService,
     PaymentScheduleNotifierService,

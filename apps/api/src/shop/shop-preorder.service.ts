@@ -267,15 +267,18 @@ export class ShopPreorderService {
     // figure plus.
     const lines = await tx.shopOrderLine.findMany({
       where: { variantId, order: pending },
-      select: { id: true, quantity: true },
+      select: { id: true, quantity: true, cancelledQty: true },
     });
     let held = 0;
     for (const line of lines) {
+      // Les unités retirées de la commande (ADR-0020) n'attendent rien.
+      const units = line.quantity - line.cancelledQty;
+      if (units <= 0) continue;
       await tx.shopOrderLine.updateMany({
         where: { id: line.id },
-        data: { awaitingStockQty: line.quantity },
+        data: { awaitingStockQty: units },
       });
-      held += line.quantity;
+      held += units;
     }
     return held;
   }

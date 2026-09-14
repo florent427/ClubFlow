@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  activeOrderLines,
   canCancelShopOrder,
   canPayShopOrder,
   interpretStripeReturn,
@@ -71,8 +72,9 @@ describe('canPayShopOrder / canCancelShopOrder', () => {
     expect(canCancelShopOrder('PENDING')).toBe(true);
   });
 
-  it('refuse payer + annuler sur une commande payée', () => {
-    expect(canPayShopOrder({ status: 'PAID', payableOnline: true })).toBe(false);
+  it('commande payée : « Payer » seulement pour le reste à payer d’un échange (ADR-0020)', () => {
+    expect(canPayShopOrder({ status: 'PAID', payableOnline: true })).toBe(true);
+    expect(canPayShopOrder({ status: 'PAID', payableOnline: false })).toBe(false);
     expect(canCancelShopOrder('PAID')).toBe(false);
   });
 
@@ -134,5 +136,21 @@ describe('commande en précommande (ADR-0018)', () => {
     expect(
       shopOrderPickupLabel({ status: 'CANCELLED', deliveredAt: null, lines: attend }),
     ).toBeNull();
+  });
+});
+
+describe('activeOrderLines — les articles encore dans la commande (ADR-0020)', () => {
+  const ligne = (quantity: number, cancelledQty: number) => ({
+    id: `l-${quantity}-${cancelledQty}`,
+    label: 'T-shirt — L',
+    quantity,
+    cancelledQty,
+  });
+
+  it('à leur quantité restante, sans les articles entièrement retirés', () => {
+    expect(activeOrderLines([ligne(3, 1), ligne(1, 1), ligne(2, 0)])).toEqual([
+      { ...ligne(3, 1), quantity: 2 },
+      ligne(2, 0),
+    ]);
   });
 });

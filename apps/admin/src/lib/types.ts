@@ -1253,6 +1253,38 @@ export type ShopOrderLine = {
   label: string;
   /** Unités en attente d'arrivage (ADR-0018). Zéro : tout est servi. */
   awaitingStockQty: number;
+  /**
+   * Unités retirées de la ligne — annulées ou échangées (ADR-0020). La
+   * quantité encore dans la commande est `quantity − cancelledQty`.
+   */
+  cancelledQty: number;
+};
+
+/** Nature d'un ajustement de commande (ADR-0020). */
+export type ShopOrderAdjustmentKindGql = 'LINE_CANCEL' | 'EXCHANGE';
+
+/** Une annulation d'articles ou un échange, dans l'historique de la commande. */
+export type ShopOrderAdjustment = {
+  id: string;
+  kind: ShopOrderAdjustmentKindGql;
+  createdAt: string;
+  reason: string | null;
+  returnedLabel: string;
+  returnedQty: number;
+  /** Échange : l'article pris. Null pour une annulation. */
+  newLabel: string | null;
+  newQty: number | null;
+  /** Pris − rendu, en centimes. */
+  differenceCents: number;
+  /** Rendu à l'adhérent, tous moyens confondus. */
+  refundedCents: number;
+  /** Reste dû éteint par avoir. */
+  writtenOffCents: number;
+  /** Facture du reste à payer de l'échange, s'il y en a une. */
+  supplementInvoiceId: string | null;
+  supplementInvoiceStatus: InvoiceStatusStr | null;
+  /** Échange signé : le bon d'échange existe. */
+  signed: boolean;
 };
 
 export type ShopOrder = {
@@ -1284,6 +1316,13 @@ export type ShopOrder = {
   /** La facture de la commande : c'est sur elle que le club encaisse. */
   invoiceId: string | null;
   invoiceStatus: InvoiceStatusStr | null;
+  /**
+   * Reste dû sur la commande, toutes factures confondues — la sienne et celles
+   * du reste à payer de ses échanges (ADR-0020).
+   */
+  amountDueCents: number;
+  /** Annulations d'articles et échanges, du plus ancien au plus récent. */
+  adjustments: ShopOrderAdjustment[];
 };
 
 /** CGV de la boutique (ADR-0017). */
@@ -1313,7 +1352,9 @@ export type ShopOrderRefundKindGql =
   | 'CASH'
   | 'TRANSFER'
   | 'CHEQUE_RETURN'
-  | 'CHEQUE_DEPOSITED';
+  | 'CHEQUE_DEPOSITED'
+  /** Part d'un chèque encore au club, reversée par virement (ADR-0020). */
+  | 'CHEQUE_PARTIAL';
 
 export type ShopOrderRefundAction = {
   kind: ShopOrderRefundKindGql;
@@ -1365,6 +1406,55 @@ export type ShopOrderCancellationResult = {
 export type CancelAndRefundShopOrderMutationData = {
   cancelAndRefundShopOrder: ShopOrderCancellationResult;
 };
+
+/** Ce que ferait l'annulation ou l'échange d'articles d'une ligne (ADR-0020). */
+export type ShopOrderLineAdjustmentPreview = {
+  /** Raisons de refuser. Vide : l'ajustement peut avoir lieu. */
+  blockers: string[];
+  delivered: boolean;
+  exited: boolean;
+  /** Échange d'une commande remise : l'adhérent signe ce qu'il reçoit. */
+  signatureRequired: boolean;
+  removedCents: number;
+  addedCents: number;
+  /** Ajouté − retiré. */
+  differenceCents: number;
+  fromAwaiting: number;
+  releaseUnits: number;
+  returnUnits: number;
+  newItemLabel: string | null;
+  newItemUnitPriceCents: number | null;
+  newItemAwaitingUnits: number | null;
+  /** Facture du reste à payer, quand la différence est due. */
+  supplementCents: number;
+  refunds: ShopOrderRefundAction[];
+  refundCents: number;
+  writeOffCents: number;
+  invoiceVoided: boolean;
+  settlesOrder: boolean;
+};
+export type ShopOrderLineAdjustmentPreviewQueryData = {
+  shopOrderLineAdjustmentPreview: ShopOrderLineAdjustmentPreview;
+};
+
+export type ShopOrderLineAdjustmentResult = {
+  order: ShopOrder;
+  adjustmentId: string;
+  cardRefunds: ShopOrderCancellationResult['cardRefunds'];
+  manualRefundedCents: number;
+  chequesReturned: number;
+  writtenOffCents: number;
+  supplementInvoiceId: string | null;
+  supplementCents: number;
+  signed: boolean;
+};
+export type AdjustShopOrderLineMutationData = {
+  adjustShopOrderLine: ShopOrderLineAdjustmentResult;
+};
+export type CreateShopExchangeNoteLinkMutationData = {
+  createShopExchangeNoteLink: string;
+};
+export type SendShopExchangeNoteMutationData = { sendShopExchangeNote: string };
 
 export type ShopProductOptionsQueryData = {
   shopProductOptions: ShopProductOption[];

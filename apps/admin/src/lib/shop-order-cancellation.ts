@@ -30,6 +30,8 @@ export function refundLabel(action: ShopOrderRefundAction): string {
       return `${cheque(action.chequeNumber)} (${montant}) : rendu à l’adhérent`;
     case 'CHEQUE_DEPOSITED':
       return `${cheque(action.chequeNumber)} déjà remis en banque : ${montant} à reverser par virement`;
+    case 'CHEQUE_PARTIAL':
+      return `${cheque(action.chequeNumber)} encore au club : ${montant} à reverser par virement, le chèque reste à remettre en banque`;
   }
 }
 

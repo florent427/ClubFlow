@@ -6,18 +6,23 @@ import {
 } from '@prisma/client';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
-import { ShopService } from './shop.service';
+import {
+  deliveredLinesOf,
+  readDeliveredLines,
+  ShopService,
+} from './shop.service';
 import { ShopStockService } from './shop-stock.service';
 
 /**
- * Remise signée et sortie de stock à la première des deux actions (ADR-0017).
+ * Remise signée et sortie de stock à la première des deux actions (ADR-0017),
+ * lignes remises figées avec la signature (ADR-0020).
  *
  * Vrais `ShopService` et `ShopStockService` ; seul Prisma est doublé. Le double
  * applique TOUTES les clauses présentes du `where` — y compris `null` et
- * `{ not: null }` — et annule les écritures d'une transaction qui lève, comme
- * PostgreSQL. C'est ce qui fait mordre les tests d'idempotence : retirer
- * `fulfilledAt: null` d'une écriture fait sortir le stock deux fois, et un
- * test le constate.
+ * `{ not: null }` —, lève sur celles qu'il ne sait pas simuler, et annule les
+ * écritures d'une transaction qui lève, comme PostgreSQL. C'est ce qui fait
+ * mordre les tests d'idempotence : retirer `fulfilledAt: null` d'une écriture
+ * fait sortir le stock deux fois, et un test le constate.
  */
 
 /**
@@ -27,6 +32,19 @@ import { ShopStockService } from './shop-stock.service';
  */
 const PNG =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAMAASsJTYQAAAAASUVORK5CYII=';
+
+type LineRow = {
+  id: string;
+  orderId: string;
+  productId: string;
+  variantId: string | null;
+  quantity: number;
+  unitPriceCents: number;
+  label: string;
+  awaitingStockQty: number;
+  /** Unités retirées de la commande (ADR-0020). */
+  cancelledQty: number;
+};
 
 type OrderRow = {
   id: string;
@@ -40,6 +58,7 @@ type OrderRow = {
   updatedAt: Date;
   paidAt: Date | null;
   cancelledAt: Date | null;
+  cancelReason: string | null;
   termsAssetId: string | null;
   termsAcceptedAt: Date | null;
   fulfilledAt: Date | null;
@@ -47,16 +66,9 @@ type OrderRow = {
   deliveredByUserId: string | null;
   deliverySignerName: string | null;
   deliverySignaturePng: string | null;
-  lines: Array<{
-    id: string;
-    orderId: string;
-    productId: string;
-    variantId: string | null;
-    quantity: number;
-    unitPriceCents: number;
-    label: string;
-    awaitingStockQty: number;
-  }>;
+  /** Lignes remises, figées avec la signature (ADR-0020). */
+  deliveredLines: unknown;
+  lines: LineRow[];
 };
 
 type InvoiceRow = {
@@ -64,7 +76,16 @@ type InvoiceRow = {
   clubId: string;
   shopOrderId: string;
   status: InvoiceStatus;
+  amountCents: number;
+  payments?: Array<{ id: string; amountCents: number }>;
 };
+
+/** Refuse toute clause que le double ne sait pas appliquer. */
+function allowOnly(where: object, keys: string[]): void {
+  for (const k of Object.keys(where)) {
+    if (!keys.includes(k)) throw new Error(`clause non simulée : ${k}`);
+  }
+}
 
 /** Clause Prisma sur une colonne nullable : absente, `null`, `{ not: null }`. */
 function nullableMatches(value: unknown, clause: unknown): boolean {
@@ -77,6 +98,9 @@ function nullableMatches(value: unknown, clause: unknown): boolean {
   }
   return value === clause;
 }
+
+const NO_PAID_SUPPLEMENT =
+  '{"none":{"supplementInvoice":{"is":{"payments":{"some":{}}}}}}';
 
 function makeStore(seed: {
   orders: OrderRow[];
@@ -112,30 +136,104 @@ function makeStore(seed: {
   ];
   const movements: Array<Record<string, unknown>> = [];
 
-  const orderMatches = (o: OrderRow, where: any): boolean =>
-    (where.id === undefined || o.id === where.id) &&
-    (where.clubId === undefined || o.clubId === where.clubId) &&
-    (where.status === undefined ||
-      (typeof where.status === 'object'
-        ? where.status.in.includes(o.status)
-        : o.status === where.status)) &&
-    (where.memberId === undefined || o.memberId === where.memberId) &&
-    (where.contactId === undefined || o.contactId === where.contactId) &&
-    nullableMatches(o.fulfilledAt, where.fulfilledAt) &&
-    nullableMatches(o.deliveredAt, where.deliveredAt) &&
-    nullableMatches(o.termsAcceptedAt, where.termsAcceptedAt) &&
-    // `lines: { none: { awaitingStockQty: { gt } } }` (ADR-0018), appliquée
-    // pour de vrai : sans elle, la remise d'une commande qui attend encore un
-    // arrivage passerait ici quoi qu'écrive le service.
-    (where.lines === undefined ||
-      !o.lines.some(
-        (l) => l.awaitingStockQty > where.lines.none.awaitingStockQty.gt,
-      ));
+  const invoiceOf = (orderId: string) =>
+    invoices.find((i) => i.shopOrderId === orderId) ?? null;
 
-  const invoiceMatches = (i: InvoiceRow, where: any): boolean =>
-    (where.shopOrderId === undefined || i.shopOrderId === where.shopOrderId) &&
-    (where.clubId === undefined || i.clubId === where.clubId) &&
-    (where.status === undefined || i.status === where.status);
+  // Garde « aucun encaissement » (ADR-0019) : commande sans facture, ou
+  // facture sans paiement. Chaque branche est appliquée pour de vrai.
+  const withoutPaymentBranch = (o: OrderRow, branch: any): boolean => {
+    allowOnly(branch, ['invoice']);
+    const inv = invoiceOf(o.id);
+    if (branch.invoice.is === null) return inv === null;
+    if (JSON.stringify(branch.invoice.is) !== '{"payments":{"none":{}}}') {
+      throw new Error('branche invoice non simulée');
+    }
+    return inv !== null && (inv.payments ?? []).length === 0;
+  };
+
+  const orderMatches = (o: OrderRow, where: any): boolean => {
+    allowOnly(where, [
+      'id',
+      'clubId',
+      'status',
+      'memberId',
+      'contactId',
+      'fulfilledAt',
+      'deliveredAt',
+      'termsAcceptedAt',
+      'lines',
+      'OR',
+      'adjustments',
+    ]);
+    // Aucun échange dans ce monde : aucun reste à payer encaissé (ADR-0020).
+    if (
+      where.adjustments !== undefined &&
+      JSON.stringify(where.adjustments) !== NO_PAID_SUPPLEMENT
+    ) {
+      throw new Error('clause adjustments non simulée');
+    }
+    return (
+      (where.id === undefined || o.id === where.id) &&
+      (where.clubId === undefined || o.clubId === where.clubId) &&
+      (where.status === undefined ||
+        (typeof where.status === 'object'
+          ? where.status.in.includes(o.status)
+          : o.status === where.status)) &&
+      (where.memberId === undefined || o.memberId === where.memberId) &&
+      (where.contactId === undefined || o.contactId === where.contactId) &&
+      nullableMatches(o.fulfilledAt, where.fulfilledAt) &&
+      nullableMatches(o.deliveredAt, where.deliveredAt) &&
+      nullableMatches(o.termsAcceptedAt, where.termsAcceptedAt) &&
+      // `lines: { none: { awaitingStockQty: { gt } } }` (ADR-0018), appliquée
+      // pour de vrai : sans elle, la remise d'une commande qui attend encore un
+      // arrivage passerait ici quoi qu'écrive le service.
+      (where.lines === undefined ||
+        !o.lines.some(
+          (l) => l.awaitingStockQty > where.lines.none.awaitingStockQty.gt,
+        )) &&
+      (where.OR === undefined ||
+        where.OR.some((branch: any) => withoutPaymentBranch(o, branch)))
+    );
+  };
+
+  // Les factures d'une commande : la sienne, ou celle du reste à payer d'un
+  // échange (ADR-0020) — ce monde n'en a aucune, la branche ne désigne rien.
+  const invoiceBranch = (i: InvoiceRow, branch: any): boolean => {
+    allowOnly(branch, ['shopOrderId', 'shopAdjustment']);
+    if (branch.shopAdjustment !== undefined) return false;
+    return typeof branch.shopOrderId === 'object'
+      ? branch.shopOrderId.in.includes(i.shopOrderId)
+      : i.shopOrderId === branch.shopOrderId;
+  };
+
+  const invoiceMatches = (i: InvoiceRow, where: any): boolean => {
+    allowOnly(where, [
+      'id',
+      'shopOrderId',
+      'clubId',
+      'status',
+      'isCreditNote',
+      'OR',
+      'payments',
+    ]);
+    if (
+      where.payments !== undefined &&
+      JSON.stringify(where.payments) !== '{"none":{}}'
+    ) {
+      throw new Error('clause payments non simulée');
+    }
+    return (
+      (where.id === undefined || i.id === where.id) &&
+      (where.shopOrderId === undefined || i.shopOrderId === where.shopOrderId) &&
+      (where.clubId === undefined || i.clubId === where.clubId) &&
+      (where.status === undefined || i.status === where.status) &&
+      // Aucun avoir dans ce monde : toutes les factures sont des factures.
+      (where.isCreditNote === undefined || where.isCreditNote === false) &&
+      (where.OR === undefined ||
+        where.OR.some((branch: any) => invoiceBranch(i, branch))) &&
+      (where.payments === undefined || (i.payments ?? []).length === 0)
+    );
+  };
 
   let depth = 0;
   const db: any = {
@@ -155,10 +253,20 @@ function makeStore(seed: {
         async ({ where }: any) =>
           invoices.find((i) => invoiceMatches(i, where)) ?? null,
       ),
+      // hydrateBuyers : les factures des commandes affichées, et ce qui y
+      // reste dû.
       findMany: jest.fn(async ({ where }: any) =>
         invoices
-          .filter((i) => where.shopOrderId.in.includes(i.shopOrderId))
-          .map((i) => ({ id: i.id, shopOrderId: i.shopOrderId, status: i.status })),
+          .filter((i) => invoiceMatches(i, where))
+          .map((i) => ({
+            id: i.id,
+            shopOrderId: i.shopOrderId,
+            status: i.status,
+            amountCents: i.amountCents,
+            shopAdjustment: null,
+            payments: (i.payments ?? []).map((p) => ({ amountCents: p.amountCents })),
+            creditNotes: [],
+          })),
       ),
       updateMany: jest.fn(async ({ where, data }: any) => {
         const hit = invoices.filter((i) => invoiceMatches(i, where));
@@ -172,9 +280,19 @@ function makeStore(seed: {
         hit.forEach((o) => Object.assign(o, data));
         return { count: hit.length };
       }),
-      findFirst: jest.fn(async ({ where, include }: any) => {
+      // Écriture par identifiant, après le verrou : les lignes remises figées.
+      update: jest.fn(async ({ where, data }: any) => {
+        allowOnly(where, ['id']);
+        allowOnly(data, ['deliveredLines', 'totalCents']);
+        const o = orders.find((x) => x.id === where.id);
+        if (!o) throw new Error('order not found');
+        Object.assign(o, structuredClone(data));
+        return { ...o, lines: o.lines.map((l) => ({ ...l })) };
+      }),
+      findFirst: jest.fn(async ({ where, include, select }: any) => {
         const o = orders.find((x) => orderMatches(x, where));
         if (!o) return null;
+        const inv = invoiceOf(o.id);
         return {
           ...o,
           lines: o.lines.map((l) => ({ ...l })),
@@ -187,6 +305,15 @@ function makeStore(seed: {
                   assets.find((a) => a.id === o.termsAssetId) ?? null,
               }
             : {}),
+          // Lecture qui nomme un refus : les encaissements de la commande.
+          ...(select?.invoice
+            ? {
+                invoice: inv
+                  ? { payments: (inv.payments ?? []).map((p) => ({ id: p.id })) }
+                  : null,
+              }
+            : {}),
+          ...(select?.adjustments ? { adjustments: [] } : {}),
         };
       }),
       findFirstOrThrow: jest.fn(async ({ where }: any) => {
@@ -199,6 +326,7 @@ function makeStore(seed: {
     // les lignes de la commande. Toutes les clauses présentes sont appliquées.
     shopOrderLine: {
       updateMany: jest.fn(async ({ where, data }: any) => {
+        allowOnly(where, ['orderId', 'awaitingStockQty']);
         const hit = orders
           .flatMap((o) => o.lines)
           .filter(
@@ -213,8 +341,16 @@ function makeStore(seed: {
         return { count: hit.length };
       }),
     },
+    // Aucun échange ni annulation d'article dans ce monde (ADR-0020).
+    shopOrderAdjustment: {
+      findMany: jest.fn(async ({ where }: any) => {
+        allowOnly(where, ['orderId']);
+        return [];
+      }),
+    },
     shopProductVariant: {
       updateMany: jest.fn(async ({ where, data }: any) => {
+        allowOnly(where, ['id', 'clubId', 'trackStock']);
         const hit = [variant].filter(
           (v) =>
             (where.id === undefined || v.id === where.id) &&
@@ -282,6 +418,19 @@ function makeStore(seed: {
   };
 }
 
+const LINE = (over: Partial<LineRow> = {}): LineRow => ({
+  id: 'line-1',
+  orderId: 'order-1',
+  productId: 'p-1',
+  variantId: 'v-1',
+  quantity: 2,
+  unitPriceCents: 1250,
+  label: 'Kimono — 120/130',
+  awaitingStockQty: 0,
+  cancelledQty: 0,
+  ...over,
+});
+
 const ORDER = (over: Partial<OrderRow> = {}): OrderRow => ({
   id: 'order-1',
   clubId: 'club-1',
@@ -294,6 +443,7 @@ const ORDER = (over: Partial<OrderRow> = {}): OrderRow => ({
   updatedAt: new Date('2026-09-13T08:00:00Z'),
   paidAt: null,
   cancelledAt: null,
+  cancelReason: null,
   termsAssetId: null,
   termsAcceptedAt: null,
   fulfilledAt: null,
@@ -301,18 +451,8 @@ const ORDER = (over: Partial<OrderRow> = {}): OrderRow => ({
   deliveredByUserId: null,
   deliverySignerName: null,
   deliverySignaturePng: null,
-  lines: [
-    {
-      id: 'line-1',
-      orderId: 'order-1',
-      productId: 'p-1',
-      variantId: 'v-1',
-      quantity: 2,
-      unitPriceCents: 1250,
-      label: 'Kimono — 120/130',
-      awaitingStockQty: 0,
-    },
-  ],
+  deliveredLines: null,
+  lines: [LINE()],
   ...over,
 });
 
@@ -580,12 +720,150 @@ describe('ShopService.getDeliveryNote', () => {
   });
 });
 
+describe('les lignes remises, figées avec la signature (ADR-0020)', () => {
+  const KIMONO_REMIS = { label: 'Kimono — 120/130', quantity: 2, unitPriceCents: 1250 };
+
+  it('la remise fige ce que la personne emporte', async () => {
+    const h = makeStore({ orders: [ORDER()] });
+
+    await deliver(h);
+
+    expect(h.orders[0].deliveredLines).toEqual({
+      lines: [KIMONO_REMIS],
+      totalCents: 2500,
+    });
+  });
+
+  it('un échange après la remise ne réécrit pas le bon de livraison', async () => {
+    const h = makeStore({ orders: [ORDER()] });
+    await deliver(h);
+    // L'échange retire un kimono et en ajoute un autre (`adjustLineInTx`).
+    const o = h.orders[0];
+    o.lines[0].cancelledQty = 1;
+    o.lines.push(
+      LINE({ id: 'line-2', variantId: 'v-2', label: 'Kimono — 140/150', quantity: 1, unitPriceCents: 1500 }),
+    );
+    o.totalCents = 2750;
+
+    const note = await h.shop.getDeliveryNote('club-1', 'order-1');
+
+    expect(note!.order.lines).toEqual([KIMONO_REMIS]);
+    expect(note!.order.totalCents).toBe(2500);
+  });
+
+  it('remise antérieure aux lignes figées : le bon lit les articles encore dans la commande', async () => {
+    const h = makeStore({
+      orders: [
+        ORDER({
+          status: ShopOrderStatus.PAID,
+          paidAt: new Date('2026-09-10T09:00:00Z'),
+          fulfilledAt: new Date('2026-09-10T09:00:00Z'),
+          deliveredAt: new Date('2026-09-10T09:00:00Z'),
+          deliverySignerName: 'Camillah ABDILLAH',
+          deliverySignaturePng: PNG,
+          lines: [
+            LINE({ quantity: 3, cancelledQty: 1 }),
+            LINE({ id: 'line-2', label: 'Ceinture', quantity: 1, cancelledQty: 1, unitPriceCents: 800 }),
+          ],
+        }),
+      ],
+    });
+
+    const note = await h.shop.getDeliveryNote('club-1', 'order-1');
+
+    expect(note!.order.lines).toEqual([KIMONO_REMIS]);
+    expect(note!.order.totalCents).toBe(2500);
+  });
+
+  it('lignes figées illisibles : le bon retombe sur la commande plutôt que d’échouer', async () => {
+    const h = makeStore({
+      orders: [
+        ORDER({
+          deliveredAt: new Date('2026-09-10T09:00:00Z'),
+          deliverySignerName: 'Camillah ABDILLAH',
+          deliverySignaturePng: PNG,
+          deliveredLines: { lines: [{ label: 'Kimono', quantity: '2' }], totalCents: 9999 },
+          lines: [LINE({ quantity: 1 })],
+        }),
+      ],
+    });
+
+    const note = await h.shop.getDeliveryNote('club-1', 'order-1');
+
+    expect(note!.order.lines).toEqual([{ ...KIMONO_REMIS, quantity: 1 }]);
+    expect(note!.order.totalCents).toBe(1250);
+  });
+
+  it('`deliveredLinesOf` : seules les unités encore dans la commande', () => {
+    expect(
+      deliveredLinesOf({
+        lines: [
+          LINE({ quantity: 3, cancelledQty: 1 }),
+          LINE({ id: 'line-2', label: 'Ceinture', quantity: 2, cancelledQty: 2, unitPriceCents: 800 }),
+        ],
+      }),
+    ).toEqual({ lines: [KIMONO_REMIS], totalCents: 2500 });
+  });
+
+  it.each([
+    ['absentes', null],
+    ['un tableau', [KIMONO_REMIS]],
+    ['sans total', { lines: [KIMONO_REMIS] }],
+    ['un total qui n’est pas un nombre', { lines: [KIMONO_REMIS], totalCents: '2500' }],
+    ['une ligne sans prix', { lines: [{ label: 'Kimono', quantity: 2 }], totalCents: 2500 }],
+    ['une ligne nulle', { lines: [null], totalCents: 0 }],
+  ])('`readDeliveredLines` : %s → null', (_cas, value) => {
+    expect(readDeliveredLines(value as never)).toBeNull();
+  });
+
+  it('`readDeliveredLines` relit des lignes bien formées, sans champ de trop', () => {
+    expect(
+      readDeliveredLines({
+        lines: [{ ...KIMONO_REMIS, note: 'ignorée' }],
+        totalCents: 2500,
+      }),
+    ).toEqual({ lines: [KIMONO_REMIS], totalCents: 2500 });
+  });
+});
+
+describe('les unités retirées de la commande (ADR-0020)', () => {
+  it('au règlement, elles ne sortent pas du stock', async () => {
+    const h = makeStore({
+      orders: [ORDER({ lines: [LINE({ quantity: 3, cancelledQty: 1 })] })],
+      onHand: 5,
+      available: 3,
+    });
+
+    await payByCard(h);
+
+    expect(h.variant.onHand).toBe(3);
+    expect(h.movements).toEqual([
+      expect.objectContaining({ kind: ShopStockMovementKind.FULFILL, onHandDelta: -2 }),
+    ]);
+  });
+
+  it('à l’annulation, elles ne sont pas libérées une seconde fois', async () => {
+    const h = makeStore({
+      orders: [ORDER({ lines: [LINE({ quantity: 3, cancelledQty: 1 })] })],
+      onHand: 5,
+      available: 3,
+    });
+
+    await h.shop.cancelOrder('club-1', 'order-1');
+
+    expect(h.variant.available).toBe(5);
+    expect(h.movements).toEqual([
+      expect.objectContaining({ kind: ShopStockMovementKind.RELEASE, availableDelta: 2 }),
+    ]);
+  });
+});
+
 describe('précommande : ce qui attend l’arrivage (ADR-0018)', () => {
   /** Kimono ×2 dont `awaiting` attendent l'arrivage — le reste est réservé. */
   const PREORDER = (awaiting: number, over: Partial<OrderRow> = {}) =>
     ORDER({
       ...over,
-      lines: [{ ...ORDER().lines[0], awaitingStockQty: awaiting }],
+      lines: [LINE({ awaitingStockQty: awaiting })],
     });
 
   it('au règlement, seules les unités RÉSERVÉES sortent du stock', async () => {
@@ -681,6 +959,7 @@ describe('précommande : ce qui attend l’arrivage (ADR-0018)', () => {
           clubId: 'club-1',
           shopOrderId: 'order-1',
           status: InvoiceStatus.OPEN,
+          amountCents: 2500,
         },
       ],
     });

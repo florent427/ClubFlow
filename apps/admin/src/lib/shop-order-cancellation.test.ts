@@ -76,6 +76,10 @@ describe('refundLabel', () => {
       { kind: 'CHEQUE_DEPOSITED', amountCents: 4000, chequeNumber: '0012' },
       'Chèque n° 0012 déjà remis en banque : 40,00 € à reverser par virement',
     ],
+    [
+      { kind: 'CHEQUE_PARTIAL', amountCents: 1500, chequeNumber: '0012' },
+      'Chèque n° 0012 encore au club : 15,00 € à reverser par virement, le chèque reste à remettre en banque',
+    ],
   ];
 
   it.each(CAS)('%o', (action, attendu) => {

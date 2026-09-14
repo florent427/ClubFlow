@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  activeOrderLines,
   canCancelOrder,
   canPayOnSiteAtCheckout,
   canRepayOrder,
@@ -10,21 +11,25 @@ import type { ViewerShopOrderStatus } from './viewer-types';
 
 const STATUSES: ViewerShopOrderStatus[] = ['PENDING', 'PAID', 'CANCELLED'];
 
-describe('canRepayOrder — PENDING ET payable en ligne', () => {
-  it('vrai seulement pour une commande PENDING AVEC facture', () => {
+describe('canRepayOrder — il reste de l’argent dû, payable en ligne', () => {
+  it('en attente avec sa facture, ou payée avec le reste à payer d’un échange (ADR-0020)', () => {
     expect(canRepayOrder({ status: 'PENDING', payableOnline: true })).toBe(true);
-    expect(canRepayOrder({ status: 'PAID', payableOnline: true })).toBe(false);
+    expect(canRepayOrder({ status: 'PAID', payableOnline: true })).toBe(true);
+  });
+
+  it('jamais sur une commande annulée', () => {
     expect(canRepayOrder({ status: 'CANCELLED', payableOnline: true })).toBe(
       false,
     );
   });
 
-  it('FAUX pour une commande « sur place » (PENDING sans facture)', () => {
-    // Le cas que ce champ existe pour trancher : sans facture, le repay Stripe
-    // échouerait — on ne propose donc pas « Payer », seulement « Annuler ».
+  it('FAUX quand rien n’est payable en ligne : « sur place » sans facture, ou tout réglé', () => {
+    // Sans argent dû payable en ligne, le repay Stripe échouerait — on ne
+    // propose donc pas « Payer ».
     expect(canRepayOrder({ status: 'PENDING', payableOnline: false })).toBe(
       false,
     );
+    expect(canRepayOrder({ status: 'PAID', payableOnline: false })).toBe(false);
   });
 });
 
@@ -35,12 +40,26 @@ describe('canCancelOrder — annulation réservée au PENDING', () => {
     expect(canCancelOrder('CANCELLED')).toBe(false);
   });
 
-  it('aucune action proposée sur une commande finale', () => {
-    // Miroir du serveur : une PAID/CANCELLED n'expose ni repay ni cancel.
+  it('aucune annulation sur une commande finale', () => {
     for (const s of STATUSES.filter((x) => x !== 'PENDING')) {
-      expect(canRepayOrder({ status: s, payableOnline: true })).toBe(false);
       expect(canCancelOrder(s)).toBe(false);
     }
+  });
+});
+
+describe('activeOrderLines — les articles encore dans la commande (ADR-0020)', () => {
+  const ligne = (quantity: number, cancelledQty: number) => ({
+    id: `l-${quantity}-${cancelledQty}`,
+    label: 'T-shirt — L',
+    quantity,
+    cancelledQty,
+  });
+
+  it('à leur quantité restante, sans les articles entièrement retirés', () => {
+    expect(activeOrderLines([ligne(3, 1), ligne(1, 1), ligne(2, 0)])).toEqual([
+      { ...ligne(3, 1), quantity: 2 },
+      ligne(2, 0),
+    ]);
   });
 });
 

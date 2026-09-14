@@ -11,6 +11,8 @@ import { ShopCartService } from './shop-cart.service';
 import { ShopDeliveryNoteController } from './shop-delivery-note.controller';
 import { ShopDeliveryNoteLinkService } from './shop-delivery-note-link.service';
 import { ShopDeliveryNoteService } from './shop-delivery-note.service';
+import { ShopExchangeNoteController } from './shop-exchange-note.controller';
+import { ShopExchangeNoteService } from './shop-exchange-note.service';
 import { ShopLowStockNotifierService } from './shop-low-stock-notifier.service';
 import { ShopService } from './shop.service';
 import { ShopPreorderService } from './shop-preorder.service';
@@ -33,12 +35,14 @@ import { ShopVariantsService } from './shop-variants.service';
     AccountingModule,
     PdfModule,
   ],
-  controllers: [ShopDeliveryNoteController],
+  controllers: [ShopDeliveryNoteController, ShopExchangeNoteController],
   providers: [
     ShopService,
     ShopCartService,
     ShopDeliveryNoteService,
     ShopDeliveryNoteLinkService,
+    // Bon d'échange (ADR-0020) : même lien signé, autre document.
+    ShopExchangeNoteService,
     ShopStockService,
     ShopPreorderService,
     ShopPurchaseOrdersService,

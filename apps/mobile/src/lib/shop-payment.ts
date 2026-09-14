@@ -56,16 +56,28 @@ export function interpretStripeReturn(
 }
 
 /**
- * Une commande n'est réglable / reprenable EN LIGNE (bouton « Payer ») que si
- * elle est EN ATTENTE ET porte une facture (`payableOnline`). Une commande
- * « réglée sur place » est PENDING mais SANS facture : le repay Stripe
- * échouerait, donc on ne propose pas « Payer », seulement « Annuler ».
+ * « Payer » : il reste de l'argent dû, payable en ligne (`payableOnline`), sur
+ * une commande qui n'est pas annulée — en attente, sa facture ; payée, le reste
+ * à payer d'un échange d'article (ADR-0020). Sans facture, le repay Stripe
+ * échouerait : on ne propose pas « Payer ».
  */
 export function canPayShopOrder(order: {
   status: ViewerShopOrderStatus;
   payableOnline: boolean;
 }): boolean {
-  return order.status === 'PENDING' && order.payableOnline;
+  return order.status !== 'CANCELLED' && order.payableOnline;
+}
+
+/**
+ * Les articles encore dans la commande, à leur quantité restante : un article
+ * annulé ou échangé par le club (ADR-0020) n'y figure plus.
+ */
+export function activeOrderLines<
+  L extends { quantity: number; cancelledQty: number },
+>(lines: ReadonlyArray<L>): L[] {
+  return lines
+    .filter((l) => l.quantity - l.cancelledQty > 0)
+    .map((l) => ({ ...l, quantity: l.quantity - l.cancelledQty }));
 }
 
 /**

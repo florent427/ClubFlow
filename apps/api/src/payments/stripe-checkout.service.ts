@@ -144,14 +144,27 @@ export class StripeCheckoutService {
       );
     }
 
-    const paidAgg = await this.prisma.payment.aggregate({
-      where: { invoiceId: invoice.id },
-      _sum: { amountCents: true },
-    });
-    const paidBefore = paidAgg._sum.amountCents ?? 0;
+    const [paidAgg, creditAgg] = await Promise.all([
+      this.prisma.payment.aggregate({
+        where: { invoiceId: invoice.id },
+        _sum: { amountCents: true },
+      }),
+      // Les avoirs éteignent une part de la facture (ADR-0011). Sans eux, la
+      // session demanderait ce que le club ne réclame plus, et le webhook —
+      // qui les déduit — n'en enregistrerait qu'une partie (ADR-0020).
+      this.prisma.invoice.aggregate({
+        where: {
+          parentInvoiceId: invoice.id,
+          isCreditNote: true,
+          status: { not: InvoiceStatus.VOID },
+        },
+        _sum: { amountCents: true },
+      }),
+    ]);
     const { balanceCents } = invoicePaymentTotals(
       invoice.amountCents,
-      paidBefore,
+      paidAgg._sum.amountCents ?? 0,
+      creditAgg._sum.amountCents ?? 0,
     );
     if (balanceCents <= 0) {
       throw new BadRequestException('Facture déjà soldée.');

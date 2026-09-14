@@ -19,7 +19,12 @@ type Line = {
   creditCents: number;
 };
 
-function makeHarness(args: { shopOrderId: string | null; amountCents: number }) {
+function makeHarness(args: {
+  shopOrderId: string | null;
+  /** Facture du reste à payer d'un échange boutique (ADR-0020). */
+  shopAdjustmentId?: string | null;
+  amountCents: number;
+}) {
   const lines: Line[] = [];
 
   const tx = {
@@ -57,6 +62,7 @@ function makeHarness(args: { shopOrderId: string | null; amountCents: number }) 
                   label: 'Facture',
                   amountCents: args.amountCents,
                   shopOrderId: args.shopOrderId,
+                  shopAdjustmentId: args.shopAdjustmentId ?? null,
                 },
               }
             : null,
@@ -120,6 +126,19 @@ function makeHarness(args: { shopOrderId: string | null; amountCents: number }) 
 describe('recordIncomeFromPayment — compte de produit', () => {
   it('crédite le compte de ventes pour une commande boutique', async () => {
     const h = makeHarness({ shopOrderId: 'order-1', amountCents: 2500 });
+
+    await h.svc.recordIncomeFromPayment('club-1', 'pay-1');
+
+    expect(h.creditedCode()).toBe('708000');
+  });
+
+  it('crédite le compte de ventes pour le reste à payer d’un échange boutique (ADR-0020)', async () => {
+    // Facture sans `shopOrderId` : c'est l'échange qui la rattache à la vente.
+    const h = makeHarness({
+      shopOrderId: null,
+      shopAdjustmentId: 'adj-1',
+      amountCents: 1500,
+    });
 
     await h.svc.recordIncomeFromPayment('club-1', 'pay-1');
 

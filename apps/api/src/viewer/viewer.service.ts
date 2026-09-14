@@ -2579,11 +2579,13 @@ export class ViewerService {
       where: {
         id: args.orderId,
         clubId: args.clubId,
-        status: ShopOrderStatus.PENDING,
+        // Payée aussi : il peut rester le reste à payer d'un échange (ADR-0020).
+        status: { in: [ShopOrderStatus.PENDING, ShopOrderStatus.PAID] },
         ...(memberId ? { memberId } : { contactId }),
       },
       select: {
         id: true,
+        status: true,
         totalCents: true,
         invoice: { select: { id: true } },
       },
@@ -2614,10 +2616,20 @@ export class ViewerService {
       );
     }
 
-    if (!order.invoice) {
+    // Ce qui reste dû sur la commande : sa facture d'abord, puis celle du reste
+    // à payer d'un échange (ADR-0020).
+    const payable = await this.payableShopOrderInvoice(args.clubId, order.id);
+    if (!payable) {
+      if (order.status === ShopOrderStatus.PAID) {
+        throw new BadRequestException(
+          'Impossible de reprendre le paiement de cette commande : elle est déjà payée.',
+        );
+      }
       // Une commande créée à la main par l'admin n'a pas de facture en ligne.
       throw new BadRequestException(
-        "Cette commande n'a pas de facture à régler en ligne.",
+        order.invoice
+          ? 'Rien à régler en ligne sur cette commande.'
+          : "Cette commande n'a pas de facture à régler en ligne.",
       );
     }
 
@@ -2643,7 +2655,7 @@ export class ViewerService {
     // (NotFound/BadRequest) si la facture n'est plus OPEN, est soldée, ou est
     // couverte par un échéancier actif — le refus reste explicite.
     const session = await this.stripeCheckout.createInvoiceCheckoutSession({
-      invoiceId: order.invoice.id,
+      invoiceId: payable.id,
       clubId: args.clubId,
       paidByMemberId: null,
       installmentsCount,
@@ -2653,12 +2665,57 @@ export class ViewerService {
 
     return {
       orderId: order.id,
-      invoiceId: order.invoice.id,
+      invoiceId: payable.id,
       totalCents: order.totalCents,
       installmentsCount,
       stripeCheckoutUrl: session.url,
       paymentReturnUrl: session.paymentReturnUrl,
     };
+  }
+
+  /**
+   * La facture à régler en ligne pour une commande boutique : la sienne si elle
+   * est encore due, sinon la plus récente facture du reste à payer d'un échange
+   * (ADR-0020). `null` quand plus rien n'est dû, avoirs déduits.
+   */
+  private async payableShopOrderInvoice(
+    clubId: string,
+    orderId: string,
+  ): Promise<{ id: string } | null> {
+    const invoices = await this.prisma.invoice.findMany({
+      where: {
+        clubId,
+        status: InvoiceStatus.OPEN,
+        isCreditNote: false,
+        OR: [{ shopOrderId: orderId }, { shopAdjustment: { is: { orderId } } }],
+      },
+      select: {
+        id: true,
+        shopOrderId: true,
+        createdAt: true,
+        amountCents: true,
+        payments: { select: { amountCents: true } },
+        creditNotes: {
+          where: { status: { not: InvoiceStatus.VOID } },
+          select: { amountCents: true },
+        },
+      },
+    });
+    const due = invoices
+      .filter(
+        (inv) =>
+          invoicePaymentTotals(
+            inv.amountCents,
+            inv.payments.reduce((sum, p) => sum + p.amountCents, 0),
+            inv.creditNotes.reduce((sum, c) => sum + c.amountCents, 0),
+          ).balanceCents > 0,
+      )
+      .sort(
+        (a, b) =>
+          Number(a.shopOrderId === null) - Number(b.shopOrderId === null) ||
+          b.createdAt.getTime() - a.createdAt.getTime(),
+      );
+    return due[0] ? { id: due[0].id } : null;
   }
 
   /**

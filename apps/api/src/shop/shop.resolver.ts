@@ -18,6 +18,8 @@ import {
 import { CreateShopProductInput } from './dto/create-shop-product.input';
 import { DeliverShopOrderInput } from './dto/deliver-shop-order.input';
 import { SendShopDeliveryNoteInput } from './dto/send-shop-delivery-note.input';
+import { SendShopExchangeNoteInput } from './dto/send-shop-exchange-note.input';
+import { ShopExchangeNoteService } from './shop-exchange-note.service';
 import {
   PlaceShopOrderInput,
   RecordShopCounterSaleInput,
@@ -79,6 +81,7 @@ export class ShopAdminResolver {
     private readonly sweep: ShopStockSweepService,
     private readonly purchases: ShopPurchaseOrdersService,
     private readonly deliveryNotes: ShopDeliveryNoteService,
+    private readonly exchangeNotes: ShopExchangeNoteService,
   ) {}
 
   @Query(() => [ShopProductGraph], { name: 'shopProducts' })
@@ -193,6 +196,28 @@ export class ShopAdminResolver {
     @Args('input') input: SendShopDeliveryNoteInput,
   ): Promise<string> {
     return this.deliveryNotes.sendByEmail(club.id, input.orderId, input.email);
+  }
+
+  /** Lien signé et court vers le bon d'un échange signé (ADR-0020). */
+  @Mutation(() => String, { name: 'createShopExchangeNoteLink' })
+  createShopExchangeNoteLink(
+    @CurrentClub() club: Club,
+    @Args('adjustmentId', { type: () => ID }) adjustmentId: string,
+  ): Promise<string> {
+    return this.exchangeNotes.link(club.id, adjustmentId);
+  }
+
+  /** Envoie le bon d'échange en pièce jointe ; rend l'adresse utilisée. */
+  @Mutation(() => String, { name: 'sendShopExchangeNote' })
+  sendShopExchangeNote(
+    @CurrentClub() club: Club,
+    @Args('input') input: SendShopExchangeNoteInput,
+  ): Promise<string> {
+    return this.exchangeNotes.sendByEmail(
+      club.id,
+      input.adjustmentId,
+      input.email,
+    );
   }
 
   // --- Configuration du 3× boutique ---

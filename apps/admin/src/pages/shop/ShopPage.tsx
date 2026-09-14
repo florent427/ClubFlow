@@ -31,6 +31,7 @@ import type {
   ShopLowStockVariant,
   ShopLowStockVariantsQueryData,
   ShopOrder,
+  ShopOrderLine,
   ShopOrdersQueryData,
   ShopProduct,
   ShopProductOptionsQueryData,
@@ -65,6 +66,15 @@ import {
 } from './ShopDeliveryDrawer';
 import { ShopOrderCancelDrawer } from './ShopOrderCancelDrawer';
 import {
+  ShopExchangeNoteMailDrawer,
+  ShopOrderAdjustDrawer,
+  useOpenExchangeNote,
+} from './ShopOrderAdjustDrawer';
+import {
+  activeQty,
+  adjustmentHistoryLabel,
+} from '../../lib/shop-order-adjustment';
+import {
   fmtCostOrUnknown,
   fmtDate,
   fmtDelta,
@@ -85,11 +95,11 @@ function orderStatusPill(s: ShopOrder['status']): {
 const MOVEMENT_LABELS: Record<ShopStockMovementKindGql, string> = {
   RESTOCK: 'Réception',
   RESERVE: 'Réservation',
-  RELEASE: 'Libération (commande annulée)',
+  RELEASE: 'Libération (commande ou article annulé)',
   FULFILL: 'Sortie (commande payée ou remise)',
   ADJUSTMENT: 'Correction d’inventaire',
   SHRINKAGE: 'Perte / casse / vol',
-  RETURN: 'Retour client (commande annulée)',
+  RETURN: 'Retour client (annulation ou échange)',
 };
 
 // ===========================================================================
@@ -1509,7 +1519,19 @@ function OrdersTab() {
   const [mailOrder, setMailOrder] = useState<ShopOrder | null>(null);
   /** Commande en cours d'annulation (ADR-0019). Null = tiroir fermé. */
   const [cancelOrder, setCancelOrder] = useState<ShopOrder | null>(null);
+  /** Article en cours d'annulation ou d'échange (ADR-0020). */
+  const [adjusting, setAdjusting] = useState<{
+    order: ShopOrder;
+    line: ShopOrderLine;
+    mode: 'CANCEL' | 'EXCHANGE';
+  } | null>(null);
+  /** Échange dont on envoie le bon par e-mail. */
+  const [mailExchange, setMailExchange] = useState<{
+    adjustmentId: string;
+    email: string | null;
+  } | null>(null);
   const openDeliveryNote = useOpenDeliveryNote();
+  const openExchangeNote = useOpenExchangeNote();
 
   const orders = data?.shopOrders ?? [];
   const [filter, setFilter] = useState<'ALL' | ShopOrder['status']>('ALL');
@@ -1534,6 +1556,17 @@ function OrdersTab() {
     } catch (err) {
       showToast(
         err instanceof Error ? err.message : 'Téléchargement impossible',
+        'error',
+      );
+    }
+  }
+  async function onOpenExchangeNote(adjustmentId: string) {
+    try {
+      // Aucun `await` avant : l'onglet doit s'ouvrir pendant le clic.
+      await openExchangeNote(adjustmentId);
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : 'Ouverture impossible',
         'error',
       );
     }
@@ -1592,21 +1625,111 @@ function OrdersTab() {
                   </span>
                 </div>
                 <ul className="cf-order-lines">
-                  {o.lines.map((l) => (
-                    <li key={l.id}>
-                      <span>
-                        {l.quantity} × {l.label}
-                        {l.awaitingStockQty > 0 ? (
-                          <span className="cf-muted">
-                            {' '}
-                            ({l.awaitingStockQty} en attente d’arrivage)
-                          </span>
-                        ) : null}
-                      </span>
-                      <span>{fmtEuros(l.unitPriceCents * l.quantity)}</span>
-                    </li>
-                  ))}
+                  {o.lines.map((l) => {
+                    const restant = activeQty(l);
+                    // Annuler ou échanger un article (ADR-0020) : pas sur une
+                    // commande annulée, ni sur un article déjà tout retiré.
+                    const ajustable = o.status !== 'CANCELLED' && restant > 0;
+                    return (
+                      <li key={l.id}>
+                        <span>
+                          {restant > 0 ? (
+                            <>
+                              {restant} × {l.label}
+                            </>
+                          ) : (
+                            <s className="cf-muted">
+                              {l.quantity} × {l.label}
+                            </s>
+                          )}
+                          {l.cancelledQty > 0 ? (
+                            <span className="cf-muted">
+                              {' '}
+                              ({l.cancelledQty} retiré{l.cancelledQty > 1 ? 's' : ''})
+                            </span>
+                          ) : null}
+                          {l.awaitingStockQty > 0 ? (
+                            <span className="cf-muted">
+                              {' '}
+                              ({l.awaitingStockQty} en attente d’arrivage)
+                            </span>
+                          ) : null}
+                          {ajustable ? (
+                            <span
+                              style={{ display: 'inline-flex', gap: 4, marginLeft: 8 }}
+                            >
+                              <button
+                                type="button"
+                                className="cf-btn cf-btn--sm cf-btn--ghost"
+                                onClick={() =>
+                                  setAdjusting({ order: o, line: l, mode: 'EXCHANGE' })
+                                }
+                              >
+                                Échanger
+                              </button>
+                              <button
+                                type="button"
+                                className="cf-btn cf-btn--sm cf-btn--ghost"
+                                onClick={() =>
+                                  setAdjusting({ order: o, line: l, mode: 'CANCEL' })
+                                }
+                              >
+                                Annuler l’article
+                              </button>
+                            </span>
+                          ) : null}
+                        </span>
+                        <span>{fmtEuros(l.unitPriceCents * restant)}</span>
+                      </li>
+                    );
+                  })}
                 </ul>
+                {o.adjustments.length > 0 ? (
+                  <ul className="cf-order-lines" aria-label="Annulations et échanges">
+                    {o.adjustments.map((a) => (
+                      <li key={a.id}>
+                        <span className="cf-muted">
+                          {fmtDate(a.createdAt)} — {adjustmentHistoryLabel(a)}
+                        </span>
+                        <span style={{ display: 'inline-flex', gap: 4 }}>
+                          {a.supplementInvoiceId &&
+                          a.supplementInvoiceStatus === 'OPEN' ? (
+                            <button
+                              type="button"
+                              className="cf-btn cf-btn--sm cf-btn--primary"
+                              onClick={() => setInvoiceOpenId(a.supplementInvoiceId)}
+                            >
+                              Encaisser
+                            </button>
+                          ) : null}
+                          {a.signed ? (
+                            <>
+                              <button
+                                type="button"
+                                className="cf-btn cf-btn--sm"
+                                onClick={() => void onOpenExchangeNote(a.id)}
+                              >
+                                Bon d’échange
+                              </button>
+                              <button
+                                type="button"
+                                className="cf-btn cf-btn--sm cf-btn--ghost"
+                                onClick={() =>
+                                  setMailExchange({
+                                    adjustmentId: a.id,
+                                    email: o.buyerEmail,
+                                  })
+                                }
+                              >
+                                Envoyer
+                              </button>
+                            </>
+                          ) : null}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
                 {o.note ? (
                   <p className="cf-order-card__note">« {o.note} »</p>
                 ) : null}
@@ -1619,7 +1742,17 @@ function OrdersTab() {
                   </p>
                 ) : null}
                 <div className="cf-order-card__foot">
-                  <strong>Total : {fmtEuros(o.totalCents)}</strong>
+                  <strong>
+                    Total : {fmtEuros(o.totalCents)}
+                    {o.status !== 'CANCELLED' &&
+                    o.amountDueCents > 0 &&
+                    o.amountDueCents !== o.totalCents ? (
+                      <span className="cf-muted">
+                        {' '}
+                        · reste dû {fmtEuros(o.amountDueCents)}
+                      </span>
+                    ) : null}
+                  </strong>
                   <div className="cf-order-card__actions">
                     {o.status === 'PENDING' ? (
                       <>
@@ -1762,6 +1895,27 @@ function OrdersTab() {
         <ShopDeliveryNoteMailDrawer
           order={mailOrder}
           onClose={() => setMailOrder(null)}
+        />
+      ) : null}
+
+      {adjusting ? (
+        <ShopOrderAdjustDrawer
+          order={adjusting.order}
+          line={adjusting.line}
+          mode={adjusting.mode}
+          onClose={() => setAdjusting(null)}
+          onDone={() => {
+            setAdjusting(null);
+            void refetch();
+          }}
+        />
+      ) : null}
+
+      {mailExchange ? (
+        <ShopExchangeNoteMailDrawer
+          adjustmentId={mailExchange.adjustmentId}
+          defaultEmail={mailExchange.email}
+          onClose={() => setMailExchange(null)}
         />
       ) : null}
 

@@ -33,6 +33,7 @@ import {
   preorderNotice,
 } from '../../lib/shop-availability';
 import {
+  activeOrderLines,
   canCancelShopOrder,
   canPayShopOrder,
   shopOrderPickupLabel,
@@ -238,7 +239,7 @@ export function ShopCatalogScreen() {
   function openRepayChoice(order: ViewerShopOrder) {
     Alert.alert(
       'Régler ma commande',
-      `Total : ${formatEuroCents(order.totalCents)}\nChoisissez le mode de règlement. Le paiement en 3× n’est proposé qu’au-delà du montant fixé par le club.`,
+      `${order.status === 'PAID' ? 'Reste à payer' : 'Montant dû'} : ${formatEuroCents(order.amountDueCents)}\nChoisissez le mode de règlement. Le paiement en 3× n’est proposé qu’au-delà du montant fixé par le club.`,
       [
         { text: 'Payer en 1 fois', onPress: () => void doRepay(order, false) },
         { text: 'Payer en 3 fois', onPress: () => void doRepay(order, true) },
@@ -472,7 +473,7 @@ export function ShopCatalogScreen() {
                     </Text>
                     <Pill label={pill.label} tone={pill.tone} />
                   </View>
-                  {o.lines.map((line) => (
+                  {activeOrderLines(o.lines).map((line) => (
                     <View key={line.id} style={styles.orderLine}>
                       <Text style={styles.orderLineLabel} numberOfLines={2}>
                         {line.quantity} × {line.label}
@@ -488,6 +489,12 @@ export function ShopCatalogScreen() {
                   <Text style={styles.orderTotal}>
                     Total : {formatEuroCents(o.totalCents)}
                   </Text>
+                  {o.status === 'PAID' && o.amountDueCents > 0 ? (
+                    <Text style={styles.orderPickup}>
+                      Reste à payer après un échange :{' '}
+                      {formatEuroCents(o.amountDueCents)}
+                    </Text>
+                  ) : null}
                   {pickup ? (
                     <Text style={styles.orderPickup}>
                       {pickup.kind === 'DELIVERED'

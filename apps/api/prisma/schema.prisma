@@ -2090,6 +2090,10 @@ model Invoice {
   /// stock (imité du branchement facture→adhésion). NULL = facture hors
   /// boutique (cotisation, frais divers…).
   shopOrderId             String?            @unique
+  /// Facture du reste à payer d'un échange boutique (ADR-0020). Une commande
+  /// n'a qu'une facture (`shopOrderId` unique) : la différence due en est une
+  /// autre, rattachée à l'échange qui l'a fait naître.
+  shopAdjustmentId        String?            @unique
   /// Dernière date d'envoi d'un e-mail de relance pour cette facture.
   lastRemindedAt          DateTime?
   createdAt               DateTime           @default(now())
@@ -2115,6 +2119,7 @@ model Invoice {
   paymentSchedule PaymentSchedule?
   membershipCart  MembershipCart?
   shopOrder       ShopOrder?       @relation(fields: [shopOrderId], references: [id], onDelete: SetNull)
+  shopAdjustment  ShopOrderAdjustment? @relation(fields: [shopAdjustmentId], references: [id], onDelete: SetNull)
 
   parentInvoice Invoice?  @relation("InvoiceCreditNotes", fields: [parentInvoiceId], references: [id], onDelete: SetNull)
   creditNotes   Invoice[] @relation("InvoiceCreditNotes")
@@ -3132,6 +3137,14 @@ enum ShopOrderStatus {
   CANCELLED
 }
 
+/// Nature d'un ajustement de commande boutique (ADR-0020).
+enum ShopOrderAdjustmentKind {
+  /// Des unités annulées, sans contrepartie.
+  LINE_CANCEL
+  /// Des unités échangées contre un autre article.
+  EXCHANGE
+}
+
 /// Nature d'un mouvement de stock. Le SENS est porté par les deltas, pas par
 /// le type : une correction d'inventaire peut être positive ou négative.
 enum ShopStockMovementKind {
@@ -3600,6 +3613,12 @@ model ShopOrder {
   /// Signature PNG en data URL, figée par la MÊME écriture que la remise. Le
   /// bon de livraison PDF se reproduit à la demande à partir de ces données.
   deliverySignaturePng String?   @db.Text
+  /// Lignes REMISES, figées par la même écriture que la remise (ADR-0020) :
+  /// `{ lines: [{ label, quantity, unitPriceCents }], totalCents }`. Le bon de
+  /// livraison les imprime : un échange ou une annulation d'article après la
+  /// remise ne change pas ce que la signature atteste. NULL avant la remise —
+  /// et, pour une remise antérieure au lot, figées au premier ajustement.
+  deliveredLines       Json?
 
   club       Club            @relation(fields: [clubId], references: [id], onDelete: Cascade)
   termsAsset MediaAsset?     @relation("ShopOrderTerms", fields: [termsAssetId], references: [id], onDelete: NoAction)
@@ -3608,6 +3627,8 @@ model ShopOrder {
   /// lien porté par `Invoice.shopOrderId`. NULL tant qu'aucune facture n'a été
   /// émise — une commande créée à la main par l'admin n'en a pas.
   invoice Invoice?
+  /// Annulations d'articles et échanges (ADR-0020).
+  adjustments ShopOrderAdjustment[]
 
   @@index([clubId, status])
   @@index([memberId])
@@ -3638,12 +3659,78 @@ model ShopOrderLine {
   /// Remis à zéro à l'annulation : une commande annulée n'attend plus rien.
   awaitingStockQty Int @default(0)
 
+  /// Unités RETIRÉES de la ligne (ADR-0020) : annulées, ou échangées. La
+  /// quantité active est `quantity − cancelledQty` ; la ligne elle-même n'est
+  /// jamais réécrite. Retirées d'abord sur les unités en attente d'arrivage.
+  cancelledQty Int      @default(0)
+  createdAt    DateTime @default(now())
+
   order   ShopOrder           @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product ShopProduct         @relation(fields: [productId], references: [id], onDelete: Restrict)
   variant ShopProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
 
+  returnedAdjustments ShopOrderAdjustment[] @relation("ShopOrderAdjustmentReturnedLine")
+  addedByAdjustment   ShopOrderAdjustment?  @relation("ShopOrderAdjustmentNewLine")
+
   @@index([orderId])
   @@index([variantId])
+}
+
+/// Ajustement d'une commande boutique (ADR-0020) : des unités retirées d'une
+/// ligne — annulées, ou échangées contre un autre article. Fige ce qui a été
+/// rendu et pris, pour l'historique et le bon d'échange. La ligne d'origine
+/// n'est jamais réécrite : seul son `cancelledQty` monte.
+model ShopOrderAdjustment {
+  id      String                  @id @default(uuid())
+  clubId  String
+  orderId String
+  kind    ShopOrderAdjustmentKind
+  /// Motif saisi par l'admin, repris sur les avoirs.
+  reason  String                  @db.VarChar(500)
+  userId  String?
+
+  returnedLineId         String
+  returnedQty            Int
+  returnedLabel          String
+  returnedUnitPriceCents Int
+  /// Unités rendues déclarées perdues, cassées ou volées.
+  goodsLost              Boolean @default(false)
+
+  /// Échange : la ligne créée pour l'article pris. NULL pour une annulation.
+  newLineId         String? @unique
+  newQty            Int?
+  newLabel          String?
+  newUnitPriceCents Int?
+
+  /// Ajouté − retiré, en centimes. Positive : facture du reste à payer.
+  differenceCents Int
+  /// Rendu par espèces, virement ou chèque, dans la transaction.
+  refundedCents   Int @default(0)
+  /// Remboursements carte demandés à Stripe après le commit.
+  cardRefundCents Int @default(0)
+  /// Reste dû éteint par avoir, sans mouvement d'argent.
+  writtenOffCents Int @default(0)
+
+  /// La commande était déjà remise : un échange est alors signé.
+  wasDelivered Boolean   @default(false)
+  signerName   String?   @db.VarChar(160)
+  /// Signature PNG en data URL, figée par la même écriture que l'échange.
+  signaturePng String?   @db.Text
+  signedAt     DateTime?
+
+  createdAt DateTime @default(now())
+
+  order        ShopOrder      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  // NoAction et non Restrict : à la suppression d'une commande, ses lignes et
+  // ses ajustements partent dans la même cascade ; la contrainte n'est vérifiée
+  // qu'en fin d'instruction.
+  returnedLine ShopOrderLine  @relation("ShopOrderAdjustmentReturnedLine", fields: [returnedLineId], references: [id], onDelete: NoAction)
+  newLine      ShopOrderLine? @relation("ShopOrderAdjustmentNewLine", fields: [newLineId], references: [id], onDelete: NoAction)
+  /// Facture du reste à payer d'un échange (lien porté par `Invoice.shopAdjustmentId`).
+  supplementInvoice Invoice?
+
+  @@index([clubId, orderId])
+  @@index([returnedLineId])
 }
 
 /// Panier boutique d'un VIEWER (membre OU contact) pour un club. Imité de

@@ -49,6 +49,7 @@
 | [`github-token-ne-retrigger-pas.md`](pitfalls/github-token-ne-retrigger-pas.md) | Le tag de release n'est jamais coupé : GITHUB_TOKEN ne réveille aucun workflow |
 | [`gitignore-claude-trailing-slash-blocks-negation.md`](pitfalls/gitignore-claude-trailing-slash-blocks-negation.md) | Piège — `.gitignore` `.claude/` (trailing slash) bloque la négation `!.claude/skills/` |
 | [`grid-1fr-minimum-auto-deborde.md`](pitfalls/grid-1fr-minimum-auto-deborde.md) | Piège — `1fr` vaut `minmax(auto, 1fr)` : un texte nowrap élargit la colonne hors écran |
+| [`jest-structuredclone-date-autre-contexte.md`](pitfalls/jest-structuredclone-date-autre-contexte.md) | Piège — `structuredClone` dans Jest rend des `Date` d'un autre contexte |
 | [`juge-non-fiable-verdict-sans-valeur.md`](pitfalls/juge-non-fiable-verdict-sans-valeur.md) | Le juge non fiable : un verdict rendu sur un signal dont on n'a pas vérifié le sens |
 | [`module-natif-ne-passe-pas-par-metro.md`](pitfalls/module-natif-ne-passe-pas-par-metro.md) | `Cannot find native module` : un module natif ne s'installe pas par Metro |
 | [`nestjs-graphql-nullable-needs-explicit-type.md`](pitfalls/nestjs-graphql-nullable-needs-explicit-type.md) | Piège — `@Field({ nullable: true })` GraphQL crash sans type explicite |
@@ -103,6 +104,7 @@
 | [`0017-boutique-paiement-sortie-remise.md`](decisions/0017-boutique-paiement-sortie-remise.md) | ADR-0017 — Boutique : règlement, sortie de stock et remise sont trois faits distincts |
 | [`0018-boutique-precommande.md`](decisions/0018-boutique-precommande.md) | ADR-0018 — Boutique : un article épuisé reste commandable, et chaque arrivage sert d'abord les précommandes |
 | [`0019-boutique-annulation-remboursement.md`](decisions/0019-boutique-annulation-remboursement.md) | ADR-0019 — Boutique : annuler une commande, c'est reprendre la marchandise et rendre chaque règlement par son propre moyen |
+| [`0020-boutique-echange-et-annulation-d-article.md`](decisions/0020-boutique-echange-et-annulation-d-article.md) | ADR-0020 — Boutique : échanger ou annuler un article, c'est ajuster la commande à l'unité et ne faire bouger que la différence |
 
 ## 🔄 Workflows métier
 
@@ -116,7 +118,7 @@
 
 ---
 
-_Index généré le 2026-09-13 17:26 UTC par `bin/memory-index`._
+_Index généré le 2026-09-14 04:35 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`
