@@ -199,9 +199,22 @@ n'a pas d'écran d'achats : hors périmètre.
 
 ### Task 2.4 : Recette staging
 
-- [ ] Catalogue de test à trois fournisseurs (dont un inactif) et un article sans
+- [x] Catalogue de test à trois fournisseurs (dont un inactif) et un article sans
   fournisseur ; plan recoupé avec les compteurs en base ; brouillons créés ;
   relancer le réapprovisionnement ne double rien ; brouillon existant complété.
+  Fait le 2026-09-14 sur club-demo (« Recette lot 2 14h12 — … ») : plan de l'API
+  identique au calcul refait sur les compteurs en base (sweat : 20 − 2 − 6 en
+  commande = 12, proposé 20 par 10 ; ballon 5, proposé 6 par 6 ; bandeau couvert
+  par son brouillon ; casquette chez un fournisseur désactivé ; gourde sans
+  fournisseur). Dans l'aperçu : casquette basculée vers Sport Import (prix
+  inconnu, total « d'au moins »), fournisseur rattaché à la gourde depuis
+  l'aperçu, qui s'est relu pour elle seule en gardant la bascule. Création :
+  CF-2026-001 et CF-2026-002 complétés, CF-2026-004 et CF-2026-005 créés dans la
+  même transaction — deux références neuves sur PostgreSQL —, la commande
+  envoyée CF-2026-003 intacte ; plan relu tout « couvert », bouton grisé ;
+  « Ouvrir » mène au brouillon. Aucune nouvelle exception dans le log API.
+  Seuils des articles de recette retirés ensuite (pas d'alerte de stock bas à
+  7 h sur staging).
 
 ---
 
