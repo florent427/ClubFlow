@@ -17,6 +17,8 @@ import { ShopLowStockNotifierService } from './shop-low-stock-notifier.service';
 import { ShopService } from './shop.service';
 import { ShopPreorderService } from './shop-preorder.service';
 import { ShopProductSuppliersService } from './shop-product-suppliers.service';
+import { ShopPurchaseOrderNoteController } from './shop-purchase-order-note.controller';
+import { ShopPurchaseOrderNoteService } from './shop-purchase-order-note.service';
 import { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
 import { ShopRestockService } from './shop-restock.service';
 import { ShopStockService } from './shop-stock.service';
@@ -37,7 +39,11 @@ import { ShopVariantsService } from './shop-variants.service';
     AccountingModule,
     PdfModule,
   ],
-  controllers: [ShopDeliveryNoteController, ShopExchangeNoteController],
+  controllers: [
+    ShopDeliveryNoteController,
+    ShopExchangeNoteController,
+    ShopPurchaseOrderNoteController,
+  ],
   providers: [
     ShopService,
     ShopCartService,
@@ -52,6 +58,8 @@ import { ShopVariantsService } from './shop-variants.service';
     ShopProductSuppliersService,
     // Réapprovisionnement multi-fournisseurs (ADR-0021).
     ShopRestockService,
+    // Bon de commande fournisseur : PDF, e-mail, preuve (ADR-0021 §5).
+    ShopPurchaseOrderNoteService,
     ShopVariantsService,
     ShopStockSweepService,
     ShopLowStockNotifierService,

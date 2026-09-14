@@ -19,6 +19,12 @@ import * as path from 'path';
  * Aucun test unitaire ne pouvait l'attraper : ils appellent les services
  * directement et court-circuitent le pipe. Seul un appel HTTP réel — ou ce
  * balayage statique — le voit.
+ *
+ * Le balayage ne lit QUE le corps des classes @InputType(). Il lisait le
+ * fichier entier dès qu'il contenait une entrée : les @ObjectType() voisins
+ * d'un résolveur — champs de SORTIE, sans validateur à juste titre — le
+ * faisaient crier au loup sur 55 champs (livre de caisse, avances des
+ * bénévoles). Rouge en permanence, il ne protégeait plus rien.
  */
 
 const SRC = path.join(__dirname, '..');
@@ -34,21 +40,44 @@ function fichiersTs(dir: string): string[] {
   });
 }
 
+/**
+ * Le corps de chaque classe @InputType() : de son décorateur à l'accolade qui
+ * ferme la classe, trouvée en COMPTANT les accolades — une option de @Field
+ * écrite sur plusieurs lignes ferme une accolade en début de ligne sans fermer
+ * la classe.
+ */
+function corpsDesEntrees(contenu: string): string[] {
+  const corps: string[] = [];
+  const declaration =
+    /@InputType\([^)]*\)(?:\s*@\w+\([^)]*\))*\s*(?:export\s+)?(?:abstract\s+)?class\s+\w+[^{]*\{/g;
+  let m: RegExpExecArray | null;
+  while ((m = declaration.exec(contenu)) !== null) {
+    let profondeur = 1;
+    let i = m.index + m[0].length;
+    for (; i < contenu.length && profondeur > 0; i += 1) {
+      if (contenu[i] === '{') profondeur += 1;
+      else if (contenu[i] === '}') profondeur -= 1;
+    }
+    corps.push(contenu.slice(m.index, i));
+  }
+  return corps;
+}
+
 /** Retourne les champs nus, sous forme « fichier:champ ». */
 function champsSansValidateur(contenu: string, fichier: string): string[] {
-  if (!contenu.includes('@InputType()')) return [];
-
   const nus: string[] = [];
-  // Chaque champ est précédé d'un bloc de décorateurs ; on remonte jusqu'au
-  // @Field le plus proche et on cherche un validateur entre les deux.
-  const champ = /@Field\([^)]*\)([\s\S]{0,400}?)^\s+(\w+)[!?]:/gm;
-  let m: RegExpExecArray | null;
-  while ((m = champ.exec(contenu)) !== null) {
-    const entreDeux = m[1];
-    // Un autre @Field entre-temps = le champ précédent n'est pas le nôtre.
-    if (entreDeux.includes('@Field(')) continue;
-    if (!VALIDATEURS.test(entreDeux)) {
-      nus.push(`${path.basename(fichier)}:${m[2]}`);
+  for (const corps of corpsDesEntrees(contenu)) {
+    // Chaque champ est précédé d'un bloc de décorateurs ; on remonte jusqu'au
+    // @Field le plus proche et on cherche un validateur entre les deux.
+    const champ = /@Field\([^)]*\)([\s\S]{0,400}?)^\s+(\w+)[!?]:/gm;
+    let m: RegExpExecArray | null;
+    while ((m = champ.exec(corps)) !== null) {
+      const entreDeux = m[1];
+      // Un autre @Field entre-temps = le champ précédent n'est pas le nôtre.
+      if (entreDeux.includes('@Field(')) continue;
+      if (!VALIDATEURS.test(entreDeux)) {
+        nus.push(`${path.basename(fichier)}:${m[2]}`);
+      }
     }
   }
   return nus;
@@ -91,5 +120,54 @@ describe('DTO GraphQL — whitelist du ValidationPipe', () => {
       }
     `;
     expect(champsSansValidateur(bon, 'bon.input.ts')).toEqual([]);
+  });
+
+  it('ignore les champs d’un @ObjectType() voisin, mais pas le champ nu de l’entrée', () => {
+    const resolveur = `
+      @ObjectType()
+      export class SoldeGraph {
+        @Field(() => Int)
+        balanceCents!: number;
+      }
+
+      @InputType()
+      export class SaisieInput {
+        @Field(() => ID)
+        @IsUUID()
+        accountId!: string;
+
+        @Field(() => Int)
+        amountCents!: number;
+      }
+
+      @ObjectType()
+      export class LigneGraph {
+        @Field()
+        label!: string;
+      }
+    `;
+    expect(champsSansValidateur(resolveur, 'caisse.resolver.ts')).toEqual([
+      'caisse.resolver.ts:amountCents',
+    ]);
+  });
+
+  it('une option de @Field sur plusieurs lignes ne coupe pas la classe en deux', () => {
+    const multiligne = `
+      @InputType()
+      export class LongueInput {
+        @Field(() => Int, {
+          nullable: true,
+        })
+        @IsOptional()
+        @IsInt()
+        quantite?: number;
+
+        @Field(() => ID)
+        reference!: string;
+      }
+    `;
+    expect(champsSansValidateur(multiligne, 'longue.input.ts')).toEqual([
+      'longue.input.ts:reference',
+    ]);
   });
 });

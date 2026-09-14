@@ -3511,6 +3511,11 @@ model ShopPurchaseOrder {
   expectedAt DateTime?
   /// Date de solde, posée quand le statut devient RECEIVED ou CANCELLED.
   closedAt   DateTime?
+  /// Dernier envoi du bon de commande par e-mail ACCEPTÉ par le relais
+  /// (ADR-0021 §5), et l'adresse qui l'a reçu. Vides : « non transmise » —
+  /// commande marquée envoyée sans e-mail, ou envoi en échec.
+  emailedAt  DateTime?
+  emailedTo  String?   @db.VarChar(200)
 
   notes String? @db.VarChar(1000)
 

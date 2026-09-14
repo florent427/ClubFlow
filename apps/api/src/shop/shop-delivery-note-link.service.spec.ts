@@ -155,3 +155,77 @@ describe('ShopDeliveryNoteLinkService — bon d’échange (ADR-0020)', () => {
     ).toBe(true);
   });
 });
+
+describe('ShopDeliveryNoteLinkService — bon de commande fournisseur (ADR-0021)', () => {
+  const svc = new ShopDeliveryNoteLinkService();
+  const envAvant = process.env.API_PUBLIC_URL;
+
+  afterEach(() => {
+    if (envAvant === undefined) delete process.env.API_PUBLIC_URL;
+    else process.env.API_PUBLIC_URL = envAvant;
+  });
+
+  it('un lien fraîchement signé est valide, puis expire', () => {
+    const { exp, sig } = svc.signPurchaseOrder('club-1', 'po-1', NOW);
+
+    expect(svc.verifyPurchaseOrder('club-1', 'po-1', String(exp), sig, NOW)).toBe(true);
+    expect(
+      svc.verifyPurchaseOrder('club-1', 'po-1', String(exp), sig, NOW + TTL_MS + 1000),
+    ).toBe(false);
+  });
+
+  it('refuse le même lien pour un AUTRE club, une AUTRE commande, ou une échéance prolongée', () => {
+    const { exp, sig } = svc.signPurchaseOrder('club-1', 'po-1', NOW);
+
+    expect(svc.verifyPurchaseOrder('club-2', 'po-1', String(exp), sig, NOW)).toBe(false);
+    expect(svc.verifyPurchaseOrder('club-1', 'po-2', String(exp), sig, NOW)).toBe(false);
+    expect(svc.verifyPurchaseOrder('club-1', 'po-1', String(exp + 3600), sig, NOW)).toBe(false);
+  });
+
+  it('un lien de bon de livraison ou d’échange n’ouvre pas un bon de commande, et inversement', () => {
+    const livraison = svc.sign('club-1', 'doc-1', NOW);
+    const echange = svc.signExchange('club-1', 'doc-1', NOW);
+    const commande = svc.signPurchaseOrder('club-1', 'doc-1', NOW);
+
+    expect(
+      svc.verifyPurchaseOrder('club-1', 'doc-1', String(livraison.exp), livraison.sig, NOW),
+    ).toBe(false);
+    expect(
+      svc.verifyPurchaseOrder('club-1', 'doc-1', String(echange.exp), echange.sig, NOW),
+    ).toBe(false);
+    expect(svc.verify('club-1', 'doc-1', String(commande.exp), commande.sig, NOW)).toBe(false);
+    expect(
+      svc.verifyExchange('club-1', 'doc-1', String(commande.exp), commande.sig, NOW),
+    ).toBe(false);
+  });
+
+  it('refuse un lien incomplet ou mal formé', () => {
+    const { exp, sig } = svc.signPurchaseOrder('club-1', 'po-1', NOW);
+
+    expect(svc.verifyPurchaseOrder(undefined, 'po-1', String(exp), sig, NOW)).toBe(false);
+    expect(svc.verifyPurchaseOrder('club-1', 'po-1', undefined, sig, NOW)).toBe(false);
+    expect(svc.verifyPurchaseOrder('club-1', 'po-1', String(exp), undefined, NOW)).toBe(false);
+    expect(svc.verifyPurchaseOrder('club-1', 'po-1', 'demain', sig, NOW)).toBe(false);
+    expect(svc.verifyPurchaseOrder('club-1', 'po-1', String(exp), `${sig}x`, NOW)).toBe(false);
+  });
+
+  it('l’URL mène au bon de commande, et se vérifie telle quelle', () => {
+    process.env.API_PUBLIC_URL = 'https://api.test/';
+
+    const url = new URL(svc.purchaseOrderUrl('club-1', 'po-1', NOW));
+
+    expect(`${url.origin}${url.pathname}`).toBe(
+      'https://api.test/shop/purchase-orders/po-1/purchase-order/signed.pdf',
+    );
+    expect(url.searchParams.get('club')).toBe('club-1');
+    expect(
+      svc.verifyPurchaseOrder(
+        url.searchParams.get('club') ?? undefined,
+        'po-1',
+        url.searchParams.get('exp') ?? undefined,
+        url.searchParams.get('sig') ?? undefined,
+        NOW,
+      ),
+    ).toBe(true);
+  });
+});

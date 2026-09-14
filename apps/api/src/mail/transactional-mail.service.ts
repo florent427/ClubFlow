@@ -530,6 +530,68 @@ export class TransactionalMailService {
     });
   }
 
+  /**
+   * Bon de commande au fournisseur, en pièce jointe (ADR-0021 §5).
+   *
+   * Expéditeur : le profil d'envoi du club, avec repli sur celui de la
+   * plateforme, comme le bon de livraison — un club sans domaine vérifié doit
+   * pouvoir commander. Les réponses vont au contact du club quand il en a un :
+   * le fournisseur qui confirme, ou signale une rupture, écrit à quelqu'un.
+   */
+  async sendShopPurchaseOrder(
+    clubId: string,
+    to: string,
+    options: {
+      clubName: string;
+      clubContactEmail: string | null;
+      orderReference: string;
+      expectedAt: Date | null;
+      pdf: Buffer;
+    },
+  ): Promise<void> {
+    const trimmed = to.trim();
+    if (!trimmed || !trimmed.includes('@')) {
+      throw new BadRequestException('Adresse e-mail invalide');
+    }
+    const profile = await this.domains.getAuthMailProfile(clubId);
+    // Nom du club et référence partent dans l'en-tête Subject : pas de retour à la ligne.
+    const clubName = options.clubName.replace(/[\r\n\t]+/g, ' ').trim();
+    const reference = options.orderReference.replace(/[\r\n\t]+/g, ' ').trim();
+    const replyTo = options.clubContactEmail?.trim() ?? '';
+    const livraison = options.expectedAt
+      ? ` Livraison souhaitée le ${options.expectedAt.toLocaleDateString('fr-FR', { timeZone: 'UTC' })}.`
+      : '';
+    await this.transport.sendEmail({
+      clubId,
+      kind: 'transactional',
+      from: profile.from,
+      to: trimmed,
+      ...(replyTo.includes('@') ? { replyTo } : {}),
+      subject: `Bon de commande ${reference} — ${clubName}`,
+      html: `<p>Bonjour,</p><p>Veuillez trouver ci-joint notre bon de commande <strong>${escapeHtml(
+        reference,
+      )}</strong>.${escapeHtml(livraison)}</p><p>Merci de nous en confirmer la bonne réception.</p><p>${escapeHtml(
+        clubName,
+      )}</p>`,
+      text: [
+        'Bonjour,',
+        '',
+        `Veuillez trouver ci-joint notre bon de commande ${reference}.${livraison}`,
+        '',
+        'Merci de nous en confirmer la bonne réception.',
+        '',
+        clubName,
+      ].join('\n'),
+      attachments: [
+        {
+          filename: `Bon_de_commande_${reference}.pdf`,
+          content: options.pdf,
+          contentType: 'application/pdf',
+        },
+      ],
+    });
+  }
+
   async sendTestEmail(clubId: string, to: string): Promise<void> {
     const trimmed = to.trim();
     if (!trimmed || !trimmed.includes('@')) {

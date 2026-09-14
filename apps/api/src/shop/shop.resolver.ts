@@ -18,6 +18,7 @@ import {
 import { CreateShopProductInput } from './dto/create-shop-product.input';
 import { DeliverShopOrderInput } from './dto/deliver-shop-order.input';
 import { SendShopDeliveryNoteInput } from './dto/send-shop-delivery-note.input';
+import { SendShopPurchaseOrderInput } from './dto/send-shop-purchase-order.input';
 import { SendShopExchangeNoteInput } from './dto/send-shop-exchange-note.input';
 import { ShopExchangeNoteService } from './shop-exchange-note.service';
 import {
@@ -54,6 +55,7 @@ import {
   ShopOrderGraph,
 } from './models/shop-order.model';
 import { ShopProductGraph } from './models/shop-product.model';
+import { ShopPurchaseOrderSendResultGraph } from './models/shop-purchase-order-send.model';
 import { ShopSupplierProductCountGraph } from './models/shop-product-supplier.model';
 import {
   ShopRestockOrderResultGraph,
@@ -75,6 +77,7 @@ import { ShopService } from './shop.service';
 import { ShopCartService } from './shop-cart.service';
 import { ShopDeliveryNoteService } from './shop-delivery-note.service';
 import { ShopProductSuppliersService } from './shop-product-suppliers.service';
+import { ShopPurchaseOrderNoteService } from './shop-purchase-order-note.service';
 import { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
 import { ShopRestockService } from './shop-restock.service';
 import { ShopStockSweepService } from './shop-stock-sweep.service';
@@ -98,6 +101,7 @@ export class ShopAdminResolver {
     private readonly exchangeNotes: ShopExchangeNoteService,
     private readonly productSuppliers: ShopProductSuppliersService,
     private readonly restock: ShopRestockService,
+    private readonly purchaseNotes: ShopPurchaseOrderNoteService,
   ) {}
 
   @Query(() => [ShopProductGraph], { name: 'shopProducts' })
@@ -655,17 +659,41 @@ export class ShopAdminResolver {
     >;
   }
 
-  @Mutation(() => ShopPurchaseOrderGraph, {
+  @Mutation(() => ShopPurchaseOrderSendResultGraph, {
     description:
-      'Envoie la commande au fournisseur : DRAFT → ORDERED, avec l’arrivée attendue dérivée du délai habituel.',
+      'Envoie la commande au fournisseur : DRAFT → ORDERED, avec l’arrivée attendue dérivée du délai habituel. EMAIL : le bon de commande part ENSUITE par e-mail ; un échec d’e-mail ne défait pas l’envoi et revient dans emailError (ADR-0021 §5).',
   })
   sendShopPurchaseOrder(
     @CurrentClub() club: Club,
+    @Args('input') input: SendShopPurchaseOrderInput,
+  ): Promise<ShopPurchaseOrderSendResultGraph> {
+    return this.purchaseNotes.send(
+      club.id,
+      input.orderId,
+      input.mode,
+    ) as unknown as Promise<ShopPurchaseOrderSendResultGraph>;
+  }
+
+  @Mutation(() => ShopPurchaseOrderGraph, {
+    description:
+      'Renvoie le bon de commande par e-mail pour une commande envoyée et encore attendue. Un échec lève, la preuve précédente reste.',
+  })
+  resendShopPurchaseOrderEmail(
+    @CurrentClub() club: Club,
     @Args('id', { type: () => ID }) id: string,
   ): Promise<ShopPurchaseOrderGraph> {
-    return this.purchases.sendOrder(club.id, id) as unknown as Promise<
+    return this.purchaseNotes.resend(club.id, id) as unknown as Promise<
       ShopPurchaseOrderGraph
     >;
+  }
+
+  /** Lien signé et court vers le bon de commande PDF (ADR-0021 §5). */
+  @Mutation(() => String, { name: 'createShopPurchaseOrderLink' })
+  createShopPurchaseOrderLink(
+    @CurrentClub() club: Club,
+    @Args('orderId', { type: () => ID }) orderId: string,
+  ): Promise<string> {
+    return this.purchaseNotes.link(club.id, orderId);
   }
 
   @Mutation(() => ShopPurchaseOrderGraph, {

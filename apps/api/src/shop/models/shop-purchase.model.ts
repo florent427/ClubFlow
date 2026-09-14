@@ -190,6 +190,18 @@ export class ShopPurchaseOrderGraph {
   @Field(() => Date, { nullable: true })
   closedAt!: Date | null;
 
+  /**
+   * Dernier envoi du bon de commande par e-mail ACCEPTÉ par le relais
+   * (ADR-0021 §5). Null : non transmise — marquée envoyée sans e-mail, ou
+   * envoi en échec.
+   */
+  @Field(() => Date, { nullable: true })
+  emailedAt!: Date | null;
+
+  /** L'adresse qui a reçu ce dernier envoi. */
+  @Field(() => String, { nullable: true })
+  emailedTo!: string | null;
+
   @Field(() => String, { nullable: true })
   notes!: string | null;
 

@@ -2,8 +2,8 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { Injectable } from '@nestjs/common';
 
 /**
- * Liens signés vers les bons de la boutique : bon de livraison (ADR-0017) et
- * bon d'échange (ADR-0020).
+ * Liens signés vers les bons de la boutique : bon de livraison (ADR-0017),
+ * bon d'échange (ADR-0020) et bon de commande fournisseur (ADR-0021).
  *
  * POURQUOI : le bon se téléchargeait par un `fetch` authentifié, puis un lien
  * `download` cliqué par programme sur un Blob. Constaté le 2026-09-13 : le
@@ -138,5 +138,32 @@ export class ShopDeliveryNoteLinkService {
     const { exp, sig } = this.signExchange(clubId, adjustmentId, now);
     const query = new URLSearchParams({ club: clubId, exp: String(exp), sig });
     return `${this.base()}/shop/exchanges/${encodeURIComponent(adjustmentId)}/note/signed.pdf?${query.toString()}`;
+  }
+
+  // --- Bon de commande fournisseur (ADR-0021) ---
+
+  signPurchaseOrder(
+    clubId: string,
+    orderId: string,
+    now = Date.now(),
+  ): { exp: number; sig: string } {
+    return this.signFor('shop-purchase-order-link', clubId, orderId, now);
+  }
+
+  verifyPurchaseOrder(
+    clubId: string | undefined,
+    orderId: string,
+    exp: string | undefined,
+    sig: string | undefined,
+    now = Date.now(),
+  ): boolean {
+    return this.verifyFor('shop-purchase-order-link', clubId, orderId, exp, sig, now);
+  }
+
+  /** URL absolue du bon de commande, prête à ouvrir dans un onglet. */
+  purchaseOrderUrl(clubId: string, orderId: string, now = Date.now()): string {
+    const { exp, sig } = this.signPurchaseOrder(clubId, orderId, now);
+    const query = new URLSearchParams({ club: clubId, exp: String(exp), sig });
+    return `${this.base()}/shop/purchase-orders/${encodeURIComponent(orderId)}/purchase-order/signed.pdf?${query.toString()}`;
   }
 }

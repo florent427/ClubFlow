@@ -189,6 +189,24 @@ describe('ShopAdminResolver — schéma GraphQL', () => {
     expect(ligneEntree).toContain('qty: Int!');
     expect(ligneEntree).toContain('unitCostCents: Int');
     expect(ligneEntree).not.toContain('unitCostCents: Int!');
+
+    // Bon de commande fournisseur (ADR-0021 §5).
+    expect(sdl).toContain(
+      'sendShopPurchaseOrder(input: SendShopPurchaseOrderInput!): ShopPurchaseOrderSendResultGraph!',
+    );
+    expect(sdl).toContain('resendShopPurchaseOrderEmail(id: ID!): ShopPurchaseOrderGraph!');
+    expect(sdl).toContain('createShopPurchaseOrderLink(orderId: ID!): String!');
+    const envoi = corpsDe('type ShopPurchaseOrderSendResultGraph {');
+    expect(envoi).toContain('order: ShopPurchaseOrderGraph!');
+    expect(envoi).toContain('emailError: String');
+    expect(envoi).not.toContain('emailError: String!');
+    const commandeFournisseur = corpsDe('type ShopPurchaseOrderGraph {');
+    expect(commandeFournisseur).toMatch(/emailedAt: \w+\n/);
+    expect(commandeFournisseur).toContain('emailedTo: String');
+    expect(commandeFournisseur).not.toContain('emailedTo: String!');
+    expect(corpsDe('input SendShopPurchaseOrderInput {')).toContain(
+      'mode: ShopPurchaseOrderSendMode!',
+    );
   });
 });
 

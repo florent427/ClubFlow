@@ -222,37 +222,65 @@ n'a pas d'écran d'achats : hors périmètre.
 
 ### Task 3.1 : PDF
 
-- [ ] `apps/api/src/pdf/shop-purchase-order-pdf.service.ts` (pdfkit, sur le
+- [x] `apps/api/src/pdf/shop-purchase-order-pdf.service.ts` (pdfkit, sur le
   modèle du bon de livraison) : club (nom, adresse, SIRET, contact), fournisseur
   et numéro client, référence, dates, lignes (référence fournisseur,
   désignation, quantité, prix HT, total), total HT, notes. Test sur le texte
-  extrait.
-- [ ] Route admin de téléchargement (JWT, club, rôle), sur le modèle du bon de
-  livraison.
+  extrait. **Précisé** : un prix non renseigné s'imprime « à confirmer » et
+  reste hors du total (« Total HT, hors prix à confirmer ») ; un brouillon se
+  dit « brouillon ». Le texte est lu dans les flux de contenu du PDF, pas par
+  `pdf-parse`, qui refuse certains PDF valides (cf.
+  [pitfall](../../memory/pitfalls/pdf-parse-v2-conflict.md)). Mutations 9/9.
+- [x] Route admin de téléchargement (JWT, club, rôle), sur le modèle du bon de
+  livraison — et, comme lui, un lien signé et court pour l'onglet que l'écran
+  ouvre (`createShopPurchaseOrderLink`, étiquette de clé propre au bon de
+  commande). Mutations 6/6 sur le contrôleur, 3/3 sur le lien.
 
 ### Task 3.2 : Envoi
 
-- [ ] `ShopPurchaseOrder.emailedAt DateTime?` et
+- [x] `ShopPurchaseOrder.emailedAt DateTime?` et
   `emailedTo String? @db.VarChar(200)`.
-- [ ] `TransactionalMailService.sendShopPurchaseOrder` : PDF en pièce jointe,
-  réponses vers `Club.contactEmail`.
-- [ ] `sendShopPurchaseOrder(orderId, mode: EMAIL | MARK_ONLY)` : transition
-  `ORDERED` inchangée, **puis** e-mail hors transaction ; succès → `emailedAt` et
-  `emailedTo` ; échec → la commande reste `ORDERED`, l'erreur remonte à l'écran.
-  Mode `EMAIL` refusé pour un fournisseur sans adresse.
-- [ ] `resendShopPurchaseOrderEmail(orderId)` : commandes `ORDERED` ou
-  `PARTIALLY_RECEIVED` seulement.
-- [ ] Tests : un e-mail en échec n'annule pas la transition et laisse
-  `emailedAt` vide ; mutations notées.
+- [x] `TransactionalMailService.sendShopPurchaseOrder` : PDF en pièce jointe,
+  réponses vers `Club.contactEmail` — pas de Reply-To quand le club n'en a pas.
+  Mutations 7/7.
+- [x] `sendShopPurchaseOrder(input: { orderId, mode: EMAIL | MARK_ONLY })` :
+  transition `ORDERED` inchangée, **puis** e-mail hors transaction ; succès →
+  `emailedAt` et `emailedTo` ; échec → la commande reste `ORDERED`, l'erreur
+  remonte à l'écran. Mode `EMAIL` refusé pour un fournisseur sans adresse,
+  AVANT la transition. **Ajusté** : l'erreur d'e-mail est RENDUE (`emailError`
+  de `ShopPurchaseOrderSendResultGraph`), pas levée — lever ferait croire que la
+  commande n'est pas partie. Une preuve qui ne s'écrit pas après un envoi réussi
+  le dit aussi, pour qu'on ne renvoie pas à l'aveugle.
+- [x] `resendShopPurchaseOrderEmail(id)` : commandes `ORDERED` ou
+  `PARTIALLY_RECEIVED` seulement ; un échec lève, la preuve précédente reste.
+- [x] Tests : un e-mail en échec n'annule pas la transition et laisse
+  `emailedAt` vide ; mutations 24/24 sur le service (ordre transition puis
+  e-mail, preuve, cloisonnement par club, statuts renvoyables, références chez
+  le fournisseur de la commande).
 
 ### Task 3.3 : Admin
 
-- [ ] Tiroir de commande : « Envoyer par e-mail » ou « Marquer comme envoyée »,
-  « Télécharger le bon de commande », pastille « transmise le … » ou « non
-  transmise » avec « Renvoyer ».
+- [x] Tiroir de commande : « Envoyer par e-mail » (confirmation, grisé sans
+  adresse fournisseur) ou « Marquer comme envoyée », « Télécharger le bon de
+  commande », pastille « transmise le … » ou « non transmise » avec
+  « Renvoyer par e-mail ». Règles d'affichage dans
+  `lib/shop-purchase-transmission.ts`, mutations 6/6.
 
 ### Task 3.4 : Recette staging
 
-- [ ] Fournisseur de test à l'adresse de Florent, **avec son accord avant tout
+- [x] Fournisseur de test à l'adresse de Florent, **avec son accord avant tout
   envoi** : e-mail reçu, PDF relu ; « Marquer comme envoyée » sur un fournisseur
-  sans e-mail ; renvoi.
+  sans e-mail ; renvoi. Fait le 2026-09-14 sur club-demo, accord de Florent donné
+  avant l'envoi : fournisseur « Recette lot 3 15h36 — Fournisseur e-mail »,
+  commande CF-2026-006 (sweat au prix de l'offre, casquette sans prix). PDF servi
+  par lien signé (200) et par en-têtes (200 ; 400 sans club, 401 sans jeton ;
+  403 pour un lien altéré, une autre commande ou un autre club), texte relu :
+  référence fournisseur, « à confirmer », total hors prix inconnu, brouillon
+  signalé. EMAIL refusé sans adresse AVANT la transition (CF-2026-005 restée
+  brouillon), puis « Marquer comme envoyée » : pastille « non transmise ».
+  « Envoyer par e-mail » confirmé à l'écran : commande envoyée à 11:44:02,
+  preuve à 11:44:03, e-mail reçu avec `Bon_de_commande_CF-2026-006.pdf` ;
+  « Renvoyer » : second e-mail dans le même fil, preuve mise à jour. Aucune
+  nouvelle exception dans le log API. Non exercés sur staging, couverts par les
+  tests : le Reply-To (club-demo n'a pas d'adresse de contact) et l'échec du
+  relais.

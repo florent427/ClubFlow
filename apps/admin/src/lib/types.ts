@@ -1678,6 +1678,10 @@ export type ShopPurchaseOrder = {
   orderedAt: string | null;
   expectedAt: string | null;
   closedAt: string | null;
+  /** Dernier envoi du bon de commande par e-mail ; null : non transmise (ADR-0021 §5). */
+  emailedAt: string | null;
+  /** L'adresse qui a reçu ce dernier envoi. */
+  emailedTo: string | null;
   notes: string | null;
   lines: ShopPurchaseOrderLine[];
   receptions: ShopPurchaseReception[];
@@ -1723,8 +1727,20 @@ export type AddShopPurchaseOrderLineMutationData = {
 export type RemoveShopPurchaseOrderLineMutationData = {
   removeShopPurchaseOrderLine: ShopPurchaseOrder;
 };
+/** EMAIL : la commande part, puis son bon par e-mail. MARK_ONLY : la transition seule. */
+export type ShopPurchaseOrderSendModeGql = 'EMAIL' | 'MARK_ONLY';
 export type SendShopPurchaseOrderMutationData = {
-  sendShopPurchaseOrder: ShopPurchaseOrder;
+  sendShopPurchaseOrder: {
+    order: ShopPurchaseOrder;
+    /** La commande est partie ; non null : le bon, lui, n'a pas suivi. */
+    emailError: string | null;
+  };
+};
+export type ResendShopPurchaseOrderEmailMutationData = {
+  resendShopPurchaseOrderEmail: ShopPurchaseOrder;
+};
+export type CreateShopPurchaseOrderLinkMutationData = {
+  createShopPurchaseOrderLink: string;
 };
 export type CancelShopPurchaseOrderMutationData = {
   cancelShopPurchaseOrder: ShopPurchaseOrder;

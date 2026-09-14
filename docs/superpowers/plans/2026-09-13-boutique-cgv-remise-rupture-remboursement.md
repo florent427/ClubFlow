@@ -193,8 +193,9 @@ déploiement, l'application mobile seulement à sa publication suivante.
 - [x] Bon de livraison : PDF d'une page avec la signature, ouvert dans un nouvel
   onglet par un vrai clic ; lien signé refusé (403) pour un autre club, une
   autre commande, une échéance prolongée, une signature altérée ou absente.
-- [ ] Envoi par e-mail : couvert par les tests, pas déclenché sur staging (il
-  part vers une vraie adresse).
+- [x] Envoi par e-mail : fait le 2026-09-14 avec l'accord de Florent — bon de
+  livraison CMD-25257C3C envoyé à son adresse, reçu avec son PDF en pièce
+  jointe (Bon_de_livraison_CMD-25257C3C.pdf, vérifié dans sa boîte).
 
 ---
 
@@ -266,6 +267,8 @@ d'une commande fournisseur (ADR-0013). Décision :
   changement, aucune correction en base.
 - [ ] Portail vu à l'écran : la session Chrome n'y est pas connectée ; ses
   données (disponibilité, délai, unités en attente) sont vérifiées par l'API.
+  Toujours vrai le 2026-09-14 (« Votre session a expiré ») : il faut que
+  Florent se reconnecte au portail staging dans Chrome.
 
 ---
 
@@ -456,5 +459,6 @@ Choix de Florent (2026-09-14) :
   La session Stripe n'a pas pu être ouverte : club-demo n'a pas de compte
   Stripe connecté.
 - [x] Journal de stock égal aux compteurs ; aucune nouvelle exception API.
-- [ ] Envoi du bon d'échange par e-mail : non exercé sur staging, couvert par
-  les tests unitaires.
+- [x] Envoi du bon d'échange par e-mail : fait le 2026-09-14 avec l'accord de
+  Florent — bon d'échange ECH-AA95B485 envoyé à son adresse, reçu avec son PDF
+  en pièce jointe (Bon_d_echange_ECH-AA95B485.pdf, vérifié dans sa boîte).
