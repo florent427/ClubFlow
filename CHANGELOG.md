@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.65.0](https://github.com/florent427/ClubFlow/compare/v0.64.0...v0.65.0) (2026-09-14)
+
+
+### ✨ Features
+
+* **boutique:** réapprovisionner — plan par fournisseur et brouillons répartis (ADR-0021 lot 2) ([ac5dbbc](https://github.com/florent427/ClubFlow/commit/ac5dbbcc5bff57e580d485b4dc6eeed60c8aa182))
+* **boutique:** réapprovisionner — un plan par fournisseur et les brouillons répartis en un geste ([f96313f](https://github.com/florent427/ClubFlow/commit/f96313fc27cd0046cece3146b0c93835eb469dd3))
+
 ## [0.64.0](https://github.com/florent427/ClubFlow/compare/v0.63.2...v0.64.0) (2026-09-14)
 
 
