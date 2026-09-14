@@ -158,6 +158,81 @@ describe('TransactionalMailService.sendShopDeliveryNote', () => {
   });
 });
 
+describe('TransactionalMailService.sendShopPurchaseOrder', () => {
+  const PDF = Buffer.from('%PDF-commande');
+  const OPTS = {
+    clubName: 'Dojo <Sud>',
+    clubContactEmail: ' tresorier@dojo.fr ',
+    orderReference: 'CF-2026-004',
+    expectedAt: new Date('2026-09-21T10:00:00Z'),
+    pdf: PDF,
+  };
+
+  it('refuse une adresse invalide sans rien envoyer', async () => {
+    const { svc, transport } = makeService();
+
+    await expect(
+      svc.sendShopPurchaseOrder('club-1', 'pas-un-email', OPTS),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(transport.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('joint le bon, depuis le profil du club, réponses au contact du club', async () => {
+    const { svc, domains, transport } = makeService();
+
+    await svc.sendShopPurchaseOrder('club-1', ' commandes@textiles.fr ', OPTS);
+
+    expect(domains.getAuthMailProfile).toHaveBeenCalledWith('club-1');
+    const sent = transport.sendEmail.mock.calls[0][0];
+    expect(sent).toMatchObject({
+      clubId: 'club-1',
+      kind: 'transactional',
+      from: { name: 'Demo', address: 'noreply@mail.demo.fr' },
+      to: 'commandes@textiles.fr',
+      replyTo: 'tresorier@dojo.fr',
+      subject: 'Bon de commande CF-2026-004 — Dojo <Sud>',
+    });
+    expect(sent.attachments).toEqual([
+      {
+        filename: 'Bon_de_commande_CF-2026-004.pdf',
+        content: PDF,
+        contentType: 'application/pdf',
+      },
+    ]);
+    expect(sent.html).toContain('Dojo &lt;Sud&gt;');
+    expect(sent.html).not.toContain('<Sud>');
+    expect(sent.text).toContain('Livraison souhaitée le 21/09/2026.');
+  });
+
+  it('sans contact du club, pas de Reply-To ; sans date souhaitée, pas de mention', async () => {
+    const { svc, transport } = makeService();
+
+    await svc.sendShopPurchaseOrder('club-1', 'commandes@textiles.fr', {
+      ...OPTS,
+      clubContactEmail: null,
+      expectedAt: null,
+    });
+
+    const sent = transport.sendEmail.mock.calls[0][0];
+    expect(sent).not.toHaveProperty('replyTo');
+    expect(sent.text).not.toContain('Livraison souhaitée');
+  });
+
+  it('neutralise les retours à la ligne du nom du club dans le Subject', async () => {
+    const { svc, transport } = makeService();
+
+    await svc.sendShopPurchaseOrder('club-1', 'commandes@textiles.fr', {
+      ...OPTS,
+      clubName: 'Dojo\r\nBcc: victime@example.fr',
+    });
+
+    const sent = transport.sendEmail.mock.calls[0][0];
+    expect(sent.subject).not.toMatch(/[\r\n]/);
+    expect(sent.subject).toBe('Bon de commande CF-2026-004 — Dojo Bcc: victime@example.fr');
+  });
+});
+
 describe('TransactionalMailService.sendShopExchangeNote', () => {
   const PDF = Buffer.from('%PDF-echange');
   const OPTS = {

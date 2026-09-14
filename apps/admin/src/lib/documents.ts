@@ -2635,6 +2635,8 @@ const SHOP_PURCHASE_ORDER_FIELDS = `
   orderedAt
   expectedAt
   closedAt
+  emailedAt
+  emailedTo
   notes
   lines {
     id
@@ -2786,11 +2788,34 @@ export const REMOVE_SHOP_PURCHASE_ORDER_LINE = gql`
   }
 `;
 
+/**
+ * Envoie la commande (ADR-0021 §5). `emailError` non nul : la commande est
+ * partie, seul le bon de commande n'a pas suivi.
+ */
 export const SEND_SHOP_PURCHASE_ORDER = gql`
-  mutation SendShopPurchaseOrder($id: ID!) {
-    sendShopPurchaseOrder(id: $id) {
+  mutation SendShopPurchaseOrder($input: SendShopPurchaseOrderInput!) {
+    sendShopPurchaseOrder(input: $input) {
+      emailError
+      order {
+        ${SHOP_PURCHASE_ORDER_FIELDS}
+      }
+    }
+  }
+`;
+
+/** Renvoie le bon de commande par e-mail ; un échec lève. */
+export const RESEND_SHOP_PURCHASE_ORDER_EMAIL = gql`
+  mutation ResendShopPurchaseOrderEmail($id: ID!) {
+    resendShopPurchaseOrderEmail(id: $id) {
       ${SHOP_PURCHASE_ORDER_FIELDS}
     }
+  }
+`;
+
+/** Lien signé et court vers le bon de commande PDF. */
+export const CREATE_SHOP_PURCHASE_ORDER_LINK = gql`
+  mutation CreateShopPurchaseOrderLink($orderId: ID!) {
+    createShopPurchaseOrderLink(orderId: $orderId)
   }
 `;
 

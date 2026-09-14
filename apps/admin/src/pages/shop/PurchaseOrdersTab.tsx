@@ -6,8 +6,10 @@ import {
   CANCEL_SHOP_PURCHASE_ORDER,
   CLUB_ACCOUNTING_ENTRIES,
   CREATE_SHOP_PURCHASE_ORDER,
+  CREATE_SHOP_PURCHASE_ORDER_LINK,
   LINK_SHOP_PURCHASE_ORDER_INVOICE,
   REMOVE_SHOP_PURCHASE_ORDER_LINE,
+  RESEND_SHOP_PURCHASE_ORDER_EMAIL,
   SEND_SHOP_PURCHASE_ORDER,
   SHOP_LOW_STOCK_VARIANTS,
   SHOP_PRODUCTS,
@@ -21,19 +23,27 @@ import type {
   AddShopPurchaseOrderLineMutationData,
   CancelShopPurchaseOrderMutationData,
   ClubAccountingEntriesData,
+  CreateShopPurchaseOrderLinkMutationData,
   CreateShopPurchaseOrderMutationData,
   LinkShopPurchaseOrderInvoiceMutationData,
   RemoveShopPurchaseOrderLineMutationData,
+  ResendShopPurchaseOrderEmailMutationData,
   SendShopPurchaseOrderMutationData,
   ShopProductsQueryData,
   ShopPurchaseInvoiceAccountQueryData,
   ShopPurchaseOrder,
+  ShopPurchaseOrderSendModeGql,
   ShopPurchaseOrdersQueryData,
   ShopSuppliersQueryData,
   UnlinkShopPurchaseOrderInvoiceMutationData,
 } from '../../lib/types';
 import { useToast } from '../../components/ToastProvider';
 import { ConfirmModal, Drawer, EmptyState } from '../../components/ui';
+import {
+  canResendPurchaseOrder,
+  purchaseTransmission,
+  supplierOrderEmail,
+} from '../../lib/shop-purchase-transmission';
 import { ReceptionDrawer } from './ReceptionDrawer';
 import {
   discrepancyMeta,
@@ -69,6 +79,30 @@ function parseEurosToCents(s: string): number | null {
   const n = Number(t);
   if (!Number.isFinite(n) || n < 0) return null;
   return Math.round(n * 100);
+}
+
+/**
+ * Ouvre le bon de commande PDF (ADR-0021 §5). L'onglet s'ouvre DANS le geste,
+ * puis suit un lien signé et court : un onglet n'envoie aucun en-tête, et un
+ * téléchargement par Blob restait sans effet (cf. le bon de livraison).
+ */
+function useOpenPurchaseOrderPdf(): (orderId: string) => Promise<void> {
+  const [createLink] = useMutation<CreateShopPurchaseOrderLinkMutationData>(
+    CREATE_SHOP_PURCHASE_ORDER_LINK,
+  );
+  return async (orderId: string) => {
+    const onglet = window.open('', '_blank');
+    try {
+      const { data } = await createLink({ variables: { orderId } });
+      const url = data?.createShopPurchaseOrderLink;
+      if (!url) throw new Error('Lien du bon de commande indisponible.');
+      if (onglet) onglet.location.href = url;
+      else window.location.assign(url);
+    } catch (err) {
+      onglet?.close();
+      throw err;
+    }
+  };
 }
 
 export function PurchaseOrdersTab({
@@ -363,6 +397,15 @@ function PurchaseOrderDrawer({
   );
   const [sendOrder, { loading: sending }] =
     useMutation<SendShopPurchaseOrderMutationData>(SEND_SHOP_PURCHASE_ORDER);
+  const [resendEmail, { loading: resending }] =
+    useMutation<ResendShopPurchaseOrderEmailMutationData>(
+      RESEND_SHOP_PURCHASE_ORDER_EMAIL,
+    );
+  const openPdf = useOpenPurchaseOrderPdf();
+  /** Envoi par e-mail en attente de confirmation. */
+  const [confirmEmail, setConfirmEmail] = useState<'send' | 'resend' | null>(
+    null,
+  );
   const [cancelOrder, { loading: cancelling }] =
     useMutation<CancelShopPurchaseOrderMutationData>(
       CANCEL_SHOP_PURCHASE_ORDER,
@@ -376,6 +419,9 @@ function PurchaseOrderDrawer({
   const canReceive =
     order.status === 'ORDERED' || order.status === 'PARTIALLY_RECEIVED';
   const canCancel = isDraft || order.status === 'ORDERED';
+  const emailTo = supplierOrderEmail(order.supplier);
+  const transmission = purchaseTransmission(order);
+  const canResend = canResendPurchaseOrder(order);
 
   const pill = purchaseStatusPill(order.status);
   const totalCents = order.lines.reduce(
@@ -435,16 +481,49 @@ function PurchaseOrderDrawer({
     }
   }
 
-  async function onSend() {
+  async function onSend(mode: ShopPurchaseOrderSendModeGql) {
     try {
       // L'envoi fait entrer les reliquats dans `onOrder` : le catalogue
       // change d'état au même instant, il ne peut pas rester en cache.
-      await sendOrder({
-        variables: { id: order.id },
+      const res = await sendOrder({
+        variables: { input: { orderId: order.id, mode } },
         refetchQueries: STOCK_TOUCHING_REFETCH,
         awaitRefetchQueries: true,
       });
-      showToast('Commande envoyée au fournisseur', 'success');
+      const emailError = res.data?.sendShopPurchaseOrder.emailError ?? null;
+      if (emailError) {
+        // La commande est PARTIE : seul le bon n'a pas suivi. Le dire sans
+        // laisser croire que l'envoi a échoué.
+        showToast(`Commande envoyée. ${emailError}`, 'error');
+      } else {
+        showToast(
+          mode === 'EMAIL'
+            ? `Bon de commande envoyé à ${emailTo ?? 'le fournisseur'}`
+            : 'Commande marquée comme envoyée',
+          'success',
+        );
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
+
+  async function onResend() {
+    try {
+      await resendEmail({
+        variables: { id: order.id },
+        refetchQueries: [{ query: SHOP_PURCHASE_ORDERS }],
+        awaitRefetchQueries: true,
+      });
+      showToast(`Bon de commande renvoyé à ${emailTo ?? 'le fournisseur'}`, 'success');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Erreur', 'error');
+    }
+  }
+
+  async function onOpenPdf() {
+    try {
+      await openPdf(order.id);
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Erreur', 'error');
     }
@@ -482,18 +561,74 @@ function PurchaseOrderDrawer({
           Envoyée : {fmtDay(order.orderedAt)} · Arrivée attendue :{' '}
           {fmtDay(order.expectedAt)} · Soldée : {fmtDay(order.closedAt)}
         </p>
+        {transmission?.kind === 'emailed' ? (
+          <p>
+            <span className="cf-pill cf-pill--ok">
+              transmise le {fmtDate(transmission.at)}
+            </span>
+            {transmission.to ? (
+              <span className="cf-muted"> à {transmission.to}</span>
+            ) : null}
+          </p>
+        ) : null}
+        {transmission?.kind === 'not-emailed' ? (
+          <p>
+            <span className="cf-pill cf-pill--warn">non transmise</span>{' '}
+            <span className="cf-muted">
+              Aucun bon de commande n’est parti par e-mail : commande marquée
+              envoyée, ou envoi en échec.
+            </span>
+          </p>
+        ) : null}
         {order.notes ? <p>{order.notes}</p> : null}
+        {isDraft && !emailTo ? (
+          <p className="cf-field__hint">
+            Ce fournisseur n’a pas d’adresse e-mail : renseignez-la dans l’onglet
+            « Fournisseurs », ou marquez la commande comme envoyée une fois
+            passée par téléphone ou sur son site.
+          </p>
+        ) : null}
         <div className="cf-toolbar">
           {isDraft ? (
+            <>
+              <button
+                type="button"
+                className="cf-btn cf-btn--primary"
+                disabled={sending || order.lines.length === 0 || !emailTo}
+                onClick={() => setConfirmEmail('send')}
+              >
+                Envoyer par e-mail
+              </button>
+              <button
+                type="button"
+                className="cf-btn"
+                disabled={sending || order.lines.length === 0}
+                onClick={() => void onSend('MARK_ONLY')}
+              >
+                Marquer comme envoyée
+              </button>
+            </>
+          ) : null}
+          {canResend ? (
             <button
               type="button"
-              className="cf-btn cf-btn--primary"
-              disabled={sending || order.lines.length === 0}
-              onClick={() => void onSend()}
+              className="cf-btn"
+              disabled={resending}
+              onClick={() => setConfirmEmail('resend')}
             >
-              Envoyer au fournisseur
+              {transmission?.kind === 'emailed'
+                ? 'Renvoyer par e-mail'
+                : 'Envoyer le bon par e-mail'}
             </button>
           ) : null}
+          <button
+            type="button"
+            className="cf-btn cf-btn--ghost"
+            disabled={order.lines.length === 0}
+            onClick={() => void onOpenPdf()}
+          >
+            Télécharger le bon de commande
+          </button>
           {canReceive ? (
             <button
               type="button"
@@ -683,6 +818,29 @@ function PurchaseOrderDrawer({
         confirmLabel="Annuler la commande"
         onCancel={() => setConfirmCancel(false)}
         onConfirm={() => void onCancel()}
+      />
+
+      <ConfirmModal
+        open={confirmEmail !== null}
+        title={
+          confirmEmail === 'resend'
+            ? 'Renvoyer le bon de commande ?'
+            : 'Envoyer la commande par e-mail ?'
+        }
+        message={
+          confirmEmail === 'resend'
+            ? `Le bon de commande ${order.reference} repartira à ${emailTo ?? 'l’adresse du fournisseur'}.`
+            : `La commande ${order.reference} passera « envoyée », puis son bon de commande partira à ${emailTo ?? 'l’adresse du fournisseur'}.`
+        }
+        confirmLabel={confirmEmail === 'resend' ? 'Renvoyer' : 'Envoyer'}
+        onCancel={() => setConfirmEmail(null)}
+        onConfirm={() => {
+          // La fenêtre se ferme AVANT l'appel : un second clic n'envoie pas
+          // un second e-mail.
+          const what = confirmEmail;
+          setConfirmEmail(null);
+          void (what === 'resend' ? onResend() : onSend('EMAIL'));
+        }}
       />
     </Drawer>
   );

@@ -76,6 +76,27 @@ workaround peut être supprimé. Pas prévu.
   upgradé `pdfjs-dist`**
 - Vérifier périodiquement : https://github.com/jhnatkin/pdf-to-img/releases
 
+## Autre piège de la v1.1.1 : des PDF valides refusés
+
+`pdf-parse` 1.1.1 embarque pdf.js **1.10**. Constaté le 2026-09-14 (bon de
+commande fournisseur, ADR-0021) : un PDF produit par pdfkit — un simple titre
+en Helvetica-Bold — est refusé avec
+
+```
+UnknownErrorException: bad XRef entry
+```
+
+alors que la table xref de pdfkit est exacte : chaque entrée pointe sur son
+objet, 20 octets par entrée, vérifié entrée par entrée. Le refus dépend de la
+disposition des octets — le même titre en Helvetica passe, un document plus
+long passe aussi. Un test qui extrait du texte avec `pdf-parse` peut donc
+rougir sans défaut du code, au premier libellé modifié.
+
+Pour tester le texte d'un PDF produit par pdfkit, lire les flux de contenu
+directement : `zlib.inflateSync` sur chaque `stream`, puis les chaînes
+hexadécimales des blocs `BT … ET`, décodées en `windows-1252` (l'encodage des
+polices standard). Cf. `apps/api/src/pdf/shop-purchase-order-pdf.service.spec.ts`.
+
 ## Lié
 
 - [knowledge/stack.md](../../knowledge/stack.md) §Décisions piège
