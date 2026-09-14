@@ -11,7 +11,7 @@ import {
 } from '@prisma/client';
 import Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
-import { invoicePaymentTotals } from './invoice-totals';
+import { resolveInvoiceBalance } from './invoice-balance';
 import { buildSetupNotice } from './payment-schedule-notice';
 import {
   buildInstallmentPlan,
@@ -85,17 +85,18 @@ export class PaymentScheduleService {
       );
     }
 
-    // On échelonne le SOLDE restant, pas le montant total : un acompte a pu
-    // être encaissé avant la mise en place de l'échéancier.
-    const paidAgg = await this.prisma.payment.aggregate({
-      where: { invoiceId: invoice.id },
-      _sum: { amountCents: true },
-    });
-    const { balanceCents } = invoicePaymentTotals(
-      invoice.amountCents,
-      paidAgg._sum.amountCents ?? 0,
+    // On échelonne ce qui reste RÉCLAMABLE, pas le montant total : un acompte a
+    // pu être encaissé, ou un avoir émis (ADR-0011), avant la mise en place de
+    // l'échéancier. C'est le calcul que refait le moteur avant chaque
+    // prélèvement : un plan bâti sur un autre total annoncerait à l'adhérent —
+    // et, en SEPA, dans l'avis de prélèvement — des échéances que le moteur ne
+    // prélèverait pas.
+    const { collectableCents } = await resolveInvoiceBalance(
+      this.prisma,
+      invoice.id,
+      args.clubId,
     );
-    if (balanceCents <= 0) {
+    if (collectableCents <= 0) {
       throw new BadRequestException('Cette facture est déjà soldée.');
     }
 
@@ -115,7 +116,7 @@ export class PaymentScheduleService {
         : requestedFirstDue;
 
     const plan = buildInstallmentPlan({
-      totalCents: balanceCents,
+      totalCents: collectableCents,
       count: args.installmentCount,
       firstDueOn,
       intervalMonths: args.intervalMonths,
@@ -127,7 +128,7 @@ export class PaymentScheduleService {
         invoiceId: invoice.id,
         method: args.method,
         status: PaymentScheduleStatus.PENDING_SETUP,
-        totalCents: balanceCents,
+        totalCents: collectableCents,
         installmentCount: plan.length,
         installments: {
           create: plan.map((p) => ({

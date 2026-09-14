@@ -12,7 +12,7 @@ Trouvé le 2026-09-14, à trois endroits :
 |---|---|
 | `InvoiceRemindersService.listOverdue` et `sendReminder` | mail de relance réclamant le montant déjà crédité ; facture éteinte relancée |
 | `DashboardService.trends` | « Factures en retard » : nombre et montant gonflés |
-| `PaymentScheduleService.createForInvoice` | échéancier bâti sur le montant crédité (corrigé à part) |
+| `PaymentScheduleService.createForInvoice` | échéancier bâti sur le montant crédité, et facture éteinte échelonnable (corrigé via `resolveInvoiceBalance`, le calcul du moteur) |
 
 ## Cause
 
