@@ -53,7 +53,8 @@ describe('AuthService', () => {
     ).rejects.toThrow(AUTH_LOGIN_REJECT_MESSAGE);
   });
 
-  it('lance Unauthorized si e-mail non vérifié', async () => {
+  /** Un compte au mot de passe « good » dont l'e-mail n'est pas vérifié. */
+  function serviceCompteNonVerifie() {
     const prisma = {
       user: {
         findUnique: jest.fn().mockResolvedValue({
@@ -73,7 +74,26 @@ describe('AuthService', () => {
     const caddy = {} as unknown as import('../infra/caddy.service').CaddyApiService;
     const captcha = {} as unknown as import('./captcha-verify.service').CaptchaVerifyService;
     const svc = new AuthService(prisma, jwt, families, emailV, passwordReset, mail, clubs, caddy, captcha);
+    return { svc, families };
+  }
+
+  it('mot de passe correct, e-mail non vérifié : le dit, sans ouvrir de session', async () => {
+    const { svc, families } = serviceCompteNonVerifie();
+
+    // L'identité est prouvée par le mot de passe : l'état de vérification peut
+    // être dit, et c'est ce qui permet à la personne de débloquer son compte.
     await expect(svc.login({ email: 'a@b.c', password: 'good' })).rejects.toThrow(
+      'Votre adresse e-mail n’est pas encore vérifiée.',
+    );
+    expect(families.listViewerProfiles).not.toHaveBeenCalled();
+  });
+
+  it('mot de passe faux, e-mail non vérifié : le message générique, rien sur la vérification', async () => {
+    const { svc } = serviceCompteNonVerifie();
+
+    // Sans mot de passe prouvé, « non vérifiée » confirmerait qu'un compte
+    // existe à cette adresse : l'anti-énumération passe avant.
+    await expect(svc.login({ email: 'a@b.c', password: 'bad' })).rejects.toThrow(
       AUTH_LOGIN_REJECT_MESSAGE,
     );
   });
