@@ -51,6 +51,8 @@ type LineRow = {
 type VariantRow = {
   id: string;
   clubId: string;
+  /** Sert au prix d'achat par défaut (ADR-0021) : l'offre vit sur le produit. */
+  productId?: string;
   trackStock: boolean;
   onHand: number;
   available: number;
@@ -200,6 +202,21 @@ function makeHarness(seed: {
     leadTimeDays: number | null;
   }>;
   entries?: EntryRow[];
+  /** Offres fournisseur (ADR-0021). Vides par défaut : le prix reste à 0. */
+  offers?: Array<{
+    id: string;
+    clubId: string;
+    productId: string;
+    supplierId: string;
+    unitCostCents: number | null;
+  }>;
+  overrides?: Array<{
+    id: string;
+    clubId: string;
+    offerId: string;
+    variantId: string;
+    unitCostCents: number | null;
+  }>;
 }) {
   const orders = seed.orders ?? [];
   const lines = seed.lines ?? [];
@@ -208,6 +225,8 @@ function makeHarness(seed: {
     { id: 'sup-1', clubId: CLUB, active: true, leadTimeDays: 7 },
   ];
   const entries = seed.entries ?? [];
+  const offers = seed.offers ?? [];
+  const overrides = seed.overrides ?? [];
   const receptions: Array<Record<string, any>> = [];
   const receptionLines: Array<Record<string, any>> = [];
   const movements: Array<Record<string, any>> = [];
@@ -280,6 +299,8 @@ function makeHarness(seed: {
     shopProductVariant: table(variants, 'v'),
     shopStockMovement: table(movements, 'mv'),
     accountingEntry: table(entries, 'ae'),
+    shopProductSupplier: table(offers, 'off'),
+    shopProductSupplierVariant: table(overrides, 'ovr'),
   };
 
   // Profondeur de transaction : l'attribution des arrivages part APRÈS la
@@ -1240,6 +1261,92 @@ describe('addLine / removeLine — modifiables tant que c’est un brouillon', (
       envoyee.svc.removeLine(CLUB, { orderId: 'po-1', lineId: 'pol-1' }),
     ).rejects.toThrow(BadRequestException);
     expect(envoyee.lines).toHaveLength(1);
+  });
+});
+
+describe('prix d’achat par défaut — celui du fournisseur de la commande (ADR-0021 §1)', () => {
+  const offres = [
+    { id: 'off-1', clubId: CLUB, productId: 'p-1', supplierId: 'sup-1', unitCostCents: 850 },
+    // Un autre fournisseur du même produit : son prix n'est pas celui de la commande.
+    { id: 'off-2', clubId: CLUB, productId: 'p-1', supplierId: 'sup-2', unitCostCents: 700 },
+  ];
+  const variantes = () => [
+    variante({ id: 'v-1', productId: 'p-1' }),
+    variante({ id: 'v-2', productId: 'p-1' }),
+  ];
+
+  it('une ligne sans prix prend l’exception de sa déclinaison, sinon l’offre du fournisseur', async () => {
+    const h = makeHarness({
+      orders: [ordre({ status: ShopPurchaseOrderStatus.DRAFT })],
+      lines: [],
+      variants: variantes(),
+      offers: offres,
+      overrides: [
+        // Exception chez L'AUTRE fournisseur : elle ne vaut pas pour cette commande.
+        { id: 'ovr-9', clubId: CLUB, offerId: 'off-2', variantId: 'v-1', unitCostCents: 650 },
+        { id: 'ovr-1', clubId: CLUB, offerId: 'off-1', variantId: 'v-2', unitCostCents: 990 },
+      ],
+    });
+
+    await h.svc.addLine(CLUB, { orderId: 'po-1', variantId: 'v-1', orderedQty: 10 });
+    await h.svc.addLine(CLUB, { orderId: 'po-1', variantId: 'v-2', orderedQty: 5 });
+
+    expect(h.lines.map((l) => [l.variantId, l.unitCostCents])).toEqual([
+      ['v-1', 850],
+      ['v-2', 990],
+    ]);
+  });
+
+  it('un prix saisi l’emporte, et sans offre chez ce fournisseur la ligne reste à 0', async () => {
+    const h = makeHarness({
+      orders: [ordre({ status: ShopPurchaseOrderStatus.DRAFT, supplierId: 'sup-3' })],
+      lines: [],
+      variants: variantes(),
+      offers: offres,
+      suppliers: [{ id: 'sup-3', clubId: CLUB, active: true, leadTimeDays: null }],
+    });
+
+    await h.svc.addLine(CLUB, { orderId: 'po-1', variantId: 'v-1', orderedQty: 10 });
+    await h.svc.addLine(CLUB, {
+      orderId: 'po-1',
+      variantId: 'v-2',
+      orderedQty: 5,
+      unitCostCents: 1200,
+    });
+
+    expect(h.lines.map((l) => [l.variantId, l.unitCostCents])).toEqual([
+      ['v-1', 0],
+      ['v-2', 1200],
+    ]);
+  });
+
+  it('les lignes d’une commande créée d’un coup reçoivent le même prix par défaut', async () => {
+    const h = makeHarness({
+      orders: [],
+      lines: [],
+      variants: variantes(),
+      offers: offres,
+      overrides: [
+        { id: 'ovr-1', clubId: CLUB, offerId: 'off-1', variantId: 'v-2', unitCostCents: 990 },
+      ],
+    });
+
+    await h.svc.createOrder(CLUB, {
+      supplierId: 'sup-1',
+      lines: [
+        { variantId: 'v-1', orderedQty: 10 },
+        { variantId: 'v-2', orderedQty: 5 },
+      ],
+    });
+
+    // Le double range la commande avec ses lignes imbriquées, telles qu'écrites.
+    const cree = h.orders[0] as unknown as {
+      lines: { create: Array<{ variantId: string; unitCostCents: number }> };
+    };
+    expect(cree.lines.create.map((l) => [l.variantId, l.unitCostCents])).toEqual([
+      ['v-1', 850],
+      ['v-2', 990],
+    ]);
   });
 });
 

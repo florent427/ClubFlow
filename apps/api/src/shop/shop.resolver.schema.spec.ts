@@ -136,6 +136,39 @@ describe('ShopAdminResolver — schéma GraphQL', () => {
     const envoiEchange = corpsDe('input SendShopExchangeNoteInput {');
     expect(envoiEchange).toContain('adjustmentId: ID!');
     expect(envoiEchange).toContain('email: String!');
+
+    // Fournisseurs d'un produit (ADR-0021).
+    expect(sdl).toContain(
+      'upsertShopProductSupplier(input: UpsertShopProductSupplierInput!): ShopProductGraph!',
+    );
+    expect(sdl).toContain(
+      'removeShopProductSupplier(input: RemoveShopProductSupplierInput!): ShopProductGraph!',
+    );
+    expect(sdl).toContain(
+      'setShopProductPreferredSupplier(input: SetShopProductPreferredSupplierInput!): ShopProductGraph!',
+    );
+    expect(sdl).toContain(
+      'setShopProductSupplierVariant(input: SetShopProductSupplierVariantInput!): ShopProductGraph!',
+    );
+    expect(sdl).toContain(
+      'shopSupplierProductCounts: [ShopSupplierProductCountGraph!]!',
+    );
+    // Nullables : null au portail, où le prix d'achat n'a rien à faire.
+    expect(produit).toContain('preferredSupplierId: ID');
+    expect(produit).not.toContain('preferredSupplierId: ID!');
+    expect(produit).toContain('suppliers: [ShopProductSupplierGraph!]');
+    expect(produit).not.toContain('suppliers: [ShopProductSupplierGraph!]!');
+    const offreFournisseur = corpsDe('type ShopProductSupplierGraph {');
+    expect(offreFournisseur).toContain('unitCostCents: Int');
+    expect(offreFournisseur).not.toContain('unitCostCents: Int!');
+    expect(offreFournisseur).toContain('packSize: Int!');
+    expect(offreFournisseur).toContain('preferred: Boolean!');
+    expect(offreFournisseur).toContain(
+      'variantOverrides: [ShopProductSupplierVariantGraph!]!',
+    );
+    const choix = corpsDe('input SetShopProductPreferredSupplierInput {');
+    expect(choix).toContain('supplierId: ID');
+    expect(choix).not.toContain('supplierId: ID!');
   });
 });
 

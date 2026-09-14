@@ -281,6 +281,12 @@ export class ShopPurchaseOrdersService {
         lines.map((l) => l.variantId),
       );
     }
+    const costs = await this.defaultUnitCosts(
+      this.prisma,
+      clubId,
+      input.supplierId,
+      lines.filter((l) => l.unitCostCents === null).map((l) => l.variantId),
+    );
 
     const order = await this.createWithReference(clubId, {
       supplierId: input.supplierId,
@@ -291,7 +297,7 @@ export class ShopPurchaseOrdersService {
           clubId,
           variantId: l.variantId,
           orderedQty: l.orderedQty,
-          unitCostCents: l.unitCostCents,
+          unitCostCents: l.unitCostCents ?? costs.get(l.variantId) ?? 0,
         })),
       },
     });
@@ -376,6 +382,20 @@ export class ShopPurchaseOrdersService {
 
     await this.prisma.$transaction(async (tx) => {
       await this.claimDraft(tx, clubId, input.orderId, 'modifier');
+      let unitCostCents = line.unitCostCents;
+      if (unitCostCents === null) {
+        const order = await tx.shopPurchaseOrder.findFirstOrThrow({
+          where: { id: input.orderId, clubId },
+          select: { supplierId: true },
+        });
+        const costs = await this.defaultUnitCosts(
+          tx,
+          clubId,
+          order.supplierId,
+          [line.variantId],
+        );
+        unitCostCents = costs.get(line.variantId) ?? 0;
+      }
       try {
         await tx.shopPurchaseOrderLine.create({
           data: {
@@ -383,7 +403,7 @@ export class ShopPurchaseOrdersService {
             orderId: input.orderId,
             variantId: line.variantId,
             orderedQty: line.orderedQty,
-            unitCostCents: line.unitCostCents,
+            unitCostCents,
           },
         });
       } catch (err: unknown) {
@@ -979,6 +999,58 @@ export class ShopPurchaseOrdersService {
     );
   }
 
+  /**
+   * Prix d'achat proposé par défaut pour des déclinaisons commandées chez un
+   * fournisseur (ADR-0021 §1) : l'exception de la déclinaison, sinon l'offre
+   * du produit chez CE fournisseur. Une déclinaison sans prix connu n'a pas
+   * d'entrée : sa ligne garde 0, comme avant.
+   *
+   * L'offre d'un AUTRE fournisseur ne sert jamais : son prix n'est pas celui
+   * de la commande.
+   */
+  private async defaultUnitCosts(
+    db: Pick<
+      Prisma.TransactionClient,
+      'shopProductVariant' | 'shopProductSupplier' | 'shopProductSupplierVariant'
+    >,
+    clubId: string,
+    supplierId: string,
+    variantIds: string[],
+  ): Promise<Map<string, number>> {
+    const costs = new Map<string, number>();
+    if (variantIds.length === 0) return costs;
+
+    const variants = await db.shopProductVariant.findMany({
+      where: { id: { in: variantIds }, clubId },
+      select: { id: true, productId: true },
+    });
+    const offers = await db.shopProductSupplier.findMany({
+      where: {
+        clubId,
+        supplierId,
+        productId: { in: [...new Set(variants.map((v) => v.productId))] },
+      },
+      select: { id: true, productId: true, unitCostCents: true },
+    });
+    const overrides = await db.shopProductSupplierVariant.findMany({
+      where: {
+        clubId,
+        offerId: { in: offers.map((o) => o.id) },
+        variantId: { in: variantIds },
+      },
+      select: { variantId: true, unitCostCents: true },
+    });
+
+    for (const v of variants) {
+      const offer = offers.find((o) => o.productId === v.productId);
+      if (!offer) continue;
+      const override = overrides.find((x) => x.variantId === v.id);
+      const cost = override?.unitCostCents ?? offer.unitCostCents;
+      if (cost !== null) costs.set(v.id, cost);
+    }
+    return costs;
+  }
+
   private normalizeDraftLines(
     lines: Array<{
       variantId: string;
@@ -999,11 +1071,13 @@ export class ShopPurchaseOrdersService {
         );
       }
       seen.add(l.variantId);
-      // Montants en CENTIMES, comme partout dans le dépôt.
+      // Montants en CENTIMES, comme partout dans le dépôt. Un prix absent
+      // reste absent ici : `defaultUnitCosts` le complète depuis le
+      // fournisseur de la commande (ADR-0021).
       return {
         variantId: l.variantId,
         orderedQty: l.orderedQty,
-        unitCostCents: l.unitCostCents ?? 0,
+        unitCostCents: l.unitCostCents ?? null,
       };
     });
   }

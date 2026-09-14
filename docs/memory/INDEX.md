@@ -106,6 +106,7 @@
 | [`0018-boutique-precommande.md`](decisions/0018-boutique-precommande.md) | ADR-0018 — Boutique : un article épuisé reste commandable, et chaque arrivage sert d'abord les précommandes |
 | [`0019-boutique-annulation-remboursement.md`](decisions/0019-boutique-annulation-remboursement.md) | ADR-0019 — Boutique : annuler une commande, c'est reprendre la marchandise et rendre chaque règlement par son propre moyen |
 | [`0020-boutique-echange-et-annulation-d-article.md`](decisions/0020-boutique-echange-et-annulation-d-article.md) | ADR-0020 — Boutique : échanger ou annuler un article, c'est ajuster la commande à l'unité et ne faire bouger que la différence |
+| [`0021-reapprovisionnement-multi-fournisseurs.md`](decisions/0021-reapprovisionnement-multi-fournisseurs.md) | ADR-0021 — Réapprovisionnement multi-fournisseurs : fournisseurs d'un produit et commandes réparties |
 
 ## 🔄 Workflows métier
 
@@ -119,7 +120,7 @@
 
 ---
 
-_Index généré le 2026-09-14 05:39 UTC par `bin/memory-index`._
+_Index généré le 2026-09-14 06:42 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`

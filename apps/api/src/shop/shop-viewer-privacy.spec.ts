@@ -40,6 +40,12 @@ const INTERDITS = [
   // ADR-0018 : « 3 précommandées » est une quantité, et dit à un adhérent
   // combien d'autres attendent le même article.
   'preorderedQty',
+  // ADR-0021 : les fournisseurs du produit et le PRIX D'ACHAT de chacun — la
+  // marge du club, et sa politique d'achat.
+  'suppliers',
+  'preferredSupplierId',
+  'unitCostCents',
+  'supplierRef',
 ];
 
 /** Remonte tout chemin portant une valeur numérique ou vraie sur une clé interdite. */
@@ -73,6 +79,35 @@ function makeSvc() {
     active: true,
     preorderEnabled: false,
     preorderLeadTime: null as string | null,
+    // NON NULS, prix d'achat compris, pour la même raison que le coût moyen :
+    // sans fournisseur, le test de fuite serait vert quoi qu'il arrive.
+    preferredSupplierId: 'sup-1',
+    supplierOffers: [
+      {
+        id: 'off-1',
+        clubId: 'club-1',
+        productId: 'p-1',
+        supplierId: 'sup-1',
+        supplierRef: 'TS-100',
+        unitCostCents: 850,
+        packSize: 10,
+        createdAt: new Date('2026-07-01'),
+        updatedAt: new Date('2026-07-01'),
+        supplier: { name: 'Textiles Pro', active: true },
+        variantOverrides: [
+          {
+            id: 'ovr-1',
+            clubId: 'club-1',
+            offerId: 'off-1',
+            variantId: 'v-1',
+            supplierRef: 'TS-100-L',
+            unitCostCents: 900,
+            createdAt: new Date('2026-07-01'),
+            updatedAt: new Date('2026-07-01'),
+          },
+        ],
+      },
+    ],
     createdAt: new Date('2026-07-01'),
     updatedAt: new Date('2026-07-01'),
     variants: [
@@ -243,6 +278,31 @@ describe('listProductsAdmin — ce que voit le trésorier', () => {
     await svc.listProductsPublic('club-1');
 
     expect(purchases.onOrderByVariant).not.toHaveBeenCalled();
+  });
+
+  it('voit ses fournisseurs, leurs références et leurs prix d’achat — sinon rien à commander', async () => {
+    // Le pendant du test de fuite (ADR-0021) : neutraliser les fournisseurs
+    // PARTOUT le passerait aussi, et le réapprovisionnement serait aveugle.
+    const { svc } = makeSvc();
+
+    const [p] = await svc.listProductsAdmin('club-1');
+
+    expect(p.preferredSupplierId).toBe('sup-1');
+    expect(p.suppliers).toEqual([
+      {
+        id: 'off-1',
+        supplierId: 'sup-1',
+        supplierName: 'Textiles Pro',
+        supplierActive: true,
+        supplierRef: 'TS-100',
+        unitCostCents: 850,
+        packSize: 10,
+        preferred: true,
+        variantOverrides: [
+          { id: 'ovr-1', variantId: 'v-1', supplierRef: 'TS-100-L', unitCostCents: 900 },
+        ],
+      },
+    ]);
   });
 });
 

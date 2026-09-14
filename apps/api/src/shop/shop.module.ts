@@ -16,6 +16,7 @@ import { ShopExchangeNoteService } from './shop-exchange-note.service';
 import { ShopLowStockNotifierService } from './shop-low-stock-notifier.service';
 import { ShopService } from './shop.service';
 import { ShopPreorderService } from './shop-preorder.service';
+import { ShopProductSuppliersService } from './shop-product-suppliers.service';
 import { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
 import { ShopStockService } from './shop-stock.service';
 import { ShopStockSweepService } from './shop-stock-sweep.service';
@@ -46,6 +47,8 @@ import { ShopVariantsService } from './shop-variants.service';
     ShopStockService,
     ShopPreorderService,
     ShopPurchaseOrdersService,
+    // Fournisseurs d'un produit (ADR-0021).
+    ShopProductSuppliersService,
     ShopVariantsService,
     ShopStockSweepService,
     ShopLowStockNotifierService,

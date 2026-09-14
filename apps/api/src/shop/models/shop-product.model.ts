@@ -1,5 +1,6 @@
 import { Field, Float, ID, Int, ObjectType } from '@nestjs/graphql';
 import { ShopAvailability } from '../enums/shop-availability.enum';
+import { ShopProductSupplierGraph } from './shop-product-supplier.model';
 
 /** Une déclinaison vendable : c'est elle qui porte le stock (ADR-0012). */
 @ObjectType()
@@ -144,6 +145,24 @@ export class ShopProductGraph {
   /** Délai indicatif annoncé à l'adhérent. Null : aucun délai annoncé. */
   @Field(() => String, { nullable: true })
   preorderLeadTime!: string | null;
+
+  /**
+   * Fournisseur choisi (ADR-0021 §2) : celui chez qui le réapprovisionnement
+   * commandera. ADMINISTRATION SEULEMENT — null au portail.
+   */
+  @Field(() => ID, { nullable: true })
+  preferredSupplierId!: string | null;
+
+  /**
+   * Les fournisseurs du produit : référence, prix d'achat, colisage.
+   *
+   * NULL hors administration, et non une liste vide : c'est le PRIX D'ACHAT
+   * du club, qui dit à un adhérent la marge faite sur lui (même raison
+   * qu'`avgCostCents`) — et « aucun fournisseur » serait lui aussi une
+   * information.
+   */
+  @Field(() => [ShopProductSupplierGraph], { nullable: true })
+  suppliers!: ShopProductSupplierGraph[] | null;
 
   /**
    * @deprecated ADR-0012 — champ DÉRIVÉ, plus une colonne.
