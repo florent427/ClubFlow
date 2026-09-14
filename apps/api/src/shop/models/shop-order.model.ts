@@ -1,5 +1,15 @@
-import { Field, ID, Int, ObjectType } from '@nestjs/graphql';
-import { InvoiceStatus, ShopOrderStatus } from '@prisma/client';
+import { Field, ID, Int, ObjectType, registerEnumType } from '@nestjs/graphql';
+import {
+  InvoiceStatus,
+  ShopOrderAdjustmentKind,
+  ShopOrderStatus,
+} from '@prisma/client';
+
+registerEnumType(ShopOrderAdjustmentKind, {
+  name: 'ShopOrderAdjustmentKind',
+  description:
+    'Nature d’un ajustement de commande boutique : annulation d’articles, ou échange (ADR-0020).',
+});
 
 @ObjectType()
 export class ShopOrderLineGraph {
@@ -35,6 +45,66 @@ export class ShopOrderLineGraph {
    */
   @Field(() => Int)
   awaitingStockQty!: number;
+
+  /**
+   * Unités retirées de la ligne — annulées ou échangées (ADR-0020). La
+   * quantité active est `quantity − cancelledQty`.
+   */
+  @Field(() => Int)
+  cancelledQty!: number;
+}
+
+/** Une annulation d'articles ou un échange, dans l'historique de la commande. */
+@ObjectType()
+export class ShopOrderAdjustmentGraph {
+  @Field(() => ID)
+  id!: string;
+
+  @Field(() => ShopOrderAdjustmentKind)
+  kind!: ShopOrderAdjustmentKind;
+
+  @Field()
+  createdAt!: Date;
+
+  /** Motif saisi par le club. Réservé à l'administration. */
+  @Field(() => String, { nullable: true })
+  reason!: string | null;
+
+  @Field()
+  returnedLabel!: string;
+
+  @Field(() => Int)
+  returnedQty!: number;
+
+  /** Échange : l'article pris. Null pour une annulation. */
+  @Field(() => String, { nullable: true })
+  newLabel!: string | null;
+
+  @Field(() => Int, { nullable: true })
+  newQty!: number | null;
+
+  /** Pris − rendu, en centimes. */
+  @Field(() => Int)
+  differenceCents!: number;
+
+  /** Rendu à l'adhérent, tous moyens confondus (carte comprise). */
+  @Field(() => Int)
+  refundedCents!: number;
+
+  /** Reste dû éteint par avoir. */
+  @Field(() => Int)
+  writtenOffCents!: number;
+
+  /** Facture du reste à payer de l'échange, s'il y en a une. */
+  @Field(() => ID, { nullable: true })
+  supplementInvoiceId!: string | null;
+
+  @Field(() => InvoiceStatus, { nullable: true })
+  supplementInvoiceStatus!: InvoiceStatus | null;
+
+  /** Échange d'une commande remise, signé : le bon d'échange existe. */
+  @Field()
+  signed!: boolean;
 }
 
 @ObjectType()
@@ -105,13 +175,16 @@ export class ShopOrderGraph {
   deliverySignerName!: string | null;
 
   /**
-   * Vrai si la commande porte une facture OUVERTE, donc payable : « Payer »
-   * côté adhérent, « Encaisser » côté club. Depuis le 2026-09-12 toute commande
-   * reçoit sa facture, « régler sur place » compris : seules les commandes
-   * antérieures peuvent encore en être dépourvues.
+   * Vrai s'il reste de l'argent dû sur la commande : « Payer » côté adhérent,
+   * « Encaisser » côté club. Sa facture, ou celle du reste à payer d'un échange
+   * (ADR-0020), avoirs déduits.
    */
   @Field()
   payableOnline!: boolean;
+
+  /** Reste dû sur la commande, toutes factures confondues, avoirs déduits. */
+  @Field(() => Int)
+  amountDueCents!: number;
 
   /**
    * La facture de la commande, quel que soit son statut. C'est sur elle que le
@@ -126,6 +199,13 @@ export class ShopOrderGraph {
 
   @Field(() => [ShopOrderLineGraph])
   lines!: ShopOrderLineGraph[];
+
+  /**
+   * Annulations d'articles et échanges (ADR-0020). Réservé à l'administration :
+   * toujours vide côté adhérent.
+   */
+  @Field(() => [ShopOrderAdjustmentGraph])
+  adjustments!: ShopOrderAdjustmentGraph[];
 
   @Field(() => String, { nullable: true })
   buyerFirstName!: string | null;

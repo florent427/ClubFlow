@@ -67,6 +67,7 @@ type OrderRow = {
     unitPriceCents: number;
     label: string;
     awaitingStockQty: number;
+    cancelledQty: number;
   }>;
 };
 
@@ -232,6 +233,8 @@ function makeStore(opts: {
             label: l.label,
             // Défaut de la base : une ligne naît servie (ADR-0018).
             awaitingStockQty: l.awaitingStockQty ?? 0,
+            // Défaut de la base : rien n'est retiré de la commande (ADR-0020).
+            cancelledQty: 0,
           })),
         };
         orders.push(row);
@@ -301,15 +304,35 @@ function makeStore(opts: {
         invoices.push(row);
         return { id: row.id };
       }),
-      findMany: jest.fn(async ({ where }: any) =>
-        invoices
-          .filter(
-            (i) =>
-              where.shopOrderId?.in === undefined ||
-              where.shopOrderId.in.includes(i.shopOrderId),
-          )
-          .map((i) => ({ id: i.id, shopOrderId: i.shopOrderId, status: i.status })),
-      ),
+      // Les factures des commandes affichées : la leur, et celles du reste à
+      // payer de leurs échanges (ADR-0020) — ce monde n'en a aucune. Seule la
+      // forme émise par `hydrateBuyers` est simulée.
+      findMany: jest.fn(async ({ where }: any) => {
+        expect(Object.keys(where).sort()).toEqual(['OR', 'isCreditNote']);
+        expect(where.isCreditNote).toBe(false);
+        const [byOrder, byAdjustment] = where.OR;
+        expect(Object.keys(byOrder)).toEqual(['shopOrderId']);
+        expect(Object.keys(byAdjustment)).toEqual(['shopAdjustment']);
+        const ids: string[] = byOrder.shopOrderId.in;
+        return invoices
+          .filter((i) => i.shopOrderId !== null && ids.includes(i.shopOrderId))
+          .map((i) => ({
+            id: i.id,
+            shopOrderId: i.shopOrderId,
+            status: i.status,
+            amountCents: i.amountCents,
+            shopAdjustment: null,
+            payments: [],
+            creditNotes: [],
+          }));
+      }),
+    },
+    // Échanges et annulations d'articles (ADR-0020) : aucun dans ce monde.
+    shopOrderAdjustment: {
+      findMany: jest.fn(async ({ where }: any) => {
+        expect(Object.keys(where)).toEqual(['orderId']);
+        return [];
+      }),
     },
     // La facture d'une commande nomme son acheteur et le rattache à son foyer :
     // le service lit donc ces tables DANS la transaction. Ces tests ne parlent

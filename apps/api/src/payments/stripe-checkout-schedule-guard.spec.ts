@@ -20,7 +20,7 @@ import { StripeConnectService } from './stripe-connect.service';
 describe('StripeCheckoutService — refus si un échéancier couvre la facture', () => {
   let service: StripeCheckoutService;
   let prisma: {
-    invoice: { findFirst: jest.Mock };
+    invoice: { findFirst: jest.Mock; aggregate: jest.Mock };
     payment: { aggregate: jest.Mock };
     club: { findUnique: jest.Mock };
   };
@@ -36,7 +36,11 @@ describe('StripeCheckoutService — refus si un échéancier couvre la facture',
 
   beforeEach(async () => {
     prisma = {
-      invoice: { findFirst: jest.fn() },
+      invoice: {
+        findFirst: jest.fn(),
+        // Avoirs émis sur la facture : aucun par défaut.
+        aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: null } }),
+      },
       payment: {
         aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: null } }),
       },
@@ -148,5 +152,91 @@ describe('StripeCheckoutService — refus si un échéancier couvre la facture',
         }),
       }),
     );
+  });
+});
+
+/**
+ * Le solde demandé déduit les avoirs (ADR-0011, ADR-0020). Sans eux, une
+ * facture ouverte dont un article a été annulé demanderait ce que le club ne
+ * réclame plus ; le webhook, qui les déduit, n'en enregistrerait qu'une partie.
+ */
+describe('StripeCheckoutService — le solde demandé déduit les avoirs', () => {
+  const invoice = {
+    id: 'inv-1',
+    clubId: 'club-1',
+    amountCents: 4000,
+    label: 'Commande boutique — Camille',
+    status: InvoiceStatus.OPEN,
+    isCreditNote: false,
+    paymentSchedule: null,
+  };
+
+  async function make(paidCents: number, creditNotesCents: number) {
+    const prisma = {
+      invoice: {
+        findFirst: jest.fn().mockResolvedValue(invoice),
+        aggregate: jest.fn(async ({ where }: any) => {
+          // Seuls les avoirs non annulés de CETTE facture comptent.
+          expect(where).toEqual({
+            parentInvoiceId: 'inv-1',
+            isCreditNote: true,
+            status: { not: InvoiceStatus.VOID },
+          });
+          return { _sum: { amountCents: creditNotesCents || null } };
+        }),
+      },
+      payment: {
+        aggregate: jest
+          .fn()
+          .mockResolvedValue({ _sum: { amountCents: paidCents || null } }),
+      },
+      club: { findUnique: jest.fn().mockResolvedValue({ slug: 'qa', name: 'QA' }) },
+    };
+    const connect = { requireChargeableAccount: jest.fn().mockResolvedValue('acct_1') };
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        StripeCheckoutService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: StripeConnectService, useValue: connect },
+      ],
+    }).compile();
+    const service = moduleRef.get(StripeCheckoutService);
+    const create = jest.fn(async (params: any) => ({
+      id: 'cs_1',
+      url: 'https://checkout.stripe.test/cs_1',
+      params,
+    }));
+    (service as unknown as { getStripe: () => unknown }).getStripe = () => ({
+      checkout: { sessions: { create } },
+    });
+    return { service, create, connect };
+  }
+
+  it('demande le solde avoirs déduits', async () => {
+    const h = await make(1000, 2500);
+
+    await h.service
+      .createInvoiceCheckoutSession({ invoiceId: 'inv-1', clubId: 'club-1', paidByMemberId: null })
+      .catch(() => undefined);
+
+    expect(h.create).toHaveBeenCalledTimes(1);
+    const params = h.create.mock.calls[0][0];
+    // 40 € − 10 € encaissés − 25 € d'avoir = 5 €.
+    expect(params.line_items[0].price_data.unit_amount).toBe(500);
+  });
+
+  it('facture entièrement éteinte par ses avoirs : refus avant Stripe', async () => {
+    const h = await make(1500, 2500);
+
+    await expect(
+      h.service.createInvoiceCheckoutSession({
+        invoiceId: 'inv-1',
+        clubId: 'club-1',
+        paidByMemberId: null,
+      }),
+    ).rejects.toThrow('Facture déjà soldée.');
+
+    expect(h.connect.requireChargeableAccount).not.toHaveBeenCalled();
+    expect(h.create).not.toHaveBeenCalled();
   });
 });

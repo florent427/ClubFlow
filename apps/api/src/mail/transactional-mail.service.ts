@@ -480,6 +480,56 @@ export class TransactionalMailService {
     });
   }
 
+  /** Bon d'échange d'une commande boutique (ADR-0020), en pièce jointe. */
+  async sendShopExchangeNote(
+    clubId: string,
+    to: string,
+    options: {
+      clubName: string;
+      buyerName: string | null;
+      exchangeReference: string;
+      orderReference: string;
+      exchangedAt: Date;
+      pdf: Buffer;
+    },
+  ): Promise<void> {
+    const trimmed = to.trim();
+    if (!trimmed || !trimmed.includes('@')) {
+      throw new BadRequestException('Adresse e-mail invalide');
+    }
+    const profile = await this.domains.getAuthMailProfile(clubId);
+    const date = options.exchangedAt.toLocaleDateString('fr-FR', {
+      timeZone: 'UTC',
+    });
+    const pour = options.buyerName ? ` de ${options.buyerName}` : '';
+    await this.transport.sendEmail({
+      clubId,
+      kind: 'transactional',
+      from: profile.from,
+      to: trimmed,
+      subject: `Bon d’échange — ${options.clubName}`,
+      html: `<p>Bonjour,</p><p>Vous trouverez ci-joint le bon d’échange <strong>${escapeHtml(
+        options.exchangeReference,
+      )}</strong> de la commande ${escapeHtml(options.orderReference)}${escapeHtml(
+        pour,
+      )}, du ${escapeHtml(date)}.</p><p>${escapeHtml(options.clubName)}</p>`,
+      text: [
+        'Bonjour,',
+        '',
+        `Vous trouverez ci-joint le bon d’échange ${options.exchangeReference} de la commande ${options.orderReference}${pour}, du ${date}.`,
+        '',
+        options.clubName,
+      ].join('\n'),
+      attachments: [
+        {
+          filename: `Bon_d_echange_${options.exchangeReference}.pdf`,
+          content: options.pdf,
+          contentType: 'application/pdf',
+        },
+      ],
+    });
+  }
+
   async sendTestEmail(clubId: string, to: string): Promise<void> {
     const trimmed = to.trim();
     if (!trimmed || !trimmed.includes('@')) {

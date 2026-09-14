@@ -25,6 +25,7 @@ import {
   preorderNotice,
 } from '../lib/shop-availability';
 import {
+  activeOrderLines,
   canCancelOrder,
   canRepayOrder,
   orderPickupLabel,
@@ -505,7 +506,7 @@ export function ShopPage() {
                     </span>
                   </div>
                   <ul className="mp-order-lines">
-                    {o.lines.map((l) => (
+                    {activeOrderLines(o.lines).map((l) => (
                       <li key={l.id}>
                         <span>
                           {l.quantity} × {l.label}
@@ -525,6 +526,12 @@ export function ShopPage() {
                   <p className="mp-order-card__total">
                     Total : {formatEuroCents(o.totalCents)}
                   </p>
+                  {o.status === 'PAID' && o.amountDueCents > 0 ? (
+                    <p className="mp-hint" style={{ margin: '4px 0 0' }}>
+                      Reste à payer après un échange :{' '}
+                      {formatEuroCents(o.amountDueCents)}
+                    </p>
+                  ) : null}
                   {pickup ? (
                     <p className="mp-hint" style={{ margin: '4px 0 0' }}>
                       {pickup.kind === 'DELIVERED'
@@ -597,12 +604,12 @@ export function ShopPage() {
         />
       ) : null}
 
-      {/* Reprise de paiement d'une commande EN ATTENTE : même modale, en mode
+      {/* Règlement de ce qui reste dû sur une commande : même modale, en mode
           repay (prop `orderId`). Le retour Stripe `?paid=1`/`?canceled=1` est
           géré par l'effet en haut de page, identique au checkout panier. */}
       {repayOrder ? (
         <ShopCheckoutModal
-          totalCents={repayOrder.totalCents}
+          totalCents={repayOrder.amountDueCents}
           orderId={repayOrder.id}
           onClose={() => {
             setRepayOrder(null);

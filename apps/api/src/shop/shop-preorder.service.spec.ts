@@ -33,6 +33,8 @@ type LineRow = {
   orderId: string;
   variantId: string | null;
   quantity: number;
+  /** Unités retirées de la commande (ADR-0020). */
+  cancelledQty: number;
   awaitingStockQty: number;
 };
 
@@ -62,6 +64,7 @@ const ligne = (over: Partial<LineRow> = {}): LineRow => ({
   orderId: 'o-1',
   variantId: 'v-1',
   quantity: 2,
+  cancelledQty: 0,
   awaitingStockQty: 2,
   ...over,
 });
@@ -730,5 +733,23 @@ describe('ShopPreorderService.resumeTrackingInTx — reprise du suivi du stock',
 
     expect(attente(h, 'l-1')).toBe(0);
     expect(h.variants[0].trackStock).toBe(true);
+  });
+
+  it('les unités retirées de la commande (ADR-0020) n’attendent rien', async () => {
+    // 3 commandés dont 1 annulé par le club, et une ligne entièrement échangée :
+    // seules les unités encore dans la commande sont réservées de nouveau.
+    const h = makeStore({
+      orders: [commande()],
+      lines: [
+        ligne({ id: 'l-1', quantity: 3, cancelledQty: 1, awaitingStockQty: 0 }),
+        ligne({ id: 'l-2', quantity: 1, cancelledQty: 1, awaitingStockQty: 0 }),
+      ],
+      variants: [declinaison({ trackStock: false })],
+    });
+
+    await expect(reprise(h)).resolves.toBe(2);
+
+    expect(attente(h, 'l-1')).toBe(2);
+    expect(attente(h, 'l-2')).toBe(0);
   });
 });

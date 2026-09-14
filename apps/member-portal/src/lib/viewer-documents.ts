@@ -530,6 +530,7 @@ const VIEWER_SHOP_ORDER_FIELDS = `
   paidAt
   deliveredAt
   payableOnline
+  amountDueCents
   buyerFirstName
   buyerLastName
   lines {
@@ -539,6 +540,7 @@ const VIEWER_SHOP_ORDER_FIELDS = `
     unitPriceCents
     label
     awaitingStockQty
+    cancelledQty
   }
 `;
 

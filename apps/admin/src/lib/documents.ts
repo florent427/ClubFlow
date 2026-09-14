@@ -2091,6 +2091,7 @@ const SHOP_ORDER_FIELDS = `
   buyerEmail
   invoiceId
   invoiceStatus
+  amountDueCents
   lines {
     id
     orderId
@@ -2099,6 +2100,23 @@ const SHOP_ORDER_FIELDS = `
     unitPriceCents
     label
     awaitingStockQty
+    cancelledQty
+  }
+  adjustments {
+    id
+    kind
+    createdAt
+    reason
+    returnedLabel
+    returnedQty
+    newLabel
+    newQty
+    differenceCents
+    refundedCents
+    writtenOffCents
+    supplementInvoiceId
+    supplementInvoiceStatus
+    signed
   }
 `;
 
@@ -2235,6 +2253,81 @@ export const CREATE_SHOP_DELIVERY_NOTE_LINK = gql`
 export const SEND_SHOP_DELIVERY_NOTE = gql`
   mutation SendShopDeliveryNote($input: SendShopDeliveryNoteInput!) {
     sendShopDeliveryNote(input: $input)
+  }
+`;
+
+/**
+ * Annulation ou échange d'articles d'une ligne (ADR-0020). L'aperçu montre la
+ * différence, ce qui sera rendu ou facturé et la marchandise, avant que l'admin
+ * confirme ; le serveur exécute ce même plan.
+ */
+export const SHOP_ORDER_LINE_ADJUSTMENT_PREVIEW = gql`
+  query ShopOrderLineAdjustmentPreview(
+    $input: ShopOrderLineAdjustmentPreviewInput!
+  ) {
+    shopOrderLineAdjustmentPreview(input: $input) {
+      blockers
+      delivered
+      exited
+      signatureRequired
+      removedCents
+      addedCents
+      differenceCents
+      fromAwaiting
+      releaseUnits
+      returnUnits
+      newItemLabel
+      newItemUnitPriceCents
+      newItemAwaitingUnits
+      supplementCents
+      refunds {
+        kind
+        paymentId
+        amountCents
+        chequeNumber
+      }
+      refundCents
+      writeOffCents
+      invoiceVoided
+      settlesOrder
+    }
+  }
+`;
+
+export const ADJUST_SHOP_ORDER_LINE = gql`
+  mutation AdjustShopOrderLine($input: AdjustShopOrderLineInput!) {
+    adjustShopOrderLine(input: $input) {
+      order {
+        ${SHOP_ORDER_FIELDS}
+      }
+      adjustmentId
+      cardRefunds {
+        paymentId
+        amountCents
+        ok
+        error
+      }
+      manualRefundedCents
+      chequesReturned
+      writtenOffCents
+      supplementInvoiceId
+      supplementCents
+      signed
+    }
+  }
+`;
+
+/** Lien signé et court vers le bon d'échange, à ouvrir dans un onglet. */
+export const CREATE_SHOP_EXCHANGE_NOTE_LINK = gql`
+  mutation CreateShopExchangeNoteLink($adjustmentId: ID!) {
+    createShopExchangeNoteLink(adjustmentId: $adjustmentId)
+  }
+`;
+
+/** Envoie le bon d'échange en pièce jointe ; rend l'adresse utilisée. */
+export const SEND_SHOP_EXCHANGE_NOTE = gql`
+  mutation SendShopExchangeNote($input: SendShopExchangeNoteInput!) {
+    sendShopExchangeNote(input: $input)
   }
 `;
 

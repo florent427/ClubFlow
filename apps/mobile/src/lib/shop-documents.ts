@@ -64,6 +64,7 @@ const VIEWER_SHOP_ORDER_FIELDS = `
   paidAt
   deliveredAt
   payableOnline
+  amountDueCents
   lines {
     id
     productId
@@ -71,6 +72,7 @@ const VIEWER_SHOP_ORDER_FIELDS = `
     unitPriceCents
     label
     awaitingStockQty
+    cancelledQty
   }
 `;
 
@@ -346,6 +348,8 @@ export type ViewerShopOrderLine = {
   label: string;
   /** Unités en attente d'arrivage (ADR-0018) ; zéro quand tout est servi. */
   awaitingStockQty: number;
+  /** Unités retirées par le club — annulées ou échangées (ADR-0020). */
+  cancelledQty: number;
 };
 
 export type ViewerShopOrder = {
@@ -357,8 +361,10 @@ export type ViewerShopOrder = {
   paidAt: string | null;
   /** Retrait au club, signé (ADR-0017). */
   deliveredAt: string | null;
-  /** Vrai si la commande porte une facture ouverte (payable en ligne). */
+  /** Vrai s'il reste de l'argent dû, payable en ligne. */
   payableOnline: boolean;
+  /** Reste dû, reste à payer d'un échange compris (ADR-0020). */
+  amountDueCents: number;
   lines: ViewerShopOrderLine[];
 };
 

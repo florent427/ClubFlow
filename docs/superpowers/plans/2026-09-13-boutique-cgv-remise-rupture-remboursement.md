@@ -359,12 +359,82 @@ Choix de Florent (2026-09-13) :
 
 ---
 
-## Lot 5 — Échange d'article
+## Lot 5 — Échange et annulation d'un article
 
-### Task 5.1 : Service
+Décision : [ADR-0020](../../memory/decisions/0020-boutique-echange-et-annulation-d-article.md).
+Choix de Florent (2026-09-14) :
 
-- [ ] Avoir sur la ligne rendue, nouvelle ligne pour l'article choisi, stock
-  échangé. Différence remboursée si le nouvel article est moins cher, facturée
-  sinon.
+- la différence due passe par une facture du reste à payer, réglable en ligne
+  ou au club ;
+- une commande remise s'échange avec une nouvelle signature et un bon
+  d'échange ;
+- un article s'annule seul ;
+- l'échange et l'annulation se font à l'unité.
 
-### Task 5.2 : Admin, vérification staging
+### Task 5.1 : Schéma
+
+- [x] `ShopOrderLine.cancelledQty`, `ShopOrderLine.createdAt`.
+- [x] `ShopOrderAdjustment` (annulation d'articles ou échange, données figées,
+  signature) et son enum.
+- [x] `Invoice.shopAdjustmentId` (facture du reste à payer).
+- [x] `ShopOrder.deliveredLines` (lignes figées à la remise).
+
+### Task 5.2 : Quantité active partout
+
+- [x] Sortie de stock, libération, annulation complète, reprise du suivi :
+  `quantity − cancelledQty`.
+- [x] Remise : lignes figées ; bon de livraison imprimé depuis elles, ou depuis
+  les lignes actives pour une remise antérieure au lot.
+
+### Task 5.3 : Plan d'ajustement (fonction pure)
+
+- [x] Montants retiré, ajouté, différence.
+- [x] Remboursements par encaissement, du plus récent au plus ancien, sur
+  toutes les factures ; chèque en portefeuille rendu seulement en entier,
+  sinon sa part reversée par virement (`CHEQUE_PARTIAL`).
+- [x] Avoirs d'extinction, factures du reste à payer annulées, factures
+  soldées.
+- [x] Marchandise : attente d'arrivage d'abord, libération ou reprise, nouvel
+  article réservé ou en attente.
+- [x] Refus.
+- [x] Commande sans facture : rien à rendre. Défaut trouvé par les tests de
+  bout en bout : le plan réclamait un remboursement impossible.
+
+### Task 5.4 : Service et GraphQL
+
+- [x] `ShopService.adjustLineInTx` : verrou de la commande, ligne
+  conditionnelle, stock, nouvelle ligne, total, ajustement, signature.
+- [x] `ShopOrderAdjustmentsService` (module paiements) : une transaction, puis
+  contre-passations, cartes, attribution, échéanciers. La session de paiement
+  d'une facture restée ouverte dont le reste dû baisse est fermée.
+- [x] L'annulation complète couvre les factures du reste à payer ; le refus
+  d'une annulation simple nomme un reste à payer encaissé.
+- [x] Paiement en ligne : solde avoirs déduits ; l'adhérent règle le reste dû
+  de sa commande.
+- [x] Comptabilité : la facture du reste à payer est une vente boutique.
+- [x] Bon d'échange : PDF, lien signé, envoi par e-mail.
+- [x] Tests : monde partagé `apps/api/test/shop-order-world.ts` (double fidèle
+  de PostgreSQL) pour l'annulation et l'ajustement. Suite API complète : les
+  8 échecs préexistants, inchangés, et aucun autre.
+- [x] Mutations à la main sur la logique du lot : 44, toutes tuées. La seule
+  qui survivait (le reste à payer éteint avant la commande) a reçu son test.
+
+### Task 5.5 : Admin, portail, mobile
+
+- [x] Admin :
+  - « Échanger » et « Annuler l’article » par ligne ;
+  - aperçu, puis signature si la commande est remise ;
+  - historique des ajustements : encaisser le reste à payer, bon d'échange,
+    envoi par e-mail ;
+  - reste dû.
+- [x] Portail et mobile : unités retirées, reste à payer, « Payer » sur une
+  commande payée qui a un reste à payer.
+
+### Task 5.6 : Vérification staging
+
+- [ ] Échange moins cher payé en espèces, plus cher avec facture du reste à
+  payer réglée, même prix.
+- [ ] Échange d'une commande remise, signé, bon d'échange.
+- [ ] Annulation d'un article : payé par carte (mode test), impayé.
+- [ ] Bon de livraison inchangé après un échange ; annulation complète après
+  un échange.

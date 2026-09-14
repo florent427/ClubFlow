@@ -334,13 +334,16 @@ export class AccountingService {
     // était seedé depuis le début mais AUCUN chemin ne l'utilisait : tout
     // encaissement créditait 706100, y compris un kimono.
     //
-    // `shopOrderId` est le seul discriminant disponible, et il est fiable :
-    // une facture de commande n'a aucune `InvoiceLine` (le kind n'existe que
-    // pour l'adhésion) et seul le panier boutique renseigne ce champ. Une
-    // facture ne peut donc pas être mi-cotisation mi-boutique.
+    // `shopOrderId` et `shopAdjustmentId` sont les discriminants, et ils sont
+    // fiables : une facture boutique n'a aucune `InvoiceLine` (le kind n'existe
+    // que pour l'adhésion), et seule la boutique renseigne ces champs — la
+    // facture d'une commande, ou celle du reste à payer d'un échange
+    // (ADR-0020). Une facture ne peut donc pas être mi-cotisation mi-boutique.
     const revenueCode = await this.mapping.resolveAccountCode(
       clubId,
-      invoice.shopOrderId ? 'SHOP_PRODUCT' : 'MEMBERSHIP_PRODUCT',
+      invoice.shopOrderId || invoice.shopAdjustmentId
+        ? 'SHOP_PRODUCT'
+        : 'MEMBERSHIP_PRODUCT',
     );
     const revenueAccount = await this.lookupAccount(clubId, revenueCode);
 

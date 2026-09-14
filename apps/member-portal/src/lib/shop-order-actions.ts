@@ -6,27 +6,37 @@ import type { ViewerShopOrderStatus } from './viewer-types';
  * portail).
  *
  * Règle métier (miroir du serveur — cf. shop-order-repay-cancel.spec.ts) : une
- * commande n'est REPRENABLE (repay) et ANNULABLE (cancel) que tant qu'elle est
- * EN ATTENTE (`PENDING`). Une commande `PAID` ou `CANCELLED` n'expose aucune
- * action : `viewerRepayShopOrder` refuse « déjà payée / déjà annulée » et
- * `viewerCancelShopOrder` refuse une commande déjà payée. L'UI ne doit donc
- * proposer ces boutons QUE sur `PENDING`, faute de quoi elle inviterait à un
- * appel voué à l'erreur.
+ * commande n'est ANNULABLE (cancel) que tant qu'elle est EN ATTENTE
+ * (`PENDING`), et REPRENABLE (repay) tant qu'il y reste de l'argent dû — sa
+ * facture, ou le reste à payer d'un échange d'une commande payée (ADR-0020).
+ * L'UI ne propose ces boutons que là où l'appel aboutira.
  */
 
 /**
- * Peut-on reprendre le paiement EN LIGNE de cette commande (bouton « Payer ») ?
+ * Peut-on régler EN LIGNE ce qui reste dû sur cette commande (bouton « Payer ») ?
  *
- * Deux conditions : la commande est EN ATTENTE, ET elle porte une facture
- * (`payableOnline`). Une commande « réglée sur place » est PENDING mais SANS
- * facture — le repay Stripe échouerait. On ne propose donc « Payer » que là où
- * il aboutira ; « Annuler », lui, reste offert sur toute commande en attente.
+ * Il faut de l'argent dû, payable en ligne (`payableOnline`), sur une commande
+ * qui n'est pas annulée : en attente, sa facture ; payée, le reste à payer d'un
+ * échange d'article (ADR-0020). Sans facture, le paiement en ligne échouerait :
+ * on ne propose « Payer » que là où il aboutira.
  */
 export function canRepayOrder(order: {
   status: ViewerShopOrderStatus;
   payableOnline: boolean;
 }): boolean {
-  return order.status === 'PENDING' && order.payableOnline;
+  return order.status !== 'CANCELLED' && order.payableOnline;
+}
+
+/**
+ * Les articles encore dans la commande, à leur quantité restante : un article
+ * annulé ou échangé par le club (ADR-0020) n'y figure plus.
+ */
+export function activeOrderLines<
+  L extends { quantity: number; cancelledQty: number },
+>(lines: ReadonlyArray<L>): L[] {
+  return lines
+    .filter((l) => l.quantity - l.cancelledQty > 0)
+    .map((l) => ({ ...l, quantity: l.quantity - l.cancelledQty }));
 }
 
 /**

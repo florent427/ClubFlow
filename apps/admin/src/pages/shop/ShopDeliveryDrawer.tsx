@@ -180,14 +180,19 @@ export function ShopDeliveryDrawer({
         <strong>{buyer || '—'}</strong>
       </p>
       <ul className="cf-order-lines">
-        {order.lines.map((l) => (
-          <li key={l.id}>
-            <span>
-              {l.quantity} × {l.label}
-            </span>
-            <span>{fmtEuros(l.unitPriceCents * l.quantity)}</span>
-          </li>
-        ))}
+        {order.lines
+          // Les articles retirés de la commande ne sont pas remis (ADR-0020).
+          .filter((l) => l.quantity - l.cancelledQty > 0)
+          .map((l) => (
+            <li key={l.id}>
+              <span>
+                {l.quantity - l.cancelledQty} × {l.label}
+              </span>
+              <span>
+                {fmtEuros(l.unitPriceCents * (l.quantity - l.cancelledQty))}
+              </span>
+            </li>
+          ))}
       </ul>
       <p>
         <strong>Total : {fmtEuros(order.totalCents)}</strong>

@@ -115,6 +115,27 @@ describe('ShopAdminResolver — schéma GraphQL', () => {
     expect(corpsDe('type ShopStockSweepReportGraph {')).toContain(
       'preordersServed: Int!',
     );
+
+    // Échange et annulation d'articles (ADR-0020).
+    expect(corpsDe('type ShopOrderLineGraph {')).toContain('cancelledQty: Int!');
+    expect(corpsCommande).toContain('amountDueCents: Int!');
+    expect(corpsCommande).toContain('adjustments: [ShopOrderAdjustmentGraph!]!');
+    expect(corpsDe('enum ShopOrderAdjustmentKind {')).toMatch(
+      /LINE_CANCEL[\s\S]*EXCHANGE/,
+    );
+    const ajustement = corpsDe('type ShopOrderAdjustmentGraph {');
+    expect(ajustement).toContain('kind: ShopOrderAdjustmentKind!');
+    expect(ajustement).toContain('signed: Boolean!');
+    // La signature d'un échange ne sort jamais par GraphQL : seulement dans le
+    // bon d'échange.
+    expect(ajustement).not.toContain('signaturePng');
+    expect(sdl).toContain('createShopExchangeNoteLink(adjustmentId: ID!): String!');
+    expect(sdl).toContain(
+      'sendShopExchangeNote(input: SendShopExchangeNoteInput!): String!',
+    );
+    const envoiEchange = corpsDe('input SendShopExchangeNoteInput {');
+    expect(envoiEchange).toContain('adjustmentId: ID!');
+    expect(envoiEchange).toContain('email: String!');
   });
 });
 
