@@ -140,6 +140,8 @@ export function RegisterPage() {
     );
   }
 
+  // Même écran pour une adresse neuve et pour un compte déjà existant :
+  // l'API ne dit pas lequel (anti-énumération), seul l'e-mail reçu le dit.
   if (done) {
     return (
       <div className="auth-page">
@@ -148,9 +150,9 @@ export function RegisterPage() {
             <p className="auth-eyebrow">ClubFlow</p>
             <h1>Vérifiez votre e-mail</h1>
             <p className="auth-sub">
-              Un lien de confirmation a été envoyé à{' '}
-              <strong>{email.trim()}</strong>. Cliquez dessus pour activer
-              votre compte.
+              Un e-mail a été envoyé à <strong>{email.trim()}</strong>.
+              Suivez ses indications pour activer votre compte ou rejoindre
+              le club.
             </p>
           </header>
           <p className="auth-footer">

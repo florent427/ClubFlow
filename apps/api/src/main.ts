@@ -3,11 +3,16 @@ import { NestFactory } from '@nestjs/core';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
+import { trustLocalReverseProxy } from './common/http/trust-local-proxy';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true,
   });
+  // Caddy relaie tout depuis localhost : sans ça, Express voit 127.0.0.1 pour
+  // chaque visiteur et le throttler ne tient qu'un compteur pour toute la
+  // plateforme (cf. common/http/trust-local-proxy.ts).
+  trustLocalReverseProxy(app);
   // Les relevés bancaires OFX/CSV sont envoyés en base64 dans une mutation
   // GraphQL (ADR-0014 §3) : un export annuel dépasse les 100 Ko du corps JSON
   // par défaut. `useBodyParser` conserve `rawBody` pour le webhook Stripe.

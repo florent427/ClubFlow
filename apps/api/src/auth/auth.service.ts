@@ -103,6 +103,14 @@ export class AuthService {
     return `${base}/reset-password?token=${encodeURIComponent(rawToken)}`;
   }
 
+  /** Page « Mot de passe oublié » du portail, où l'on choisit un mot de passe. */
+  private buildForgotPasswordUrl(): string {
+    const base = (
+      process.env.MEMBER_PORTAL_ORIGIN ?? 'http://localhost:5174'
+    ).replace(/\/$/, '');
+    return `${base}/forgot-password`;
+  }
+
   /**
    * Crée la Family du foyer + lie le Contact comme PAYER, si pas
    * déjà fait. Idempotent. Sans cette étape, viewerProfiles ne
@@ -195,6 +203,58 @@ export class AuthService {
     return this.buildLoginPayload(user.id, user.email, viewerProfiles);
   }
 
+  /**
+   * Mot de passe d'un compte existant dont l'adresse n'est PAS vérifiée, quand
+   * une nouvelle inscription arrive avec la même adresse (portail, application,
+   * création de club).
+   *
+   * Personne n'a encore prouvé qu'il lit cette boîte. Écraser le mot de passe
+   * (l'ancienne règle) laissait un tiers se réinscrire juste après le vrai
+   * titulaire : celui-ci ouvrait son lien et activait le compte avec le mot de
+   * passe du tiers. Garder le premier aurait ouvert l'inverse : le tiers
+   * s'inscrit d'abord et attend le clic. D'où :
+   *  - même mot de passe que celui du compte : même personne, on le garde ;
+   *  - compte sans mot de passe et sans lien en cours (contact né d'un
+   *    formulaire du site ou d'un événement) : le mot de passe choisi est posé ;
+   *  - sinon deux mots de passe se disputent le compte et aucun ne gagne. Le
+   *    titulaire confirme son adresse, puis en choisit un par « Mot de passe
+   *    oublié ».
+   *
+   * `trusted: true` porte le mot de passe à enregistrer, et l'inscription peut
+   * aussi toucher aux noms et aux clubs. `trusted: false` n'en porte aucun :
+   * l'appelant efface celui du compte.
+   */
+  private async passwordForUnverifiedAccount(
+    user: { id: string; passwordHash: string | null },
+    password: string,
+    newPasswordHash: string,
+  ): Promise<{ trusted: true; passwordHash: string } | { trusted: false }> {
+    if (user.passwordHash) {
+      return (await bcrypt.compare(password, user.passwordHash))
+        ? { trusted: true, passwordHash: user.passwordHash }
+        : { trusted: false };
+    }
+    const pendingLink = await this.prisma.emailVerificationToken.findFirst({
+      where: {
+        userId: user.id,
+        consumedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      select: { id: true },
+    });
+    return pendingLink
+      ? { trusted: false }
+      : { trusted: true, passwordHash: newPasswordHash };
+  }
+
+  private async clubNameForMail(clubId: string): Promise<string> {
+    const club = await this.prisma.club.findUnique({
+      where: { id: clubId },
+      select: { name: true },
+    });
+    return club?.name ?? 'ClubFlow';
+  }
+
   async registerContact(input: RegisterContactInput): Promise<RegisterContactResult> {
     // Multi-tenant : si `clubSlug` fourni (via `?club=` portail ou
     // SelectClub mobile), on résout le club correspondant. Fallback sur
@@ -218,18 +278,36 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(input.password, 10);
     const displayName = `${input.firstName} ${input.lastName}`.trim();
 
+    // Tant que l'identité n'est pas prouvée, la réponse est celle d'une
+    // inscription neuve : elle ne dit pas qu'un compte existe à cette adresse.
+    const pendingVerification: RegisterContactResult = {
+      ok: true,
+      requiresEmailVerification: true,
+    };
+
     const existing = await this.prisma.user.findUnique({ where: { email } });
 
-    // Cas multi-tenant : User existe + email déjà vérifié sur un autre
-    // club. Soit il a déjà un Contact ici (vrai doublon → reject), soit
-    // il s'inscrit sur un nouveau club (création directe sans re-vérif
-    // d'email — l'identité est déjà prouvée par la vérification
-    // initiale).
     if (existing?.emailVerifiedAt) {
+      // Compte vérifié : rejoindre un nouveau club exige son mot de passe.
+      // Sans cette preuve, connaître l'adresse suffisait pour rattacher le
+      // compte d'un autre à n'importe quel club.
+      const proven =
+        !!existing.passwordHash &&
+        (await bcrypt.compare(input.password, existing.passwordHash));
+      if (!proven) {
+        // Rien n'est créé. Seul le titulaire, qui lit cette boîte, apprend
+        // que son compte existe et comment rejoindre le club.
+        await this.mail.sendSignupAttemptOnExistingAccount(clubId, email, {
+          clubName: await this.clubNameForMail(clubId),
+          forgotPasswordUrl: this.buildForgotPasswordUrl(),
+        });
+        return pendingVerification;
+      }
       const existingContact = await this.prisma.contact.findUnique({
         where: { userId_clubId: { userId: existing.id, clubId } },
       });
       if (existingContact) {
+        // Identité prouvée : dire que le compte existe ne révèle rien.
         throw new ConflictException('USER_ALREADY_EXISTS');
       }
       // Création directe du Contact sur ce nouveau club. Pas d'email
@@ -249,34 +327,53 @@ export class AuthService {
       return { ok: true, requiresEmailVerification: false };
     }
 
-    if (existing && !existing.emailVerifiedAt) {
-      await this.prisma.user.update({
-        where: { id: existing.id },
-        data: { passwordHash, displayName },
-      });
-      const contact = await this.prisma.contact.upsert({
-        where: {
-          userId_clubId: { userId: existing.id, clubId },
-        },
-        create: {
-          userId: existing.id,
-          clubId,
-          firstName: input.firstName,
-          lastName: input.lastName,
-        },
-        update: {
-          firstName: input.firstName,
-          lastName: input.lastName,
-        },
-      });
-      await this.ensureFamilyForContactPayer(contact.id, clubId);
+    if (existing) {
+      const password = await this.passwordForUnverifiedAccount(
+        existing,
+        input.password,
+        passwordHash,
+      );
+      if (password.trusted) {
+        await this.prisma.user.update({
+          where: { id: existing.id },
+          data: { passwordHash: password.passwordHash, displayName },
+        });
+        const contact = await this.prisma.contact.upsert({
+          where: {
+            userId_clubId: { userId: existing.id, clubId },
+          },
+          create: {
+            userId: existing.id,
+            clubId,
+            firstName: input.firstName,
+            lastName: input.lastName,
+          },
+          update: {
+            firstName: input.firstName,
+            lastName: input.lastName,
+          },
+        });
+        await this.ensureFamilyForContactPayer(contact.id, clubId);
+      } else {
+        // Conflit : ni nom, ni club, ni mot de passe ne changent sur la parole
+        // d'une inscription que personne n'a confirmée.
+        await this.prisma.user.update({
+          where: { id: existing.id },
+          data: { passwordHash: null },
+        });
+      }
       const raw = await this.emailVerification.issueTokenForUser(existing.id);
       await this.mail.sendEmailVerificationLink(
         clubId,
         email,
         this.buildVerifyUrl(raw),
+        {
+          choosePasswordUrl: password.trusted
+            ? undefined
+            : this.buildForgotPasswordUrl(),
+        },
       );
-      return { ok: true, requiresEmailVerification: true };
+      return pendingVerification;
     }
 
     const user = await this.prisma.user.create({
@@ -304,7 +401,7 @@ export class AuthService {
       email,
       this.buildVerifyUrl(raw),
     );
-    return { ok: true, requiresEmailVerification: true };
+    return pendingVerification;
   }
 
   async verifyEmail(rawToken: string): Promise<LoginPayload> {
@@ -349,7 +446,10 @@ export class AuthService {
     const norm = email.trim().toLowerCase();
     const clubId = this.clubIdFromEnv();
     const user = await this.prisma.user.findUnique({ where: { email: norm } });
-    if (user && user.emailVerifiedAt && user.passwordHash) {
+    // Un compte vérifié SANS mot de passe (Google seul, inscription en
+    // conflit) doit pouvoir en choisir un : le lien part dans la boîte dont la
+    // maîtrise est déjà prouvée.
+    if (user?.emailVerifiedAt) {
       const raw = await this.passwordReset.issueTokenForUser(user.id);
       await this.mail.sendPasswordResetLink(
         clubId,
@@ -423,9 +523,16 @@ export class AuthService {
         userEmail = byEmail.email;
         await this.prisma.user.update({
           where: { id: userId },
-          data: {
-            emailVerifiedAt: byEmail.emailVerifiedAt ?? new Date(),
-          },
+          data: byEmail.emailVerifiedAt
+            ? { emailVerifiedAt: byEmail.emailVerifiedAt }
+            : {
+                emailVerifiedAt: new Date(),
+                // Jamais vérifié : ce mot de passe vient d'une inscription que
+                // personne n'a confirmée, peut-être celle d'un tiers qui
+                // attendait ce moment. Google prouve la boîte, pas ce mot de
+                // passe.
+                passwordHash: null,
+              },
         });
         const hasGoogleId = await this.prisma.userIdentity.findFirst({
           where: {
@@ -530,7 +637,9 @@ export class AuthService {
    *  1. Un Club (slug auto-généré ou validé) avec modules par défaut
    *     (MEMBERS, FAMILIES, COMMUNICATION) activés.
    *  2. Un User si l'email est libre, OU réutilise un user existant non-vérifié
-   *     (anti-stalled-signup). Refuse si l'email est déjà actif sur un compte.
+   *     (anti-stalled-signup ; son mot de passe suit
+   *     `passwordForUnverifiedAccount`). Refuse si l'email est déjà actif sur
+   *     un compte.
    *  3. Une ClubMembership(role=CLUB_ADMIN) liant ce user au nouveau club.
    *  4. Tente d'envoyer un mail de vérification. Si SMTP n'est pas configuré
    *     (dev sans Mailpit / prod sans Brevo), le user est créé quand même
@@ -558,7 +667,7 @@ export class AuthService {
     // Check email pas déjà actif
     const existingUser = await this.prisma.user.findUnique({
       where: { email },
-      select: { id: true, emailVerifiedAt: true },
+      select: { id: true, emailVerifiedAt: true, passwordHash: true },
     });
     if (existingUser?.emailVerifiedAt) {
       throw new ConflictException('USER_ALREADY_EXISTS');
@@ -578,11 +687,24 @@ export class AuthService {
 
     // User : reuse non-vérifié OU create
     let userId: string;
+    let choosePasswordUrl: string | undefined;
     if (existingUser && !existingUser.emailVerifiedAt) {
+      // Même règle que l'inscription d'un contact : créer un club ne prend pas
+      // le compte en cours d'inscription de quelqu'un d'autre.
+      const password = await this.passwordForUnverifiedAccount(
+        existingUser,
+        input.password,
+        passwordHash,
+      );
       await this.prisma.user.update({
         where: { id: existingUser.id },
-        data: { passwordHash, displayName },
+        data: password.trusted
+          ? { passwordHash: password.passwordHash, displayName }
+          : { passwordHash: null },
       });
+      if (!password.trusted) {
+        choosePasswordUrl = this.buildForgotPasswordUrl();
+      }
       userId = existingUser.id;
     } else {
       const user = await this.prisma.user.create({
@@ -613,6 +735,7 @@ export class AuthService {
         club.id,
         email,
         this.buildVerifyUrl(rawToken),
+        { choosePasswordUrl },
       );
       emailSent = true;
     } catch {
