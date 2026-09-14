@@ -430,11 +430,31 @@ Choix de Florent (2026-09-14) :
 - [x] Portail et mobile : unités retirées, reste à payer, « Payer » sur une
   commande payée qui a un reste à payer.
 
-### Task 5.6 : Vérification staging
+### Task 5.6 : Vérification staging (2026-09-14, club-demo et QA Test Club)
 
-- [ ] Échange moins cher payé en espèces, plus cher avec facture du reste à
-  payer réglée, même prix.
-- [ ] Échange d'une commande remise, signé, bon d'échange.
-- [ ] Annulation d'un article : payé par carte (mode test), impayé.
-- [ ] Bon de livraison inchangé après un échange ; annulation complète après
-  un échange.
+- [x] Échanges, depuis le tiroir de l'admin :
+  - moins cher, payé en espèces : 5 € rendus en espèces, avoir,
+    contre-passation sur la caisse ;
+  - plus cher : facture du reste à payer de 5 €, encaissée en espèces,
+    écriture en 708000 ;
+  - même prix : aucun mouvement d'argent.
+- [x] Échange d'une commande remise, signé au doigt : 5 € rendus, bon
+  d'échange PDF servi par lien signé. Un lien de bon de livraison portant la
+  signature du bon d'échange est refusé (403).
+- [x] Annulation d'un article :
+  - payé par carte, en mode test : 3,50 € remboursés par Stripe, paiement
+    négatif et avoir enregistrés par le webhook, contre-passation ;
+  - impayé : reste dû réduit de 15 € par un avoir, réservation libérée.
+- [x] Bon de livraison inchangé après un échange : lignes figées égales à ce
+  qui a été signé.
+- [x] Annulation complète après un échange : chaque encaissement rendu sur sa
+  facture, le reste à payer d'abord.
+- [x] Adhérent :
+  - reste dû de 5 € et « Payer » proposés ;
+  - historique des échanges masqué.
+
+  La session Stripe n'a pas pu être ouverte : club-demo n'a pas de compte
+  Stripe connecté.
+- [x] Journal de stock égal aux compteurs ; aucune nouvelle exception API.
+- [ ] Envoi du bon d'échange par e-mail : non exercé sur staging, couvert par
+  les tests unitaires.
