@@ -8,6 +8,7 @@ import {
   ShopOrderStatus,
   SponsorshipDealStatus,
 } from '@prisma/client';
+import { invoicePaymentTotals } from '../payments/invoice-totals';
 import { PrismaService } from '../prisma/prisma.service';
 import { AdminDashboardSummary } from './models/admin-dashboard.model';
 
@@ -174,7 +175,14 @@ export class DashboardService {
           status: InvoiceStatus.OPEN,
           dueAt: { lt: now },
         },
-        include: { payments: true },
+        include: {
+          payments: true,
+          // Avoirs émis sur la facture ; un avoir annulé ne déduit plus rien.
+          creditNotes: {
+            where: { isCreditNote: true, status: { not: InvoiceStatus.VOID } },
+            select: { amountCents: true },
+          },
+        },
       }),
       this.prisma.invoice.findMany({
         where: {
@@ -205,10 +213,23 @@ export class DashboardService {
       newMembersLast30,
       newMembersPrev30,
     );
-    const overdueBalanceCents = overdueInvoices.reduce((sum, inv) => {
-      const paid = inv.payments.reduce((s, p) => s + p.amountCents, 0);
-      return sum + Math.max(0, inv.amountCents - paid);
-    }, 0);
+    // « En retard » = échéance dépassée ET solde dû, avoirs déduits (ADR-0011).
+    // Une facture qu'un avoir a éteinte reste OPEN : elle ne compte ni dans le
+    // nombre, ni dans le montant.
+    const overdueBalances = overdueInvoices
+      .map(
+        (inv) =>
+          invoicePaymentTotals(
+            inv.amountCents,
+            inv.payments.reduce((s, p) => s + p.amountCents, 0),
+            inv.creditNotes.reduce((s, c) => s + c.amountCents, 0),
+          ).balanceCents,
+      )
+      .filter((balanceCents) => balanceCents > 0);
+    const overdueBalanceCents = overdueBalances.reduce(
+      (sum, balanceCents) => sum + balanceCents,
+      0,
+    );
     const paidOnTimeCount = paidInvoicesLast30.filter(
       (inv) => inv.dueAt == null || inv.updatedAt <= inv.dueAt,
     ).length;
@@ -224,7 +245,7 @@ export class DashboardService {
       newMembersLast30,
       newMembersPrev30,
       memberGrowthPct,
-      overdueInvoicesCount: overdueInvoices.length,
+      overdueInvoicesCount: overdueBalances.length,
       overdueBalanceCents,
       paidOnTimeRate,
       vitrinePublishedPagesCount: vitrinePages,

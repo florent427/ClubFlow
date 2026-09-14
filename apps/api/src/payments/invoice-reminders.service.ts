@@ -13,6 +13,8 @@ import { invoicePaymentTotals } from './invoice-totals';
  * Règles métier :
  *  - Une facture est réputée "en retard" si elle est OPEN, balance > 0,
  *    et `dueAt` est dépassée d'au moins {@link OVERDUE_GRACE_DAYS} jours.
+ *    La balance déduit les paiements ET les avoirs non annulés (ADR-0011) :
+ *    on ne relance pas un foyer pour ce que le club ne réclame plus.
  *  - On ne peut envoyer qu'une seule relance tous les
  *    {@link MIN_REMINDER_INTERVAL_DAYS} jours par facture.
  *  - L'historique de relance est conservé via `Invoice.lastRemindedAt`
@@ -69,6 +71,11 @@ export class InvoiceRemindersService {
       take: 200,
       include: {
         payments: true,
+        // Avoirs émis sur la facture ; un avoir annulé ne déduit plus rien.
+        creditNotes: {
+          where: { isCreditNote: true, status: { not: InvoiceStatus.VOID } },
+          select: { amountCents: true },
+        },
         family: {
           include: {
             familyMembers: {
@@ -80,8 +87,7 @@ export class InvoiceRemindersService {
     });
     return invoices
       .map((inv) => {
-        const paid = inv.payments.reduce((s, p) => s + p.amountCents, 0);
-        const { balanceCents } = invoicePaymentTotals(inv.amountCents, paid);
+        const { balanceCents } = balanceOf(inv);
         if (balanceCents <= 0) return null;
         const payer = inv.family?.familyMembers.find(
           (fm) => fm.linkRole === 'PAYER',
@@ -126,6 +132,11 @@ export class InvoiceRemindersService {
       where: { id: invoiceId, clubId, status: InvoiceStatus.OPEN },
       include: {
         payments: true,
+        // Avoirs émis sur la facture ; un avoir annulé ne déduit plus rien.
+        creditNotes: {
+          where: { isCreditNote: true, status: { not: InvoiceStatus.VOID } },
+          select: { amountCents: true },
+        },
         club: { select: { name: true } },
         family: {
           include: {
@@ -141,8 +152,7 @@ export class InvoiceRemindersService {
         'Facture introuvable ou déjà réglée.',
       );
     }
-    const paid = invoice.payments.reduce((s, p) => s + p.amountCents, 0);
-    const { balanceCents } = invoicePaymentTotals(invoice.amountCents, paid);
+    const { balanceCents } = balanceOf(invoice);
     if (balanceCents <= 0) {
       throw new BadRequestException('Facture soldée — rien à relancer.');
     }
@@ -239,6 +249,23 @@ ${invoice.club.name}`;
 
     return { sentTo: payerEmail };
   }
+}
+
+/**
+ * Reste dû d'une facture : paiements ET avoirs déduits, comme le portail et la
+ * liste des factures (ADR-0011). Sans les avoirs, la relance réclamait le
+ * montant déjà crédité, et relançait une facture qu'un avoir avait éteinte.
+ */
+function balanceOf(invoice: {
+  amountCents: number;
+  payments: Array<{ amountCents: number }>;
+  creditNotes: Array<{ amountCents: number }>;
+}) {
+  return invoicePaymentTotals(
+    invoice.amountCents,
+    invoice.payments.reduce((s, p) => s + p.amountCents, 0),
+    invoice.creditNotes.reduce((s, c) => s + c.amountCents, 0),
+  );
 }
 
 function escapeHtml(s: string): string {
