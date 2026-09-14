@@ -84,9 +84,10 @@ n'a pas d'écran d'achats : hors périmètre.
   `[id, preferredSupplierId]` → `ShopProductSupplier[productId, supplierId]`,
   `onDelete: NoAction`, et `@@unique([id, preferredSupplierId])` (validé par
   `prisma validate` le 2026-09-14).
-- [ ] Sur la **vraie base** (staging, après `db push`) : supprimer un produit qui
+- [x] Sur la **vraie base** (staging, après `db push`) : supprimer un produit qui
   porte un choix ; supprimer une déclinaison qui porte une exception ; retirer
-  l'offre choisie doit être refusé par la base.
+  l'offre choisie doit être refusé par la base. Vérifié le 2026-09-14 : les
+  trois tiennent sur PostgreSQL, clé composite présente en base.
 
 ### Task 1.2 : Service et GraphQL (admin)
 
@@ -127,10 +128,12 @@ n'a pas d'écran d'achats : hors périmètre.
 
 ### Task 1.4 : Recette staging
 
-- [ ] Produit à deux fournisseurs, exception de prix sur le XXL, choix déplacé,
+- [x] Produit à deux fournisseurs, exception de prix sur le XXL, choix déplacé,
   retrait de l'offre choisie refusé puis accepté après déplacement, suppression
   d'un produit portant un choix, ligne de commande manuelle pré-remplie au prix
-  de l'exception.
+  de l'exception. Fait le 2026-09-14 sur club-demo : refus traduits (retrait du
+  fournisseur choisi, choix d'un fournisseur non rattaché), prix pré-remplis
+  8,50, 9,90 et 7,00 euros, exceptions parties en cascade, portail à null.
 
 ---
 
