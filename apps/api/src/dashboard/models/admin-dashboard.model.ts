@@ -20,10 +20,12 @@ export class AdminDashboardTrends {
   @Field(() => Float)
   memberGrowthPct!: number;
 
-  @Field(() => Int, { description: 'Factures OPEN avec échéance passée' })
+  @Field(() => Int, {
+    description: 'Factures OPEN avec échéance passée et un solde dû (avoirs déduits)',
+  })
   overdueInvoicesCount!: number;
 
-  @Field(() => Int, { description: 'Somme des soldes dus (centimes)' })
+  @Field(() => Int, { description: 'Somme des soldes dus, avoirs déduits (centimes)' })
   overdueBalanceCents!: number;
 
   @Field(() => Float, {
