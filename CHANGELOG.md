@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.63.2](https://github.com/florent427/ClubFlow/compare/v0.63.1...v0.63.2) (2026-09-14)
+
+
+### 🐛 Bug Fixes
+
+* **payments:** déduire les avoirs du solde échelonné ([c7a322b](https://github.com/florent427/ClubFlow/commit/c7a322b3cdd6f3f5e188eb7a4ec08665e0c80d71))
+* **payments:** déduire les avoirs du solde échelonné ([68a7c1b](https://github.com/florent427/ClubFlow/commit/68a7c1b7d8f6f452b76ba5bba6a82c3d904b828e))
+
 ## [0.63.1](https://github.com/florent427/ClubFlow/compare/v0.63.0...v0.63.1) (2026-09-14)
 
 
