@@ -52,6 +52,7 @@
 | [`jest-structuredclone-date-autre-contexte.md`](pitfalls/jest-structuredclone-date-autre-contexte.md) | Piège — `structuredClone` dans Jest rend des `Date` d'un autre contexte |
 | [`juge-non-fiable-verdict-sans-valeur.md`](pitfalls/juge-non-fiable-verdict-sans-valeur.md) | Le juge non fiable : un verdict rendu sur un signal dont on n'a pas vérifié le sens |
 | [`module-natif-ne-passe-pas-par-metro.md`](pitfalls/module-natif-ne-passe-pas-par-metro.md) | `Cannot find native module` : un module natif ne s'installe pas par Metro |
+| [`mot-de-passe-compte-non-verifie.md`](pitfalls/mot-de-passe-compte-non-verifie.md) | Piège — Mot de passe d'un compte non vérifié : l'écraser OU le garder ouvre une reprise de compte |
 | [`nestjs-graphql-nullable-needs-explicit-type.md`](pitfalls/nestjs-graphql-nullable-needs-explicit-type.md) | Piège — `@Field({ nullable: true })` GraphQL crash sans type explicite |
 | [`nestjs-graphql-union-type-explicite.md`](pitfalls/nestjs-graphql-union-type-explicite.md) | Piège — un `@Field` sur une union `string | null` fait tomber l'API au démarrage |
 | [`nextjs-isr-cache-stale.md`](pitfalls/nextjs-isr-cache-stale.md) | Piège — Next.js ISR cache stale après insert DB |
@@ -78,6 +79,7 @@
 | [`staging-supprimee-au-merge.md`](pitfalls/staging-supprimee-au-merge.md) | Piège — `staging` disparaît à chaque promotion vers `main` |
 | [`stock-vendu-avant-le-suivi.md`](pitfalls/stock-vendu-avant-le-suivi.md) | Piège — un article vendu avant le suivi du stock reste en vente |
 | [`test-verifie-la-forme-pas-le-comportement.md`](pitfalls/test-verifie-la-forme-pas-le-comportement.md) | Piège — un test vert qui certifie un invariant que le code n'a pas |
+| [`throttler-sans-trust-proxy.md`](pitfalls/throttler-sans-trust-proxy.md) | Piège — Throttler derrière Caddy sans `trust proxy` : un seul compteur pour toute la plateforme |
 | [`typecheck-noop-solution-tsconfig.md`](pitfalls/typecheck-noop-solution-tsconfig.md) | Piège — `npx tsc --noEmit` qui vérifie 0 fichier et sort 0 |
 | [`une-supposition-survit-a-la-decision.md`](pitfalls/une-supposition-survit-a-la-decision.md) | Piège — une supposition qui survit à la décision compte deux fois |
 | [`windows-scp-crlf-bash-script.md`](pitfalls/windows-scp-crlf-bash-script.md) | Piège — `scp` Windows transfère les `.sh` avec line endings CRLF |
@@ -120,7 +122,7 @@
 
 ---
 
-_Index généré le 2026-09-14 06:42 UTC par `bin/memory-index`._
+_Index généré le 2026-09-14 17:24 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`

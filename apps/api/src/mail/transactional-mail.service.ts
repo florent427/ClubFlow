@@ -11,6 +11,10 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
+/** Fin de tout e-mail de confirmation d'adresse. */
+const IGNORE_IF_NOT_YOU =
+  'Si vous n’êtes pas à l’origine de cette inscription, ignorez ce message et n’ouvrez pas le lien : le compte ne sera pas activé.';
+
 @Injectable()
 export class TransactionalMailService {
   constructor(
@@ -18,10 +22,16 @@ export class TransactionalMailService {
     @Inject(MAIL_TRANSPORT) private readonly transport: MailTransport,
   ) {}
 
+  /**
+   * Lien de confirmation d'adresse. `choosePasswordUrl` : l'inscription est en
+   * conflit (deux mots de passe pour un compte non confirmé), aucun mot de
+   * passe n'est actif et le titulaire en choisira un après confirmation.
+   */
   async sendEmailVerificationLink(
     clubId: string,
     to: string,
     verifyUrl: string,
+    options: { choosePasswordUrl?: string } = {},
   ): Promise<void> {
     const trimmed = to.trim();
     if (!trimmed || !trimmed.includes('@')) {
@@ -30,14 +40,60 @@ export class TransactionalMailService {
     // E-mail AUTH : fallback sender plateforme si le club n’a pas encore
     // de domaine d’envoi vérifié (l’inscription ne doit pas être bloquée).
     const profile = await this.domains.getAuthMailProfile(clubId);
+    const { choosePasswordUrl } = options;
+    const conflict = choosePasswordUrl
+      ? `Plusieurs inscriptions avec des mots de passe différents ont été demandées pour cette adresse. Par sécurité, aucun mot de passe n’est actif : après avoir confirmé votre adresse, choisissez-en un avec « Mot de passe oublié » : ${choosePasswordUrl}`
+      : '';
     await this.transport.sendEmail({
       clubId,
       kind: 'transactional',
       from: profile.from,
       to: trimmed,
       subject: 'ClubFlow — confirmez votre adresse e-mail',
-      html: `<p>Bonjour,</p><p>Pour activer votre compte, veuillez confirmer votre adresse e-mail :</p><p><a href="${verifyUrl}">Confirmer mon e-mail</a></p><p>Lien (copier-coller) : ${verifyUrl}</p>`,
-      text: `Confirmez votre adresse e-mail en ouvrant ce lien : ${verifyUrl}`,
+      html: `<p>Bonjour,</p><p>Pour activer votre compte, veuillez confirmer votre adresse e-mail :</p><p><a href="${verifyUrl}">Confirmer mon e-mail</a></p><p>Lien (copier-coller) : ${verifyUrl}</p>${conflict ? `<p>${conflict}</p>` : ''}<p>${IGNORE_IF_NOT_YOU}</p>`,
+      text: [
+        `Confirmez votre adresse e-mail en ouvrant ce lien : ${verifyUrl}`,
+        conflict,
+        IGNORE_IF_NOT_YOU,
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
+    });
+  }
+
+  /**
+   * Inscription demandée avec l'adresse d'un compte DÉJÀ vérifié, sans son mot
+   * de passe. Rien n'a été créé : ce message, que seul le titulaire lit, lui
+   * apprend que le compte existe et comment rejoindre le club. La réponse de
+   * l'API, elle, reste celle d'une inscription neuve.
+   */
+  async sendSignupAttemptOnExistingAccount(
+    clubId: string,
+    to: string,
+    options: { clubName: string; forgotPasswordUrl: string },
+  ): Promise<void> {
+    const trimmed = to.trim();
+    if (!trimmed || !trimmed.includes('@')) {
+      throw new BadRequestException('Adresse e-mail invalide');
+    }
+    const profile = await this.domains.getAuthMailProfile(clubId);
+    const { clubName, forgotPasswordUrl } = options;
+    const ifYou = `Si c’est vous, refaites l’inscription avec votre mot de passe habituel. Mot de passe oublié ? Choisissez-en un nouveau : ${forgotPasswordUrl}`;
+    const ifNotYou =
+      'Si vous n’êtes pas à l’origine de cette demande, ignorez ce message : rien n’a changé sur votre compte.';
+    await this.transport.sendEmail({
+      clubId,
+      kind: 'transactional',
+      from: profile.from,
+      to: trimmed,
+      subject: 'ClubFlow — vous avez déjà un compte',
+      html: `<p>Bonjour,</p><p>Une inscription à <strong>${escapeHtml(clubName)}</strong> vient d’être demandée avec votre adresse e-mail, qui a déjà un compte ClubFlow.</p><p>${ifYou}</p><p>${ifNotYou}</p>`,
+      text: [
+        'Bonjour,',
+        `Une inscription à ${clubName} vient d’être demandée avec votre adresse e-mail, qui a déjà un compte ClubFlow.`,
+        ifYou,
+        ifNotYou,
+      ].join('\n\n'),
     });
   }
 

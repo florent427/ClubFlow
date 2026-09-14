@@ -170,6 +170,7 @@ deploy-staging.yml. Détails → [runbooks/release.md](docs/runbooks/release.md)
 | Retour de paiement mobile atterrit sur le portail web au lieu de l'app | `openAuthSessionAsync` exige un schéma custom | [pitfall](docs/memory/pitfalls/openauthsession-exige-scheme-custom.md) |
 | Mojibake `dÃ©mo` **ou** déconnexions membres intermittentes | `atob()` Latin-1 + base64url | [pitfall](docs/memory/pitfalls/atob-latin1-et-base64url.md) |
 | `Cannot find native module 'Expo…'` après un `npm install` | module natif absent du dev-client | [pitfall](docs/memory/pitfalls/module-natif-ne-passe-pas-par-metro.md) |
+| `ThrottlerException: Too Many Requests` pour tout le monde à la fois | throttler sans `trust proxy` derrière Caddy : un seul compteur | [pitfall](docs/memory/pitfalls/throttler-sans-trust-proxy.md) |
 
 Pour tout autre symptôme : grep dans `docs/memory/pitfalls/` ou demander
 à `/learn`.

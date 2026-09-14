@@ -110,6 +110,97 @@ describe('TransactionalMailService.sendVitrineContactMessage', () => {
   });
 });
 
+describe('TransactionalMailService.sendEmailVerificationLink', () => {
+  const LIEN = 'https://portail.exemple.fr/verify-email?token=abc';
+  const CHOISIR = 'https://portail.exemple.fr/forgot-password';
+
+  it('refuse une adresse invalide sans rien envoyer', async () => {
+    const { svc, transport } = makeService();
+
+    await expect(
+      svc.sendEmailVerificationLink('club-1', 'pas-un-email', LIEN),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(transport.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('donne le lien, et dit quoi faire si l’on n’a rien demandé', async () => {
+    const { svc, domains, transport } = makeService();
+
+    await svc.sendEmailVerificationLink('club-1', ' camille@exemple.fr ', LIEN);
+
+    expect(domains.getAuthMailProfile).toHaveBeenCalledWith('club-1');
+    const sent = transport.sendEmail.mock.calls[0][0];
+    expect(sent).toMatchObject({
+      to: 'camille@exemple.fr',
+      subject: 'ClubFlow — confirmez votre adresse e-mail',
+    });
+    for (const corps of [sent.html, sent.text]) {
+      expect(corps).toContain(LIEN);
+      // Un tiers peut s'être inscrit avec cette adresse : ouvrir le lien
+      // activerait SON compte.
+      expect(corps).toContain('ignorez ce message et n’ouvrez pas le lien');
+      expect(corps).not.toContain('aucun mot de passe');
+    }
+  });
+
+  it('en conflit, dit qu’aucun mot de passe n’est actif et où en choisir un', async () => {
+    const { svc, transport } = makeService();
+
+    await svc.sendEmailVerificationLink('club-1', 'camille@exemple.fr', LIEN, {
+      choosePasswordUrl: CHOISIR,
+    });
+
+    const sent = transport.sendEmail.mock.calls[0][0];
+    for (const corps of [sent.html, sent.text]) {
+      expect(corps).toContain(LIEN);
+      expect(corps).toContain('aucun mot de passe n’est actif');
+      expect(corps).toContain(CHOISIR);
+    }
+  });
+});
+
+describe('TransactionalMailService.sendSignupAttemptOnExistingAccount', () => {
+  const OPTS = {
+    clubName: 'Dojo <Sud>',
+    forgotPasswordUrl: 'https://portail.exemple.fr/forgot-password',
+  };
+
+  it('refuse une adresse invalide sans rien envoyer', async () => {
+    const { svc, transport } = makeService();
+
+    await expect(
+      svc.sendSignupAttemptOnExistingAccount('club-1', 'pas-un-email', OPTS),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(transport.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('prévient le titulaire : compte existant, comment rejoindre le club, club échappé', async () => {
+    const { svc, domains, transport } = makeService();
+
+    await svc.sendSignupAttemptOnExistingAccount('club-1', ' camille@exemple.fr ', OPTS);
+
+    expect(domains.getAuthMailProfile).toHaveBeenCalledWith('club-1');
+    const sent = transport.sendEmail.mock.calls[0][0];
+    expect(sent).toMatchObject({
+      clubId: 'club-1',
+      kind: 'transactional',
+      from: { name: 'Demo', address: 'noreply@mail.demo.fr' },
+      to: 'camille@exemple.fr',
+      subject: 'ClubFlow — vous avez déjà un compte',
+    });
+    expect(sent.html).toContain('Dojo &lt;Sud&gt;');
+    expect(sent.html).not.toContain('<Sud>');
+    expect(sent.text).toContain('Une inscription à Dojo <Sud>');
+    for (const corps of [sent.html, sent.text]) {
+      expect(corps).toContain('mot de passe habituel');
+      expect(corps).toContain(OPTS.forgotPasswordUrl);
+      expect(corps).toContain('rien n’a changé sur votre compte');
+    }
+  });
+});
+
 describe('TransactionalMailService.sendShopDeliveryNote', () => {
   const PDF = Buffer.from('%PDF-bon');
   const OPTS = {

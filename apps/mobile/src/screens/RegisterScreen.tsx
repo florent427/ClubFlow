@@ -132,6 +132,8 @@ export function RegisterScreen() {
     );
   }
 
+  // Même écran pour une adresse neuve et pour un compte déjà existant :
+  // l'API ne dit pas lequel (anti-énumération), seul l'e-mail reçu le dit.
   if (done) {
     return (
       <View style={styles.feedbackContainer}>
@@ -145,12 +147,13 @@ export function RegisterScreen() {
         </LinearGradient>
         <Text style={styles.feedbackTitle}>Vérifiez votre e-mail</Text>
         <Text style={styles.feedbackLead}>
-          Un lien de confirmation a été envoyé à{'\n'}
+          Un e-mail a été envoyé à{'\n'}
           <Text style={styles.strong}>{email.trim()}</Text>.
         </Text>
         <Text style={styles.feedbackMuted}>
-          Cliquez sur le lien depuis votre téléphone — il ouvrira l'app
-          ClubFlow directement.
+          Suivez ses indications pour activer votre compte ou rejoindre le
+          club. Ouvert depuis votre téléphone, le lien de confirmation
+          lance l'app ClubFlow directement.
         </Text>
         <GradientButton
           label="Retour à la connexion"
