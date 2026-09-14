@@ -169,6 +169,26 @@ describe('ShopAdminResolver — schéma GraphQL', () => {
     const choix = corpsDe('input SetShopProductPreferredSupplierInput {');
     expect(choix).toContain('supplierId: ID');
     expect(choix).not.toContain('supplierId: ID!');
+
+    // Réapprovisionnement (ADR-0021 §3-4).
+    expect(sdl).toContain('shopRestockPlan: ShopRestockPlanGraph!');
+    expect(sdl).toContain(
+      'createShopRestockOrders(input: CreateShopRestockOrdersInput!): [ShopRestockOrderResultGraph!]!',
+    );
+    const ligneReappro = corpsDe('type ShopRestockLineGraph {');
+    expect(ligneReappro).toContain('shortfall: Int!');
+    expect(ligneReappro).toContain('suggestedQty: Int!');
+    expect(ligneReappro).toContain('supplier: ShopRestockOfferGraph');
+    expect(ligneReappro).not.toContain('supplier: ShopRestockOfferGraph!');
+    expect(ligneReappro).toContain('offers: [ShopRestockOfferGraph!]!');
+    const offreReappro = corpsDe('type ShopRestockOfferGraph {');
+    expect(offreReappro).toContain('unitCostCents: Int');
+    expect(offreReappro).not.toContain('unitCostCents: Int!');
+    expect(offreReappro).toContain('suggestedQty: Int!');
+    const ligneEntree = corpsDe('input ShopRestockOrderLineInput {');
+    expect(ligneEntree).toContain('qty: Int!');
+    expect(ligneEntree).toContain('unitCostCents: Int');
+    expect(ligneEntree).not.toContain('unitCostCents: Int!');
   });
 });
 

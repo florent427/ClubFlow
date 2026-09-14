@@ -2469,6 +2469,85 @@ export const SHOP_LOW_STOCK_VARIANTS = gql`
   }
 `;
 
+const SHOP_RESTOCK_OFFER_FIELDS = `
+  supplierId
+  supplierName
+  supplierActive
+  supplierRef
+  unitCostCents
+  packSize
+  suggestedQty
+`;
+
+const SHOP_RESTOCK_LINE_FIELDS = `
+  variantId
+  productId
+  productName
+  label
+  sku
+  available
+  onHand
+  reorderThreshold
+  reorderTargetQty
+  alertedAt
+  onOrder
+  preordered
+  inDraft
+  target
+  shortfall
+  suggestedQty
+  supplier {
+    ${SHOP_RESTOCK_OFFER_FIELDS}
+  }
+  offers {
+    ${SHOP_RESTOCK_OFFER_FIELDS}
+  }
+`;
+
+/**
+ * Le plan de réapprovisionnement (ADR-0021 §3), calculé à chaque lecture : ce
+ * qu'il faut commander, par fournisseur choisi.
+ */
+export const SHOP_RESTOCK_PLAN = gql`
+  query ShopRestockPlan {
+    shopRestockPlan {
+      groups {
+        supplierId
+        supplierName
+        lines {
+          ${SHOP_RESTOCK_LINE_FIELDS}
+        }
+      }
+      withoutSupplier {
+        ${SHOP_RESTOCK_LINE_FIELDS}
+      }
+      inactiveSupplier {
+        ${SHOP_RESTOCK_LINE_FIELDS}
+      }
+      covered {
+        ${SHOP_RESTOCK_LINE_FIELDS}
+      }
+    }
+  }
+`;
+
+/** Un brouillon par fournisseur, ou celui déjà ouvert complété (ADR-0021 §4). */
+export const CREATE_SHOP_RESTOCK_ORDERS = gql`
+  mutation CreateShopRestockOrders($input: CreateShopRestockOrdersInput!) {
+    createShopRestockOrders(input: $input) {
+      created
+      lineCount
+      order {
+        id
+        reference
+        supplier {
+          name
+        }
+      }
+    }
+  }
+`;
+
 export const TRIGGER_SHOP_STOCK_SWEEP = gql`
   mutation TriggerShopStockSweep {
     triggerShopStockSweep {

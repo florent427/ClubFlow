@@ -13,6 +13,7 @@ import {
   SHOP_PRODUCTS,
   SHOP_PURCHASE_INVOICE_ACCOUNT,
   SHOP_PURCHASE_ORDERS,
+  SHOP_RESTOCK_PLAN,
   SHOP_SUPPLIERS,
   UNLINK_SHOP_PURCHASE_ORDER_INVOICE,
 } from '../../lib/documents';
@@ -48,6 +49,9 @@ const STOCK_TOUCHING_REFETCH = [
   { query: SHOP_PURCHASE_ORDERS },
   { query: SHOP_PRODUCTS },
   { query: SHOP_LOW_STOCK_VARIANTS },
+  // Réception, envoi ou annulation bougent l'encours : le plan de
+  // réapprovisionnement se relit (ADR-0021).
+  { query: SHOP_RESTOCK_PLAN },
 ];
 
 function parsePositiveInt(s: string): number | null {
@@ -67,9 +71,14 @@ function parseEurosToCents(s: string): number | null {
   return Math.round(n * 100);
 }
 
-export function PurchaseOrdersTab() {
+export function PurchaseOrdersTab({
+  initialOrderId = null,
+}: {
+  /** Commande à ouvrir d'emblée : un brouillon né du réapprovisionnement. */
+  initialOrderId?: string | null;
+}) {
   const { showToast } = useToast();
-  const [openOrderId, setOpenOrderId] = useState<string | null>(null);
+  const [openOrderId, setOpenOrderId] = useState<string | null>(initialOrderId);
   const [creating, setCreating] = useState(false);
 
   const { data, loading } = useQuery<ShopPurchaseOrdersQueryData>(
