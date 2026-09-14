@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.66.0](https://github.com/florent427/ClubFlow/compare/v0.65.0...v0.66.0) (2026-09-14)
+
+
+### ✨ Features
+
+* **boutique:** bon de commande fournisseur — PDF, envoi par e-mail et preuve de l'envoi ([9e1745e](https://github.com/florent427/ClubFlow/commit/9e1745ea318a98374af2e276f2f09861d3a0a182))
+* **boutique:** bon de commande fournisseur PDF et e-mail (ADR-0021 lot 3), réparation des 8 tests hérités ([27aa963](https://github.com/florent427/ClubFlow/commit/27aa963383ee55cb0576b3e54d9e33f5caefd6c8))
+
 ## [0.65.0](https://github.com/florent427/ClubFlow/compare/v0.64.0...v0.65.0) (2026-09-14)
 
 
