@@ -28,6 +28,30 @@ type ViewerIdentity = {
 };
 
 /** Ce que la projection d'un produit a le droit de montrer. */
+/**
+ * Ce que l'ADMINISTRATION charge d'un produit : ses déclinaisons, et ses
+ * fournisseurs avec leurs exceptions (ADR-0021). Une seule constante pour les
+ * deux lectures admin : une lecture qui l'oublierait afficherait « aucun
+ * fournisseur » sans rien signaler.
+ */
+const ADMIN_PRODUCT_INCLUDE = {
+  variants: { orderBy: { createdAt: 'asc' } },
+  supplierOffers: {
+    orderBy: { createdAt: 'asc' },
+    include: {
+      supplier: { select: { name: true, active: true } },
+      variantOverrides: { orderBy: { createdAt: 'asc' } },
+    },
+  },
+} as const satisfies Prisma.ShopProductInclude;
+
+type AdminSupplierOffer = Prisma.ShopProductSupplierGetPayload<{
+  include: {
+    supplier: { select: { name: true; active: true } };
+    variantOverrides: true;
+  };
+}>;
+
 type ShapeOptions = {
   /** Faux sur tout chemin public : aucune quantité, même dérivée. */
   withQuantities: boolean;
@@ -171,7 +195,7 @@ export class ShopService {
     const rows = await this.prisma.shopProduct.findMany({
       where: { clubId },
       orderBy: [{ active: 'desc' }, { createdAt: 'desc' }],
-      include: { variants: { orderBy: { createdAt: 'asc' } } },
+      include: ADMIN_PRODUCT_INCLUDE,
     });
     const counts = await this.adminCountsFor(clubId, rows);
     return rows.map((p) =>
@@ -204,7 +228,7 @@ export class ShopService {
   async reloadProduct(clubId: string, id: string) {
     const row = await this.prisma.shopProduct.findFirstOrThrow({
       where: { id, clubId },
-      include: { variants: { orderBy: { createdAt: 'asc' } } },
+      include: ADMIN_PRODUCT_INCLUDE,
     });
     const counts = await this.adminCountsFor(clubId, [row]);
     return this.shapeProduct(row, { withQuantities: true, ...counts });
@@ -240,7 +264,9 @@ export class ShopService {
    * déploiement (ADR-0012 §Conséquences).
    */
   private shapeProduct(
-    p: Prisma.ShopProductGetPayload<{ include: { variants: true } }>,
+    p: Prisma.ShopProductGetPayload<{ include: { variants: true } }> & {
+      supplierOffers?: AdminSupplierOffer[];
+    },
     opts: ShapeOptions,
   ) {
     const variants = p.variants;
@@ -260,6 +286,29 @@ export class ShopService {
       // Réglages de précommande : publics, ce ne sont pas des quantités.
       preorderEnabled: p.preorderEnabled,
       preorderLeadTime: p.preorderLeadTime,
+      // Fournisseurs (ADR-0021) : le PRIX D'ACHAT du club et sa politique
+      // d'achat. NEUTRALISÉS HORS ADMINISTRATION comme `avgCostCents`, et à
+      // null plutôt qu'en liste vide : « aucun fournisseur » est lui aussi
+      // une information.
+      preferredSupplierId: opts.withQuantities ? p.preferredSupplierId : null,
+      suppliers: opts.withQuantities
+        ? (p.supplierOffers ?? []).map((o) => ({
+            id: o.id,
+            supplierId: o.supplierId,
+            supplierName: o.supplier.name,
+            supplierActive: o.supplier.active,
+            supplierRef: o.supplierRef,
+            unitCostCents: o.unitCostCents,
+            packSize: o.packSize,
+            preferred: o.supplierId === p.preferredSupplierId,
+            variantOverrides: o.variantOverrides.map((x) => ({
+              id: x.id,
+              variantId: x.variantId,
+              supplierRef: x.supplierRef,
+              unitCostCents: x.unitCostCents,
+            })),
+          }))
+        : null,
       // Somme des variantes suivies, ou null si aucune ne l'est : c'est
       // exactement l'ancienne sémantique « illimité ».
       //

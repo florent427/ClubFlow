@@ -51,11 +51,13 @@ import {
   productReservedUnits,
 } from '../../lib/shop-variant-matrix';
 import type { MatrixRowDraft } from '../../lib/shop-variant-matrix';
+import { preferredOffer } from '../../lib/shop-product-suppliers';
 import { useToast } from '../../components/ToastProvider';
 import { ConfirmModal, Drawer, EmptyState } from '../../components/ui';
 import { ProductImageField } from '../../components/ProductImageField';
 import { AiProductDescriptionPanel } from '../../components/AiProductDescriptionPanel';
 import { SuppliersTab } from './SuppliersTab';
+import { ProductSuppliersDrawer } from './ProductSuppliersDrawer';
 import { PurchaseOrdersTab } from './PurchaseOrdersTab';
 import { ShopSettingsTab } from './ShopSettingsTab';
 import { InvoiceDetailDrawer } from '../billing/InvoiceDetailDrawer';
@@ -901,6 +903,19 @@ function CounterSaleDrawer({
 }
 
 /** Unités précommandées en attente d'arrivage, toutes déclinaisons (ADR-0018). */
+/**
+ * Chez qui le réapprovisionnement commandera l'article (ADR-0021) — ou ce qui
+ * manque pour qu'il le fasse. Un article sans fournisseur choisi n'est jamais
+ * recommandé automatiquement : la carte le dit plutôt que de se taire.
+ */
+function supplierLine(p: ShopProduct): string {
+  const chosen = preferredOffer(p);
+  if (chosen) return `Fournisseur : ${chosen.supplierName}`;
+  return (p.suppliers?.length ?? 0) > 0
+    ? 'Aucun fournisseur choisi'
+    : 'Aucun fournisseur';
+}
+
 function preorderedOf(p: ShopProduct): number {
   return p.variants.reduce((sum, v) => sum + (v.preorderedQty ?? 0), 0);
 }
@@ -928,6 +943,8 @@ function ProductsTab() {
   const [confirmDel, setConfirmDel] = useState<ShopProduct | null>(null);
   /** Produit dont on édite les déclinaisons. Null = sous-écran fermé. */
   const [variantsFor, setVariantsFor] = useState<ShopProduct | null>(null);
+  /** Produit dont on édite les fournisseurs (ADR-0021). Null = tiroir fermé. */
+  const [suppliersFor, setSuppliersFor] = useState<ShopProduct | null>(null);
   /** Produit dont on s'apprête à retirer les déclinaisons (confirmation). */
   const [confirmFlatten, setConfirmFlatten] = useState<ShopProduct | null>(null);
 
@@ -1247,6 +1264,7 @@ function ProductsTab() {
                     Valeur du stock : au moins {fmtEuros(p.stockValueCents)}
                   </p>
                 ) : null}
+                <p className="cf-muted">{supplierLine(p)}</p>
                 <div className="cf-product-card__actions">
                   <button
                     type="button"
@@ -1267,6 +1285,13 @@ function ProductsTab() {
                     onClick={() => setVariantsFor(p)}
                   >
                     {p.hasVariants ? 'Déclinaisons' : 'Ajouter des tailles'}
+                  </button>
+                  <button
+                    type="button"
+                    className="cf-btn"
+                    onClick={() => setSuppliersFor(p)}
+                  >
+                    Fournisseurs
                   </button>
                   <button
                     type="button"
@@ -1469,6 +1494,17 @@ function ProductsTab() {
           initialProduct={variantsFor}
           onClose={() => {
             setVariantsFor(null);
+            void refetch();
+          }}
+        />
+      ) : null}
+
+      {suppliersFor ? (
+        <ProductSuppliersDrawer
+          key={suppliersFor.id}
+          initialProduct={suppliersFor}
+          onClose={() => {
+            setSuppliersFor(null);
             void refetch();
           }}
         />

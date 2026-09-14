@@ -3,12 +3,14 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import {
   CREATE_SHOP_SUPPLIER,
+  SHOP_SUPPLIER_PRODUCT_COUNTS,
   SHOP_SUPPLIERS,
   UPDATE_SHOP_SUPPLIER,
 } from '../../lib/documents';
 import type {
   CreateShopSupplierMutationData,
   ShopSupplier,
+  ShopSupplierProductCountsQueryData,
   ShopSuppliersQueryData,
   UpdateShopSupplierMutationData,
 } from '../../lib/types';
@@ -76,6 +78,18 @@ export function SuppliersTab() {
   const [draft, setDraft] = useState<SupplierDraft>(EMPTY);
 
   const suppliers = data?.shopSuppliers ?? [];
+  // Produits rattachés (ADR-0021) : une requête à part, la fiche d'un
+  // fournisseur n'a pas à porter ce compte.
+  const { data: countsData } = useQuery<ShopSupplierProductCountsQueryData>(
+    SHOP_SUPPLIER_PRODUCT_COUNTS,
+    { fetchPolicy: 'cache-and-network' },
+  );
+  const productCounts = new Map(
+    (countsData?.shopSupplierProductCounts ?? []).map((c) => [
+      c.supplierId,
+      c.productCount,
+    ]),
+  );
 
   function openCreate() {
     setEditing(null);
@@ -191,6 +205,7 @@ export function SuppliersTab() {
                 <th>Contact</th>
                 <th>Référence client</th>
                 <th>Délai habituel</th>
+                <th>Produits</th>
                 <th>État</th>
                 <th />
               </tr>
@@ -225,6 +240,7 @@ export function SuppliersTab() {
                       ? '—'
                       : `${s.leadTimeDays} jour${s.leadTimeDays > 1 ? 's' : ''}`}
                   </td>
+                  <td>{productCounts.get(s.id) ?? 0}</td>
                   <td>
                     <span
                       className={`cf-pill cf-pill--${s.active ? 'ok' : 'muted'}`}

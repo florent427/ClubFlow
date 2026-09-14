@@ -2061,6 +2061,23 @@ const SHOP_PRODUCT_FIELDS = `
   priceFromCents
   variantsBelowThreshold
   stockValueCents
+  preferredSupplierId
+  suppliers {
+    id
+    supplierId
+    supplierName
+    supplierActive
+    supplierRef
+    unitCostCents
+    packSize
+    preferred
+    variantOverrides {
+      id
+      variantId
+      supplierRef
+      unitCostCents
+    }
+  }
   variants {
     ${SHOP_PRODUCT_VARIANT_FIELDS}
   }
@@ -2594,6 +2611,56 @@ export const UPDATE_SHOP_SUPPLIER = gql`
   mutation UpdateShopSupplier($input: UpdateShopSupplierInput!) {
     updateShopSupplier(input: $input) {
       ${SHOP_SUPPLIER_FIELDS}
+    }
+  }
+`;
+
+/** Nombre de produits rattachés à chaque fournisseur (ADR-0021). */
+export const SHOP_SUPPLIER_PRODUCT_COUNTS = gql`
+  query ShopSupplierProductCounts {
+    shopSupplierProductCounts {
+      supplierId
+      productCount
+    }
+  }
+`;
+
+/**
+ * Fournisseurs d'un produit (ADR-0021). Chaque mutation rend le produit à
+ * jour, offres et fournisseur choisi compris.
+ */
+export const UPSERT_SHOP_PRODUCT_SUPPLIER = gql`
+  mutation UpsertShopProductSupplier($input: UpsertShopProductSupplierInput!) {
+    upsertShopProductSupplier(input: $input) {
+      ${SHOP_PRODUCT_FIELDS}
+    }
+  }
+`;
+
+export const REMOVE_SHOP_PRODUCT_SUPPLIER = gql`
+  mutation RemoveShopProductSupplier($input: RemoveShopProductSupplierInput!) {
+    removeShopProductSupplier(input: $input) {
+      ${SHOP_PRODUCT_FIELDS}
+    }
+  }
+`;
+
+export const SET_SHOP_PRODUCT_PREFERRED_SUPPLIER = gql`
+  mutation SetShopProductPreferredSupplier(
+    $input: SetShopProductPreferredSupplierInput!
+  ) {
+    setShopProductPreferredSupplier(input: $input) {
+      ${SHOP_PRODUCT_FIELDS}
+    }
+  }
+`;
+
+export const SET_SHOP_PRODUCT_SUPPLIER_VARIANT = gql`
+  mutation SetShopProductSupplierVariant(
+    $input: SetShopProductSupplierVariantInput!
+  ) {
+    setShopProductSupplierVariant(input: $input) {
+      ${SHOP_PRODUCT_FIELDS}
     }
   }
 `;

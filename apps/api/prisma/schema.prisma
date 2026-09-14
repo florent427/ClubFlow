@@ -249,6 +249,8 @@ model Club {
   shopPurchaseOrderLines ShopPurchaseOrderLine[]
   shopReceptions         ShopPurchaseReception[]
   shopReceptionLines     ShopPurchaseReceptionLine[]
+  shopProductSuppliers        ShopProductSupplier[]
+  shopProductSupplierVariants ShopProductSupplierVariant[]
 }
 
 enum AiUsageFeature {
@@ -3200,6 +3202,17 @@ model ShopProduct {
   /// une annonce du club, pas une date calculée.
   preorderLeadTime String? @db.VarChar(80)
 
+  /// Fournisseur choisi (ADR-0021 §2) : celui chez qui le réapprovisionnement
+  /// commandera. Une COLONNE du produit, et non un booléen sur l'offre : un
+  /// booléen « choisi » ne peut pas être rendu unique par produit sous
+  /// `db push` (pas d'index partiel), une colonne l'est par construction.
+  ///
+  /// La clé étrangère COMPOSITE `preferredOffer` fait tenir par la base que le
+  /// fournisseur choisi est bien rattaché au produit : choisir un fournisseur
+  /// non rattaché, ou retirer l'offre choisie, échoue. `NoAction` et non
+  /// `SetNull` : mettre à null les deux colonnes de la clé effacerait `id`.
+  preferredSupplierId String?
+
   /// Rattrapage ADR-0012 : ShopProduct et ShopOrder étaient les seuls modèles
   /// du schéma à porter un clubId sans relation vers Club — l'isolation
   /// multi-tenant reposait sur le seul WHERE applicatif, sans FK.
@@ -3208,6 +3221,11 @@ model ShopProduct {
   variants   ShopProductVariant[]
   orderLines ShopOrderLine[]
 
+  supplierOffers ShopProductSupplier[] @relation("ShopProductSupplierOffers")
+  preferredOffer ShopProductSupplier?  @relation("ShopProductPreferredOffer", fields: [id, preferredSupplierId], references: [productId, supplierId], onDelete: NoAction, onUpdate: NoAction)
+
+  /// Exigé par Prisma pour porter la relation 1-1 composite ci-dessus.
+  @@unique([id, preferredSupplierId])
   @@index([clubId, active])
 }
 
@@ -3336,6 +3354,8 @@ model ShopProductVariant {
   orderLines    ShopOrderLine[]
   purchaseLines ShopPurchaseOrderLine[]
   cartItems     ShopCartItem[]
+  /// Exceptions de référence ou de prix chez un fournisseur (ADR-0021 §1).
+  supplierOverrides ShopProductSupplierVariant[]
 
   @@unique([productId, optionSignature])
   @@index([clubId, productId, active])
@@ -3404,10 +3424,76 @@ model ShopSupplier {
 
   club   Club                @relation(fields: [clubId], references: [id], onDelete: Cascade)
   orders ShopPurchaseOrder[]
+  /// Les produits que ce fournisseur fournit (ADR-0021).
+  productOffers ShopProductSupplier[]
 
   /// Deux fournisseurs homonymes dans un même club sont une erreur de saisie.
   @@unique([clubId, name])
   @@index([clubId, active])
+}
+
+/// Offre d'un fournisseur pour un produit (ADR-0021 §1) : chez qui, à quelle
+/// référence, à quel prix et par quel colisage le club achète cet article.
+///
+/// Sur le PRODUIT et non la déclinaison : un t-shirt vient du même fournisseur
+/// dans toutes ses tailles. Une déclinaison qui s'en écarte — référence par
+/// taille, XXL plus cher — le dit par `ShopProductSupplierVariant`.
+model ShopProductSupplier {
+  id         String @id @default(uuid())
+  clubId     String
+  productId  String
+  supplierId String
+
+  /// Référence de l'article dans le catalogue du fournisseur.
+  supplierRef   String? @db.VarChar(80)
+  /// Prix d'achat HT habituel, en CENTIMES. Pré-remplit les commandes ; le
+  /// coût moyen, lui, ne bouge qu'à la réception (ADR-0013 §1).
+  ///
+  /// NULLABLE, et c'est voulu : vide se lit « inconnu ». Un défaut à 0 finirait
+  /// sur une ligne de commande, où zéro tire le coût moyen vers le bas.
+  unitCostCents Int?
+  /// Colisage : le fournisseur vend par multiples de ce nombre.
+  packSize      Int     @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  club             Club                         @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  product          ShopProduct                  @relation("ShopProductSupplierOffers", fields: [productId], references: [id], onDelete: Cascade)
+  /// `Restrict` comme les commandes : un fournisseur ne se supprime pas, il se
+  /// désactive (ADR-0013).
+  supplier         ShopSupplier                 @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  /// Le produit dont cette offre porte le fournisseur choisi, s'il y en a un.
+  preferredBy      ShopProduct?                 @relation("ShopProductPreferredOffer")
+  variantOverrides ShopProductSupplierVariant[]
+
+  /// Une offre par couple : deux lignes pour le même fournisseur rendraient le
+  /// prix d'achat ambigu.
+  @@unique([productId, supplierId])
+  @@index([clubId, supplierId])
+}
+
+/// Exception d'une déclinaison pour une offre (ADR-0021 §1) : sa propre
+/// référence et/ou son propre prix. Un champ vide hérite de l'offre ; une
+/// exception sans aucun champ n'existe pas, elle est supprimée.
+model ShopProductSupplierVariant {
+  id        String @id @default(uuid())
+  clubId    String
+  offerId   String
+  variantId String
+
+  supplierRef   String? @db.VarChar(80)
+  unitCostCents Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  club    Club                @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  offer   ShopProductSupplier @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  variant ShopProductVariant  @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([offerId, variantId])
+  @@index([clubId, variantId])
 }
 
 model ShopPurchaseOrder {

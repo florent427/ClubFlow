@@ -40,6 +40,12 @@ import {
   SetShopProductOptionsInput,
   UpdateShopProductVariantInput,
 } from './dto/shop-variant.input';
+import {
+  RemoveShopProductSupplierInput,
+  SetShopProductPreferredSupplierInput,
+  SetShopProductSupplierVariantInput,
+  UpsertShopProductSupplierInput,
+} from './dto/shop-product-supplier.input';
 import { UpdateShopProductInput } from './dto/update-shop-product.input';
 import { ShopCartGraph } from './models/shop-cart.model';
 import {
@@ -47,6 +53,7 @@ import {
   ShopOrderGraph,
 } from './models/shop-order.model';
 import { ShopProductGraph } from './models/shop-product.model';
+import { ShopSupplierProductCountGraph } from './models/shop-product-supplier.model';
 import {
   ShopPurchaseInvoiceAccountGraph,
   ShopPurchaseOrderGraph,
@@ -62,6 +69,7 @@ import { ShopTermsGraph } from './models/shop-terms.model';
 import { ShopService } from './shop.service';
 import { ShopCartService } from './shop-cart.service';
 import { ShopDeliveryNoteService } from './shop-delivery-note.service';
+import { ShopProductSuppliersService } from './shop-product-suppliers.service';
 import { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
 import { ShopStockSweepService } from './shop-stock-sweep.service';
 import { ShopVariantsService } from './shop-variants.service';
@@ -82,6 +90,7 @@ export class ShopAdminResolver {
     private readonly purchases: ShopPurchaseOrdersService,
     private readonly deliveryNotes: ShopDeliveryNoteService,
     private readonly exchangeNotes: ShopExchangeNoteService,
+    private readonly productSuppliers: ShopProductSuppliersService,
   ) {}
 
   @Query(() => [ShopProductGraph], { name: 'shopProducts' })
@@ -487,6 +496,77 @@ export class ShopAdminResolver {
       supplierId,
       rest,
     ) as Promise<ShopSupplierGraph>;
+  }
+
+  // --- Fournisseurs d'un produit (ADR-0021) ---
+  //
+  // Ici pour la même raison que les commandes : le prix d'achat du club ne
+  // doit être lisible et modifiable que derrière les quatre gardes.
+
+  @Query(() => [ShopSupplierProductCountGraph], {
+    name: 'shopSupplierProductCounts',
+    description: 'Nombre de produits rattachés à chaque fournisseur du club.',
+  })
+  shopSupplierProductCounts(
+    @CurrentClub() club: Club,
+  ): Promise<ShopSupplierProductCountGraph[]> {
+    return this.productSuppliers.productCountsBySupplier(club.id);
+  }
+
+  @Mutation(() => ShopProductGraph, {
+    description:
+      'Rattache un fournisseur au produit, ou met à jour son offre (référence, prix d’achat, colisage). Un champ absent reste en place, null l’efface. Le premier fournisseur rattaché est choisi d’office.',
+  })
+  upsertShopProductSupplier(
+    @CurrentClub() club: Club,
+    @Args('input') input: UpsertShopProductSupplierInput,
+  ): Promise<ShopProductGraph> {
+    return this.productSuppliers.upsertOffer(
+      club.id,
+      input,
+    ) as Promise<ShopProductGraph>;
+  }
+
+  @Mutation(() => ShopProductGraph, {
+    description:
+      'Retire un fournisseur du produit, avec ses exceptions. Refusé pour le fournisseur choisi tant qu’il en reste un autre.',
+  })
+  removeShopProductSupplier(
+    @CurrentClub() club: Club,
+    @Args('input') input: RemoveShopProductSupplierInput,
+  ): Promise<ShopProductGraph> {
+    return this.productSuppliers.removeOffer(
+      club.id,
+      input,
+    ) as Promise<ShopProductGraph>;
+  }
+
+  @Mutation(() => ShopProductGraph, {
+    description:
+      'Choisit le fournisseur du réapprovisionnement, forcément rattaché au produit. `supplierId: null` retire le choix.',
+  })
+  setShopProductPreferredSupplier(
+    @CurrentClub() club: Club,
+    @Args('input') input: SetShopProductPreferredSupplierInput,
+  ): Promise<ShopProductGraph> {
+    return this.productSuppliers.setPreferredSupplier(
+      club.id,
+      input,
+    ) as Promise<ShopProductGraph>;
+  }
+
+  @Mutation(() => ShopProductGraph, {
+    description:
+      'Exception d’une déclinaison chez un fournisseur : référence et prix remplacés par ceux fournis ; les deux vides la suppriment.',
+  })
+  setShopProductSupplierVariant(
+    @CurrentClub() club: Club,
+    @Args('input') input: SetShopProductSupplierVariantInput,
+  ): Promise<ShopProductGraph> {
+    return this.productSuppliers.setVariantOverride(
+      club.id,
+      input,
+    ) as Promise<ShopProductGraph>;
   }
 
   @Query(() => [ShopPurchaseOrderGraph], { name: 'shopPurchaseOrders' })

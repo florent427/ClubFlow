@@ -1173,10 +1173,41 @@ export type ShopProduct = {
    * L'écran doit le dire — sinon le trésorier lit une valorisation.
    */
   stockValueCents: number | null;
+  /**
+   * Fournisseur choisi (ADR-0021 §2) : celui chez qui le réapprovisionnement
+   * commandera. Null : aucun choix, l'article n'est pas commandé
+   * automatiquement.
+   */
+  preferredSupplierId: string | null;
+  /** Fournisseurs du produit. Null hors administration (prix d'achat). */
+  suppliers: ShopProductSupplierOffer[] | null;
   variants: ShopProductVariant[];
   active: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+/** Exception d'une déclinaison chez un fournisseur (ADR-0021 §1). Vide = hérite. */
+export type ShopProductSupplierVariantOverride = {
+  id: string;
+  variantId: string;
+  supplierRef: string | null;
+  unitCostCents: number | null;
+};
+
+/** Un fournisseur d'un produit : référence, prix d'achat HT, colisage (ADR-0021). */
+export type ShopProductSupplierOffer = {
+  id: string;
+  supplierId: string;
+  supplierName: string;
+  supplierActive: boolean;
+  supplierRef: string | null;
+  /** Prix d'achat HT en centimes. NULL = inconnu : « — », jamais 0 €. */
+  unitCostCents: number | null;
+  packSize: number;
+  /** LE fournisseur choisi : un seul par produit, garanti par la base. */
+  preferred: boolean;
+  variantOverrides: ShopProductSupplierVariantOverride[];
 };
 
 /** Une valeur possible d'un axe (« L », « Rouge »). */
@@ -1599,6 +1630,21 @@ export type CreateShopSupplierMutationData = {
 };
 export type UpdateShopSupplierMutationData = {
   updateShopSupplier: ShopSupplier;
+};
+export type ShopSupplierProductCountsQueryData = {
+  shopSupplierProductCounts: Array<{ supplierId: string; productCount: number }>;
+};
+export type UpsertShopProductSupplierMutationData = {
+  upsertShopProductSupplier: ShopProduct;
+};
+export type RemoveShopProductSupplierMutationData = {
+  removeShopProductSupplier: ShopProduct;
+};
+export type SetShopProductPreferredSupplierMutationData = {
+  setShopProductPreferredSupplier: ShopProduct;
+};
+export type SetShopProductSupplierVariantMutationData = {
+  setShopProductSupplierVariant: ShopProduct;
 };
 export type ShopPurchaseOrdersQueryData = {
   shopPurchaseOrders: ShopPurchaseOrder[];
