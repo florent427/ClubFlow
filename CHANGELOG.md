@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.64.0](https://github.com/florent427/ClubFlow/compare/v0.63.2...v0.64.0) (2026-09-14)
+
+
+### ✨ Features
+
+* **boutique:** fournisseurs d'un produit, exceptions par déclinaison et fournisseur choisi ([35439df](https://github.com/florent427/ClubFlow/commit/35439dfe78560657fb45c6eb508198ff83812f9b))
+* **boutique:** fournisseurs d'un produit, exceptions par déclinaison et fournisseur choisi ([67e203c](https://github.com/florent427/ClubFlow/commit/67e203cae34de5da15d37f820f7748b538f990e5))
+
 ## [0.63.2](https://github.com/florent427/ClubFlow/compare/v0.63.1...v0.63.2) (2026-09-14)
 
 
