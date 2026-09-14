@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.63.0](https://github.com/florent427/ClubFlow/compare/v0.62.1...v0.63.0) (2026-09-14)
+
+
+### ✨ Features
+
+* **boutique:** échanger ou annuler un article d'une commande ([4b7f1d7](https://github.com/florent427/ClubFlow/commit/4b7f1d763e5c8ce12a06a76e0707a53e73fe5c75))
+
 ## [0.62.1](https://github.com/florent427/ClubFlow/compare/v0.62.0...v0.62.1) (2026-09-13)
 
 
