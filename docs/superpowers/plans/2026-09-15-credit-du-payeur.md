@@ -71,7 +71,8 @@ personne, la facture et le compte financier appartiennent au même club.
 - [x] `Invoice.payerCreditMemberId String?` et `payerCreditContactId String?` :
   - relations `Member` et `Contact` en `onDelete: Restrict`, puisqu'une personne qui porte un crédit ne se supprime pas ;
   - un index par colonne.
-- [ ] Sur la **vraie base** (staging, après `db push`) : colonnes et index présents, factures existantes lues `CHARGE`.
+- [x] Sur la **vraie base** (staging, après `db push`) : colonnes et index présents, factures existantes lues `CHARGE`.
+  Vérifié le 2026-09-15 : 3 colonnes, 3 index, clés étrangères en `RESTRICT`, 66 factures `CHARGE`.
 
 ### Task 1.2 : Comptabilité
 
@@ -100,12 +101,14 @@ personne, la facture et le compte financier appartiennent au même club.
   historique) et `recordPayerCreditDeposit`.
 - [x] Tableau de bord : les reçus n'entrent pas dans le taux de factures payées
   à temps.
-- [ ] Tests :
+- [x] Tests :
   - versement en espèces, par chèque (fiche en portefeuille) et par virement ;
   - le solde d'un membre inclut le contact du même utilisateur, et aucun autre ;
   - chacun des refus listés plus haut ;
   - écriture TRANSFER sur 419100 ;
-  - mutations à la main notées.
+  - mutations à la main : 43 tuées sur 46. Les 3 survivantes sont équivalentes :
+    l'émetteur du chèque, et deux filtres de club doublés par des identifiants
+    déjà pris dans le club.
 
 ### Task 1.4 : PDF et admin
 
@@ -120,12 +123,16 @@ personne, la facture et le compte financier appartiennent au même club.
 
 ### Task 1.5 : Recette staging
 
-- [ ] Sur club-demo :
+- [x] Sur club-demo, le 2026-09-15 (commit `a179f00`) :
   - avance en espèces, puis par chèque, avec le chèque en portefeuille puis remis en banque ;
   - reçu PDF, solde et historique ;
   - écritures TRANSFER sur 419100 vérifiées en base ;
   - annulation du reçu refusée ;
-  - fiche contact et fiche membre d'un même utilisateur : même crédit.
+  - fiche contact et fiche membre d'un même utilisateur : même crédit ;
+  - en plus :
+    - avoir, encaissement manuel et suppression du membre refusés ;
+    - Facturation : onglet « Avances », indicateurs inchangés ;
+    - tiroir d'un reçu sans avoir ni annulation.
 
 ---
 
