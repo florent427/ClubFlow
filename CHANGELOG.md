@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.67.0](https://github.com/florent427/ClubFlow/compare/v0.66.1...v0.67.0) (2026-09-15)
+
+
+### ✨ Features
+
+* **paiements:** crédit du payeur, lot 1 — avances encaissées sans facture ([1e27e9a](https://github.com/florent427/ClubFlow/commit/1e27e9aeb9335b00e64dd3258d007526fa8c405b))
+* **paiements:** encaisser une avance sans facture, au crédit du payeur ([a179f00](https://github.com/florent427/ClubFlow/commit/a179f00db030e5bbbd0e8296188f41cfa1a9f34c))
+
 ## [0.66.1](https://github.com/florent427/ClubFlow/compare/v0.66.0...v0.66.1) (2026-09-14)
 
 
