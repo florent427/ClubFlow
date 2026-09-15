@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.68.2](https://github.com/florent427/ClubFlow/compare/v0.68.1...v0.68.2) (2026-09-15)
+
+
+### 🐛 Bug Fixes
+
+* **paiements:** enregistrer ou signaler tout l'argent reçu par carte ([6713810](https://github.com/florent427/ClubFlow/commit/6713810c00759d7e7e1c75aa8ea2d16f1f3f6969))
+
 ## [0.68.1](https://github.com/florent427/ClubFlow/compare/v0.68.0...v0.68.1) (2026-09-15)
 
 
