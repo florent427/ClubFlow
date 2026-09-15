@@ -161,7 +161,10 @@ export class ShopOrderMoneyService {
 
   /**
    * Refuse si l'argent de la commande a bougé depuis la lecture du plan : un
-   * règlement, un avoir ou une facture de plus le rendraient faux.
+   * règlement, un avoir, une facture de plus ou un statut changé le rendraient
+   * faux. L'appelant tient le verrou de ces factures (ADR-0022, §3) : une
+   * saisie, une imputation ou une annulation ne s'intercale plus entre cette
+   * relecture et son commit.
    */
   async assertUnchangedInTx(
     tx: Prisma.TransactionClient,
@@ -169,7 +172,7 @@ export class ShopOrderMoneyService {
     orderId: string,
     invoices: LoadedOrderInvoice[],
   ): Promise<void> {
-    const count = await tx.invoice.count({
+    const current = await tx.invoice.findMany({
       where: {
         clubId,
         isCreditNote: false,
@@ -178,8 +181,9 @@ export class ShopOrderMoneyService {
           { shopAdjustment: { is: { orderId } } },
         ],
       },
+      select: { id: true, status: true },
     });
-    if (count !== invoices.length) {
+    if (current.length !== invoices.length) {
       throw new BadRequestException(
         'Une facture vient d’être émise sur cette commande : recharge la page.',
       );
@@ -205,6 +209,13 @@ export class ShopOrderMoneyService {
       if ((credit._sum.amountCents ?? 0) !== inv.creditNotesCents) {
         throw new BadRequestException(
           'Un avoir vient d’être émis sur cette commande : recharge la page.',
+        );
+      }
+      // Après les deux gardes précédentes : un règlement complet change aussi
+      // le statut, et « un règlement vient d'être enregistré » le dit mieux.
+      if (current.find((c) => c.id === inv.id)?.status !== inv.status) {
+        throw new BadRequestException(
+          'Une facture de cette commande vient de changer : recharge la page.',
         );
       }
     }
@@ -330,7 +341,10 @@ export class ShopOrderMoneyService {
     }
 
     for (const id of plan.voidInvoiceIds) {
-      await tx.invoice.updateMany({
+      // Ouverte et sans paiement, relu sous le verrou de l'appelant. Un
+      // encaissement carte ne prend pas ce verrou (ADR-0022, §3) : s'il vient
+      // de passer, la facture ne s'annule pas, et rien n'est écrit.
+      const voided = await tx.invoice.updateMany({
         where: {
           id,
           clubId,
@@ -339,6 +353,11 @@ export class ShopOrderMoneyService {
         },
         data: { status: InvoiceStatus.VOID, voidReason: labels.voidReason },
       });
+      if (voided.count !== 1) {
+        throw new BadRequestException(
+          'Une facture de cette commande vient de changer : recharge la page.',
+        );
+      }
     }
 
     for (const id of plan.settleInvoiceIds ?? []) {

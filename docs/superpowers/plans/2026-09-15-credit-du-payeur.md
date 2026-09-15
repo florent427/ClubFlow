@@ -224,7 +224,7 @@ personne, la facture et le compte financier appartiennent au même club.
 
 Limite connue, hors lot : les chemins qui annulent une facture ne prennent pas
 son verrou. Une annulation qui passerait entre la relecture et le commit
-laisserait un règlement sur une facture annulée.
+laisserait un règlement sur une facture annulée. Levée par la tâche 2.5.
 
 ### Task 2.4 : Recette staging
 
@@ -260,6 +260,62 @@ Florent laissé par le lot 1 :
   - aucune erreur nouvelle dans le log de l'API.
 - **Fiche membre**, bloc Crédit : les utilisations et le crédit rendu sont
   listés.
+
+### Task 2.5 : Annulations sous le verrou de la facture
+
+Limite de la tâche 2.3 : une annulation qui passait entre la relecture d'un
+règlement et son commit laissait le paiement sur une facture annulée.
+
+- [x] Les verrous passent dans `payments/settlement-locks.ts`, partagé par les
+  paiements, la boutique et l'adhésion. `lockInvoicesInTx` prend plusieurs
+  factures, chacune une fois, dans l'ordre de leurs identifiants.
+- [x] Les six chemins qui passent une facture VOID prennent son verrou dans leur
+  transaction, puis relisent statut et paiements avant d'écrire :
+  - `voidInvoice` ouvre une transaction et relit la facture ;
+  - `reopenCart` relit `reopenBlockedReason` dans la sienne ;
+  - `cancelOrder` et `cancelOrderForViewer` verrouillent les factures ouvertes
+    de la commande avant de la réclamer. Leurs gardes « aucun encaissement »
+    s'évaluent sous le verrou, et le nombre de factures annulées doit être celui
+    des factures verrouillées ;
+  - `cancelAndRefund` et `adjust` verrouillent les factures du plan.
+    `assertUnchangedInTx` compare aussi leur statut, et `applyInTx` lève si une
+    facture à annuler ne s'annule pas.
+- [x] Les factures se verrouillent avant toute écriture sur la commande : un
+  règlement qui solde sa facture sert la commande sous ce verrou.
+- [x] Tests : `invoice-void-lock.spec.ts`, sur `test/shop-order-world.ts`. Le
+  monde reproduit désormais le verrou par clé levé en fin de transaction, le
+  rollback de la seule transaction qui lève et la latence de lecture (état pris
+  au début de la requête). `atMoment` lance la seconde opération juste avant
+  l'écriture de la première.
+  - Pour chacun des six chemins, un règlement et une annulation simultanés, dans
+    les deux ordres : un seul des deux passe.
+  - Un encaissement carte, qui ne prend pas le verrou, commité juste avant
+    l'écriture d'une annulation boutique : rien n'est écrit.
+  - Mutations à la main : 13 tuées sur 13. Chaque verrou retiré fait rougir les
+    deux tests de son chemin, et eux seuls. Les relectures ignorées, les gardes
+    de compte, le statut relu et l'ordre des verrous rougissent chacun leur test.
+- [x] Vérification sur le vrai PostgreSQL de staging, le 2026-09-15, sans
+  déploiement : le code du poste, relié à la base par un tunnel SSH, dans un
+  club jetable sans module comptable (`recette-verrou-annulation-202609150942`).
+  Une transaction est arrêtée juste avant son écriture, l'autre opération est
+  lancée, et `pg_locks` dit si elle attend le verrou de la facture.
+  - Facture libre, règlement d'abord : l'annulation attend, puis refuse (« Un
+    règlement vient d'être enregistré ») ; facture ouverte, paiement de 10 €.
+  - Facture libre, annulation d'abord : le règlement attend, puis refuse (« La
+    facture vient de changer ») ; facture annulée, aucun paiement.
+  - Témoin, l'annulation d'avant, sans verrou, dans la même course : les deux
+    passent, et la facture est annulée avec un paiement de 10 €. La course
+    discrimine.
+  - Commande, règlement complet d'abord : l'annulation attend, puis refuse
+    (« elle est déjà payée ») ; commande et facture payées, aucun interblocage.
+  - Commande, annulation d'abord : le règlement attend, puis refuse ; commande
+    et facture annulées.
+  - Témoin, une annulation qui écrit la commande AVANT de prendre le verrou :
+    PostgreSQL détecte un interblocage (40P01) avec le règlement qui sert la
+    commande. L'ordre « factures d'abord » est nécessaire.
+
+Limite connue : l'encaissement carte (webhook Stripe) ne prend pas le verrou
+(ADR-0022, §3).
 
 ---
 

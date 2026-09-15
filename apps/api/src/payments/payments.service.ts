@@ -47,6 +47,7 @@ import {
 } from './payer-credit-holder';
 import { assertNotPayerCreditMethod } from './payment-method-rules';
 import { applyPricing } from './pricing-rules';
+import { lockInvoiceInTx, lockPayerCreditInTx } from './settlement-locks';
 
 type FamilyForLabel = {
   familyMembers: Array<{
@@ -74,26 +75,6 @@ const PAYER_CREDIT_DEPOSIT_METHODS: ReadonlySet<ClubPaymentMethod> =
     ClubPaymentMethod.MANUAL_CHECK,
     ClubPaymentMethod.MANUAL_TRANSFER,
   ]);
-
-/**
- * Verrous d'un règlement (ADR-0022, §3), levés au commit. `$executeRaw` : la
- * fonction rend `void`, que `$queryRaw` ne sait pas lire
- * (pitfalls/prisma-executeraw-pour-retour-void.md). Ordre imposé, pour qu'aucun
- * interblocage ne soit possible : la personne, puis la facture.
- */
-async function lockPayerCreditInTx(
-  tx: Prisma.TransactionClient,
-  personKey: string,
-): Promise<void> {
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('clubflow:payer-credit'), hashtext(${personKey}))`;
-}
-
-async function lockInvoiceInTx(
-  tx: Prisma.TransactionClient,
-  invoiceId: string,
-): Promise<void> {
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('clubflow:invoice'), hashtext(${invoiceId}))`;
-}
 
 function eurosFr(cents: number): string {
   return `${(cents / 100).toFixed(2).replace('.', ',')} €`;
@@ -557,12 +538,29 @@ export class PaymentsService {
     }
     // Motif stock\u00e9 en champ d\u00e9di\u00e9 \u2014 le label reste intact (le statut VOID
     // porte d\u00e9j\u00e0 l'information \u00ab Annul\u00e9e \u00bb c\u00f4t\u00e9 UI).
-    const voided = await this.prisma.invoice.update({
-      where: { id: invoiceId },
-      data: {
-        status: InvoiceStatus.VOID,
-        voidReason: reason?.trim() || null,
-      },
+    const voided = await this.prisma.$transaction(async (tx) => {
+      // Relu sous le verrou de la facture (ADR-0022, §3) : un règlement qui l'a
+      // relue ouverte attend ce commit, et un règlement déjà commité se voit
+      // ici. Sans le verrou, l'annulation passait entre la relecture d'un
+      // règlement et son commit.
+      await lockInvoiceInTx(tx, invoiceId);
+      const current = await tx.invoice.findFirst({
+        where: { id: invoiceId, clubId },
+        select: { status: true, payments: { select: { id: true } } },
+      });
+      if (!current) throw new NotFoundException('Facture introuvable');
+      if (current.status === InvoiceStatus.PAID || current.payments.length > 0) {
+        throw new BadRequestException(
+          'Un règlement vient d’être enregistré sur cette facture : rechargez-la avant de l’annuler.',
+        );
+      }
+      return tx.invoice.update({
+        where: { id: invoiceId },
+        data: {
+          status: InvoiceStatus.VOID,
+          voidReason: reason?.trim() || null,
+        },
+      });
     });
 
     // Une facture annul\u00e9e ne doit plus rien pr\u00e9lever : sans cette cl\u00f4ture, un

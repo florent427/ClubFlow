@@ -7,6 +7,7 @@ import { InvoiceStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ShopPreorderService } from '../shop/shop-preorder.service';
 import { ShopService } from '../shop/shop.service';
+import { lockInvoicesInTx } from './settlement-locks';
 import { ShopOrderMoneyService } from './shop-order-money.service';
 import {
   planShopOrderCancellation,
@@ -79,6 +80,11 @@ export class ShopOrderRefundsService {
     }
 
     const done = await this.prisma.$transaction(async (tx) => {
+      // Les factures d'abord (ADR-0022, §3) : un règlement en cours sur l'une
+      // d'elles attend ce commit, ou il est commité et la relecture le voit.
+      // Avant la commande : un règlement qui solde sa facture sert la commande
+      // sous ce verrou, et l'ordre inverse s'interbloquerait avec lui.
+      await lockInvoicesInTx(tx, invoices.map((inv) => inv.id));
       // L'état lu pour le plan est dans l'écriture conditionnelle : si la
       // commande a changé depuis, rien n'est écrit.
       const { released } = await this.shop.cancelWithReturnInTx(

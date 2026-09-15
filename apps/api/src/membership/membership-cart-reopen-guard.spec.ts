@@ -25,6 +25,7 @@ import { MembershipCartService } from './membership-cart.service';
 describe('MembershipCartService.reopenCart — refus si un règlement existe', () => {
   let service: MembershipCartService;
   let prisma: {
+    $executeRaw: jest.Mock;
     invoice: { findFirst: jest.Mock; updateMany: jest.Mock };
     payment: { aggregate: jest.Mock };
     membershipCart: { update: jest.Mock; findFirst: jest.Mock };
@@ -46,6 +47,15 @@ describe('MembershipCartService.reopenCart — refus si un règlement existe', (
 
   beforeEach(() => {
     prisma = {
+      // Verrou de la facture, pris dans la transaction avant de relire
+      // (ADR-0022, §3). L'exclusion se vérifie dans invoice-void-lock.spec.ts.
+      $executeRaw: jest.fn(async (sql: TemplateStringsArray) => {
+        const text = sql.join('?');
+        if (!text.includes("pg_advisory_xact_lock(hashtext('clubflow:invoice')")) {
+          throw new Error(`SQL brut non simulé : ${text}`);
+        }
+        return 0;
+      }),
       invoice: {
         findFirst: jest.fn(),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),

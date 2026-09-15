@@ -780,6 +780,25 @@ describe('adjust — un geste concurrent entre l’aperçu et la confirmation', 
     expect(h.adjustments).toHaveLength(0);
   });
 
+  it('facture annulée entre-temps : aucun avoir sur une facture annulée, rien n’est écrit', async () => {
+    const h = makeWorld({
+      orders: [PENDING()],
+      variants: [VARIANT({ onHand: 5, available: 3 })],
+      invoices: [INVOICE({ status: InvoiceStatus.OPEN })],
+    });
+    h.meanwhile(() => {
+      h.invoices[0].status = InvoiceStatus.VOID;
+    });
+
+    await expect(adjust(h)).rejects.toThrow(/facture de cette commande vient de changer/);
+
+    expect(h.events).toEqual(['rollback']);
+    expect(h.orders[0].lines[0].cancelledQty).toBe(0);
+    expect(h.variants[0].available).toBe(3);
+    expect(h.creditNotesOf()).toHaveLength(0);
+    expect(h.adjustments).toHaveLength(0);
+  });
+
   it('commande remise entre-temps : le plan ne vaut plus, rien n’est écrit', async () => {
     const h = makeWorld({
       orders: [ORDER()],

@@ -1,11 +1,15 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import {
   ChequeStatus,
   ClubPaymentMethod,
   InvoiceStatus,
+  MembershipCartStatus,
   ShopOrderAdjustmentKind,
   ShopOrderStatus,
 } from '@prisma/client';
+import { MembershipCartService } from '../src/membership/membership-cart.service';
 import { CreditNotesService } from '../src/payments/credit-notes.service';
+import { PaymentsService } from '../src/payments/payments.service';
 import { ShopOrderAdjustmentsService } from '../src/payments/shop-order-adjustments.service';
 import { ShopOrderMoneyService } from '../src/payments/shop-order-money.service';
 import { ShopOrderRefundsService } from '../src/payments/shop-order-refunds.service';
@@ -17,14 +21,30 @@ import { ShopService } from '../src/shop/shop.service';
  * marchandise d'une commande — l'annulation remboursée (ADR-0019), l'échange
  * et l'annulation d'articles (ADR-0020) — de bout en bout : les vrais
  * `ShopService`, moteur de stock, service d'avoirs et `ShopOrderMoneyService`,
- * sur un double de PostgreSQL.
+ * sur un double de PostgreSQL. S'y ajoutent l'encaissement manuel et
+ * l'annulation d'une facture (`PaymentsService`), et la réouverture d'un panier
+ * d'adhésion (`MembershipCartService`) : les courses entre un règlement et une
+ * annulation (ADR-0022, §3).
  *
  * Le double APPLIQUE chaque clause des `where` et lève sur toute clause qu'il
  * ne sait pas simuler : un prédicat oublié par le code change le résultat au
  * lieu de passer inaperçu (cf. pitfalls/double-ignore-une-clause-du-where.md).
- * `$transaction` fait un ROLLBACK réel. Seuls les effets distants sont
- * simulés : Stripe, l'échéancier, la comptabilité, l'attribution des
- * précommandes.
+ * Seuls les effets distants sont simulés : Stripe, l'échéancier, la
+ * comptabilité, l'attribution des précommandes.
+ *
+ * Les transactions se comportent comme sous PostgreSQL :
+ * - `$transaction` passe son propre client. Ce qu'il écrit est défait si la
+ *   transaction lève ; ce que `prisma` écrit pendant ce temps ne l'est pas
+ *   (cf. pitfalls/double-transaction-rollback-trop-genereux.md) ;
+ * - `pg_advisory_xact_lock`, par `$executeRaw` et dans une transaction
+ *   seulement, est un verrou exclusif par clé, ré-entrant, levé à la fin de la
+ *   transaction qui le tient ;
+ * - une lecture prend l'état au début de la requête, et sa réponse arrive après
+ *   la latence (`raceWindow`) : une autre transaction écrit pendant ce temps.
+ *
+ * Une différence à connaître : ce qu'une transaction en cours a écrit est
+ * visible des autres, là où PostgreSQL le masque. Une course se place donc
+ * juste AVANT l'écriture de la première opération, avec `atMoment`.
  *
  * Hors de `src/` : ce n'est pas une suite de tests, et ce n'est pas du code
  * livré (`tsconfig.build.json` exclut `test/`).
@@ -128,6 +148,21 @@ export type WorldAdjustment = Record<string, any> & {
   createdAt: Date;
   signedAt: Date | null;
 };
+
+/** Un panier d'adhésion : seulement ce que sa réouverture lit et écrit. */
+export type WorldCart = {
+  id: string;
+  clubId: string;
+  status: MembershipCartStatus;
+  validatedAt: Date | null;
+  invoiceId: string | null;
+};
+
+/**
+ * L'instant où une course se place (ADR-0022, §3) : juste avant qu'un
+ * encaissement s'écrive, ou qu'une facture passe VOID.
+ */
+export type Moment = 'payment' | 'void';
 
 export const T0 = new Date('2026-09-01T10:00:00Z');
 export const T1 = new Date('2026-09-05T10:00:00Z');
@@ -295,10 +330,24 @@ export const ADJUSTMENT = (over: Partial<WorldAdjustment> = {}): WorldAdjustment
   ...over,
 });
 
+/** Le panier validé d'une adhésion, dont la facture attend son règlement. */
+export const CART = (over: Partial<WorldCart> = {}): WorldCart => ({
+  id: 'cart-1',
+  clubId: 'club-1',
+  status: MembershipCartStatus.VALIDATED,
+  validatedAt: T0,
+  invoiceId: 'inv-adhesion',
+  ...over,
+});
+
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /** Échanges dont la facture du reste à payer porte un encaissement. */
 const PAID_SUPPLEMENT = { supplementInvoice: { is: { payments: { some: {} } } } };
+
+/** Le seul SQL brut de ces chemins : un verrou de règlement (ADR-0022, §3). */
+const ADVISORY_LOCK =
+  /^SELECT pg_advisory_xact_lock\(hashtext\('(clubflow:invoice|clubflow:payer-credit)'\), hashtext\(\?\)\)$/;
 
 /**
  * Copie profonde qui garde des Date de ce contexte de test : celles que rend
@@ -350,8 +399,33 @@ function count(value: number, clause: any): boolean {
   );
 }
 
-/** Écrit `{ increment }`, `{ decrement }` ou une valeur. */
+/** Une transaction ouverte : ce qu'elle a écrit, et les verrous qu'elle tient. */
+type OpenTx = {
+  id: number;
+  undo: Array<() => void>;
+  release: Array<() => void>;
+};
+
+/** La transaction du client qui a lancé la requête ; aucune pour `prisma`. */
+const currentTx = new AsyncLocalStorage<OpenTx>();
+
+/**
+ * Écrit `{ increment }`, `{ decrement }` ou une valeur. Faite par le client
+ * d'une transaction, l'écriture est défaite si celle-ci lève.
+ */
 function write(row: Record<string, any>, data: Record<string, any>): void {
+  const tx = currentTx.getStore();
+  if (tx) {
+    const before = Object.keys(data).map(
+      (key) => [key, key in row, clone(row[key])] as const,
+    );
+    tx.undo.push(() => {
+      for (const [key, existed, value] of before) {
+        if (existed) row[key] = value;
+        else delete row[key];
+      }
+    });
+  }
   for (const [key, value] of Object.entries(data)) {
     if (
       value !== null &&
@@ -363,6 +437,18 @@ function write(row: Record<string, any>, data: Record<string, any>): void {
     } else {
       row[key] = clone(value);
     }
+  }
+}
+
+/** Ajoute une ligne. Faite par le client d'une transaction, elle part au rollback. */
+function insert<T>(rows: T[], row: T): void {
+  rows.push(row);
+  const tx = currentTx.getStore();
+  if (tx) {
+    tx.undo.push(() => {
+      const at = rows.indexOf(row);
+      if (at >= 0) rows.splice(at, 1);
+    });
   }
 }
 
@@ -386,6 +472,7 @@ export function makeWorld(seed: {
   cheques?: WorldCheque[];
   deposits?: Array<{ id: string; financialAccountId: string }>;
   adjustments?: WorldAdjustment[];
+  carts?: WorldCart[];
   /** Banque par défaut du club ; `null` : le club n'en a pas. */
   clubBankId?: string | null;
 }) {
@@ -399,6 +486,7 @@ export function makeWorld(seed: {
   const cheques = seed.cheques ?? [];
   const deposits = seed.deposits ?? [];
   const adjustments = seed.adjustments ?? [];
+  const carts = seed.carts ?? [];
   const movements: Array<Record<string, any>> = [];
   const clubs = [
     { id: 'club-1', name: 'Dojo Test', siret: null, address: '1 rue du Dojo' },
@@ -418,6 +506,72 @@ export function makeWorld(seed: {
   let seq = 0;
   const uid = (p: string) => `${p}-n${++seq}`;
   let depth = 0;
+
+  // --- Concurrence -----------------------------------------------------------
+
+  let latencyMs = 0;
+  /** Réponse d'une lecture : l'état est déjà pris, elle arrive après la latence. */
+  const respond = async <T>(state: T): Promise<T> => {
+    if (latencyMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, latencyMs));
+    }
+    return state;
+  };
+
+  let txSeq = 0;
+  const lockQueues = new Map<string, Promise<void>>();
+  const lockHolders = new Map<string, number>();
+  /** Transactions qui tiennent ou attendent chaque clé. */
+  const lockDemand = new Map<string, number>();
+  let lockWatchers: Array<() => void> = [];
+  /** La prochaine fois qu'une transaction bute sur un verrou tenu. */
+  const nextLockWait = () =>
+    new Promise<void>((resolve) => lockWatchers.push(resolve));
+
+  /** `pg_advisory_xact_lock` : exclusif par clé, ré-entrant, levé en fin de transaction. */
+  async function advisoryLock(key: string, tx: OpenTx): Promise<void> {
+    if (lockHolders.get(key) === tx.id) return;
+    const demand = lockDemand.get(key) ?? 0;
+    lockDemand.set(key, demand + 1);
+    const previous = lockQueues.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    lockQueues.set(key, previous.then(() => held));
+    if (demand > 0) {
+      const watchers = lockWatchers;
+      lockWatchers = [];
+      for (const notify of watchers) notify();
+    }
+    await previous;
+    lockHolders.set(key, tx.id);
+    tx.release.push(() => {
+      lockHolders.delete(key);
+      lockDemand.set(key, (lockDemand.get(key) ?? 1) - 1);
+      release();
+    });
+  }
+
+  const armed = new Map<Moment, () => Promise<unknown>>();
+  const launched = new Map<Moment, Promise<unknown>>();
+
+  /**
+   * Juste avant l'écriture d'un moment armé : lance son geste hors de toute
+   * transaction, et le laisse tourner jusqu'à ce qu'il se termine ou bute sur
+   * un verrou tenu. L'écriture reprend ensuite.
+   */
+  async function reach(moment: Moment): Promise<void> {
+    const gesture = armed.get(moment);
+    if (!gesture) return;
+    armed.delete(moment);
+    const blocked = nextLockWait();
+    const run = currentTx.exit(() => gesture());
+    launched.set(moment, run);
+    await Promise.race([run.then(() => undefined, () => undefined), blocked]);
+  }
+
+  // --- Tables ----------------------------------------------------------------
 
   const paymentsOf = (invoiceId: string) =>
     payments.filter((p) => p.invoiceId === invoiceId);
@@ -481,8 +635,9 @@ export function makeWorld(seed: {
     if (w.shopOrderId !== undefined && !oneOf(i.shopOrderId, w.shopOrderId)) return false;
     if (w.status !== undefined) {
       if (w.status !== null && typeof w.status === 'object') {
-        allowOnly(w.status, ['not']);
-        if (i.status === w.status.not) return false;
+        allowOnly(w.status, ['not', 'in']);
+        if (w.status.not !== undefined && i.status === w.status.not) return false;
+        if (w.status.in !== undefined && !w.status.in.includes(i.status)) return false;
       } else if (i.status !== w.status) return false;
     }
     if (w.parentInvoiceId !== undefined && !oneOf(i.parentInvoiceId, w.parentInvoiceId)) {
@@ -589,13 +744,13 @@ export function makeWorld(seed: {
     club: {
       findUnique: jest.fn(async ({ where }: any) => {
         allowOnly(where, ['id']);
-        return clone(clubs.find((c) => c.id === where.id) ?? null);
+        return respond(clone(clubs.find((c) => c.id === where.id) ?? null));
       }),
     },
     shopOrder: {
       findFirst: jest.fn(async ({ where, include, select }: any) => {
         const o = orders.find((x) => orderMatches(x, where));
-        if (!o) return null;
+        if (!o) return respond(null);
         const row: Record<string, any> = clone(o);
         const relations = { ...(include ?? {}), ...(select ?? {}) };
         if (relations.invoice) {
@@ -617,20 +772,24 @@ export function makeWorld(seed: {
             .slice(0, relations.adjustments.take)
             .map((a) => ({ id: a.id }));
         }
-        return row;
+        return respond(row);
       }),
       findFirstOrThrow: jest.fn(async ({ where }: any) => {
         const o = orders.find((x) => orderMatches(x, where));
-        if (!o) throw new Error('commande introuvable');
-        return clone(o);
+        const row = o ? clone(o) : null;
+        await respond(row);
+        if (!row) throw new Error('commande introuvable');
+        return row;
       }),
       findMany: jest.fn(async ({ where, orderBy }: any) => {
         allowOnly(where, ['clubId', 'memberId', 'contactId']);
         expect(orderBy).toEqual([{ createdAt: 'desc' }]);
-        return orders
-          .filter((o) => orderMatches(o, where))
-          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-          .map((o) => clone(o));
+        return respond(
+          orders
+            .filter((o) => orderMatches(o, where))
+            .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+            .map((o) => clone(o)),
+        );
       }),
       updateMany: jest.fn(async ({ where, data }: any) => {
         const hit = orders.filter((o) => orderMatches(o, where));
@@ -663,7 +822,7 @@ export function makeWorld(seed: {
           createdAt: new Date(),
           ...data,
         };
-        order.lines.push(line);
+        insert(order.lines, line);
         return clone(line);
       }),
       update: jest.fn(async ({ where, data }: any) => {
@@ -678,15 +837,15 @@ export function makeWorld(seed: {
     shopProductVariant: {
       findFirst: jest.fn(async ({ where, include, select }: any) => {
         const v = variants.find((x) => variantMatches(x, where));
-        if (!v) return null;
-        if (select) return pick(v, select);
+        if (!v) return respond(null);
+        if (select) return respond(pick(v, select));
         const row: Record<string, unknown> = clone(v);
         if (include) {
           allowOnly(include, ['product']);
           const p = products.find((x) => x.id === v.productId);
           row.product = p ? pick(p, include.product.select) : null;
         }
-        return row;
+        return respond(row);
       }),
       updateMany: jest.fn(async ({ where, data }: any) => {
         const hit = variants.filter((v) => variantMatches(v, where));
@@ -696,7 +855,7 @@ export function makeWorld(seed: {
     },
     shopStockMovement: {
       create: jest.fn(async ({ data }: any) => {
-        movements.push(data);
+        insert(movements, data);
         return { id: uid('mv'), ...data };
       }),
     },
@@ -710,7 +869,7 @@ export function makeWorld(seed: {
           writtenOffCents: 0,
           ...data,
         };
-        adjustments.push(row);
+        insert(adjustments, row);
         return clone(row);
       }),
       update: jest.fn(async ({ where, data }: any) => {
@@ -728,15 +887,17 @@ export function makeWorld(seed: {
           hit = [...hit].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
         }
         const { supplementInvoice, ...columns } = select;
-        return hit.map((a) => {
-          const sup = supplementOf(a.id);
-          return {
-            ...pick(a, columns),
-            ...(supplementInvoice
-              ? { supplementInvoice: sup ? pick(sup, supplementInvoice.select) : null }
-              : {}),
-          };
-        });
+        return respond(
+          hit.map((a) => {
+            const sup = supplementOf(a.id);
+            return {
+              ...pick(a, columns),
+              ...(supplementInvoice
+                ? { supplementInvoice: sup ? pick(sup, supplementInvoice.select) : null }
+                : {}),
+            };
+          }),
+        );
       }),
       findFirst: jest.fn(async ({ where, include }: any) => {
         allowOnly(where, ['id', 'clubId', 'kind', 'signedAt']);
@@ -747,7 +908,7 @@ export function makeWorld(seed: {
             (where.kind === undefined || x.kind === where.kind) &&
             (where.signedAt === undefined || nullity(x.signedAt, where.signedAt)),
         );
-        if (!a) return null;
+        if (!a) return respond(null);
         const row: Record<string, unknown> = clone(a);
         if (include) {
           allowOnly(include, ['order']);
@@ -758,14 +919,30 @@ export function makeWorld(seed: {
             ...(club ? { club: pick(clubs.find((c) => c.id === o.clubId)!, club.select) } : {}),
           };
         }
-        return row;
+        return respond(row);
       }),
     },
     invoice: {
-      findFirst: jest.fn(async ({ where, select }: any) => {
+      findFirst: jest.fn(async ({ where, select, include }: any) => {
         const i = invoices.find((x) => invoiceMatches(x, where));
-        if (!i) return null;
-        return select ? projectInvoice(i, select) : clone(i);
+        if (!i) return respond(null);
+        if (select) return respond(projectInvoice(i, select));
+        const row: Record<string, unknown> = clone(i);
+        if (include) {
+          allowOnly(include, ['payments', 'paymentSchedule']);
+          if (include.payments !== undefined) {
+            if (include.payments !== true) throw new Error('include payments non simulé');
+            row.payments = paymentsOf(i.id).map((p) => clone(p));
+          }
+          if (include.paymentSchedule !== undefined) {
+            if (!same(include.paymentSchedule, { select: { status: true } })) {
+              throw new Error('include paymentSchedule non simulé');
+            }
+            // Aucun échéancier dans ce monde.
+            row.paymentSchedule = null;
+          }
+        }
+        return respond(row);
       }),
       findMany: jest.fn(async ({ where, include, select, orderBy }: any) => {
         let hit = invoices.filter((i) => invoiceMatches(i, where));
@@ -775,20 +952,20 @@ export function makeWorld(seed: {
         }
         if (include) {
           allowOnly(include, ['payments']);
-          return hit.map((i) => ({ ...clone(i), payments: paymentsWithCheques(i.id) }));
+          return respond(hit.map((i) => ({ ...clone(i), payments: paymentsWithCheques(i.id) })));
         }
-        return hit.map((i) => (select ? projectInvoice(i, select) : clone(i)));
+        return respond(hit.map((i) => (select ? projectInvoice(i, select) : clone(i))));
       }),
-      count: jest.fn(
-        async ({ where }: any) => invoices.filter((i) => invoiceMatches(i, where)).length,
+      count: jest.fn(async ({ where }: any) =>
+        respond(invoices.filter((i) => invoiceMatches(i, where)).length),
       ),
       aggregate: jest.fn(async ({ where }: any) => {
         const hit = invoices.filter((i) => invoiceMatches(i, where));
-        return {
+        return respond({
           _sum: {
             amountCents: hit.length ? hit.reduce((s, i) => s + i.amountCents, 0) : null,
           },
-        };
+        });
       }),
       create: jest.fn(async ({ data, select }: any) => {
         const row: WorldInvoice = {
@@ -801,10 +978,19 @@ export function makeWorld(seed: {
           createdAt: new Date(),
           ...data,
         };
-        invoices.push(row);
+        insert(invoices, row);
         return select ? pick(row, select) : clone(row);
       }),
+      update: jest.fn(async ({ where, data }: any) => {
+        allowOnly(where, ['id']);
+        if (data.status === InvoiceStatus.VOID) await reach('void');
+        const i = invoices.find((x) => x.id === where.id);
+        if (!i) throw new Error('facture introuvable');
+        write(i, data);
+        return clone(i);
+      }),
       updateMany: jest.fn(async ({ where, data }: any) => {
+        if (data.status === InvoiceStatus.VOID) await reach('void');
         const hit = invoices.filter((i) => invoiceMatches(i, where));
         for (const i of hit) write(i, data);
         return { count: hit.length };
@@ -813,11 +999,26 @@ export function makeWorld(seed: {
     payment: {
       count: jest.fn(async ({ where }: any) => {
         allowOnly(where, ['invoiceId', 'clubId']);
-        return payments.filter(
-          (p) => p.invoiceId === where.invoiceId && p.clubId === where.clubId,
-        ).length;
+        return respond(
+          payments.filter(
+            (p) => p.invoiceId === where.invoiceId && p.clubId === where.clubId,
+          ).length,
+        );
+      }),
+      aggregate: jest.fn(async ({ where, _sum }: any) => {
+        allowOnly(where, ['invoiceId']);
+        if (!same(_sum, { amountCents: true })) throw new Error('agrégat non simulé');
+        const hit = payments.filter(
+          (p) => where.invoiceId === undefined || p.invoiceId === where.invoiceId,
+        );
+        return respond({
+          _sum: {
+            amountCents: hit.length ? hit.reduce((s, p) => s + p.amountCents, 0) : null,
+          },
+        });
       }),
       create: jest.fn(async ({ data }: any) => {
+        if (data.amountCents > 0) await reach('payment');
         const row: WorldPayment = {
           id: uid('pay'),
           externalRef: null,
@@ -825,8 +1026,15 @@ export function makeWorld(seed: {
           createdAt: new Date(),
           ...data,
         };
-        payments.push(row);
+        insert(payments, row);
         return clone(row);
+      }),
+    },
+    // Aucun échéancier dans ce monde : aucun prélèvement en vol.
+    paymentScheduleInstallment: {
+      aggregate: jest.fn(async ({ where }: any) => {
+        allowOnly(where, ['schedule', 'status', 'stripePaymentIntentId', 'paymentId']);
+        return respond({ _sum: { amountCents: null } });
       }),
     },
     cheque: {
@@ -846,17 +1054,19 @@ export function makeWorld(seed: {
     member: {
       findMany: jest.fn(async ({ where, select }: any) => {
         allowOnly(where, ['id']);
-        return members.filter((m) => oneOf(m.id, where.id)).map((m) => pick(m, select));
+        return respond(
+          members.filter((m) => oneOf(m.id, where.id)).map((m) => pick(m, select)),
+        );
       }),
       findFirst: jest.fn(async ({ where, select }: any) => {
         allowOnly(where, ['id', 'clubId']);
         const m = members.find((x) => x.id === where.id && x.clubId === where.clubId);
-        return m ? pick(m, select) : null;
+        return respond(m ? pick(m, select) : null);
       }),
     },
     contact: {
-      findMany: jest.fn(async () => []),
-      findFirst: jest.fn(async () => null),
+      findMany: jest.fn(async () => respond([])),
+      findFirst: jest.fn(async () => respond(null)),
     },
     familyMember: {
       findFirst: jest.fn(async ({ where }: any) => {
@@ -864,40 +1074,99 @@ export function makeWorld(seed: {
         const f = families.find(
           (x) => x.memberId === where.memberId && x.clubId === where.family.clubId,
         );
-        return f ? { familyId: f.familyId } : null;
+        return respond(f ? { familyId: f.familyId } : null);
       }),
     },
+    membershipCart: {
+      // Le panier de `getCartById` : seuls son statut et sa facture servent à
+      // la réouverture, ses autres relations sont vides dans ce monde.
+      findFirst: jest.fn(async ({ where, include }: any) => {
+        allowOnly(where, ['id', 'clubId']);
+        allowOnly(include ?? {}, [
+          'items',
+          'pendingItems',
+          'payerContact',
+          'payerMember',
+          'family',
+          'clubSeason',
+          'invoice',
+        ]);
+        const c = carts.find(
+          (x) =>
+            (where.id === undefined || x.id === where.id) &&
+            (where.clubId === undefined || x.clubId === where.clubId),
+        );
+        if (!c) return respond(null);
+        const row: Record<string, unknown> = clone(c);
+        if (include?.items) row.items = [];
+        if (include?.pendingItems) row.pendingItems = [];
+        for (const relation of ['payerContact', 'payerMember', 'family', 'clubSeason']) {
+          if (include?.[relation]) row[relation] = null;
+        }
+        if (include?.invoice) {
+          row.invoice = clone(invoices.find((i) => i.id === c.invoiceId) ?? null);
+        }
+        return respond(row);
+      }),
+      update: jest.fn(async ({ where, data }: any) => {
+        allowOnly(where, ['id']);
+        allowOnly(data, ['status', 'validatedAt', 'invoiceId']);
+        const c = carts.find((x) => x.id === where.id);
+        if (!c) throw new Error('panier introuvable');
+        write(c, data);
+        return clone(c);
+      }),
+    },
+    $executeRaw: jest.fn(async (sql: TemplateStringsArray, ...values: unknown[]) => {
+      const text = sql.join('?');
+      const tx = currentTx.getStore();
+      // Hors transaction, le verrou serait levé aussitôt pris.
+      if (!tx) throw new Error(`Verrou pris hors transaction : ${text}`);
+      const lock = ADVISORY_LOCK.exec(text);
+      if (!lock || values.length !== 1) throw new Error(`SQL brut non simulé : ${text}`);
+      await advisoryLock(`${lock[1]} ${String(values[0])}`, tx);
+      return 0;
+    }),
     $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
-      const snap = clone({
-        orders,
-        variants,
-        invoices,
-        payments,
-        cheques,
-        movements,
-        adjustments,
-      });
+      const tx: OpenTx = { id: ++txSeq, undo: [], release: [] };
       depth += 1;
       try {
-        const out = await fn(db);
+        const out = await fn(clientOf(tx));
         events.push('commit');
         return out;
       } catch (e) {
-        const restore = (arr: any[], from: any[]) => arr.splice(0, arr.length, ...from);
-        restore(orders, snap.orders);
-        restore(variants, snap.variants);
-        restore(invoices, snap.invoices);
-        restore(payments, snap.payments);
-        restore(cheques, snap.cheques);
-        restore(movements, snap.movements);
-        restore(adjustments, snap.adjustments);
+        for (const undo of tx.undo.reverse()) undo();
         events.push('rollback');
         throw e;
       } finally {
         depth -= 1;
+        for (const release of tx.release) release();
       }
     }),
   };
+
+  /** Le client d'une transaction : chacune de ses requêtes s'exécute dans celle-ci. */
+  function clientOf(tx: OpenTx): unknown {
+    const bind =
+      (fn: (...args: any[]) => unknown) =>
+      (...args: any[]) =>
+        currentTx.run(tx, () => fn(...args));
+    return new Proxy(db, {
+      get(target, name: string) {
+        // Un client de transaction n'en ouvre pas d'autre.
+        if (name === '$transaction') return undefined;
+        const value = target[name];
+        if (typeof value === 'function') return bind(value);
+        if (value === null || typeof value !== 'object') return value;
+        return new Proxy(value, {
+          get(table, method: string) {
+            const fn = table[method];
+            return typeof fn === 'function' ? bind(fn) : fn;
+          },
+        });
+      },
+    });
+  }
 
   const trace = <A extends unknown[], R>(name: string, impl: (...args: A) => Promise<R>) =>
     jest.fn(async (...args: A) => {
@@ -921,6 +1190,16 @@ export function makeWorld(seed: {
         _creditNoteId: string,
         _sourcePaymentId?: string | null,
         _refundFinancialAccountId?: string | null,
+      ) => undefined,
+    ),
+    recordIncomeFromPayment: trace(
+      'income',
+      async (
+        _clubId: string,
+        _paymentId: string,
+        _label: string,
+        _amountCents: number,
+        _financialAccountId?: string | null,
       ) => undefined,
     ),
   };
@@ -965,6 +1244,28 @@ export function makeWorld(seed: {
   );
   const refunds = new ShopOrderRefundsService(db, shop, money, preorders as never);
   const adjust = new ShopOrderAdjustmentsService(db, shop, money, preorders as never);
+  // Aucun payeur désigné dans ces scénarios : ni documents à signer, ni Stripe.
+  const paymentsService = new PaymentsService(
+    db,
+    accounting as never,
+    financialAccounts as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    scheduleEngine as never,
+    {} as never,
+    stripeRefunds as never,
+    creditNotes,
+    shop,
+  );
+  const cartService = new MembershipCartService(
+    db,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+  );
 
   /**
    * Un geste concurrent, APRÈS la lecture du plan et AVANT la transaction :
@@ -983,6 +1284,8 @@ export function makeWorld(seed: {
     money,
     refunds,
     adjust,
+    paymentsService,
+    cartService,
     orders,
     variants,
     products,
@@ -991,6 +1294,7 @@ export function makeWorld(seed: {
     cheques,
     movements,
     adjustments,
+    carts,
     events,
     preorders,
     accounting,
@@ -999,6 +1303,26 @@ export function makeWorld(seed: {
     stripeCheckout,
     financialAccounts,
     meanwhile,
+    /** Latence de chaque lecture, en millisecondes : 0 par défaut. */
+    raceWindow(ms: number) {
+      latencyMs = ms;
+    },
+    /**
+     * Arme un moment : juste avant cette écriture, `gesture` est lancé, et
+     * tourne jusqu'à se terminer ou buter sur un verrou tenu. Rend l'issue du
+     * geste, une fois le moment passé ; lève s'il n'a jamais été atteint.
+     */
+    atMoment(moment: Moment, gesture: () => Promise<unknown>) {
+      armed.set(moment, gesture);
+      return {
+        outcome: async (): Promise<PromiseSettledResult<unknown>> => {
+          const run = launched.get(moment);
+          if (!run) throw new Error(`Moment « ${moment} » jamais atteint.`);
+          const [settled] = await Promise.allSettled([run]);
+          return settled;
+        },
+      };
+    },
     /** Transactions ouvertes à cet instant : 0 hors de toute transaction. */
     txDepth: () => depth,
     creditNotesOf: () => invoices.filter((i) => i.isCreditNote),

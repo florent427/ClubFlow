@@ -7,6 +7,7 @@ import { InvoiceStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ShopPreorderService } from '../shop/shop-preorder.service';
 import { ShopService } from '../shop/shop.service';
+import { lockInvoicesInTx } from './settlement-locks';
 import { planShopOrderAdjustment } from './shop-order-adjustment-plan';
 import { ShopOrderMoneyService } from './shop-order-money.service';
 import { ShopOrderRefundKind } from './shop-order-refund-plan';
@@ -120,6 +121,10 @@ export class ShopOrderAdjustmentsService {
         };
 
     const done = await this.prisma.$transaction(async (tx) => {
+      // Les factures d'abord, avant la commande, comme à l'annulation remboursée
+      // (ADR-0022, §3) : un règlement en cours attend ce commit, ou la relecture
+      // le voit.
+      await lockInvoicesInTx(tx, money.invoices.map((inv) => inv.id));
       const { adjustment, released } = await this.shop.adjustLineInTx(
         tx,
         clubId,
