@@ -78,14 +78,33 @@ describe('PaymentsService / Stripe webhook', () => {
         findFirst: jest.fn().mockResolvedValue(null),
       },
       $transaction: jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+        // Le client de la transaction lit la même base que `prisma` : le verrou
+        // de la facture, puis la relecture de l'idempotence et du reste dû
+        // (ADR-0022, §3). L'exclusion se vérifie dans stripe-webhook-lock.spec.ts.
         const tx = {
+          $executeRaw: jest.fn(async (sql: TemplateStringsArray) => {
+            const text = sql.join('?');
+            if (!text.includes("pg_advisory_xact_lock(hashtext('clubflow:invoice')")) {
+              throw new Error(`SQL brut non simulé : ${text}`);
+            }
+            return 0;
+          }),
           payment: {
+            findFirst: prisma.payment.findFirst,
+            aggregate: prisma.payment.aggregate,
             create: jest.fn().mockResolvedValue({
               id: 'pay-1',
               amountCents: 5000,
             }),
           },
-          invoice: { update: jest.fn().mockResolvedValue({}) },
+          invoice: {
+            findFirst: prisma.invoice.findFirst,
+            aggregate: prisma.invoice.aggregate,
+            update: jest.fn().mockResolvedValue({}),
+          },
+          paymentScheduleInstallment: {
+            aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: null } }),
+          },
         };
         return fn(tx);
       }),

@@ -1458,8 +1458,7 @@ export class ShopService {
   /**
    * Sous ce verrou, les factures ouvertes d'une commande sans encaissement
    * s'annulent toutes. Un autre compte : une facture est née pendant l'attente
-   * du verrou, ou un encaissement carte, qui ne le prend pas, vient de passer.
-   * Rien n'est écrit.
+   * du verrou, ou un paiement a été écrit sans le prendre. Rien n'est écrit.
    */
   private assertOrderInvoicesVoided(voided: number, locked: number): void {
     if (voided !== locked) {

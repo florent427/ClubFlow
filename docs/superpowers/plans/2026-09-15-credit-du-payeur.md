@@ -315,7 +315,57 @@ règlement et son commit laissait le paiement sur une facture annulée.
     commande. L'ordre « factures d'abord » est nécessaire.
 
 Limite connue : l'encaissement carte (webhook Stripe) ne prend pas le verrou
-(ADR-0022, §3).
+(ADR-0022, §3). Levée par la tâche 2.6.
+
+### Task 2.6 : Encaissement carte et remboursement confirmé sous le verrou
+
+Limite de la tâche 2.5 : le webhook Stripe lisait la facture ouverte hors
+transaction, puis écrivait son paiement sans verrou. Une annulation commitée
+entre les deux laissait un paiement carte sur une facture annulée.
+
+- [x] `applyStripePaymentSuccess` prend le verrou de la facture en tête de sa
+  transaction, avant toute écriture, commande boutique comprise. Il relit
+  dessous, dans cet ordre :
+  - le paiement déjà enregistré pour son paymentIntent (rejeu : frais
+    retentés). Relu après le statut, il ferait prendre pour un orphelin la
+    seconde livraison d'un paiement qui vient de solder la facture ;
+  - le statut, puis le reste dû constaté (`resolveInvoiceBalance`). Pas
+    l'encaissable : pour une échéance, il déduirait son propre paiement, encore
+    en vol.
+- [x] Facture plus ouverte ou solde nul : aucun paiement, le même ENCAISSEMENT
+  ORPHELIN, et le webhook répond sans erreur. L'argent est déjà chez le club ;
+  une exception ferait rejouer Stripe en boucle.
+- [x] `applyRefundConfirmed` prend le même verrou avant son paiement négatif et
+  son avoir.
+- [x] Tests sur `test/shop-order-world.ts`. Le monde passe désormais par la
+  vraie porte du webhook (livraison signée, réservation de l'événement) et par
+  le vrai `StripeRefundsService`. Le moment `refund` place une course juste
+  avant un paiement négatif.
+  - `invoice-void-lock.spec.ts` : la carte contre chacune des six annulations,
+    dans les deux ordres, et une commande soldée par carte contre son
+    annulation. Jamais de paiement sur une facture annulée.
+  - `stripe-webhook-lock.spec.ts` : la carte contre une saisie, dans les deux
+    ordres ; une saisie qui solde pendant la carte ; le solde nul ; deux
+    livraisons simultanées du même paymentIntent ; un remboursement confirmé
+    contre « Annuler et rembourser ».
+  - Témoin : le code d'origine fait rougir 19 des 36 tests de ces deux suites.
+  - Mutations à la main : 9 tuées sur 9.
+    - Le verrou du webhook retiré fait rougir ses 18 tests de course, et eux
+      seuls ; celui du remboursement, son seul test.
+    - Statut relu hors verrou : 8 rouges ; reste dû relu avant le verrou : 9 ;
+      idempotence jamais trouvée : 1 ; idempotence relue après le statut : 1 ;
+      webhook qui lève : 8 ; solde nul non contrôlé : 1 ; orphelin non
+      journalisé : 9.
+    - Une première forme de la mutation d'idempotence ne compilait pas : verdict
+      refusé. Rejouée sous une forme valide, elle est tuée.
+- Non rejoué sur le PostgreSQL de staging. Le verrou et la relecture sont ceux
+  de la saisie manuelle, vérifiés ainsi à la tâche 2.5 ; la course du webhook
+  elle-même ne l'a pas été.
+
+Relevés en passant, hors lot : trois cas où de l'argent reçu par carte n'est ni
+enregistré ni signalé correctement. Un contrôle du payeur qui lève dans le
+webhook fait rejouer Stripe en boucle ; un paiement supérieur au reste dû est
+tronqué sans trace ; un rejeu ne retente pas le soldage d'une échéance.
 
 ---
 

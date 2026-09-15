@@ -341,9 +341,9 @@ export class ShopOrderMoneyService {
     }
 
     for (const id of plan.voidInvoiceIds) {
-      // Ouverte et sans paiement, relu sous le verrou de l'appelant. Un
-      // encaissement carte ne prend pas ce verrou (ADR-0022, §3) : s'il vient
-      // de passer, la facture ne s'annule pas, et rien n'est écrit.
+      // Ouverte et sans paiement, relu sous le verrou de l'appelant (ADR-0022,
+      // §3). La garde reste dans l'écriture : un paiement écrit sans ce verrou
+      // empêcherait encore la facture de s'annuler, et rien ne serait écrit.
       const voided = await tx.invoice.updateMany({
         where: {
           id,

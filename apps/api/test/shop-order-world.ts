@@ -7,12 +7,14 @@ import {
   ShopOrderAdjustmentKind,
   ShopOrderStatus,
 } from '@prisma/client';
+import Stripe from 'stripe';
 import { MembershipCartService } from '../src/membership/membership-cart.service';
 import { CreditNotesService } from '../src/payments/credit-notes.service';
 import { PaymentsService } from '../src/payments/payments.service';
 import { ShopOrderAdjustmentsService } from '../src/payments/shop-order-adjustments.service';
 import { ShopOrderMoneyService } from '../src/payments/shop-order-money.service';
 import { ShopOrderRefundsService } from '../src/payments/shop-order-refunds.service';
+import { StripeRefundsService } from '../src/payments/stripe-refunds.service';
 import { ShopStockService } from '../src/shop/shop-stock.service';
 import { ShopService } from '../src/shop/shop.service';
 
@@ -22,9 +24,10 @@ import { ShopService } from '../src/shop/shop.service';
  * et l'annulation d'articles (ADR-0020) — de bout en bout : les vrais
  * `ShopService`, moteur de stock, service d'avoirs et `ShopOrderMoneyService`,
  * sur un double de PostgreSQL. S'y ajoutent l'encaissement manuel et
- * l'annulation d'une facture (`PaymentsService`), et la réouverture d'un panier
- * d'adhésion (`MembershipCartService`) : les courses entre un règlement et une
- * annulation (ADR-0022, §3).
+ * l'annulation d'une facture (`PaymentsService`), la réouverture d'un panier
+ * d'adhésion (`MembershipCartService`), l'encaissement carte par la vraie porte
+ * du webhook Stripe et le remboursement qu'il confirme (`StripeRefundsService`) :
+ * les courses entre un règlement et une annulation (ADR-0022, §3).
  *
  * Le double APPLIQUE chaque clause des `where` et lève sur toute clause qu'il
  * ne sait pas simuler : un prédicat oublié par le code change le résultat au
@@ -160,12 +163,16 @@ export type WorldCart = {
 
 /**
  * L'instant où une course se place (ADR-0022, §3) : juste avant qu'un
- * encaissement s'écrive, ou qu'une facture passe VOID.
+ * encaissement s'écrive, qu'un remboursement s'écrive (un paiement négatif), ou
+ * qu'une facture passe VOID.
  */
-export type Moment = 'payment' | 'void';
+export type Moment = 'payment' | 'refund' | 'void';
 
 export const T0 = new Date('2026-09-01T10:00:00Z');
 export const T1 = new Date('2026-09-05T10:00:00Z');
+
+/** Secret des livraisons signées du webhook Stripe, propre à ce monde. */
+const WEBHOOK_SECRET = 'whsec_shop_order_world';
 
 /**
  * En-tête PNG valide : la signature n'est pas décodée à l'échange, seulement
@@ -283,6 +290,8 @@ export const PAYMENT = (over: Partial<WorldPayment> = {}): WorldPayment => ({
   method: ClubPaymentMethod.MANUAL_CASH,
   externalRef: null,
   refundedPaymentId: null,
+  stripeAccountId: null,
+  stripeRefundId: null,
   financialAccountId: 'fa-caisse',
   paidByMemberId: 'm-1',
   paidByContactId: null,
@@ -488,6 +497,8 @@ export function makeWorld(seed: {
   const adjustments = seed.adjustments ?? [];
   const carts = seed.carts ?? [];
   const movements: Array<Record<string, any>> = [];
+  /** Événements Stripe réservés par le webhook (`StripeWebhookEvent.id`). */
+  const webhookEvents: string[] = [];
   const clubs = [
     { id: 'club-1', name: 'Dojo Test', siret: null, address: '1 rue du Dojo' },
   ];
@@ -997,6 +1008,29 @@ export function makeWorld(seed: {
       }),
     },
     payment: {
+      // Un webhook relit ce qu'il a déjà enregistré : le paiement de son
+      // paymentIntent, son remboursement, ou l'encaissement que celui-ci rend.
+      findFirst: jest.fn(async ({ where, select, include }: any) => {
+        allowOnly(where, ['clubId', 'invoiceId', 'externalRef', 'stripeRefundId', 'amountCents']);
+        const p = payments.find(
+          (x) =>
+            (where.clubId === undefined || x.clubId === where.clubId) &&
+            (where.invoiceId === undefined || x.invoiceId === where.invoiceId) &&
+            (where.externalRef === undefined || x.externalRef === where.externalRef) &&
+            (where.stripeRefundId === undefined ||
+              x.stripeRefundId === where.stripeRefundId) &&
+            count(x.amountCents, where.amountCents),
+        );
+        if (!p) return respond(null);
+        if (select) return respond(pick(p, select));
+        const row: Record<string, unknown> = clone(p);
+        if (include) {
+          allowOnly(include, ['invoice']);
+          const inv = invoices.find((i) => i.id === p.invoiceId);
+          row.invoice = inv ? pick(inv, include.invoice.select) : null;
+        }
+        return respond(row);
+      }),
       count: jest.fn(async ({ where }: any) => {
         allowOnly(where, ['invoiceId', 'clubId']);
         return respond(
@@ -1019,10 +1053,13 @@ export function makeWorld(seed: {
       }),
       create: jest.fn(async ({ data }: any) => {
         if (data.amountCents > 0) await reach('payment');
+        if (data.amountCents < 0) await reach('refund');
         const row: WorldPayment = {
           id: uid('pay'),
           externalRef: null,
           refundedPaymentId: null,
+          stripeAccountId: null,
+          stripeRefundId: null,
           createdAt: new Date(),
           ...data,
         };
@@ -1115,6 +1152,25 @@ export function makeWorld(seed: {
         if (!c) throw new Error('panier introuvable');
         write(c, data);
         return clone(c);
+      }),
+    },
+    // La réservation d'un événement par le webhook : `id` est la clé primaire,
+    // une seconde livraison du même événement lève.
+    stripeWebhookEvent: {
+      create: jest.fn(async ({ data }: any) => {
+        allowOnly(data, ['id']);
+        if (webhookEvents.includes(data.id)) {
+          throw new Error('Unique constraint failed on the fields: (id)');
+        }
+        insert(webhookEvents, data.id);
+        return { id: data.id };
+      }),
+      delete: jest.fn(async ({ where }: any) => {
+        allowOnly(where, ['id']);
+        const at = webhookEvents.indexOf(where.id);
+        if (at < 0) throw new Error('événement introuvable');
+        webhookEvents.splice(at, 1);
+        return { id: where.id };
       }),
     },
     $executeRaw: jest.fn(async (sql: TemplateStringsArray, ...values: unknown[]) => {
@@ -1244,7 +1300,12 @@ export function makeWorld(seed: {
   );
   const refunds = new ShopOrderRefundsService(db, shop, money, preorders as never);
   const adjust = new ShopOrderAdjustmentsService(db, shop, money, preorders as never);
-  // Aucun payeur désigné dans ces scénarios : ni documents à signer, ni Stripe.
+  // Les frais d'un encaissement carte, lus chez Stripe après le commit.
+  const stripeFees = {
+    syncFeesForPayment: trace('fees', async (_paymentId: string) => false),
+  };
+  // Aucun payeur désigné dans ces scénarios : ni documents à signer, ni Connect,
+  // ni échéancier.
   const paymentsService = new PaymentsService(
     db,
     accounting as never,
@@ -1253,11 +1314,49 @@ export function makeWorld(seed: {
     {} as never,
     {} as never,
     scheduleEngine as never,
-    {} as never,
+    stripeFees as never,
     stripeRefunds as never,
     creditNotes,
     shop,
   );
+  // Le remboursement que Stripe confirme (`charge.refunded`) : le vrai service,
+  // sur ce double. `stripeRefunds`, plus haut, ne remplace que l'appel sortant.
+  const refundConfirmations = new StripeRefundsService(db, creditNotes, {} as never);
+
+  /**
+   * Stripe annonce un encaissement carte (`payment_intent.succeeded`) par la
+   * vraie porte du webhook : signature, réservation de l'événement, puis
+   * l'encaissement. La promesse rend ce que Stripe recevrait : un rejet lui
+   * ferait rejouer la livraison.
+   */
+  const stripePaymentSucceeded = (args: {
+    invoiceId: string;
+    amountCents: number;
+    paymentIntentId?: string;
+    eventId?: string;
+  }) => {
+    const paymentIntentId = args.paymentIntentId ?? 'pi_carte';
+    const payload = JSON.stringify({
+      id: args.eventId ?? `evt_${paymentIntentId}`,
+      object: 'event',
+      type: 'payment_intent.succeeded',
+      data: {
+        object: {
+          id: paymentIntentId,
+          object: 'payment_intent',
+          metadata: { invoiceId: args.invoiceId, clubId: 'club-1' },
+          amount_received: args.amountCents,
+          amount: args.amountCents,
+        },
+      },
+    });
+    process.env.STRIPE_WEBHOOK_SECRET = WEBHOOK_SECRET;
+    const signature = Stripe.webhooks.generateTestHeaderString({
+      payload,
+      secret: WEBHOOK_SECRET,
+    });
+    return paymentsService.handleStripeWebhook(Buffer.from(payload), signature);
+  };
   const cartService = new MembershipCartService(
     db,
     {} as never,
@@ -1286,6 +1385,8 @@ export function makeWorld(seed: {
     adjust,
     paymentsService,
     cartService,
+    refundConfirmations,
+    stripePaymentSucceeded,
     orders,
     variants,
     products,
@@ -1295,10 +1396,12 @@ export function makeWorld(seed: {
     movements,
     adjustments,
     carts,
+    webhookEvents,
     events,
     preorders,
     accounting,
     stripeRefunds,
+    stripeFees,
     scheduleEngine,
     stripeCheckout,
     financialAccounts,

@@ -1694,14 +1694,12 @@ export class PaymentsService {
       where: { id: invoiceId, clubId, status: InvoiceStatus.OPEN },
     });
     if (!invoice) {
-      // De l'argent a été encaissé sur le compte du club pour une facture qui
-      // n'est plus ouverte. On ne peut pas l'enregistrer — la facture n'attend
-      // plus rien — mais se taire reviendrait à le faire disparaître des
-      // comptes. Le trésorier doit pouvoir retrouver et rembourser.
-      this.logger.error(
-        `[stripe] ENCAISSEMENT ORPHELIN : paymentIntent ${paymentIntentId} ` +
-          `(${amountCents} cts) reçu pour la facture ${invoiceId} du club ${clubId}, ` +
-          `qui n'est pas OPEN. Aucun Payment créé — remboursement probablement dû.`,
+      this.logOrphanStripePayment(
+        paymentIntentId,
+        amountCents,
+        invoiceId,
+        clubId,
+        "qui n'est pas OPEN",
       );
       return;
     }
@@ -1723,47 +1721,52 @@ export class PaymentsService {
       }
     }
     await this.assertPaidByMemberAllowedForInvoice(invoice, paidByMemberId);
-    const paidBefore = await this.sumPaidCentsForInvoice(invoice.id);
-    const creditNotesBefore = await this.sumCreditNotesForInvoice(invoice.id);
-    const { balanceCents } = invoicePaymentTotals(
-      invoice.amountCents,
-      paidBefore,
-      creditNotesBefore,
-      invoice.isCreditNote,
-    );
-    if (balanceCents <= 0) {
-      this.logger.error(
-        `[stripe] ENCAISSEMENT ORPHELIN : paymentIntent ${paymentIntentId} ` +
-          `(${amountCents} cts) reçu pour la facture ${invoiceId} du club ${clubId}, ` +
-          `dont le solde est déjà nul. Aucun Payment créé — remboursement probablement dû.`,
+
+    // Ce qui décide de l'écriture se relit sous le verrou de la facture
+    // (ADR-0022, §3), pris avant toute écriture, commande boutique comprise.
+    // Une saisie, une imputation ou une annulation en cours attend ce commit ;
+    // celle qui est déjà commitée se voit ici. Sans le verrou, une annulation
+    // passait entre la lecture ci-dessus et l'écriture, et le paiement restait
+    // sur une facture annulée.
+    //
+    // L'argent est déjà chez le club : ce qui ne s'enregistre plus n'est pas
+    // refusé mais journalisé, et le webhook répond sans erreur. Une exception le
+    // ferait rejouer par Stripe, en boucle, sur une facture qui ne changera plus.
+    const settlement = await this.prisma.$transaction(async (tx) => {
+      await lockInvoiceInTx(tx, invoice.id);
+
+      // L'idempotence d'abord : une seconde livraison de ce paymentIntent,
+      // arrivée pendant la première, trouve ici son paiement. Relue après le
+      // statut, elle prendrait la facture que ce paiement vient de solder pour
+      // un encaissement orphelin.
+      const already = await tx.payment.findFirst({
+        where: { invoiceId: invoice.id, externalRef: paymentIntentId },
+        select: { id: true },
+      });
+      if (already) return { kind: 'replay', paymentId: already.id } as const;
+
+      // Le reste dû constaté, et non l'encaissable : pour une échéance,
+      // `resolveInvoiceBalance` compte encore ce paymentIntent en vol, et le
+      // déduirait de lui-même.
+      const current = await resolveInvoiceBalance(tx, invoice.id, clubId);
+      if (current.status !== InvoiceStatus.OPEN) {
+        return { kind: 'orphan', cause: "qui n'est pas OPEN" } as const;
+      }
+      if (current.balanceCents <= 0) {
+        return { kind: 'orphan', cause: 'dont le solde est déjà nul' } as const;
+      }
+
+      // Tolérance aux paiements partiels (via Stripe : remboursements partiels,
+      // application de coupon côté Stripe, etc.). On n'ignore plus silencieusement
+      // un montant différent — on enregistre ce qu'on reçoit, dans la limite du
+      // solde dû. Le trop-plein serait un bug Stripe côté marchand.
+      const amountToRecord = Math.max(
+        0,
+        Math.min(amountCents, current.balanceCents),
       );
-      return;
-    }
+      if (amountToRecord <= 0) return { kind: 'ignored' } as const;
 
-    // Idempotence : si ce paymentIntent a déjà été enregistré, on ne duplique pas.
-    const already = await this.prisma.payment.findFirst({
-      where: { invoiceId: invoice.id, externalRef: paymentIntentId },
-      select: { id: true },
-    });
-    if (already) {
-      // Rejeu de webhook. On ressort sans rien dupliquer, mais on en profite
-      // pour retenter les frais : c'est souvent la raison même du rejeu, et
-      // sans cette tentative le rejeu serait entièrement stérile.
-      await this.trySyncFees(already.id);
-      return;
-    }
-
-    // Tolérance aux paiements partiels (via Stripe : remboursements partiels,
-    // application de coupon côté Stripe, etc.). On n'ignore plus silencieusement
-    // un montant différent — on enregistre ce qu'on reçoit, dans la limite du
-    // solde dû. Le trop-plein serait un bug Stripe côté marchand.
-    const amountToRecord = Math.max(0, Math.min(amountCents, balanceCents));
-    if (amountToRecord <= 0) {
-      return;
-    }
-
-    const payment = await this.prisma.$transaction(async (tx) => {
-      const p = await tx.payment.create({
+      const payment = await tx.payment.create({
         data: {
           clubId,
           invoiceId: invoice.id,
@@ -1776,7 +1779,7 @@ export class PaymentsService {
           stripeAccountId,
         },
       });
-      const fullyPaid = amountToRecord >= balanceCents;
+      const fullyPaid = amountToRecord >= current.balanceCents;
       await tx.invoice.update({
         where: { id: invoice.id },
         data: {
@@ -1797,8 +1800,28 @@ export class PaymentsService {
       if (fullyPaid && invoice.shopOrderId) {
         await this.shop.fulfillPaidShopOrderInTx(tx, clubId, invoice.shopOrderId);
       }
-      return p;
+      return { kind: 'recorded', payment } as const;
     });
+
+    if (settlement.kind === 'orphan') {
+      this.logOrphanStripePayment(
+        paymentIntentId,
+        amountCents,
+        invoiceId,
+        clubId,
+        settlement.cause,
+      );
+      return;
+    }
+    if (settlement.kind === 'replay') {
+      // Rejeu de webhook. On ressort sans rien dupliquer, mais on en profite
+      // pour retenter les frais : c'est souvent la raison même du rejeu, et
+      // sans cette tentative le rejeu serait entièrement stérile.
+      await this.trySyncFees(settlement.paymentId);
+      return;
+    }
+    if (settlement.kind === 'ignored') return;
+    const { payment } = settlement;
 
     await this.tryRecordIncome(
       clubId,
@@ -1819,6 +1842,26 @@ export class PaymentsService {
     // doivent en dépendre. En carte ils sont déjà connus ; en SEPA la charge
     // n'est pas dénouée et c'est le balayage quotidien qui repassera.
     await this.trySyncFees(payment.id);
+  }
+
+  /**
+   * De l'argent encaissé par Stripe pour une facture qui n'attend plus rien :
+   * annulée, soldée, ou dont le reste dû est nul. On ne peut pas l'enregistrer,
+   * mais se taire reviendrait à le faire disparaître des comptes. Le trésorier
+   * doit pouvoir le retrouver et le rembourser.
+   */
+  private logOrphanStripePayment(
+    paymentIntentId: string,
+    amountCents: number,
+    invoiceId: string,
+    clubId: string,
+    cause: string,
+  ): void {
+    this.logger.error(
+      `[stripe] ENCAISSEMENT ORPHELIN : paymentIntent ${paymentIntentId} ` +
+        `(${amountCents} cts) reçu pour la facture ${invoiceId} du club ${clubId}, ` +
+        `${cause}. Aucun Payment créé — remboursement probablement dû.`,
+    );
   }
 
   /**

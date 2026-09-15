@@ -1,8 +1,10 @@
+import { Logger } from '@nestjs/common';
 import {
   ClubPaymentMethod,
   InvoiceStatus,
   MembershipCartStatus,
   ShopOrderStatus,
+  ShopStockMovementKind,
 } from '@prisma/client';
 import {
   ADJUSTMENT,
@@ -28,6 +30,11 @@ import {
  * statut et leurs paiements avant d'écrire. Sans ce verrou, une annulation
  * passe entre la relecture d'un règlement et son commit, et le paiement reste
  * sur une facture annulée.
+ *
+ * L'encaissement carte (webhook Stripe) prend le même verrou et relit la facture
+ * dessous. Mais l'argent est déjà chez le club : face à une facture annulée, il
+ * n'écrit rien, journalise un ENCAISSEMENT ORPHELIN et répond sans erreur, sinon
+ * Stripe rejouerait sa livraison en boucle.
  *
  * Le monde (`test/shop-order-world.ts`) reproduit `pg_advisory_xact_lock` par un
  * verrou par clé levé à la fin de la transaction, défait les écritures d'une
@@ -98,6 +105,21 @@ const statut = (h: World, invoiceId: string) =>
   h.invoices.find((i) => i.id === invoiceId)!.status;
 const encaisse = (h: World, invoiceId: string) =>
   h.payments.filter((p) => p.invoiceId === invoiceId).map((p) => p.amountCents);
+
+/** Un acompte par carte, que Stripe annonce au webhook : la facture reste ouverte. */
+const reglerParCarte = (h: World, invoiceId: string) =>
+  h.stripePaymentSucceeded({ invoiceId, amountCents: 1000 });
+
+/** Ce que le trésorier lit quand l'argent arrive sur une facture qui ne l'attend plus. */
+const orphelin = (invoiceId: string, amountCents: number) =>
+  `[stripe] ENCAISSEMENT ORPHELIN : paymentIntent pi_carte (${amountCents} cts) reçu pour la facture ${invoiceId} du club club-1, qui n'est pas OPEN. Aucun Payment créé — remboursement probablement dû.`;
+
+/** Le journal d'erreurs, muet pendant les tests, où se lit un encaissement orphelin. */
+let journal: jest.SpyInstance;
+beforeEach(() => {
+  journal = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+});
+afterEach(() => journal.mockRestore());
 
 type Annulation = {
   chemin: string;
@@ -227,13 +249,100 @@ describe.each(ANNULATIONS)('$chemin : une annulation et un règlement simultané
   });
 });
 
-describe('un encaissement carte, qui ne prend pas le verrou, juste avant l’annulation', () => {
+describe.each(ANNULATIONS)('$chemin : une annulation et un encaissement carte simultanés', (c) => {
+  it('carte d’abord : l’annulation attend son commit, voit le paiement et refuse', async () => {
+    const h = c.monde();
+    h.raceWindow(2);
+    const annulation = h.atMoment('payment', () => c.annuler(h));
+
+    const [carte] = await Promise.allSettled([reglerParCarte(h, c.facture)]);
+
+    expect(carte).toEqual({ status: 'fulfilled', value: undefined });
+    expect(await annulation.outcome()).toEqual({
+      status: 'rejected',
+      reason: expect.objectContaining({ message: expect.stringMatching(c.refus) }),
+    });
+    expect(statut(h, c.facture)).toBe(InvoiceStatus.OPEN);
+    expect(encaisse(h, c.facture)).toEqual([1000]);
+    expect(c.annulee(h)).toBe(false);
+  });
+
+  it('annulation d’abord : la carte attend son commit, voit la facture annulée, n’écrit rien et répond sans erreur', async () => {
+    const h = c.monde();
+    h.raceWindow(2);
+    const carte = h.atMoment('void', () => reglerParCarte(h, c.facture));
+
+    const [annulation] = await Promise.allSettled([c.annuler(h)]);
+
+    expect(annulation.status).toBe('fulfilled');
+    expect(await carte.outcome()).toEqual({ status: 'fulfilled', value: undefined });
+    expect(statut(h, c.facture)).toBe(InvoiceStatus.VOID);
+    expect(encaisse(h, c.facture)).toEqual([]);
+    expect(c.annulee(h)).toBe(true);
+    // L'argent est chez le club, sans facture pour le recevoir : le trésorier le lit.
+    expect(journal).toHaveBeenCalledWith(orphelin(c.facture, 1000));
+    // L'événement reste réservé : Stripe ne rejoue pas la livraison.
+    expect(h.webhookEvents).toEqual(['evt_pi_carte']);
+  });
+});
+
+describe('une commande soldée par carte et son annulation simultanées', () => {
+  /** En attente : ses deux t-shirts réservés, sa facture de 40 € ouverte. */
+  const commande = () =>
+    makeWorld({
+      orders: [PENDING()],
+      variants: [VARIANT({ onHand: 5, available: 3 })],
+      invoices: [INVOICE({ status: InvoiceStatus.OPEN })],
+    });
+  const solderParCarte = (h: World) =>
+    h.stripePaymentSucceeded({ invoiceId: 'inv-1', amountCents: 4000 });
+
+  it('carte d’abord : la commande est servie sous le verrou, et l’annulation la trouve payée', async () => {
+    const h = commande();
+    h.raceWindow(2);
+    const annulation = h.atMoment('payment', () => annulerCommande(h));
+
+    const [carte] = await Promise.allSettled([solderParCarte(h)]);
+
+    expect(carte).toEqual({ status: 'fulfilled', value: undefined });
+    expect(await annulation.outcome()).toEqual({
+      status: 'rejected',
+      reason: expect.objectContaining({ message: expect.stringMatching(/elle est déjà payée/) }),
+    });
+    expect(h.orders[0].status).toBe(ShopOrderStatus.PAID);
+    expect(statut(h, 'inv-1')).toBe(InvoiceStatus.PAID);
+    expect(encaisse(h, 'inv-1')).toEqual([4000]);
+    // Les deux t-shirts ont quitté le placard, une seule fois.
+    expect(h.variants[0]).toEqual(expect.objectContaining({ onHand: 3, available: 3 }));
+    expect(h.movements.map((m) => m.kind)).toEqual([ShopStockMovementKind.FULFILL]);
+  });
+
+  it('annulation d’abord : la carte attend son commit, ne sert rien, n’écrit rien, et la réservation est rendue', async () => {
+    const h = commande();
+    h.raceWindow(2);
+    const carte = h.atMoment('void', () => solderParCarte(h));
+
+    const [annulation] = await Promise.allSettled([annulerCommande(h)]);
+
+    expect(annulation.status).toBe('fulfilled');
+    expect(await carte.outcome()).toEqual({ status: 'fulfilled', value: undefined });
+    expect(h.orders[0].status).toBe(ShopOrderStatus.CANCELLED);
+    expect(statut(h, 'inv-1')).toBe(InvoiceStatus.VOID);
+    expect(encaisse(h, 'inv-1')).toEqual([]);
+    expect(h.variants[0]).toEqual(expect.objectContaining({ onHand: 5, available: 5 }));
+    expect(h.movements.map((m) => m.kind)).toEqual([ShopStockMovementKind.RELEASE]);
+    expect(journal).toHaveBeenCalledWith(orphelin('inv-1', 4000));
+  });
+});
+
+describe('défense en profondeur : un paiement écrit sans le verrou, juste avant l’annulation', () => {
   /**
-   * Le webhook Stripe écrit son paiement sans prendre le verrou de la facture.
-   * Commité avant que l'annulation écrive, il se voit dans sa garde « aucun
-   * encaissement » : l'écriture ne mord pas, et l'annulation le dit.
+   * Tout encaissement prend le verrou de la facture. Un paiement qui s'en
+   * passerait, commité avant que l'annulation écrive, se verrait encore dans sa
+   * garde « aucun encaissement » : l'écriture ne mord pas, et l'annulation le
+   * dit.
    */
-  const encaissementCarte = (h: World) => async () => {
+  const paiementSansVerrou = (h: World) => async () => {
     h.payments.push(
       PAYMENT({
         id: 'pay-carte',
@@ -254,7 +363,7 @@ describe('un encaissement carte, qui ne prend pas le verrou, juste avant l’ann
     ['adjust', annulerLeKimono],
   ])('%s : aucune facture ne s’annule, rien n’est écrit', async (_chemin, annuler) => {
     const h = commandeEchangee();
-    h.atMoment('void', encaissementCarte(h));
+    h.atMoment('void', paiementSansVerrou(h));
 
     await expect(annuler(h)).rejects.toThrow(/vient de changer/);
 

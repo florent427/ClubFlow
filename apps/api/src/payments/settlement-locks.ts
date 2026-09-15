@@ -14,6 +14,10 @@ import type { Prisma } from '@prisma/client';
  * Qui prend quoi :
  * - la saisie manuelle et l'avoir : la facture ;
  * - l'imputation du crédit : la personne, puis la facture ;
+ * - l'encaissement carte (webhook Stripe) : la facture, avant de relire le
+ *   paiement déjà enregistré pour son paymentIntent, le statut et le reste dû ;
+ * - le remboursement confirmé par Stripe : la facture, avant son paiement
+ *   négatif et son avoir ;
  * - tout chemin qui annule une facture : ses factures, avant de relire leur
  *   statut et leurs paiements.
  */
