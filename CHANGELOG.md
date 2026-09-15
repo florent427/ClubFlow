@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.68.0](https://github.com/florent427/ClubFlow/compare/v0.67.0...v0.68.0) (2026-09-15)
+
+
+### ✨ Features
+
+* **paiements:** régler une facture avec le crédit du payeur ([1bc5958](https://github.com/florent427/ClubFlow/commit/1bc5958cfc1ea3861053bb533b4d4896477168c4))
+
 ## [0.67.0](https://github.com/florent427/ClubFlow/compare/v0.66.1...v0.67.0) (2026-09-15)
 
 
