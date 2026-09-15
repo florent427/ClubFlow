@@ -14,6 +14,7 @@ import {
   type ShopOrderLine,
 } from '@prisma/client';
 import { invoicePaymentTotals } from '../payments/invoice-totals';
+import { lockInvoicesInTx } from '../payments/settlement-locks';
 import type { ShopDeliveryNoteData } from '../pdf/shop-delivery-note-pdf.service';
 import type { ShopExchangeNoteData } from '../pdf/shop-exchange-note-pdf.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -1304,6 +1305,7 @@ export class ShopService {
    */
   async cancelOrder(clubId: string, orderId: string) {
     const { row: updated, released } = await this.prisma.$transaction(async (tx) => {
+      const locked = await this.lockOpenOrderInvoicesInTx(tx, clubId, orderId);
       // `fulfilledAt: null` : une commande REMISE avant d'être payée n'a plus de
       // réservation à libérer — la marchandise est partie. L'annuler rendrait au
       // stock vendable des articles qui ne sont plus dans le placard.
@@ -1334,13 +1336,14 @@ export class ShopService {
       // La facture suit, comme à l'annulation par l'adhérent (ADR-0019). La
       // garde « aucun encaissement » est aussi dans CETTE écriture : une
       // facture qui porte un paiement ne s'annule jamais.
-      await tx.invoice.updateMany({
+      const voided = await tx.invoice.updateMany({
         where: { ...orderInvoicesOf(row.id, clubId), payments: { none: {} } },
         data: {
           status: InvoiceStatus.VOID,
           voidReason: 'Commande annulée par le club.',
         },
       });
+      this.assertOrderInvoicesVoided(voided.count, locked);
       return { row, released: freed };
     });
     // Le stock rendu sert d'abord les précommandes en attente (ADR-0018).
@@ -1381,6 +1384,7 @@ export class ShopService {
       throw new ForbiddenException('Profil requis pour annuler une commande.');
     }
     const { row: updated, released } = await this.prisma.$transaction(async (tx) => {
+      const locked = await this.lockOpenOrderInvoicesInTx(tx, clubId, orderId);
       const claimed = await tx.shopOrder.updateMany({
         where: {
           id: orderId,
@@ -1415,18 +1419,53 @@ export class ShopService {
       // `shopOrderId` + `clubId` + `status OPEN` : une facture déjà PAID n'est
       // pas rétrogradée (le cas ne peut d'ailleurs pas se produire, la commande
       // n'aurait pas été PENDING).
-      await tx.invoice.updateMany({
+      const voided = await tx.invoice.updateMany({
         where: { ...orderInvoicesOf(row.id, clubId), payments: { none: {} } },
         data: {
           status: InvoiceStatus.VOID,
           voidReason: 'Commande annulée par le membre.',
         },
       });
+      this.assertOrderInvoicesVoided(voided.count, locked);
 
       return { row, released: freed };
     });
     await this.preorders.allocateQuietly(clubId, released);
     return forViewer((await this.hydrateBuyers([updated]))[0]);
+  }
+
+  /**
+   * Verrouille les factures ouvertes d'une commande avant de l'annuler, et rend
+   * combien il en a pris (ADR-0022, §3). Un règlement en cours sur l'une d'elles
+   * attend ce commit, ou il est commité et la garde « aucun encaissement » le
+   * voit. Pris avant toute écriture sur la commande : un règlement qui solde sa
+   * facture sert la commande sous ce verrou, et l'ordre inverse
+   * s'interbloquerait avec lui.
+   */
+  private async lockOpenOrderInvoicesInTx(
+    tx: Prisma.TransactionClient,
+    clubId: string,
+    orderId: string,
+  ): Promise<number> {
+    const open = await tx.invoice.findMany({
+      where: orderInvoicesOf(orderId, clubId),
+      select: { id: true },
+    });
+    await lockInvoicesInTx(tx, open.map((inv) => inv.id));
+    return open.length;
+  }
+
+  /**
+   * Sous ce verrou, les factures ouvertes d'une commande sans encaissement
+   * s'annulent toutes. Un autre compte : une facture est née pendant l'attente
+   * du verrou, ou un paiement a été écrit sans le prendre. Rien n'est écrit.
+   */
+  private assertOrderInvoicesVoided(voided: number, locked: number): void {
+    if (voided !== locked) {
+      throw new BadRequestException(
+        'Impossible d’annuler cette commande : elle vient de changer, rechargez la page.',
+      );
+    }
   }
 
   /**

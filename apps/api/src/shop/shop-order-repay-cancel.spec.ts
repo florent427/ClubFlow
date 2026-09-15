@@ -419,6 +419,15 @@ function makeStore(opts: {
         return { ...data, id: uid('mv') };
       }),
     },
+    // Verrou des factures de la commande (ADR-0022, §3), le seul SQL brut de
+    // ces chemins. L'exclusion elle-même se vérifie dans invoice-void-lock.spec.ts.
+    $executeRaw: jest.fn(async (sql: TemplateStringsArray) => {
+      const text = sql.join('?');
+      if (!text.includes("pg_advisory_xact_lock(hashtext('clubflow:invoice')")) {
+        throw new Error(`SQL brut non simulé : ${text}`);
+      }
+      return 0;
+    }),
     // ROLLBACK réel : un `throw` dans le corps restaure l'état capturé, ce qui
     // rend l'atomicité (et l'idempotence, qui s'appuie dessus) testable.
     $transaction: jest.fn(async (fn: any) => {

@@ -15,6 +15,7 @@ import {
 } from '../scheduling/scheduling.constants';
 import { SchedulerLockService } from '../scheduling/scheduler-lock.service';
 import { CreditNotesService } from './credit-notes.service';
+import { lockInvoiceInTx } from './settlement-locks';
 
 /**
  * Fenêtre de rapprochement des remboursements. Au-delà, un remboursement non
@@ -357,6 +358,13 @@ export class StripeRefundsService {
     let creditNote: { id: string };
     try {
       creditNote = await this.prisma.$transaction(async (tx) => {
+      // Sous le verrou de la facture (ADR-0022, §3), avant d'écrire. Une saisie,
+      // une imputation, un avoir ou une annulation relit la facture en plusieurs
+      // requêtes, puis écrit : ce remboursement ne s'intercale plus entre ces
+      // requêtes, ni entre la relecture et son commit. Rien n'est relu ici :
+      // l'argent est rendu, il s'enregistre quel que soit l'état de la facture.
+      await lockInvoiceInTx(tx, original.invoiceId);
+
       // Le Payment négatif matérialise la sortie de trésorerie, rattaché à
       // l'encaissement qu'il rembourse.
       await tx.payment.create({

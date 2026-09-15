@@ -29,6 +29,7 @@ import {
 } from './membership-pricing';
 import { applyPricing } from '../payments/pricing-rules';
 import { assertNotPayerCreditMethod } from '../payments/payment-method-rules';
+import { lockInvoiceInTx } from '../payments/settlement-locks';
 import { MAIL_TRANSPORT } from '../mail/mail.constants';
 import type { MailTransport } from '../mail/mail-transport.interface';
 import { ClubSendingDomainService } from '../mail/club-sending-domain.service';
@@ -1375,14 +1376,16 @@ export class MembershipCartService {
    * Rien d'encaissé sur la facture du panier ? Source unique partagée
    * par la lecture (`findReopenableCartForFamily`) et l'écriture
    * (`reopenCart`), pour que le bouton affiché et l'action autorisée ne
-   * puissent pas diverger.
+   * puissent pas diverger. L'écriture la relit sous le verrou de la facture,
+   * dans sa transaction (ADR-0022, §3).
    */
   private async reopenBlockedReason(
     clubId: string,
     invoiceId: string | null,
+    db: Pick<Prisma.TransactionClient, 'invoice' | 'payment'> = this.prisma,
   ): Promise<string | null> {
     if (!invoiceId) return null;
-    const invoice = await this.prisma.invoice.findFirst({
+    const invoice = await db.invoice.findFirst({
       where: { id: invoiceId, clubId },
       include: { paymentSchedule: { select: { status: true } } },
     });
@@ -1390,7 +1393,7 @@ export class MembershipCartService {
     if (invoice.status === InvoiceStatus.PAID) {
       return 'Cette adhésion est déjà réglée : elle ne peut plus être rouverte.';
     }
-    const paidAgg = await this.prisma.payment.aggregate({
+    const paidAgg = await db.payment.aggregate({
       where: { invoiceId: invoice.id },
       _sum: { amountCents: true },
     });
@@ -2000,6 +2003,18 @@ export class MembershipCartService {
 
     return this.prisma.$transaction(async (tx) => {
       if (cart.invoiceId) {
+        // Relu sous le verrou de la facture (ADR-0022, §3) : un règlement qui
+        // l'a relue ouverte attend ce commit, et un règlement déjà commité se
+        // voit ici, avant l'annulation.
+        await lockInvoiceInTx(tx, cart.invoiceId);
+        const blockedNow = await this.reopenBlockedReason(
+          clubId,
+          cart.invoiceId,
+          tx,
+        );
+        if (blockedNow) {
+          throw new BadRequestException(blockedNow);
+        }
         await tx.invoice.updateMany({
           where: {
             id: cart.invoiceId,

@@ -42,6 +42,15 @@ function makeSvc(opts?: {
   const created: Array<{ model: string; data: Record<string, unknown> }> = [];
 
   const tx = {
+    // Verrou de la facture, pris dans la transaction avant d'écrire (ADR-0022,
+    // §3). L'exclusion se vérifie dans stripe-webhook-lock.spec.ts.
+    $executeRaw: jest.fn(async (sql: TemplateStringsArray) => {
+      const text = sql.join('?');
+      if (!text.includes("pg_advisory_xact_lock(hashtext('clubflow:invoice')")) {
+        throw new Error(`SQL brut non simulé : ${text}`);
+      }
+      return 0;
+    }),
     payment: {
       create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
         created.push({ model: 'payment', data });
