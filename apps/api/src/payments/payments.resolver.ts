@@ -132,6 +132,9 @@ export class PaymentsResolver {
       parentInvoiceId: r.parentInvoiceId ?? null,
       creditNoteReason: r.creditNoteReason ?? null,
       voidReason: r.voidReason ?? null,
+      purpose: r.purpose,
+      payerCreditMemberId: r.payerCreditMemberId ?? null,
+      payerCreditContactId: r.payerCreditContactId ?? null,
     }));
   }
 
@@ -174,6 +177,9 @@ export class PaymentsResolver {
       parentInvoiceId: row.parentInvoiceId ?? null,
       creditNoteReason: row.creditNoteReason ?? null,
       voidReason: row.voidReason ?? null,
+      purpose: row.purpose,
+      payerCreditMemberId: row.payerCreditMemberId ?? null,
+      payerCreditContactId: row.payerCreditContactId ?? null,
     };
   }
 
@@ -292,6 +298,9 @@ export class PaymentsResolver {
       parentInvoiceId: inv.parentInvoiceId ?? null,
       creditNoteReason: inv.creditNoteReason ?? null,
       voidReason: inv.voidReason ?? null,
+      purpose: inv.purpose,
+      payerCreditMemberId: inv.payerCreditMemberId ?? null,
+      payerCreditContactId: inv.payerCreditContactId ?? null,
     };
   }
 
@@ -321,6 +330,9 @@ export class PaymentsResolver {
       parentInvoiceId: inv.parentInvoiceId ?? null,
       creditNoteReason: inv.creditNoteReason ?? null,
       voidReason: inv.voidReason ?? null,
+      purpose: inv.purpose,
+      payerCreditMemberId: inv.payerCreditMemberId ?? null,
+      payerCreditContactId: inv.payerCreditContactId ?? null,
     };
   }
 
@@ -352,6 +364,9 @@ export class PaymentsResolver {
       parentInvoiceId: inv.parentInvoiceId ?? null,
       creditNoteReason: inv.creditNoteReason ?? null,
       voidReason: inv.voidReason ?? null,
+      purpose: inv.purpose,
+      payerCreditMemberId: inv.payerCreditMemberId ?? null,
+      payerCreditContactId: inv.payerCreditContactId ?? null,
     };
   }
 
@@ -394,6 +409,9 @@ export class PaymentsResolver {
       parentInvoiceId: inv.parentInvoiceId ?? null,
       creditNoteReason: inv.creditNoteReason ?? null,
       voidReason: inv.voidReason ?? null,
+      purpose: inv.purpose,
+      payerCreditMemberId: inv.payerCreditMemberId ?? null,
+      payerCreditContactId: inv.payerCreditContactId ?? null,
     };
   }
 }

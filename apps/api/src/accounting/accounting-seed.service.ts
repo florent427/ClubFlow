@@ -117,6 +117,15 @@ export class AccountingSeedService {
       kind: 'LIABILITY',
       sortOrder: 80,
     },
+    // Sommes versées d'avance par un payeur et pas encore utilisées sur une
+    // facture (ADR-0022). Un seul compte : le détail par personne se calcule
+    // à partir des paiements.
+    {
+      code: '419100',
+      label: 'Adhérents, avances et acomptes reçus',
+      kind: 'LIABILITY',
+      sortOrder: 80,
+    },
     // Chèques reçus, en portefeuille jusqu'à la remise (ADR-0015).
     { code: '511200', label: 'Chèques à encaisser (en portefeuille)', kind: 'ASSET', sortOrder: 81 },
     // Banques (jusqu'à 5 banques distinctes — extensible via UI plan comptable)

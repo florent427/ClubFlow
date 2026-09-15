@@ -1,5 +1,5 @@
 import { Field, ID, Int, ObjectType } from '@nestjs/graphql';
-import { ClubPaymentMethod, InvoiceStatus } from '@prisma/client';
+import { ClubPaymentMethod, InvoicePurpose, InvoiceStatus } from '@prisma/client';
 
 @ObjectType()
 export class InvoiceGraph {
@@ -81,4 +81,22 @@ export class InvoiceGraph {
     description: "Motif d'annulation saisi lors du passage en VOID.",
   })
   voidReason!: string | null;
+
+  @Field(() => InvoicePurpose, {
+    description:
+      'CHARGE : facture ordinaire. PAYER_CREDIT_DEPOSIT : reçu d’avance, qui crédite une personne (ADR-0022).',
+  })
+  purpose!: InvoicePurpose;
+
+  @Field(() => ID, {
+    nullable: true,
+    description: 'Membre crédité par un reçu d’avance.',
+  })
+  payerCreditMemberId!: string | null;
+
+  @Field(() => ID, {
+    nullable: true,
+    description: 'Contact crédité par un reçu d’avance.',
+  })
+  payerCreditContactId!: string | null;
 }

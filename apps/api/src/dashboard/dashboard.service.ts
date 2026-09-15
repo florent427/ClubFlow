@@ -3,6 +3,7 @@ import {
   AccountingEntryKind,
   ClubEventStatus,
   GrantApplicationStatus,
+  InvoicePurpose,
   InvoiceStatus,
   MemberStatus,
   ShopOrderStatus,
@@ -187,6 +188,9 @@ export class DashboardService {
       this.prisma.invoice.findMany({
         where: {
           clubId,
+          // Un reçu d'avance naît payé, sans échéance : il passerait pour une
+          // facture payée à temps (ADR-0022).
+          purpose: InvoicePurpose.CHARGE,
           status: InvoiceStatus.PAID,
           updatedAt: { gte: d30, lt: now },
         },

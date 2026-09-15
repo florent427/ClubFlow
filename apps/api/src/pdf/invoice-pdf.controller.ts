@@ -54,9 +54,13 @@ export class InvoicePdfController {
     // dans buildInvoicePdf mais ici on veut juste le nom de fichier correct).
     const row = await this.prisma.invoice.findFirst({
       where: { id, clubId: clubId as string },
-      select: { isCreditNote: true },
+      select: { isCreditNote: true, purpose: true },
     });
-    const prefix = row?.isCreditNote ? 'Avoir' : 'Facture';
+    const prefix = row?.isCreditNote
+      ? 'Avoir'
+      : row?.purpose === 'PAYER_CREDIT_DEPOSIT'
+        ? 'Recu_avance'
+        : 'Facture';
     const filename = `${prefix}_${filenameCore}.pdf`;
 
     res.setHeader('Content-Type', 'application/pdf');

@@ -25,39 +25,11 @@ import { ConfirmModal } from '../../components/ui/ConfirmModal';
 import { LoadingState } from '../../components/ui/LoadingState';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { getClubId, getToken } from '../../lib/storage';
-
-const API_ROOT = (
-  (import.meta.env.VITE_GRAPHQL_HTTP as string | undefined) ??
-  'http://localhost:3000/graphql'
-).replace(/\/graphql\/?$/, '');
-
-async function downloadInvoicePdf(invoiceId: string, filename: string) {
-  const token = getToken();
-  const clubId = getClubId();
-  const res = await fetch(`${API_ROOT}/invoices/${invoiceId}/pdf`, {
-    method: 'GET',
-    credentials: 'include',
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(clubId ? { 'x-club-id': clubId } : {}),
-    },
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(
-      `Téléchargement impossible (HTTP ${res.status})${text ? ': ' + text : ''}`,
-    );
-  }
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
+import {
+  API_ROOT,
+  downloadInvoicePdf,
+  invoicePdfFilename,
+} from '../../lib/invoice-pdf-download';
 
 function formatEuros(cents: number): string {
   return (cents / 100).toLocaleString('fr-FR', {
@@ -104,12 +76,19 @@ const METHOD_LABELS: Record<ClubPaymentMethodStr, string> = {
 function StatusPill({
   status,
   isCreditNote,
+  isDeposit,
 }: {
   status: InvoiceStatusStr;
   isCreditNote?: boolean;
+  isDeposit?: boolean;
 }) {
   if (isCreditNote) {
     return <span className="cf-pill cf-pill--info">Avoir</span>;
+  }
+  // Un reçu d'avance (ADR-0022) naît payé, mais rien n'était dû : « Payée » le
+  // ferait passer pour une facture réglée.
+  if (isDeposit) {
+    return <span className="cf-pill cf-pill--info">Avance</span>;
   }
   const cls: Record<InvoiceStatusStr, string> = {
     DRAFT: 'cf-pill cf-pill--draft',
@@ -227,9 +206,16 @@ export function InvoiceDetailDrawer({
   const canVoid = inv?.status === 'DRAFT' || inv?.status === 'OPEN';
   const balance = inv?.balanceCents ?? 0;
   const isCreditNote = inv?.isCreditNote === true;
+  // Reçu d'avance (ADR-0022) : rien n'était dû, l'argent est au crédit de la
+  // personne. L'API refuse de l'encaisser, de l'annuler ou de lui émettre un
+  // avoir ; il naît payé, donc seul l'avoir restait proposé ici.
+  const isDeposit = inv?.purpose === 'PAYER_CREDIT_DEPOSIT';
   // Avoir disponible seulement sur factures émises ou payées et non-avoir.
   const canCreditNote =
-    !!inv && !isCreditNote && (inv.status === 'OPEN' || inv.status === 'PAID');
+    !!inv &&
+    !isCreditNote &&
+    !isDeposit &&
+    (inv.status === 'OPEN' || inv.status === 'PAID');
   // Téléchargement PDF : dès qu'un document existe (même brouillon, utile pour prévisualiser)
   const canDownloadPdf = !!inv;
 
@@ -472,11 +458,7 @@ export function InvoiceDetailDrawer({
     setPdfLoading(true);
     setPdfError(null);
     try {
-      const shortId = inv.id.slice(0, 8).toUpperCase();
-      const filename = inv.isCreditNote
-        ? `Avoir_${shortId}.pdf`
-        : `Facture_${shortId}.pdf`;
-      await downloadInvoicePdf(inv.id, filename);
+      await downloadInvoicePdf(inv.id, invoicePdfFilename(inv));
     } catch (err) {
       setPdfError(err instanceof Error ? err.message : 'Téléchargement impossible');
     } finally {
@@ -495,7 +477,9 @@ export function InvoiceDetailDrawer({
           title={
             isCreditNote
               ? 'Télécharger l’avoir en PDF'
-              : 'Télécharger la facture en PDF'
+              : isDeposit
+                ? 'Télécharger le reçu d’avance en PDF'
+                : 'Télécharger la facture en PDF'
           }
         >
           {pdfLoading ? 'Génération…' : 'Télécharger PDF'}
@@ -556,6 +540,7 @@ export function InvoiceDetailDrawer({
               <StatusPill
                 status={inv.status}
                 isCreditNote={inv.isCreditNote}
+                isDeposit={isDeposit}
               />
             </span>
           ) : (
@@ -615,6 +600,16 @@ export function InvoiceDetailDrawer({
                   </span>
                   <span className="cf-invoice-detail__meta-value">
                     {METHOD_LABELS[inv.lockedPaymentMethod]}
+                  </span>
+                </div>
+              ) : null}
+              {isDeposit ? (
+                <div className="cf-invoice-detail__meta-row">
+                  <span className="cf-invoice-detail__meta-label">Type</span>
+                  <span className="cf-invoice-detail__meta-value">
+                    Reçu d’avance : l’argent versé est au crédit de la
+                    personne. Il ne s’encaisse pas, ne s’annule pas et ne
+                    reçoit pas d’avoir.
                   </span>
                 </div>
               ) : null}

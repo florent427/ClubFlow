@@ -1,0 +1,136 @@
+# ADR-0022 — Crédit du payeur : avances encaissées sans facture, puis imputées sur ses factures
+
+## Statut
+
+✅ **Accepté** — 2026-09-15, à la livraison du lot 1 (avances au guichet).
+
+Complète :
+- l'[ADR-0014](0014-rapprochement-bancaire-par-releves.md) : trésorerie par relevés, comptabilité d'encaissement ;
+- l'[ADR-0015](0015-cheques-a-encaisser-5112.md) (chèques) et l'[ADR-0010](0010-compte-transit-stripe.md) (transit Stripe) ;
+- l'[ADR-0011](0011-remboursement-eteint-la-creance.md) : remboursement et avoir.
+
+Reprend le schéma de l'[ADR-0016](0016-frais-avances-benevoles-467.md) : un compte de tiers unique, et la personne portée par l'écriture.
+
+## Contexte
+
+Besoin exprimé par Florent le 2026-09-15 : accepter les paiements d'avance des membres, notamment pour les adhésions, le membre étant alors « en crédit ».
+
+C'est impossible aujourd'hui (vérifié dans le code le 2026-09-15) :
+- **Facture obligatoire** : tout `Payment` en porte une (`invoiceId` non nul).
+- **Pas de trop-perçu** : la saisie manuelle refuse un montant supérieur au reste dû ; le rapprochement d'un virement exige que ses parts couvrent exactement des factures ; Stripe plafonne au reste dû.
+- **Avoir limité** : il ne réduit que sa facture parente.
+- **Comptabilité d'encaissement** : un paiement crédite aussitôt 706100 (cotisations) ou 708000 (boutique). Aucun compte ne peut porter une somme reçue d'avance.
+
+Le code impose aussi quatre contraintes :
+- **Factures sans foyer** : achat boutique d'un contact, adhésion d'un membre sans foyer, facture libre.
+- **Payeur et foyers** : un même payeur règle parfois plusieurs foyers, et le foyer étendu ne partage la facturation que dans un sens (par invitation).
+- **Effets d'un encaissement** : la saisie manuelle et le virement rapproché passent par `recordManualPayment`, tandis que Stripe les rejoue de son côté.
+- **Concurrence** : aucun verrou n'entoure les encaissements.
+
+## Décisions
+
+### 1. Le crédit appartient à la personne qui paie
+
+Le propriétaire du crédit est un **payeur** : un membre ou un contact, comme pour `Payment.paidByMemberId` et `paidByContactId`.
+
+- **Même compte utilisateur, même personne** : un membre et un contact rattachés au même compte dans le club partagent le crédit. Un contact promu membre le garde donc, sans migration. C'est possible parce qu'un compte n'a qu'une fiche membre par club (`@@unique([clubId, userId])`).
+- **Sans compte utilisateur** : un membre a son propre crédit.
+- **Le foyer** n'est pas propriétaire : il **affiche** la somme des crédits de ses payeurs.
+
+### 2. Une avance est un « reçu d'avance », créé payé
+
+Une avance est une facture de nature `PAYER_CREDIT_DEPOSIT`, portée par une nouvelle colonne `Invoice.purpose` (défaut `CHARGE`). Elle désigne sa personne par `payerCreditMemberId` ou `payerCreditContactId`, exactement l'un des deux.
+
+**Elle naît PAYÉE**, créée par une seule fonction dans la même transaction que son `Payment` (et, pour un chèque, que sa fiche). Elle n'est jamais ouverte : aucune relance, aucun retard, aucun échéancier ne peut la prendre pour une dette.
+
+- **Circuit d'encaissement réutilisé tel quel** : espèces, chèque en portefeuille, virement sur la banque du relevé, carte.
+- **Carte** : la session Stripe porte la personne en metadata. À réception de l'argent, le webhook crée le reçu payé et son paiement ; `stripePaymentIntentId`, unique, sert de clé d'idempotence.
+- **PDF** : il s'intitule « Reçu d'avance ».
+- **Remboursement** : une avance se rembourse comme un encaissement, par un avoir sur le reçu (ADR-0011), jamais par une annulation.
+
+### 3. Utiliser le crédit, c'est régler la facture « par crédit »
+
+Nouveau moyen de paiement `ClubPaymentMethod.PAYER_CREDIT` : un `Payment` sur la facture à régler, au nom de la personne (`paidBy…`), sans mouvement d'argent.
+
+- **Contrôle du payeur** : le même que pour les autres moyens (`assertPaidBy…AllowedForInvoice`). Le crédit ne règle donc que ce que la personne a le droit de payer. Le contrôle s'étend aux factures sans foyer dont la personne est l'acheteur ou le membre facturé.
+- **Effets** : les mêmes qu'un encaissement manuel (facture PAID au solde, commande boutique servie, échéancier clôturé, écriture). La séquence d'après-encaissement de `recordManualPayment` devient une fonction partagée, appelée dans la transaction de l'imputation.
+- **Montant** : au plus le crédit disponible, et au plus le reste dû encaissable (`resolveInvoiceBalance`, prélèvements en cours déduits).
+- **Concurrence** : la transaction prend deux verrous `pg_advisory_xact_lock`, la personne puis la facture, avant de lire le crédit et le reste dû. Deux imputations simultanées ne peuvent ni dépenser deux fois le même crédit, ni surpayer la facture.
+- **Rendre le crédit** (avoir ou annulation boutique sur une facture réglée par crédit) : un `Payment` négatif `PAYER_CREDIT`, sur le modèle des remboursements (ADR-0011).
+- **Pas d'imputation automatique** : c'est l'admin ou le payeur qui choisit. Une proposition à la validation d'un panier pourra venir plus tard.
+
+### 4. Le solde se calcule à partir des paiements, il n'est stocké nulle part
+
+```
+crédit(personne) = Σ paiements des reçus d'avance de la personne   (versements ; remboursements en négatif)
+                 − Σ paiements PAYER_CREDIT de la personne           (imputations ; re-crédits en négatif)
+```
+
+- **Pourquoi calculer** : les paiements tracent déjà chaque mouvement, sur tous les chemins (saisie, webhook, virement, remboursement). Une colonne ou une table de solde serait une seconde vérité, que chacun de ces chemins devrait tenir à jour ([garantie derrière un effet de bord](../pitfalls/garantie-derriere-effet-de-bord.md)).
+- **Indépendant de la comptabilité** : le solde ne dépend pas des écritures, qui sont sans effet quand le module est désactivé.
+- **Une seule fonction** calcule le crédit ; l'admin, le portail et l'imputation l'appellent.
+- **Crédit négatif** : un remboursement ou un litige carte après usage peut le rendre négatif. Il s'affiche alors « à régulariser » et bloque toute nouvelle imputation.
+
+### 5. Écritures
+
+| Mouvement | Écriture |
+|---|---|
+| Avance encaissée | **TRANSFER** : DÉBIT trésorerie (530000, 511200, 512x ou 512300 selon le moyen) / CRÉDIT 419100. Compte financier renseigné, donc rapprochable. |
+| Crédit utilisé | **INCOME** : DÉBIT 419100 / CRÉDIT 706100 ou 708000, avec la ventilation analytique habituelle. Aucun compte financier : hors trésorerie, hors rapprochement. |
+| Crédit rendu (avoir sur une facture réglée par crédit) | Contre-passation : DÉBIT produit / CRÉDIT 419100, jamais la banque par repli. |
+| Avance remboursée | Contre-passation **TRANSFER** : DÉBIT 419100 / CRÉDIT trésorerie. |
+
+- **Nouveau compte** : 419100 « Adhérents – avances et acomptes reçus » (LIABILITY) entre au plan seedé. Tout code qui y écrit appelle `seedIfEmpty` avant de chercher le compte.
+- **Sens explicite** sur chaque ligne 419100, car `deriveSide` ignore LIABILITY. Même traitement que 467100.
+- **Pas de sous-compte** : un seul 419100, la personne étant portée par l'écriture. Le détail par personne est le calcul du §4.
+- **Recette constatée à l'usage** : une adhésion de la saison prochaine payée d'avance n'entre en 706100 que le jour où le crédit la règle.
+
+### 6. Ce que le moyen « Crédit » ne peut pas être
+
+`PAYER_CREDIT` est refusé partout où un moyen de paiement fait entrer de l'argent ou fixe un tarif :
+- saisie manuelle d'un encaissement ;
+- routes de paiement ;
+- règles tarifaires ;
+- mode verrouillé d'une facture ou d'un panier.
+
+Il est aussi exclu des cumuls d'encaissements, comme le montant des 30 derniers jours du tableau de bord : il ne fait entrer aucun argent.
+
+Un reçu d'avance, lui, ne se règle pas « par crédit », n'accepte ni échéancier ni avoir manuel, et ne s'annule pas.
+
+## Alternatives écartées
+
+- **Crédit du foyer** :
+  - des factures n'ont pas de foyer ;
+  - un payeur règle parfois plusieurs foyers ;
+  - un crédit de groupe laisserait l'avance d'une résidence régler les factures d'une autre, sans invitation.
+- **Paiement sans facture (`Payment.invoiceId` nullable)** : tout le code d'encaissement suppose une facture (fiche chèque, webhook Stripe, parts d'un virement, avoirs, PDF). Le reçu d'avance donne à tout ce code son point d'ancrage, sans rien changer.
+- **Solde stocké (colonne ou table de mouvements)** : une seconde source de vérité, que chaque chemin d'argent devrait tenir à jour, y compris les chemins futurs (chèque impayé, litige carte).
+- **Se servir des avoirs** :
+  - un avoir ne réduit que sa facture parente, et le reporter sur une autre facture demanderait un mécanisme neuf ;
+  - la contre-passation d'un avoir manuel crédite aujourd'hui la trésorerie à tort.
+- **Compte 411 créditeur** : la comptabilité est tenue en encaissement, sans 411 (ADR-0014). Le compte du PCG pour les sommes reçues d'avance est le 419.
+- **Imputation automatique** : un crédit versé pour un kimono partirait dans une cotisation. Elle pourra venir plus tard, en option.
+
+## Conséquences
+
+### Positives
+
+- Une avance s'encaisse par tous les moyens existants, se rapproche comme un encaissement et se lit sur un reçu.
+- La recette tombe au bon exercice, sans écriture de régularisation.
+- Un contact promu membre garde son crédit.
+- Le verrou de facture ferme au passage une course de la saisie manuelle : aujourd'hui, deux saisies simultanées peuvent surpayer une facture.
+- Le passage PAID s'aligne sur le solde après avoirs.
+
+### Négatives
+
+- Les reçus d'avance apparaissent parmi les factures payées : il faut un badge « Avance » et un filtre dans la facturation.
+- Un moyen de paiement de plus, à exclure explicitement de plusieurs écrans (liste au lot 2 du plan).
+- Un remboursement ou un litige carte après usage peut rendre un crédit négatif.
+- L'appli mobile admin (`apps/mobile-admin`) ne connaît pas le crédit : hors périmètre.
+
+## Lié
+
+- Plan : `docs/superpowers/plans/2026-09-15-credit-du-payeur.md`
+- [ADR-0014](0014-rapprochement-bancaire-par-releves.md), [ADR-0015](0015-cheques-a-encaisser-5112.md), [ADR-0010](0010-compte-transit-stripe.md), [ADR-0011](0011-remboursement-eteint-la-creance.md), [ADR-0016](0016-frais-avances-benevoles-467.md)
+- [pitfalls/garantie-derriere-effet-de-bord.md](../pitfalls/garantie-derriere-effet-de-bord.md)
+- [pitfalls/solde-facture-sans-les-avoirs.md](../pitfalls/solde-facture-sans-les-avoirs.md)

@@ -35,9 +35,11 @@ function formatDate(iso: string | null): string {
 function StatusPill({
   status,
   isCreditNote,
+  isDeposit,
 }: {
   status: InvoiceStatusStr;
   isCreditNote?: boolean;
+  isDeposit?: boolean;
 }) {
   // Cas spécial : un avoir affiche toujours « Avoir » au lieu de
   // « Payée » même s'il porte InvoiceStatus.PAID en base. C'est moins
@@ -45,6 +47,11 @@ function StatusPill({
   // « payée » au sens encaissement, c'est un document de compensation.
   if (isCreditNote) {
     return <span className="cf-pill cf-pill--info">Avoir</span>;
+  }
+  // Un reçu d'avance (ADR-0022) naît payé, mais rien n'était dû : « Payée » le
+  // ferait passer pour une facture réglée.
+  if (isDeposit) {
+    return <span className="cf-pill cf-pill--info">Avance</span>;
   }
   const cls: Record<InvoiceStatusStr, string> = {
     DRAFT: 'cf-pill cf-pill--draft',
@@ -61,7 +68,8 @@ function StatusPill({
   return <span className={cls[status]}>{label[status]}</span>;
 }
 
-type StatusFilter = 'ALL' | InvoiceStatusStr;
+/** `DEPOSIT` : les reçus d'avance, qui ne sont pas des factures (ADR-0022). */
+type StatusFilter = 'ALL' | InvoiceStatusStr | 'DEPOSIT';
 
 export function BillingPage() {
   const { isEnabled } = useClubModules();
@@ -88,7 +96,12 @@ export function BillingPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return invoices.filter((inv) => {
-      if (status !== 'ALL' && inv.status !== status) return false;
+      const isDeposit = inv.purpose === 'PAYER_CREDIT_DEPOSIT';
+      if (status === 'DEPOSIT') {
+        if (!isDeposit) return false;
+      } else if (status !== 'ALL' && (isDeposit || inv.status !== status)) {
+        return false;
+      }
       if (q && !inv.label.toLowerCase().includes(q)) return false;
       return true;
     });
@@ -99,6 +112,8 @@ export function BillingPage() {
     let paid = 0;
     let draft = 0;
     for (const inv of invoices) {
+      // Une avance n'est ni due, ni l'encaissement d'une facture.
+      if (inv.purpose === 'PAYER_CREDIT_DEPOSIT') continue;
       if (inv.status === 'OPEN') open += inv.balanceCents;
       if (inv.status === 'DRAFT') draft += inv.amountCents;
       if (inv.status === 'OPEN' || inv.status === 'PAID') {
@@ -159,7 +174,7 @@ export function BillingPage() {
                   (inv.amountCents / 100).toFixed(2),
                   (inv.totalPaidCents / 100).toFixed(2),
                   (inv.balanceCents / 100).toFixed(2),
-                  inv.status,
+                  inv.purpose === 'PAYER_CREDIT_DEPOSIT' ? 'AVANCE' : inv.status,
                 ]),
               );
               const ts = new Date().toISOString().slice(0, 10);
@@ -201,7 +216,7 @@ export function BillingPage() {
           placeholder="Rechercher une facture…"
         />
         <div className="cf-tabs" role="tablist">
-          {(['ALL', 'DRAFT', 'OPEN', 'PAID', 'VOID'] as StatusFilter[]).map(
+          {(['ALL', 'DRAFT', 'OPEN', 'PAID', 'VOID', 'DEPOSIT'] as StatusFilter[]).map(
             (s) => (
               <button
                 key={s}
@@ -219,7 +234,9 @@ export function BillingPage() {
                       ? 'Ouvertes'
                       : s === 'PAID'
                         ? 'Payées'
-                        : 'Annulées'}
+                        : s === 'VOID'
+                          ? 'Annulées'
+                          : 'Avances'}
               </button>
             ),
           )}
@@ -292,6 +309,7 @@ export function BillingPage() {
                     <StatusPill
                       status={inv.status}
                       isCreditNote={inv.isCreditNote}
+                      isDeposit={inv.purpose === 'PAYER_CREDIT_DEPOSIT'}
                     />
                     {inv.balanceCents > 0 ? (
                       <span className="cf-pill cf-pill--danger">
@@ -359,6 +377,7 @@ export function BillingPage() {
                     <StatusPill
                       status={inv.status}
                       isCreditNote={inv.isCreditNote}
+                      isDeposit={inv.purpose === 'PAYER_CREDIT_DEPOSIT'}
                     />
                   </td>
                 </tr>

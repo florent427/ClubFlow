@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { InvoiceStatus } from '@prisma/client';
+import { InvoicePurpose, InvoiceStatus } from '@prisma/client';
 import PDFDocument from 'pdfkit';
 import sharp from 'sharp';
 import { PrismaService } from '../prisma/prisma.service';
@@ -180,6 +180,17 @@ export class InvoicePdfService {
         householdGroup: true,
         clubSeason: { select: { label: true } },
         parentInvoice: { select: { id: true, label: true, createdAt: true } },
+        payerCreditMember: {
+          select: { firstName: true, lastName: true, email: true, phone: true },
+        },
+        payerCreditContact: {
+          select: {
+            firstName: true,
+            lastName: true,
+            phone: true,
+            user: { select: { email: true } },
+          },
+        },
       },
     });
     if (!inv) throw new NotFoundException('Facture introuvable');
@@ -188,24 +199,53 @@ export class InvoicePdfService {
     // responsable (PAYER via FamilyMember). Priorité au contact (compte
     // portail) puis au membre adhérent. Fallback au label du foyer.
     const payerLink = inv.family?.familyMembers?.[0] ?? null;
-    const payerName = payerLink?.contact
+    // Reçu d'avance (ADR-0022) : pas de foyer, le destinataire est la personne
+    // créditée.
+    const depositHolder = inv.payerCreditMember
+      ? {
+          firstName: inv.payerCreditMember.firstName,
+          lastName: inv.payerCreditMember.lastName,
+          email: inv.payerCreditMember.email,
+          phone: inv.payerCreditMember.phone,
+        }
+      : inv.payerCreditContact
+        ? {
+            firstName: inv.payerCreditContact.firstName,
+            lastName: inv.payerCreditContact.lastName,
+            email: inv.payerCreditContact.user?.email ?? null,
+            phone: inv.payerCreditContact.phone,
+          }
+        : null;
+    const payerName = depositHolder
+      ? `${depositHolder.firstName} ${depositHolder.lastName}`.trim()
+      : payerLink?.contact
       ? `${payerLink.contact.firstName} ${payerLink.contact.lastName}`.trim()
       : payerLink?.member
         ? `${payerLink.member.firstName} ${payerLink.member.lastName}`.trim()
         : null;
     const payerEmail =
-      payerLink?.contact?.user?.email ?? payerLink?.member?.email ?? null;
+      depositHolder?.email ??
+      payerLink?.contact?.user?.email ??
+      payerLink?.member?.email ??
+      null;
     const payerPhone =
-      payerLink?.contact?.phone ?? payerLink?.member?.phone ?? null;
+      depositHolder?.phone ??
+      payerLink?.contact?.phone ??
+      payerLink?.member?.phone ??
+      null;
 
     const isCredit = inv.isCreditNote;
+    // Pas de total à payer ni de tampon « acquittée » : rien n'était dû.
+    const isDeposit = inv.purpose === InvoicePurpose.PAYER_CREDIT_DEPOSIT;
     const doc = new PDFDocument({
       size: 'A4',
       margin: 48,
       info: {
         Title: isCredit
           ? `Avoir ${inv.id.slice(0, 8).toUpperCase()}`
-          : `Facture ${inv.id.slice(0, 8).toUpperCase()}`,
+          : isDeposit
+            ? `Reçu d’avance ${inv.id.slice(0, 8).toUpperCase()}`
+            : `Facture ${inv.id.slice(0, 8).toUpperCase()}`,
         Author: inv.club.name,
         Subject: inv.label,
       },
@@ -274,8 +314,8 @@ export class InvoicePdfService {
     doc
       .fillColor('#0b1d2a')
       .font('Helvetica-Bold')
-      .fontSize(22)
-      .text(isCredit ? 'AVOIR' : 'FACTURE', 380, headerY, {
+      .fontSize(isDeposit ? 16 : 22)
+      .text(isCredit ? 'AVOIR' : isDeposit ? 'REÇU D’AVANCE' : 'FACTURE', 380, headerY, {
         align: 'right',
         width: 170,
       });
@@ -288,7 +328,7 @@ export class InvoicePdfService {
         width: 170,
       });
     doc.text(
-      `Émise le ${inv.createdAt.toLocaleDateString('fr-FR')}`,
+      `${isDeposit ? 'Reçu le' : 'Émise le'} ${inv.createdAt.toLocaleDateString('fr-FR')}`,
       380,
       doc.y,
       { align: 'right', width: 170 },
@@ -328,7 +368,7 @@ export class InvoicePdfService {
       .fillColor('#0b1d2a')
       .font('Helvetica-Bold')
       .fontSize(10)
-      .text('Destinataire', 48, doc.y);
+      .text(isDeposit ? 'Versé par' : 'Destinataire', 48, doc.y);
     doc
       .fillColor('#212529')
       .font('Helvetica')
@@ -438,6 +478,21 @@ export class InvoicePdfService {
       }
       doc.moveDown(0.3);
     }
+    if (isDeposit) {
+      const y = doc.y;
+      doc.text(
+        'Avance versée — crédit utilisable sur les prochaines factures du club',
+        54,
+        y,
+        { width: 300 },
+      );
+      doc.text(payerName ?? '—', 360, y, { width: 100 });
+      doc.text(formatCents(inv.amountCents, false), 460, y, {
+        width: 80,
+        align: 'right',
+      });
+      doc.moveDown(0.3);
+    }
 
     // ===== Totaux =====
     doc.moveDown(0.3);
@@ -481,7 +536,7 @@ export class InvoicePdfService {
       .fillColor('#0b1d2a')
       .font('Helvetica-Bold')
       .fontSize(12)
-      .text(isCredit ? 'Montant remboursé' : 'Total à payer', 300, doc.y, {
+      .text(isCredit ? 'Montant remboursé' : isDeposit ? 'Montant versé' : 'Total à payer', 300, doc.y, {
         width: 150,
         align: 'right',
       });
@@ -532,7 +587,7 @@ export class InvoicePdfService {
     // au centre de la page. On utilise save/rotate/restore pour ne pas impacter
     // le reste du rendu. Le tampon est semi-transparent pour laisser lire le
     // contenu sous-jacent.
-    if (inv.status === InvoiceStatus.PAID && !isCredit) {
+    if (inv.status === InvoiceStatus.PAID && !isCredit && !isDeposit) {
       const lastPayment =
         inv.payments.length > 0
           ? inv.payments[inv.payments.length - 1]

@@ -35,6 +35,7 @@ describe('ClubContactsService', () => {
     };
     familyMember: { findMany: jest.Mock };
     clubMembership: { count: jest.Mock };
+    invoice: { count: jest.Mock };
     $transaction: jest.Mock;
   };
 
@@ -80,6 +81,7 @@ describe('ClubContactsService', () => {
       },
       familyMember: { findMany: jest.fn().mockResolvedValue([]) },
       clubMembership: { count: jest.fn().mockResolvedValue(0) },
+      invoice: { count: jest.fn().mockResolvedValue(0) },
       $transaction: jest.fn((ops: unknown[]) => Promise.all(ops)),
     };
 
@@ -167,6 +169,20 @@ describe('ClubContactsService', () => {
       expect(prisma.contact.delete).toHaveBeenCalledWith({
         where: { id: contactId },
       });
+    });
+
+    it('refuse si le contact a versé des avances : son crédit ne disparaît pas avec lui', async () => {
+      prisma.contact.findFirst.mockResolvedValue({ id: contactId, clubId, userId });
+      prisma.member.findFirst.mockResolvedValue(null);
+      prisma.invoice.count.mockImplementation(
+        async ({ where }: { where: { clubId: string; payerCreditContactId: string } }) =>
+          where.clubId === clubId && where.payerCreditContactId === contactId ? 1 : 0,
+      );
+
+      await expect(service.deleteClubContact(clubId, contactId)).rejects.toThrow(
+        'versé des avances',
+      );
+      expect(prisma.contact.delete).not.toHaveBeenCalled();
     });
   });
 

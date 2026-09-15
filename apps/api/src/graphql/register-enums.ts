@@ -18,6 +18,7 @@ import {
   GrantDocumentKind,
   InvoiceLineAdjustmentType,
   InvoiceLineKind,
+  InvoicePurpose,
   InvoiceStatus,
   MemberCatalogFieldKey,
   MemberCivility,
@@ -66,6 +67,7 @@ registerEnumType(FamilyMemberLinkRole, { name: 'FamilyMemberLinkRole' });
 registerEnumType(FamilyInviteRole, { name: 'FamilyInviteRole' });
 registerEnumType(InvoiceStatus, { name: 'InvoiceStatus' });
 registerEnumType(InvoiceLineKind, { name: 'InvoiceLineKind' });
+registerEnumType(InvoicePurpose, { name: 'InvoicePurpose' });
 registerEnumType(SubscriptionBillingRhythm, {
   name: 'SubscriptionBillingRhythm',
 });

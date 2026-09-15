@@ -3,6 +3,7 @@ import {
   ClubPaymentMethod,
   InvoiceLineAdjustmentType,
   InvoiceLineKind,
+  InvoicePurpose,
   InvoiceStatus,
   SubscriptionBillingRhythm,
 } from '@prisma/client';
@@ -97,4 +98,22 @@ export class InvoiceDetailGraph {
     description: "Motif d'annulation saisi lors du passage en VOID.",
   })
   voidReason!: string | null;
+
+  @Field(() => InvoicePurpose, {
+    description:
+      'CHARGE : facture ordinaire. PAYER_CREDIT_DEPOSIT : reçu d’avance, qui crédite une personne (ADR-0022).',
+  })
+  purpose!: InvoicePurpose;
+
+  @Field(() => ID, {
+    nullable: true,
+    description: 'Membre crédité par un reçu d’avance.',
+  })
+  payerCreditMemberId!: string | null;
+
+  @Field(() => ID, {
+    nullable: true,
+    description: 'Contact crédité par un reçu d’avance.',
+  })
+  payerCreditContactId!: string | null;
 }

@@ -87,6 +87,15 @@ Rencontré trois fois le 2026-09-12 — sur `AccountingAccount.findFirst`, puis
 deux fois sur `Member.findFirst`. À chaque fois le réflexe est le même :
 `(where.x === undefined || ligne.x === where.x)`, une clause à la fois.
 
+Et quand le test attend un **refus**, le double trop strict donne un faux
+**vert**. Rencontré le 2026-09-15 sur le crédit du payeur (lot 1) : le test
+« une personne d'un autre club est introuvable » attend une
+`NotFoundException`. Si l'on retire `clubId` de la recherche du membre, le
+double ne trouve plus rien et lève « introuvable ». Le test passe, alors que
+Prisma aurait rendu le membre de l'autre club. Avec un filtre générique, où une
+clause absente ne filtre rien et une clause inconnue lève, le même mutant est
+tué.
+
 ## Le réflexe à garder
 
 - Écrire le double **en face de la requête**, clause par clause. Chaque

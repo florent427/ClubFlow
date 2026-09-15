@@ -10575,6 +10575,46 @@ a:focus-visible {
   color: var(--cf-secondary);
 }
 
+/* Crédit du payeur (ADR-0022) : bloc des fiches membre et contact */
+.payer-credit__balance {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0 0 0.35rem;
+}
+.payer-credit__balance-label {
+  color: var(--cf-text-muted);
+  font-size: 0.85rem;
+}
+.payer-credit__balance-value {
+  font-size: 1.35rem;
+}
+.payer-credit__deposits {
+  list-style: none;
+  margin: 0.5rem 0 0.75rem;
+  padding: 0;
+  border-top: 1px solid var(--cf-border);
+}
+.payer-credit__deposit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--cf-border);
+  font-size: 0.875rem;
+}
+.payer-credit__deposit-side {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+.payer-credit__form {
+  margin-top: 0.75rem;
+}
+
 /* ────────── Modal close-confirm modernisée ────────── */
 
 .member-drawer-close-confirm__panel {
