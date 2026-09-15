@@ -1555,20 +1555,15 @@ export class PaymentsService {
         charge,
         eventAccount,
       );
-      for (const r of refunds) {
-        // Un remboursement `pending` ou `failed` n'a rien rendu : l'inscrire
-        // créerait un avoir pour de l'argent qui n'est jamais parti.
-        if (r.status !== 'succeeded') continue;
-        await this.stripeRefunds.applyRefundConfirmed({
-          clubId,
-          paymentIntentId,
-          refundId: r.id,
-          amountCents: r.amount,
-          stripeAccountId: eventAccount,
-          reason:
-            typeof r.metadata?.reason === 'string' ? r.metadata.reason : null,
-        });
-      }
+      await this.stripeRefunds.applyChargeRefunds({
+        clubId,
+        paymentIntentId,
+        stripeAccountId: eventAccount,
+        // Au-delà de l'encaissement enregistré, ce que Stripe a reçu est un
+        // excédent sans paiement (ENCAISSEMENT ORPHELIN PARTIEL).
+        capturedCents: charge.amount_captured,
+        refunds,
+      });
       return;
     }
 
@@ -1690,8 +1685,12 @@ export class PaymentsService {
     stripeAccountId: string | null = null,
     installmentId: string | null = null,
   ): Promise<void> {
+    // Sans filtre sur le statut : il se décide sous le verrou, plus bas. Filtrée
+    // sur OPEN, cette lecture prenait le rejeu d'un paiement qui avait soldé la
+    // facture pour un ENCAISSEMENT ORPHELIN, et ce qui suit le commit n'était
+    // jamais retenté.
     const invoice = await this.prisma.invoice.findFirst({
-      where: { id: invoiceId, clubId, status: InvoiceStatus.OPEN },
+      where: { id: invoiceId, clubId },
     });
     if (!invoice) {
       this.logOrphanStripePayment(
@@ -1699,7 +1698,7 @@ export class PaymentsService {
         amountCents,
         invoiceId,
         clubId,
-        "qui n'est pas OPEN",
+        'introuvable',
       );
       return;
     }
@@ -1720,7 +1719,7 @@ export class PaymentsService {
         return;
       }
     }
-    await this.assertPaidByMemberAllowedForInvoice(invoice, paidByMemberId);
+    const payer = await this.stripePaymentPayer(invoice, paidByMemberId);
 
     // Ce qui décide de l'écriture se relit sous le verrou de la facture
     // (ADR-0022, §3), pris avant toute écriture, commande boutique comprise.
@@ -1756,10 +1755,10 @@ export class PaymentsService {
         return { kind: 'orphan', cause: 'dont le solde est déjà nul' } as const;
       }
 
-      // Tolérance aux paiements partiels (via Stripe : remboursements partiels,
-      // application de coupon côté Stripe, etc.). On n'ignore plus silencieusement
-      // un montant différent — on enregistre ce qu'on reçoit, dans la limite du
-      // solde dû. Le trop-plein serait un bug Stripe côté marchand.
+      // Au plus le reste dû : la facture ne se surpaie pas. Ce que la carte
+      // apporte en plus vient d'une saisie, d'un avoir ou d'une imputation passés
+      // pendant le paiement. Cet excédent n'a pas de paiement : il est signalé
+      // après le commit (ENCAISSEMENT ORPHELIN PARTIEL).
       const amountToRecord = Math.max(
         0,
         Math.min(amountCents, current.balanceCents),
@@ -1773,7 +1772,7 @@ export class PaymentsService {
           amountCents: amountToRecord,
           method: ClubPaymentMethod.STRIPE_CARD,
           externalRef: paymentIntentId,
-          paidByMemberId,
+          paidByMemberId: payer.paidByMemberId,
           // Compte sur lequel l'argent est réellement tombé : indispensable
           // pour rembourser sur le bon compte plus tard (ADR-0008).
           stripeAccountId,
@@ -1814,14 +1813,43 @@ export class PaymentsService {
       return;
     }
     if (settlement.kind === 'replay') {
-      // Rejeu de webhook. On ressort sans rien dupliquer, mais on en profite
-      // pour retenter les frais : c'est souvent la raison même du rejeu, et
-      // sans cette tentative le rejeu serait entièrement stérile.
+      // Rejeu de webhook : rien à dupliquer, mais ce qui suit le commit est à
+      // reprendre. Une livraison qui a levé après son commit revient ici ; sans
+      // cette reprise, son échéance attendrait le rattrapage quotidien.
+      // `markInstallmentPaid` est idempotent. Les frais aussi : c'est souvent la
+      // raison même du rejeu.
+      if (installmentId) {
+        await this.scheduleEngine.markInstallmentPaid(
+          installmentId,
+          settlement.paymentId,
+        );
+      }
       await this.trySyncFees(settlement.paymentId);
       return;
     }
     if (settlement.kind === 'ignored') return;
     const { payment } = settlement;
+
+    // Signalé avant tout ce qui peut lever après le commit : un rejeu trouve le
+    // paiement et ne redit rien.
+    if (payment.amountCents < amountCents) {
+      this.logPartialOrphanStripePayment(
+        paymentIntentId,
+        amountCents,
+        payment.amountCents,
+        invoiceId,
+        clubId,
+      );
+    }
+    if (payer.refusal) {
+      this.logger.warn(
+        `[stripe] paymentIntent ${paymentIntentId} (facture ${invoiceId}, club ${clubId}) : ` +
+          `le payeur ${paidByMemberId} ne passe plus le contrôle — ${payer.refusal}. ` +
+          (payer.paidByMemberId
+            ? 'Paiement enregistré à son nom.'
+            : 'Fiche absente du club : paiement enregistré sans payeur.'),
+      );
+    }
 
     await this.tryRecordIncome(
       clubId,
@@ -1846,9 +1874,9 @@ export class PaymentsService {
 
   /**
    * De l'argent encaissé par Stripe pour une facture qui n'attend plus rien :
-   * annulée, soldée, ou dont le reste dû est nul. On ne peut pas l'enregistrer,
-   * mais se taire reviendrait à le faire disparaître des comptes. Le trésorier
-   * doit pouvoir le retrouver et le rembourser.
+   * introuvable, annulée, soldée, ou dont le reste dû est nul. On ne peut pas
+   * l'enregistrer, mais se taire reviendrait à le faire disparaître des comptes.
+   * Le trésorier doit pouvoir le retrouver et le rembourser.
    */
   private logOrphanStripePayment(
     paymentIntentId: string,
@@ -1862,6 +1890,58 @@ export class PaymentsService {
         `(${amountCents} cts) reçu pour la facture ${invoiceId} du club ${clubId}, ` +
         `${cause}. Aucun Payment créé — remboursement probablement dû.`,
     );
+  }
+
+  /**
+   * De l'argent encaissé par Stripe au-delà du reste dû. Le paiement enregistre
+   * ce reste, la facture ne se surpayant pas ; l'excédent n'a pas de paiement.
+   * Le trésorier doit le lire pour le rendre. Rendu depuis Stripe, il n'écrit ni
+   * paiement négatif ni avoir (`StripeRefundsService.applyRefundConfirmed`).
+   */
+  private logPartialOrphanStripePayment(
+    paymentIntentId: string,
+    amountCents: number,
+    recordedCents: number,
+    invoiceId: string,
+    clubId: string,
+  ): void {
+    this.logger.error(
+      `[stripe] ENCAISSEMENT ORPHELIN PARTIEL : paymentIntent ${paymentIntentId} ` +
+        `(${amountCents} cts) reçu pour la facture ${invoiceId} du club ${clubId}, ` +
+        `dont le reste dû n'était que de ${recordedCents} cts. ` +
+        `Payment de ${recordedCents} cts créé ; ${amountCents - recordedCents} cts ` +
+        `sans Payment — remboursement de l'excédent probablement dû.`,
+    );
+  }
+
+  /**
+   * Le payeur qu'enregistre un encaissement carte.
+   *
+   * Le portail a contrôlé ce payeur à l'ouverture du paiement. Quand Stripe
+   * annonce l'argent, le même contrôle peut refuser : fiche désactivée, sortie
+   * du foyer ou supprimée entre-temps. L'argent est déjà chez le club, le refus
+   * n'arrête donc pas l'encaissement : lever ferait rejouer Stripe en boucle,
+   * sans paiement ni signalement. Le payeur reste celui qui a payé tant que sa
+   * fiche existe dans le club ; sinon le paiement s'enregistre sans payeur,
+   * qu'une clé étrangère refuserait. Une lecture en panne n'est pas un refus :
+   * elle lève, et Stripe rejoue.
+   */
+  private async stripePaymentPayer(
+    invoice: InvoiceForPayer,
+    paidByMemberId: string | null,
+  ): Promise<{ paidByMemberId: string | null; refusal: string | null }> {
+    if (!paidByMemberId) return { paidByMemberId: null, refusal: null };
+    try {
+      await this.assertPaidByMemberAllowedForInvoice(invoice, paidByMemberId);
+      return { paidByMemberId, refusal: null };
+    } catch (err) {
+      if (!(err instanceof BadRequestException)) throw err;
+      const member = await this.prisma.member.findFirst({
+        where: { id: paidByMemberId, clubId: invoice.clubId },
+        select: { id: true },
+      });
+      return { paidByMemberId: member?.id ?? null, refusal: err.message };
+    }
   }
 
   /**

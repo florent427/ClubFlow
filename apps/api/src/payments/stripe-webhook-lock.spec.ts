@@ -186,6 +186,11 @@ describe('un remboursement confirmé par Stripe et « Annuler et rembourser » s
       refundId: 're_tableau_de_bord',
       amountCents: 1000,
       stripeAccountId: null,
+      // La charge de 40 €, entièrement enregistrée : aucun excédent.
+      charge: {
+        capturedCents: 4000,
+        refunds: [{ id: 're_tableau_de_bord', amountCents: 1000, fromApp: false }],
+      },
     });
 
     expect(await annulation.outcome()).toEqual({

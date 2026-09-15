@@ -362,10 +362,77 @@ entre les deux laissait un paiement carte sur une facture annulée.
   de la saisie manuelle, vérifiés ainsi à la tâche 2.5 ; la course du webhook
   elle-même ne l'a pas été.
 
-Relevés en passant, hors lot : trois cas où de l'argent reçu par carte n'est ni
-enregistré ni signalé correctement. Un contrôle du payeur qui lève dans le
-webhook fait rejouer Stripe en boucle ; un paiement supérieur au reste dû est
-tronqué sans trace ; un rejeu ne retente pas le soldage d'une échéance.
+Relevés en passant : trois cas où de l'argent reçu par carte n'est ni
+enregistré ni signalé correctement. Levés par la tâche 2.7.
+
+### Task 2.7 : L'argent reçu par carte, toujours enregistré ou signalé
+
+Limites de la tâche 2.6, antérieures au verrou du webhook. Comportements
+tranchés par Florent le 2026-09-15.
+
+- [x] Contrôle du payeur qui refuse après le paiement (fiche désactivée, sortie
+  du foyer ou supprimée depuis l'ouverture du paiement). Il levait : Stripe
+  rejouait en boucle, sans paiement ni orphelin. Désormais :
+  - le paiement s'enregistre et solde la facture ;
+  - il garde son payeur si la fiche existe dans le club, s'enregistre sans
+    payeur sinon, et le refus est journalisé en avertissement ;
+  - une lecture en panne n'est pas un refus : elle lève, et Stripe rejoue.
+- [x] Paiement carte supérieur au reste dû (saisie, avoir ou imputation passés
+  pendant le paiement). Il était tronqué sans trace. Le reste dû s'enregistre,
+  et l'excédent est journalisé en ENCAISSEMENT ORPHELIN PARTIEL.
+- [x] Rendre cet excédent depuis Stripe n'écrit ni paiement négatif ni avoir.
+  - Un remboursement créé hors de ClubFlow rend d'abord l'excédent, moins ce
+    que les autres remboursements hors ClubFlow n'ont pas écrit en base. Un
+    remboursement de `refundPayment` (metadata `paymentId`) rend toujours
+    l'encaissement qu'il désigne.
+  - La part se relit sous le verrou de la facture : ni l'ordre des livraisons,
+    ni un rejeu ne la changent.
+  - Le plafond de `refundPayment` ne compte pas l'excédent rendu. Le rattrapage
+    quotidien ne compte plus comme rattrapé un remboursement qui n'a rien écrit.
+  - Le webhook et le rattrapage passent par `applyChargeRefunds`, qui ne retient
+    que les remboursements aboutis.
+- [x] Rejeu après commit : la lecture préalable ne filtre plus sur OPEN, le
+  statut se décidant sous le verrou. Un rejeu trouve son paiement, reprend le
+  soldage de l'échéance (`markInstallmentPaid`, idempotent) puis les frais, et
+  n'est plus pris pour un ENCAISSEMENT ORPHELIN. Une facture introuvable reste
+  un orphelin, dit « introuvable ».
+- [x] Tests sur `test/shop-order-world.ts`. Le monde simule désormais le
+  contrôle du payeur (statut de la fiche, foyer, groupe foyer), le soldage
+  d'une échéance, et `charge.refunded` par la vraie porte du webhook.
+  - `stripe-webhook-money.spec.ts`, 16 tests : payeur refusé (fiche inactive,
+    hors foyer, absente), lecture en panne, excédent (saisie pendant la carte,
+    avoir), remboursements de l'excédent (tableau de bord, part mixte,
+    `refundPayment`, livraisons successives, livraisons simultanées), rejeu
+    (dernière échéance, échéance intermédiaire), facture introuvable.
+  - `stripe-refunds.service.spec.ts` : plafond de `refundPayment` avec un
+    excédent, rattrapage, remboursement en attente.
+  - Témoin : le code d'origine fait rougir 13 des 16 tests du monde, chacun
+    pour la raison attendue. Les 3 autres gardent contre une mutation : payeur
+    du foyer, lecture en panne, montant exact.
+  - Mutations à la main : 21 tuées sur 21, chacune par les tests attendus, et
+    aucune par une erreur de compilation.
+    - Webhook, 11 : lecture préalable filtrée sur OPEN (1 rouge) ; rejeu sans
+      soldage de l'échéance (2) ; refus du payeur qui lève (3) ; toute erreur
+      prise pour un refus (1) ; payeur toujours retiré (2) ; payeur gardé sans
+      fiche (1) ; refus tu (3) ; excédent non signalé (2) ; signalé au montant
+      exact (5) ; payeur brut sur le paiement (1) ; montant encaissé non
+      transmis (5).
+    - Remboursements, 10 : remboursement de l'app pris pour le tableau de bord
+      (1) ; part de l'excédent lue avant le verrou (1) ; autres remboursements
+      comptés en entier (2) ; plafond sans l'excédent (2) ; plafond comptant
+      l'app sur l'excédent (1) ; excédent non borné (1) ; rattrapage compté sans
+      écriture (1) ; origine des remboursements perdue (1) ; remboursement tout
+      d'excédent écrit quand même (5) ; remboursement en attente enregistré (1).
+- Non rejoué sur le PostgreSQL de staging.
+
+Limites connues :
+- L'excédent n'a de trace qu'au journal. Tant qu'il n'est pas rendu, le transit
+  Stripe (512300) s'écarte de ce montant au virement suivant.
+- `markInstallmentPaid` qui lève après avoir passé l'échéance PAID : un rejeu
+  n'achève pas la clôture de l'échéancier (sortie anticipée, antérieure).
+- Un processus arrêté après le commit, sans exception, garde la réservation de
+  l'événement : le rejeu de Stripe sort aussitôt, et seul le rattrapage
+  quotidien solde l'échéance (antérieur).
 
 ---
 
