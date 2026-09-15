@@ -135,6 +135,22 @@ describe('planShopOrderCancellation — chaque encaissement par son moyen', () =
     expect(p.refunds.map((r) => r.kind)).toEqual([ShopOrderRefundKind.TRANSFER]);
   });
 
+  it('crédit du payeur : rendu à son crédit (ADR-0022)', () => {
+    const p = plan({
+      invoice: { payments: [PAY({ method: ClubPaymentMethod.PAYER_CREDIT })] },
+    });
+
+    expect(p.blockers).toEqual([]);
+    expect(p.refunds).toEqual([
+      expect.objectContaining({
+        kind: ShopOrderRefundKind.CREDIT,
+        paymentId: 'p-1',
+        amountCents: 4000,
+        bankAccountId: null,
+      }),
+    ]);
+  });
+
   it('carte : remboursée par Stripe quand la référence est exploitable', () => {
     const p = plan({
       invoice: {

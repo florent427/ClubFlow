@@ -10,8 +10,11 @@ import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.gua
 import { GqlJwtAuthGuard } from '../common/guards/gql-jwt-auth.guard';
 import type { RequestUser } from '../common/types/request-user';
 import { ModuleCode } from '../domain/module-registry/module-codes';
+import { ApplyPayerCreditInput } from './dto/apply-payer-credit.input';
 import { RecordPayerCreditDepositInput } from './dto/record-payer-credit-deposit.input';
 import {
+  PayerCreditApplyResultGraph,
+  PayerCreditCandidateGraph,
   PayerCreditDepositResultGraph,
   PayerCreditGraph,
 } from './models/payer-credit.model';
@@ -37,10 +40,17 @@ function toGraph(credit: PayerCredit): PayerCreditGraph {
         createdAt: p.createdAt,
       })),
     })),
+    uses: credit.uses.map((u) => ({
+      paymentId: u.paymentId,
+      invoiceId: u.invoiceId,
+      invoiceLabel: u.invoiceLabel,
+      amountCents: u.amountCents,
+      createdAt: u.createdAt,
+    })),
   };
 }
 
-/** Crédit du payeur, côté admin (ADR-0022, lot 1). */
+/** Crédit du payeur, côté admin (ADR-0022, lots 1 et 2). */
 @Resolver()
 @UseGuards(
   GqlJwtAuthGuard,
@@ -58,7 +68,7 @@ export class PayerCreditResolver {
   @Query(() => PayerCreditGraph, {
     name: 'clubPayerCredit',
     description:
-      'Crédit d’une personne (membre OU contact) : solde et avances versées.',
+      'Crédit d’une personne (membre OU contact) : solde, avances versées et imputations.',
   })
   async clubPayerCredit(
     @CurrentClub() club: Club,
@@ -93,6 +103,38 @@ export class PayerCreditResolver {
       invoiceId: invoice.id,
       paymentId: payment.id,
       balanceCents: credit.balanceCents,
+    };
+  }
+
+  @Query(() => [PayerCreditCandidateGraph], {
+    name: 'clubInvoicePayerCredits',
+    description:
+      'Personnes qui peuvent régler cette facture avec leur crédit, et combien elles en ont.',
+  })
+  async clubInvoicePayerCredits(
+    @CurrentClub() club: Club,
+    @Args('invoiceId', { type: () => ID }) invoiceId: string,
+  ): Promise<PayerCreditCandidateGraph[]> {
+    return this.payments.listPayerCreditCandidates(club.id, invoiceId);
+  }
+
+  @Mutation(() => PayerCreditApplyResultGraph, {
+    name: 'applyPayerCreditToInvoice',
+    description:
+      'Règle une facture avec le crédit d’une personne : mêmes effets qu’un encaissement, sans mouvement d’argent (ADR-0022).',
+  })
+  async applyPayerCreditToInvoice(
+    @CurrentClub() club: Club,
+    @Args('input') input: ApplyPayerCreditInput,
+  ): Promise<PayerCreditApplyResultGraph> {
+    const applied = await this.payments.applyPayerCredit(club.id, input);
+    return {
+      paymentId: applied.payment.id,
+      invoiceId: applied.invoiceId,
+      amountCents: applied.payment.amountCents,
+      creditBalanceCents: applied.creditBalanceCents,
+      invoiceStatus: applied.invoiceStatus,
+      invoiceBalanceCents: applied.invoiceBalanceCents,
     };
   }
 }

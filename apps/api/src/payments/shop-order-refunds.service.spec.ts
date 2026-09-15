@@ -95,6 +95,44 @@ describe('cancelAndRefund — chaque règlement rendu par son moyen', () => {
     );
   });
 
+  it('payée par le crédit : le crédit est rendu, sans compte, et sa contre-passation désigne l’imputation', async () => {
+    const h = makeWorld({
+      orders: [ORDER()],
+      variants: [VARIANT({ onHand: 3, available: 3 })],
+      invoices: [INVOICE()],
+      payments: [PAYMENT({ method: ClubPaymentMethod.PAYER_CREDIT, financialAccountId: null })],
+    });
+
+    const res = await h.refunds.cancelAndRefund('club-1', 'u-admin', {
+      orderId: 'order-1',
+      reason: 'Erreur de taille',
+    });
+
+    // Aucun argent ne sort : un paiement négatif PAYER_CREDIT rend le crédit
+    // à la même personne (ADR-0022).
+    expect(h.refundsOf()).toEqual([
+      expect.objectContaining({
+        invoiceId: 'inv-1',
+        amountCents: -4000,
+        method: ClubPaymentMethod.PAYER_CREDIT,
+        refundedPaymentId: 'pay-1',
+        financialAccountId: null,
+        paidByMemberId: 'm-1',
+      }),
+    ]);
+    expect(h.creditNotesOf()).toEqual([
+      expect.objectContaining({ parentInvoiceId: 'inv-1', amountCents: 4000 }),
+    ]);
+    expect(h.accounting.createContraEntryForCreditNote).toHaveBeenCalledWith(
+      'club-1',
+      h.creditNotesOf()[0].id,
+      'pay-1',
+      null,
+      undefined,
+    );
+    expect(res.manualRefundedCents).toBe(4000);
+  });
+
   it('payée en espèces : rend l’argent et reprend les articles en stock', async () => {
     const h = makeWorld({
       orders: [ORDER()],
@@ -145,6 +183,7 @@ describe('cancelAndRefund — chaque règlement rendu par son moyen', () => {
       avoirs[0].id,
       'pay-1',
       null,
+      undefined,
     );
     expect(h.events).toEqual(['commit', 'accounting', 'schedule', 'allocate']);
     expect(h.stripeRefunds.refundPayment).not.toHaveBeenCalled();
@@ -217,6 +256,7 @@ describe('cancelAndRefund — chaque règlement rendu par son moyen', () => {
       h.creditNotesOf()[0].id,
       'pay-1',
       null,
+      undefined,
     );
     expect(res.chequesReturned).toBe(1);
   });
@@ -252,6 +292,7 @@ describe('cancelAndRefund — chaque règlement rendu par son moyen', () => {
       h.creditNotesOf()[0].id,
       'pay-1',
       'fa-banque',
+      undefined,
     );
     expect(res.chequesReturned).toBe(0);
   });

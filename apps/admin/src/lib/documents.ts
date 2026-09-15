@@ -795,6 +795,13 @@ export const CLUB_PAYER_CREDIT = gql`
           createdAt
         }
       }
+      uses {
+        paymentId
+        invoiceId
+        invoiceLabel
+        amountCents
+        createdAt
+      }
     }
   }
 `;
@@ -805,6 +812,31 @@ export const RECORD_PAYER_CREDIT_DEPOSIT = gql`
       invoiceId
       paymentId
       balanceCents
+    }
+  }
+`;
+
+/** Qui peut régler cette facture avec son crédit (ADR-0022, §3). */
+export const CLUB_INVOICE_PAYER_CREDITS = gql`
+  query ClubInvoicePayerCredits($invoiceId: ID!) {
+    clubInvoicePayerCredits(invoiceId: $invoiceId) {
+      memberId
+      contactId
+      displayName
+      balanceCents
+    }
+  }
+`;
+
+export const APPLY_PAYER_CREDIT_TO_INVOICE = gql`
+  mutation ApplyPayerCreditToInvoice($input: ApplyPayerCreditInput!) {
+    applyPayerCreditToInvoice(input: $input) {
+      paymentId
+      invoiceId
+      amountCents
+      creditBalanceCents
+      invoiceStatus
+      invoiceBalanceCents
     }
   }
 `;

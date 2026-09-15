@@ -110,12 +110,15 @@ export class CreditNotesService {
     sourcePaymentId?: string | null,
     /** Compte d'où l'argent est rendu, s'il diffère de l'encaissement. */
     refundFinancialAccountId?: string | null,
+    /** Part de l'avoir à contre-passer, s'il se partage (ADR-0022, §5). */
+    partCents?: number | null,
   ): Promise<void> {
     await this.accounting.createContraEntryForCreditNote(
       clubId,
       creditNoteId,
       sourcePaymentId,
       refundFinancialAccountId,
+      partCents,
     );
   }
 }

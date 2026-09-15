@@ -6,6 +6,8 @@ import { downloadInvoicePdf, invoicePdfFilename } from '../lib/invoice-pdf-downl
 import {
   PAYER_CREDIT_DEPOSIT_METHODS,
   buildPayerCreditDepositInput,
+  creditUseAmountLabel,
+  describeCreditUse,
   describeDepositPayments,
   emptyPayerCreditDepositForm,
   type PayerCreditDepositForm,
@@ -180,6 +182,24 @@ export function PayerCreditPanel({
               ))}
             </ul>
           )}
+          {credit.uses.length > 0 ? (
+            <>
+              <p className="payer-credit__subtitle">Utilisations</p>
+              <ul className="payer-credit__deposits">
+                {credit.uses.map((u) => (
+                  <li key={u.paymentId} className="payer-credit__deposit">
+                    <div>
+                      <div>{formatDate(u.createdAt)}</div>
+                      <div className="muted">{describeCreditUse(u)}</div>
+                    </div>
+                    <div className="payer-credit__deposit-side">
+                      <strong>{creditUseAmountLabel(u.amountCents)}</strong>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
         </>
       ) : null}
 

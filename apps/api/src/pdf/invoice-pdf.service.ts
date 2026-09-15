@@ -682,6 +682,8 @@ function methodLabel(m: string): string {
       return 'chèque';
     case 'MANUAL_TRANSFER':
       return 'virement';
+    case 'PAYER_CREDIT':
+      return 'crédit';
     default:
       return m;
   }

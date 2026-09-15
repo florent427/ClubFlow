@@ -22,6 +22,12 @@ export type PayerCreditHolder = {
    */
   memberIds: string[];
   contactIds: string[];
+  /**
+   * La personne, pour son verrou (ADR-0022, §3) : son compte utilisateur, ou
+   * le membre qui n'en a pas. Le membre et le contact d'un même compte
+   * partagent donc le même verrou, comme le même crédit.
+   */
+  personKey: string;
 };
 
 type Db = Pick<Prisma.TransactionClient, 'member' | 'contact'>;
@@ -64,6 +70,7 @@ export async function resolvePayerCreditHolder(
       displayName: `${member.firstName} ${member.lastName}`.trim(),
       memberIds: [member.id],
       contactIds: contacts.map((c) => c.id),
+      personKey: member.userId ? `user:${member.userId}` : `member:${member.id}`,
     };
   }
 
@@ -85,5 +92,6 @@ export async function resolvePayerCreditHolder(
     displayName: `${contact.firstName} ${contact.lastName}`.trim(),
     memberIds: member ? [member.id] : [],
     contactIds: [contact.id],
+    personKey: `user:${contact.userId}`,
   };
 }

@@ -1,7 +1,9 @@
 import { useMutation, useQuery } from '@apollo/client/react';
 import { useMemo, useState } from 'react';
 import {
+  APPLY_PAYER_CREDIT_TO_INVOICE,
   CLUB_INVOICE_DETAIL,
+  CLUB_INVOICE_PAYER_CREDITS,
   CREATE_CLUB_CREDIT_NOTE,
   ISSUE_CLUB_INVOICE,
   RECORD_CLUB_MANUAL_PAYMENT,
@@ -9,7 +11,9 @@ import {
   VOID_CLUB_INVOICE,
 } from '../../lib/documents';
 import type {
+  ApplyPayerCreditToInvoiceMutationData,
   ClubInvoiceDetailQueryData,
+  ClubInvoicePayerCreditsQueryData,
   ClubPaymentMethodStr,
   CreateClubCreditNoteMutationData,
   InvoiceLineAdjustmentStr,
@@ -19,6 +23,10 @@ import type {
   RefundClubPaymentMutationData,
   VoidClubInvoiceMutationData,
 } from '../../lib/types';
+import {
+  buildApplyPayerCreditInput,
+  proposedCreditApplyCents,
+} from '../../lib/payer-credit';
 import { computeRefundableByPaymentId } from '../../lib/refundable-payments';
 import { Drawer } from '../../components/ui/Drawer';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
@@ -71,6 +79,7 @@ const METHOD_LABELS: Record<ClubPaymentMethodStr, string> = {
   MANUAL_CASH: 'Espèces',
   MANUAL_CHECK: 'Chèque',
   MANUAL_TRANSFER: 'Virement',
+  PAYER_CREDIT: 'Crédit',
 };
 
 function StatusPill({
@@ -106,6 +115,10 @@ function StatusPill({
 }
 
 type ConfirmKind = 'issue' | 'void' | null;
+
+type CreditCandidate = ClubInvoicePayerCreditsQueryData['clubInvoicePayerCredits'][number];
+
+const candidateKey = (c: CreditCandidate) => `${c.memberId ?? ''}|${c.contactId ?? ''}`;
 
 export function InvoiceDetailDrawer({
   invoiceId,
@@ -194,6 +207,13 @@ export function InvoiceDetailDrawer({
   const [creditAmount, setCreditAmount] = useState('');
   const [creditError, setCreditError] = useState<string | null>(null);
 
+  // Régler avec le crédit d'un payeur (ADR-0022, §3).
+  const [creditUseOpen, setCreditUseOpen] = useState(false);
+  const [creditUseKey, setCreditUseKey] = useState('');
+  const [creditUseAmount, setCreditUseAmount] = useState('');
+  const [creditUseError, setCreditUseError] = useState<string | null>(null);
+  const [creditUseNotice, setCreditUseNotice] = useState<string | null>(null);
+
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
   // Erreur des actions Émettre / Annuler (affichée dans le drawer,
@@ -218,6 +238,28 @@ export function InvoiceDetailDrawer({
     (inv.status === 'OPEN' || inv.status === 'PAID');
   // Téléchargement PDF : dès qu'un document existe (même brouillon, utile pour prévisualiser)
   const canDownloadPdf = !!inv;
+  // Le serveur dit qui peut régler avec son crédit : il applique le contrôle
+  // du payeur de l'imputation elle-même.
+  const canUseCredit =
+    !!inv &&
+    inv.status === 'OPEN' &&
+    !inv.isCreditNote &&
+    inv.purpose === 'CHARGE' &&
+    inv.balanceCents > 0;
+  const { data: creditData, refetch: refetchCredits } =
+    useQuery<ClubInvoicePayerCreditsQueryData>(CLUB_INVOICE_PAYER_CREDITS, {
+      variables: { invoiceId: invoiceId ?? '' },
+      skip: !invoiceId || !canUseCredit,
+      fetchPolicy: 'cache-and-network',
+    });
+  const creditCandidates = canUseCredit
+    ? (creditData?.clubInvoicePayerCredits ?? [])
+    : [];
+  const [applyCredit, applyCreditState] =
+    useMutation<ApplyPayerCreditToInvoiceMutationData>(APPLY_PAYER_CREDIT_TO_INVOICE);
+  const paidByCredit = !!inv?.payments.some(
+    (p) => p.method === 'PAYER_CREDIT' && p.amountCents > 0,
+  );
 
   const refundableByPaymentId = useMemo(
     () => computeRefundableByPaymentId(inv?.payments ?? []),
@@ -239,6 +281,60 @@ export function InvoiceDetailDrawer({
     );
   }, [inv]);
 
+  function proposeCreditAmount(candidate: CreditCandidate) {
+    if (!inv) return;
+    const cents = proposedCreditApplyCents(inv.balanceCents, candidate.balanceCents);
+    setCreditUseAmount((cents / 100).toFixed(2).replace('.', ','));
+  }
+
+  function handleOpenCreditUse() {
+    const first = creditCandidates[0];
+    if (!inv || !first) return;
+    setPayOpen(false);
+    setCreditOpen(false);
+    setRefundPaymentId(null);
+    setCreditUseKey(candidateKey(first));
+    proposeCreditAmount(first);
+    setCreditUseError(null);
+    setCreditUseNotice(null);
+    setCreditUseOpen(true);
+  }
+
+  async function handleApplyCredit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!inv) return;
+    const candidate = creditCandidates.find((c) => candidateKey(c) === creditUseKey);
+    if (!candidate) {
+      setCreditUseError('Choisissez la personne dont le crédit règle la facture.');
+      return;
+    }
+    const built = buildApplyPayerCreditInput({
+      invoiceId: inv.id,
+      candidate,
+      amount: creditUseAmount,
+      invoiceBalanceCents: inv.balanceCents,
+    });
+    if ('error' in built) {
+      setCreditUseError(built.error);
+      return;
+    }
+    setCreditUseError(null);
+    try {
+      const res = await applyCredit({ variables: { input: built.input } });
+      const cents =
+        res.data?.applyPayerCreditToInvoice.amountCents ?? built.input.amountCents;
+      setCreditUseOpen(false);
+      setCreditUseNotice(
+        `${formatEuros(cents)} réglés avec le crédit de ${candidate.displayName}.`,
+      );
+      await refetch();
+      await refetchCredits();
+      onChanged();
+    } catch (err) {
+      setCreditUseError(err instanceof Error ? err.message : 'Règlement impossible.');
+    }
+  }
+
   function handleOpenPayForm() {
     if (!inv) return;
     setPayAmount((inv.balanceCents / 100).toFixed(2));
@@ -249,7 +345,9 @@ export function InvoiceDetailDrawer({
     // défaut tout en laissant l'admin choisir le bon mode.
     const locked = inv.lockedPaymentMethod;
     setPayMethod(
-      locked && locked !== 'STRIPE_CARD' ? locked : 'MANUAL_CASH',
+      locked && locked !== 'STRIPE_CARD' && locked !== 'PAYER_CREDIT'
+        ? locked
+        : 'MANUAL_CASH',
     );
     setPayRef('');
     setChequeDrawer(inv.familyLabel ?? '');
@@ -502,6 +600,17 @@ export function InvoiceDetailDrawer({
           onClick={handleOpenPayForm}
         >
           Enregistrer un paiement
+        </button>
+      ) : null}
+      {creditCandidates.length > 0 ? (
+        <button
+          type="button"
+          className="btn-ghost"
+          onClick={handleOpenCreditUse}
+          disabled={applyCreditState.loading}
+          title="Régler la facture avec le crédit d’un payeur"
+        >
+          Régler avec le crédit
         </button>
       ) : null}
       {canCreditNote ? (
@@ -803,6 +912,82 @@ export function InvoiceDetailDrawer({
               )}
             </section>
 
+            {creditUseNotice ? (
+              <p className="cf-invoice-detail__empty" role="status">
+                {creditUseNotice}
+              </p>
+            ) : null}
+
+            {creditUseOpen ? (
+              <form className="cf-invoice-pay-form" onSubmit={handleApplyCredit}>
+                <h3 className="cf-invoice-detail__section-title">
+                  Régler avec le crédit
+                </h3>
+                <p
+                  className="cf-invoice-detail__empty"
+                  style={{ marginTop: 0 }}
+                >
+                  Aucun argent ne bouge : le crédit de la personne règle la
+                  facture, avec les mêmes effets qu’un encaissement.
+                </p>
+                <div className="cf-form-row">
+                  <label className="cf-field" style={{ flex: 1 }}>
+                    <span className="cf-field__label">Crédit de</span>
+                    <select
+                      className="cf-field__input"
+                      value={creditUseKey}
+                      onChange={(e) => {
+                        setCreditUseKey(e.target.value);
+                        const next = creditCandidates.find(
+                          (c) => candidateKey(c) === e.target.value,
+                        );
+                        if (next) proposeCreditAmount(next);
+                      }}
+                    >
+                      {creditCandidates.map((c) => (
+                        <option key={candidateKey(c)} value={candidateKey(c)}>
+                          {c.displayName} — {formatEuros(c.balanceCents)} disponibles
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="cf-field">
+                    <span className="cf-field__label">Montant (€)</span>
+                    <input
+                      className="cf-field__input"
+                      type="text"
+                      inputMode="decimal"
+                      value={creditUseAmount}
+                      onChange={(e) => setCreditUseAmount(e.target.value)}
+                      required
+                    />
+                  </label>
+                </div>
+                {creditUseError ? (
+                  <p className="cf-form-error" role="alert">
+                    {creditUseError}
+                  </p>
+                ) : null}
+                <div className="cf-form-actions">
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => setCreditUseOpen(false)}
+                    disabled={applyCreditState.loading}
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn-primary"
+                    disabled={applyCreditState.loading}
+                  >
+                    {applyCreditState.loading ? 'Règlement…' : 'Régler'}
+                  </button>
+                </div>
+              </form>
+            ) : null}
+
             {payOpen ? (
               <form
                 className="cf-invoice-pay-form"
@@ -1051,6 +1236,15 @@ export function InvoiceDetailDrawer({
                     fermez ce formulaire et utilisez « Rembourser » sur
                     l’encaissement concerné — l’avoir sera émis
                     automatiquement.
+                  </p>
+                ) : null}
+                {paidByCredit ? (
+                  <p
+                    className="cf-invoice-detail__empty"
+                    style={{ marginTop: 0 }}
+                  >
+                    Facture réglée en partie par le crédit : l’avoir rend
+                    d’abord cette part au crédit de la personne.
                   </p>
                 ) : null}
                 <label className="cf-field">

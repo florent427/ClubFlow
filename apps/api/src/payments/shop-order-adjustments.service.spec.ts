@@ -274,6 +274,7 @@ describe('adjust — annuler un article', () => {
       h.creditNotesOf()[0].id,
       'pay-1',
       'fa-banque-club',
+      undefined,
     );
     expect(res.chequesReturned).toBe(0);
     expect(res.manualRefundedCents).toBe(2000);

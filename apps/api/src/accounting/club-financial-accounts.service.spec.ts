@@ -298,6 +298,15 @@ describe('ClubFinancialAccountsService', () => {
         BadRequestException,
       );
     });
+
+    it('refuse le crédit du payeur, alors qu’une banque active servirait de repli', async () => {
+      // Témoin : la banque par défaut existe, le repli la rendrait.
+      expect((await svc.resolveForPayment(clubId, 'MANUAL_TRANSFER')).id).toBe('fa-bank');
+
+      await expect(svc.resolveForPayment(clubId, 'PAYER_CREDIT')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
   });
 
   describe('kindFromMethod', () => {

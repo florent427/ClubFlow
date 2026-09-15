@@ -5,8 +5,10 @@ const LABELS: Record<ClubPaymentMethodStr, string> = {
   MANUAL_CASH: 'Espèces',
   MANUAL_CHECK: 'Chèque',
   MANUAL_TRANSFER: 'Virement',
+  PAYER_CREDIT: 'Crédit',
 };
 
+/** Moyens qu'un tarif ou un verrou peut viser : le crédit n'en fait pas partie (ADR-0022). */
 export const ALL_CLUB_PAYMENT_METHODS: ClubPaymentMethodStr[] = [
   'STRIPE_CARD',
   'MANUAL_CASH',

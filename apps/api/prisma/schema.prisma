@@ -1464,6 +1464,10 @@ enum ClubPaymentMethod {
   MANUAL_CASH
   MANUAL_CHECK
   MANUAL_TRANSFER
+  /// Règlement par le crédit du payeur (ADR-0022) : aucun argent ne bouge et
+  /// aucun compte financier n'intervient. Il ne se choisit ni ne s'encaisse :
+  /// il s'impute depuis la facture à régler.
+  PAYER_CREDIT
 }
 
 /// Type d'un compte financier club. Permet de regrouper banques, caisses,

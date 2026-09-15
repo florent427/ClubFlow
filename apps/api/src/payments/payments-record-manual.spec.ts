@@ -65,6 +65,7 @@ describe('PaymentsService / encaissements manuels', () => {
       },
       $transaction: jest.fn(),
     };
+    lectures = prisma;
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [
@@ -309,7 +310,7 @@ describe('PaymentsService / encaissements manuels', () => {
     prisma.familyMember.findFirst.mockResolvedValue({ id: 'fm-1' });
     const tx = makeTx();
     prisma.$transaction.mockImplementation(async (fn: (t: InvoiceTx) => Promise<unknown>) => {
-      await fn(tx);
+      const result = await fn(tx);
       expect(tx.payment.create).toHaveBeenCalledWith({
         data: {
           clubId: 'club-1',
@@ -321,7 +322,7 @@ describe('PaymentsService / encaissements manuels', () => {
           paidByContactId: 'c-1',
         },
       });
-      return { id: 'pay-1', amountCents: 1000, invoiceId: 'inv-1' };
+      return result;
     });
 
     await service.recordManualPayment('club-1', {
@@ -490,21 +491,45 @@ describe('PaymentsService / encaissements manuels', () => {
 });
 
 type InvoiceTx = {
-  payment: { create: jest.Mock };
-  invoice: { update: jest.Mock };
+  $executeRaw: jest.Mock;
+  payment: { create: jest.Mock; aggregate: (args: unknown) => Promise<unknown> };
+  invoice: {
+    update: jest.Mock;
+    findFirst: (args: unknown) => Promise<unknown>;
+    aggregate: (args: unknown) => Promise<unknown>;
+  };
+  paymentScheduleInstallment: { aggregate: jest.Mock };
   cheque: { create: jest.Mock };
+};
+
+/**
+ * Lectures hors transaction de ces scénarios. La transaction relit le reste dû
+ * sous verrou (ADR-0022, §3) : elle voit ici le même état.
+ */
+let lectures: {
+  invoice: { findFirst: jest.Mock; aggregate: jest.Mock };
+  payment: { aggregate: jest.Mock };
 };
 
 function makeTx(payId = 'pay-1', amount = 4000): InvoiceTx {
   return {
+    $executeRaw: jest.fn().mockResolvedValue(0),
     payment: {
       create: jest.fn().mockResolvedValue({
         id: payId,
         amountCents: amount,
         invoiceId: 'inv-1',
       }),
+      aggregate: (args) => lectures.payment.aggregate(args),
     },
-    invoice: { update: jest.fn().mockResolvedValue({}) },
+    invoice: {
+      update: jest.fn().mockResolvedValue({}),
+      findFirst: (args) => lectures.invoice.findFirst(args),
+      aggregate: (args) => lectures.invoice.aggregate(args),
+    },
+    paymentScheduleInstallment: {
+      aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: null } }),
+    },
     cheque: { create: jest.fn().mockResolvedValue({}) },
   };
 }

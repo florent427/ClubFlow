@@ -23,6 +23,8 @@ export enum ShopOrderRefundKind {
    * du club, et le chèque reste à remettre.
    */
   CHEQUE_PARTIAL = 'CHEQUE_PARTIAL',
+  /** Réglé par le crédit du payeur : rendu à son crédit (ADR-0022). */
+  CREDIT = 'CREDIT',
 }
 
 export type ShopOrderPlanPayment = {
@@ -381,6 +383,8 @@ function refundActionFor(
       return { ...base, kind: ShopOrderRefundKind.CASH };
     case ClubPaymentMethod.MANUAL_TRANSFER:
       return { ...base, kind: ShopOrderRefundKind.TRANSFER };
+    case ClubPaymentMethod.PAYER_CREDIT:
+      return { ...base, kind: ShopOrderRefundKind.CREDIT };
     case ClubPaymentMethod.MANUAL_CHECK: {
       const cheque = p.cheque;
       // Chèque saisi avant le portefeuille (ADR-0015) : il a été enregistré

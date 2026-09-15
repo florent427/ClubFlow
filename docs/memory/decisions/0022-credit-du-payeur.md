@@ -2,7 +2,7 @@
 
 ## Statut
 
-✅ **Accepté** — 2026-09-15, à la livraison du lot 1 (avances au guichet).
+✅ **Accepté** — 2026-09-15, à la livraison du lot 1 (avances au guichet), en prod en v0.67.0. Lot 2 (régler une facture avec le crédit, admin) : 2026-09-15.
 
 Complète :
 - l'[ADR-0014](0014-rapprochement-bancaire-par-releves.md) : trésorerie par relevés, comptabilité d'encaissement ;
@@ -52,11 +52,16 @@ Une avance est une facture de nature `PAYER_CREDIT_DEPOSIT`, portée par une nou
 
 Nouveau moyen de paiement `ClubPaymentMethod.PAYER_CREDIT` : un `Payment` sur la facture à régler, au nom de la personne (`paidBy…`), sans mouvement d'argent.
 
-- **Contrôle du payeur** : le même que pour les autres moyens (`assertPaidBy…AllowedForInvoice`). Le crédit ne règle donc que ce que la personne a le droit de payer. Le contrôle s'étend aux factures sans foyer dont la personne est l'acheteur ou le membre facturé.
+- **Contrôle du payeur** : le même que pour les autres moyens (`assertPaidBy…AllowedForInvoice`). Le crédit ne règle donc que ce que la personne a le droit de payer. Le contrôle s'étend aux factures sans foyer dont la personne est l'acheteur ou le membre facturé. Les payeurs proposés dans le tiroir de la facture passent par ce même contrôle : la liste ne propose rien que l'imputation refuserait.
 - **Effets** : les mêmes qu'un encaissement manuel (facture PAID au solde, commande boutique servie, échéancier clôturé, écriture). La séquence d'après-encaissement de `recordManualPayment` devient une fonction partagée, appelée dans la transaction de l'imputation.
 - **Montant** : au plus le crédit disponible, et au plus le reste dû encaissable (`resolveInvoiceBalance`, prélèvements en cours déduits).
 - **Concurrence** : la transaction prend deux verrous `pg_advisory_xact_lock`, la personne puis la facture, avant de lire le crédit et le reste dû. Deux imputations simultanées ne peuvent ni dépenser deux fois le même crédit, ni surpayer la facture.
-- **Rendre le crédit** (avoir ou annulation boutique sur une facture réglée par crédit) : un `Payment` négatif `PAYER_CREDIT`, sur le modèle des remboursements (ADR-0011).
+  - **Clés** : `(hashtext('clubflow:payer-credit'), hashtext(<personne>))`, la personne valant `user:<userId>` pour un membre ou un contact rattaché à un compte, `member:<id>` pour un membre sans compte ; puis `(hashtext('clubflow:invoice'), hashtext(<invoiceId>))`. Toujours dans cet ordre : aucun interblocage possible.
+  - **Qui prend le verrou de la facture** : l'imputation, la saisie manuelle, qui relit aussi le reste dû sous verrou, et l'avoir.
+  - **Limite** : les chemins qui annulent une facture ne le prennent pas. Le statut relu sous verrou arrête une annulation déjà passée, pas une annulation qui passe entre cette relecture et le commit.
+- **Rendre le crédit** (avoir ou annulation boutique sur une facture réglée par crédit) : un `Payment` négatif `PAYER_CREDIT` qui désigne l'imputation rendue (`refundedPaymentId`), sur le modèle des remboursements (ADR-0011).
+  - **Avoir** : il éteint d'abord ce qui reste dû, et ne rend que ce qui a été payé au-delà du dû qu'il laisse, soit `min(avoir, max(0, payé net − max(0, montant − avoirs)))`. Les imputations sont rendues de la plus récente à la plus ancienne, chacune au plus de ce qui n'en a pas déjà été rendu.
+  - **Annulation boutique** : chaque imputation revient au crédit, par un remboursement de nature `CREDIT`.
 - **Pas d'imputation automatique** : c'est l'admin ou le payeur qui choisit. Une proposition à la validation d'un panier pourra venir plus tard.
 
 ### 4. Le solde se calcule à partir des paiements, il n'est stocké nulle part
@@ -77,7 +82,7 @@ crédit(personne) = Σ paiements des reçus d'avance de la personne   (versement
 |---|---|
 | Avance encaissée | **TRANSFER** : DÉBIT trésorerie (530000, 511200, 512x ou 512300 selon le moyen) / CRÉDIT 419100. Compte financier renseigné, donc rapprochable. |
 | Crédit utilisé | **INCOME** : DÉBIT 419100 / CRÉDIT 706100 ou 708000, avec la ventilation analytique habituelle. Aucun compte financier : hors trésorerie, hors rapprochement. |
-| Crédit rendu (avoir sur une facture réglée par crédit) | Contre-passation : DÉBIT produit / CRÉDIT 419100, jamais la banque par repli. |
+| Crédit rendu (avoir ou annulation boutique sur une facture réglée par crédit) | Contre-passation de la part rendue : DÉBIT produit / CRÉDIT 419100, jamais la banque par repli. Le reste d'un avoir suit l'encaissement d'origine. |
 | Avance remboursée | Contre-passation **TRANSFER** : DÉBIT 419100 / CRÉDIT trésorerie. |
 
 - **Nouveau compte** : 419100 « Adhérents – avances et acomptes reçus » (LIABILITY) entre au plan seedé. Tout code qui y écrit appelle `seedIfEmpty` avant de chercher le compte.
@@ -90,10 +95,10 @@ crédit(personne) = Σ paiements des reçus d'avance de la personne   (versement
 `PAYER_CREDIT` est refusé partout où un moyen de paiement fait entrer de l'argent ou fixe un tarif :
 - saisie manuelle d'un encaissement ;
 - routes de paiement ;
-- règles tarifaires ;
+- règles tarifaires, et moyen servant au tarif d'une facture libre ;
 - mode verrouillé d'une facture ou d'un panier.
 
-Il est aussi exclu des cumuls d'encaissements, comme le montant des 30 derniers jours du tableau de bord : il ne fait entrer aucun argent.
+Il est aussi exclu des cumuls d'encaissements du tableau de bord (encaissé du mois, tendances à 30 et 60 jours) : il ne fait entrer aucun argent.
 
 Un reçu d'avance, lui, ne se règle pas « par crédit », n'accepte ni échéancier ni avoir manuel, et ne s'annule pas.
 

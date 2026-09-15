@@ -32,7 +32,10 @@ function lire(pdf: Buffer): string {
   return runs.join(' ').replace(/\s+/g, ' ');
 }
 
-function document(purpose: InvoicePurpose) {
+function document(
+  purpose: InvoicePurpose,
+  method: ClubPaymentMethod = ClubPaymentMethod.MANUAL_CASH,
+) {
   const deposit = purpose === InvoicePurpose.PAYER_CREDIT_DEPOSIT;
   return {
     id: 'aaaabbbb-0000-0000-0000-000000000000',
@@ -61,7 +64,7 @@ function document(purpose: InvoicePurpose) {
       {
         createdAt: new Date('2026-09-15T10:00:00Z'),
         amountCents: 5000,
-        method: ClubPaymentMethod.MANUAL_CASH,
+        method,
         // Payeur non renseigné : le nom ne peut venir que de la personne créditée.
         paidByMember: null,
         paidByContact: null,
@@ -78,12 +81,12 @@ function document(purpose: InvoicePurpose) {
   };
 }
 
-function service(purpose: InvoicePurpose) {
+function service(purpose: InvoicePurpose, method?: ClubPaymentMethod) {
   const prisma = {
     invoice: {
       findFirst: jest.fn(async ({ where }: { where: { id: string; clubId: string } }) =>
         where.id === 'aaaabbbb-0000-0000-0000-000000000000' && where.clubId === 'club-1'
-          ? document(purpose)
+          ? document(purpose, method)
           : null,
       ),
     },
@@ -123,5 +126,17 @@ describe('InvoicePdfService — reçu d’avance', () => {
     expect(texte).toContain('FACTURE');
     expect(texte).toContain('ACQUITTÉE');
     expect(texte).not.toContain('REÇU D’AVANCE');
+  });
+
+  it('une facture réglée par le crédit l’écrit en toutes lettres dans ses paiements', async () => {
+    const texte = lire(
+      await service(InvoicePurpose.CHARGE, ClubPaymentMethod.PAYER_CREDIT).buildInvoicePdf(
+        'club-1',
+        'aaaabbbb-0000-0000-0000-000000000000',
+      ),
+    );
+
+    expect(texte).toContain('crédit');
+    expect(texte).not.toContain('PAYER_CREDIT');
   });
 });

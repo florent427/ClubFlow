@@ -425,7 +425,9 @@ export type ClubPaymentMethodStr =
   | 'STRIPE_CARD'
   | 'MANUAL_CASH'
   | 'MANUAL_CHECK'
-  | 'MANUAL_TRANSFER';
+  | 'MANUAL_TRANSFER'
+  /** Règlement par le crédit du payeur (ADR-0022) : ne se choisit pas, s'impute. */
+  | 'PAYER_CREDIT';
 
 export type ClubSeasonsQueryData = {
   clubSeasons: {
@@ -544,6 +546,34 @@ export type ClubPayerCreditQueryData = {
         createdAt: string;
       }[];
     }[];
+    /** Imputations du crédit ; un crédit rendu est négatif. */
+    uses: {
+      paymentId: string;
+      invoiceId: string;
+      invoiceLabel: string;
+      amountCents: number;
+      createdAt: string;
+    }[];
+  };
+};
+
+export type ClubInvoicePayerCreditsQueryData = {
+  clubInvoicePayerCredits: {
+    memberId: string | null;
+    contactId: string | null;
+    displayName: string;
+    balanceCents: number;
+  }[];
+};
+
+export type ApplyPayerCreditToInvoiceMutationData = {
+  applyPayerCreditToInvoice: {
+    paymentId: string;
+    invoiceId: string;
+    amountCents: number;
+    creditBalanceCents: number;
+    invoiceStatus: InvoiceStatusStr;
+    invoiceBalanceCents: number;
   };
 };
 
@@ -1425,7 +1455,9 @@ export type ShopOrderRefundKindGql =
   | 'CHEQUE_RETURN'
   | 'CHEQUE_DEPOSITED'
   /** Part d'un chèque encore au club, reversée par virement (ADR-0020). */
-  | 'CHEQUE_PARTIAL';
+  | 'CHEQUE_PARTIAL'
+  /** Réglé par le crédit du payeur : rendu à son crédit (ADR-0022). */
+  | 'CREDIT';
 
 export type ShopOrderRefundAction = {
   kind: ShopOrderRefundKindGql;

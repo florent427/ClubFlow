@@ -44,6 +44,7 @@ import {
 } from '../families/viewer-profile-rules';
 import { InvoicePayerScopeService } from '../payments/invoice-payer-scope.service';
 import { invoicePaymentTotals } from '../payments/invoice-totals';
+import { assertNotPayerCreditMethod } from '../payments/payment-method-rules';
 import { StripeCheckoutService } from '../payments/stripe-checkout.service';
 import { PlanningService } from '../planning/planning.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -225,6 +226,7 @@ export class ViewerService {
     installmentsCount: number;
     instructions: string;
   }> {
+    assertNotPayerCreditMethod(args.method);
     const where = await this.payerScope.resolvePayerInvoiceWhere({
       clubId: args.clubId,
       activeProfile: args.activeProfile,
