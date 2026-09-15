@@ -945,6 +945,17 @@ export class MembersService {
         'Impossible de supprimer ce membre : il est encore professeur sur un ou plusieurs créneaux',
       );
     }
+    // Un reçu d'avance désigne ce membre (ADR-0022) : le supprimer ferait
+    // disparaître la personne à qui l'argent appartient. La base le refuse
+    // aussi (`onDelete: Restrict`) ; ce contrôle en donne la raison.
+    const deposits = await this.prisma.invoice.count({
+      where: { clubId, payerCreditMemberId: id },
+    });
+    if (deposits > 0) {
+      throw new BadRequestException(
+        'Impossible de supprimer ce membre : il a versé des avances, qui restent à son crédit.',
+      );
+    }
     const memberLines = await this.prisma.invoiceLine.findMany({
       where: { memberId: id },
       select: { id: true, invoiceId: true, invoice: { select: { status: true } } },

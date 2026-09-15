@@ -5,8 +5,9 @@
 > été revérifiés dans le code et, en lecture seule, sur le serveur de prod.
 
 > **Suivi, 2026-09-14 au soir** : les points 1.1 (reprise de compte à
-> l'inscription) et 1.2 (débit commun) sont corrigés sur `staging`
-> (commit 05584e1, recette faite), pas encore en prod. Voir
+> l'inscription) et 1.2 (débit commun) sont corrigés et en prod depuis la
+> v0.66.1 (commit 05584e1, recette staging faite, débit vérifié en prod
+> depuis deux adresses). Voir
 > `docs/memory/pitfalls/mot-de-passe-compte-non-verifie.md` et
 > `docs/memory/pitfalls/throttler-sans-trust-proxy.md`.
 

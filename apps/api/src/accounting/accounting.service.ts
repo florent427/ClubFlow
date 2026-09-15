@@ -13,6 +13,7 @@ import {
   AccountingEntrySource,
   AccountingEntryStatus,
   AccountingLineSide,
+  InvoicePurpose,
   Prisma,
 } from '@prisma/client';
 import { ModuleCode } from '../domain/module-registry/module-codes';
@@ -28,6 +29,7 @@ import { AccountingSeedService } from './accounting-seed.service';
 import { AccountingSuggestionService } from './accounting-suggestion.service';
 import { ClubFinancialAccountsService } from './club-financial-accounts.service';
 import { BankReconciliationService } from './bank-import/bank-reconciliation.service';
+import { PAYER_CREDIT_ACCOUNT_CODE } from './payer-credit.constants';
 
 /** Filtres supportés sur la query liste. */
 export interface ListEntriesFilter {
@@ -339,20 +341,30 @@ export class AccountingService {
     // que pour l'adhésion), et seule la boutique renseigne ces champs — la
     // facture d'une commande, ou celle du reste à payer d'un échange
     // (ADR-0020). Une facture ne peut donc pas être mi-cotisation mi-boutique.
-    const revenueCode = await this.mapping.resolveAccountCode(
-      clubId,
-      invoice.shopOrderId || invoice.shopAdjustmentId
-        ? 'SHOP_PRODUCT'
-        : 'MEMBERSHIP_PRODUCT',
-    );
+    //
+    // Reçu d'avance (ADR-0022) : l'argent entre, mais ce n'est pas une
+    // recette. Il attend en 419100 d'être utilisé sur une facture ; l'écriture
+    // est un TRANSFER, hors résultat, sans ventilation analytique.
+    const isPayerCreditDeposit =
+      invoice.purpose === InvoicePurpose.PAYER_CREDIT_DEPOSIT;
+    const revenueCode = isPayerCreditDeposit
+      ? PAYER_CREDIT_ACCOUNT_CODE
+      : await this.mapping.resolveAccountCode(
+          clubId,
+          invoice.shopOrderId || invoice.shopAdjustmentId
+            ? 'SHOP_PRODUCT'
+            : 'MEMBERSHIP_PRODUCT',
+        );
     const revenueAccount = await this.lookupAccount(clubId, revenueCode);
 
     // Construit les allocations depuis les InvoiceLine
-    const allocations = await this.allocation.buildAllocationsForInvoice(
-      clubId,
-      invoice.id,
-      occurredAt,
-    );
+    const allocations = isPayerCreditDeposit
+      ? []
+      : await this.allocation.buildAllocationsForInvoice(
+          clubId,
+          invoice.id,
+          occurredAt,
+        );
 
     // Si le paiement est partiel, on ajuste proportionnellement les
     // allocations pour que leur somme = amountCents versé (et non le total
@@ -382,7 +394,9 @@ export class AccountingService {
       const entry = await tx.accountingEntry.create({
         data: {
           clubId,
-          kind: AccountingEntryKind.INCOME,
+          kind: isPayerCreditDeposit
+            ? AccountingEntryKind.TRANSFER
+            : AccountingEntryKind.INCOME,
           status: AccountingEntryStatus.POSTED,
           source: AccountingEntrySource.AUTO_MEMBER_PAYMENT,
           label:

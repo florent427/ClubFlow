@@ -37,6 +37,7 @@ import { SYSTEM_SET_MEMBER_ADMIN_ROLE } from '../../lib/documents';
 import { BUILTIN_ROLE_OPTIONS, roleLabel } from './members-constants';
 import { MemberAccountLinkPanel } from './MemberAccountLinkPanel';
 import { MemberAdhesionPanels } from './MemberAdhesionPanels';
+import { PayerCreditPanel } from '../../components/PayerCreditPanel';
 import { MemberPhotoField } from './MemberPhotoField';
 
 /* eslint-disable react-hooks/set-state-in-effect -- hydratation / reset formulaire tiroir membre */
@@ -1287,6 +1288,7 @@ export function MemberDetailDrawer({
         ) : null}
 
         {activeTab === 'adhesion' ? (
+        <>
         <MemberAdhesionPanels
           key={`${member.id}-${(member.assignedDynamicGroups ?? [])
             .map((g) => g.id)
@@ -1294,6 +1296,8 @@ export function MemberDetailDrawer({
             .join(',')}`}
           member={member}
         />
+        <PayerCreditPanel key={member.id} memberId={member.id} />
+        </>
         ) : null}
 
         {activeTab === 'family' ? (

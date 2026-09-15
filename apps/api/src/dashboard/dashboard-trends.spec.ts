@@ -1,4 +1,4 @@
-import { InvoiceStatus } from '@prisma/client';
+import { InvoicePurpose, InvoiceStatus } from '@prisma/client';
 import { DashboardService } from './dashboard.service';
 
 /**
@@ -21,6 +21,7 @@ type InvoiceRow = {
   clubId: string;
   amountCents: number;
   status: InvoiceStatus;
+  purpose: InvoicePurpose;
   isCreditNote: boolean;
   parentInvoiceId: string | null;
   dueAt: Date | null;
@@ -35,6 +36,7 @@ function invoice(row: Partial<InvoiceRow> & { id: string }): InvoiceRow {
     clubId: CLUB,
     amountCents: 10_000,
     status: InvoiceStatus.OPEN,
+    purpose: InvoicePurpose.CHARGE,
     isCreditNote: false,
     parentInvoiceId: null,
     dueAt: daysAgo(10),
@@ -179,5 +181,33 @@ describe('DashboardService.trends — factures en retard, avoirs déduits', () =
     const trends = await dashboard.trends(CLUB);
 
     expect([trends.overdueInvoicesCount, trends.overdueBalanceCents]).toEqual([1, 10_000]);
+  });
+});
+
+describe('DashboardService.trends — taux de factures payées à temps', () => {
+  it('ignore les reçus d’avance : nés payés sans échéance, ils passeraient pour payés à temps', async () => {
+    const dashboard = makeService({
+      invoices: [
+        // Payée cinq jours après son échéance.
+        invoice({
+          id: 'payee-en-retard',
+          status: InvoiceStatus.PAID,
+          dueAt: daysAgo(10),
+          updatedAt: daysAgo(5),
+        }),
+        invoice({
+          id: 'recu-avance',
+          purpose: InvoicePurpose.PAYER_CREDIT_DEPOSIT,
+          status: InvoiceStatus.PAID,
+          dueAt: null,
+          updatedAt: daysAgo(1),
+        }),
+      ],
+    });
+
+    const trends = await dashboard.trends(CLUB);
+
+    // Compté, le reçu ferait passer le taux à 50 %.
+    expect(trends.paidOnTimeRate).toBe(0);
   });
 });

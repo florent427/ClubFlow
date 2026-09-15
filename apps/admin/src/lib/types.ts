@@ -417,6 +417,9 @@ export type AttachClubContactToFamilyAsMemberMutationData = {
 /** Aligné Prisma / GraphQL `InvoiceStatus`. */
 export type InvoiceStatusStr = 'DRAFT' | 'OPEN' | 'PAID' | 'VOID';
 
+/** Aligné Prisma / GraphQL `InvoicePurpose` : facture ou reçu d'avance (ADR-0022). */
+export type InvoicePurposeStr = 'CHARGE' | 'PAYER_CREDIT_DEPOSIT';
+
 /** Aligné Prisma / GraphQL `ClubPaymentMethod`. */
 export type ClubPaymentMethodStr =
   | 'STRIPE_CARD'
@@ -504,6 +507,9 @@ export type ClubInvoicesQueryData = {
     isCreditNote: boolean;
     parentInvoiceId: string | null;
     creditNoteReason: string | null;
+    purpose: InvoicePurposeStr;
+    payerCreditMemberId: string | null;
+    payerCreditContactId: string | null;
   }[];
 };
 
@@ -515,6 +521,37 @@ export type RecordClubManualPaymentMutationData = {
     method: ClubPaymentMethodStr;
     externalRef: string | null;
     createdAt: string;
+  };
+};
+
+/** Crédit d'une personne : solde et avances versées (ADR-0022). */
+export type ClubPayerCreditQueryData = {
+  clubPayerCredit: {
+    memberId: string | null;
+    contactId: string | null;
+    displayName: string;
+    balanceCents: number;
+    deposits: {
+      invoiceId: string;
+      label: string;
+      createdAt: string;
+      amountCents: number;
+      payments: {
+        id: string;
+        amountCents: number;
+        method: ClubPaymentMethodStr;
+        externalRef: string | null;
+        createdAt: string;
+      }[];
+    }[];
+  };
+};
+
+export type RecordPayerCreditDepositMutationData = {
+  recordPayerCreditDeposit: {
+    invoiceId: string;
+    paymentId: string;
+    balanceCents: number;
   };
 };
 
@@ -594,6 +631,9 @@ export type ClubInvoiceDetailQueryData = {
     isCreditNote: boolean;
     parentInvoiceId: string | null;
     creditNoteReason: string | null;
+    purpose: InvoicePurposeStr;
+    payerCreditMemberId: string | null;
+    payerCreditContactId: string | null;
     lines: {
       id: string;
       kind: InvoiceLineKindStr;

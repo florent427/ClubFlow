@@ -1,6 +1,6 @@
 import { UnauthorizedException, UseGuards } from '@nestjs/common';
 import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
-import type { Club } from '@prisma/client';
+import type { Club, InvoicePurpose } from '@prisma/client';
 import { CurrentClub } from '../common/decorators/current-club.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequireClubModule } from '../common/decorators/require-club-module.decorator';
@@ -101,6 +101,9 @@ function toInvoiceGraph(row: {
   status: import('@prisma/client').InvoiceStatus;
   lockedPaymentMethod: import('@prisma/client').ClubPaymentMethod | null;
   dueAt: Date | null;
+  purpose: InvoicePurpose;
+  payerCreditMemberId: string | null;
+  payerCreditContactId: string | null;
 }): InvoiceGraph {
   const { totalPaidCents, balanceCents } = invoicePaymentTotals(
     row.amountCents,
@@ -126,6 +129,9 @@ function toInvoiceGraph(row: {
     parentInvoiceId: null,
     creditNoteReason: null,
     voidReason: null,
+    purpose: row.purpose,
+    payerCreditMemberId: row.payerCreditMemberId,
+    payerCreditContactId: row.payerCreditContactId,
   };
 }
 

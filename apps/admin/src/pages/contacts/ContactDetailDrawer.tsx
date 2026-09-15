@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from '@apollo/client/react';
 import { useEffect, useState } from 'react';
+import { PayerCreditPanel } from '../../components/PayerCreditPanel';
 import { QuickMessageModal } from '../../components/QuickMessageModal';
 import { useClubCommunicationEnabled } from '../../lib/useClubCommunicationEnabled';
 import {
@@ -400,6 +401,12 @@ export function ContactDetailDrawer({
                 </div>
               )}
             </div>
+
+            <PayerCreditPanel
+              key={c.id}
+              contactId={c.id}
+              style={{ marginTop: '1.5rem' }}
+            />
           </div>
         ) : (
           <p className="form-error">Contact introuvable.</p>

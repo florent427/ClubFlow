@@ -11,6 +11,8 @@ import { InvoicePayerScopeService } from './invoice-payer-scope.service';
 import { InvoiceRemindersService } from './invoice-reminders.service';
 import { PaymentsResolver } from './payments.resolver';
 import { PaymentsService } from './payments.service';
+import { PayerCreditResolver } from './payer-credit.resolver';
+import { PayerCreditService } from './payer-credit.service';
 import { PaymentScheduleAdminResolver } from './payment-schedule-admin.resolver';
 import { PaymentScheduleEngineService } from './payment-schedule-engine.service';
 import { PaymentScheduleNotifierService } from './payment-schedule-notifier.service';
@@ -49,6 +51,9 @@ import { StripeWebhookController } from './stripe-webhook.controller';
   providers: [
     PaymentsService,
     PaymentsResolver,
+    // Crédit du payeur : avances encaissées sans facture (ADR-0022).
+    PayerCreditService,
+    PayerCreditResolver,
     StripeCheckoutService,
     StripeConnectService,
     StripeConnectResolver,
@@ -77,6 +82,7 @@ import { StripeWebhookController } from './stripe-webhook.controller';
   ],
   exports: [
     PaymentsService,
+    PayerCreditService,
     StripeCheckoutService,
     StripeConnectService,
     StripeRefundsService,

@@ -754,6 +754,9 @@ export const CLUB_INVOICES = gql`
       isCreditNote
       parentInvoiceId
       creditNoteReason
+      purpose
+      payerCreditMemberId
+      payerCreditContactId
     }
   }
 `;
@@ -767,6 +770,41 @@ export const RECORD_CLUB_MANUAL_PAYMENT = gql`
       method
       externalRef
       createdAt
+    }
+  }
+`;
+
+/** Crédit d'une personne : solde et avances versées (ADR-0022). */
+export const CLUB_PAYER_CREDIT = gql`
+  query ClubPayerCredit($memberId: ID, $contactId: ID) {
+    clubPayerCredit(memberId: $memberId, contactId: $contactId) {
+      memberId
+      contactId
+      displayName
+      balanceCents
+      deposits {
+        invoiceId
+        label
+        createdAt
+        amountCents
+        payments {
+          id
+          amountCents
+          method
+          externalRef
+          createdAt
+        }
+      }
+    }
+  }
+`;
+
+export const RECORD_PAYER_CREDIT_DEPOSIT = gql`
+  mutation RecordPayerCreditDeposit($input: RecordPayerCreditDepositInput!) {
+    recordPayerCreditDeposit(input: $input) {
+      invoiceId
+      paymentId
+      balanceCents
     }
   }
 `;
@@ -804,6 +842,9 @@ export const CLUB_INVOICE_DETAIL = gql`
       isCreditNote
       parentInvoiceId
       creditNoteReason
+      purpose
+      payerCreditMemberId
+      payerCreditContactId
       lines {
         id
         kind

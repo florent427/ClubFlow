@@ -10,6 +10,7 @@ import {
   ClubPaymentMethod,
   FamilyMemberLinkRole,
   ClubFinancialAccountKind,
+  InvoicePurpose,
   InvoiceStatus,
   MemberStatus,
 } from '@prisma/client';
@@ -32,8 +33,10 @@ import { StripeRefundsService } from './stripe-refunds.service';
 import { CreditNotesService } from './credit-notes.service';
 import { CreateInvoiceInput } from './dto/create-invoice.input';
 import { RecordManualPaymentInput } from './dto/record-manual-payment.input';
+import { RecordPayerCreditDepositInput } from './dto/record-payer-credit-deposit.input';
 import { UpsertClubPricingRuleInput } from './dto/upsert-pricing-rule.input';
 import { invoicePaymentTotals } from './invoice-totals';
+import { resolvePayerCreditHolder } from './payer-credit-holder';
 import { applyPricing } from './pricing-rules';
 
 type FamilyForLabel = {
@@ -54,6 +57,14 @@ function deriveFamilyLabel(family: FamilyForLabel): string | null {
   const sorted = Array.from(lastNames).sort();
   return `Famille ${sorted.join('-')}`;
 }
+
+/** Moyens d'une avance saisie par l'admin (ADR-0022). La carte viendra du portail. */
+const PAYER_CREDIT_DEPOSIT_METHODS: ReadonlySet<ClubPaymentMethod> =
+  new Set<ClubPaymentMethod>([
+    ClubPaymentMethod.MANUAL_CASH,
+    ClubPaymentMethod.MANUAL_CHECK,
+    ClubPaymentMethod.MANUAL_TRANSFER,
+  ]);
 
 @Injectable()
 export class PaymentsService {
@@ -423,6 +434,11 @@ export class PaymentsService {
     reason: string,
     amountCents?: number | null,
   ) {
+    await this.assertNotPayerCreditDeposit(
+      clubId,
+      parentInvoiceId,
+      'Un reçu d’avance ne reçoit pas d’avoir : ce n’est pas une dette, et l’argent versé reste au crédit de la personne.',
+    );
     // Délégué : le remboursement Stripe passe par le même service, et deux
     // chemins d'avoir divergents produiraient des documents différents.
     const creditNote = await this.creditNotes.create({
@@ -441,6 +457,11 @@ export class PaymentsService {
       include: { payments: true },
     });
     if (!inv) throw new NotFoundException('Facture introuvable');
+    if (inv.purpose === InvoicePurpose.PAYER_CREDIT_DEPOSIT) {
+      throw new BadRequestException(
+        'Un reçu d’avance ne s’annule pas : l’argent a été versé, il reste au crédit de la personne.',
+      );
+    }
     if (inv.status === InvoiceStatus.PAID) {
       throw new BadRequestException('Une facture payée ne peut être annulée.');
     }
@@ -561,6 +582,11 @@ export class PaymentsService {
     if (!invoice) {
       throw new NotFoundException('Facture introuvable');
     }
+    if (invoice.purpose === InvoicePurpose.PAYER_CREDIT_DEPOSIT) {
+      throw new BadRequestException(
+        'Un reçu d’avance est déjà encaissé : pour verser à nouveau, encaissez une nouvelle avance.',
+      );
+    }
     const hasMember = !!(
       input.paidByMemberId != null && input.paidByMemberId !== ''
     );
@@ -659,7 +685,7 @@ export class PaymentsService {
     // que rien ne l'explique.
     const chequeData =
       input.method === ClubPaymentMethod.MANUAL_CHECK
-        ? await this.buildChequeData(clubId, invoice, input, ref, userId)
+        ? await this.buildChequeData(clubId, invoice.label, input, ref, userId)
         : null;
     const payment = await this.prisma.$transaction(async (tx) => {
       const p = await tx.payment.create({
@@ -737,14 +763,131 @@ export class PaymentsService {
   }
 
   /**
+   * Encaisse une avance sans facture (ADR-0022, §2). Un reçu d'avance naît
+   * PAYÉ, avec son paiement et, pour un chèque, sa fiche en portefeuille, dans
+   * UNE transaction. Il n'est jamais ouvert : aucune relance, aucun retard,
+   * aucun échéancier ne peut le prendre pour une dette. L'écriture suit le
+   * commit, comme pour tout encaissement.
+   *
+   * Pas de contrôle des documents à signer : ils conditionnent le règlement
+   * d'une adhésion, pas la réception d'argent versé d'avance.
+   */
+  async recordPayerCreditDeposit(
+    clubId: string,
+    input: RecordPayerCreditDepositInput,
+    userId: string | null = null,
+  ) {
+    if (!PAYER_CREDIT_DEPOSIT_METHODS.has(input.method)) {
+      throw new BadRequestException(
+        'Une avance s’encaisse en espèces, par chèque ou par virement.',
+      );
+    }
+    if (!Number.isInteger(input.amountCents) || input.amountCents < 1) {
+      throw new BadRequestException('Le montant d’une avance doit être positif.');
+    }
+    const holder = await resolvePayerCreditHolder(this.prisma, clubId, input);
+    if (input.financialAccountId) {
+      const fin = await this.financialAccounts.getById(
+        clubId,
+        input.financialAccountId,
+      );
+      if (fin.kind !== ClubFinancialAccountKind.BANK || !fin.isActive) {
+        throw new BadRequestException(
+          'Le compte d’encaissement doit être un compte bancaire actif du club.',
+        );
+      }
+    }
+
+    const label = `Avance — ${holder.displayName}`;
+    const ref = input.externalRef?.trim() || null;
+    const chequeData =
+      input.method === ClubPaymentMethod.MANUAL_CHECK
+        ? await this.buildChequeData(
+            clubId,
+            holder.displayName,
+            {
+              cheque: input.cheque,
+              amountCents: input.amountCents,
+              paidByMemberId: holder.memberId,
+              paidByContactId: holder.contactId,
+            },
+            ref,
+            userId,
+          )
+        : null;
+
+    const { invoice, payment } = await this.prisma.$transaction(async (tx) => {
+      const receipt = await tx.invoice.create({
+        data: {
+          clubId,
+          label,
+          baseAmountCents: input.amountCents,
+          amountCents: input.amountCents,
+          status: InvoiceStatus.PAID,
+          purpose: InvoicePurpose.PAYER_CREDIT_DEPOSIT,
+          payerCreditMemberId: holder.memberId,
+          payerCreditContactId: holder.contactId,
+        },
+      });
+      const p = await tx.payment.create({
+        data: {
+          clubId,
+          invoiceId: receipt.id,
+          amountCents: input.amountCents,
+          method: input.method,
+          externalRef: ref,
+          paidByMemberId: holder.memberId,
+          paidByContactId: holder.contactId,
+        },
+      });
+      if (chequeData) {
+        await tx.cheque.create({ data: { ...chequeData, paymentId: p.id } });
+      }
+      return { invoice: receipt, payment: p };
+    });
+
+    await this.tryRecordIncome(
+      clubId,
+      payment.id,
+      label,
+      payment.amountCents,
+      input.financialAccountId ?? null,
+    );
+
+    return { invoice, payment };
+  }
+
+  /**
+   * Un reçu d'avance (ADR-0022) n'est pas une dette : on ne l'encaisse pas, on
+   * ne l'annule pas, on ne lui émet pas d'avoir. Son argent est au crédit de la
+   * personne.
+   */
+  private async assertNotPayerCreditDeposit(
+    clubId: string,
+    invoiceId: string,
+    message: string,
+  ): Promise<void> {
+    const row = await this.prisma.invoice.findFirst({
+      where: { id: invoiceId, clubId },
+      select: { purpose: true },
+    });
+    if (row?.purpose === InvoicePurpose.PAYER_CREDIT_DEPOSIT) {
+      throw new BadRequestException(message);
+    }
+  }
+
+  /**
    * Fiche du chèque d'un paiement manuel. Les champs absents ont un défaut
    * raisonnable : n° = référence du paiement, émetteur = payeur connu sinon
    * libellé de facture, réception = aujourd'hui (jour du club).
    */
   private async buildChequeData(
     clubId: string,
-    invoice: Invoice,
-    input: RecordManualPaymentInput,
+    fallbackDrawerName: string,
+    input: Pick<
+      RecordManualPaymentInput,
+      'cheque' | 'paidByMemberId' | 'paidByContactId' | 'amountCents'
+    >,
     ref: string | null,
     userId: string | null,
   ) {
@@ -764,7 +907,7 @@ export class PaymentsService {
       });
       drawerName = [ct?.firstName, ct?.lastName].filter(Boolean).join(' ').trim();
     }
-    if (!drawerName) drawerName = invoice.label;
+    if (!drawerName) drawerName = fallbackDrawerName;
     return {
       clubId,
       number: c?.number?.trim() || ref,

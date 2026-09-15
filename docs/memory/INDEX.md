@@ -109,6 +109,7 @@
 | [`0019-boutique-annulation-remboursement.md`](decisions/0019-boutique-annulation-remboursement.md) | ADR-0019 — Boutique : annuler une commande, c'est reprendre la marchandise et rendre chaque règlement par son propre moyen |
 | [`0020-boutique-echange-et-annulation-d-article.md`](decisions/0020-boutique-echange-et-annulation-d-article.md) | ADR-0020 — Boutique : échanger ou annuler un article, c'est ajuster la commande à l'unité et ne faire bouger que la différence |
 | [`0021-reapprovisionnement-multi-fournisseurs.md`](decisions/0021-reapprovisionnement-multi-fournisseurs.md) | ADR-0021 — Réapprovisionnement multi-fournisseurs : fournisseurs d'un produit et commandes réparties |
+| [`0022-credit-du-payeur.md`](decisions/0022-credit-du-payeur.md) | ADR-0022 — Crédit du payeur : avances encaissées sans facture, puis imputées sur ses factures |
 
 ## 🔄 Workflows métier
 
@@ -122,7 +123,7 @@
 
 ---
 
-_Index généré le 2026-09-14 17:24 UTC par `bin/memory-index`._
+_Index généré le 2026-09-15 04:52 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`

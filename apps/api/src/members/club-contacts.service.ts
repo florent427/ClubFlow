@@ -147,6 +147,16 @@ export class ClubContactsService {
         'Impossible de supprimer ce contact tant qu’une fiche membre existe pour ce compte. Retirez d’abord le membre depuis l’annuaire si nécessaire.',
       );
     }
+    // Même règle que pour un membre (ADR-0022) : l'argent versé d'avance
+    // appartient à cette personne.
+    const deposits = await this.prisma.invoice.count({
+      where: { clubId, payerCreditContactId: contactId },
+    });
+    if (deposits > 0) {
+      throw new BadRequestException(
+        'Impossible de supprimer ce contact : il a versé des avances, qui restent à son crédit.',
+      );
+    }
     await this.prisma.contact.delete({
       where: { id: contactId },
     });

@@ -493,6 +493,8 @@ model Contact {
   pendingMembershipItems MembershipCartPendingItem[] @relation("PendingItemContact")
   projectContributions   ProjectContributor[]
   sponsorshipDeals       SponsorshipDeal[]
+  /// Reçus d'avance qui créditent ce contact (ADR-0022).
+  payerCreditDeposits    Invoice[]                   @relation("InvoicePayerCreditContact")
 
   @@unique([userId, clubId])
 }
@@ -806,6 +808,8 @@ model Member {
   convertedFromPendingItems MembershipCartPendingItem[] @relation("PendingItemConvertedMember")
   projectContributions      ProjectContributor[]
   accountingAllocations     AccountingAllocation[]
+  /// Reçus d'avance qui créditent ce membre (ADR-0022).
+  payerCreditDeposits       Invoice[]                    @relation("InvoicePayerCreditMember")
 
   @@unique([clubId, userId])
   @@unique([clubId, pseudo])
@@ -1444,6 +1448,15 @@ enum InvoiceStatus {
   OPEN
   PAID
   VOID
+}
+
+/// Nature d'une facture (ADR-0022).
+enum InvoicePurpose {
+  /// Facture ordinaire : ce qu'un payeur doit (adhésion, boutique, frais).
+  CHARGE
+  /// Reçu d'avance : argent versé sans facture, qui crédite une personne.
+  /// Créé PAYÉ avec son paiement, jamais ouvert.
+  PAYER_CREDIT_DEPOSIT
 }
 
 enum ClubPaymentMethod {
@@ -2112,6 +2125,15 @@ model Invoice {
   /// ne plus concaténer le motif dans le label de la facture.
   voidReason       String?
 
+  /// CHARGE pour une facture ordinaire ; PAYER_CREDIT_DEPOSIT pour un reçu
+  /// d'avance (ADR-0022), qui ne porte aucune dette.
+  purpose              InvoicePurpose @default(CHARGE)
+  /// Personne créditée par un reçu d'avance : un membre OU un contact, jamais
+  /// les deux ; null pour une facture ordinaire. `Restrict` : on ne supprime
+  /// pas la personne à qui l'argent appartient.
+  payerCreditMemberId  String?
+  payerCreditContactId String?
+
   club            Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
   family          Family?          @relation(fields: [familyId], references: [id], onDelete: SetNull)
   householdGroup  HouseholdGroup?  @relation(fields: [householdGroupId], references: [id], onDelete: SetNull)
@@ -2126,10 +2148,16 @@ model Invoice {
   parentInvoice Invoice?  @relation("InvoiceCreditNotes", fields: [parentInvoiceId], references: [id], onDelete: SetNull)
   creditNotes   Invoice[] @relation("InvoiceCreditNotes")
 
+  payerCreditMember  Member?  @relation("InvoicePayerCreditMember", fields: [payerCreditMemberId], references: [id], onDelete: Restrict)
+  payerCreditContact Contact? @relation("InvoicePayerCreditContact", fields: [payerCreditContactId], references: [id], onDelete: Restrict)
+
   @@index([clubId, status])
   @@index([clubId, householdGroupId, status])
   @@index([clubSeasonId])
   @@index([parentInvoiceId])
+  @@index([clubId, purpose])
+  @@index([payerCreditMemberId])
+  @@index([payerCreditContactId])
 }
 
 model Payment {
