@@ -228,11 +228,38 @@ laisserait un règlement sur une facture annulée.
 
 ### Task 2.4 : Recette staging
 
-- [ ] Adhésion réglée par une avance, en partie puis pour le solde.
-- [ ] Commande boutique d'un contact sans foyer réglée par crédit, puis annulée :
+- [x] Adhésion réglée par une avance, en partie puis pour le solde.
+- [x] Commande boutique d'un contact sans foyer réglée par crédit, puis annulée :
   le crédit revient.
-- [ ] Écritures vérifiées en base.
-- [ ] Verrou vérifié sur PostgreSQL : deux utilisations simultanées.
+- [x] Écritures vérifiées en base.
+- [x] Verrou vérifié sur PostgreSQL : deux utilisations simultanées.
+
+Sur club-demo, le 2026-09-15 (commit `1bc5958`), avec le crédit de 50 € de
+Florent laissé par le lot 1 :
+- **Facture du foyer** : une facture libre de 50 € sur son foyer, dont son
+  membre est payeur (pas un panier d'adhésion : le contrôle du payeur est le
+  même).
+  - Deux imputations simultanées de 30 € : l'une passe, l'autre est refusée
+    (« Au plus 20,00 € : crédit disponible 20,00 €, reste à encaisser
+    20,00 € »). La refusée a répondu la première, mais elle a lu l'écriture de
+    l'autre : elle a attendu son commit sous le verrou.
+  - Les 20 € restants réglés depuis le tiroir (« Régler avec le crédit »,
+    montant proposé 20,00) : facture PAYÉE.
+- **Commande boutique** : club-demo n'a ni contact ni membre sans foyer. Vente
+  au comptoir au nom du contact de Florent, dont la facture n'a pas de foyer.
+  - Avance de 10 €, puis règlement par crédit : payeur proposé, le contact ;
+    commande PAYÉE et servie.
+  - Annulation depuis le tiroir, qui annonce « Crédit : 10,00 € rendus au
+    crédit du payeur » : crédit revenu à 10 €, stock revenu.
+- **En base** :
+  - imputations en INCOME, DÉBIT 419100 / CRÉDIT 706100 ou 708000, sans
+    compte financier ;
+  - paiement négatif `PAYER_CREDIT` qui désigne l'imputation rendue ;
+  - contre-passation DÉBIT 708000 / CRÉDIT 419100, rattachée à l'écriture de
+    l'imputation ;
+  - aucune erreur nouvelle dans le log de l'API.
+- **Fiche membre**, bloc Crédit : les utilisations et le crédit rendu sont
+  listés.
 
 ---
 
