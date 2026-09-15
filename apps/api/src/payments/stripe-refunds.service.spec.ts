@@ -21,6 +21,19 @@ const piRefunded = (amountRefunded: number) => ({
   latest_charge: { amount_refunded: amountRefunded },
 });
 
+/** PaymentIntent dont la charge a encaissé `capturedCents` et porte ces remboursements. */
+const piWithRefunds = (
+  capturedCents: number,
+  refunds: Array<{ id: string; amount: number; metadata: Record<string, string> }>,
+) => ({
+  latest_charge: {
+    id: 'ch_1',
+    amount_captured: capturedCents,
+    amount_refunded: refunds.reduce((sum, r) => sum + r.amount, 0),
+    refunds: { data: refunds.map((r) => ({ ...r, status: 'succeeded' })) },
+  },
+});
+
 const STRIPE_PAYMENT = {
   id: 'pay-1',
   clubId: 'club-1',
@@ -82,6 +95,8 @@ function makeSvc(opts?: {
       aggregate: jest.fn().mockResolvedValue({
         _sum: { amountCents: -(opts?.alreadyRefundedCents ?? 0) },
       }),
+      // Les encaissements récents que le rattrapage examine.
+      findMany: jest.fn().mockResolvedValue([]),
     },
     $transaction: jest.fn(async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx)),
   };
@@ -327,6 +342,65 @@ describe('StripeRefundsService.refundPayment', () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it('un excédent rendu depuis le tableau de bord ne compte pas contre l’encaissement', async () => {
+    // 120 € encaissés par Stripe, 100 € enregistrés (ENCAISSEMENT ORPHELIN
+    // PARTIEL) ; les 20 € d'excédent rendus depuis le tableau de bord.
+    const { svc } = makeSvc();
+    retrieve.mockResolvedValue(
+      piWithRefunds(12_000, [{ id: 're_tdb', amount: 2_000, metadata: {} }]),
+    );
+
+    const res = await svc.refundPayment({
+      clubId: 'club-1',
+      paymentId: 'pay-1',
+      reason: 'Annulation',
+    });
+
+    // Les 100 € de l'encaissement restent remboursables en entier.
+    expect(res.amountCents).toBe(10_000);
+    // La clé suit toujours ce que Stripe a rendu en tout.
+    expect(create.mock.calls[0][1].idempotencyKey).toContain('-2000-10000');
+  });
+
+  it('un remboursement lancé depuis ClubFlow compte contre l’encaissement, même quand la charge porte un excédent', async () => {
+    const { svc } = makeSvc();
+    retrieve.mockResolvedValue(
+      piWithRefunds(12_000, [
+        { id: 're_app', amount: 2_000, metadata: { paymentId: 'pay-1' } },
+      ]),
+    );
+
+    const res = await svc.refundPayment({
+      clubId: 'club-1',
+      paymentId: 'pay-1',
+      reason: 'Annulation',
+    });
+
+    expect(res.amountCents).toBe(8_000);
+  });
+
+  it('l’excédent ne couvre que ce que Stripe a encaissé en plus', async () => {
+    // 50 € rendus depuis le tableau de bord : 20 € d'excédent, 30 € de
+    // l'encaissement.
+    const { svc } = makeSvc();
+    retrieve.mockResolvedValue(
+      piWithRefunds(12_000, [{ id: 're_tdb', amount: 5_000, metadata: {} }]),
+    );
+
+    const res = await svc.refundPayment({
+      clubId: 'club-1',
+      paymentId: 'pay-1',
+      reason: 'Annulation',
+    });
+
+    expect(res.amountCents).toBe(7_000);
+  });
+});
+
+/** La charge de l'encaissement de 100 €, entièrement enregistrée : aucun excédent. */
+const CHARGE = (amountCents: number) => ({
+  capturedCents: 10_000,
+  refunds: [{ id: 're_1', amountCents, fromApp: false }],
 });
 
 describe('StripeRefundsService.applyRefundConfirmed', () => {
@@ -341,6 +415,7 @@ describe('StripeRefundsService.applyRefundConfirmed', () => {
       refundId: 're_1',
       amountCents: 4_000,
       stripeAccountId: 'acct_1',
+      charge: CHARGE(4_000),
     });
 
     const pay = created.find((c) => c.model === 'payment')?.data;
@@ -366,6 +441,7 @@ describe('StripeRefundsService.applyRefundConfirmed', () => {
       refundId: 're_1',
       amountCents: 4_000,
       stripeAccountId: 'acct_1',
+      charge: CHARGE(4_000),
     });
 
     const note = created.find((c) => c.model === 'invoice')?.data as {
@@ -412,6 +488,7 @@ describe('StripeRefundsService.applyRefundConfirmed', () => {
       refundId: 're_1',
       amountCents: 10_000,
       stripeAccountId: 'acct_1',
+      charge: CHARGE(10_000),
     });
 
     const note = created.find((c) => c.model === 'invoice')?.data as {
@@ -436,6 +513,7 @@ describe('StripeRefundsService.applyRefundConfirmed', () => {
       refundId: 're_1',
       amountCents: 4_000,
       stripeAccountId: 'acct_1',
+      charge: CHARGE(4_000),
     });
 
     expect(tx.payment.create).not.toHaveBeenCalled();
@@ -453,6 +531,7 @@ describe('StripeRefundsService.applyRefundConfirmed', () => {
       refundId: 're_1',
       amountCents: 4_000,
       stripeAccountId: 'acct_INTRUS',
+      charge: CHARGE(4_000),
     });
 
     expect(tx.payment.create).not.toHaveBeenCalled();
@@ -467,6 +546,7 @@ describe('StripeRefundsService.applyRefundConfirmed', () => {
       refundId: 're_1',
       amountCents: 4_000,
       stripeAccountId: 'acct_1',
+      charge: CHARGE(4_000),
     });
 
     expect(tx.payment.create).not.toHaveBeenCalled();
@@ -483,8 +563,83 @@ describe('StripeRefundsService.applyRefundConfirmed', () => {
       refundId: 're_1',
       amountCents: 4_000,
       stripeAccountId: 'acct_1',
+      charge: CHARGE(4_000),
     });
 
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('StripeRefundsService.applyChargeRefunds', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('un remboursement en attente n’a rien rendu : seul celui qui a abouti est écrit', async () => {
+    const { svc, tx } = makeSvc();
+
+    const written = await svc.applyChargeRefunds({
+      clubId: 'club-1',
+      paymentIntentId: 'pi_123',
+      stripeAccountId: 'acct_1',
+      capturedCents: 10_000,
+      refunds: [
+        { id: 're_attente', amount: 1_000, status: 'pending', metadata: {} },
+        { id: 're_abouti', amount: 4_000, status: 'succeeded', metadata: {} },
+      ] as unknown as Stripe.Refund[],
+    });
+
+    expect(written).toBe(1);
+    expect(tx.payment.create).toHaveBeenCalledTimes(1);
+    expect(tx.payment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ amountCents: -4_000, stripeRefundId: 're_abouti' }),
+    });
+  });
+});
+
+describe('StripeRefundsService.reconcileMissedRefunds', () => {
+  const OLD = process.env.STRIPE_SECRET_KEY;
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.STRIPE_SECRET_KEY = 'sk_test_x';
+  });
+  afterAll(() => {
+    if (OLD === undefined) delete process.env.STRIPE_SECRET_KEY;
+    else process.env.STRIPE_SECRET_KEY = OLD;
+  });
+
+  /** L'encaissement de 100 € du mois, que le rattrapage examine. */
+  const RECENT = { id: 'pay-1', clubId: 'club-1', externalRef: 'pi_123', stripeAccountId: 'acct_1' };
+
+  it('un remboursement qui n’a rendu que l’excédent de la charge : rien n’est écrit, rien n’est rattrapé', async () => {
+    // 120 € encaissés, 100 € enregistrés ; les 20 € d'excédent rendus depuis le
+    // tableau de bord. L'écart avec la base est normal : il ne manque rien.
+    const { svc, prisma, tx } = makeSvc();
+    prisma.payment.findMany.mockResolvedValue([RECENT]);
+    retrieve.mockResolvedValue(
+      piWithRefunds(12_000, [{ id: 're_tdb', amount: 2_000, metadata: {} }]),
+    );
+
+    await expect(svc.reconcileMissedRefunds()).resolves.toEqual({
+      examined: 1,
+      recovered: 0,
+    });
+    // Le remboursement a bien été examiné sous le verrou, et rien n'y a été écrit.
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(tx.payment.create).not.toHaveBeenCalled();
+  });
+
+  it('un remboursement manqué de l’encaissement : écrit et compté comme rattrapé', async () => {
+    const { svc, prisma, tx } = makeSvc();
+    prisma.payment.findMany.mockResolvedValue([RECENT]);
+    retrieve.mockResolvedValue(
+      piWithRefunds(10_000, [{ id: 're_tdb', amount: 2_000, metadata: {} }]),
+    );
+
+    await expect(svc.reconcileMissedRefunds()).resolves.toEqual({
+      examined: 1,
+      recovered: 1,
+    });
+    expect(tx.payment.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ amountCents: -2_000, stripeRefundId: 're_tdb' }),
+    });
   });
 });

@@ -25,6 +25,22 @@ import { lockInvoiceInTx } from './settlement-locks';
 const REFUND_RECONCILE_DAYS = 45;
 
 /**
+ * Un remboursement abouti d'une charge. `fromApp` : créé par `refundPayment`,
+ * qui désigne en metadata l'encaissement qu'il rend ; un remboursement fait
+ * depuis le tableau de bord Stripe ne désigne rien.
+ */
+export type ChargeRefund = {
+  id: string;
+  amountCents: number;
+  fromApp: boolean;
+};
+
+function isFromApp(refund: Stripe.Refund): boolean {
+  const paymentId = refund.metadata?.paymentId;
+  return typeof paymentId === 'string' && paymentId.length > 0;
+}
+
+/**
  * Remboursement d'un encaissement Stripe (Phase 2).
  *
  * Jusqu'ici l'avoir existait — document, écriture comptable, export FEC — mais
@@ -157,14 +173,18 @@ export class StripeRefundsService {
     //
     // Cette lecture n'est donc pas un accessoire dont on peut se passer :
     // elle EST le plafond et la clé. Si elle échoue, on refuse.
-    const alreadyRefunded = await this.stripeAmountRefunded(stripe, payment);
-    if (alreadyRefunded === null) {
+    const refunded = await this.stripeAmountRefunded(stripe, payment);
+    if (refunded === null) {
       throw new ServiceUnavailableException(
         'Montant déjà remboursé indisponible chez Stripe — remboursement ' +
           'refusé par prudence. Réessayez dans un instant.',
       );
     }
-    const refundable = payment.amountCents - alreadyRefunded;
+    const alreadyRefunded = refunded.totalCents;
+    // Ce qui a rendu l'excédent de la charge, sans paiement en base (ENCAISSEMENT
+    // ORPHELIN PARTIEL), n'a rien rendu de l'encaissement.
+    const refundable =
+      payment.amountCents - (alreadyRefunded - refunded.excessCents);
     if (refundable <= 0) {
       throw new BadRequestException(
         'Cet encaissement a déjà été intégralement remboursé.',
@@ -211,7 +231,9 @@ export class StripeRefundsService {
   }
 
   /**
-   * Montant déjà remboursé d'après Stripe.
+   * Montant déjà remboursé d'après Stripe : en tout (`totalCents`), et sur
+   * l'excédent de la charge que le webhook n'a pas enregistré (`excessCents`,
+   * cf. `excessRefundedInTx`).
    *
    * `null` signifie STRICTEMENT « la lecture a échoué », et rien d'autre :
    * l'appelant refuse alors le remboursement, cette valeur servant à la fois
@@ -227,8 +249,12 @@ export class StripeRefundsService {
    */
   private async stripeAmountRefunded(
     stripe: Stripe,
-    payment: { externalRef: string | null; stripeAccountId: string | null },
-  ): Promise<number | null> {
+    payment: {
+      amountCents: number;
+      externalRef: string | null;
+      stripeAccountId: string | null;
+    },
+  ): Promise<{ totalCents: number; excessCents: number } | null> {
     // L'appelant garde déjà ces deux champs ; on ne peut simplement rien
     // demander à Stripe sans eux.
     if (!payment.externalRef || !payment.stripeAccountId) return null;
@@ -241,7 +267,7 @@ export class StripeRefundsService {
       const charge = pi.latest_charge;
       // Charge absente : le PaymentIntent existe et Stripe a répondu. Rien
       // n'a donc été remboursé — c'est une information, pas une panne.
-      if (!charge) return 0;
+      if (!charge) return { totalCents: 0, excessCents: 0 };
       // Charge renvoyée comme simple identifiant : l'expansion n'a pas eu
       // lieu, et on ignore le montant remboursé. Là, c'est bien illisible.
       if (typeof charge === 'string') {
@@ -251,7 +277,25 @@ export class StripeRefundsService {
         );
         return null;
       }
-      return charge.amount_refunded ?? 0;
+      const totalCents = charge.amount_refunded ?? 0;
+      // Encaissé au-delà de l'encaissement enregistré : un remboursement créé
+      // hors de ClubFlow rend cet excédent d'abord. Une liste illisible n'en
+      // compte aucun : le plafond baisse, il ne monte jamais.
+      const excess = charge.amount_captured - payment.amountCents;
+      if (!(excess > 0) || totalCents === 0) {
+        return { totalCents, excessCents: 0 };
+      }
+      const refunds = await this.listRefundsForCharge(
+        charge,
+        payment.stripeAccountId,
+      );
+      const outside = refunds
+        .filter(
+          (r) =>
+            !isFromApp(r) && r.status !== 'failed' && r.status !== 'canceled',
+        )
+        .reduce((sum, r) => sum + r.amount, 0);
+      return { totalCents, excessCents: Math.min(excess, outside) };
     } catch (err) {
       this.logger.warn(
         `[remboursement] montant déjà remboursé illisible chez Stripe pour ` +
@@ -297,6 +341,47 @@ export class StripeRefundsService {
   }
 
   /**
+   * Enregistre les remboursements aboutis d'une charge : webhook
+   * `charge.refunded`, et rattrapage quotidien. Rend le nombre de
+   * remboursements écrits en base par cet appel.
+   */
+  async applyChargeRefunds(args: {
+    clubId: string;
+    paymentIntentId: string;
+    stripeAccountId: string | null;
+    /** Ce que Stripe a encaissé sur la charge (`amount_captured`). */
+    capturedCents: number;
+    refunds: Stripe.Refund[];
+  }): Promise<number> {
+    // Un remboursement `pending` ou `failed` n'a rien rendu : l'inscrire
+    // créerait un avoir pour de l'argent qui n'est jamais parti.
+    const succeeded = args.refunds.filter((r) => r.status === 'succeeded');
+    const charge = {
+      capturedCents: args.capturedCents,
+      refunds: succeeded.map((r) => ({
+        id: r.id,
+        amountCents: r.amount,
+        fromApp: isFromApp(r),
+      })),
+    };
+    let written = 0;
+    for (const r of succeeded) {
+      const recorded = await this.applyRefundConfirmed({
+        clubId: args.clubId,
+        paymentIntentId: args.paymentIntentId,
+        refundId: r.id,
+        amountCents: r.amount,
+        stripeAccountId: args.stripeAccountId,
+        reason:
+          typeof r.metadata?.reason === 'string' ? r.metadata.reason : null,
+        charge,
+      });
+      if (recorded) written += 1;
+    }
+    return written;
+  }
+
+  /**
    * Enregistre en base un remboursement confirmé par Stripe.
    *
    * Appelé depuis le webhook `charge.refunded`, et non depuis `refundPayment` :
@@ -304,7 +389,8 @@ export class StripeRefundsService {
    * le club lui-même. Le webhook est le seul point de passage commun, donc le
    * seul endroit où l'enregistrement est garanti quelle que soit l'origine.
    *
-   * Idempotent par `externalRef` : Stripe rejoue ses livraisons.
+   * Idempotent par `externalRef` : Stripe rejoue ses livraisons. Rend `true`
+   * si cet appel a écrit le remboursement en base.
    */
   async applyRefundConfirmed(args: {
     clubId: string;
@@ -314,7 +400,12 @@ export class StripeRefundsService {
     stripeAccountId: string | null;
     /** Motif saisi par le trésorier, repris tel quel sur l'avoir. */
     reason?: string | null;
-  }): Promise<void> {
+    /**
+     * La charge qui porte ce remboursement : ce que Stripe a encaissé, et ses
+     * remboursements aboutis, celui-ci compris (cf. `excessRefundedInTx`).
+     */
+    charge: { capturedCents: number; refunds: ChargeRefund[] };
+  }): Promise<boolean> {
     // Lecture préalable : évite un aller-retour et des logs inutiles dans le
     // cas courant du rejeu. Elle ne SUFFIT pas — deux livraisons concurrentes
     // la passeraient toutes les deux — c'est la contrainte d'unicité en base
@@ -323,7 +414,7 @@ export class StripeRefundsService {
       where: { clubId: args.clubId, stripeRefundId: args.refundId },
       select: { id: true },
     });
-    if (already) return;
+    if (already) return false;
 
     const original = await this.prisma.payment.findFirst({
       where: {
@@ -338,7 +429,7 @@ export class StripeRefundsService {
         `[remboursement] ${args.refundId} sans encaissement d'origine connu ` +
           `(${args.paymentIntentId}) — non enregistré.`,
       );
-      return;
+      return false;
     }
 
     // Garde-fou multi-tenant : le remboursement doit venir du compte connecté
@@ -352,12 +443,12 @@ export class StripeRefundsService {
         `[remboursement] ${args.refundId} reçu du compte ${args.stripeAccountId} ` +
           `alors que l'encaissement appartient à ${original.stripeAccountId} — ignoré.`,
       );
-      return;
+      return false;
     }
 
-    let creditNote: { id: string };
+    let outcome: { excessCents: number; creditNote: { id: string } | null };
     try {
-      creditNote = await this.prisma.$transaction(async (tx) => {
+      outcome = await this.prisma.$transaction(async (tx) => {
       // Sous le verrou de la facture (ADR-0022, §3), avant d'écrire. Une saisie,
       // une imputation, un avoir ou une annulation relit la facture en plusieurs
       // requêtes, puis écrit : ce remboursement ne s'intercale plus entre ces
@@ -365,13 +456,20 @@ export class StripeRefundsService {
       // l'argent est rendu, il s'enregistre quel que soit l'état de la facture.
       await lockInvoiceInTx(tx, original.invoiceId);
 
+      // La part qui rend l'excédent de la charge ne rembourse pas la facture.
+      // Relue sous le verrou : ce que les autres remboursements en ont écrit ne
+      // change plus avant le commit.
+      const excessCents = await this.excessRefundedInTx(tx, original, args);
+      const amountCents = args.amountCents - excessCents;
+      if (amountCents <= 0) return { excessCents, creditNote: null };
+
       // Le Payment négatif matérialise la sortie de trésorerie, rattaché à
       // l'encaissement qu'il rembourse.
       await tx.payment.create({
         data: {
           clubId: args.clubId,
           invoiceId: original.invoiceId,
-          amountCents: -args.amountCents,
+          amountCents: -amountCents,
           method: ClubPaymentMethod.STRIPE_CARD,
           externalRef: args.refundId,
           stripeRefundId: args.refundId,
@@ -386,15 +484,16 @@ export class StripeRefundsService {
       // facture redeviendrait due du montant remboursé et le moteur de
       // prélèvement s'en saisirait. Les deux écritures partagent la même
       // transaction : l'une sans l'autre laisserait la facture réclamable.
-      return this.creditNotes.create({
+      const creditNote = await this.creditNotes.create({
         tx,
         clubId: args.clubId,
         parentInvoiceId: original.invoiceId,
-        amountCents: args.amountCents,
+        amountCents,
         reason: args.reason?.trim()
           ? args.reason.trim()
           : `Remboursement Stripe ${args.refundId}`,
       });
+      return { excessCents, creditNote };
       });
     } catch (err) {
       // P2002 = violation d'unicité sur (clubId, stripeRefundId) : une autre
@@ -404,9 +503,19 @@ export class StripeRefundsService {
         err instanceof Prisma.PrismaClientKnownRequestError &&
         err.code === 'P2002'
       ) {
-        return;
+        return false;
       }
       throw err;
+    }
+
+    const { excessCents, creditNote } = outcome;
+    if (!creditNote) {
+      this.logger.log(
+        `[remboursement] ${args.refundId} : ${args.amountCents} cts rendus sur ` +
+          `l'excédent non enregistré de ${args.paymentIntentId}, sans paiement ` +
+          `négatif ni avoir.`,
+      );
+      return false;
     }
 
     // Contre-passation APRÈS le commit : un plan comptable incomplet ne doit
@@ -420,9 +529,64 @@ export class StripeRefundsService {
       });
 
     this.logger.log(
-      `[remboursement] ${args.refundId} enregistré : ${args.amountCents} cts ` +
-        `sur la facture ${original.invoiceId}, avoir émis.`,
+      `[remboursement] ${args.refundId} enregistré : ${args.amountCents - excessCents} cts ` +
+        `sur la facture ${original.invoiceId}, avoir émis` +
+        (excessCents > 0
+          ? ` ; ${excessCents} cts rendus sur l'excédent non enregistré.`
+          : '.'),
     );
+    return true;
+  }
+
+  /**
+   * La part d'un remboursement qui rend l'excédent de sa charge, sans
+   * rembourser la facture (ADR-0022, §3).
+   *
+   * Un encaissement carte supérieur au reste dû n'enregistre que ce reste, et
+   * signale le surplus en ENCAISSEMENT ORPHELIN PARTIEL : cet excédent est chez
+   * le club sans paiement. Le rendre ne doit écrire ni paiement négatif, ni
+   * avoir, qui éteindrait sur la facture une dette qu'elle n'a jamais portée.
+   *
+   * - Un remboursement de `refundPayment` rend l'encaissement qu'il désigne :
+   *   aucune part d'excédent.
+   * - Un autre (tableau de bord Stripe) rend d'abord l'excédent, moins ce que
+   *   les autres remboursements hors ClubFlow en ont déjà rendu. Ce qu'un
+   *   remboursement a rendu de l'excédent, c'est ce qu'il n'a pas écrit en
+   *   base : la part ne dépend ni de l'ordre des livraisons, ni d'un rejeu.
+   */
+  private async excessRefundedInTx(
+    tx: Prisma.TransactionClient,
+    original: { id: string; amountCents: number },
+    args: {
+      refundId: string;
+      amountCents: number;
+      charge: { capturedCents: number; refunds: ChargeRefund[] };
+    },
+  ): Promise<number> {
+    const excessCents = args.charge.capturedCents - original.amountCents;
+    // Un montant encaissé illisible ne fait pas d'excédent.
+    if (!(excessCents > 0)) return 0;
+    // Absent de la liste, il s'écrit en entier : une erreur se voit en base au
+    // lieu de se taire.
+    const self = args.charge.refunds.find((r) => r.id === args.refundId);
+    if (!self || self.fromApp) return 0;
+    const others = args.charge.refunds.filter(
+      (r) => r.id !== args.refundId && !r.fromApp,
+    );
+    const recorded =
+      others.length > 0
+        ? await tx.payment.findMany({
+            where: { refundedPaymentId: original.id },
+            select: { stripeRefundId: true, amountCents: true },
+          })
+        : [];
+    const takenByOthers = others.reduce((sum, r) => {
+      const written = recorded
+        .filter((p) => p.stripeRefundId === r.id)
+        .reduce((total, p) => total - p.amountCents, 0);
+      return sum + Math.max(0, r.amountCents - written);
+    }, 0);
+    return Math.min(args.amountCents, Math.max(0, excessCents - takenByOthers));
   }
 
   /**
@@ -479,23 +643,21 @@ export class StripeRefundsService {
         if ((charge.amount_refunded ?? 0) <= known) continue;
 
         // Écart : au moins un remboursement nous a échappé. On les reprend
-        // tous, l'enregistrement étant idempotent.
+        // tous, l'enregistrement étant idempotent. Un remboursement qui n'a
+        // rendu que l'excédent de la charge n'écrit rien, et l'écart demeure :
+        // rien n'est alors rattrapé.
         const refunds = await this.listRefundsForCharge(
           charge,
           p.stripeAccountId as string,
         );
-        for (const r of refunds) {
-          if (r.status !== 'succeeded') continue;
-          await this.applyRefundConfirmed({
-            clubId: p.clubId,
-            paymentIntentId: p.externalRef as string,
-            refundId: r.id,
-            amountCents: r.amount,
-            stripeAccountId: p.stripeAccountId,
-            reason:
-              typeof r.metadata?.reason === 'string' ? r.metadata.reason : null,
-          });
-        }
+        const written = await this.applyChargeRefunds({
+          clubId: p.clubId,
+          paymentIntentId: p.externalRef as string,
+          stripeAccountId: p.stripeAccountId,
+          capturedCents: charge.amount_captured,
+          refunds,
+        });
+        if (written === 0) continue;
         recovered += 1;
         this.logger.warn(
           `[remboursement] rattrapage sur l'encaissement ${p.id} : ` +

@@ -3,6 +3,7 @@ import {
   ChequeStatus,
   ClubPaymentMethod,
   InvoiceStatus,
+  MemberStatus,
   MembershipCartStatus,
   ShopOrderAdjustmentKind,
   ShopOrderStatus,
@@ -25,9 +26,11 @@ import { ShopService } from '../src/shop/shop.service';
  * `ShopService`, moteur de stock, service d'avoirs et `ShopOrderMoneyService`,
  * sur un double de PostgreSQL. S'y ajoutent l'encaissement manuel et
  * l'annulation d'une facture (`PaymentsService`), la réouverture d'un panier
- * d'adhésion (`MembershipCartService`), l'encaissement carte par la vraie porte
- * du webhook Stripe et le remboursement qu'il confirme (`StripeRefundsService`) :
- * les courses entre un règlement et une annulation (ADR-0022, §3).
+ * d'adhésion (`MembershipCartService`), l'encaissement carte et les
+ * remboursements qu'il confirme, par la vraie porte du webhook Stripe
+ * (`StripeRefundsService` compris) : les courses entre un règlement et une
+ * annulation, et l'argent qu'une carte apporte sans pouvoir l'enregistrer tel
+ * quel (ADR-0022, §3).
  *
  * Le double APPLIQUE chaque clause des `where` et lève sur toute clause qu'il
  * ne sait pas simuler : un prédicat oublié par le code change le résultat au
@@ -502,16 +505,22 @@ export function makeWorld(seed: {
   const clubs = [
     { id: 'club-1', name: 'Dojo Test', siret: null, address: '1 rue du Dojo' },
   ];
+  /** Camille : l'acheteuse des commandes, et le payeur que désigne le portail. */
   const members = [
     {
       id: 'm-1',
       clubId: 'club-1',
+      status: MemberStatus.ACTIVE as MemberStatus,
       firstName: 'Camille',
       lastName: 'MARTIN',
       email: 'camille.martin@example.fr',
     },
   ];
-  const families = [{ memberId: 'm-1', clubId: 'club-1', familyId: 'fam-1' }];
+  const families = [
+    { id: 'fam-1', clubId: 'club-1', householdGroupId: null as string | null },
+  ];
+  /** Les rattachements d'un membre à un foyer. */
+  const familyMembers = [{ memberId: 'm-1', familyId: 'fam-1' }];
   /** Ordre des gestes : ce qui est APRÈS le commit se lit ici. */
   const events: string[] = [];
   let seq = 0;
@@ -1051,6 +1060,15 @@ export function makeWorld(seed: {
           },
         });
       }),
+      // Les remboursements déjà écrits d'un encaissement carte.
+      findMany: jest.fn(async ({ where, select }: any) => {
+        allowOnly(where, ['refundedPaymentId']);
+        return respond(
+          payments
+            .filter((p) => p.refundedPaymentId === where.refundedPaymentId)
+            .map((p) => pick(p, select)),
+        );
+      }),
       create: jest.fn(async ({ data }: any) => {
         if (data.amountCents > 0) await reach('payment');
         if (data.amountCents < 0) await reach('refund');
@@ -1095,23 +1113,49 @@ export function makeWorld(seed: {
           members.filter((m) => oneOf(m.id, where.id)).map((m) => pick(m, select)),
         );
       }),
+      // Le contrôle du payeur ne retient qu'une fiche active.
       findFirst: jest.fn(async ({ where, select }: any) => {
-        allowOnly(where, ['id', 'clubId']);
-        const m = members.find((x) => x.id === where.id && x.clubId === where.clubId);
-        return respond(m ? pick(m, select) : null);
+        allowOnly(where, ['id', 'clubId', 'status']);
+        const m = members.find(
+          (x) =>
+            x.id === where.id &&
+            x.clubId === where.clubId &&
+            (where.status === undefined || x.status === where.status),
+        );
+        if (!m) return respond(null);
+        return respond(select ? pick(m, select) : clone(m));
       }),
     },
     contact: {
       findMany: jest.fn(async () => respond([])),
       findFirst: jest.fn(async () => respond(null)),
     },
+    family: {
+      findFirst: jest.fn(async ({ where, select }: any) => {
+        allowOnly(where, ['id']);
+        const f = families.find((x) => x.id === where.id);
+        if (!f) return respond(null);
+        return respond(select ? pick(f, select) : clone(f));
+      }),
+    },
+    // Le foyer d'un acheteur boutique ; pour le contrôle du payeur, celui de la
+    // facture ou son groupe foyer.
     familyMember: {
-      findFirst: jest.fn(async ({ where }: any) => {
-        allowOnly(where, ['memberId', 'family']);
-        const f = families.find(
-          (x) => x.memberId === where.memberId && x.clubId === where.family.clubId,
-        );
-        return respond(f ? { familyId: f.familyId } : null);
+      findFirst: jest.fn(async ({ where, select }: any) => {
+        allowOnly(where, ['memberId', 'familyId', 'family']);
+        allowOnly(where.family ?? {}, ['clubId', 'householdGroupId']);
+        const link = familyMembers.find((l) => {
+          const f = families.find((x) => x.id === l.familyId);
+          return (
+            l.memberId === where.memberId &&
+            (where.familyId === undefined || l.familyId === where.familyId) &&
+            (where.family?.clubId === undefined || f?.clubId === where.family.clubId) &&
+            (where.family?.householdGroupId === undefined ||
+              f?.householdGroupId === where.family.householdGroupId)
+          );
+        });
+        if (!link) return respond(null);
+        return respond(select ? pick(link, select) : clone(link));
       }),
     },
     membershipCart: {
@@ -1278,6 +1322,11 @@ export function makeWorld(seed: {
       'schedule',
       async (_invoiceId: string, _status: InvoiceStatus) => undefined,
     ),
+    // Le soldage d'une échéance, après le commit de son encaissement carte.
+    markInstallmentPaid: trace(
+      'installment',
+      async (_installmentId: string, _paymentId: string) => undefined,
+    ),
   };
   const stripeCheckout = {
     expireCheckoutSessionForInvoice: trace(
@@ -1304,8 +1353,12 @@ export function makeWorld(seed: {
   const stripeFees = {
     syncFeesForPayment: trace('fees', async (_paymentId: string) => false),
   };
-  // Aucun payeur désigné dans ces scénarios : ni documents à signer, ni Connect,
-  // ni échéancier.
+  // Le remboursement que Stripe confirme (`charge.refunded`) : le vrai service,
+  // sur ce double, que le webhook appelle. `stripeRefunds`, plus haut, ne
+  // remplace que l'appel sortant.
+  const refundConfirmations = new StripeRefundsService(db, creditNotes, {} as never);
+  // Ni documents à signer, ni Connect : aucune saisie de ces scénarios ne
+  // désigne de payeur, et le webhook ne les consulte pas.
   const paymentsService = new PaymentsService(
     db,
     accounting as never,
@@ -1315,41 +1368,18 @@ export function makeWorld(seed: {
     {} as never,
     scheduleEngine as never,
     stripeFees as never,
-    stripeRefunds as never,
+    refundConfirmations,
     creditNotes,
     shop,
   );
-  // Le remboursement que Stripe confirme (`charge.refunded`) : le vrai service,
-  // sur ce double. `stripeRefunds`, plus haut, ne remplace que l'appel sortant.
-  const refundConfirmations = new StripeRefundsService(db, creditNotes, {} as never);
 
   /**
-   * Stripe annonce un encaissement carte (`payment_intent.succeeded`) par la
-   * vraie porte du webhook : signature, réservation de l'événement, puis
-   * l'encaissement. La promesse rend ce que Stripe recevrait : un rejet lui
-   * ferait rejouer la livraison.
+   * Une livraison signée du webhook Stripe : signature, réservation de
+   * l'événement, puis son traitement. La promesse rend ce que Stripe recevrait :
+   * un rejet lui ferait rejouer la livraison.
    */
-  const stripePaymentSucceeded = (args: {
-    invoiceId: string;
-    amountCents: number;
-    paymentIntentId?: string;
-    eventId?: string;
-  }) => {
-    const paymentIntentId = args.paymentIntentId ?? 'pi_carte';
-    const payload = JSON.stringify({
-      id: args.eventId ?? `evt_${paymentIntentId}`,
-      object: 'event',
-      type: 'payment_intent.succeeded',
-      data: {
-        object: {
-          id: paymentIntentId,
-          object: 'payment_intent',
-          metadata: { invoiceId: args.invoiceId, clubId: 'club-1' },
-          amount_received: args.amountCents,
-          amount: args.amountCents,
-        },
-      },
-    });
+  const deliver = (event: Record<string, unknown>) => {
+    const payload = JSON.stringify(event);
     process.env.STRIPE_WEBHOOK_SECRET = WEBHOOK_SECRET;
     const signature = Stripe.webhooks.generateTestHeaderString({
       payload,
@@ -1357,6 +1387,81 @@ export function makeWorld(seed: {
     });
     return paymentsService.handleStripeWebhook(Buffer.from(payload), signature);
   };
+
+  /**
+   * Stripe annonce un encaissement carte (`payment_intent.succeeded`). La
+   * session du portail porte le payeur de son profil actif ; un prélèvement de
+   * l'échéancier, son échéance.
+   */
+  const stripePaymentSucceeded = (args: {
+    invoiceId: string;
+    amountCents: number;
+    paymentIntentId?: string;
+    eventId?: string;
+    paidByMemberId?: string;
+    installmentId?: string;
+  }) => {
+    const paymentIntentId = args.paymentIntentId ?? 'pi_carte';
+    return deliver({
+      id: args.eventId ?? `evt_${paymentIntentId}`,
+      object: 'event',
+      type: 'payment_intent.succeeded',
+      data: {
+        object: {
+          id: paymentIntentId,
+          object: 'payment_intent',
+          metadata: {
+            invoiceId: args.invoiceId,
+            clubId: 'club-1',
+            ...(args.paidByMemberId ? { paidByMemberId: args.paidByMemberId } : {}),
+            ...(args.installmentId ? { installmentId: args.installmentId } : {}),
+          },
+          amount_received: args.amountCents,
+          amount: args.amountCents,
+        },
+      },
+    });
+  };
+
+  /**
+   * Stripe confirme les remboursements d'une charge (`charge.refunded`), depuis
+   * le compte connecté du club. Chaque livraison porte tous les remboursements
+   * de la charge, ceux déjà connus compris. Un remboursement lancé depuis
+   * ClubFlow (`refundPayment`) désigne son encaissement en metadata ; un
+   * remboursement du tableau de bord Stripe ne désigne rien.
+   */
+  const stripeChargeRefunded = (args: {
+    eventId: string;
+    paymentIntentId?: string;
+    /** Ce que Stripe a encaissé sur la charge. */
+    capturedCents: number;
+    refunds: Array<{ id: string; amountCents: number; paymentId?: string }>;
+  }) =>
+    deliver({
+      id: args.eventId,
+      object: 'event',
+      type: 'charge.refunded',
+      account: 'acct_club',
+      data: {
+        object: {
+          id: 'ch_carte',
+          object: 'charge',
+          payment_intent: args.paymentIntentId ?? 'pi_carte',
+          amount_captured: args.capturedCents,
+          metadata: { clubId: 'club-1' },
+          refunds: {
+            object: 'list',
+            data: args.refunds.map((r) => ({
+              id: r.id,
+              object: 'refund',
+              amount: r.amountCents,
+              status: 'succeeded',
+              metadata: r.paymentId ? { paymentId: r.paymentId } : {},
+            })),
+          },
+        },
+      },
+    });
   const cartService = new MembershipCartService(
     db,
     {} as never,
@@ -1387,6 +1492,7 @@ export function makeWorld(seed: {
     cartService,
     refundConfirmations,
     stripePaymentSucceeded,
+    stripeChargeRefunded,
     orders,
     variants,
     products,
@@ -1396,6 +1502,9 @@ export function makeWorld(seed: {
     movements,
     adjustments,
     carts,
+    members,
+    families,
+    familyMembers,
     webhookEvents,
     events,
     preorders,
