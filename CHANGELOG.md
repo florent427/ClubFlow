@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.68.1](https://github.com/florent427/ClubFlow/compare/v0.68.0...v0.68.1) (2026-09-15)
+
+
+### 🐛 Bug Fixes
+
+* **paiements:** annuler une facture sous son verrou ([f5e59da](https://github.com/florent427/ClubFlow/commit/f5e59dafaa672b22f4ef545b1fc1fdbd21604831))
+* **paiements:** encaisser et rembourser par carte sous le verrou de la facture ([9b5b604](https://github.com/florent427/ClubFlow/commit/9b5b6041ed122bf02792d10e5f14632bd751bb42))
+
 ## [0.68.0](https://github.com/florent427/ClubFlow/compare/v0.67.0...v0.68.0) (2026-09-15)
 
 
