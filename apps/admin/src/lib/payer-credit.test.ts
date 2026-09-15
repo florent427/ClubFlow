@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildApplyPayerCreditInput,
   buildPayerCreditDepositInput,
+  creditUseAmountLabel,
+  describeCreditUse,
   describeDepositPayments,
   emptyPayerCreditDepositForm,
   parseEurosToCents,
@@ -142,5 +145,61 @@ describe('describeDepositPayments', () => {
         },
       ]),
     ).toBe('Espèces');
+  });
+});
+
+describe('buildApplyPayerCreditInput', () => {
+  const camille = { memberId: 'm-1', contactId: null, balanceCents: 3000 };
+
+  it('au nom du profil proposé par le serveur, en centimes', () => {
+    expect(
+      buildApplyPayerCreditInput({ invoiceId: 'f-1', candidate: camille, amount: '25,50', invoiceBalanceCents: 4000 }),
+    ).toEqual({ input: { invoiceId: 'f-1', memberId: 'm-1', amountCents: 2550 } });
+    expect(
+      buildApplyPayerCreditInput({
+        invoiceId: 'f-1',
+        candidate: { memberId: null, contactId: 'c-1', balanceCents: 3000 },
+        amount: '10',
+        invoiceBalanceCents: 4000,
+      }),
+    ).toEqual({ input: { invoiceId: 'f-1', contactId: 'c-1', amountCents: 1000 } });
+  });
+
+  it('s’arrête au plus petit du crédit et du reste dû', () => {
+    // Crédit 30 €, reste dû 40 € : 30 € au plus.
+    expect(
+      buildApplyPayerCreditInput({ invoiceId: 'f-1', candidate: camille, amount: '30', invoiceBalanceCents: 4000 }),
+    ).toHaveProperty('input.amountCents', 3000);
+    expect(
+      buildApplyPayerCreditInput({ invoiceId: 'f-1', candidate: camille, amount: '30,01', invoiceBalanceCents: 4000 }),
+    ).toHaveProperty('error');
+    // Reste dû 20 €, crédit 30 € : 20 € au plus.
+    expect(
+      buildApplyPayerCreditInput({ invoiceId: 'f-1', candidate: camille, amount: '20,01', invoiceBalanceCents: 2000 }),
+    ).toHaveProperty('error');
+  });
+
+  it('refuse un montant nul ou illisible', () => {
+    for (const amount of ['', '0', 'tout']) {
+      expect(
+        buildApplyPayerCreditInput({ invoiceId: 'f-1', candidate: camille, amount, invoiceBalanceCents: 4000 }),
+      ).toHaveProperty('error');
+    }
+  });
+});
+
+describe('utilisations du crédit', () => {
+  it('dit sur quelle facture le crédit est parti, ou d’où il revient', () => {
+    expect(describeCreditUse({ invoiceLabel: 'Cotisation 2026', amountCents: 4000 })).toBe(
+      'Utilisé sur « Cotisation 2026 »',
+    );
+    expect(describeCreditUse({ invoiceLabel: 'Cotisation 2026', amountCents: -1500 })).toBe(
+      'Rendu depuis « Cotisation 2026 »',
+    );
+  });
+
+  it('écrit l’effet sur le crédit avec son signe', () => {
+    expect(creditUseAmountLabel(4000)).toBe('−40,00 €');
+    expect(creditUseAmountLabel(-1500)).toBe('+15,00 €');
   });
 });

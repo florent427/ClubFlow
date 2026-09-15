@@ -7,12 +7,14 @@ import {
 } from '@nestjs/common';
 import {
   type Invoice,
+  type Payment,
   ClubPaymentMethod,
   FamilyMemberLinkRole,
   ClubFinancialAccountKind,
   InvoicePurpose,
   InvoiceStatus,
   MemberStatus,
+  Prisma,
 } from '@prisma/client';
 import Stripe from 'stripe';
 import {
@@ -32,11 +34,18 @@ import { StripeFeesService } from './stripe-fees.service';
 import { StripeRefundsService } from './stripe-refunds.service';
 import { CreditNotesService } from './credit-notes.service';
 import { CreateInvoiceInput } from './dto/create-invoice.input';
+import { ApplyPayerCreditInput } from './dto/apply-payer-credit.input';
 import { RecordManualPaymentInput } from './dto/record-manual-payment.input';
 import { RecordPayerCreditDepositInput } from './dto/record-payer-credit-deposit.input';
 import { UpsertClubPricingRuleInput } from './dto/upsert-pricing-rule.input';
+import { resolveInvoiceBalance } from './invoice-balance';
 import { invoicePaymentTotals } from './invoice-totals';
-import { resolvePayerCreditHolder } from './payer-credit-holder';
+import { readPayerCredit } from './payer-credit-balance';
+import {
+  resolvePayerCreditHolder,
+  type PayerCreditHolder,
+} from './payer-credit-holder';
+import { assertNotPayerCreditMethod } from './payment-method-rules';
 import { applyPricing } from './pricing-rules';
 
 type FamilyForLabel = {
@@ -65,6 +74,45 @@ const PAYER_CREDIT_DEPOSIT_METHODS: ReadonlySet<ClubPaymentMethod> =
     ClubPaymentMethod.MANUAL_CHECK,
     ClubPaymentMethod.MANUAL_TRANSFER,
   ]);
+
+/**
+ * Verrous d'un règlement (ADR-0022, §3), levés au commit. `$executeRaw` : la
+ * fonction rend `void`, que `$queryRaw` ne sait pas lire
+ * (pitfalls/prisma-executeraw-pour-retour-void.md). Ordre imposé, pour qu'aucun
+ * interblocage ne soit possible : la personne, puis la facture.
+ */
+async function lockPayerCreditInTx(
+  tx: Prisma.TransactionClient,
+  personKey: string,
+): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('clubflow:payer-credit'), hashtext(${personKey}))`;
+}
+
+async function lockInvoiceInTx(
+  tx: Prisma.TransactionClient,
+  invoiceId: string,
+): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('clubflow:invoice'), hashtext(${invoiceId}))`;
+}
+
+function eurosFr(cents: number): string {
+  return `${(cents / 100).toFixed(2).replace('.', ',')} €`;
+}
+
+/** Ce qu'un contrôle de payeur lit d'une facture. */
+type InvoiceForPayer = {
+  id: string;
+  clubId: string;
+  familyId: string | null;
+  householdGroupId: string | null;
+  shopOrderId?: string | null;
+  shopAdjustmentId?: string | null;
+};
+
+type PayerProfile = {
+  paidByMemberId: string | null;
+  paidByContactId: string | null;
+};
 
 @Injectable()
 export class PaymentsService {
@@ -147,11 +195,7 @@ export class PaymentsService {
   }
 
   private async assertPaidByMemberAllowedForInvoice(
-    invoice: {
-      clubId: string;
-      familyId: string | null;
-      householdGroupId: string | null;
-    },
+    invoice: InvoiceForPayer,
     paidByMemberId: string | null | undefined,
   ): Promise<void> {
     if (paidByMemberId == null || paidByMemberId === '') {
@@ -200,17 +244,16 @@ export class PaymentsService {
       }
       return;
     }
+    // Facture sans foyer (ADR-0022, §3) : son acheteur boutique, ou le membre
+    // facturé, peut la régler.
+    if (await this.isInvoicePartyMember(invoice, paidByMemberId)) return;
     throw new BadRequestException(
       'Payeur renseigné impossible : facture sans foyer ni groupe',
     );
   }
 
   private async assertPaidByContactAllowedForInvoice(
-    invoice: {
-      clubId: string;
-      familyId: string | null;
-      householdGroupId: string | null;
-    },
+    invoice: InvoiceForPayer,
     paidByContactId: string | null | undefined,
   ): Promise<void> {
     if (paidByContactId == null || paidByContactId === '') {
@@ -260,6 +303,9 @@ export class PaymentsService {
       }
       return;
     }
+    // Facture sans foyer (ADR-0022, §3) : son acheteur boutique, ou le membre
+    // facturé, peut la régler.
+    if (await this.isInvoicePartyContact(invoice, paidByContactId)) return;
     throw new BadRequestException(
       'Payeur contact impossible : facture sans foyer ni groupe',
     );
@@ -441,13 +487,52 @@ export class PaymentsService {
     );
     // Délégué : le remboursement Stripe passe par le même service, et deux
     // chemins d'avoir divergents produiraient des documents différents.
-    const creditNote = await this.creditNotes.create({
-      clubId,
-      parentInvoiceId,
-      reason,
-      amountCents,
+    //
+    // Sur une facture réglée par crédit, l'avoir rend au crédit ce qu'il
+    // rembourse, dans SA transaction (ADR-0022, §3) : un avoir sans son
+    // paiement négatif laisserait le crédit consommé à tort.
+    const { creditNote, returned } = await this.prisma.$transaction(async (tx) => {
+      await lockInvoiceInTx(tx, parentInvoiceId);
+      const note = await this.creditNotes.create({
+        tx,
+        clubId,
+        parentInvoiceId,
+        reason,
+        amountCents,
+      });
+      return {
+        creditNote: note,
+        returned: await this.returnPayerCreditInTx(
+          tx,
+          clubId,
+          parentInvoiceId,
+          note.amountCents,
+        ),
+      };
     });
-    await this.creditNotes.recordAccounting(clubId, creditNote.id);
+    const returnedCents = returned.reduce((sum, r) => sum + r.amountCents, 0);
+    if (returnedCents === 0) {
+      await this.creditNotes.recordAccounting(clubId, creditNote.id);
+      return creditNote;
+    }
+    // La part rendue au crédit se contre-passe sur 419100 ; le reste suit
+    // l'encaissement d'origine, comme pour tout avoir.
+    await this.creditNotes.recordAccounting(
+      clubId,
+      creditNote.id,
+      returned[0].sourcePaymentId,
+      null,
+      returnedCents,
+    );
+    if (creditNote.amountCents > returnedCents) {
+      await this.creditNotes.recordAccounting(
+        clubId,
+        creditNote.id,
+        null,
+        null,
+        creditNote.amountCents - returnedCents,
+      );
+    }
     return creditNote;
   }
 
@@ -499,6 +584,10 @@ export class PaymentsService {
     clubId: string,
     input: UpsertClubPricingRuleInput,
   ) {
+    assertNotPayerCreditMethod(
+      input.method,
+      'Le crédit ne porte pas de règle tarifaire : il règle le montant de la facture.',
+    );
     return this.prisma.clubPricingRule.upsert({
       where: {
         clubId_method: { clubId, method: input.method },
@@ -520,6 +609,10 @@ export class PaymentsService {
     clubId: string,
     input: CreateInvoiceInput,
   ): Promise<Invoice> {
+    assertNotPayerCreditMethod(
+      input.pricingMethod,
+      'Le crédit ne porte pas de règle tarifaire : il règle le montant de la facture.',
+    );
     if (input.baseAmountCents < 0) {
       throw new BadRequestException('Montant invalide');
     }
@@ -576,6 +669,10 @@ export class PaymentsService {
     input: RecordManualPaymentInput,
     userId: string | null = null,
   ) {
+    assertNotPayerCreditMethod(
+      input.method,
+      'Le crédit ne s’encaisse pas à la main : réglez la facture avec le crédit depuis son tiroir.',
+    );
     const invoice = await this.prisma.invoice.findFirst({
       where: { id: input.invoiceId, clubId },
     });
@@ -687,79 +784,490 @@ export class PaymentsService {
       input.method === ClubPaymentMethod.MANUAL_CHECK
         ? await this.buildChequeData(clubId, invoice.label, input, ref, userId)
         : null;
-    const payment = await this.prisma.$transaction(async (tx) => {
-      const p = await tx.payment.create({
-        data: {
-          clubId,
-          invoiceId: invoice.id,
+    const { payment, settled } = await this.prisma.$transaction(async (tx) => {
+      // Relu sous verrou : deux saisies simultanées ne surpaient plus la
+      // facture (ADR-0022, §3). Les contrôles d'avant restent, pour un refus
+      // clair sans transaction.
+      await lockInvoiceInTx(tx, invoice.id);
+      const current = await resolveInvoiceBalance(tx, invoice.id, clubId);
+      if (
+        current.status !== InvoiceStatus.OPEN ||
+        input.amountCents > current.collectableCents
+      ) {
+        throw new BadRequestException(
+          `La facture vient de changer : reste à encaisser ${eurosFr(current.collectableCents)}. Rechargez-la avant de saisir.`,
+        );
+      }
+      return this.settleInvoicePaymentInTx(tx, {
+        clubId,
+        invoice,
+        balanceCents: current.balanceCents,
+        payment: {
           amountCents: input.amountCents,
           method: input.method,
           externalRef: ref,
           paidByMemberId: input.paidByMemberId ?? null,
           paidByContactId: input.paidByContactId ?? null,
         },
+        chequeData,
       });
-      if (chequeData) {
-        await tx.cheque.create({ data: { ...chequeData, paymentId: p.id } });
-      }
-      const newPaid = paidBefore + input.amountCents;
-      if (newPaid === invoice.amountCents) {
-        await tx.invoice.update({
-          where: { id: invoice.id },
-          data: { status: InvoiceStatus.PAID },
-        });
-      }
-
-      // Facture d'une commande boutique soldée : la commande passe payée et la
-      // marchandise sort du placard — exactement ce que fait déjà l'encaissement
-      // par carte (webhook Stripe). Sans cet appel, encaisser un chèque sur une
-      // vente laissait la commande EN ATTENTE et le stock intact : il fallait un
-      // second geste, « Marquer payée », qui lui n'enregistrait aucun argent.
-      //
-      // Dans la transaction, pour la même raison que côté Stripe : la sortie de
-      // stock est une garantie, pas un accessoire. Elle ne peut pas empêcher la
-      // saisie d'un vrai chèque — `fulfill` ne lève jamais, il ignore un article
-      // non suivi en stock — et elle est idempotente.
-      //
-      // Le critère est le SOLDE, avoirs déduits, comme pour la clôture de
-      // l'échéancier ci-dessous et comme côté Stripe : l'égalité stricte au
-      // montant nominal ne couvre pas le cas d'un avoir.
-      if (balanceCents - input.amountCents <= 0 && invoice.shopOrderId) {
-        await this.shop.fulfillPaidShopOrderInTx(
-          tx,
-          clubId,
-          invoice.shopOrderId,
-        );
-      }
-      return p;
     });
 
-    // AVANT la comptabilité, et c'est délibéré. Un règlement encaissé hors
-    // échéancier peut solder la facture ; sans cette clôture, le plan reste
-    // ACTIVE et le moteur continuerait de prélever une facture déjà payée.
-    // Placée après le hook comptable, la clôture sautait dès que celui-ci
-    // échouait — un club sans compte financier configuré suffisait — et
-    // laissait exactement l'état dangereux qu'elle doit empêcher.
-    //
-    // On se base sur le solde réel, avoirs déduits, et non sur le passage en
-    // PAID : celui-ci repose sur une égalité stricte au montant nominal, qui
-    // ne couvre pas le cas d'un avoir.
-    if (balanceCents - input.amountCents <= 0) {
+    await this.afterInvoicePaymentCommit(clubId, {
+      invoiceId: invoice.id,
+      settled,
+      paymentId: payment.id,
+      amountCents: payment.amountCents,
+      label: `Encaissement ${invoice.label}`,
+      financialAccountId: input.financialAccountId ?? null,
+    });
+
+    return payment;
+  }
+
+  /**
+   * Effets d'un règlement sur sa facture, dans la transaction de l'appelant
+   * (ADR-0022, §3). La saisie manuelle et l'imputation de crédit passent par
+   * ici : paiement, fiche chèque, facture PAYÉE au solde avoirs déduits,
+   * commande boutique servie. L'appelant tient le verrou de la facture et
+   * fournit le reste dû qu'il vient d'y relire.
+   */
+  private async settleInvoicePaymentInTx(
+    tx: Prisma.TransactionClient,
+    args: {
+      clubId: string;
+      invoice: { id: string; shopOrderId?: string | null };
+      /** Reste dû relu sous verrou, avant ce règlement. */
+      balanceCents: number;
+      payment: {
+        amountCents: number;
+        method: ClubPaymentMethod;
+        externalRef: string | null;
+        paidByMemberId: string | null;
+        paidByContactId: string | null;
+      };
+      chequeData?: Omit<Prisma.ChequeUncheckedCreateInput, 'paymentId'> | null;
+    },
+  ): Promise<{ payment: Payment; settled: boolean }> {
+    const payment = await tx.payment.create({
+      data: {
+        clubId: args.clubId,
+        invoiceId: args.invoice.id,
+        ...args.payment,
+      },
+    });
+    // Un chèque naît en portefeuille (ADR-0015) : sa fiche vit ou meurt avec
+    // son paiement.
+    if (args.chequeData) {
+      await tx.cheque.create({ data: { ...args.chequeData, paymentId: payment.id } });
+    }
+    // Le SOLDE décide, avoirs déduits : l'égalité au montant nominal laissait
+    // ouverte une facture qu'un avoir avait réduite.
+    const settled = args.balanceCents - args.payment.amountCents <= 0;
+    if (settled) {
+      await tx.invoice.update({
+        where: { id: args.invoice.id },
+        data: { status: InvoiceStatus.PAID },
+      });
+      // Commande boutique soldée : servie dans la même transaction, comme côté
+      // Stripe. La sortie de stock est une garantie ; `fulfill` ne lève jamais
+      // et reste idempotent.
+      if (args.invoice.shopOrderId) {
+        await this.shop.fulfillPaidShopOrderInTx(
+          tx,
+          args.clubId,
+          args.invoice.shopOrderId,
+        );
+      }
+    }
+    return { payment, settled };
+  }
+
+  /**
+   * Après le commit d'un règlement. La clôture de l'échéancier passe AVANT
+   * l'écriture : placée après, elle sautait dès que l'écriture échouait, et le
+   * moteur continuait de prélever une facture payée.
+   */
+  private async afterInvoicePaymentCommit(
+    clubId: string,
+    args: {
+      invoiceId: string;
+      settled: boolean;
+      paymentId: string;
+      amountCents: number;
+      label: string;
+      financialAccountId: string | null;
+    },
+  ): Promise<void> {
+    if (args.settled) {
       await this.scheduleEngine.closeScheduleForInvoice(
-        invoice.id,
+        args.invoiceId,
         InvoiceStatus.PAID,
       );
     }
-
     await this.tryRecordIncome(
       clubId,
-      payment.id,
-      `Encaissement ${invoice.label}`,
-      payment.amountCents,
-      input.financialAccountId ?? null,
+      args.paymentId,
+      args.label,
+      args.amountCents,
+      args.financialAccountId,
+    );
+  }
+
+  /**
+   * Règle une facture avec le crédit d'une personne (ADR-0022, §3) : mêmes
+   * effets qu'un encaissement manuel, sans mouvement d'argent. Sous deux
+   * verrous, la personne puis la facture, le crédit et le reste dû sont relus
+   * avant d'écrire. Deux imputations simultanées ne dépensent donc pas deux
+   * fois le même crédit, et ne surpaient pas la facture.
+   */
+  async applyPayerCredit(clubId: string, input: ApplyPayerCreditInput) {
+    if (
+      input.amountCents != null &&
+      (!Number.isInteger(input.amountCents) || input.amountCents < 1)
+    ) {
+      throw new BadRequestException('Le montant à régler doit être positif.');
+    }
+    const holder = await resolvePayerCreditHolder(this.prisma, clubId, input);
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id: input.invoiceId, clubId },
+    });
+    if (!invoice) {
+      throw new NotFoundException('Facture introuvable');
+    }
+    if (invoice.isCreditNote || invoice.purpose !== InvoicePurpose.CHARGE) {
+      throw new BadRequestException(
+        'Le crédit règle une facture : ni un avoir, ni un reçu d’avance.',
+      );
+    }
+    if (invoice.status !== InvoiceStatus.OPEN) {
+      throw new BadRequestException(
+        'Seule une facture ouverte se règle avec le crédit.',
+      );
+    }
+    const payer = await this.payerProfileForCredit(invoice, holder);
+    await this.assertPayerDocumentsSignedOrThrow(
+      clubId,
+      payer.paidByMemberId,
+      payer.paidByContactId,
     );
 
-    return payment;
+    const applied = await this.prisma.$transaction(async (tx) => {
+      await lockPayerCreditInTx(tx, holder.personKey);
+      await lockInvoiceInTx(tx, invoice.id);
+      const credit = await readPayerCredit(tx, clubId, holder);
+      const current = await resolveInvoiceBalance(tx, invoice.id, clubId);
+      if (current.status !== InvoiceStatus.OPEN) {
+        throw new BadRequestException(
+          'La facture vient d’être soldée ou annulée : rechargez-la.',
+        );
+      }
+      // Un crédit négatif est à régulariser : il bloque toute imputation (§4).
+      if (credit.balanceCents <= 0) {
+        throw new BadRequestException(
+          `${holder.displayName} n’a pas de crédit disponible.`,
+        );
+      }
+      if (current.collectableCents <= 0) {
+        throw new BadRequestException(
+          'Rien ne reste à encaisser sur cette facture.',
+        );
+      }
+      const ceilingCents = Math.min(credit.balanceCents, current.collectableCents);
+      const amountCents = input.amountCents ?? ceilingCents;
+      if (amountCents > ceilingCents) {
+        throw new BadRequestException(
+          `Au plus ${eurosFr(ceilingCents)} : crédit disponible ${eurosFr(credit.balanceCents)}, reste à encaisser ${eurosFr(current.collectableCents)}.`,
+        );
+      }
+      const settled = await this.settleInvoicePaymentInTx(tx, {
+        clubId,
+        invoice,
+        balanceCents: current.balanceCents,
+        payment: {
+          amountCents,
+          method: ClubPaymentMethod.PAYER_CREDIT,
+          externalRef: null,
+          ...payer,
+        },
+      });
+      return {
+        ...settled,
+        creditBalanceCents: credit.balanceCents - amountCents,
+        invoiceBalanceCents: Math.max(0, current.balanceCents - amountCents),
+      };
+    });
+
+    await this.afterInvoicePaymentCommit(clubId, {
+      invoiceId: invoice.id,
+      settled: applied.settled,
+      paymentId: applied.payment.id,
+      amountCents: applied.payment.amountCents,
+      label: `Crédit — ${invoice.label}`,
+      financialAccountId: null,
+    });
+
+    return {
+      payment: applied.payment,
+      invoiceId: invoice.id,
+      invoiceStatus: applied.settled ? InvoiceStatus.PAID : InvoiceStatus.OPEN,
+      invoiceBalanceCents: applied.invoiceBalanceCents,
+      creditBalanceCents: applied.creditBalanceCents,
+    };
+  }
+
+  /**
+   * Les personnes qui peuvent régler cette facture avec leur crédit, et combien
+   * elles en ont. Le contrôle est celui de l'imputation elle-même : la liste ne
+   * propose rien que la mutation refuserait.
+   */
+  async listPayerCreditCandidates(
+    clubId: string,
+    invoiceId: string,
+  ): Promise<
+    Array<{
+      memberId: string | null;
+      contactId: string | null;
+      displayName: string;
+      balanceCents: number;
+    }>
+  > {
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id: invoiceId, clubId },
+    });
+    if (!invoice) {
+      throw new NotFoundException('Facture introuvable');
+    }
+    if (
+      invoice.status !== InvoiceStatus.OPEN ||
+      invoice.isCreditNote ||
+      invoice.purpose !== InvoicePurpose.CHARGE
+    ) {
+      return [];
+    }
+    const candidates: Array<{
+      memberId: string | null;
+      contactId: string | null;
+      displayName: string;
+      balanceCents: number;
+    }> = [];
+    const seen = new Set<string>();
+    for (const ref of await this.invoicePartyProfiles(invoice)) {
+      let holder: PayerCreditHolder;
+      try {
+        holder = await resolvePayerCreditHolder(this.prisma, clubId, ref);
+      } catch {
+        continue;
+      }
+      if (seen.has(holder.personKey)) continue;
+      seen.add(holder.personKey);
+      let payer: PayerProfile;
+      try {
+        payer = await this.payerProfileForCredit(invoice, holder);
+      } catch (err) {
+        if (err instanceof BadRequestException) continue;
+        throw err;
+      }
+      const credit = await readPayerCredit(this.prisma, clubId, holder);
+      if (credit.balanceCents <= 0) continue;
+      candidates.push({
+        memberId: payer.paidByMemberId,
+        contactId: payer.paidByContactId,
+        displayName: holder.displayName,
+        balanceCents: credit.balanceCents,
+      });
+    }
+    return candidates;
+  }
+
+  /**
+   * Le profil de la personne qui peut régler cette facture : le même contrôle
+   * que pour tout payeur, sur ses profils membre puis contact.
+   */
+  private async payerProfileForCredit(
+    invoice: InvoiceForPayer,
+    holder: PayerCreditHolder,
+  ): Promise<PayerProfile> {
+    for (const memberId of holder.memberIds) {
+      try {
+        await this.assertPaidByMemberAllowedForInvoice(invoice, memberId);
+        return { paidByMemberId: memberId, paidByContactId: null };
+      } catch (err) {
+        if (!(err instanceof BadRequestException)) throw err;
+      }
+    }
+    for (const contactId of holder.contactIds) {
+      try {
+        await this.assertPaidByContactAllowedForInvoice(invoice, contactId);
+        return { paidByMemberId: null, paidByContactId: contactId };
+      } catch (err) {
+        if (!(err instanceof BadRequestException)) throw err;
+      }
+    }
+    throw new BadRequestException(
+      `${holder.displayName} ne peut pas régler cette facture : elle n’est ni de son foyer, ni à son nom.`,
+    );
+  }
+
+  /** Les profils liés à une facture : son foyer, son acheteur, ses membres facturés. */
+  private async invoicePartyProfiles(
+    invoice: InvoiceForPayer,
+  ): Promise<Array<{ memberId?: string; contactId?: string }>> {
+    const refs: Array<{ memberId?: string; contactId?: string }> = [];
+    let groupId = invoice.householdGroupId;
+    if (!groupId && invoice.familyId) {
+      const family = await this.prisma.family.findFirst({
+        where: { id: invoice.familyId, clubId: invoice.clubId },
+        select: { householdGroupId: true },
+      });
+      groupId = family?.householdGroupId ?? null;
+    }
+    if (groupId || invoice.familyId) {
+      const links = await this.prisma.familyMember.findMany({
+        where: groupId
+          ? { family: { householdGroupId: groupId, clubId: invoice.clubId } }
+          : { familyId: invoice.familyId as string },
+        select: { memberId: true, contactId: true },
+      });
+      for (const link of links) {
+        if (link.memberId) refs.push({ memberId: link.memberId });
+        if (link.contactId) refs.push({ contactId: link.contactId });
+      }
+    }
+    const buyer = await this.shopBuyerOf(invoice);
+    if (buyer?.memberId) refs.push({ memberId: buyer.memberId });
+    if (buyer?.contactId) refs.push({ contactId: buyer.contactId });
+    const lines = await this.prisma.invoiceLine.findMany({
+      where: { invoiceId: invoice.id },
+      select: { memberId: true },
+    });
+    for (const line of lines) refs.push({ memberId: line.memberId });
+    return refs;
+  }
+
+  /** L'acheteur d'une commande boutique ou d'un échange, s'il y en a un. */
+  private async shopBuyerOf(
+    invoice: InvoiceForPayer,
+  ): Promise<{ memberId: string | null; contactId: string | null } | null> {
+    if (invoice.shopOrderId) {
+      return this.prisma.shopOrder.findFirst({
+        where: { id: invoice.shopOrderId, clubId: invoice.clubId },
+        select: { memberId: true, contactId: true },
+      });
+    }
+    if (invoice.shopAdjustmentId) {
+      const adjustment = await this.prisma.shopOrderAdjustment.findFirst({
+        where: { id: invoice.shopAdjustmentId, clubId: invoice.clubId },
+        select: { order: { select: { memberId: true, contactId: true } } },
+      });
+      return adjustment?.order ?? null;
+    }
+    return null;
+  }
+
+  /**
+   * Rend au crédit ce qu'un avoir rembourse sur une facture réglée par crédit
+   * (ADR-0022, §3), dans la transaction de l'avoir, déjà créé. Un paiement
+   * négatif PAYER_CREDIT par imputation rendue, la plus récente d'abord. Un
+   * avoir qui ne fait qu'éteindre une dette ne rend rien.
+   */
+  private async returnPayerCreditInTx(
+    tx: Prisma.TransactionClient,
+    clubId: string,
+    invoiceId: string,
+    creditNoteCents: number,
+  ): Promise<Array<{ sourcePaymentId: string; amountCents: number }>> {
+    const invoice = await tx.invoice.findFirst({
+      where: { id: invoiceId, clubId },
+      select: {
+        amountCents: true,
+        payments: {
+          select: {
+            id: true,
+            amountCents: true,
+            method: true,
+            refundedPaymentId: true,
+            paidByMemberId: true,
+            paidByContactId: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+    if (!invoice) return [];
+    const creditUses = invoice.payments
+      .filter((p) => p.method === ClubPaymentMethod.PAYER_CREDIT && p.amountCents > 0)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    if (creditUses.length === 0) return [];
+
+    const creditNotes = await tx.invoice.aggregate({
+      where: {
+        parentInvoiceId: invoiceId,
+        clubId,
+        isCreditNote: true,
+        status: { not: InvoiceStatus.VOID },
+      },
+      _sum: { amountCents: true },
+    });
+    const netPaidCents = invoice.payments.reduce((sum, p) => sum + p.amountCents, 0);
+    const stillDueCents = Math.max(
+      0,
+      invoice.amountCents - (creditNotes._sum.amountCents ?? 0),
+    );
+    // Ce que l'avoir rembourse : ce qui a été payé au-delà du dû qu'il laisse.
+    let remainingCents = Math.min(
+      creditNoteCents,
+      Math.max(0, netPaidCents - stillDueCents),
+    );
+
+    const returned: Array<{ sourcePaymentId: string; amountCents: number }> = [];
+    for (const use of creditUses) {
+      if (remainingCents <= 0) break;
+      const alreadyReturnedCents = invoice.payments
+        .filter((p) => p.refundedPaymentId === use.id)
+        .reduce((sum, p) => sum - p.amountCents, 0);
+      const takeCents = Math.min(remainingCents, use.amountCents - alreadyReturnedCents);
+      if (takeCents <= 0) continue;
+      await tx.payment.create({
+        data: {
+          clubId,
+          invoiceId,
+          amountCents: -takeCents,
+          method: ClubPaymentMethod.PAYER_CREDIT,
+          refundedPaymentId: use.id,
+          paidByMemberId: use.paidByMemberId,
+          paidByContactId: use.paidByContactId,
+        },
+      });
+      returned.push({ sourcePaymentId: use.id, amountCents: takeCents });
+      remainingCents -= takeCents;
+    }
+    return returned;
+  }
+
+  /**
+   * Facture sans foyer (ADR-0022, §3) : son acheteur boutique ou un membre
+   * facturé sur ses lignes peut la régler.
+   */
+  private async isInvoicePartyMember(
+    invoice: InvoiceForPayer,
+    memberId: string,
+  ): Promise<boolean> {
+    const buyer = await this.shopBuyerOf(invoice);
+    if (buyer?.memberId === memberId) return true;
+    const line = await this.prisma.invoiceLine.findFirst({
+      where: { invoiceId: invoice.id, memberId },
+      select: { id: true },
+    });
+    return line !== null;
+  }
+
+  private async isInvoicePartyContact(
+    invoice: InvoiceForPayer,
+    contactId: string,
+  ): Promise<boolean> {
+    const buyer = await this.shopBuyerOf(invoice);
+    return buyer?.contactId === contactId;
   }
 
   /**
@@ -1377,25 +1885,5 @@ export class PaymentsService {
     return this.prisma.invoice.count({
       where: { clubId, status: InvoiceStatus.OPEN },
     });
-  }
-
-  async sumRevenueCentsInMonth(
-    clubId: string,
-    ref: Date,
-  ): Promise<number> {
-    const start = new Date(
-      Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth(), 1, 0, 0, 0, 0),
-    );
-    const end = new Date(
-      Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth() + 1, 1, 0, 0, 0, 0),
-    );
-    const agg = await this.prisma.payment.aggregate({
-      where: {
-        clubId,
-        createdAt: { gte: start, lt: end },
-      },
-      _sum: { amountCents: true },
-    });
-    return agg._sum.amountCents ?? 0;
   }
 }

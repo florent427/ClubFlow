@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   AccountingEntryKind,
   ClubEventStatus,
+  ClubPaymentMethod,
   GrantApplicationStatus,
   InvoicePurpose,
   InvoiceStatus,
@@ -55,6 +56,9 @@ export class DashboardService {
         where: {
           clubId,
           createdAt: { gte: monthStart, lt: monthEnd },
+          // Un règlement par crédit ne fait entrer aucun argent : l'avance a
+          // été comptée à son versement (ADR-0022).
+          method: { not: ClubPaymentMethod.PAYER_CREDIT },
         },
         _sum: { amountCents: true },
       }),
@@ -156,12 +160,22 @@ export class DashboardService {
       vitrineArticles,
       vitrineContactsLast30,
     ] = await Promise.all([
+      // Hors règlements par crédit : l'avance a été comptée à son versement
+      // (ADR-0022).
       this.prisma.payment.aggregate({
-        where: { clubId, createdAt: { gte: d30, lt: now } },
+        where: {
+          clubId,
+          createdAt: { gte: d30, lt: now },
+          method: { not: ClubPaymentMethod.PAYER_CREDIT },
+        },
         _sum: { amountCents: true },
       }),
       this.prisma.payment.aggregate({
-        where: { clubId, createdAt: { gte: d60, lt: d30 } },
+        where: {
+          clubId,
+          createdAt: { gte: d60, lt: d30 },
+          method: { not: ClubPaymentMethod.PAYER_CREDIT },
+        },
         _sum: { amountCents: true },
       }),
       this.prisma.member.count({

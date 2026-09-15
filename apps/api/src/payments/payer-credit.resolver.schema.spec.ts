@@ -11,7 +11,7 @@ import { PaymentsResolver } from './payments.resolver';
  * nestjs-graphql-nullable-needs-explicit-type).
  */
 describe('Crédit du payeur — schéma GraphQL (ADR-0022)', () => {
-  it('expose le crédit, l’encaissement d’une avance et la nature des factures', async () => {
+  it('expose le crédit, ses avances et ses imputations, et la nature des factures', async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [GraphQLSchemaBuilderModule],
     }).compile();
@@ -25,8 +25,28 @@ describe('Crédit du payeur — schéma GraphQL (ADR-0022)', () => {
       'recordPayerCreditDeposit(input: RecordPayerCreditDepositInput!): PayerCreditDepositResultGraph!',
     );
     expect(sdl).toContain('balanceCents: Int!');
+    expect(sdl).toContain('uses: [PayerCreditUseGraph!]!');
     expect(sdl).toContain('purpose: InvoicePurpose!');
     expect(sdl).toContain('payerCreditMemberId: ID');
     expect(sdl).toMatch(/enum InvoicePurpose \{\s+CHARGE\s+PAYER_CREDIT_DEPOSIT\s+\}/);
+  });
+
+  it('expose l’imputation du crédit sur une facture, et qui peut la faire', async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [GraphQLSchemaBuilderModule],
+    }).compile();
+    const factory = moduleRef.get(GraphQLSchemaFactory);
+    const sdl = printSchema(
+      await factory.create([PayerCreditResolver, PaymentsResolver]),
+    );
+
+    expect(sdl).toContain(
+      'clubInvoicePayerCredits(invoiceId: ID!): [PayerCreditCandidateGraph!]!',
+    );
+    expect(sdl).toContain(
+      'applyPayerCreditToInvoice(input: ApplyPayerCreditInput!): PayerCreditApplyResultGraph!',
+    );
+    expect(sdl).toContain('invoiceStatus: InvoiceStatus!');
+    expect(sdl).toMatch(/enum ClubPaymentMethod \{[^}]*PAYER_CREDIT[^}]*\}/);
   });
 });

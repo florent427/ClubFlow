@@ -85,6 +85,46 @@ Contre-épreuve faite : double sans ce masquage + mutation → 68 verts ; avec
 → « crée un brouillon par fournisseur » rougit (référence `-002` attendue,
 `-001` obtenue deux fois).
 
+## La même famille côté concurrence : une lecture prise après sa latence
+
+Rencontré le 2026-09-15 sur `payments-payer-credit-apply.spec.ts` (ADR-0022,
+lot 2). Le double reproduisait `pg_advisory_xact_lock` et une latence de
+lecture, censée ouvrir une fenêtre de course. Pourtant, retirer le verrou de la
+facture **restait vert** (20 tests sur 20), à la saisie manuelle comme à
+l'imputation du crédit.
+
+La latence précédait la lecture :
+
+```ts
+aggregate: async ({ where }) => {
+  await pause(); // la latence…
+  const lignes = payments.filter((p) => correspond(p, where)); // …puis l'état
+  return { _sum: { amountCents: somme(lignes) } };
+},
+```
+
+La relecture du reste dû est la dernière lecture avant l'écriture. La première
+transaction se réveille, lit, puis écrit sans plus rien attendre. La seconde se
+réveille après elle et lit la ligne déjà écrite : la relecture suffisait, et le
+verrou ne servait à rien dans le monde simulé. Sous PostgreSQL, les deux
+lectures partent en même temps et voient la même facture.
+
+Correctif du double : l'état est pris au début de la requête, la réponse arrive
+après la latence.
+
+```ts
+aggregate: async ({ where }) => {
+  const total = somme(payments.filter((p) => correspond(p, where))); // état du début
+  await pause(); // pendant la latence, l'autre transaction écrit
+  return { _sum: { amountCents: total } };
+},
+```
+
+Contre-épreuve : mêmes mutations, double corrigé, chacune fait rougir le test de
+concurrence qui la vise (1 rouge sur 22). Le verrou de la personne était déjà
+tué avant la correction, par chance : d'autres lectures suivaient celle du
+crédit, et elles ouvraient la fenêtre.
+
 ## Le réflexe à garder
 
 - Avant de faire confiance à un test d'atomicité, **appliquer la mutation
@@ -97,6 +137,9 @@ Contre-épreuve faite : double sans ce masquage + mutation → 68 verts ; avec
 - Une transaction qui LIT ce qu'elle vient d'écrire (référence, maximum + 1,
   compteur) : appliquer la mutation qui déplace cette lecture sur `prisma`.
   Verte = le double montre à `prisma` des écritures non committées.
+- Un test de concurrence : retirer le verrou, relancer. Vert = la fenêtre de
+  course n'existe pas dans le double. Vérifier que chaque lecture prend son état
+  AVANT sa latence, pas seulement qu'une latence existe.
 
 ## Lié
 

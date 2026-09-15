@@ -13,6 +13,7 @@ import {
   AccountingEntrySource,
   AccountingEntryStatus,
   AccountingLineSide,
+  ClubPaymentMethod,
   InvoicePurpose,
   Prisma,
 } from '@prisma/client';
@@ -325,12 +326,19 @@ export class AccountingService {
     // comptes financiers (CASH → caisse, STRIPE_CARD → transit Stripe,
     // virement/chèque → banque). Fallback automatique sur la banque par
     // défaut si pas de route configurée.
-    const fin = financialAccountId
-      ? await this.financialAccounts.getById(clubId, financialAccountId)
-      : await this.financialAccounts.resolveForPayment(clubId, payment.method);
+    //
+    // Crédit utilisé (ADR-0022, §5) : aucun argent n'entre. La recette est
+    // constatée maintenant, contre 419100 où l'avance attendait. Aucun compte
+    // financier : l'écriture est hors trésorerie et hors rapprochement.
+    const isPayerCreditUse = payment.method === ClubPaymentMethod.PAYER_CREDIT;
+    const fin = isPayerCreditUse
+      ? null
+      : financialAccountId
+        ? await this.financialAccounts.getById(clubId, financialAccountId)
+        : await this.financialAccounts.resolveForPayment(clubId, payment.method);
     const bankAccount = await this.lookupAccount(
       clubId,
-      fin.accountingAccount.code,
+      fin ? fin.accountingAccount.code : PAYER_CREDIT_ACCOUNT_CODE,
     );
     // Une vente boutique n'est pas une cotisation. Le mapping SHOP_PRODUCT
     // était seedé depuis le début mais AUCUN chemin ne l'utilisait : tout
@@ -407,13 +415,13 @@ export class AccountingService {
           occurredAt,
           // Trace le compte financier réel pour le rapprochement bancaire
           // et l'affichage UI ("encaissé sur Caisse buvette").
-          financialAccountId: fin.id,
+          financialAccountId: fin?.id ?? null,
         },
       });
 
       // Idempotence : on persiste aussi le financialAccountId sur le Payment
       // si pas encore rempli (cas paiements créés avant la migration).
-      if (!payment.financialAccountId) {
+      if (fin && !payment.financialAccountId) {
         await tx.payment.update({
           where: { id: paymentId },
           data: { financialAccountId: fin.id },
@@ -504,6 +512,11 @@ export class AccountingService {
      * 511200 ferait passer le portefeuille de chèques sous zéro.
      */
     refundFinancialAccountId?: string | null,
+    /**
+     * Part de l'avoir à contre-passer ici, quand il se partage entre un crédit
+     * rendu et un encaissement (ADR-0022, §5). Par défaut : tout l'avoir.
+     */
+    partCents?: number | null,
   ): Promise<void> {
     if (!(await this.isAccountingEnabled(clubId))) return;
 
@@ -525,7 +538,14 @@ export class AccountingService {
         clubId,
         ...(sourcePaymentId
           ? { paymentId: sourcePaymentId }
-          : { payment: { invoiceId: creditNote.parentInvoiceId } }),
+          : {
+              // Une imputation de crédit ne se contre-passe que désignée, avec
+              // le paiement négatif qui rend le crédit (ADR-0022).
+              payment: {
+                invoiceId: creditNote.parentInvoiceId,
+                method: { not: ClubPaymentMethod.PAYER_CREDIT },
+              },
+            }),
         source: AccountingEntrySource.AUTO_MEMBER_PAYMENT,
         cancelledAt: null,
       },
@@ -570,6 +590,11 @@ export class AccountingService {
     const cashCode =
       refundAccount?.accountingAccount.code ??
       originalEntry.financialAccount?.accountingAccount.code ??
+      // Sans compte financier : le compte débité par l'écriture d'origine. Une
+      // imputation de crédit a débité 419100 ; le crédit rendu y revient,
+      // jamais sur la banque (ADR-0022, §5).
+      originalEntry.lines.find((l) => l.side === AccountingLineSide.DEBIT)
+        ?.accountCode ??
       // Encaissement antérieur au multi-comptes : le compte n'a pas été figé.
       (await this.mapping.resolveAccountCode(clubId, 'BANK_ACCOUNT'));
     const bankAccount = await this.lookupAccount(clubId, cashCode);
@@ -590,7 +615,8 @@ export class AccountingService {
       (await this.mapping.resolveAccountCode(clubId, 'MEMBERSHIP_PRODUCT'));
     const revenueAccount = await this.lookupAccount(clubId, revenueCode);
 
-    const amountCents = creditNote.amountCents;
+    const amountCents = partCents ?? creditNote.amountCents;
+    if (amountCents <= 0) return;
 
     const contraId = await this.prisma.$transaction(async (tx) => {
       const contra = await tx.accountingEntry.create({

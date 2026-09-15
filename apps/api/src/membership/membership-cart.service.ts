@@ -28,6 +28,7 @@ import {
   type AdjustmentDraft,
 } from './membership-pricing';
 import { applyPricing } from '../payments/pricing-rules';
+import { assertNotPayerCreditMethod } from '../payments/payment-method-rules';
 import { MAIL_TRANSPORT } from '../mail/mail.constants';
 import type { MailTransport } from '../mail/mail-transport.interface';
 import { ClubSendingDomainService } from '../mail/club-sending-domain.service';
@@ -2034,6 +2035,9 @@ export class MembershipCartService {
     cartId: string,
     lockedPaymentMethod?: ClubPaymentMethod | null,
   ) {
+    // Avant tout effet : la validation crée les membres et la facture, puis
+    // seulement verrouille le moyen de paiement.
+    assertNotPayerCreditMethod(lockedPaymentMethod);
     let cart = await this.getCartById(clubId, cartId);
     if (cart.status !== MembershipCartStatus.OPEN) {
       throw new BadRequestException('Le projet est déjà validé ou annulé.');

@@ -10,6 +10,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { assertNotPayerCreditMethod } from '../payments/payment-method-rules';
 
 /**
  * Input typé pour la création d'un compte financier.
@@ -221,6 +222,13 @@ export class ClubFinancialAccountsService {
    *  4. Sinon throw — l'admin doit configurer.
    */
   async resolveForPayment(clubId: string, method: ClubPaymentMethod) {
+    // Une imputation de crédit débite 419100 (ADR-0022) : rien n'entre en
+    // trésorerie, et le repli « n'importe quelle banque » inventerait un
+    // encaissement.
+    assertNotPayerCreditMethod(
+      method,
+      'Un règlement par crédit ne passe par aucun compte financier.',
+    );
     // Étape 1 : route explicite
     const route = await this.prisma.clubPaymentRoute.findUnique({
       where: { clubId_method: { clubId, method } },

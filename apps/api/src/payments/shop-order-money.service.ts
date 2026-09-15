@@ -29,6 +29,9 @@ const REFUND_METHOD: Record<
   [ShopOrderRefundKind.CHEQUE_RETURN]: ClubPaymentMethod.MANUAL_CHECK,
   [ShopOrderRefundKind.CHEQUE_DEPOSITED]: ClubPaymentMethod.MANUAL_TRANSFER,
   [ShopOrderRefundKind.CHEQUE_PARTIAL]: ClubPaymentMethod.MANUAL_TRANSFER,
+  // Aucun argent ne sort : le paiement négatif rend le crédit, sans compte
+  // financier, et sa contre-passation revient sur 419100 (ADR-0022).
+  [ShopOrderRefundKind.CREDIT]: ClubPaymentMethod.PAYER_CREDIT,
 };
 
 const invoiceInclude = {

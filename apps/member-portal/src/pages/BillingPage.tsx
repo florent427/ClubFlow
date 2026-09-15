@@ -45,6 +45,8 @@ function methodLabel(method: string): string {
       return 'Chèque';
     case 'MANUAL_TRANSFER':
       return 'Virement';
+    case 'PAYER_CREDIT':
+      return 'Crédit';
     default:
       return method;
   }

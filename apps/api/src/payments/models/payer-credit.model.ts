@@ -1,5 +1,5 @@
 import { Field, ID, Int, ObjectType } from '@nestjs/graphql';
-import { ClubPaymentMethod } from '@prisma/client';
+import { ClubPaymentMethod, InvoiceStatus } from '@prisma/client';
 
 @ObjectType()
 export class PayerCreditPaymentGraph {
@@ -30,6 +30,27 @@ export class PayerCreditDepositGraph {
   payments!: PayerCreditPaymentGraph[];
 }
 
+/** Une imputation du crédit sur une facture (ADR-0022, §3). */
+@ObjectType()
+export class PayerCreditUseGraph {
+  @Field(() => ID)
+  paymentId!: string;
+
+  @Field(() => ID)
+  invoiceId!: string;
+
+  @Field()
+  invoiceLabel!: string;
+
+  @Field(() => Int, {
+    description: 'Montant imputé ; négatif pour un crédit rendu (avoir, annulation).',
+  })
+  amountCents!: number;
+
+  @Field(() => Date)
+  createdAt!: Date;
+}
+
 /** Crédit d'une personne (ADR-0022). */
 @ObjectType()
 export class PayerCreditGraph {
@@ -50,6 +71,9 @@ export class PayerCreditGraph {
 
   @Field(() => [PayerCreditDepositGraph])
   deposits!: PayerCreditDepositGraph[];
+
+  @Field(() => [PayerCreditUseGraph])
+  uses!: PayerCreditUseGraph[];
 }
 
 @ObjectType()
@@ -62,4 +86,44 @@ export class PayerCreditDepositResultGraph {
 
   @Field(() => Int, { description: 'Crédit de la personne après le versement.' })
   balanceCents!: number;
+}
+
+/** Une personne qui peut régler la facture avec son crédit. */
+@ObjectType()
+export class PayerCreditCandidateGraph {
+  @Field(() => ID, {
+    nullable: true,
+    description: 'Profil au nom duquel la facture serait réglée : un membre OU un contact.',
+  })
+  memberId!: string | null;
+
+  @Field(() => ID, { nullable: true })
+  contactId!: string | null;
+
+  @Field()
+  displayName!: string;
+
+  @Field(() => Int)
+  balanceCents!: number;
+}
+
+@ObjectType()
+export class PayerCreditApplyResultGraph {
+  @Field(() => ID)
+  paymentId!: string;
+
+  @Field(() => ID)
+  invoiceId!: string;
+
+  @Field(() => Int, { description: 'Montant imputé.' })
+  amountCents!: number;
+
+  @Field(() => Int, { description: 'Crédit de la personne après l’imputation.' })
+  creditBalanceCents!: number;
+
+  @Field(() => InvoiceStatus)
+  invoiceStatus!: InvoiceStatus;
+
+  @Field(() => Int, { description: 'Reste dû de la facture après l’imputation.' })
+  invoiceBalanceCents!: number;
 }

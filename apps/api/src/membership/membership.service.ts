@@ -15,6 +15,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { type MemberMatchInput } from '../members/dynamic-group-matcher';
 import { applyPricing } from '../payments/pricing-rules';
+import { assertNotPayerCreditMethod } from '../payments/payment-method-rules';
 import { CreateClubSeasonInput, UpdateClubSeasonInput } from './dto/create-club-season.input';
 import { CreateMembershipInvoiceDraftInput } from './dto/create-membership-invoice-draft.input';
 import {
@@ -774,6 +775,7 @@ export class MembershipService {
     invoiceId: string,
     lockedPaymentMethod: ClubPaymentMethod,
   ) {
+    assertNotPayerCreditMethod(lockedPaymentMethod);
     const invoice = await this.prisma.invoice.findFirst({
       where: { id: invoiceId, clubId },
     });

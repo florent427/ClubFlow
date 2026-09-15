@@ -122,6 +122,63 @@ export function buildPayerCreditDepositInput(
   return { input };
 }
 
+/** Montant proposé : le plus petit du reste dû et du crédit de la personne. */
+export function proposedCreditApplyCents(
+  invoiceBalanceCents: number,
+  creditBalanceCents: number,
+): number {
+  return Math.max(0, Math.min(invoiceBalanceCents, creditBalanceCents));
+}
+
+/** Construit l'entrée de `applyPayerCreditToInvoice`, ou dit ce qui manque. */
+export function buildApplyPayerCreditInput(args: {
+  invoiceId: string;
+  candidate: { memberId: string | null; contactId: string | null; balanceCents: number };
+  amount: string;
+  invoiceBalanceCents: number;
+}):
+  | { input: { invoiceId: string; memberId?: string; contactId?: string; amountCents: number } }
+  | { error: string } {
+  const amountCents = parseEurosToCents(args.amount);
+  if (amountCents === null || amountCents <= 0) {
+    return { error: 'Montant invalide : saisissez un montant en euros, par exemple 40 ou 40,00.' };
+  }
+  const ceilingCents = proposedCreditApplyCents(
+    args.invoiceBalanceCents,
+    args.candidate.balanceCents,
+  );
+  if (amountCents > ceilingCents) {
+    return {
+      error: `Au plus ${euros(ceilingCents)} : le crédit disponible et le reste dû le limitent.`,
+    };
+  }
+  return {
+    input: {
+      invoiceId: args.invoiceId,
+      ...(args.candidate.memberId
+        ? { memberId: args.candidate.memberId }
+        : { contactId: args.candidate.contactId ?? undefined }),
+      amountCents,
+    },
+  };
+}
+
+/** « Utilisé sur « Cotisation 2026 » », ou « Rendu depuis … » pour un crédit rendu. */
+export function describeCreditUse(use: { invoiceLabel: string; amountCents: number }): string {
+  return use.amountCents < 0
+    ? `Rendu depuis « ${use.invoiceLabel} »`
+    : `Utilisé sur « ${use.invoiceLabel} »`;
+}
+
+/** Effet sur le crédit : « −40,00 € » pour une utilisation, « +40,00 € » pour un crédit rendu. */
+export function creditUseAmountLabel(amountCents: number): string {
+  return amountCents < 0 ? `+${euros(-amountCents)}` : `−${euros(amountCents)}`;
+}
+
+function euros(cents: number): string {
+  return `${(cents / 100).toFixed(2).replace('.', ',')} €`;
+}
+
 /** « Chèque · 4917496 », « Espèces » : comment l'avance a été versée. */
 export function describeDepositPayments(payments: DepositPayment[]): string {
   return payments

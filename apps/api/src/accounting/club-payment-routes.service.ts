@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { ClubPaymentMethod } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { assertNotPayerCreditMethod } from '../payments/payment-method-rules';
 
 /**
  * Service de gestion des routes de paiement (mapping
@@ -39,6 +40,10 @@ export class ClubPaymentRoutesService {
     method: ClubPaymentMethod,
     financialAccountId: string,
   ) {
+    assertNotPayerCreditMethod(
+      method,
+      'Le crédit ne passe par aucun compte : il n’a pas de route de paiement.',
+    );
     const fin = await this.prisma.clubFinancialAccount.findFirst({
       where: { clubId, id: financialAccountId },
     });

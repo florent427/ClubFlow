@@ -133,6 +133,7 @@ personne, la facture et le compte financier appartiennent au même club.
     - avoir, encaissement manuel et suppression du membre refusés ;
     - Facturation : onglet « Avances », indicateurs inchangés ;
     - tiroir d'un reçu sans avoir ni annulation.
+- [x] En prod le 2026-09-15 : v0.67.0 (PR #239, release #240).
 
 ---
 
@@ -140,61 +141,125 @@ personne, la facture et le compte financier appartiennent au même club.
 
 ### Task 2.1 : Effets d'encaissement partagés
 
-- [ ] Extraire de `recordManualPayment` la séquence qui suit les gardes
+- [x] Extraire de `recordManualPayment` la séquence qui suit les gardes
   (paiement, fiche chèque, PAID, commande boutique ; puis échéancier et
   écriture) en une fonction qui reçoit la transaction.
-- [ ] Faire dépendre le passage PAID du solde après avoirs, et non plus de
+  Deux fonctions en sortent : `settleInvoicePaymentInTx` dans la transaction,
+  `afterInvoicePaymentCommit` après le commit (échéancier clos avant
+  l'écriture).
+- [x] Faire dépendre le passage PAID du solde après avoirs, et non plus de
   l'égalité au montant nominal.
-- [ ] La saisie manuelle prend le verrou de la facture et relit le reste dû dans
+- [x] La saisie manuelle prend le verrou de la facture et relit le reste dû dans
   la transaction : aujourd'hui, deux saisies simultanées peuvent surpayer.
 
 ### Task 2.2 : Moyen `PAYER_CREDIT`
 
-- [ ] Enum Prisma et `schema.gql`. Libellé « Crédit » dans l'admin
-  (`payment-labels.ts`, tiroir facture), le portail (`BillingPage`) et le PDF.
-- [ ] Refus explicites :
+- [x] Enum Prisma. `schema.gql` est engendré au démarrage et ignoré par git
+  (`apps/api/.gitignore`) : rien à y écrire. Libellé « Crédit » dans l'admin
+  (`payment-labels.ts`, tiroir facture), le portail (`BillingPage`) et le PDF
+  (« crédit »).
+- [x] Refus explicites, par `assertNotPayerCreditMethod` :
   - saisie manuelle ;
-  - mode verrouillé de `createInvoice` et de `finalizeMembershipInvoice` ;
-  - `viewerLockInvoicePaymentChoice` et panier ;
+  - mode verrouillé de `finalizeMembershipInvoice`. `createInvoice` n'a pas de
+    mode verrouillé : c'est le moyen servant à son tarif (`pricingMethod`) qui
+    est refusé ;
+  - `viewerLockInvoicePaymentChoice` et validation du panier (contrôle placé
+    en premier) ;
   - routes de paiement et règles tarifaires.
   Exclu aussi des listes admin correspondantes.
-- [ ] `resolveForPayment` ne reçoit jamais `PAYER_CREDIT`, sinon son défaut
+- [x] `resolveForPayment` ne reçoit jamais `PAYER_CREDIT`, sinon son défaut
   débiterait une banque fantôme. Un test le vérifie.
-- [ ] Tableau de bord (`revenueLast30Cents`) et `sumRevenueCentsInMonth` :
-  paiements `PAYER_CREDIT` exclus.
-- [ ] Plan de remboursement boutique : un kind qui rend le crédit.
+- [x] Tableau de bord : encaissé du mois et tendances à 30 et 60 jours hors
+  `PAYER_CREDIT`. `sumRevenueCentsInMonth` n'avait plus aucun appelant :
+  supprimée plutôt que corrigée.
+- [x] Plan de remboursement boutique : kind `CREDIT`, rendu par un paiement
+  négatif `PAYER_CREDIT`.
 
 ### Task 2.3 : Utilisation du crédit
 
-- [ ] `PayerCreditService.apply(clubId, userId, { invoiceId, memberId | contactId, amountCents? })` :
+- [x] `PaymentsService.applyPayerCredit(clubId, { invoiceId, memberId | contactId, amountCents? })`,
+  et non `PayerCreditService.apply` : la fonction partagée de la tâche 2.1 est
+  privée à `PaymentsService`. Sans montant, il règle le plus petit du crédit et
+  du reste dû.
   1. ouvre une transaction ;
   2. prend les verrous de la personne puis de la facture (`$executeRaw` et `pg_advisory_xact_lock`) ;
-  3. relit le crédit et le reste dû ;
-  4. vérifie montant ≤ min(crédit, reste dû), puis le payeur ;
+  3. relit le crédit, le reste dû et le statut de la facture ;
+  4. vérifie montant ≤ min(crédit, reste dû). Le payeur est contrôlé juste
+     avant la transaction ;
   5. applique la fonction partagée de la tâche 2.1.
-- [ ] Contrôle du payeur étendu aux factures sans foyer : acheteur de la
+- [x] Contrôle du payeur étendu aux factures sans foyer : acheteur de la
   commande boutique, membre des lignes d'adhésion.
-- [ ] Écriture INCOME : DÉBIT 419100 / CRÉDIT produit, allocations au prorata,
+- [x] Écriture INCOME : DÉBIT 419100 / CRÉDIT produit, allocations au prorata,
   sans compte financier.
-- [ ] Crédit rendu :
+- [x] Crédit rendu :
   - un avoir ou une annulation boutique sur une facture réglée par crédit crée un `Payment` négatif `PAYER_CREDIT` ;
-  - la contre-passation se fait sur 419100 : `createContraEntryForCreditNote` ne se rabat plus sur la banque.
-- [ ] GraphQL admin `applyPayerCreditToInvoice`. Tiroir facture : « Régler avec
-  le crédit de … » (payeurs autorisés qui ont du crédit, montant proposé).
-- [ ] Tests :
+  - la contre-passation se fait sur 419100 : `createContraEntryForCreditNote` ne se rabat plus sur la banque ;
+  - un avoir éteint d'abord le reste dû. Il ne rend que ce qui a été payé
+    au-delà, `min(avoir, max(0, payé net − max(0, montant − avoirs)))`, en
+    rendant les imputations de la plus récente à la plus ancienne ;
+  - la contre-passation se partage : la part rendue sur 419100
+    (`createContraEntryForCreditNote` reçoit la part), le reste sur
+    l'encaissement d'origine. Sans paiement désigné, elle ne prend jamais une
+    imputation.
+- [x] GraphQL admin `applyPayerCreditToInvoice`, et
+  `clubInvoicePayerCredits(invoiceId)` pour les payeurs autorisés qui ont du
+  crédit : même contrôle que l'imputation. Tiroir facture : « Régler avec le
+  crédit » (personne, montant proposé) ; l'avoir d'une facture réglée par
+  crédit annonce la part rendue. Bloc « Crédit » : liste « Utilisations ».
+- [x] Tests :
   - le crédit n'est jamais dépensé deux fois : deux utilisations concurrentes, le double reproduit le verrou ;
   - une facture ne peut pas être surpayée ;
   - mêmes effets qu'un encaissement manuel ;
   - la recette n'est pas comptée deux fois ;
-  - mutations à la main notées.
+  - mutations à la main : 54 tuées sur 54.
+    - Premier passage : 48 tuées, 3 survivantes, et 2 mutants qui ne
+      compilaient pas (rejoués sous une forme valide : tués).
+    - Retirer le verrou de la facture, à la saisie comme à l'imputation,
+      restait vert : le double prenait l'état APRÈS la latence de lecture, et
+      la course n'avait aucune fenêtre. Double corrigé, les deux sont tuées
+      (cf. [pitfall](../../memory/pitfalls/double-transaction-rollback-trop-genereux.md)).
+    - Ignorer le statut relu sous verrou n'était pas équivalent : une facture
+      annulée entre le premier contrôle et le verrou garde un reste dû positif.
+      Un test d'annulation la tue, avec son pendant sur la saisie manuelle.
+
+Limite connue, hors lot : les chemins qui annulent une facture ne prennent pas
+son verrou. Une annulation qui passerait entre la relecture et le commit
+laisserait un règlement sur une facture annulée.
 
 ### Task 2.4 : Recette staging
 
-- [ ] Adhésion réglée par une avance, en partie puis pour le solde.
-- [ ] Commande boutique d'un contact sans foyer réglée par crédit, puis annulée :
+- [x] Adhésion réglée par une avance, en partie puis pour le solde.
+- [x] Commande boutique d'un contact sans foyer réglée par crédit, puis annulée :
   le crédit revient.
-- [ ] Écritures vérifiées en base.
-- [ ] Verrou vérifié sur PostgreSQL : deux utilisations simultanées.
+- [x] Écritures vérifiées en base.
+- [x] Verrou vérifié sur PostgreSQL : deux utilisations simultanées.
+
+Sur club-demo, le 2026-09-15 (commit `1bc5958`), avec le crédit de 50 € de
+Florent laissé par le lot 1 :
+- **Facture du foyer** : une facture libre de 50 € sur son foyer, dont son
+  membre est payeur (pas un panier d'adhésion : le contrôle du payeur est le
+  même).
+  - Deux imputations simultanées de 30 € : l'une passe, l'autre est refusée
+    (« Au plus 20,00 € : crédit disponible 20,00 €, reste à encaisser
+    20,00 € »). La refusée a répondu la première, mais elle a lu l'écriture de
+    l'autre : elle a attendu son commit sous le verrou.
+  - Les 20 € restants réglés depuis le tiroir (« Régler avec le crédit »,
+    montant proposé 20,00) : facture PAYÉE.
+- **Commande boutique** : club-demo n'a ni contact ni membre sans foyer. Vente
+  au comptoir au nom du contact de Florent, dont la facture n'a pas de foyer.
+  - Avance de 10 €, puis règlement par crédit : payeur proposé, le contact ;
+    commande PAYÉE et servie.
+  - Annulation depuis le tiroir, qui annonce « Crédit : 10,00 € rendus au
+    crédit du payeur » : crédit revenu à 10 €, stock revenu.
+- **En base** :
+  - imputations en INCOME, DÉBIT 419100 / CRÉDIT 706100 ou 708000, sans
+    compte financier ;
+  - paiement négatif `PAYER_CREDIT` qui désigne l'imputation rendue ;
+  - contre-passation DÉBIT 708000 / CRÉDIT 419100, rattachée à l'écriture de
+    l'imputation ;
+  - aucune erreur nouvelle dans le log de l'API.
+- **Fiche membre**, bloc Crédit : les utilisations et le crédit rendu sont
+  listés.
 
 ---
 

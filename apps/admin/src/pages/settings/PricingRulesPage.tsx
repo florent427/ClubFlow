@@ -15,8 +15,11 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { LoadingState } from '../../components/ui/LoadingState';
 import { ErrorState } from '../../components/ui/ErrorState';
 
+/** Le crédit ne porte pas de tarif (ADR-0022). */
+type PricedMethod = Exclude<ClubPaymentMethodStr, 'PAYER_CREDIT'>;
+
 type MethodMeta = {
-  code: ClubPaymentMethodStr;
+  code: PricedMethod;
   label: string;
   hint: string;
 };
@@ -116,14 +119,14 @@ export function PricingRulesPage() {
     return map;
   }, [data]);
 
-  const [edits, setEdits] = useState<Record<ClubPaymentMethodStr, EditedRow>>({
+  const [edits, setEdits] = useState<Record<PricedMethod, EditedRow>>({
     STRIPE_CARD: { adjustmentType: 'PERCENT_BP', displayValue: '0' },
     MANUAL_CASH: { adjustmentType: 'PERCENT_BP', displayValue: '0' },
     MANUAL_CHECK: { adjustmentType: 'PERCENT_BP', displayValue: '0' },
     MANUAL_TRANSFER: { adjustmentType: 'PERCENT_BP', displayValue: '0' },
   });
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [saveSuccess, setSaveSuccess] = useState<ClubPaymentMethodStr | null>(
+  const [saveSuccess, setSaveSuccess] = useState<PricedMethod | null>(
     null,
   );
 
@@ -146,7 +149,7 @@ export function PricingRulesPage() {
     });
   }, [existing]);
 
-  async function handleSave(method: ClubPaymentMethodStr) {
+  async function handleSave(method: PricedMethod) {
     const row = edits[method];
     const adjustmentValue =
       row.adjustmentType === 'PERCENT_BP'
