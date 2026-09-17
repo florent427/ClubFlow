@@ -19,6 +19,14 @@ import {
 import { ModuleCode } from '../src/domain/module-registry/module-codes';
 import { EmailVerificationService } from '../src/auth/email-verification.service';
 
+/**
+ * Pseudo d'un membre créé directement en base : unique par club
+ * (`@@unique([clubId, pseudo])`), il n'est pas calculé comme par l'API.
+ */
+function uniquePseudo(): string {
+  return `e2e_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+}
+
 describe('ClubFlow API (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
