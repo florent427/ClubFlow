@@ -12,13 +12,19 @@ import { ViewerActiveProfileGuard } from '../common/guards/viewer-active-profile
 import type { RequestUser } from '../common/types/request-user';
 import { ModuleCode } from '../domain/module-registry/module-codes';
 import { PrismaService } from '../prisma/prisma.service';
+import { ViewerCheckoutSessionGraph } from '../viewer/models/viewer-checkout-session.model';
 import { InvoicePayerScopeService } from './invoice-payer-scope.service';
 import { PayerCreditApplyResultGraph } from './models/payer-credit.model';
 import { ViewerPayerCreditGraph } from './models/viewer-payer-credit.model';
-import { resolveAccountPayerCreditRef } from './payer-credit-holder';
+import {
+  resolveAccountPayerCreditRef,
+  resolvePayerCreditHolder,
+} from './payer-credit-holder';
 import { payerCreditMovements } from './payer-credit-movements';
+import { assertPayerCreditTopUpAmount } from './payer-credit-top-up';
 import { PayerCreditService } from './payer-credit.service';
 import { PaymentsService } from './payments.service';
+import { StripeCheckoutService } from './stripe-checkout.service';
 
 /**
  * Crédit du payeur — surface PORTAIL et APPLI MEMBRE (ADR-0022, lot 3).
@@ -43,7 +49,30 @@ export class ViewerPayerCreditResolver {
     private readonly credits: PayerCreditService,
     private readonly payments: PaymentsService,
     private readonly payerScope: InvoicePayerScopeService,
+    private readonly checkout: StripeCheckoutService,
   ) {}
+
+  /**
+   * Le périmètre payeur du profil actif, celui de « Payer en ligne ». `null` :
+   * ce profil ne paie pour aucun foyer, et le crédit ne s'utilise ni ne se
+   * verse depuis le portail.
+   */
+  private async requirePayerScope(club: Club, user: RequestUser) {
+    const where = await this.payerScope.resolvePayerInvoiceWhere({
+      clubId: club.id,
+      activeProfile: {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      viewerUserId: user.userId,
+    });
+    if (!where) {
+      throw new BadRequestException(
+        'Seul le payeur du foyer peut régler une facture en ligne.',
+      );
+    }
+    return where;
+  }
 
   @Query(() => ViewerPayerCreditGraph, {
     name: 'viewerPayerCredit',
@@ -54,17 +83,53 @@ export class ViewerPayerCreditResolver {
     @CurrentUser() user: RequestUser,
     @CurrentClub() club: Club,
   ): Promise<ViewerPayerCreditGraph> {
+    const cardTopUpAvailable =
+      !!club.stripeAccountId && club.stripeChargesEnabled;
     const ref = await resolveAccountPayerCreditRef(
       this.prisma,
       club.id,
       user.userId,
     );
-    if (!ref) return { balanceCents: 0, movements: [] };
+    if (!ref) return { balanceCents: 0, movements: [], cardTopUpAvailable };
     const credit = await this.credits.credit(club.id, ref);
     return {
       balanceCents: credit.balanceCents,
       movements: payerCreditMovements(credit),
+      cardTopUpAvailable,
     };
+  }
+
+  @Mutation(() => ViewerCheckoutSessionGraph, {
+    name: 'viewerCreatePayerCreditCheckoutSession',
+    description:
+      'Crée la session Stripe d’une avance par carte (« Créditer mon compte ») : de 1 € à 1 000 €, au crédit du compte connecté. Le reçu d’avance naît à réception de l’argent.',
+  })
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  async viewerCreatePayerCreditCheckoutSession(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('amountCents', { type: () => Int }) amountCents: number,
+    @Args('nativeApp', { type: () => Boolean, nullable: true })
+    nativeApp?: boolean | null,
+  ): Promise<ViewerCheckoutSessionGraph> {
+    assertPayerCreditTopUpAmount(amountCents);
+    await this.requirePayerScope(club, user);
+    const ref = await resolveAccountPayerCreditRef(
+      this.prisma,
+      club.id,
+      user.userId,
+    );
+    if (!ref) {
+      throw new BadRequestException('Votre compte n’a pas de fiche dans ce club.');
+    }
+    const holder = await resolvePayerCreditHolder(this.prisma, club.id, ref);
+    return this.checkout.createPayerCreditTopUpSession({
+      clubId: club.id,
+      ref,
+      displayName: holder.displayName,
+      amountCents,
+      nativeApp: nativeApp ?? false,
+    });
   }
 
   @Mutation(() => PayerCreditApplyResultGraph, {
@@ -85,19 +150,7 @@ export class ViewerPayerCreditResolver {
     })
     amountCents?: number | null,
   ): Promise<PayerCreditApplyResultGraph> {
-    const where = await this.payerScope.resolvePayerInvoiceWhere({
-      clubId: club.id,
-      activeProfile: {
-        memberId: user.activeProfileMemberId ?? null,
-        contactId: user.activeProfileContactId ?? null,
-      },
-      viewerUserId: user.userId,
-    });
-    if (!where) {
-      throw new BadRequestException(
-        'Seul le payeur du foyer peut régler une facture en ligne.',
-      );
-    }
+    const where = await this.requirePayerScope(club, user);
     // Hors périmètre, une facture est indiscernable d'une facture inexistante.
     const invoice = await this.prisma.invoice.findFirst({
       where: { ...where, id: invoiceId },

@@ -155,13 +155,17 @@ export function FamilyPage() {
         </div>
       ) : null}
 
-      {anyPayerView && shouldShowPayerCredit(credit) ? (
+      {anyPayerView &&
+      credit &&
+      (credit.cardTopUpAvailable || shouldShowPayerCredit(credit)) ? (
         <section className="mp-billing-kpis" aria-label="Crédit">
           <PayerCreditKpi credit={credit}>
             <Link to="/factures" className="mp-link">
-              {credit.balanceCents > 0
-                ? 'Voir l’historique et l’utiliser'
-                : 'Voir l’historique'}
+              {!shouldShowPayerCredit(credit)
+                ? 'Créditer mon compte'
+                : credit.balanceCents > 0
+                  ? 'Voir l’historique et l’utiliser'
+                  : 'Voir l’historique'}
             </Link>
           </PayerCreditKpi>
         </section>

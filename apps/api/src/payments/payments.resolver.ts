@@ -212,7 +212,9 @@ export class PaymentsResolver {
     // L'enregistrement en base (Payment négatif + avoir) est fait par le
     // webhook `charge.refunded`, seul chemin commun avec un remboursement
     // déclenché depuis le dashboard Stripe. La mutation ne renvoie donc que
-    // la confirmation du mouvement d'argent.
+    // la confirmation du mouvement d'argent. Exception : une avance remboursée
+    // s'enregistre dès l'accord de Stripe, sous le verrou de la personne
+    // (ADR-0022), et le webhook la retrouve.
     return { refundId: res.refundId, amountCents: res.amountCents };
   }
 

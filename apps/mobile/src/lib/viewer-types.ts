@@ -183,9 +183,19 @@ export type ViewerPayerCredit = {
   balanceCents: number;
   /** Du plus récent au plus ancien. */
   movements: ViewerPayerCreditMovement[];
+  /** Vrai si le club encaisse par carte : « Créditer mon compte » est proposé. */
+  cardTopUpAvailable: boolean;
 };
 
 export type ViewerPayerCreditData = { viewerPayerCredit: ViewerPayerCredit };
+
+export type ViewerCreatePayerCreditCheckoutSessionData = {
+  viewerCreatePayerCreditCheckoutSession: {
+    url: string;
+    sessionId: string;
+    paymentReturnUrl: string;
+  };
+};
 
 export type ViewerApplyPayerCreditData = {
   viewerApplyPayerCredit: {

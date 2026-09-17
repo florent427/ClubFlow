@@ -5,7 +5,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { ClubPaymentMethod, Prisma } from '@prisma/client';
+import { ClubPaymentMethod, InvoicePurpose, Prisma } from '@prisma/client';
 import { Cron } from '@nestjs/schedule';
 import Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
@@ -15,7 +15,13 @@ import {
 } from '../scheduling/scheduling.constants';
 import { SchedulerLockService } from '../scheduling/scheduler-lock.service';
 import { CreditNotesService } from './credit-notes.service';
-import { lockInvoiceInTx } from './settlement-locks';
+import { readPayerCredit } from './payer-credit-balance';
+import { resolvePayerCreditHolder } from './payer-credit-holder';
+import { lockInvoiceInTx, lockPayerCreditInTx } from './settlement-locks';
+
+function eurosFr(cents: number): string {
+  return `${(cents / 100).toFixed(2).replace('.', ',')} €`;
+}
 
 /**
  * Fenêtre de rapprochement des remboursements. Au-delà, un remboursement non
@@ -122,7 +128,17 @@ export class StripeRefundsService {
 
     const payment = await this.prisma.payment.findFirst({
       where: { id: args.paymentId, clubId: args.clubId },
-      include: { invoice: { select: { id: true, isCreditNote: true } } },
+      include: {
+        invoice: {
+          select: {
+            id: true,
+            isCreditNote: true,
+            purpose: true,
+            payerCreditMemberId: true,
+            payerCreditContactId: true,
+          },
+        },
+      },
     });
     if (!payment) throw new NotFoundException('Encaissement introuvable.');
     if (payment.amountCents <= 0) {
@@ -191,6 +207,18 @@ export class StripeRefundsService {
       );
     }
 
+    if (payment.invoice.purpose === InvoicePurpose.PAYER_CREDIT_DEPOSIT) {
+      return this.refundPayerCreditDeposit({
+        stripe,
+        clubId: args.clubId,
+        payment,
+        refundable,
+        alreadyRefunded,
+        amountCents: args.amountCents ?? null,
+        reason,
+      });
+    }
+
     const amount = args.amountCents ?? refundable;
     if (amount <= 0) {
       throw new BadRequestException('Le montant doit être positif.');
@@ -228,6 +256,152 @@ export class StripeRefundsService {
     );
 
     return { refundId: refund.id, amountCents: amount };
+  }
+
+  /**
+   * Rembourse par carte une avance (ADR-0022) : au plus le crédit encore
+   * disponible de la personne, que la part de l'avance déjà utilisée a quitté.
+   *
+   * Sous le verrou de la personne, puis du reçu : le crédit se relit, le
+   * remboursement se crée chez Stripe, et s'enregistre aussitôt s'il a abouti.
+   * Une imputation simultanée attend ce commit et voit le crédit diminué : le
+   * même crédit ne se rembourse et ne s'utilise pas deux fois. Le webhook
+   * `charge.refunded` trouve alors le remboursement déjà écrit, et la contrainte
+   * d'unicité sur `stripeRefundId` l'empêche de l'écrire une seconde fois. Un
+   * remboursement encore « en attente » chez Stripe n'a rien rendu : c'est le
+   * webhook qui l'enregistrera.
+   */
+  private async refundPayerCreditDeposit(args: {
+    stripe: Stripe;
+    clubId: string;
+    payment: {
+      id: string;
+      invoiceId: string;
+      amountCents: number;
+      externalRef: string | null;
+      stripeAccountId: string | null;
+      paidByMemberId: string | null;
+      paidByContactId: string | null;
+      invoice: {
+        payerCreditMemberId: string | null;
+        payerCreditContactId: string | null;
+      };
+    };
+    refundable: number;
+    alreadyRefunded: number;
+    amountCents: number | null;
+    reason: string;
+  }): Promise<{ refundId: string; amountCents: number }> {
+    const { payment } = args;
+    const holder = await resolvePayerCreditHolder(this.prisma, args.clubId, {
+      memberId: payment.invoice.payerCreditMemberId,
+      contactId: payment.invoice.payerCreditContactId,
+    });
+
+    let created: Stripe.Refund | null = null;
+    let outcome: {
+      refund: Stripe.Refund;
+      amountCents: number;
+      creditNote: { id: string } | null;
+    };
+    try {
+      outcome = await this.prisma.$transaction(
+        async (tx) => {
+          await lockPayerCreditInTx(tx, holder.personKey);
+          await lockInvoiceInTx(tx, payment.invoiceId);
+          const credit = await readPayerCredit(tx, args.clubId, holder);
+          const ceiling = Math.min(args.refundable, credit.balanceCents);
+          if (ceiling <= 0) {
+            throw new BadRequestException(
+              `Rien à rembourser : le crédit disponible de ${holder.displayName} est de ${eurosFr(credit.balanceCents)}.`,
+            );
+          }
+          const amount = args.amountCents ?? ceiling;
+          if (amount <= 0) {
+            throw new BadRequestException('Le montant doit être positif.');
+          }
+          if (amount > ceiling) {
+            throw new BadRequestException(
+              `Au plus ${eurosFr(ceiling)} : crédit disponible ${eurosFr(credit.balanceCents)}, remboursable sur cet encaissement ${eurosFr(args.refundable)}.`,
+            );
+          }
+
+          created = await args.stripe.refunds.create(
+            {
+              payment_intent: payment.externalRef as string,
+              amount,
+              metadata: {
+                clubId: args.clubId,
+                paymentId: payment.id,
+                invoiceId: payment.invoiceId,
+                reason: args.reason,
+              },
+            },
+            {
+              stripeAccount: payment.stripeAccountId as string,
+              idempotencyKey: `refund-${payment.id}-${args.alreadyRefunded}-${amount}`,
+            },
+          );
+          if (created.status !== 'succeeded') {
+            return { refund: created, amountCents: amount, creditNote: null };
+          }
+
+          await tx.payment.create({
+            data: {
+              clubId: args.clubId,
+              invoiceId: payment.invoiceId,
+              amountCents: -amount,
+              method: ClubPaymentMethod.STRIPE_CARD,
+              externalRef: created.id,
+              stripeRefundId: created.id,
+              refundedPaymentId: payment.id,
+              stripeAccountId: payment.stripeAccountId,
+              paidByMemberId: payment.paidByMemberId,
+              paidByContactId: payment.paidByContactId,
+            },
+          });
+          const creditNote = await this.creditNotes.create({
+            tx,
+            clubId: args.clubId,
+            parentInvoiceId: payment.invoiceId,
+            amountCents: amount,
+            reason: args.reason,
+          });
+          return { refund: created, amountCents: amount, creditNote };
+        },
+        // Le remboursement se crée chez Stripe sous le verrou.
+        { maxWait: 10_000, timeout: 30_000 },
+      );
+    } catch (err) {
+      // L'argent est parti mais l'écriture a échoué : le webhook l'enregistrera.
+      // Lever ferait croire au trésorier que rien n'a été rendu.
+      const refund = created as Stripe.Refund | null;
+      if (refund) {
+        this.logger.error(
+          `[remboursement] ${refund.id} créé chez Stripe pour l'avance ${payment.invoiceId}, ` +
+            `non enregistré — ${err instanceof Error ? err.message : String(err)}. ` +
+            `Le webhook charge.refunded l'enregistrera.`,
+        );
+        return { refundId: refund.id, amountCents: refund.amount };
+      }
+      throw err;
+    }
+
+    if (outcome.creditNote) {
+      await this.creditNotes
+        .recordAccounting(args.clubId, outcome.creditNote.id, payment.id)
+        .catch((err: Error) => {
+          this.logger.warn(
+            `[remboursement] écriture d'avoir impossible pour ${outcome.refund.id} — ${err.message}`,
+          );
+        });
+    }
+    this.logger.log(
+      `[remboursement] ${outcome.refund.id} — ${outcome.amountCents} cts rendus sur l'avance ` +
+        `${payment.invoiceId}` +
+        (outcome.creditNote ? ', enregistré.' : ', en attente chez Stripe.'),
+    );
+    return { refundId: outcome.refund.id, amountCents: outcome.amountCents };
   }
 
   /**

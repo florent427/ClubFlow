@@ -31,6 +31,7 @@ import { InvoiceManualPaymentChoice } from '../components/billing/InvoiceManualP
 import {
   PayerCreditHistory,
   PayerCreditKpi,
+  PayerCreditTopUp,
 } from '../components/billing/PayerCredit';
 
 type StatusFilter = 'ALL' | 'OPEN' | 'PAID' | 'DRAFT';
@@ -93,6 +94,14 @@ export function BillingPage() {
     if (paid === '1') {
       showToast('Paiement enregistré. Merci !', 'success');
       void refetch();
+      void refetchCredit();
+      // Stripe confirme l'encaissement quelques secondes après le retour : une
+      // avance par carte n'apparaît qu'à ce moment. Pas de nettoyage : retirer
+      // `paid` de l'URL relance cet effet, et l'annulerait aussitôt.
+      setTimeout(() => {
+        void refetch();
+        void refetchCredit();
+      }, 4000);
     } else if (canceled === '1') {
       showToast('Paiement annulé.', 'info');
     }
@@ -102,7 +111,7 @@ export function BillingPage() {
       next.delete('canceled');
       setSearchParams(next, { replace: true });
     }
-  }, [searchParams, setSearchParams, showToast, refetch]);
+  }, [searchParams, setSearchParams, showToast, refetch, refetchCredit]);
 
   async function handlePay(invoiceId: string): Promise<void> {
     if (payingId) return;
@@ -248,6 +257,7 @@ export function BillingPage() {
       {shouldShowPayerCredit(credit) ? (
         <PayerCreditHistory movements={credit.movements} />
       ) : null}
+      {credit?.cardTopUpAvailable ? <PayerCreditTopUp /> : null}
 
       <div className="mp-tabs" role="tablist" aria-label="Filtrer les factures">
         {(

@@ -122,6 +122,18 @@ export function buildPayerCreditDepositInput(
   return { input };
 }
 
+/**
+ * Ce qu'on peut rembourser par carte sur une avance : au plus ce qui reste
+ * remboursable sur l'encaissement, et au plus le crédit encore disponible de la
+ * personne. La part déjà utilisée a quitté le crédit.
+ */
+export function depositRefundCeilingCents(
+  refundableCents: number,
+  creditBalanceCents: number,
+): number {
+  return Math.max(0, Math.min(refundableCents, creditBalanceCents));
+}
+
 /** Montant proposé : le plus petit du reste dû et du crédit de la personne. */
 export function proposedCreditApplyCents(
   invoiceBalanceCents: number,

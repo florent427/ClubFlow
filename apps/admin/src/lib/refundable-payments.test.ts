@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeRefundableByPaymentId } from './refundable-payments';
+import { computeRefundableByPaymentId, isRefundRecorded } from './refundable-payments';
 import type { ClubInvoiceDetailQueryData } from './types';
 
 type InvoicePayment =
@@ -95,5 +95,41 @@ describe('computeRefundableByPaymentId', () => {
       }),
     ]);
     expect(map.has('refund-orphelin')).toBe(false);
+  });
+});
+
+describe('isRefundRecorded', () => {
+  const encaissement = payment({ id: 'pay-1' });
+
+  it('voit le remboursement dont le paiement négatif porte l’identifiant', () => {
+    const rembourse = payment({
+      id: 'refund-1',
+      amountCents: -500,
+      externalRef: 're_1',
+      refundedPaymentId: 'pay-1',
+    });
+    expect(isRefundRecorded([encaissement, rembourse], 're_1')).toBe(true);
+  });
+
+  it('ne le confond pas avec un autre remboursement, ni avec l’encaissement', () => {
+    const autre = payment({
+      id: 'refund-2',
+      amountCents: -500,
+      externalRef: 're_2',
+      refundedPaymentId: 'pay-1',
+    });
+    expect(isRefundRecorded([encaissement, autre], 're_1')).toBe(false);
+    expect(isRefundRecorded([encaissement], 'pi_123')).toBe(false);
+  });
+
+  it('sans identifiant de remboursement, rien n’est tenu pour enregistré', () => {
+    const sansRef = payment({
+      id: 'refund-3',
+      amountCents: -500,
+      externalRef: null,
+      refundedPaymentId: 'pay-1',
+    });
+    expect(isRefundRecorded([encaissement, sansRef], null)).toBe(false);
+    expect(isRefundRecorded([encaissement, sansRef], undefined)).toBe(false);
   });
 });

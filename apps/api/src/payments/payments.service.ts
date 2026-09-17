@@ -44,7 +44,9 @@ import { readPayerCredit } from './payer-credit-balance';
 import {
   resolvePayerCreditHolder,
   type PayerCreditHolder,
+  type PayerCreditHolderRef,
 } from './payer-credit-holder';
+import { readPayerCreditTopUpMetadata } from './payer-credit-top-up';
 import { assertNotPayerCreditMethod } from './payment-method-rules';
 import { applyPricing } from './pricing-rules';
 import { lockInvoiceInTx, lockPayerCreditInTx } from './settlement-locks';
@@ -1637,6 +1639,18 @@ export class PaymentsService {
 
     if (event.type === 'payment_intent.succeeded') {
       const pi = event.data.object as Stripe.PaymentIntent;
+      // Avance par carte (« Créditer mon compte », ADR-0022) : pas de facture,
+      // le reçu naît ici.
+      const topUp = readPayerCreditTopUpMetadata(pi.metadata);
+      if (topUp) {
+        await this.applyStripePayerCreditTopUp(
+          topUp,
+          pi.id,
+          pi.amount_received ?? pi.amount,
+          eventAccount,
+        );
+        return;
+      }
       const invoiceId = pi.metadata?.invoiceId;
       const clubId = pi.metadata?.clubId;
       if (!invoiceId || !clubId) {
@@ -1664,6 +1678,140 @@ export class PaymentsService {
         installmentId,
       );
     }
+  }
+
+  /**
+   * Avance par carte encaissée (« Créditer mon compte », ADR-0022, lot 3) : le
+   * reçu d'avance naît PAYÉ avec son paiement carte, dans une transaction.
+   * `Invoice.stripePaymentIntentId`, unique, rend un rejeu inoffensif, même
+   * concurrent. L'écriture (TRANSFER 512300 / 419100) et les frais suivent le
+   * commit, comme pour tout encaissement carte.
+   *
+   * L'argent est déjà chez le club : ce qui ne peut pas s'enregistrer n'est pas
+   * refusé mais journalisé en ENCAISSEMENT ORPHELIN, et le webhook répond sans
+   * erreur. Une exception le ferait rejouer par Stripe, en boucle.
+   */
+  private async applyStripePayerCreditTopUp(
+    topUp: { clubId: string; ref: PayerCreditHolderRef } | 'illisible',
+    paymentIntentId: string,
+    amountCents: number,
+    stripeAccountId: string | null,
+  ): Promise<void> {
+    if (topUp === 'illisible') {
+      this.logOrphanStripeTopUp(
+        paymentIntentId,
+        amountCents,
+        'sans club ni personne lisibles',
+      );
+      return;
+    }
+    const { clubId, ref } = topUp;
+    if (amountCents <= 0) return;
+
+    // Garde-fou multi-tenant, plus strict que pour une facture : une avance
+    // n'existe qu'en direct charge sur le compte du club (ADR-0008). Sans ce
+    // contrôle, un compte connecté tiers créditerait la personne d'un autre club.
+    const club = await this.prisma.club.findUnique({
+      where: { id: clubId },
+      select: { stripeAccountId: true },
+    });
+    if (!stripeAccountId || club?.stripeAccountId !== stripeAccountId) {
+      this.logOrphanStripeTopUp(
+        paymentIntentId,
+        amountCents,
+        `reçue du compte ${stripeAccountId ?? 'plateforme'}, qui n'est pas celui du club ${clubId}`,
+      );
+      return;
+    }
+
+    let holder: PayerCreditHolder;
+    try {
+      holder = await resolvePayerCreditHolder(this.prisma, clubId, ref);
+    } catch (err) {
+      if (
+        !(err instanceof NotFoundException) &&
+        !(err instanceof BadRequestException)
+      ) {
+        throw err;
+      }
+      this.logOrphanStripeTopUp(
+        paymentIntentId,
+        amountCents,
+        `pour une personne introuvable du club ${clubId}`,
+      );
+      return;
+    }
+
+    const label = `Avance — ${holder.displayName}`;
+    const recorded = async () =>
+      this.prisma.payment.findFirst({
+        where: { clubId, externalRef: paymentIntentId, amountCents: { gt: 0 } },
+        select: { id: true, amountCents: true },
+      });
+    let payment = await recorded();
+    if (!payment) {
+      try {
+        payment = await this.prisma.$transaction(async (tx) => {
+          const receipt = await tx.invoice.create({
+            data: {
+              clubId,
+              label,
+              baseAmountCents: amountCents,
+              amountCents,
+              status: InvoiceStatus.PAID,
+              purpose: InvoicePurpose.PAYER_CREDIT_DEPOSIT,
+              payerCreditMemberId: holder.memberId,
+              payerCreditContactId: holder.contactId,
+              stripePaymentIntentId: paymentIntentId,
+            },
+          });
+          return tx.payment.create({
+            data: {
+              clubId,
+              invoiceId: receipt.id,
+              amountCents,
+              method: ClubPaymentMethod.STRIPE_CARD,
+              externalRef: paymentIntentId,
+              paidByMemberId: holder.memberId,
+              paidByContactId: holder.contactId,
+              // Compte où l'argent est tombé : on rembourse depuis celui-là.
+              stripeAccountId,
+            },
+            select: { id: true, amountCents: true },
+          });
+        });
+      } catch (err) {
+        // Une livraison concurrente a créé le reçu de ce paymentIntent.
+        if (
+          !(err instanceof Prisma.PrismaClientKnownRequestError) ||
+          err.code !== 'P2002'
+        ) {
+          throw err;
+        }
+        payment = await recorded();
+        if (!payment) throw err;
+      }
+    }
+
+    // Un rejeu reprend ce qui suit le commit : les deux sont idempotents.
+    await this.tryRecordIncome(
+      clubId,
+      payment.id,
+      `Stripe — ${label}`,
+      payment.amountCents,
+    );
+    await this.trySyncFees(payment.id);
+  }
+
+  private logOrphanStripeTopUp(
+    paymentIntentId: string,
+    amountCents: number,
+    cause: string,
+  ): void {
+    this.logger.error(
+      `[stripe] ENCAISSEMENT ORPHELIN : avance par carte ${paymentIntentId} ` +
+        `(${amountCents} cts) ${cause}. Aucun reçu créé — remboursement probablement dû.`,
+    );
   }
 
   /** Club propriétaire d'un compte connecté, pour les événements sans metadata. */

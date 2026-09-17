@@ -41,3 +41,17 @@ export function computeRefundableByPaymentId(
 
   return refundable;
 }
+
+/**
+ * Le remboursement créé figure-t-il déjà dans la facture relue ? Une avance
+ * l'enregistre dès l'accord de Stripe (ADR-0022) ; une facture, au retour du
+ * webhook `charge.refunded`, parfois avant cette relecture. Le paiement négatif
+ * porte l'identifiant du remboursement en référence.
+ */
+export function isRefundRecorded(
+  payments: readonly InvoicePayment[],
+  refundId: string | null | undefined,
+): boolean {
+  if (!refundId) return false;
+  return payments.some((p) => p.amountCents < 0 && p.externalRef === refundId);
+}

@@ -55,11 +55,13 @@ function makeHarness(args: {
   compteProduit?: string;
   /** Compte financier figé sur l'écriture de recette d'origine. */
   financialAccountIdOrigine?: string;
+  /** Nature de l'écriture d'origine : TRANSFER pour une avance (ADR-0022). */
+  kindOrigine?: AccountingEntryKind;
 }) {
   // L'écriture de recette née de l'encaissement d'origine.
   const original: Entry = {
     id: 'entry-income',
-    kind: AccountingEntryKind.INCOME,
+    kind: args.kindOrigine ?? AccountingEntryKind.INCOME,
     status: AccountingEntryStatus.POSTED,
     amountCents: args.encaissementCents,
     cancelledAt: null,
@@ -375,6 +377,29 @@ describe('createContraEntryForCreditNote — effet sur le résultat', () => {
     expect(h.lines).toHaveLength(0);
   });
 
+});
+
+describe('createContraEntryForCreditNote — avance remboursée (ADR-0022, §5)', () => {
+  it('reste un TRANSFER hors résultat : 419100 au débit, le transit Stripe au crédit', async () => {
+    const h = makeHarness({
+      encaissementCents: 5_000,
+      avoirCents: 2_000,
+      kindOrigine: AccountingEntryKind.TRANSFER,
+      compteProduit: '419100',
+      compteEncaissement: { code: '512300', label: 'Transit Stripe' },
+    });
+
+    await h.svc.createContraEntryForCreditNote('club-1', 'cn-1');
+
+    const contra = h.entries.find((e) => e.id === 'entry-contra');
+    expect(contra?.kind).toBe(AccountingEntryKind.TRANSFER);
+    expect(h.lines.map((l) => [l.accountCode, l.debitCents, l.creditCents])).toEqual([
+      ['419100', 2_000, 0],
+      ['512300', 0, 2_000],
+    ]);
+    // L'avance n'était pas une recette : la rendre n'est pas une charge.
+    expect(resultatCents(h.entries)).toBe(0);
+  });
 });
 
 describe('createContraEntryForCreditNote — compte de produit', () => {

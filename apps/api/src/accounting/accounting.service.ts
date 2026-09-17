@@ -622,7 +622,12 @@ export class AccountingService {
       const contra = await tx.accountingEntry.create({
         data: {
           clubId,
-          kind: AccountingEntryKind.EXPENSE,
+          // Une avance remboursée (ADR-0022, §5) contre-passe un TRANSFER : elle
+          // sort de 419100, hors résultat, comme elle y était entrée.
+          kind:
+            originalEntry.kind === AccountingEntryKind.TRANSFER
+              ? AccountingEntryKind.TRANSFER
+              : AccountingEntryKind.EXPENSE,
           status: AccountingEntryStatus.POSTED,
           source: AccountingEntrySource.AUTO_REFUND,
           label: `Avoir — ${creditNote.label}`,

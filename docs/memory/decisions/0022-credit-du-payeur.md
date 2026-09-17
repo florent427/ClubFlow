@@ -44,9 +44,15 @@ Une avance est une facture de nature `PAYER_CREDIT_DEPOSIT`, portée par une nou
 **Elle naît PAYÉE**, créée par une seule fonction dans la même transaction que son `Payment` (et, pour un chèque, que sa fiche). Elle n'est jamais ouverte : aucune relance, aucun retard, aucun échéancier ne peut la prendre pour une dette.
 
 - **Circuit d'encaissement réutilisé tel quel** : espèces, chèque en portefeuille, virement sur la banque du relevé, carte.
-- **Carte** : la session Stripe porte la personne en metadata. À réception de l'argent, le webhook crée le reçu payé et son paiement ; `stripePaymentIntentId`, unique, sert de clé d'idempotence.
+- **Carte** (« Créditer mon compte », portail et appli) : la session Stripe porte la personne en metadata. À réception de l'argent, le webhook crée le reçu payé et son paiement ; `stripePaymentIntentId`, unique, sert de clé d'idempotence.
+  - **Qui** : le payeur d'un foyer, pour le crédit de son compte, de 1 € à 1 000 €. Proposé seulement si le club encaisse par carte.
+  - **Compte émetteur** : l'événement doit venir du compte connecté du club, plateforme exclue. Sinon, comme pour une personne introuvable ou des metadata illisibles, rien n'est crédité : un ENCAISSEMENT ORPHELIN est journalisé, sans erreur que Stripe rejouerait.
 - **PDF** : il s'intitule « Reçu d'avance ».
 - **Remboursement** : une avance se rembourse comme un encaissement, par un avoir sur le reçu (ADR-0011), jamais par une annulation.
+  - **Par carte**, depuis le tiroir du reçu : au plus le crédit encore disponible, la part utilisée ayant quitté le crédit.
+  - **Sous le verrou de la personne, puis du reçu**, le crédit se relit, le remboursement se crée chez Stripe et s'enregistre aussitôt s'il a abouti. Une imputation simultanée attend et voit le crédit diminué. Le webhook `charge.refunded` le retrouve sans l'écrire deux fois (`stripeRefundId` unique). Un remboursement en attente chez Stripe n'a rien rendu : le webhook l'enregistrera. Le crédit n'est pas réservé pendant l'attente ; s'il sert entre-temps, il devient négatif à l'enregistrement, à régulariser (§4).
+  - **Enregistrement en échec** après l'accord de Stripe : le remboursement est rendu au trésorier comme fait, et le webhook l'écrit.
+  - **Depuis le tableau de bord Stripe** : pas de plafond ; le crédit peut devenir négatif, à régulariser (§4).
 
 ### 3. Utiliser le crédit, c'est régler la facture « par crédit »
 
