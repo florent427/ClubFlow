@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# ClubFlow graphify refresh runner (detached, launched by dispatch).
+#
+# Usage: run <repo-root>
+#
+# - Takes an exclusive lock (graphify-out/.clubflow-refresh.lock/, mkdir is
+#   atomic). A lock whose owner PID is gone, or older than 30 min, is stale.
+# - Drains graphify-out/.clubflow-refresh.pending: requests that arrive while
+#   a refresh runs trigger exactly one more refresh afterwards.
+# - Runs bin/graphify-refresh (graphify update + ClubFlow enrichment layer).
+# - Logs to graphify-out/refresh.log (trimmed to its last 2000 lines at 1 MB).
+
+root="${1:-}"
+[ -n "$root" ] || exit 0
+command -v cygpath >/dev/null 2>&1 && root="$(cygpath -u "$root")"
+cd "$root" 2>/dev/null || exit 0
+
+out="$root/graphify-out"
+log="$out/refresh.log"
+lock="$out/.clubflow-refresh.lock"
+pending="$out/.clubflow-refresh.pending"
+[ -d "$out" ] || exit 0
+
+if [ -f "$log" ] && [ "$(wc -c < "$log")" -gt 1048576 ]; then
+  tail -n 2000 "$log" > "$log.tmp" && mv -f "$log.tmp" "$log"
+fi
+exec >>"$log" 2>&1
+
+ts() { date '+%Y-%m-%d %H:%M:%S'; }
+
+# Hook context leaks GIT_* variables (GIT_DIR, GIT_INDEX_FILE...): drop them.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_OBJECT_DIRECTORY \
+      GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_REFLOG_ACTION
+export GRAPHIFY_SKIP_HOOK=1
+
+acquire_lock() {
+  if mkdir "$lock" 2>/dev/null; then
+    echo $$ > "$lock/pid"
+    return 0
+  fi
+  local owner
+  owner="$(cat "$lock/pid" 2>/dev/null)"
+  local stale=0
+  if [ -z "$owner" ] || ! kill -0 "$owner" 2>/dev/null; then
+    stale=1
+  elif [ -n "$(find "$lock" -maxdepth 0 -mmin +30 2>/dev/null)" ]; then
+    stale=1
+  fi
+  if [ "$stale" -eq 1 ]; then
+    echo "$(ts) [run $$] removing stale lock (owner pid: ${owner:-none})"
+    rm -rf "$lock"
+    if mkdir "$lock" 2>/dev/null; then
+      echo $$ > "$lock/pid"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+release_lock() { rm -rf "$lock"; }
+
+while :; do
+  if ! acquire_lock; then
+    echo "$(ts) [run $$] refresh already running (pid $(cat "$lock/pid" 2>/dev/null)); request queued"
+    exit 0
+  fi
+  trap 'release_lock' EXIT
+
+  while [ -f "$pending" ]; do
+    rm -f "$pending"
+    if [ ! -x "$root/bin/graphify-refresh" ] && [ ! -f "$root/bin/graphify-refresh" ]; then
+      echo "$(ts) [run $$] bin/graphify-refresh missing on this branch; skipped"
+      continue
+    fi
+    echo "$(ts) [run $$] refresh start"
+    start=$(date +%s)
+    bash "$root/bin/graphify-refresh"
+    status=$?
+    echo "$(ts) [run $$] refresh end status=$status duration=$(( $(date +%s) - start ))s"
+  done
+
+  release_lock
+  trap - EXIT
+  # A request may have landed between the last pending check and the unlock.
+  [ -f "$pending" ] || exit 0
+done

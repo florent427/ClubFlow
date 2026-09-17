@@ -1,0 +1,72 @@
+# graphify ignore rules (gitignore syntax)
+
+# Tooling / agent metadata
+.claude/
+.cursor/
+.agent/
+.git/
+graphify-out/
+
+# Dependencies and build outputs
+**/node_modules/
+**/dist/
+**/build/
+**/.next/
+**/.expo/
+**/coverage/
+**/android/
+**/ios/
+.cache/
+tmp/
+temp/
+logs/
+*.log
+
+# Runtime data and generated files
+apps/api/uploads/
+apps/api/src/schema.gql
+apps/api/prisma/migrations/
+**/package-lock.json
+**/pnpm-lock.yaml
+CHANGELOG.md
+design stitch/
+
+# Secrets (keep example templates)
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.staging.example
+
+# Binary assets
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.ico
+*.pdf
+*.ttf
+*.otf
+*.woff
+*.woff2
+*.mp4
+*.zip
+
+# Trivial SVG icons (skipped from semantic extraction)
+apps/admin/public/favicon.svg
+apps/admin/public/icons.svg
+apps/admin/src/assets/react.svg
+apps/admin/src/assets/vite.svg
+apps/member-portal/public/favicon.svg
+apps/vitrine/public/sksr/logo-sksr.svg
+
+# Vendored copy of packages/mobile-shared inside mobile-admin. EAS builds only
+# upload apps/mobile-admin, so the shared sources are copied there; at runtime
+# the babel module-resolver alias points to this copy. Graphing both would
+# duplicate every shared symbol: packages/mobile-shared is the source of truth.
+apps/mobile-admin/src/_shared/
+
+# Vendored minified bundles
+**/*.min.js
+**/*.min.mjs
+**/*.min.cjs

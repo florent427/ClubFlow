@@ -19,6 +19,8 @@ design stich/
 .claude/*
 # ... mais on versionne les skills custom partagés (équipe + multi-machine)
 !.claude/skills/
+# ... et les hooks projet partagés (commandes portables, sans chemin absolu)
+!.claude/settings.json
 
 # Comptes de test staging (jamais commit)
 staging-test-accounts.local.md
@@ -33,3 +35,9 @@ bin/*.sql
 google-play-service-account*.json
 **/google-play-service-account*.json
 play-store-key*.json
+
+# graphify knowledge graph output (local, regenerable)
+graphify-out/
+
+# Python bytecode (bin/graphify-enrich.py)
+__pycache__/
