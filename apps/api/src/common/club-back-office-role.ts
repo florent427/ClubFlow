@@ -1,4 +1,4 @@
-import { MembershipRole, SystemRole } from '@prisma/client';
+import { MemberStatus, MembershipRole, SystemRole } from '@prisma/client';
 import type { PrismaService } from '../prisma/prisma.service';
 
 /** Rôles autorisés pour le back-office club (aligné sur ClubAdminRoleGuard). */
@@ -43,6 +43,61 @@ export async function userHasClubBackOfficeRole(
     return false;
   }
   return isBackOfficeMembershipRole(membership.role);
+}
+
+/**
+ * Détermine si un utilisateur fait partie de l'équipe d'un club : tout rôle
+ * d'adhésion au club (`ClubMembership`), ou admin système. C'est le public de
+ * l'admin (`myAdminClubs`) : plus large que le back-office — responsable
+ * communication, chef de projet, coach —, sans jamais inclure un adhérent ou un
+ * contact, qui n'ont pas de `ClubMembership`.
+ */
+export async function userHasClubStaffRole(
+  prisma: PrismaService,
+  userId: string,
+  clubId: string,
+): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { systemRole: true },
+  });
+  if (
+    user?.systemRole === SystemRole.SUPER_ADMIN ||
+    user?.systemRole === SystemRole.ADMIN
+  ) {
+    return true;
+  }
+  const membership = await prisma.clubMembership.findUnique({
+    where: { userId_clubId: { userId, clubId } },
+  });
+  return membership !== null;
+}
+
+/**
+ * Détermine si un compte est rattaché à un club, à quelque titre que ce soit :
+ * équipe (`userHasClubStaffRole`), fiche adhérent active, ou contact. C'est, en
+ * plus du public de l'admin, celui du portail et de l'appli membre.
+ */
+export async function userBelongsToClub(
+  prisma: PrismaService,
+  userId: string,
+  clubId: string,
+): Promise<boolean> {
+  if (await userHasClubStaffRole(prisma, userId, clubId)) {
+    return true;
+  }
+  const member = await prisma.member.findFirst({
+    where: { clubId, userId, status: MemberStatus.ACTIVE },
+    select: { id: true },
+  });
+  if (member) {
+    return true;
+  }
+  const contact = await prisma.contact.findFirst({
+    where: { clubId, userId },
+    select: { id: true },
+  });
+  return contact !== null;
 }
 
 /**

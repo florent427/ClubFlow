@@ -20,11 +20,23 @@ import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { memoryStorage } from 'multer';
 import sharp from 'sharp';
+import {
+  ClubRestAccessGuard,
+  RequireClubRestAccess,
+} from '../common/guards/club-rest-access.guard';
 import { MediaAssetsService } from './media-assets.service';
 import { MediaUrlSignerService } from './media-url-signer.service';
 
 /**
  * Endpoints REST pour le service média générique.
+ *
+ * Les routes d'écriture et de liste passent par `ClubRestAccessGuard`, pour le
+ * club de l'en-tête `X-Club-Id` :
+ * - l'envoi, par tout compte rattaché au club : le portail et l'appli membre y
+ *   envoient photos de profil, pièces jointes de messagerie et contributions
+ *   aux projets ;
+ * - la liste, le passage en public et la suppression, par l'équipe du club :
+ *   admin, appli admin, éditeur de la vitrine.
  *
  *  - POST   /media/upload       (auth admin) upload image ou document
  *  - GET    /media/:id          (mixte)      servir le fichier
@@ -67,7 +79,8 @@ export class MediaController {
   }
 
   @Post('upload')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'), ClubRestAccessGuard)
+  @RequireClubRestAccess('CLUB')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -168,7 +181,8 @@ export class MediaController {
   }
 
   @Get()
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'), ClubRestAccessGuard)
+  @RequireClubRestAccess('STAFF')
   async list(
     @Req() req: Request,
     @Query('kind') kind?: 'IMAGE' | 'DOCUMENT' | 'OTHER',
@@ -338,7 +352,8 @@ export class MediaController {
    * oracle d'existence.
    */
   @Post(':id/public')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'), ClubRestAccessGuard)
+  @RequireClubRestAccess('STAFF')
   async makePublic(
     @Req() req: Request,
     @Param('id') id: string,
@@ -350,7 +365,8 @@ export class MediaController {
   }
 
   @Delete(':id')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'), ClubRestAccessGuard)
+  @RequireClubRestAccess('STAFF')
   async delete(
     @Req() req: Request,
     @Param('id') id: string,

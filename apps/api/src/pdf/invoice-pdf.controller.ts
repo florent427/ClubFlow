@@ -9,17 +9,19 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import type { Request, Response } from 'express';
+import { ClubRestAccessGuard } from '../common/guards/club-rest-access.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { InvoicePdfService } from './invoice-pdf.service';
 
 /**
  * Téléchargement PDF des factures / avoirs.
  *
- * Auth : JWT Bearer standard (pas GraphQL).
- * Contexte club : header `X-Club-Id` (alignement avec le reste de l'API).
+ * Auth : JWT Bearer standard (pas GraphQL), puis `ClubRestAccessGuard` : le
+ * compte doit appartenir au back-office du club de l'en-tête `X-Club-Id`, comme
+ * pour la facturation en GraphQL.
  */
 @Controller('invoices')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(AuthGuard('jwt'), ClubRestAccessGuard)
 export class InvoicePdfController {
   constructor(
     private readonly prisma: PrismaService,
@@ -38,11 +40,10 @@ export class InvoicePdfController {
       throw new BadRequestException('X-Club-Id header requis');
     }
 
-    // Vérifie que l'utilisateur est rattaché au club — on réutilise la logique
-    // simple du ClubContextGuard : présence d'un club Id valide suffit car
-    // l'UI n'expose que les clubs de l'utilisateur. Les permissions fines
-    // (admin/membre) sont orthogonales — la facture n'est jamais révélée
-    // à un autre club (filtre via WHERE clubId ci-dessous).
+    // L'appartenance au club est vérifiée par `ClubRestAccessGuard`. L'en-tête
+    // seul ne prouve rien : il se falsifie, et l'identifiant d'un club est
+    // public. Tant que la route s'en contentait, un compte de n'importe quel
+    // club lisait les factures d'un autre.
     const club = await this.prisma.club.findUnique({
       where: { id: clubId as string },
     });
