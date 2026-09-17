@@ -513,7 +513,37 @@ se livre en deux fois : A (tâches 3.1 et 3.2), puis B (tâche 3.3).
 - [x] Rendu vérifié sur une API simulée (Docker arrêté) : portail (solde,
   historique, confirmation, règlement puis rechargement, crédit négatif,
   requête en erreur) ; tiroir foyer de l'admin (lignes, foyer sans crédit,
-  module Paiement coupé). Reste la recette sur staging, avec la tâche 3.4.
+  module Paiement coupé).
+- [x] Recette staging de la livraison A, sur club-demo, le 2026-09-17 (commit
+  `0f49025`), avec le crédit de 10 € de Florent laissé par le lot 2 :
+  - **Déploiement** : les trois champs répondaient « Cannot query field » avant,
+    « Unauthorized » sans jeton après, face à un champ témoin inexistant.
+    L'historique n'expose pas `externalRef`.
+  - **Crédit du compte, pas du profil actif** : 10,00 € et le même historique
+    de 7 lignes depuis le profil de Florent et depuis celui de son fils mineur,
+    sans compte. La somme des lignes est le solde, et concorde avec la base.
+  - **Tiroir foyer** (`clubFamilyPayerCredits`) : une ligne « Florent Morel,
+    10,00 € ».
+  - **Utiliser le crédit** sur la facture « Recette crédit lot 3 12h02 —
+    portail » (`b54158f2…`, 10 €, foyer `7cb6bebb…`) :
+    - depuis le profil du fils, refus « Seul le payeur du foyer peut régler une
+      facture en ligne. » ;
+    - 4 € confirmés : crédit 6 €, facture ouverte, reste 6 € ;
+    - 7 € refusés : « Au plus 6,00 € : crédit disponible 6,00 €, reste à
+      encaisser 6,00 €. » ;
+    - sans montant : 6 €, facture PAYÉE, crédit 0 € ;
+    - une nouvelle tentative : « Seule une facture ouverte se règle avec le
+      crédit. »
+  - **Après** : historique de 9 lignes pour 0 € ; plus de ligne pour le foyer,
+    et le tiroir de l'admin affiche « Aucun crédit parmi les personnes du
+    foyer. »
+  - **En base** : deux paiements `PAYER_CREDIT` de 4 et 6 € au nom de son
+    membre ; deux écritures INCOME validées, DÉBIT 419100 / CRÉDIT 706100, sans
+    compte financier ; crédit recalculé à 0 (60 € versés, 60 € imputés) ;
+    aucune erreur nouvelle au journal de l'API.
+  - **Non vus à l'écran sur staging** : le portail et l'appli, faute de session
+    adhérent ; leurs requêtes ont été jouées avec un jeton de profil
+    (`selectActiveViewerProfile`).
 
 Limites connues :
 - Une facture hors du périmètre « Payer en ligne » (adhésion sans foyer, achat
