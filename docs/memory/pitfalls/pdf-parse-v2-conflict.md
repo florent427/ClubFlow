@@ -57,7 +57,7 @@ faire `import { pdf } from 'pdf-to-img'` direct.
 **Workaround** dans le service OCR :
 
 ```ts
-// apps/api/src/ocr/ocr.service.ts
+// apps/api/src/accounting/ocr-shared.ts
 const importPdfToImg = new Function('s', 'return import(s)');
 const pdfToImg = await importPdfToImg('pdf-to-img');
 const pages = pdfToImg.pdf(buffer, { ... });
@@ -100,4 +100,4 @@ polices standard). Cf. `apps/api/src/pdf/shop-purchase-order-pdf.service.spec.ts
 ## Lié
 
 - [knowledge/stack.md](../../knowledge/stack.md) §Décisions piège
-- `apps/api/src/ocr/ocr.service.ts` (code workaround)
+- `apps/api/src/accounting/ocr-shared.ts` (code workaround, utilisé par `receipt-ocr.service.ts`)

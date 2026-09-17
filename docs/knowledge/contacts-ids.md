@@ -53,7 +53,8 @@ L'URL dashboard contient l'Account ID — c'est trompeur.
 
 ## URLs publiques live
 
-- **Admin** : https://clubflow.topdigital.re
+- **Landing** : https://clubflow.topdigital.re
+- **Admin** : https://app.clubflow.topdigital.re
 - **API** : https://api.clubflow.topdigital.re
 - **Portail** : https://portail.clubflow.topdigital.re
 - **Vitrine SKSR** : https://sksr.re (+ www → 301)

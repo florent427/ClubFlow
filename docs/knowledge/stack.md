@@ -14,18 +14,21 @@ Multi-clubs, multi-rôles, RGPD, hébergé en France/EU.
 | Backend API | NestJS + GraphQL (Apollo Server v5) | 11.x | TypeScript strict, Prisma client, Socket.IO `/chat` |
 | ORM | Prisma | 6.x | PostgreSQL connector, code-first migrations |
 | Database | PostgreSQL | **16** | Pas 15, pas 17 — cf ADR-0001. Tuning 8 GB hardcodé pour prod |
-| Cache/Queue (optionnel) | Redis | 7.x | Sessions Apollo, throttling |
+| Cache/Queue (optionnel) | Redis | 7.x | Prévu (sessions Apollo, throttling) ; service présent sur le serveur prod mais aucune dépendance Redis dans `apps/api` à ce jour |
 | Admin web | React + Vite + Apollo Client v4 | — | Port dev 5173 |
 | Member portal web | React + Vite + Apollo Client v4 | — | Port dev 5174 |
 | Mobile membre | Expo SDK 55 + RN 0.83 | — | Apollo, socket.io-client |
 | Mobile admin | Expo SDK 55 + RN 0.83 | — | (en cours), package partagé `@clubflow/mobile-shared` |
 | Vitrine publique | Next.js 15 (App Router, SSR) | — | Port dev 5175, prod 5175 hardcodé |
+| Landing marketing | Next.js 15 | — | `apps/landing`, port dev+prod 5176, sert `clubflow.topdigital.re` |
 | Auth | JWT + refresh tokens | — | Bearer + `X-Club-Id` header |
 | Mail dev | Mailpit (Docker) | — | UI sur 8025, SMTP 1025 |
 | Mail prod | **Brevo** (ex-Sendinblue) | — | Multi-domain, plan gratuit 300 mails/jour |
 | OCR | OpenRouter (Claude Sonnet 4.5 vision) | — | Pipeline 3-call, sharp + pdf-parse v1.1.1 + pdf-to-img v4 |
 
-## Modules livrés (v0.2.0)
+## Modules livrés
+
+Liste établie à la v0.2.0, non exhaustive depuis (version courante : voir `CHANGELOG.md`).
 
 Members, Families, Adhésions/Cart, Billing, Accounting, Comms (Email/Push/Messaging interne),
 Messaging WS, Planning, Events, Projects, Booking, Shop, Sponsoring, Subsidies, Vitrine

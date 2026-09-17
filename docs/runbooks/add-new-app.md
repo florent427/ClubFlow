@@ -27,11 +27,12 @@ Réserver un port libre :
 | 5173 | admin (Vite) |
 | 5174 | member-portal (Vite) |
 | 5175 | vitrine (Next.js) |
-| 5176 | **disponible** |
+| 5176 | landing (Next.js) |
 | 5177 | **disponible** |
 | 8081 | mobile (Metro Expo) |
 
-→ Pour la nouvelle app, prendre `5176`.
+→ Pour la nouvelle app, prendre `5177` (vérifier d'abord qu'aucun
+`package.json` de `apps/` ne l'a pris entre-temps).
 
 Update :
 - `.claude/skills/restart/SKILL.md` (liste des ports + Procédure §1 et §2)

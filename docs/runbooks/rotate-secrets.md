@@ -12,7 +12,7 @@
 | `DATABASE_URL` (mdp) | `apps/api/.env` | Restart API |
 | GitHub Actions SSH key | repo Secret `SSH_PRIVATE_KEY` + serveur `~/.ssh/authorized_keys` | Pipeline cassé jusqu'à update |
 | Storage Box password | `/root/.clubflow-storagebox-password` + rclone.conf | Backups cassés jusqu'à update |
-| `BREVO_API_KEY` | `apps/api/.env` | Mails cassés jusqu'à update |
+| `BREVO_API_KEY` | `/etc/clubflow/secrets.env` (serveur, cf. skill `/provision`) | Scripts de provision Brevo cassés ; l'API ne lit pas cette clé (mails via `SMTP_USER`/`SMTP_PASS`) |
 | Mots de passe admin | DB Postgres | Aucun, à faire via UI |
 
 ## Rotation `JWT_SECRET` + `REFRESH_SECRET`
@@ -88,11 +88,17 @@ ssh-into-prod "
 
 Console Brevo → SMTP & API → API Keys → Generate.
 
+Cette clé REST n'est utilisée que par les scripts de provision (skill
+`/provision`, cf. [provision-third-party-secrets.md](provision-third-party-secrets.md)).
+Le code de l'API ne la lit pas : l'envoi de mails passe par le relais
+SMTP (`SMTP_USER` / `SMTP_PASS` dans `apps/api/.env`), dont la clé SMTP
+se régénère séparément (Console Brevo → SMTP & API → SMTP). Pas de
+redémarrage de `clubflow-api` nécessaire pour la clé REST.
+
 ```bash
 NEW_BREVO_KEY="<copié-depuis-console-Brevo>"
 ssh-into-prod "
-  sudo sed -i 's|^BREVO_API_KEY=.*|BREVO_API_KEY=$NEW_BREVO_KEY|' /home/clubflow/clubflow/apps/api/.env
-  sudo systemctl restart clubflow-api
+  sudo sed -i 's|^BREVO_API_KEY=.*|BREVO_API_KEY=$NEW_BREVO_KEY|' /etc/clubflow/secrets.env
 "
 ```
 

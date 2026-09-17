@@ -2,6 +2,7 @@
 
 **Date :** 2026-03-31  
 **Statut :** design validé (brainstorming), prêt pour plan d’implémentation  
+**Note (2026-09-17) :** sur la coexistence `Contact` + `Member` pour un même `User` dans un club, le code suit la spec [`2026-03-31-gestion-contacts-portail-admin-design.md`](./2026-03-31-gestion-contacts-portail-admin-design.md) §2.1 : la fiche `Contact` est conservée après création du `Member` (`linkedMemberId`, suppression du contact interdite tant qu’un membre est lié, cf. `apps/api/src/members/club-contacts.service.ts`). La ligne « Non (B) » ci-dessous ne décrit donc pas le modèle de données actuel ; le rattachement du payeur (`FamilyMember.contactId` ou `memberId`) reste à lire dans `apps/api/src/families/`.  
 **Contexte :** aujourd’hui, le rôle payeur d’un foyer (`FamilyMember` / `PAYER`) référence obligatoirement un `Member`. Les `Contact` (compte portail / prospect sans fiche adhérent) ne peuvent pas être désignés comme payeur.
 
 ## Objectif métier

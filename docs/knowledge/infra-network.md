@@ -1,6 +1,6 @@
 # Réseau, DNS, vhosts ClubFlow
 
-## Architecture domaines (cible Phase 1+)
+## Architecture domaines (Phase 1 en prod)
 
 ```
 ClubFlow product (sur topdigital.re via DNS Cloudflare)
@@ -9,7 +9,7 @@ ClubFlow product (sur topdigital.re via DNS Cloudflare)
 │                                       URL pattern : /<club-slug>/...  (cf. ADR-0006)
 ├─ api.clubflow.topdigital.re        → NestJS API + WS /chat
 ├─ portail.clubflow.topdigital.re    → portail membre (Vite static)
-└─ *.clubflow.topdigital.re          → vitrine fallback (Phase 2 — wildcard cert)
+└─ *.clubflow.topdigital.re          → vitrine fallback (TLS on_demand par sous-domaine)
                                        <club-slug>.clubflow.topdigital.re
 
 Clubs (chacun a son domaine vitrine custom optionnel)
@@ -18,17 +18,26 @@ Clubs (chacun a son domaine vitrine custom optionnel)
 └─ <futur-club>.fr                   → vitrine futur club (config self-service Phase 3)
 
 → Tous pointent vers 89.167.79.253 (IPv4) + 2a01:4f9:c010:99d3::1 (IPv6)
-→ TLS auto Let's Encrypt via Caddy (HTTP-01 challenge, DNS-01 pour wildcard Phase 2)
+→ TLS auto Let's Encrypt via Caddy (HTTP-01 challenge, y compris pour les
+  sous-domaines du wildcard : TLS on_demand, autorisé par
+  `/v1/vitrine/check-domain` — pas de certificat wildcard DNS-01)
 ```
 
 ## État actuel vs cible
 
 | Domaine | Statut | Phase |
 |---|---|---|
-| `clubflow.topdigital.re` (landing) | ⚠️ aujourd'hui = admin, à migrer | Phase 1 |
-| `app.clubflow.topdigital.re` | 🆕 à créer | Phase 1 |
-| `*.clubflow.topdigital.re` (wildcard) | 🆕 à créer | Phase 2 |
-| Domaines custom self-service | 🆕 via Caddy API (cf. ADR-0007) | Phase 3 |
+| `clubflow.topdigital.re` (landing) | ✅ live (landing) | Phase 1 |
+| `app.clubflow.topdigital.re` | ✅ live | Phase 1 |
+| `*.clubflow.topdigital.re` (wildcard) | ✅ live (TLS on_demand) | Phase 2 |
+| Domaines custom self-service | ✅ code en place via Caddy API (`requestVitrineDomain` / `verifyVitrineDomain`, cf. ADR-0007) | Phase 3 |
+
+⚠️ Deux mécanismes coexistent pour les sous-domaines vitrine : le vhost
+wildcard `*.clubflow.topdigital.re` en TLS on_demand
+(`bin/caddy-multitenant.snippet`, `bin/Caddyfile.staging`) et l'ajout d'un
+vhost par club via l'API admin Caddy à la création du club
+(`auth.service.ts`, cf. `runbooks/wildcard-vitrine-subdomain.md`). Vérifier
+sur le serveur lequel sert réellement avant de modifier l'un ou l'autre.
 
 ## Où sont gérés les DNS ?
 
@@ -42,22 +51,22 @@ Clubs (chacun a son domaine vitrine custom optionnel)
 ⚠️ **NE PAS toucher les NS du domaine `topdigital.re`** : ils sont chez Cloudflare,
 pas OVH. Toute modif DNS pour `*.topdigital.re` doit se faire **côté Cloudflare**.
 
-## Records actifs (à mettre à jour Phase 1)
+## Records actifs
 
 **Cloudflare → topdigital.re** (records ClubFlow actuels + à ajouter) :
 
 | Type | Name | Content | Proxy | Statut |
 |---|---|---|---|---|
-| A | clubflow | 89.167.79.253 | DNS only | ✅ existant (devient landing après Phase 1) |
+| A | clubflow | 89.167.79.253 | DNS only | ✅ existant (landing) |
 | AAAA | clubflow | 2a01:4f9:c010:99d3::1 | DNS only | ✅ existant |
 | A | api.clubflow | 89.167.79.253 | DNS only | ✅ existant |
 | AAAA | api.clubflow | 2a01:4f9:c010:99d3::1 | DNS only | ✅ existant |
 | A | portail.clubflow | 89.167.79.253 | DNS only | ✅ existant |
 | AAAA | portail.clubflow | 2a01:4f9:c010:99d3::1 | DNS only | ✅ existant |
-| **A** | **app.clubflow** | **89.167.79.253** | **DNS only** | 🆕 **Phase 1** |
-| **AAAA** | **app.clubflow** | **2a01:4f9:c010:99d3::1** | **DNS only** | 🆕 **Phase 1** |
-| **A** | **\*.clubflow** | **89.167.79.253** | **DNS only** | 🆕 **Phase 2 (wildcard)** |
-| **AAAA** | **\*.clubflow** | **2a01:4f9:c010:99d3::1** | **DNS only** | 🆕 **Phase 2 (wildcard)** |
+| A | app.clubflow | 89.167.79.253 | DNS only | ✅ existant (Phase 1) |
+| AAAA | app.clubflow | 2a01:4f9:c010:99d3::1 | DNS only | ✅ existant (Phase 1) |
+| A | \*.clubflow | 89.167.79.253 | DNS only | ✅ existant (wildcard) |
+| AAAA | \*.clubflow | 2a01:4f9:c010:99d3::1 | DNS only | ✅ existant (wildcard) |
 
 **OVH → sksr.re** (inchangé) :
 
@@ -94,6 +103,11 @@ Si une autre IP apparaît → A parasite OVH à supprimer (voir pitfall).
 ## Caddyfile cible (Phase 1)
 
 `/etc/caddy/Caddyfile` — voir `runbooks/deploy.md` pour la procédure de modif.
+
+⚠️ Bloc ci-dessous historique (conception Phase 1). Référence à jour :
+`bin/caddy-multitenant.snippet` (prod) et `bin/Caddyfile.staging`, qui
+activent `admin localhost:2019` et servent le wildcard en TLS `on_demand`
+(HTTP-01) au lieu du bloc DNS-01 commenté plus bas.
 
 ```caddy
 {
@@ -176,6 +190,23 @@ Sinon le reload échoue avec "permission denied" et reste bloqué.
 
 ## Ajouter un nouveau club
 
-- **Phase 1-2** (manuel) : cf. `runbooks/add-new-club.md`
-- **Phase 3+** (self-service) : le club configure son domaine depuis l'admin
-  → API NestJS appelle Caddy admin API → vhost ajouté à chaud (cf. ADR-0007)
+- **Self-service** (voie normale) : le club configure son domaine depuis
+  l'admin → API NestJS appelle Caddy admin API → vhost ajouté à chaud
+  (cf. ADR-0007 et `runbooks/add-new-club.md`)
+- **Manuel** (secours) : édition du Caddyfile, cf. `runbooks/add-new-club.md` §4
+
+## Staging
+
+VPS dédié `46.62.197.93` (Hetzner cx23 Helsinki), branche `staging`, DNS
+chez Cloudflare (même zone `topdigital.re`) :
+
+| Domaine | Rôle |
+|---|---|
+| `staging.clubflow.topdigital.re` | landing |
+| `staging.app.clubflow.topdigital.re` | admin |
+| `staging.api.clubflow.topdigital.re` | API |
+| `staging.portail.clubflow.topdigital.re` | portail membre |
+| `*.staging.clubflow.topdigital.re` | vitrine fallback |
+
+Caddyfile de référence : `bin/Caddyfile.staging`. Bootstrap :
+`runbooks/staging-vps-bootstrap.md`.
