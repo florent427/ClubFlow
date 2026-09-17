@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.69.0](https://github.com/florent427/ClubFlow/compare/v0.68.3...v0.69.0) (2026-09-17)
+
+
+### ✨ Features
+
+* **paiements:** consulter et utiliser son crédit au portail et dans l'appli ([0f49025](https://github.com/florent427/ClubFlow/commit/0f49025a22642e544cd52ad8f49224573a180833))
+* **paiements:** crédit du payeur au portail et dans l'appli (lot 3, livraison A) ([78cb78d](https://github.com/florent427/ClubFlow/commit/78cb78dd34e68a2d5c4960667dd1827ddf93b352))
+
 ## [0.68.3](https://github.com/florent427/ClubFlow/compare/v0.68.2...v0.68.3) (2026-09-17)
 
 
