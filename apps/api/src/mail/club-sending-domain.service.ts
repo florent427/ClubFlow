@@ -187,6 +187,13 @@ export class ClubSendingDomainService {
       row.providerDomainId ?? smtpProviderIdForFqdn(normalizeFqdn(row.fqdn));
     const t = this.requireTransport();
     const snap = await t.refreshDomain(providerId);
+    if (snap.inconclusive) {
+      // Rien n'a été contrôlé : un domaine vérifié le reste (celui de SKSR en
+      // prod, authentifié chez Brevo), un domaine en attente ne passe pas prêt.
+      throw new BadRequestException(
+        'Vérification indisponible depuis ClubFlow : l’authentification du domaine auprès du service d’envoi est faite par l’équipe ClubFlow. Le statut du domaine ne change pas.',
+      );
+    }
 
     let verificationStatus = row.verificationStatus;
     if (snap.verified) {
