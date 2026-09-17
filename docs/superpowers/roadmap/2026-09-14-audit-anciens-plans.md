@@ -11,6 +11,22 @@
 > `docs/memory/pitfalls/mot-de-passe-compte-non-verifie.md` et
 > `docs/memory/pitfalls/throttler-sans-trust-proxy.md`.
 
+> **Suivi, 2026-09-17** : les points 1.3, 1.4 et 1.5 sont corrigés (commits
+> df3b0fc, 3cb1a2c, 3a4f25b), avec une recette staging.
+> - **1.5** : une vraie socket, ouverte avec le profil d'un membre, est coupée
+>   6,6 s après la désactivation du membre. Une reconnexion est refusée tout de
+>   suite ; après réactivation, la connexion tient. Voir
+>   `docs/memory/pitfalls/handleconnection-async-messages-avant-controle.md`.
+> - **1.3** : une campagne e-mail sur un club sans domaine vérifié est refusée
+>   et reste un brouillon, sans destinataire.
+> - **1.4** : « Vérifier » ne change plus un statut qu'il ne sait pas
+>   contrôler ; le domaine vérifié de club-demo le reste, comme celui de SKSR en
+>   prod.
+>
+> Reste pour 1.4 : la vérification réelle par l'API Brevo. La clé Brevo du
+> serveur de prod est refusée (« API Key is not enabled »), et l'API n'a pas de
+> clé.
+
 ## En bref
 
 - **L'essentiel est livré.**

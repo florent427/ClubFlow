@@ -49,6 +49,7 @@
 | [`github-token-ne-retrigger-pas.md`](pitfalls/github-token-ne-retrigger-pas.md) | Le tag de release n'est jamais coupé : GITHUB_TOKEN ne réveille aucun workflow |
 | [`gitignore-claude-trailing-slash-blocks-negation.md`](pitfalls/gitignore-claude-trailing-slash-blocks-negation.md) | Piège — `.gitignore` `.claude/` (trailing slash) bloque la négation `!.claude/skills/` |
 | [`grid-1fr-minimum-auto-deborde.md`](pitfalls/grid-1fr-minimum-auto-deborde.md) | Piège — `1fr` vaut `minmax(auto, 1fr)` : un texte nowrap élargit la colonne hors écran |
+| [`handleconnection-async-messages-avant-controle.md`](pitfalls/handleconnection-async-messages-avant-controle.md) | Piège — `handleConnection` asynchrone : les messages arrivent avant la fin du contrôle |
 | [`jest-structuredclone-date-autre-contexte.md`](pitfalls/jest-structuredclone-date-autre-contexte.md) | Piège — `structuredClone` dans Jest rend des `Date` d'un autre contexte |
 | [`juge-non-fiable-verdict-sans-valeur.md`](pitfalls/juge-non-fiable-verdict-sans-valeur.md) | Le juge non fiable : un verdict rendu sur un signal dont on n'a pas vérifié le sens |
 | [`module-natif-ne-passe-pas-par-metro.md`](pitfalls/module-natif-ne-passe-pas-par-metro.md) | `Cannot find native module` : un module natif ne s'installe pas par Metro |
@@ -124,7 +125,7 @@
 
 ---
 
-_Index généré le 2026-09-17 10:03 UTC par `bin/memory-index`._
+_Index généré le 2026-09-17 12:41 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`
