@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.71.0](https://github.com/florent427/ClubFlow/compare/v0.70.1...v0.71.0) (2026-09-17)
+
+
+### ✨ Features
+
+* **paiements:** rembourser une avance hors carte (lot 4, livraison A) ([94156cc](https://github.com/florent427/ClubFlow/commit/94156cc980c200429ca0828ca5a1eef0a87bfa80))
+* **paiements:** rembourser une avance versée en espèces, par virement ou par chèque ([8a49007](https://github.com/florent427/ClubFlow/commit/8a49007e4a4efd9ef439e24fd9129982ba838d66))
+
 ## [0.70.1](https://github.com/florent427/ClubFlow/compare/v0.70.0...v0.70.1) (2026-09-17)
 
 
