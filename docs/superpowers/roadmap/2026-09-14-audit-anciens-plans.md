@@ -27,6 +27,24 @@
 > serveur de prod est refusée (« API Key is not enabled »), et l'API n'a pas de
 > clé.
 
+> **Suivi, 2026-09-17, priorité 3** : les tests tournent en CI.
+> `.github/workflows/tests.yml` lance à chaque PR, et à chaque poussée sur
+> `staging` et `main` :
+> - les tests unitaires de l'API, de l'admin, du portail et de l'appli mobile ;
+> - l'e2e de l'API sur PostgreSQL 16 et Mailpit.
+>
+> Détails :
+> - **e2e** : il ne compilait plus depuis avril, et sept attentes dataient
+>   d'avant la v0.2.0. Elles suivent maintenant le code, dont l'inscription
+>   (constat de la section 3). Le foyer étendu est testé des deux côtés de
+>   l'invitation. Voir `docs/memory/pitfalls/test-que-rien-ne-lance-pourrit.md`.
+> - **type-check** : `npm run typecheck` de l'API compile aussi `test/`.
+> - **Constat en passant** : le rattachement par e-mail du payeur promet au
+>   co-parent « les factures et les enfants du groupe ». Or, depuis la v0.2.0,
+>   il ne les voit qu'après l'invitation du payeur.
+>
+> Restent les parcours sans test de la section 3.
+
 ## En bref
 
 - **L'essentiel est livré.**

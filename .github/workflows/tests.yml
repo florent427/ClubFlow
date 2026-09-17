@@ -1,0 +1,110 @@
+name: tests
+
+# Les tests unitaires tournent à chaque PR et à chaque poussée sur main et
+# staging. Jusqu'ici, aucun workflow n'appelait jest ni vitest : les tests ne
+# tournaient qu'à la main (audit du 2026-09-14, priorité 3).
+#
+# Les branches `ci/**` servent à essayer ce workflow sans passer par staging.
+
+on:
+  pull_request:
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - '.github/workflows/tests.yml'
+  push:
+    branches: [main, staging, 'ci/**']
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - '.github/workflows/tests.yml'
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: tests (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [api, admin, member-portal, mobile]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/${{ matrix.app }}/package-lock.json
+
+      # L'appli mobile n'exécute pas ses scripts d'installation (Expo, modules
+      # natifs) : ses tests vitest n'en ont pas besoin.
+      - name: Install
+        working-directory: apps/${{ matrix.app }}
+        run: npm ci ${{ matrix.app == 'mobile' && '--ignore-scripts' || '' }}
+
+      # Client Prisma généré, pas versionné (cf. typecheck.yml).
+      - name: Generate Prisma client
+        if: matrix.app == 'api'
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://user:pass@localhost:5432/db
+        run: npx prisma generate
+
+      # Deux workers : les tests qui montent un vrai serveur GraphQL tiennent
+      # dans leur délai sur les deux cœurs d'un runner.
+      - name: Tests
+        working-directory: apps/${{ matrix.app }}
+        run: ${{ matrix.app == 'api' && 'npx jest --ci --silent --maxWorkers=2' || 'npm test' }}
+
+  # Parcours de bout en bout de l'API sur une vraie base PostgreSQL 16, avec
+  # Mailpit pour les e-mails : inscription, profils, foyers, facturation.
+  e2e-api:
+    name: tests (api e2e)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: clubflow
+          POSTGRES_PASSWORD: clubflow
+          POSTGRES_DB: clubflow_e2e
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U clubflow -d clubflow_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      mailpit:
+        image: axllent/mailpit
+        ports: ['1025:1025']
+    env:
+      DATABASE_URL: postgresql://clubflow:clubflow@localhost:5432/clubflow_e2e
+      SMTP_HOST: 127.0.0.1
+      SMTP_PORT: '1025'
+      SMTP_AUTO_VERIFY_DOMAIN: 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+
+      - name: Install
+        working-directory: apps/api
+        run: npm ci
+
+      - name: Generate Prisma client
+        working-directory: apps/api
+        run: npx prisma generate
+
+      - name: Tests e2e
+        working-directory: apps/api
+        run: npm run test:e2e

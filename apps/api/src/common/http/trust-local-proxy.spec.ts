@@ -56,6 +56,11 @@ async function sonder(app: INestApplication, xForwardedFor: string): Promise<'pa
   throw new Error(`Réponse inattendue : ${JSON.stringify(res.body)}`);
 }
 
+// Chaque test construit un schéma GraphQL et démarre un serveur : sous la charge
+// d'une suite complète, ou sur un runner de CI, les 5 s par défaut ne suffisent
+// pas toujours.
+jest.setTimeout(30_000);
+
 describe('Adresse du visiteur derrière Caddy (limitation de débit)', () => {
   let app: INestApplication | undefined;
 
