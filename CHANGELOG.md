@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.69.1](https://github.com/florent427/ClubFlow/compare/v0.69.0...v0.69.1) (2026-09-17)
+
+
+### 🐛 Bug Fixes
+
+* **messagerie:** appeler viewerToggleChatMessageReaction depuis mobile-shared ([bd63798](https://github.com/florent427/ClubFlow/commit/bd637984e4f8b6e9da7f6154bbf8917e78c642c3))
+
 ## [0.69.0](https://github.com/florent427/ClubFlow/compare/v0.68.3...v0.69.0) (2026-09-17)
 
 
