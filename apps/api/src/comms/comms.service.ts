@@ -540,6 +540,18 @@ export class CommsService {
       throw new BadRequestException('Campagne déjà envoyée');
     }
 
+    // Multi-canal : on prend `channels[]` si renseigné, sinon fallback
+    // sur le `channel` legacy.
+    const channels: CommunicationChannel[] =
+      campaign.channels && campaign.channels.length > 0
+        ? campaign.channels
+        : [campaign.channel];
+
+    // La campagne passe « envoyée » avant la diffusion, et une erreur de canal
+    // n'est que journalisée : un canal qui ne peut rien envoyer doit donc être
+    // refusé ici, avant toute écriture (audit du 2026-09-14, point 1.3).
+    await this.assertCampaignChannelsReady(clubId, channels);
+
     // Résolution audience :
     // - audienceFilterJson présent → nouvelle voie (riche, multi-critères)
     // - sinon dynamicGroupId présent → legacy (groupe unique)
@@ -570,13 +582,6 @@ export class CommsService {
       const allMembers = await this.members.listMembers(clubId);
       matched = allMembers.filter((m) => m.status === MemberStatus.ACTIVE);
     }
-
-    // Multi-canal : on prend `channels[]` si renseigné, sinon fallback
-    // sur le `channel` legacy.
-    const channels: CommunicationChannel[] =
-      campaign.channels && campaign.channels.length > 0
-        ? campaign.channels
-        : [campaign.channel];
 
     await this.prisma.$transaction(async (tx) => {
       for (const m of matched) {
@@ -655,6 +660,36 @@ export class CommsService {
       where: { id: campaign.id },
     });
     return toCampaignGraph(updated, count);
+  }
+
+  /**
+   * Refuse une campagne dont un canal échouerait à coup sûr : sans domaine
+   * d'envoi vérifié pour les campagnes, aucun e-mail ne part ; sans bot, aucun
+   * message Telegram. Les échecs ponctuels (un destinataire, un salon) restent
+   * journalisés pendant la diffusion.
+   */
+  private async assertCampaignChannelsReady(
+    clubId: string,
+    channels: CommunicationChannel[],
+  ): Promise<void> {
+    if (channels.includes(CommunicationChannel.EMAIL)) {
+      try {
+        await this.sendingDomains.getVerifiedMailProfile(clubId, 'campaign');
+      } catch (err) {
+        if (!(err instanceof BadRequestException)) throw err;
+        throw new BadRequestException(
+          'Campagne non envoyée : aucun domaine d’envoi vérifié pour les campagnes (Paramètres → E-mail). Validez-en un, ou retirez le canal e-mail.',
+        );
+      }
+    }
+    if (
+      channels.includes(CommunicationChannel.TELEGRAM) &&
+      !this.telegram.isConfigured()
+    ) {
+      throw new BadRequestException(
+        'Campagne non envoyée : Telegram n’est pas configuré sur le serveur. Retirez le canal Telegram.',
+      );
+    }
   }
 
   private async deliverEmail(
