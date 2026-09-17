@@ -790,7 +790,26 @@ Remarques de la recette :
 
 ### Task 4.3 : Recette staging
 
-- [ ] Virement de 150 € pour une facture de 100 €.
+- [x] Trop-perçu, sur club-demo, le 2026-09-17 (commit `296364d`), au membre de
+  Florent :
+  - **Surplus** depuis le vrai tiroir, sur une facture de recette de 10 € :
+    - 15 € sans personne choisie, refusés : « Le montant dépasse le reste dû
+      (10,00 €) : choisissez au crédit de qui verser les 5,00 € de plus. » ;
+    - en chèque, le texte dit de saisir le reste dû, puis le surplus en avance ;
+    - en espèces, au crédit de Florent (choix entre Joachim à 0 € et Florent à
+      20 €) : « 10,00 € encaissés sur la facture, 5,00 € versés au crédit de
+      Florent Morel. », et le reste dû tombe à 0.
+  - **Virement** : relevé CSV de recette importé (une ligne de 30 €, chaînage
+    vérifié). Depuis la carte du payeur, Florent est choisi ; 20 € sur la
+    facture de recette, 10 € dans « Au crédit de Florent Morel ». La ligne est
+    rapprochée de deux écritures.
+  - **En base** :
+    - facture de 10 € PAYÉE en espèces (530000) et reçu d'avance de 5 € sur la
+      même caisse ;
+    - facture de 20 € PAYÉE par virement (512000) et reçu d'avance de 10 € sur
+      la banque, avec la référence du virement ;
+    - écritures INCOME vers 706100 et TRANSFER vers 419100 ;
+    - crédit de Florent à 35 € ; journal de l'API sans erreur nouvelle.
 - [x] Remboursement du crédit hors carte, sur club-demo, le 2026-09-17 (commit
   `8a49007`), au membre de Florent (crédit de 0 €).
   - **Avances de recette** : 30 € en espèces, 20 € par virement sur la Banque
