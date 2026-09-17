@@ -70,5 +70,10 @@ describe('Crédit du payeur — schéma GraphQL (ADR-0022)', () => {
     const mouvement = sdl.match(/type ViewerPayerCreditMovementGraph \{[^}]*\}/)?.[0] ?? '';
     expect(mouvement).toMatch(/method: ClubPaymentMethod\n/);
     expect(mouvement).not.toContain('externalRef');
+    // « Créditer mon compte » par carte.
+    expect(sdl).toContain('cardTopUpAvailable: Boolean!');
+    expect(sdl).toContain(
+      'viewerCreatePayerCreditCheckoutSession(amountCents: Int!, nativeApp: Boolean): ViewerCheckoutSession!',
+    );
   });
 });

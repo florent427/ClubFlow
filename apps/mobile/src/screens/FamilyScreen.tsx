@@ -14,10 +14,12 @@ import * as WebBrowser from 'expo-web-browser';
 import { interpretStripeReturn } from '../lib/shop-payment';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
+  Button,
   Card,
   EmptyState,
   ScreenHero,
   Skeleton,
+  TextField,
 } from '../components/ui';
 import { InviteFamilyMemberCta } from '../components/InviteFamilyMemberCta';
 import { JoinFamilyByPayerEmailCta } from '../components/JoinFamilyByPayerEmailCta';
@@ -26,18 +28,21 @@ import {
   VIEWER_ALL_FAMILY_BILLING,
   VIEWER_APPLY_PAYER_CREDIT,
   VIEWER_CREATE_INVOICE_CHECKOUT_SESSION,
+  VIEWER_CREATE_PAYER_CREDIT_CHECKOUT_SESSION,
   VIEWER_LOCK_INVOICE_PAYMENT_CHOICE,
   VIEWER_PAYER_CREDIT,
 } from '../lib/viewer-documents';
 import type {
   ViewerAllFamilyBillingData,
   ViewerApplyPayerCreditData,
+  ViewerCreatePayerCreditCheckoutSessionData,
   ViewerFamilyBillingSummary,
   ViewerPayerCredit,
   ViewerPayerCreditData,
 } from '../lib/viewer-types';
 import { formatEuroCents } from '../lib/format';
 import {
+  parsePayerCreditTopUp,
   payerCreditApplyCents,
   payerCreditApplyConfirmation,
   payerCreditKpi,
@@ -153,7 +158,63 @@ function formatShortDate(iso: string): string {
  */
 function PayerCreditCard({ credit }: { credit: ViewerPayerCredit }) {
   const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState('');
+  const [amountError, setAmountError] = useState<string | null>(null);
+  const client = useApolloClient();
+  const [createTopUp, { loading: startingTopUp }] =
+    useMutation<ViewerCreatePayerCreditCheckoutSessionData>(
+      VIEWER_CREATE_PAYER_CREDIT_CHECKOUT_SESSION,
+    );
   const kpi = payerCreditKpi(credit.balanceCents);
+
+  // « Créditer mon compte » : Stripe dans le navigateur intégré, retour dans
+  // l'appli par le lien profond. Le crédit apparaît quand Stripe confirme.
+  async function topUp() {
+    const parsed = parsePayerCreditTopUp(amount);
+    if ('error' in parsed) {
+      setAmountError(parsed.error);
+      return;
+    }
+    setAmountError(null);
+    try {
+      const { data } = await createTopUp({
+        variables: { amountCents: parsed.cents },
+      });
+      const payload = data?.viewerCreatePayerCreditCheckoutSession;
+      if (!payload?.url) {
+        Alert.alert('Indisponible', 'Impossible d’ouvrir le paiement. Réessayez plus tard.');
+        return;
+      }
+      const res = await WebBrowser.openAuthSessionAsync(
+        payload.url,
+        payload.paymentReturnUrl,
+      );
+      const outcome = interpretStripeReturn(res);
+      if (outcome === 'paid') {
+        setAmount('');
+        Alert.alert(
+          'Paiement reçu',
+          'Votre crédit sera à jour dès que le paiement est confirmé.',
+        );
+        await client
+          .refetchQueries({ include: [VIEWER_PAYER_CREDIT] })
+          .catch(() => undefined);
+        setTimeout(() => {
+          void client
+            .refetchQueries({ include: [VIEWER_PAYER_CREDIT] })
+            .catch(() => undefined);
+        }, 3500);
+      } else if (outcome === 'canceled') {
+        Alert.alert('Paiement annulé', 'Votre compte n’a pas été crédité.');
+      }
+    } catch (err) {
+      Alert.alert(
+        'Erreur',
+        err instanceof Error ? err.message : 'Impossible de lancer le paiement.',
+      );
+    }
+  }
+
   return (
     <Card title="Crédit">
       <View style={styles.creditHead}>
@@ -214,6 +275,25 @@ function PayerCreditCard({ credit }: { credit: ViewerPayerCredit }) {
             </View>
           ) : null}
         </>
+      ) : null}
+      {credit.cardTopUpAvailable ? (
+        <View style={styles.topUp}>
+          <TextField
+            label="Créditer mon compte (1 € à 1 000 €)"
+            value={amount}
+            onChangeText={setAmount}
+            keyboardType="decimal-pad"
+            placeholder="50,00"
+            error={amountError}
+          />
+          <Button
+            label="Créditer par carte"
+            icon="card-outline"
+            variant="secondary"
+            loading={startingTopUp}
+            onPress={() => void topUp()}
+          />
+        </View>
       ) : null}
     </Card>
   );
@@ -295,7 +375,9 @@ export function FamilyScreen() {
 
       {anyPayerView ? <InviteFamilyMemberCta /> : null}
 
-      {anyPayerView && shouldShowPayerCredit(credit) ? (
+      {anyPayerView &&
+      credit &&
+      (credit.cardTopUpAvailable || shouldShowPayerCredit(credit)) ? (
         <PayerCreditCard credit={credit} />
       ) : null}
 
@@ -934,6 +1016,7 @@ const styles = StyleSheet.create({
   },
 
   flexShrink: { flexShrink: 1 },
+  topUp: { marginTop: spacing.md, gap: spacing.sm },
   creditHead: {
     flexDirection: 'row',
     justifyContent: 'space-between',

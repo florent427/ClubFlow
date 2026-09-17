@@ -4,6 +4,7 @@ import {
   APPLY_PAYER_CREDIT_TO_INVOICE,
   CLUB_INVOICE_DETAIL,
   CLUB_INVOICE_PAYER_CREDITS,
+  CLUB_PAYER_CREDIT,
   CREATE_CLUB_CREDIT_NOTE,
   ISSUE_CLUB_INVOICE,
   RECORD_CLUB_MANUAL_PAYMENT,
@@ -14,6 +15,7 @@ import type {
   ApplyPayerCreditToInvoiceMutationData,
   ClubInvoiceDetailQueryData,
   ClubInvoicePayerCreditsQueryData,
+  ClubPayerCreditQueryData,
   ClubPaymentMethodStr,
   CreateClubCreditNoteMutationData,
   InvoiceLineAdjustmentStr,
@@ -25,6 +27,7 @@ import type {
 } from '../../lib/types';
 import {
   buildApplyPayerCreditInput,
+  depositRefundCeilingCents,
   proposedCreditApplyCents,
 } from '../../lib/payer-credit';
 import { computeRefundableByPaymentId } from '../../lib/refundable-payments';
@@ -266,6 +269,28 @@ export function InvoiceDetailDrawer({
     [inv],
   );
 
+  // Reçu d'avance : on ne rembourse au plus que le crédit encore disponible de
+  // la personne (ADR-0022). L'API refait le plafond sous verrou.
+  const { data: depositCreditData, refetch: refetchDepositCredit } =
+    useQuery<ClubPayerCreditQueryData>(CLUB_PAYER_CREDIT, {
+      variables: {
+        memberId: inv?.payerCreditMemberId ?? null,
+        contactId: inv?.payerCreditContactId ?? null,
+      },
+      skip: !isDeposit,
+      fetchPolicy: 'cache-and-network',
+    });
+  const depositCredit = isDeposit
+    ? (depositCreditData?.clubPayerCredit ?? null)
+    : null;
+  /** Ce que le formulaire peut rembourser sur cet encaissement. */
+  const refundCeilingCents = (paymentId: string) => {
+    const refundable = refundableByPaymentId.get(paymentId) ?? 0;
+    return depositCredit
+      ? depositRefundCeilingCents(refundable, depositCredit.balanceCents)
+      : refundable;
+  };
+
   // Un avoir manuel sur une facture encaissée par carte ne rend PAS l'argent :
   // on le signale plutôt que de laisser le trésorier le découvrir plus tard.
   const hasRefundableStripePayment = useMemo(
@@ -445,7 +470,7 @@ export function InvoiceDetailDrawer({
   }
 
   function handleOpenRefundForm(paymentId: string) {
-    const remaining = refundableByPaymentId.get(paymentId) ?? 0;
+    const remaining = refundCeilingCents(paymentId);
     // Les deux formulaires visent le même geste par deux chemins opposés :
     // les afficher ensemble inviterait à faire les deux.
     setCreditOpen(false);
@@ -464,7 +489,7 @@ export function InvoiceDetailDrawer({
       setRefundError('Motif obligatoire.');
       return;
     }
-    const remaining = refundableByPaymentId.get(refundPaymentId) ?? 0;
+    const remaining = refundCeilingCents(refundPaymentId);
     const normalized = refundAmount.replace(',', '.').trim();
     const cents = Math.round(Number(normalized) * 100);
     if (!Number.isFinite(cents) || cents <= 0) {
@@ -473,7 +498,9 @@ export function InvoiceDetailDrawer({
     }
     if (cents > remaining) {
       setRefundError(
-        `Le montant dépasse le solde remboursable (${formatEuros(remaining)}).`,
+        depositCredit
+          ? `Au plus ${formatEuros(remaining)} : le crédit disponible de ${depositCredit.displayName} le limite.`
+          : `Le montant dépasse le solde remboursable (${formatEuros(remaining)}).`,
       );
       return;
     }
@@ -498,6 +525,7 @@ export function InvoiceDetailDrawer({
           '(quelques secondes).',
       );
       await refetch();
+      if (isDeposit) await refetchDepositCredit();
       onChanged();
     } catch (err) {
       setRefundError(err instanceof Error ? err.message : 'Erreur');
@@ -890,7 +918,7 @@ export function InvoiceDetailDrawer({
                               ? ` · ${formatEuros(refundable)} encore remboursables`
                               : ''}
                           </div>
-                          {refundable > 0 ? (
+                          {refundCeilingCents(p.id) > 0 ? (
                             <button
                               type="button"
                               className="btn-ghost"
@@ -1161,6 +1189,17 @@ export function InvoiceDetailDrawer({
                   correspondant est émis automatiquement. Inutile d’en créer
                   un à la main.
                 </p>
+                {depositCredit ? (
+                  <p
+                    className="cf-invoice-detail__empty"
+                    style={{ marginTop: 0 }}
+                  >
+                    Avance : au plus le crédit encore disponible de{' '}
+                    {depositCredit.displayName},{' '}
+                    {formatEuros(Math.max(0, depositCredit.balanceCents))}. La
+                    part déjà utilisée ne se rembourse pas.
+                  </p>
+                ) : null}
                 <label className="cf-field">
                   <span className="cf-field__label">Motif *</span>
                   <textarea
@@ -1176,9 +1215,7 @@ export function InvoiceDetailDrawer({
                 <label className="cf-field">
                   <span className="cf-field__label">
                     Montant (€) — max{' '}
-                    {formatEuros(
-                      refundableByPaymentId.get(refundPaymentId) ?? 0,
-                    )}
+                    {formatEuros(refundCeilingCents(refundPaymentId))}
                   </span>
                   <input
                     className="cf-field__input"

@@ -555,14 +555,85 @@ Limites connues :
 
 ### Task 3.3 : « Créditer mon compte » par carte
 
-- [ ] Session Stripe sans facture préalable, avec en metadata l'objet, la
-  personne et le club. Montant borné : 1 € minimum, maximum à fixer.
-- [ ] Webhook `payment_intent.succeeded`, branche « avance » :
-  - crée le reçu PAID et le paiement ; `stripePaymentIntentId`, unique, garantit l'idempotence ;
-  - écriture TRANSFER vers 512300 ;
-  - frais Stripe comme d'habitude.
-- [ ] Retour de paiement dans l'appli par schéma custom (cf. pitfall
-  `openauthsession-exige-scheme-custom`).
+Choix de Florent : réservé aux payeurs ; remboursement depuis le tiroir du reçu ;
+enregistrement dès l'accord de Stripe (tâche 4.2).
+
+- [x] Session Stripe sans facture préalable (`viewerCreatePayerCreditCheckoutSession`),
+  metadata : objet, personne du compte connecté, club et compte connecté
+  (`payer-credit-top-up.ts`, contrat unique avec le webhook). De 1 € à 1 000 €,
+  réservée au périmètre payeur du profil actif, sur le compte connecté du club.
+  `viewerPayerCredit.cardTopUpAvailable` dit si le club encaisse par carte.
+- [x] Webhook `payment_intent.succeeded`, branche « avance » :
+  - crée le reçu PAID et le paiement carte dans une transaction ; `stripePaymentIntentId`, unique, garantit l'idempotence, livraisons simultanées comprises ;
+  - écriture TRANSFER 512300 / 419100 et frais Stripe après le commit, repris par un rejeu ;
+  - événement d'un autre compte connecté ou de la plateforme, personne introuvable, metadata illisibles : rien n'est crédité, ENCAISSEMENT ORPHELIN journalisé, sans erreur.
+- [x] Retour de paiement : `/factures?paid=1` sur le web (rechargement immédiat,
+  puis après 4 s) ; dans l'appli, lien profond `clubflow://payment-return` par
+  `openAuthSessionAsync` (cf. pitfall `openauthsession-exige-scheme-custom`).
+- [x] Portail : formulaire « Créditer mon compte » sous le crédit, page Famille
+  qui y mène. Appli : saisie et bouton dans la carte « Crédit ».
+- [x] Tests.
+  - `payer-credit-card.spec.ts`, 15 tests, sur le monde partagé
+    `test/payer-credit-world.ts`. Le monde simule désormais le club et son
+    compte connecté, les contraintes uniques du reçu (`stripePaymentIntentId`)
+    et du paiement négatif (`stripeRefundId`), et livre au webhook de vrais
+    événements signés.
+    - Session : le compte connecté est crédité, jamais le profil actif, jusqu'au
+      reçu créé par le webhook ; bornes (99 et 100 001 centimes, 0 et 250,5
+      refusés ; 1 € et 1 000 € acceptés) ; profil qui ne paie pour aucun foyer ;
+      club sans encaissement Stripe ; retours web et appli.
+    - Webhook : reçu, paiement, écriture et frais après le commit ; rejeu,
+      nouvel événement du même paiement et livraisons simultanées ; autre compte
+      connecté et plateforme ; personne introuvable et metadata illisibles.
+    - Remboursement (tâche 4.2) : plafond du crédit disponible, refus sans appel
+      à Stripe, confirmation du webhook sans doublon, remboursement en attente,
+      imputation simultanée, écriture en échec après l'accord de Stripe.
+  - Contre-passation d'une avance restée TRANSFER (+1) ; construction du schéma
+    (champ `cardTopUpAvailable` et mutation).
+  - Portail et appli : lecture du montant saisi (+3 chacun) ; admin : plafond du
+    remboursement d'une avance (+2).
+- [x] Mutations à la main : 32 tuées sur 32, chacune par les tests attendus.
+  - Montant et metadata, 6 : minimum ignoré (1 rouge) ; maximum ignoré (1) ;
+    centimes non entiers (1) ; contact écrit en membre (9) ; deux personnes
+    lues comme une (1) ; tout paiement pris pour une avance (11, dans
+    `stripe-webhook-money.spec.ts`).
+  - Session, 4 : hors du compte du club (1) ; montant figé (2) ; retour vers
+    la facturation générique (1) ; metadata absentes du paiement (1).
+  - Résolveur, 3 : carte proposée sans encaissement Stripe (1) ; non-payeur
+    autorisé (1) ; profil actif crédité (1).
+  - Webhook, 10 : compte émetteur non contrôlé (1) ; plateforme acceptée (1) ;
+    doublon simultané qui lève (1) ; reçu sans paiement Stripe unique (2) ;
+    écriture oubliée (1) ; frais oubliés (1) ; compte d'encaissement non noté
+    (7) ; reçu né ouvert (1) ; personne introuvable qui lève (1) ; branche
+    avance après la facture (11).
+  - Remboursement, 8 : non plafonné au crédit (4) ; sans le verrou de la
+    personne (1) ; jamais enregistré à l'accord de Stripe (3) ; en attente
+    enregistré comme abouti (1) ; échec d'écriture remonté au trésorier (1) ;
+    avance remboursée comme une facture (4) ; contre-passation oubliée (1) ;
+    crédit épuisé non signalé (1).
+  - Comptabilité, 1 : avance contre-passée en charge (1).
+  - Deux premières formes ne compilaient pas (tout paiement pris pour une
+    avance, avance remboursée comme une facture) ; rejouées sous une forme qui
+    compile.
+  - Le test de l'imputation simultanée attendait le remboursement puis
+    l'imputation : quand la première attente échouait, le rejet de la seconde
+    restait sans gestionnaire et tuait Jest, sans rapport. Il attend désormais
+    les deux ensemble (`Promise.allSettled`).
+- [x] Vérifications : typecheck de l'API, de l'admin, du portail et de l'appli ;
+  Jest complet, 1 844 tests ; vitest portail 78, admin 169, appli 58 ; ESLint
+  des fichiers touchés du portail et de l'admin, sans nouvel avertissement.
+- [x] Rendu vérifié sur une API simulée (Docker arrêté) : portail (formulaire,
+  montant de 0,50 € refusé, 25 € soumis puis crédit rechargé au retour) ;
+  tiroir du reçu de l'admin (20 € proposés et rappelés comme plafond, bouton
+  masqué quand le crédit est épuisé). L'écran de l'appli n'a pas été vu.
+
+Limites connues :
+- Un remboursement en attente chez Stripe ne réserve pas le crédit : s'il sert
+  entre-temps, le crédit devient négatif quand le webhook l'enregistre.
+- Un remboursement fait depuis le tableau de bord Stripe n'est pas plafonné.
+- La limite de 10 sessions par minute n'est pas testée.
+- club-demo n'a pas de compte Stripe connecté : la recette carte se fait sur un
+  club en mode test.
 
 ### Task 3.4 : Recette staging
 
@@ -583,8 +654,16 @@ Limites connues :
 
 ### Task 4.2 : Rembourser le crédit
 
-- [ ] Par carte : remboursement d'une avance plafonné au crédit disponible, sous
-  verrou. Contre-passation **TRANSFER** : DÉBIT 419100 / CRÉDIT trésorerie.
+- [x] Par carte (fait avec la livraison B du lot 3) : remboursement d'une avance
+  plafonné au crédit disponible, sous le verrou de la personne puis du reçu.
+  - Depuis le bouton « Rembourser » du tiroir du reçu, qui propose au plus ce
+    plafond et le rappelle ; bouton masqué quand le crédit est épuisé.
+  - Le remboursement se crée chez Stripe sous verrou et s'enregistre aussitôt
+    s'il a abouti ; le webhook le retrouve (`stripeRefundId` unique). En attente
+    chez Stripe : le webhook l'enregistrera. Écriture en échec après l'accord :
+    rendu au trésorier comme fait, le webhook l'écrit.
+  - Contre-passation **TRANSFER** : DÉBIT 419100 / CRÉDIT trésorerie ; toute
+    contre-passation d'un TRANSFER reste un TRANSFER.
 - [ ] En espèces ou par virement : paiement négatif sur le reçu et avoir, avec
   la même contre-passation, sur le modèle du remboursement boutique
   ([ADR-0019](../../memory/decisions/0019-boutique-annulation-remboursement.md)).

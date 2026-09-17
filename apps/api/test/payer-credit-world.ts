@@ -4,11 +4,20 @@ import {
   FamilyMemberLinkRole,
   InvoicePurpose,
   InvoiceStatus,
+  Prisma,
 } from '@prisma/client';
+import Stripe from 'stripe';
 import { CreditNotesService } from '../src/payments/credit-notes.service';
 import { readPayerCredit } from '../src/payments/payer-credit-balance';
 import { resolvePayerCreditHolder, type PayerCreditHolderRef } from '../src/payments/payer-credit-holder';
+import { payerCreditTopUpMetadata } from '../src/payments/payer-credit-top-up';
+import type { RequestUser } from '../src/common/types/request-user';
+import { InvoicePayerScopeService } from '../src/payments/invoice-payer-scope.service';
+import { PayerCreditService } from '../src/payments/payer-credit.service';
 import { PaymentsService } from '../src/payments/payments.service';
+import { StripeCheckoutService } from '../src/payments/stripe-checkout.service';
+import { StripeRefundsService } from '../src/payments/stripe-refunds.service';
+import { ViewerPayerCreditResolver } from '../src/payments/viewer-payer-credit.resolver';
 
 /**
  * Le monde simulé applique les `where` comme Prisma (clause absente = aucun
@@ -41,6 +50,7 @@ export function correspond(
       return Object.entries(clause as Row).every(([op, valeur]) => {
         if (op === 'in') return (valeur as unknown[]).includes(row[cle]);
         if (op === 'not') return row[cle] !== valeur;
+        if (op === 'gt') return row[cle] > (valeur as number);
         throw new Error(`Opérateur non simulé : ${cle}.${op}`);
       });
     }
@@ -49,13 +59,25 @@ export function correspond(
 }
 
 export const CLUB = 'club-1';
+/** Compte connecté du club : les événements Stripe du club en viennent. */
+export const COMPTE_CLUB = 'acct_club';
+const SECRET_WEBHOOK = 'whsec_monde_credit';
 const INVOICE = [
   'id', 'clubId', 'familyId', 'householdGroupId', 'shopOrderId', 'shopAdjustmentId', 'purpose',
   'isCreditNote', 'parentInvoiceId', 'status', 'amountCents', 'payerCreditMemberId', 'payerCreditContactId',
+  'stripePaymentIntentId',
 ] as const;
 const PAYMENT = [
   'id', 'clubId', 'invoiceId', 'amountCents', 'method', 'paidByMemberId', 'paidByContactId', 'refundedPaymentId',
+  'externalRef', 'stripeRefundId',
 ] as const;
+
+/** La violation d'unicité que lève PostgreSQL, telle que Prisma la rend. */
+const doublon = (champs: string) =>
+  new Prisma.PrismaClientKnownRequestError(`Unique constraint failed on the fields: (${champs})`, {
+    code: 'P2002',
+    clientVersion: 'monde',
+  });
 
 export function monde() {
   let seq = 0;
@@ -83,6 +105,10 @@ export function monde() {
     { id: 'l-4', familyId: 'fam-1', memberId: null, contactId: 'c-jo', linkRole: FamilyMemberLinkRole.PAYER },
   ];
   const shopOrders: Row[] = [{ id: 'so-1', clubId: CLUB, memberId: null, contactId: 'c-sam' }];
+  const clubs: Row[] = [
+    { id: CLUB, slug: 'club-demo', name: 'Club Démo', stripeAccountId: COMPTE_CLUB, stripeChargesEnabled: true },
+  ];
+  const webhookEvents = new Set<string>();
   const invoiceLines: Row[] = [];
   const invoices: Row[] = [];
   const payments: Row[] = [];
@@ -167,6 +193,23 @@ export function monde() {
             .map((l) => avecFamille(l, include)),
       },
       clubModule: { findUnique: async () => ({ enabled: false }) },
+      club: {
+        findUnique: async ({ where }: any) => clubs.find((c) => correspond(c, where, ['id'])) ?? null,
+        findFirst: async ({ where }: any) =>
+          clubs.find((c) => correspond(c, where, ['id', 'stripeAccountId'])) ?? null,
+      },
+      // Réservation d'un événement Stripe : la clé primaire arbitre les livraisons.
+      stripeWebhookEvent: {
+        create: async ({ data }: any) => {
+          if (webhookEvents.has(data.id)) throw doublon('id');
+          webhookEvents.add(data.id);
+          return { id: data.id };
+        },
+        delete: async ({ where }: any) => {
+          webhookEvents.delete(where.id);
+          return { id: where.id };
+        },
+      },
       shopOrder: {
         findFirst: async ({ where }: any) =>
           shopOrders.find((o) => correspond(o, where, ['id', 'clubId'])) ?? null,
@@ -210,6 +253,14 @@ export function monde() {
           return { _sum: { amountCents: lignes.length ? lignes.reduce((s, i) => s + i.amountCents, 0) : null } };
         },
         create: async ({ data }: any) => {
+          // `stripePaymentIntentId @unique` : une seconde facture du même
+          // paymentIntent est refusée, même avant le commit de la première.
+          if (
+            data.stripePaymentIntentId &&
+            invoices.some((i) => i.stripePaymentIntentId === data.stripePaymentIntentId)
+          ) {
+            throw doublon('stripePaymentIntentId');
+          }
           const row: Row = {
             shopOrderId: null,
             shopAdjustmentId: null,
@@ -218,6 +269,7 @@ export function monde() {
             payerCreditContactId: null,
             isCreditNote: false,
             parentInvoiceId: null,
+            stripePaymentIntentId: null,
             ...data,
             id: nouvelId(data.isCreditNote ? 'avoir' : 'facture'),
             createdAt: maintenant(),
@@ -235,6 +287,13 @@ export function monde() {
         },
       },
       payment: {
+        findFirst: async ({ where, include }: any) => {
+          const p = payments.find((x) => correspond(x, where, PAYMENT));
+          if (!p) return null;
+          const lu = include?.invoice ? { ...p, invoice: { ...invoices.find((i) => i.id === p.invoiceId)! } } : { ...p };
+          await pause();
+          return lu;
+        },
         aggregate: async ({ where }: any) => {
           const lignes = payments.filter((p) => correspond(p, where, PAYMENT));
           const somme = lignes.length ? lignes.reduce((s, p) => s + p.amountCents, 0) : null;
@@ -255,11 +314,20 @@ export function monde() {
           return lus;
         },
         create: async ({ data }: any) => {
+          // `@@unique([clubId, stripeRefundId])` : un remboursement ne s'écrit qu'une fois.
+          if (
+            data.stripeRefundId &&
+            payments.some((p) => p.clubId === data.clubId && p.stripeRefundId === data.stripeRefundId)
+          ) {
+            throw doublon('clubId, stripeRefundId');
+          }
           const row: Row = {
             externalRef: null,
             refundedPaymentId: null,
             paidByMemberId: null,
             paidByContactId: null,
+            stripeRefundId: null,
+            stripeAccountId: null,
             ...data,
             id: nouvelId('paiement'),
             createdAt: maintenant(),
@@ -314,6 +382,16 @@ export function monde() {
     createContraEntryForCreditNote: jest.fn(async () => undefined),
   };
   const creditNotes = new CreditNotesService(prisma as never, accounting as never);
+  // Les frais d'un encaissement carte, lus chez Stripe après le commit.
+  const stripeFees = {
+    syncFeesForPayment: jest.fn(async (paymentId: string) => {
+      events.push(`frais ${paymentId}`);
+      return false;
+    }),
+  };
+  // Le vrai service : son appel sortant passe par le client Stripe que le
+  // test simule (`jest.mock('stripe')`), et le webhook l'utilise.
+  const remboursements = new StripeRefundsService(prisma as never, creditNotes, {} as never);
   const svc = new PaymentsService(
     prisma as never,
     accounting as never,
@@ -322,11 +400,92 @@ export function monde() {
     {} as never,
     {} as never,
     scheduleEngine as never,
-    {} as never,
-    {} as never,
+    stripeFees as never,
+    remboursements,
     creditNotes,
     shop as never,
   );
+
+  /**
+   * Une livraison signée du webhook Stripe : signature, réservation de
+   * l'événement, puis son traitement. La promesse rend ce que Stripe recevrait :
+   * un rejet lui ferait rejouer la livraison.
+   */
+  const livrer = (event: Row) => {
+    const payload = JSON.stringify(event);
+    process.env.STRIPE_WEBHOOK_SECRET = SECRET_WEBHOOK;
+    const signature = Stripe.webhooks.generateTestHeaderString({ payload, secret: SECRET_WEBHOOK });
+    return svc.handleStripeWebhook(Buffer.from(payload), signature);
+  };
+
+  /**
+   * Stripe annonce une avance par carte (« Créditer mon compte ») : le
+   * paymentIntent porte les metadata que la session a posées.
+   */
+  const avanceCarte = (args: {
+    ref: PayerCreditHolderRef;
+    amountCents: number;
+    paymentIntentId?: string;
+    eventId?: string;
+    /** Compte émetteur ; `null` = compte plateforme. Défaut : celui du club. */
+    compte?: string | null;
+    metadata?: Record<string, string>;
+  }) => {
+    const paymentIntentId = args.paymentIntentId ?? 'pi_avance';
+    return livrer({
+      id: args.eventId ?? `evt_${paymentIntentId}`,
+      object: 'event',
+      type: 'payment_intent.succeeded',
+      account: args.compte === undefined ? COMPTE_CLUB : args.compte,
+      data: {
+        object: {
+          id: paymentIntentId,
+          object: 'payment_intent',
+          metadata:
+            args.metadata ??
+            payerCreditTopUpMetadata({ clubId: CLUB, ref: args.ref, stripeAccountId: COMPTE_CLUB }),
+          amount_received: args.amountCents,
+          amount: args.amountCents,
+        },
+      },
+    });
+  };
+
+  /**
+   * Stripe confirme les remboursements d'une charge (`charge.refunded`). Un
+   * remboursement lancé depuis ClubFlow désigne son encaissement en metadata.
+   */
+  const chargeRemboursee = (args: {
+    eventId: string;
+    paymentIntentId?: string;
+    capturedCents: number;
+    refunds: Array<{ id: string; amountCents: number; paymentId?: string; status?: string }>;
+  }) =>
+    livrer({
+      id: args.eventId,
+      object: 'event',
+      type: 'charge.refunded',
+      account: COMPTE_CLUB,
+      data: {
+        object: {
+          id: 'ch_avance',
+          object: 'charge',
+          payment_intent: args.paymentIntentId ?? 'pi_avance',
+          amount_captured: args.capturedCents,
+          metadata: { clubId: CLUB },
+          refunds: {
+            object: 'list',
+            data: args.refunds.map((r) => ({
+              id: r.id,
+              object: 'refund',
+              amount: r.amountCents,
+              status: r.status ?? 'succeeded',
+              metadata: r.paymentId ? { paymentId: r.paymentId } : {},
+            })),
+          },
+        },
+      },
+    });
 
   function facture(over: Row): string {
     const row: Row = {
@@ -387,6 +546,14 @@ export function monde() {
   return {
     prisma,
     svc,
+    remboursements,
+    creditNotes,
+    stripeFees,
+    livrer,
+    avanceCarte,
+    chargeRemboursee,
+    clubs,
+    webhookEvents,
     members,
     contacts,
     invoices,
@@ -412,3 +579,41 @@ export function monde() {
 }
 
 export type Monde = ReturnType<typeof monde>;
+
+export function compte(
+  userId: string,
+  profil: { memberId?: string; contactId?: string },
+): RequestUser {
+  return {
+    userId,
+    email: `${userId}@exemple.test`,
+    activeProfileMemberId: profil.memberId ?? null,
+    activeProfileContactId: profil.contactId ?? null,
+  };
+}
+
+export function portail(w: Monde, checkout?: StripeCheckoutService): ViewerPayerCreditResolver {
+  // Les foyers du monde n'ont pas de groupe étendu : le périmètre ne doit pas
+  // les chercher.
+  const families = {
+    viewerPayerFamilyIdsInHouseholdGroup: async () => {
+      throw new Error('Groupe foyer non simulé');
+    },
+    viewerInvitedFamilyIdsInHouseholdGroup: async () => {
+      throw new Error('Groupe foyer non simulé');
+    },
+  };
+  return new ViewerPayerCreditResolver(
+    w.prisma as never,
+    new PayerCreditService(w.prisma as never),
+    w.svc,
+    new InvoicePayerScopeService(w.prisma as never, families as never),
+    checkout ?? ({} as StripeCheckoutService),
+  );
+}
+
+/** Camille devient payeuse du foyer : son profil s'ouvre alors à Paul, l'autre payeur. */
+export function camillePayeuse(w: Monde): void {
+  const lien = w.links.find((l) => l.memberId === 'm-camille')!;
+  lien.linkRole = FamilyMemberLinkRole.PAYER;
+}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildApplyPayerCreditInput,
+  depositRefundCeilingCents,
   buildPayerCreditDepositInput,
   creditUseAmountLabel,
   describeCreditUse,
@@ -201,5 +202,19 @@ describe('utilisations du crédit', () => {
   it('écrit l’effet sur le crédit avec son signe', () => {
     expect(creditUseAmountLabel(4000)).toBe('−40,00 €');
     expect(creditUseAmountLabel(-1500)).toBe('+15,00 €');
+  });
+});
+
+describe('depositRefundCeilingCents — rembourser une avance par carte', () => {
+  it('au plus le crédit encore disponible, et au plus le remboursable de l’encaissement', () => {
+    // 50 € versés, 30 € utilisés : 20 € de crédit.
+    expect(depositRefundCeilingCents(5000, 2000)).toBe(2000);
+    // Un premier remboursement de 40 € : 10 € restent remboursables.
+    expect(depositRefundCeilingCents(1000, 2000)).toBe(1000);
+  });
+
+  it('rien quand le crédit est épuisé ou négatif', () => {
+    expect(depositRefundCeilingCents(5000, 0)).toBe(0);
+    expect(depositRefundCeilingCents(5000, -300)).toBe(0);
   });
 });

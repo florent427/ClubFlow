@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  parsePayerCreditTopUp,
   payerCreditApplyCents,
   payerCreditApplyConfirmation,
   payerCreditKpi,
@@ -122,5 +123,28 @@ describe('payerCreditMovementTitle et signedEuroCents — l’historique', () =>
     expect(texte(signedEuroCents(5000))).toBe('+50,00 €');
     expect(texte(signedEuroCents(-1250))).toBe('−12,50 €');
     expect(texte(signedEuroCents(0))).toBe('0,00 €');
+  });
+});
+
+describe('parsePayerCreditTopUp — le montant à créditer par carte', () => {
+  it('lit un montant écrit à la française, en centimes exacts', () => {
+    expect(parsePayerCreditTopUp('50')).toEqual({ cents: 5000 });
+    expect(parsePayerCreditTopUp('12,05')).toEqual({ cents: 1205 });
+    expect(parsePayerCreditTopUp(' 1 000,00 ')).toEqual({ cents: 100000 });
+    expect(parsePayerCreditTopUp('0.1')).toEqual({ error: 'Le montant va de 1 € à 1 000 €.' });
+  });
+
+  it('de 1 € à 1 000 € : les bornes passent, au-delà non', () => {
+    expect(parsePayerCreditTopUp('1')).toEqual({ cents: 100 });
+    expect(parsePayerCreditTopUp('0,99')).toEqual({ error: 'Le montant va de 1 € à 1 000 €.' });
+    expect(parsePayerCreditTopUp('1000,01')).toEqual({ error: 'Le montant va de 1 € à 1 000 €.' });
+  });
+
+  it('refuse ce qui n’est pas un montant', () => {
+    for (const raw of ['', 'abc', '12,345', '-5', '1e3', ',5']) {
+      expect(parsePayerCreditTopUp(raw)).toEqual({
+        error: 'Saisissez un montant en euros, par exemple 50 ou 50,00.',
+      });
+    }
   });
 });

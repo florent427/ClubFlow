@@ -1,18 +1,15 @@
 import 'reflect-metadata';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
-import { ClubPaymentMethod, FamilyMemberLinkRole, InvoiceStatus, type Club } from '@prisma/client';
-import { CLUB, monde, type Monde } from '../../test/payer-credit-world';
+import { ClubPaymentMethod, InvoiceStatus, type Club } from '@prisma/client';
+import { camillePayeuse, CLUB, compte, monde, portail } from '../../test/payer-credit-world';
 import { REQUIRE_CLUB_MODULE_KEY } from '../common/decorators/require-club-module.decorator';
 import { ClubContextGuard } from '../common/guards/club-context.guard';
 import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.guard';
 import { GqlJwtAuthGuard } from '../common/guards/gql-jwt-auth.guard';
 import { ViewerActiveProfileGuard } from '../common/guards/viewer-active-profile.guard';
-import type { RequestUser } from '../common/types/request-user';
 import { ModuleCode } from '../domain/module-registry/module-codes';
-import { InvoicePayerScopeService } from './invoice-payer-scope.service';
 import { PayerCreditMovementKind } from './payer-credit-movements';
-import { PayerCreditService } from './payer-credit.service';
 import { ViewerPayerCreditResolver } from './viewer-payer-credit.resolver';
 
 /**
@@ -25,43 +22,6 @@ import { ViewerPayerCreditResolver } from './viewer-payer-credit.resolver';
  */
 
 const club = { id: CLUB } as Club;
-
-function compte(
-  userId: string,
-  profil: { memberId?: string; contactId?: string },
-): RequestUser {
-  return {
-    userId,
-    email: `${userId}@exemple.test`,
-    activeProfileMemberId: profil.memberId ?? null,
-    activeProfileContactId: profil.contactId ?? null,
-  };
-}
-
-function portail(w: Monde): ViewerPayerCreditResolver {
-  // Les foyers du monde n'ont pas de groupe étendu : le périmètre ne doit pas
-  // les chercher.
-  const families = {
-    viewerPayerFamilyIdsInHouseholdGroup: async () => {
-      throw new Error('Groupe foyer non simulé');
-    },
-    viewerInvitedFamilyIdsInHouseholdGroup: async () => {
-      throw new Error('Groupe foyer non simulé');
-    },
-  };
-  return new ViewerPayerCreditResolver(
-    w.prisma as never,
-    new PayerCreditService(w.prisma as never),
-    w.svc,
-    new InvoicePayerScopeService(w.prisma as never, families as never),
-  );
-}
-
-/** Camille devient payeuse du foyer : son profil s'ouvre alors à Paul, l'autre payeur. */
-function camillePayeuse(w: Monde): void {
-  const lien = w.links.find((l) => l.memberId === 'm-camille')!;
-  lien.linkRole = FamilyMemberLinkRole.PAYER;
-}
 
 describe('viewerPayerCredit — le crédit du compte connecté (ADR-0022, lot 3)', () => {
   it('membre et contact du compte réunis : chaque mouvement porte son effet, et leur somme est le crédit', async () => {
@@ -130,7 +90,7 @@ describe('viewerPayerCredit — le crédit du compte connecté (ADR-0022, lot 3)
     ).resolves.toMatchObject({ balanceCents: 1200 });
     await expect(
       portail(w).viewerPayerCredit(compte('u-inconnu', { contactId: 'c-paul' }), club),
-    ).resolves.toEqual({ balanceCents: 0, movements: [] });
+    ).resolves.toEqual({ balanceCents: 0, movements: [], cardTopUpAvailable: false });
   });
 });
 

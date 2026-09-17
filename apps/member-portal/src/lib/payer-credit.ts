@@ -32,9 +32,9 @@ export function paymentMethodLabel(method: string): string {
  * Le crédit s'affiche s'il est connu, et non nul ou déjà utilisé. Une requête
  * en erreur ne donne rien à afficher : jamais « 0,00 € » à qui a du crédit.
  */
-export function shouldShowPayerCredit(
-  credit: ViewerPayerCredit | null | undefined,
-): credit is ViewerPayerCredit {
+export function shouldShowPayerCredit<
+  T extends Pick<ViewerPayerCredit, 'balanceCents' | 'movements'>,
+>(credit: T | null | undefined): credit is T {
   return (
     credit != null &&
     (credit.balanceCents !== 0 || credit.movements.length > 0)
@@ -111,6 +111,29 @@ export function payerCreditMovementTitle(
       // Un mouvement que ce portail ne connaît pas encore.
       return movement.label;
   }
+}
+
+/** « Créditer mon compte » par carte : de 1 € à 1 000 €, comme l'API. */
+export const PAYER_CREDIT_TOP_UP_MIN_CENTS = 100;
+export const PAYER_CREDIT_TOP_UP_MAX_CENTS = 100_000;
+
+/**
+ * Montant saisi pour créditer son compte : « 50 », « 50,5 », « 1 000,00 ».
+ * Calcul sur les chiffres, sans multiplication flottante.
+ */
+export function parsePayerCreditTopUp(
+  raw: string,
+): { cents: number } | { error: string } {
+  const compact = raw.replace(/\s/g, '').replace(',', '.');
+  if (!/^\d+(\.\d{1,2})?$/.test(compact)) {
+    return { error: 'Saisissez un montant en euros, par exemple 50 ou 50,00.' };
+  }
+  const [units, decimals = ''] = compact.split('.');
+  const cents = Number(units) * 100 + Number(decimals.padEnd(2, '0'));
+  if (cents < PAYER_CREDIT_TOP_UP_MIN_CENTS || cents > PAYER_CREDIT_TOP_UP_MAX_CENTS) {
+    return { error: 'Le montant va de 1 € à 1 000 €.' };
+  }
+  return { cents };
 }
 
 /** « +50,00 € » ou « −30,00 € » : l'effet d'un mouvement sur le crédit. */

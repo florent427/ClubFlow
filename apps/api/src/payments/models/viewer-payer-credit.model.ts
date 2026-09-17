@@ -48,4 +48,10 @@ export class ViewerPayerCreditGraph {
     description: 'Du plus récent au plus ancien.',
   })
   movements!: ViewerPayerCreditMovementGraph[];
+
+  @Field(() => Boolean, {
+    description:
+      'Vrai si le club encaisse par carte : « Créditer mon compte » est alors proposé.',
+  })
+  cardTopUpAvailable!: boolean;
 }

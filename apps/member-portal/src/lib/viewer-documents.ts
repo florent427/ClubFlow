@@ -755,6 +755,20 @@ export const VIEWER_PAYER_CREDIT = gql`
         amountCents
         createdAt
       }
+      cardTopUpAvailable
+    }
+  }
+`;
+
+/**
+ * « Créditer mon compte » : session Stripe d'une avance par carte, de 1 € à
+ * 1 000 €. Le reçu d'avance naît à réception de l'argent (webhook).
+ */
+export const VIEWER_CREATE_PAYER_CREDIT_CHECKOUT_SESSION = gql`
+  mutation ViewerCreatePayerCreditCheckoutSession($amountCents: Int!) {
+    viewerCreatePayerCreditCheckoutSession(amountCents: $amountCents) {
+      url
+      sessionId
     }
   }
 `;

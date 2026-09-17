@@ -3213,6 +3213,28 @@ a:focus-visible {
 }
 .mp-credit-history[open] .mp-credit-history__summary { margin-bottom: 10px; }
 .mp-credit-history__amount--out { color: #0f172a; }
+.mp-credit-topup {
+  margin: 0 0 16px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mp-credit-topup .mp-field input { max-width: 200px; }
+.mp-credit-topup .mp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  align-self: flex-start;
+  width: auto;
+  margin-top: 0;
+}
+.mp-credit-topup .mp-hint { margin: 0; }
+.mp-credit-topup__error { color: #b91c1c; }
 
 @media (max-width: 560px) {
   .mp-invoice-detail-list { grid-template-columns: 1fr 1fr; }

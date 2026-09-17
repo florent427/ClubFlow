@@ -8,6 +8,11 @@ import { InvoiceStatus, PaymentScheduleStatus } from '@prisma/client';
 import Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { invoicePaymentTotals } from './invoice-totals';
+import type { PayerCreditHolderRef } from './payer-credit-holder';
+import {
+  assertPayerCreditTopUpAmount,
+  payerCreditTopUpMetadata,
+} from './payer-credit-top-up';
 import { StripeConnectService } from './stripe-connect.service';
 
 /**
@@ -269,6 +274,73 @@ export class StripeCheckoutService {
     // Stripe exige un `success_url` https, un scheme `clubflow://` serait
     // rejeté. On expose donc l'URL déjà posée, sans la modifier ; le web
     // l'ignore.
+    return { url: session.url, sessionId: session.id, paymentReturnUrl };
+  }
+
+  /**
+   * Session d'une avance par carte, « Créditer mon compte » (ADR-0022, lot 3).
+   *
+   * Il n'y a pas de facture à régler : c'est le webhook qui crée le reçu
+   * d'avance payé à réception de l'argent, d'après les metadata. Rien n'est donc
+   * écrit ici, et une session abandonnée expire d'elle-même chez Stripe.
+   * L'appelant a contrôlé la personne ; le montant est reborné ici.
+   */
+  async createPayerCreditTopUpSession(args: {
+    clubId: string;
+    ref: PayerCreditHolderRef;
+    displayName: string;
+    amountCents: number;
+    nativeApp?: boolean;
+  }): Promise<{ url: string; sessionId: string; paymentReturnUrl: string }> {
+    assertPayerCreditTopUpAmount(args.amountCents);
+    const stripeAccount = await this.connect.requireChargeableAccount(
+      args.clubId,
+    );
+    const club = await this.prisma.club.findUnique({
+      where: { id: args.clubId },
+      select: { slug: true, name: true },
+    });
+    const { successUrl, cancelUrl, paymentReturnUrl } = this.returnUrls(
+      club?.slug ?? null,
+      '/factures',
+      args.nativeApp ?? false,
+    );
+    const metadata = payerCreditTopUpMetadata({
+      clubId: args.clubId,
+      ref: args.ref,
+      stripeAccountId: stripeAccount,
+    });
+
+    const session = await this.getStripe().checkout.sessions.create(
+      {
+        mode: 'payment',
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price_data: {
+              currency: 'eur',
+              unit_amount: args.amountCents,
+              product_data: {
+                name: `Avance — ${args.displayName}`,
+                description: club?.name ?? undefined,
+              },
+            },
+            quantity: 1,
+          },
+        ],
+        metadata,
+        payment_intent_data: { metadata },
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+      },
+      // Direct charge sur le compte du club, comme une facture (ADR-0008).
+      { stripeAccount },
+    );
+    if (!session.url) {
+      throw new BadRequestException(
+        'Impossible de créer la session de paiement Stripe.',
+      );
+    }
     return { url: session.url, sessionId: session.id, paymentReturnUrl };
   }
 

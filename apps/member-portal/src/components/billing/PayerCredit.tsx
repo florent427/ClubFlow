@@ -1,14 +1,19 @@
-import type { ReactNode } from 'react';
+import { useMutation } from '@apollo/client/react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { formatShortDate } from '../../lib/format';
 import {
+  parsePayerCreditTopUp,
   payerCreditKpi,
   payerCreditMovementTitle,
   signedEuroCents,
 } from '../../lib/payer-credit';
+import { VIEWER_CREATE_PAYER_CREDIT_CHECKOUT_SESSION } from '../../lib/viewer-documents';
 import type {
+  ViewerCreatePayerCreditCheckoutSessionData,
   ViewerPayerCredit,
   ViewerPayerCreditMovement,
 } from '../../lib/viewer-types';
+import { useToast } from '../ToastProvider';
 
 /**
  * Solde du crédit du compte (ADR-0022), sous la forme d'un indicateur de la
@@ -69,5 +74,74 @@ export function PayerCreditHistory({
         ))}
       </ul>
     </details>
+  );
+}
+
+/**
+ * « Créditer mon compte » : une avance par carte, de 1 € à 1 000 €, versée sur
+ * Stripe. Le crédit apparaît quand Stripe confirme l'encaissement, quelques
+ * secondes après le retour sur le portail.
+ */
+export function PayerCreditTopUp() {
+  const { showToast } = useToast();
+  const [amount, setAmount] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [redirecting, setRedirecting] = useState(false);
+  const [createSession] = useMutation<ViewerCreatePayerCreditCheckoutSessionData>(
+    VIEWER_CREATE_PAYER_CREDIT_CHECKOUT_SESSION,
+  );
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (redirecting) return;
+    const parsed = parsePayerCreditTopUp(amount);
+    if ('error' in parsed) {
+      setError(parsed.error);
+      return;
+    }
+    setError(null);
+    setRedirecting(true);
+    try {
+      const res = await createSession({ variables: { amountCents: parsed.cents } });
+      const url = res.data?.viewerCreatePayerCreditCheckoutSession.url;
+      if (!url) throw new Error('URL de paiement manquante.');
+      window.location.assign(url);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Paiement indisponible.', 'error');
+      setRedirecting(false);
+    }
+  }
+
+  return (
+    <form className="mp-credit-topup" onSubmit={(e) => void onSubmit(e)}>
+      <label className="mp-field">
+        <span>Créditer mon compte (1 € à 1 000 €)</span>
+        <input
+          type="text"
+          inputMode="decimal"
+          placeholder="50,00"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? 'credit-topup-error' : undefined}
+        />
+      </label>
+      <button type="submit" className="mp-btn mp-btn-primary" disabled={redirecting}>
+        <span className="material-symbols-outlined" aria-hidden>
+          credit_card
+        </span>
+        {redirecting ? 'Redirection…' : 'Créditer par carte'}
+      </button>
+      {error ? (
+        <p id="credit-topup-error" className="mp-hint mp-credit-topup__error" role="alert">
+          {error}
+        </p>
+      ) : (
+        <p className="mp-hint">
+          Paiement sécurisé Stripe. Le montant rejoint votre crédit dès que le
+          paiement est confirmé.
+        </p>
+      )}
+    </form>
   );
 }
