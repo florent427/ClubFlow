@@ -1,9 +1,11 @@
 import { execSync } from 'child_process';
 import { join } from 'path';
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
+import { trustLocalReverseProxy } from '../src/common/http/trust-local-proxy';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { randomUUID } from 'crypto';
 import * as bcrypt from 'bcryptjs';
@@ -28,7 +30,7 @@ function uniquePseudo(): string {
 }
 
 describe('ClubFlow API (e2e)', () => {
-  let app: INestApplication;
+  let app: NestExpressApplication;
   let prisma: PrismaService;
 
   const adminEmail = 'e2e-admin@clubflow.test';
@@ -74,7 +76,9 @@ describe('ClubFlow API (e2e)', () => {
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
+    app = moduleFixture.createNestApplication<NestExpressApplication>();
+    // Comme `main.ts` : l'adresse du visiteur arrive par `X-Forwarded-For`.
+    trustLocalReverseProxy(app);
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
@@ -225,9 +229,20 @@ describe('ClubFlow API (e2e)', () => {
     await app.close();
   });
 
+  // Chaque test est un visiteur distinct, comme derrière Caddy. Sans adresse
+  // propre, toutes les requêtes viennent de 127.0.0.1 et partagent le compteur
+  // de `login` (20 par minute) : la suite se connecte plus souvent que cela.
+  let visitorCount = 0;
+  let visitorIp = '';
+  beforeEach(() => {
+    visitorCount += 1;
+    visitorIp = `198.51.100.${visitorCount}`;
+  });
+
   function gql(query: string, variables?: Record<string, unknown>) {
     return request(app.getHttpServer())
       .post('/graphql')
+      .set('X-Forwarded-For', visitorIp)
       .send({ query, variables });
   }
 
@@ -272,7 +287,7 @@ describe('ClubFlow API (e2e)', () => {
         verifyEmail(input: $i) {
           accessToken
           contactClubId
-          viewerProfiles { memberId }
+          viewerProfiles { memberId contactId clubId }
         }
       }`,
       { i: { token: raw } },
@@ -280,8 +295,15 @@ describe('ClubFlow API (e2e)', () => {
     expect(ver.status).toBe(200);
     expect(ver.body.errors).toBeUndefined();
     expect(ver.body.data.verifyEmail.accessToken).toBeDefined();
-    expect(ver.body.data.verifyEmail.contactClubId).toBe(clubId);
-    expect(ver.body.data.verifyEmail.viewerProfiles).toEqual([]);
+    // L'inscription rend le contact payeur de son propre foyer : il a donc un
+    // profil, et `contactClubId`, réservé au compte sans profil, reste nul.
+    const contact = await prisma.contact.findUniqueOrThrow({
+      where: { userId_clubId: { userId: userRow!.id, clubId: clubId as string } },
+    });
+    expect(ver.body.data.verifyEmail.viewerProfiles).toEqual([
+      { memberId: null, contactId: contact.id, clubId },
+    ]);
+    expect(ver.body.data.verifyEmail.contactClubId).toBeNull();
 
     await prisma.user.delete({ where: { id: userRow!.id } });
   });
@@ -1108,7 +1130,7 @@ describe('ClubFlow API (e2e)', () => {
     await prisma.user.delete({ where: { id: portalUserId } });
   });
 
-  it('Portail : foyer étendu — co-parents, facturation groupe, profils filtrés', async () => {
+  it('Portail : foyer étendu — co-parents, facturation groupe, enfants visibles sur invitation', async () => {
     const hgPassword = 'E2eHg!pass';
     const hash = await bcrypt.hash(hgPassword, 8);
     const uidA = randomUUID();
@@ -1289,6 +1311,8 @@ describe('ClubFlow API (e2e)', () => {
       }
     }
 
+    // Modèle d'invitation unilatéral : B partage le groupe, mais ne voit ni
+    // l'enfant ni les factures du foyer A tant que A ne l'a pas invité.
     const loginB = await gql(
       `mutation ($input: LoginInput!) {
         login(input: $input) {
@@ -1302,44 +1326,93 @@ describe('ClubFlow API (e2e)', () => {
     const profB = loginB.body.data.login.viewerProfiles as {
       memberId: string;
     }[];
-    const idsB = profB.map((p) => p.memberId);
-    expect(idsB).toContain(memB);
-    expect(idsB).toContain(childId);
-    expect(idsB).not.toContain(memA);
+    expect(profB.map((p) => p.memberId)).toEqual([memB]);
 
     const tokenB = loginB.body.data.login.accessToken as string;
-    const billB = await request(app.getHttpServer())
+    const billingOfB = () =>
+      request(app.getHttpServer())
+        .post('/graphql')
+        .set('Authorization', `Bearer ${tokenB}`)
+        .set('x-club-id', clubId as string)
+        .send({
+          query: `{
+            viewerFamilyBillingSummary {
+              isPayerView
+              invoices { balanceCents }
+              familyMembers { memberId }
+              linkedHouseholdFamilies { familyId members { memberId } }
+            }
+          }`,
+        });
+    const billB = await billingOfB();
+    expect(billB.body.errors).toBeUndefined();
+    const sumB = billB.body.data.viewerFamilyBillingSummary;
+    expect(sumB.isPayerView).toBe(true);
+    expect(sumB.invoices).toHaveLength(0);
+    expect(
+      sumB.familyMembers.map((m: { memberId: string }) => m.memberId),
+    ).toEqual([memB]);
+    expect(
+      (sumB.linkedHouseholdFamilies as { familyId: string }[]).map(
+        (row) => row.familyId,
+      ),
+    ).toEqual([famB.id]);
+
+    // A invite B en co-payeur. B accepte et garde son foyer : il est déjà
+    // payeur d'un foyer du groupe.
+    const invite = await request(app.getHttpServer())
+      .post('/graphql')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .set('x-club-id', clubId as string)
+      .send({
+        query: `mutation { createFamilyInvite(input: { role: COPAYER }) { code familyId } }`,
+      });
+    expect(invite.body.errors).toBeUndefined();
+    expect(invite.body.data.createFamilyInvite.familyId).toBe(famA.id);
+    const accept = await request(app.getHttpServer())
       .post('/graphql')
       .set('Authorization', `Bearer ${tokenB}`)
       .set('x-club-id', clubId as string)
       .send({
-        query: `{
-          viewerFamilyBillingSummary {
-            isPayerView
-            invoices { balanceCents }
-            familyMembers { memberId }
-            linkedHouseholdFamilies { familyId members { memberId } }
-          }
+        query: `mutation ($input: AcceptFamilyInviteInput!) {
+          acceptFamilyInvite(input: $input) { success familyId }
         }`,
+        variables: { input: { code: invite.body.data.createFamilyInvite.code } },
       });
-    expect(billB.body.errors).toBeUndefined();
-    const sumB = billB.body.data.viewerFamilyBillingSummary;
-    expect(sumB.isPayerView).toBe(true);
-    expect(sumB.invoices).toHaveLength(1);
-    const memIdsB = sumB.familyMembers.map((m: { memberId: string }) => m.memberId);
+    expect(accept.body.errors).toBeUndefined();
+    expect(accept.body.data.acceptFamilyInvite.familyId).toBe(famB.id);
+
+    const profInvitedB = await request(app.getHttpServer())
+      .post('/graphql')
+      .set('Authorization', `Bearer ${tokenB}`)
+      .send({ query: `{ viewerProfiles { memberId } }` });
+    expect(profInvitedB.body.errors).toBeUndefined();
+    const idsB = (
+      profInvitedB.body.data.viewerProfiles as { memberId: string }[]
+    ).map((p) => p.memberId);
+    expect(idsB).toContain(memB);
+    expect(idsB).toContain(childId);
+    expect(idsB).not.toContain(memA);
+
+    const billInvitedB = await billingOfB();
+    expect(billInvitedB.body.errors).toBeUndefined();
+    const sumInvitedB = billInvitedB.body.data.viewerFamilyBillingSummary;
+    expect(sumInvitedB.invoices).toHaveLength(1);
+    const memIdsB = sumInvitedB.familyMembers.map(
+      (m: { memberId: string }) => m.memberId,
+    );
     expect(memIdsB).toContain(memB);
     expect(memIdsB).toContain(childId);
     expect(memIdsB).not.toContain(memA);
-    for (const row of sumB.linkedHouseholdFamilies as {
+    const rowsB = sumInvitedB.linkedHouseholdFamilies as {
       familyId: string;
       members: { memberId: string }[];
-    }[]) {
-      const mids = row.members.map((m) => m.memberId);
-      expect(mids).not.toContain(memA);
-      if (row.familyId === famA.id) {
-        expect(mids).toEqual([childId]);
-      }
-    }
+    }[];
+    expect(
+      rowsB
+        .find((row) => row.familyId === famA.id)
+        ?.members.map((m) => m.memberId),
+    ).toEqual([childId]);
 
     await prisma.invoice.deleteMany({
       where: { clubId: clubId as string, label: 'Cotisation groupe e2e' },
@@ -1355,7 +1428,7 @@ describe('ClubFlow API (e2e)', () => {
     await prisma.user.deleteMany({ where: { id: { in: [uidA, uidB] } } });
   });
 
-  it('Portail : rattachement e-mail payeur crée un foyer résidence (pas dans le foyer du payeur)', async () => {
+  it('Portail : rattachement e-mail payeur crée un foyer résidence, enfants visibles sur invitation', async () => {
     const pwd = 'E2eAttach!pass9';
     const hash = await bcrypt.hash(pwd, 8);
     const uP = randomUUID();
@@ -1501,6 +1574,48 @@ describe('ClubFlow API (e2e)', () => {
     const fPay = await prisma.family.findUniqueOrThrow({ where: { id: f1.id } });
     expect(fCo.householdGroupId).not.toBeNull();
     expect(fPay.householdGroupId).toBe(fCo.householdGroupId);
+
+    // Se rattacher ne montre pas les enfants du payeur : il faut son
+    // invitation (modèle unilatéral).
+    const profJoined = await request(app.getHttpServer())
+      .post('/graphql')
+      .set('Authorization', `Bearer ${tokC}`)
+      .send({ query: `{ viewerProfiles { memberId } }` });
+    expect(profJoined.body.errors).toBeUndefined();
+    expect(
+      (profJoined.body.data.viewerProfiles as { memberId: string }[]).map(
+        (p) => p.memberId,
+      ),
+    ).toEqual([mC]);
+
+    const loginP = await gql(
+      `mutation ($input: LoginInput!) { login(input: $input) { accessToken } }`,
+      { input: { email: emP, password: pwd } },
+    );
+    expect(loginP.body.errors).toBeUndefined();
+    const tokP = loginP.body.data.login.accessToken as string;
+    const invite = await request(app.getHttpServer())
+      .post('/graphql')
+      .set('Authorization', `Bearer ${tokP}`)
+      .set('x-club-id', clubId as string)
+      .send({
+        query: `mutation { createFamilyInvite(input: { role: COPAYER }) { code familyId } }`,
+      });
+    expect(invite.body.errors).toBeUndefined();
+    expect(invite.body.data.createFamilyInvite.familyId).toBe(f1.id);
+    const accept = await request(app.getHttpServer())
+      .post('/graphql')
+      .set('Authorization', `Bearer ${tokC}`)
+      .set('x-club-id', clubId as string)
+      .send({
+        query: `mutation ($input: AcceptFamilyInviteInput!) {
+          acceptFamilyInvite(input: $input) { success familyId }
+        }`,
+        variables: { input: { code: invite.body.data.createFamilyInvite.code } },
+      });
+    expect(accept.body.errors).toBeUndefined();
+    // Le co-parent garde le foyer résidence créé au rattachement.
+    expect(accept.body.data.acceptFamilyInvite.familyId).toBe(newFamId);
 
     const loginAfter = await gql(
       `mutation ($input: LoginInput!) {
@@ -1702,7 +1817,7 @@ describe('ClubFlow API (e2e)', () => {
           createClubGrantApplication(input: $input) { id title status }
         }`,
         variables: {
-          input: { title: 'E2E subvention', amountCents: 50_000 },
+          input: { title: 'E2E subvention', requestedAmountCents: 50_000 },
         },
       });
     expect(grantRes.status).toBe(200);
