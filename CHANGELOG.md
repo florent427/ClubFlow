@@ -9,6 +9,19 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.70.0](https://github.com/florent427/ClubFlow/compare/v0.69.1...v0.70.0) (2026-09-17)
+
+
+### ✨ Features
+
+* **paiements:** créditer son compte et rembourser une avance par carte (lot 3, livraison B) ([78eff56](https://github.com/florent427/ClubFlow/commit/78eff56316e2a8bd3b8402e04c26f7c020ed5d64))
+* **paiements:** créditer son compte par carte et rembourser une avance carte ([8f4bcf9](https://github.com/florent427/ClubFlow/commit/8f4bcf93ca2d9bf8d17d03b66aa47135138ee8cd))
+
+
+### 🐛 Bug Fixes
+
+* **admin:** textes justes dans le tiroir d'un reçu d'avance remboursé ([9e7736e](https://github.com/florent427/ClubFlow/commit/9e7736e2bdb5810913ee04778baf74cc431778a4))
+
 ## [0.69.1](https://github.com/florent427/ClubFlow/compare/v0.69.0...v0.69.1) (2026-09-17)
 
 
