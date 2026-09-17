@@ -175,7 +175,7 @@ deploy-staging.yml. Détails → [runbooks/release.md](docs/runbooks/release.md)
 Pour tout autre symptôme : grep dans `docs/memory/pitfalls/` ou demander
 à `/learn`.
 
-### Six pièges SANS symptôme
+### Sept pièges SANS symptôme
 
 Ceux-là ne se trouvent pas par `grep` sur un message d'erreur — il n'y en
 a pas. Ce sont des motifs à reconnaître en écrivant, pas en débuggant :
@@ -198,6 +198,9 @@ a pas. Ce sont des motifs à reconnaître en écrivant, pas en débuggant :
 - **[Une supposition qui survit à la décision](docs/memory/pitfalls/une-supposition-survit-a-la-decision.md)**
   — deux mécanismes résolvent la même chose ; le perdant reste vivant et
   finit validé. Poser la règle au goulot, pas sur chaque chemin.
+- **[Une route REST qui croit l'en-tête `X-Club-Id`](docs/memory/pitfalls/rest-x-club-id-sans-appartenance.md)**
+  — filtrer par ce club ne prouve aucun droit : son identifiant est public.
+  Quatre routes ouvraient factures, FEC et médiathèque à tout compte.
 
 ---
 

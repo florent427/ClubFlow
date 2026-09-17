@@ -15,6 +15,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '@nestjs/passport';
 import type { Request, Response } from 'express';
 import { memoryStorage } from 'multer';
+import { ClubRestAccessGuard } from '../common/guards/club-rest-access.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventAttachmentsService } from './event-attachments.service';
 
@@ -29,12 +30,13 @@ import { EventAttachmentsService } from './event-attachments.service';
  *
  * Auth :
  * - JWT Bearer (Passport strategy `jwt`)
- * - Contexte club extrait du header `X-Club-Id` (cohérent avec
- *   `InvoicePdfController`). Le guard de club est implicite car on
- *   filtre systématiquement par `clubId` en base.
+ * - `ClubRestAccessGuard` : back-office du club de l'en-tête `X-Club-Id`,
+ *   comme la gestion des événements en GraphQL. Filtrer par ce `clubId` en
+ *   base ne suffisait pas : l'en-tête se falsifie, et l'identifiant d'un club
+ *   est public.
  */
 @Controller('events/:eventId/attachments')
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(AuthGuard('jwt'), ClubRestAccessGuard)
 export class EventAttachmentsController {
   constructor(
     private readonly prisma: PrismaService,

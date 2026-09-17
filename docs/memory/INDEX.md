@@ -69,6 +69,7 @@
 | [`rattrapage-de-securite-incomplet.md`](pitfalls/rattrapage-de-securite-incomplet.md) | Ce qui était public ne s'affiche plus après un durcissement : cherche l'oubli du rattrapage |
 | [`rclone-config-root-vs-user.md`](pitfalls/rclone-config-root-vs-user.md) | Piège — `rclone` config absente côté root → backups script v2 fail |
 | [`release-please-no-trigger.md`](pitfalls/release-please-no-trigger.md) | Piège — release-please ne se déclenche pas (pas de `workflow_dispatch`) |
+| [`rest-x-club-id-sans-appartenance.md`](pitfalls/rest-x-club-id-sans-appartenance.md) | Piège — une route REST qui croit l'en-tête `X-Club-Id` |
 | [`revue-adversariale-tout-refute.md`](pitfalls/revue-adversariale-tout-refute.md) | Piège — une revue adversariale qui réfute 100 % de ses constats |
 | [`safety-blocks-shared-infra-mcp.md`](pitfalls/safety-blocks-shared-infra-mcp.md) | Piège — Safety bloque les modifs d'infra partagée via Chrome MCP |
 | [`seed-concurrent-p2002-comptes-zero.md`](pitfalls/seed-concurrent-p2002-comptes-zero.md) | Piège — deux `seedIfEmpty` concurrents, et l'écran affiche « Comptes (0) » |
@@ -123,7 +124,7 @@
 
 ---
 
-_Index généré le 2026-09-15 04:52 UTC par `bin/memory-index`._
+_Index généré le 2026-09-17 06:05 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`

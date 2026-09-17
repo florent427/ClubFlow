@@ -20,11 +20,19 @@ import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { memoryStorage } from 'multer';
 import sharp from 'sharp';
+import {
+  ClubRestAccessGuard,
+  RequireClubRestAccess,
+} from '../common/guards/club-rest-access.guard';
 import { MediaAssetsService } from './media-assets.service';
 import { MediaUrlSignerService } from './media-url-signer.service';
 
 /**
  * Endpoints REST pour le service média générique.
+ *
+ * Les routes d'administration (upload, liste, passage en public, suppression)
+ * passent par `ClubRestAccessGuard` : toute l'équipe du club de l'en-tête
+ * `X-Club-Id`. La vitrine, les projets et la comptabilité s'en servent.
  *
  *  - POST   /media/upload       (auth admin) upload image ou document
  *  - GET    /media/:id          (mixte)      servir le fichier
@@ -67,7 +75,8 @@ export class MediaController {
   }
 
   @Post('upload')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'), ClubRestAccessGuard)
+  @RequireClubRestAccess('STAFF')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -168,7 +177,8 @@ export class MediaController {
   }
 
   @Get()
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'), ClubRestAccessGuard)
+  @RequireClubRestAccess('STAFF')
   async list(
     @Req() req: Request,
     @Query('kind') kind?: 'IMAGE' | 'DOCUMENT' | 'OTHER',
@@ -338,7 +348,8 @@ export class MediaController {
    * oracle d'existence.
    */
   @Post(':id/public')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'), ClubRestAccessGuard)
+  @RequireClubRestAccess('STAFF')
   async makePublic(
     @Req() req: Request,
     @Param('id') id: string,
@@ -350,7 +361,8 @@ export class MediaController {
   }
 
   @Delete(':id')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'), ClubRestAccessGuard)
+  @RequireClubRestAccess('STAFF')
   async delete(
     @Req() req: Request,
     @Param('id') id: string,

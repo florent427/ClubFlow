@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import type { Request, Response } from 'express';
+import { ClubRestAccessGuard } from '../common/guards/club-rest-access.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { ModuleCode } from '../domain/module-registry/module-codes';
 import { AccountingExportService } from './accounting-export.service';
@@ -17,6 +18,9 @@ import { AccountingExportService } from './accounting-export.service';
  * Endpoint REST pour les exports comptables (CSV + FEC).
  * GraphQL serait inadapté pour streamer un fichier → on passe par REST
  * avec download direct (Content-Disposition).
+ *
+ * Réservé au back-office du club de l'en-tête `X-Club-Id`
+ * (`ClubRestAccessGuard`), comme la comptabilité en GraphQL.
  */
 @Controller('accounting/export')
 export class AccountingExportController {
@@ -61,7 +65,7 @@ export class AccountingExportController {
   }
 
   @Get('csv')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'), ClubRestAccessGuard)
   async exportCsv(
     @Req() req: Request,
     @Res() res: Response,
@@ -81,7 +85,7 @@ export class AccountingExportController {
   }
 
   @Get('fec')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'), ClubRestAccessGuard)
   async exportFec(
     @Req() req: Request,
     @Res() res: Response,

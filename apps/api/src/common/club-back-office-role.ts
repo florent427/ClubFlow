@@ -46,6 +46,34 @@ export async function userHasClubBackOfficeRole(
 }
 
 /**
+ * Détermine si un utilisateur fait partie de l'équipe d'un club : tout rôle
+ * d'adhésion au club (`ClubMembership`), ou admin système. C'est le public de
+ * l'admin (`myAdminClubs`) : plus large que le back-office — responsable
+ * communication, chef de projet, coach —, sans jamais inclure un adhérent ou un
+ * contact, qui n'ont pas de `ClubMembership`.
+ */
+export async function userHasClubStaffRole(
+  prisma: PrismaService,
+  userId: string,
+  clubId: string,
+): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { systemRole: true },
+  });
+  if (
+    user?.systemRole === SystemRole.SUPER_ADMIN ||
+    user?.systemRole === SystemRole.ADMIN
+  ) {
+    return true;
+  }
+  const membership = await prisma.clubMembership.findUnique({
+    where: { userId_clubId: { userId, clubId } },
+  });
+  return membership !== null;
+}
+
+/**
  * Club à utiliser pour ouvrir le back-office : le club du profil membre courant
  * s’il y a un rôle admin, sinon un club quelconque où l’utilisateur a ce rôle.
  *
