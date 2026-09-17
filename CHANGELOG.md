@@ -9,6 +9,16 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.70.1](https://github.com/florent427/ClubFlow/compare/v0.70.0...v0.70.1) (2026-09-17)
+
+
+### 🐛 Bug Fixes
+
+* **campagnes:** refuser une campagne dont un canal ne peut rien envoyer ([3cb1a2c](https://github.com/florent427/ClubFlow/commit/3cb1a2ccb127b58cff0680a88fd720156202b557))
+* **mail:** « Vérifier » un domaine d'envoi ne le déclare plus prêt sans contrôle ([3a4f25b](https://github.com/florent427/ClubFlow/commit/3a4f25b83f34407184771b45091799b18d2e5357))
+* messagerie, campagnes et domaines d'envoi fiables (audit 1.5, 1.3, 1.4) ([861a48c](https://github.com/florent427/ClubFlow/commit/861a48c5dc7363b0a23343261c6fc942a8e4277b))
+* **messagerie:** couper le temps réel d'un membre qui perd l'accès ([df3b0fc](https://github.com/florent427/ClubFlow/commit/df3b0fc7379943ce4d6bd0e7379c20c7b521d3ab))
+
 ## [0.70.0](https://github.com/florent427/ClubFlow/compare/v0.69.1...v0.70.0) (2026-09-17)
 
 
