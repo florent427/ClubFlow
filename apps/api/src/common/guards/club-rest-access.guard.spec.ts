@@ -2,7 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { Test } from '@nestjs/testing';
-import { MembershipRole, SystemRole } from '@prisma/client';
+import { MemberStatus, MembershipRole, SystemRole } from '@prisma/client';
 import request from 'supertest';
 import { AccountingExportController } from '../../accounting/accounting-export.controller';
 import { AccountingExportService } from '../../accounting/accounting-export.service';
@@ -29,7 +29,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 const SECRET = process.env.JWT_SECRET ?? 'change-me-in-development';
 
-type Route = { nom: string; method: 'get' | 'post' | 'delete'; path: string };
+type Route = { nom: string; method: 'get' | 'post' | 'delete'; path: string; fichier?: true };
 
 /** Réservées au back-office du club : leurs pendants GraphQL le sont aussi. */
 const BUREAU: Route[] = [
@@ -39,33 +39,54 @@ const BUREAU: Route[] = [
   { nom: 'pièces jointes d’un événement', method: 'get', path: '/events/ev-1/attachments' },
   { nom: 'suppression d’une pièce jointe', method: 'delete', path: '/events/ev-1/attachments/att-1' },
 ];
-/** Réservées au back-office ; seul le refus est rejoué, sans fichier à servir ni à envoyer. */
+/** Réservées au back-office ; seul le refus est rejoué, sans fichier à servir. */
 const BUREAU_REFUS: Route[] = [
   { nom: 'téléchargement d’une pièce jointe', method: 'get', path: '/events/ev-1/attachments/att-1' },
-  { nom: 'envoi d’une pièce jointe', method: 'post', path: '/events/ev-1/attachments' },
+  { nom: 'envoi d’une pièce jointe', method: 'post', path: '/events/ev-1/attachments', fichier: true },
 ];
-/** Ouvertes à toute l'équipe : vitrine, projets et comptabilité se servent de la médiathèque. */
+/** Réservées à l'équipe : l'admin, l'appli admin et l'éditeur de la vitrine gèrent la médiathèque. */
 const EQUIPE: Route[] = [
   { nom: 'liste de la médiathèque', method: 'get', path: '/media' },
   { nom: 'passage en public d’un média', method: 'post', path: '/media/m-1/public' },
   { nom: 'suppression d’un média', method: 'delete', path: '/media/m-1' },
 ];
-const EQUIPE_REFUS: Route[] = [
-  { nom: 'envoi dans la médiathèque', method: 'post', path: '/media/upload' },
-];
+/** Ouverte à tout le club : le portail et l'appli membre y envoient photos, messages et contributions. */
+const ENVOI_MEDIA: Route = {
+  nom: 'envoi dans la médiathèque',
+  method: 'post',
+  path: '/media/upload',
+  fichier: true,
+};
 
-/** Les comptes : une trésorière et un coach du club, l'admin d'un autre club, un adhérent, la plateforme. */
+/**
+ * Les comptes : une trésorière et un coach de l'équipe, l'admin d'un autre club,
+ * un adhérent et un contact du club, un ancien adhérent, un adhérent et un
+ * contact d'un autre club, et un admin de la plateforme.
+ */
 const USERS = [
   { id: 'u-tresoriere', systemRole: null },
   { id: 'u-coach', systemRole: null },
   { id: 'u-autre-club', systemRole: null },
   { id: 'u-adherent', systemRole: null },
+  { id: 'u-contact', systemRole: null },
+  { id: 'u-ancien', systemRole: null },
+  { id: 'u-adherent-ailleurs', systemRole: null },
+  { id: 'u-contact-ailleurs', systemRole: null },
   { id: 'u-plateforme', systemRole: SystemRole.ADMIN },
 ];
 const MEMBERSHIPS = [
   { userId: 'u-tresoriere', clubId: 'club-1', role: MembershipRole.TREASURER },
   { userId: 'u-coach', clubId: 'club-1', role: MembershipRole.COACH },
   { userId: 'u-autre-club', clubId: 'club-2', role: MembershipRole.CLUB_ADMIN },
+];
+const MEMBERS = [
+  { id: 'm-1', userId: 'u-adherent', clubId: 'club-1', status: MemberStatus.ACTIVE },
+  { id: 'm-2', userId: 'u-ancien', clubId: 'club-1', status: MemberStatus.INACTIVE },
+  { id: 'm-3', userId: 'u-adherent-ailleurs', clubId: 'club-2', status: MemberStatus.ACTIVE },
+];
+const CONTACTS = [
+  { id: 'c-1', userId: 'u-contact', clubId: 'club-1' },
+  { id: 'c-2', userId: 'u-contact-ailleurs', clubId: 'club-2' },
 ];
 
 function allowOnly(value: object, keys: string[]): void {
@@ -89,6 +110,29 @@ function makePrisma() {
         allowOnly(where, ['userId_clubId']);
         const { userId, clubId } = where.userId_clubId;
         return MEMBERSHIPS.find((m) => m.userId === userId && m.clubId === clubId) ?? null;
+      }),
+    },
+    member: {
+      findFirst: jest.fn(async ({ where }: any) => {
+        allowOnly(where, ['clubId', 'userId', 'status']);
+        const m = MEMBERS.find(
+          (x) =>
+            (where.clubId === undefined || x.clubId === where.clubId) &&
+            (where.userId === undefined || x.userId === where.userId) &&
+            (where.status === undefined || x.status === where.status),
+        );
+        return m ? { id: m.id } : null;
+      }),
+    },
+    contact: {
+      findFirst: jest.fn(async ({ where }: any) => {
+        allowOnly(where, ['clubId', 'userId']);
+        const c = CONTACTS.find(
+          (x) =>
+            (where.clubId === undefined || x.clubId === where.clubId) &&
+            (where.userId === undefined || x.userId === where.userId),
+        );
+        return c ? { id: c.id } : null;
       }),
     },
     club: {
@@ -116,7 +160,12 @@ function makePrisma() {
 
 let app: INestApplication;
 let comptabilite: { exportCsv: jest.Mock; exportFec: jest.Mock };
-let media: { listByClub: jest.Mock; markPublic: jest.Mock; delete: jest.Mock };
+let media: {
+  listByClub: jest.Mock;
+  markPublic: jest.Mock;
+  delete: jest.Mock;
+  uploadImage: jest.Mock;
+};
 
 beforeAll(async () => {
   comptabilite = {
@@ -127,6 +176,18 @@ beforeAll(async () => {
     listByClub: jest.fn(async () => []),
     markPublic: jest.fn(async () => true),
     delete: jest.fn(async () => true),
+    uploadImage: jest.fn(async () => ({
+      id: 'm-photo',
+      clubId: 'club-1',
+      kind: 'IMAGE',
+      fileName: 'photo.png',
+      mimeType: 'image/png',
+      sizeBytes: 3,
+      publicUrl: '/media/m-photo',
+      ownerKind: null,
+      ownerId: null,
+      createdAt: new Date(),
+    })),
   };
   const moduleRef = await Test.createTestingModule({
     imports: [PassportModule],
@@ -174,17 +235,20 @@ const appeler = (route: Route, userId: string | null, clubId: string | null = 'c
   let req = request(app.getHttpServer())[route.method](route.path);
   if (userId) req = req.set('Authorization', `Bearer ${jeton(userId)}`);
   if (clubId) req = req.set('X-Club-Id', clubId);
+  if (route.fichier) req = req.attach('file', Buffer.from('png'), 'photo.png');
   return req;
 };
 
 const reussi = (status: number) => status >= 200 && status < 300;
 
-describe.each([...BUREAU, ...BUREAU_REFUS, ...EQUIPE, ...EQUIPE_REFUS])('$nom', (route) => {
+describe.each([...BUREAU, ...BUREAU_REFUS, ...EQUIPE, ENVOI_MEDIA])('$nom', (route) => {
   it('refuse l’admin d’un autre club, qui envoie l’identifiant de ce club', async () => {
     const res = await appeler(route, 'u-autre-club');
     expect(res.status).toBe(403);
   });
+});
 
+describe.each([...BUREAU, ...BUREAU_REFUS, ...EQUIPE])('$nom', (route) => {
   it('refuse un adhérent, qui n’a pas de rôle dans l’équipe du club', async () => {
     const res = await appeler(route, 'u-adherent');
     expect(res.status).toBe(403);
@@ -217,6 +281,28 @@ describe('l’équipe du club', () => {
   it('une suppression refusée ne touche à rien', async () => {
     await appeler(EQUIPE[2], 'u-autre-club');
     expect(media.delete).not.toHaveBeenCalled();
+  });
+});
+
+describe('l’envoi dans la médiathèque, ouvert à tout le club', () => {
+  it.each([
+    ['un adhérent du club, depuis le portail ou l’appli', 'u-adherent'],
+    ['un contact du club', 'u-contact'],
+    ['un coach de l’équipe', 'u-coach'],
+  ])('%s envoie son fichier', async (_qui, userId) => {
+    const res = await appeler(ENVOI_MEDIA, userId);
+    expect(res.status).toBe(201);
+    expect(media.uploadImage).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['un adhérent d’un autre club', 'u-adherent-ailleurs'],
+    ['un contact d’un autre club', 'u-contact-ailleurs'],
+    ['un ancien adhérent, dont la fiche est inactive', 'u-ancien'],
+  ])('%s est refusé, et rien n’est enregistré', async (_qui, userId) => {
+    const res = await appeler(ENVOI_MEDIA, userId);
+    expect(res.status).toBe(403);
+    expect(media.uploadImage).not.toHaveBeenCalled();
   });
 });
 

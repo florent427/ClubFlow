@@ -30,9 +30,13 @@ import { MediaUrlSignerService } from './media-url-signer.service';
 /**
  * Endpoints REST pour le service média générique.
  *
- * Les routes d'administration (upload, liste, passage en public, suppression)
- * passent par `ClubRestAccessGuard` : toute l'équipe du club de l'en-tête
- * `X-Club-Id`. La vitrine, les projets et la comptabilité s'en servent.
+ * Les routes d'écriture et de liste passent par `ClubRestAccessGuard`, pour le
+ * club de l'en-tête `X-Club-Id` :
+ * - l'envoi, par tout compte rattaché au club : le portail et l'appli membre y
+ *   envoient photos de profil, pièces jointes de messagerie et contributions
+ *   aux projets ;
+ * - la liste, le passage en public et la suppression, par l'équipe du club :
+ *   admin, appli admin, éditeur de la vitrine.
  *
  *  - POST   /media/upload       (auth admin) upload image ou document
  *  - GET    /media/:id          (mixte)      servir le fichier
@@ -76,7 +80,7 @@ export class MediaController {
 
   @Post('upload')
   @UseGuards(AuthGuard('jwt'), ClubRestAccessGuard)
-  @RequireClubRestAccess('STAFF')
+  @RequireClubRestAccess('CLUB')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),

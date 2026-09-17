@@ -56,18 +56,25 @@ club de l'en-tête :
 // Toute l'équipe : tout rôle d'adhésion au club (le public de l'admin).
 @UseGuards(AuthGuard('jwt'), ClubRestAccessGuard)
 @RequireClubRestAccess('STAFF')
+
+// Tout le club : équipe, adhérent actif ou contact rattaché au compte.
+@UseGuards(AuthGuard('jwt'), ClubRestAccessGuard)
+@RequireClubRestAccess('CLUB')
 ```
 
-Chaque route prend la règle de son pendant GraphQL, sans en inventer :
+Chaque route prend la règle de ses VRAIS appelants, sans en inventer :
 - facture PDF, exports comptables et pièces jointes d'événements : back-office,
-  comme la facturation, la comptabilité et les événements ;
-- médiathèque (envoi, liste, passage en public, suppression) : toute l'équipe,
-  car la vitrine, les projets et la comptabilité s'en servent.
+  comme la facturation, la comptabilité et les événements en GraphQL ;
+- médiathèque, liste, passage en public et suppression : toute l'équipe
+  (admin, appli admin, éditeur de la vitrine) ;
+- médiathèque, envoi : tout le club, car le portail et l'appli membre y
+  envoient photos de profil, pièces jointes de messagerie et contributions aux
+  projets.
 
 Test qui discrimine : `club-rest-access.guard.spec.ts` monte les vrais
 contrôleurs derrière la vraie stratégie JWT, et envoie de vraies requêtes. Le
-compte d'un autre club doit recevoir 403 sur chaque route. Sur le code d'origine,
-31 des 42 tests rougissent ; mutations à la main : 10 tuées sur 10.
+compte d'un autre club doit recevoir 403 sur chaque route. Sur les contrôleurs
+d'origine, 33 des 47 tests rougissent ; mutations à la main : 16 tuées sur 16.
 
 ## Pourquoi NE PAS faire
 
@@ -78,6 +85,12 @@ compte d'un autre club doit recevoir 403 sur chaque route. Sur le code d'origine
 - ❌ **Tester la présence du décorateur** : un test de forme (cf.
   [test-verifie-la-forme](test-verifie-la-forme-pas-le-comportement.md)). Seule
   une requête HTTP prouve que la route refuse.
+- ❌ **Déduire les appelants d'une recherche tronquée** (`grep … | head -25`).
+  La première version du correctif réservait l'envoi de médias à l'équipe :
+  les 25 premières lignes ne montraient que l'admin, et le portail comme l'appli
+  membre en étaient coupés. Les journaux de prod l'ont révélé avant la mise en
+  prod (`Origin: https://portail.clubflow.topdigital.re` sur `POST /media/upload`).
+  Recenser les appelants sans troncature, puis confronter aux journaux.
 
 ## Détection
 
@@ -92,6 +105,12 @@ grep -rln "x-club-id" apps/api/src --include=*.controller.ts \
 Une sortie non vide désigne une route qui croit l'en-tête. `GET /media/:id` n'est
 pas concernée : sans garde à dessein (vitrine, `<img src>`), elle ne sert un
 fichier privé que par URL signée.
+
+Qui appelle vraiment une route : les journaux JSON de Caddy
+(`/var/log/caddy/clubflow-api*.log*`) portent la méthode, le chemin, le statut,
+`Origin`, `X-Club-Id` et l'adresse ; `Authorization` y est masqué. Relus le
+2026-09-17 : aucun appel extérieur au club du 31 août au 17 septembre. Les
+journaux antérieurs n'existent plus (rotation de 10 Mo × 5).
 
 ## Lié
 

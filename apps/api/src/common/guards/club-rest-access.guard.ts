@@ -10,6 +10,7 @@ import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
+  userBelongsToClub,
   userHasClubBackOfficeRole,
   userHasClubStaffRole,
 } from '../club-back-office-role';
@@ -19,13 +20,15 @@ import {
  * - `BACK_OFFICE` : admin, bureau, trésorerie et admins système, comme
  *   `ClubAdminRoleGuard` en GraphQL ;
  * - `STAFF` : toute l'équipe du club, c'est-à-dire tout rôle d'adhésion au club,
- *   et les admins système.
+ *   et les admins système ;
+ * - `CLUB` : tout compte rattaché au club, équipe, adhérent actif ou contact.
+ *   C'est aussi le public du portail et de l'appli membre.
  */
-export type ClubRestAccess = 'BACK_OFFICE' | 'STAFF';
+export type ClubRestAccess = 'BACK_OFFICE' | 'STAFF' | 'CLUB';
 
 const CLUB_REST_ACCESS_KEY = 'clubRestAccess';
 
-/** Ouvre une route à toute l'équipe du club. Sans ce décorateur : le back-office. */
+/** Élargit une route à l'équipe, ou à tout le club. Sans ce décorateur : le back-office. */
 export const RequireClubRestAccess = (access: ClubRestAccess) =>
   SetMetadata(CLUB_REST_ACCESS_KEY, access);
 
@@ -66,9 +69,11 @@ export class ClubRestAccessGuard implements CanActivate {
         [context.getHandler(), context.getClass()],
       ) ?? 'BACK_OFFICE';
     const allowed =
-      access === 'STAFF'
-        ? await userHasClubStaffRole(this.prisma, userId, clubId)
-        : await userHasClubBackOfficeRole(this.prisma, userId, clubId);
+      access === 'CLUB'
+        ? await userBelongsToClub(this.prisma, userId, clubId)
+        : access === 'STAFF'
+          ? await userHasClubStaffRole(this.prisma, userId, clubId)
+          : await userHasClubBackOfficeRole(this.prisma, userId, clubId);
     if (!allowed) {
       throw new ForbiddenException();
     }
