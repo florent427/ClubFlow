@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.68.3](https://github.com/florent427/ClubFlow/compare/v0.68.2...v0.68.3) (2026-09-17)
+
+
+### 🐛 Bug Fixes
+
+* **api:** rouvrir l'envoi de médias aux adhérents et contacts du club ([cbc24e4](https://github.com/florent427/ClubFlow/commit/cbc24e4f7de2c4813a8c73b9dd1fcbd60ff5e0ea))
+* **api:** vérifier l'appartenance au club sur les routes REST de fichiers et d'exports ([b304451](https://github.com/florent427/ClubFlow/commit/b30445110ee1b695469f5360e935a66f7df48ae4))
+
 ## [0.68.2](https://github.com/florent427/ClubFlow/compare/v0.68.1...v0.68.2) (2026-09-15)
 
 
