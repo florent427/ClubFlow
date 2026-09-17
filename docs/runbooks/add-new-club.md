@@ -10,7 +10,7 @@
 
 ## 1. Créer le club en DB (via admin)
 
-Connecté comme superadmin sur https://clubflow.topdigital.re :
+Connecté comme superadmin sur https://app.clubflow.topdigital.re :
 
 1. Settings → Clubs → "Nouveau club"
 2. Renseigner :
@@ -67,6 +67,18 @@ done
 
 ## 4. Ajouter le vhost Caddy
 
+**Voie normale (self-service, cf.
+[ADR-0007](../memory/decisions/0007-caddy-admin-api-vs-caddyfile.md))** :
+l'admin du club déclare son domaine dans Paramètres → Domaine vitrine
+(`/settings/vitrine-domain`). La mutation `requestVitrineDomain` passe le
+club en `PENDING_DNS`, puis `verifyVitrineDomain` contrôle le DNS et
+ajoute le vhost via l'API admin de Caddy (`CaddyApiService.addVitrineVhost`).
+Aucune édition du Caddyfile n'est nécessaire. Détails et debug →
+[caddy-api-vhosts.md](caddy-api-vhosts.md).
+
+**Voie manuelle (secours / debug uniquement)** — si l'API admin Caddy
+est indisponible :
+
 ```bash
 ssh-into-prod "sudo nano /etc/caddy/Caddyfile"
 ```
@@ -96,14 +108,11 @@ ssh-into-prod "sudo systemctl reload caddy"
 ## 5. Mettre à jour la vitrine SSR pour gérer le nouveau domaine
 
 La vitrine Next.js détermine le club à servir via le `Host` header.
-Le code est dans `apps/vitrine/src/lib/club.ts` (à vérifier — sinon
-multi-tenant n'est pas implémenté côté vitrine et il faut ajouter le
-mapping).
-
-Si nécessaire :
-1. Coder un middleware `Host → clubSlug` (table de mapping en DB ou env)
-2. Update `VITRINE_DEFAULT_CLUB_SLUG` n'est PAS suffisant si plusieurs
-   clubs partagent la même app vitrine
+Le code est dans `apps/vitrine/src/lib/club-resolution.ts` : sous-domaine
+`<slug>.clubflow.topdigital.re` → `publicClub(slug)`, domaine custom →
+`publicClubByDomain(domain)`, puis repli sur `VITRINE_DEFAULT_CLUB_SLUG`.
+Rien à coder : il suffit que le domaine custom soit enregistré sur le
+club (étape 4, voie normale).
 
 ## 6. Créer le contenu vitrine (admin)
 

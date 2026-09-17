@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# Refresh the graphify knowledge graph (graphify-out/) and re-apply the
+# ClubFlow enrichment layer (bin/graphify-enrich.py).
+#
+# Pipeline:
+#   0. absorb curated community names (durable store, see graphify-enrich.py)
+#   1. graphify update . --no-cluster   (AST re-extraction; semantic-tier items,
+#      including the previous enrichment layer, are preserved by graphify)
+#   2. bin/graphify-enrich.py --recluster
+#      (drop + recompute the enrichment layer, then communities, GRAPH_REPORT.md,
+#       graph.html, .graphify_labels.json(.sig), re-attaching curated community names by member overlap)
+#
+# Usage:
+#   bin/graphify-refresh            incremental-safe refresh (no LLM, ~1-2 min)
+#   bin/graphify-refresh --force    let graphify overwrite a graph that shrank
+#                                   (after deleting/ignoring many files)
+#   bin/graphify-refresh --full     full AST re-scan (graphify extract . --force
+#                                   --code-only, keeps the semantic doc layer),
+#                                   then enrichment. Re-extracting docs/ADRs
+#                                   semantically needs `/graphify .` inside
+#                                   Claude Code; run this script afterwards.
+#   bin/graphify-refresh --enrich-only   skip graphify update
+#
+# Works from Git Bash on Windows; uses the Python recorded by graphify in
+# graphify-out/.graphify_python so graphify and the enricher share one install.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+FORCE=0
+FULL=0
+ENRICH_ONLY=0
+for arg in "$@"; do
+  case "$arg" in
+    --force) FORCE=1 ;;
+    --full) FULL=1 ;;
+    --enrich-only) ENRICH_ONLY=1 ;;
+    -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
+    *) echo "unknown option: $arg" >&2; exit 2 ;;
+  esac
+done
+
+PY=""
+if [ -f graphify-out/.graphify_python ]; then
+  PY="$(tr -d '\r\n' < graphify-out/.graphify_python)"
+  if command -v cygpath >/dev/null 2>&1; then PY="$(cygpath -u "$PY")"; fi
+fi
+if [ -z "$PY" ] || [ ! -x "$PY" ]; then
+  PY="$(command -v python3 || command -v python)"
+fi
+export PYTHONIOENCODING=utf-8
+graphify() { "$PY" -m graphify "$@"; }
+
+if [ ! -f graphify-out/graph.json ]; then
+  echo "graphify-out/graph.json missing: run /graphify . in Claude Code first" >&2
+  exit 1
+fi
+
+"$PY" bin/graphify-enrich.py --snapshot
+
+if [ "$ENRICH_ONLY" -eq 0 ]; then
+  if [ "$FULL" -eq 1 ]; then
+    echo "== graphify extract . --force --code-only --no-cluster"
+    graphify extract . --force --code-only --no-cluster
+  else
+    UPDATE_ARGS=(update . --no-cluster)
+    [ "$FORCE" -eq 1 ] && UPDATE_ARGS+=(--force)
+    echo "== graphify ${UPDATE_ARGS[*]}"
+    set +e
+    OUTPUT="$(graphify "${UPDATE_ARGS[@]}" 2>&1)"
+    STATUS=$?
+    set -e
+    printf '%s\n' "$OUTPUT"
+    if [ "$STATUS" -ne 0 ]; then
+      if printf '%s' "$OUTPUT" | grep -q "Refusing to overwrite"; then
+        echo "graphify refused a shrinking graph. Check the files removed above," >&2
+        echo "then rerun: bin/graphify-refresh --force" >&2
+      fi
+      exit "$STATUS"
+    fi
+  fi
+  # graphify records the scan root as given ("."); keep the absolute root so a
+  # later bare `graphify update` from another cwd still targets this repo.
+  "$PY" -c "import os; open('graphify-out/.graphify_root', 'w', encoding='utf-8').write(os.getcwd())"
+fi
+
+echo "== enrich + recluster"
+"$PY" bin/graphify-enrich.py --recluster

@@ -41,9 +41,10 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 ## Phase 2 — Vérifications avant push
 
 ```bash
-# Type-check
-cd apps/api && npx tsc --noEmit
-cd apps/admin && npx tsc --noEmit
+# Type-check (dans chaque app touchée — pas `npx tsc --noEmit` seul dans
+# apps/admin ou apps/member-portal : tsconfig « solution », 0 fichier vérifié)
+cd apps/api && npm run typecheck
+cd apps/admin && npm run typecheck
 
 # Tests si présents
 cd apps/api && npm test

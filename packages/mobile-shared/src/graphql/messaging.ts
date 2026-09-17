@@ -48,11 +48,12 @@ export const ROOM_FIELDS = `
 
 export const VIEWER_TOGGLE_REACTION = gql`
   mutation ViewerToggleReaction($messageId: ID!, $emoji: String!) {
-    viewerToggleChatReaction(input: { messageId: $messageId, emoji: $emoji }) {
-      messageId
+    viewerToggleChatMessageReaction(
+      input: { messageId: $messageId, emoji: $emoji }
+    ) {
       emoji
-      reacted
       count
+      reactedByViewer
     }
   }
 `;

@@ -34,8 +34,9 @@ de récupérer (pas de re-send mail, pas d'auto-verify).
 `apps/api/.env` côté prod manque la config SMTP relay (Brevo) :
 ```bash
 # Manquant ou vide :
-BREVO_SMTP_USER=
-BREVO_SMTP_PASS=
+SMTP_HOST=
+SMTP_USER=
+SMTP_PASS=
 MAIL_FROM=
 CLUBFLOW_SENDER_EMAIL=
 ```
@@ -61,8 +62,11 @@ L'user peut ensuite se connecter normalement.
 
 ```bash
 # Côté server, dans /home/clubflow/clubflow/apps/api/.env :
-BREVO_SMTP_USER=<user-brevo>           # cf. dashboard.brevo.com SMTP & API
-BREVO_SMTP_PASS=<smtp-key>             # à générer dans Brevo
+SMTP_HOST=smtp-relay.brevo.com
+SMTP_PORT=587
+SMTP_SECURE=false                      # 587 = STARTTLS
+SMTP_USER=<login-smtp-brevo>           # cf. dashboard.brevo.com SMTP & API
+SMTP_PASS=<smtp-key>                   # clé SMTP à générer dans Brevo
 MAIL_FROM="ClubFlow <noreply@mail.clubflow.topdigital.re>"
 CLUBFLOW_SENDER_EMAIL=noreply@mail.clubflow.topdigital.re
 
@@ -93,14 +97,14 @@ sudo -u postgres psql clubflow -c "
 "
 
 # Vérifier si SMTP configuré :
-sudo grep -E 'BREVO_SMTP|MAIL_FROM|CLUBFLOW_SENDER' \
+sudo grep -E '^SMTP_|MAIL_FROM|CLUBFLOW_SENDER' \
   /home/clubflow/clubflow/apps/api/.env
 ```
 
 ## Cas observés
 
 - 2026-05-04 (Phase 1 multi-tenant signup live) : 1er user réel
-  (techni3d@yahoo.fr) signup OK mais bloqué au login. SMTP pas encore
+  (`membre@example.com`) signup OK mais bloqué au login. SMTP pas encore
   configuré. Workaround SQL appliqué pour débloquer immédiatement.
 
 ## Pourquoi NE PAS faire

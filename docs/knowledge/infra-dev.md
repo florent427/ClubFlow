@@ -34,6 +34,11 @@ cd ../vitrine
 npm ci
 npm run dev                 # port 5175
 
+# 5b. Landing marketing (Next.js)
+cd ../landing
+npm ci
+npm run dev                 # port 5176
+
 # 6. Mobile (optionnel)
 cd ../mobile
 npm ci
@@ -43,8 +48,8 @@ npx expo start              # port Metro 8081
 ## Skill `/restart` pour redémarrer toute la stack
 
 Défini dans `.claude/skills/restart/SKILL.md`.
-Tue les processus sur 3000/5173/5174/8081/1025/8025 puis relance API + Admin
-+ Portal + Metro Expo + Mailpit en background.
+Tue les processus sur 3000/5173/5174/5175/5176/8081 puis relance API + Admin
++ Portal + Vitrine + Landing + Metro Expo (+ Mailpit si installé) en background.
 
 ⚠️ **Ne touche pas Docker** (l'utilisateur le gère manuellement).
 
@@ -66,6 +71,7 @@ ne contactent plus l'API.
 | Admin web | 5173 | http://localhost:5173 |
 | Portail membre | 5174 | http://localhost:5174 |
 | Vitrine Next.js | 5175 | http://localhost:5175 |
+| Landing Next.js | 5176 | http://localhost:5176 |
 | Metro Expo | 8081 | http://localhost:8081 |
 | PostgreSQL Docker | 5432 | localhost:5432 |
 | Mailpit SMTP | 1025 | (consommé par API) |

@@ -1,5 +1,7 @@
 # Piège — `ClubMembership` n'a PAS de `updatedAt` (contrairement aux autres modèles)
 
+## Statut : 📜 Historique — le script SQL du cas observé n'est plus versionné (commit `4791c8e`) ; la leçon reste valide (`ClubMembership` toujours sans `updatedAt`).
+
 ## Symptôme
 
 SQL d'update échoue :
@@ -99,4 +101,4 @@ Si pas de `updatedAt`, ne pas l'utiliser.
 ## Lié
 
 - [apps/api/prisma/schema.prisma](../../../apps/api/prisma/schema.prisma) — model ClubMembership
-- [bin/migrate-sksr-and-superadmin.sql](../../../bin/migrate-sksr-and-superadmin.sql)
+- `bin/migrate-sksr-and-superadmin.sql` (plus versionné depuis le commit `4791c8e`)

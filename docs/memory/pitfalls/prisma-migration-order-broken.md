@@ -1,5 +1,7 @@
 # Piège — Migrations Prisma dans le mauvais ordre
 
+## Statut : 📜 Historique — la migration fautive a été renommée (`20260330130000_members_core`, après `20260330120000_init_socle`) ; le déploiement passe par `prisma db push` (cf. ADR-0003). Garder comme contexte.
+
 ## Symptôme
 
 ```

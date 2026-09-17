@@ -31,6 +31,14 @@ Depuis le laptop, en bash :
   clubflow@89.167.79.253:/tmp/
 ```
 
+⚠️ `bin/migrate-sksr-and-superadmin.sql` n'est plus versionné : retiré du
+dépôt au commit `4791c8e`, et `bin/*.sql` est désormais ignoré par git. Le
+bootstrap Phase 1 a déjà été joué en prod ; pour le rejouer, il faut
+reconstituer ce fichier localement (sans `updatedAt` sur `ClubMembership`,
+cf. [pitfall](../memory/pitfalls/prisma-clubmembership-no-updatedat.md)).
+`bin/bootstrap-multitenant.sh` le référence encore et saute l'étape SQL
+avec un avertissement s'il est absent de `/tmp/`.
+
 ### 2. Lancer le bootstrap (côté serveur via SSH)
 
 ```bash
@@ -109,7 +117,7 @@ curl -s -X POST https://api.clubflow.topdigital.re/graphql \
 curl -s -X POST https://api.clubflow.topdigital.re/graphql \
   -H "Origin: https://clubflow.topdigital.re" \
   -H "Content-Type: application/json" \
-  -d '{"query":"mutation Test($i:CreateClubAndAdminInput!){createClubAndAdmin(input:$i){ok clubId clubSlug vitrineFallbackUrl emailSent}}","variables":{"i":{"clubName":"Test Club","clubSlug":"test-club","email":"test+'$(date +%s)'@example.com","password":"TestTest1234","firstName":"Test","lastName":"User","captchaToken":"10000000-aaaa-bbbb-cccc-000000000001"}}}' | jq .
+  -d '{"query":"mutation Test($i:CreateClubAndAdminInput!){createClubAndAdmin(input:$i){ok clubId clubSlug vitrineFallbackUrl emailSent}}","variables":{"i":{"clubName":"Test Club","clubSlug":"test-club","email":"test+'$(date +%s)'@example.com","password":"<mot-de-passe-de-test>","firstName":"Test","lastName":"User","captchaToken":"10000000-aaaa-bbbb-cccc-000000000001"}}}' | jq .
 # → { "data": { "createClubAndAdmin": { "ok": true, ... } } }
 # → ⚠️ captchaToken bidon ne marche que si HCAPTCHA_SECRET pas configuré côté API
 #   (mode dev). En prod, attendu : "CAPTCHA_FAILED".
@@ -160,5 +168,5 @@ Pour rollback côté DNS : pas nécessaire (les records ajoutés ne cassent rien
 - [pitfalls/cloudflare-zone-id-vs-account-id.md](../memory/pitfalls/cloudflare-zone-id-vs-account-id.md)
 - [bin/bootstrap-multitenant.sh](../../bin/bootstrap-multitenant.sh) — le script bootstrap
 - [bin/clubflow-landing.service](../../bin/clubflow-landing.service) — systemd unit
-- [bin/migrate-sksr-and-superadmin.sql](../../bin/migrate-sksr-and-superadmin.sql) — SQL idempotent
+- `bin/migrate-sksr-and-superadmin.sql` — SQL idempotent (plus versionné, cf. §1)
 - [bin/caddy-multitenant.snippet](../../bin/caddy-multitenant.snippet) — référence Caddy config

@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# ClubFlow graphify git hook dispatcher.
+#
+# Called from .git/hooks/{post-commit,post-merge,post-checkout} (installed by
+# bin/graphify-install-hooks) as:  dispatch <hook-name> [git hook args...]
+#
+# It decides quickly whether the graph must be refreshed and, if so, launches
+# the runner (bin/graphify-hooks/run, copied next to this file) fully detached
+# so git never waits for the ~3 min bin/graphify-refresh pipeline.
+#
+# Skips (exit 0, no output) when:
+#   - GRAPHIFY_SKIP_HOOK=1
+#   - post-checkout is a file checkout or a no-op branch switch
+#   - a rebase / merge / cherry-pick / revert is in progress
+#   - the hook runs in a linked worktree (only the main checkout owns graphify-out/)
+#   - graphify-out/graph.json does not exist (graph never built on this clone)
+#
+# Never fails the git command: every error path exits 0.
+
+hook="${1:-}"
+[ $# -gt 0 ] && shift
+
+[ "${GRAPHIFY_SKIP_HOOK:-0}" = "1" ] && exit 0
+
+case "$hook" in
+  post-commit|post-merge) ;;
+  post-checkout)
+    # $1 = previous HEAD, $2 = new HEAD, $3 = 1 for a branch checkout.
+    [ "${3:-0}" = "1" ] || exit 0
+    [ "${1:-}" != "${2:-}" ] || exit 0
+    ;;
+  *) exit 0 ;;
+esac
+
+top="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || exit 0
+gitdir="$(git rev-parse --absolute-git-dir 2>/dev/null)" || exit 0
+
+# Linked worktrees share .git/hooks with the main checkout: only refresh when
+# the current checkout IS the main repository root.
+top_abs="$(cd "$top" 2>/dev/null && pwd -P)" || exit 0
+main_abs="$(cd "$common/.." 2>/dev/null && pwd -P)" || exit 0
+[ "$top_abs" = "$main_abs" ] || exit 0
+
+for marker in rebase-merge rebase-apply MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD; do
+  [ -e "$gitdir/$marker" ] && exit 0
+done
+
+out="$main_abs/graphify-out"
+[ -f "$out/graph.json" ] || exit 0
+
+log="$out/refresh.log"
+runner="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/run"
+[ -f "$runner" ] || exit 0
+
+# Record the request; the runner (or the one already holding the lock) drains it.
+date '+%Y-%m-%d %H:%M:%S' > "$out/.clubflow-refresh.pending" 2>/dev/null || exit 0
+printf '%s [%s] refresh requested (%s)\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$hook" \
+  "$(git rev-parse --short HEAD 2>/dev/null)" >> "$log" 2>/dev/null
+
+# Pick a Python to detach the runner (Git for Windows has no nohup/setsid).
+py=""
+if [ -f "$out/.graphify_python" ]; then
+  py="$(tr -d '\r\n' < "$out/.graphify_python")"
+  command -v cygpath >/dev/null 2>&1 && py="$(cygpath -u "$py")"
+fi
+[ -n "$py" ] && [ -x "$py" ] || py="$(command -v python3 || command -v python || true)"
+
+bash_bin="$(command -v bash)"
+if [ -n "$py" ]; then
+  if command -v cygpath >/dev/null 2>&1; then
+    bash_arg="$(cygpath -w "$bash_bin")"
+    runner_arg="$(cygpath -w "$runner")"
+    root_arg="$(cygpath -w "$main_abs")"
+  else
+    bash_arg="$bash_bin"; runner_arg="$runner"; root_arg="$main_abs"
+  fi
+  # CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP (+ CREATE_BREAKAWAY_FROM_JOB when
+  # allowed) so the runner survives the git process and its job object.
+  "$py" -c '
+import os, subprocess, sys
+cmd = [sys.argv[1], sys.argv[2], sys.argv[3]]
+kw = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=sys.argv[3], close_fds=True)
+if os.name == "nt":
+    flags = 0x08000000 | 0x00000200
+    try:
+        subprocess.Popen(cmd, creationflags=flags | 0x01000000, **kw)
+    except OSError:
+        subprocess.Popen(cmd, creationflags=flags, **kw)
+else:
+    subprocess.Popen(cmd, start_new_session=True, **kw)
+' "$bash_arg" "$runner_arg" "$root_arg" >/dev/null 2>&1 && exit 0
+fi
+
+# Fallback: plain background job.
+( "$bash_bin" "$runner" "$main_abs" </dev/null >/dev/null 2>&1 & ) 2>/dev/null
+exit 0

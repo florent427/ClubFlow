@@ -77,7 +77,7 @@ wal_buffers = 16MB
 ## Compte admin initial
 
 - **Email** : `admin@clubflow.local`
-- **Password** : `ClubFlowAdmin2026!` (à changer après 1er login)
+- **Password** : non documenté ici — à demander à Florent (hors dépôt ; à changer après 1er login)
 - **CLUB_ID header** : `a8a1041c-ec1e-4e4d-a1cc-cd58247cf982`
 - **URL admin** : https://app.clubflow.topdigital.re *(Phase 1 — était `clubflow.topdigital.re`)*
 

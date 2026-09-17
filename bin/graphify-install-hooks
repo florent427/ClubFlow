@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# Install (idempotently) the ClubFlow graphify git hooks.
+#
+# - Copies bin/graphify-hooks/{dispatch,run} into .git/hooks/clubflow-graphify/
+#   so the hooks keep working after checking out a branch without bin/graphify-hooks.
+# - Adds a marked block to .git/hooks/{post-commit,post-merge,post-checkout}.
+#   An existing hook is kept: the block is appended (chained), never overwrites it.
+# - Does not touch core.hooksPath, git config or .gitattributes.
+#
+# Usage:
+#   bin/graphify-install-hooks            install / update
+#   bin/graphify-install-hooks --status   show what is installed
+#   bin/graphify-install-hooks --uninstall  remove the blocks and the copied scripts
+#
+# Disable temporarily: GRAPHIFY_SKIP_HOOK=1 git commit ...
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+if [ -n "$(git config --get core.hooksPath || true)" ]; then
+  echo "core.hooksPath is set: this installer only manages .git/hooks" >&2
+  exit 1
+fi
+
+COMMON="$(git rev-parse --path-format=absolute --git-common-dir)"
+HOOKS="$COMMON/hooks"
+DEST="$HOOKS/clubflow-graphify"
+START="# clubflow-graphify-start"
+END="# clubflow-graphify-end"
+NAMES="post-commit post-merge post-checkout"
+
+block() {
+  cat <<EOF
+$START
+# Refresh graphify-out/ in the background (bin/graphify-install-hooks).
+( _gfy="\$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/hooks/clubflow-graphify/dispatch"
+  [ -f "\$_gfy" ] && bash "\$_gfy" $1 "\$@" ) || true
+$END
+EOF
+}
+
+strip_block() {
+  # Print file $1 without the managed block.
+  awk -v s="$START" -v e="$END" '$0==s{skip=1;next} $0==e{skip=0;next} !skip' "$1"
+}
+
+case "${1:-}" in
+  --status)
+    for n in $NAMES; do
+      if [ -f "$HOOKS/$n" ] && grep -qx "$START" "$HOOKS/$n"; then
+        echo "$n: installed"
+      else
+        echo "$n: not installed"
+      fi
+    done
+    for f in dispatch run; do
+      if [ -f "$DEST/$f" ] && cmp -s "$DEST/$f" "bin/graphify-hooks/$f"; then
+        echo "$f: up to date"
+      else
+        echo "$f: missing or outdated"
+      fi
+    done
+    exit 0
+    ;;
+  --uninstall)
+    for n in $NAMES; do
+      [ -f "$HOOKS/$n" ] || continue
+      strip_block "$HOOKS/$n" > "$HOOKS/$n.tmp"
+      if [ -z "$(grep -v '^#!' "$HOOKS/$n.tmp" | tr -d '[:space:]')" ]; then
+        rm -f "$HOOKS/$n" "$HOOKS/$n.tmp"
+        echo "$n: removed"
+      else
+        mv -f "$HOOKS/$n.tmp" "$HOOKS/$n"
+        echo "$n: block removed (other content kept)"
+      fi
+    done
+    rm -rf "$DEST"
+    exit 0
+    ;;
+  "") ;;
+  *) echo "unknown option: $1" >&2; exit 2 ;;
+esac
+
+mkdir -p "$DEST"
+cp -f bin/graphify-hooks/dispatch bin/graphify-hooks/run "$DEST/"
+chmod +x "$DEST/dispatch" "$DEST/run"
+
+for n in $NAMES; do
+  f="$HOOKS/$n"
+  if [ ! -f "$f" ]; then
+    { echo '#!/bin/sh'; block "$n"; } > "$f"
+    msg="created"
+  elif grep -qx "$START" "$f"; then
+    { strip_block "$f"; block "$n"; } > "$f.tmp" && mv -f "$f.tmp" "$f"
+    msg="updated"
+  else
+    { cat "$f"; echo; block "$n"; } > "$f.tmp" && mv -f "$f.tmp" "$f"
+    msg="chained after existing hook"
+  fi
+  chmod +x "$f"
+  echo "$n: $msg"
+done
+echo "scripts: $DEST"

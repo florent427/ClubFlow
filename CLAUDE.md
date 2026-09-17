@@ -19,10 +19,34 @@ Pour tout le reste : **chercher dans la mémoire au lieu de redécouvrir.**
 
 ---
 
+## 🧭 Knowledge graph (Graphify)
+
+Avant toute exploration large du repo, **interroger le graphe**
+(`graphify-out/graph.json`, local, gitignoré) via le MCP `graphify` ou la CLI :
+`graphify query "2-3 mots-clés"`, `graphify explain <chemin|symbole>`,
+`graphify path A B --undirected`, et pour l'impact d'un modèle Prisma
+`graphify affected <id> --relation reads_model --relation writes_model`.
+Lire le code ensuite seulement pour vérifier/détailler.
+
+- **Fraîcheur** : les hooks git lancent `bin/graphify-refresh` ; sinon le lancer
+  à la main après un changement significatif. Graphe absent (clone, worktree) →
+  `bin/graphify-refresh --full`, ou s'en passer.
+- **Graphify = structure actuelle** ; `docs/memory/` = intention, historique,
+  pièges non déductibles du code (à consulter quand pertinent).
+- **Conflit graphe ↔ mémoire** : le signaler, ne pas trancher en silence.
+- Détails → [GRAPHIFY_GUIDE.md](docs/architecture/GRAPHIFY_GUIDE.md),
+  [PROJECT_MAP.md](docs/architecture/PROJECT_MAP.md).
+
+---
+
 ## 📚 Map de la mémoire
 
 ```
 docs/
+├── architecture/       ← carte du code (complète le graphe Graphify)
+│   ├── PROJECT_MAP.md        apps, modules, flux
+│   └── GRAPHIFY_GUIDE.md     usage du graphe + refresh
+│
 ├── knowledge/          ← état statique du système (stack, infra, conventions)
 │   ├── stack.md              versions tranchées
 │   ├── repo-structure.md     arborescence
@@ -205,6 +229,9 @@ a pas. Ce sont des motifs à reconnaître en écrivant, pas en débuggant :
 ---
 
 ## 🧠 Workflow de modification standard
+
+Boucle : **graph query → travail ciblé → tests → refresh graphe → mémoire
+seulement si apprentissage humain durable.**
 
 Tu veux ajouter une feature / fixer un bug → suivre
 [workflows/modif-locale-vers-prod.md](docs/memory/workflows/modif-locale-vers-prod.md) :

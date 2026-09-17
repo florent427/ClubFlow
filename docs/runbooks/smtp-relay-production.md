@@ -1,5 +1,12 @@
 # Runbook — relais SMTP production (Postfix / Docker)
 
+> **Historique** : ce relais Postfix auto-hébergé a été remplacé en
+> production par le relais SMTP Brevo (port 587 STARTTLS, cf.
+> [stack.md](../knowledge/stack.md)). Le transport de l'API reste
+> générique (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`), donc
+> cette procédure reste applicable si l'on revenait à un relais local,
+> mais elle ne décrit pas la prod actuelle.
+
 ## Démarrage
 
 - **Prod / relais :** `docker compose --profile relay up -d db postfix`

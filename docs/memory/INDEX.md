@@ -2,7 +2,7 @@
 
 > ⚠️ **Fichier auto-généré** par `bin/memory-index`. Ne pas éditer à la main.
 > Pour ajouter une entrée : créer le fichier dans le sous-dossier approprié,
-> puis lancer `bin/memory-index` (ou commit, le hook le fait).
+> puis lancer `bin/memory-index` (la CI `validate-memory.yml` vérifie qu'il est à jour).
 
 ## Comment chercher
 
@@ -124,7 +124,7 @@
 
 ---
 
-_Index généré le 2026-09-17 06:05 UTC par `bin/memory-index`._
+_Index généré le 2026-09-17 10:03 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`
