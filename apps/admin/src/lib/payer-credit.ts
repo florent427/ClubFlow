@@ -228,3 +228,53 @@ export function describeDepositPayments(payments: DepositPayment[]): string {
     )
     .join(', ');
 }
+
+/**
+ * Trop-perçu d'un encaissement manuel (ADR-0022, tâche 4.1) : ce qui dépasse le
+ * reste dû va au crédit d'une personne, en espèces ou par virement seulement.
+ * L'API refait chaque contrôle sous le verrou de la facture.
+ */
+export function manualPaymentSurplus(args: {
+  amountCents: number;
+  balanceCents: number;
+  method: ClubPaymentMethodStr;
+  /** Personne choisie (`personKey`), vide si aucune. */
+  personKey: string;
+}): { surplusCents: number; error: string | null } {
+  const surplusCents = Math.max(0, args.amountCents - args.balanceCents);
+  if (surplusCents === 0) return { surplusCents, error: null };
+  if (args.method !== 'MANUAL_CASH' && args.method !== 'MANUAL_TRANSFER') {
+    return {
+      surplusCents,
+      error: `Le montant dépasse le reste dû (${euros(args.balanceCents)}). Un chèque ne règle qu’une pièce : encaissez le reste dû, puis le surplus en avance.`,
+    };
+  }
+  if (!args.personKey) {
+    return {
+      surplusCents,
+      error: `Le montant dépasse le reste dû (${euros(args.balanceCents)}) : choisissez au crédit de qui verser les ${euros(surplusCents)} de plus.`,
+    };
+  }
+  return { surplusCents, error: null };
+}
+
+/** Clé d'une personne dans un sélecteur : `m:<membre>` ou `c:<contact>`. */
+export function personKey(p: { memberId: string | null; contactId: string | null }): string {
+  return p.memberId ? `m:${p.memberId}` : p.contactId ? `c:${p.contactId}` : '';
+}
+
+/** Retour de `personKey` vers les identifiants attendus par l'API. */
+export function parsePersonKey(key: string): { memberId: string | null; contactId: string | null } {
+  if (key.startsWith('m:')) return { memberId: key.slice(2), contactId: null };
+  if (key.startsWith('c:')) return { memberId: null, contactId: key.slice(2) };
+  return { memberId: null, contactId: null };
+}
+
+/** Ce que dit le tiroir après un encaissement dont le surplus va au crédit. */
+export function surplusPaymentNotice(
+  invoicePartCents: number,
+  surplusCents: number,
+  displayName: string,
+): string {
+  return `${euros(invoicePartCents)} encaissés sur la facture, ${euros(surplusCents)} versés au crédit de ${displayName}.`;
+}

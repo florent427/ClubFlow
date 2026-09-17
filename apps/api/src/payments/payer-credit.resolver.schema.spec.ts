@@ -61,6 +61,11 @@ describe('Crédit du payeur — schéma GraphQL (ADR-0022)', () => {
     expect(sdl).toContain(
       'refundPayerCreditDeposit(paymentId: ID!, reason: String!, amountCents: Int): PayerCreditDepositRefundGraph!',
     );
+    // Trop-perçu d'un encaissement (tâche 4.1) : qui peut le recevoir, et à qui il va.
+    expect(sdl).toContain('clubInvoicePayerPeople(invoiceId: ID!): [PayerCreditCandidateGraph!]!');
+    const saisie = sdl.match(/input RecordManualPaymentInput \{[^}]*\}/)?.[0] ?? '';
+    expect(saisie).toContain('surplusCreditMemberId: ID');
+    expect(saisie).toContain('surplusCreditContactId: ID');
     const resultat = sdl.match(/type PayerCreditDepositRefundGraph \{[^}]*\}/)?.[0] ?? '';
     for (const champ of ['refundPaymentId: ID!', 'creditNoteId: ID!', 'amountCents: Int!', 'kind: String!', 'creditBalanceCents: Int!']) {
       expect(resultat).toContain(champ);

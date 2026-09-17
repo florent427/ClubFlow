@@ -106,4 +106,22 @@ export class RecordManualPaymentInput {
   @IsOptional()
   @IsUUID()
   financialAccountId?: string | null;
+
+  @Field(() => ID, {
+    nullable: true,
+    description:
+      'Trop-perçu (ADR-0022, tâche 4.1) : membre au crédit duquel va ce qui dépasse le reste dû. Espèces ou virement seulement.',
+  })
+  @IsOptional()
+  @IsUUID()
+  surplusCreditMemberId?: string | null;
+
+  @Field(() => ID, {
+    nullable: true,
+    description:
+      'Trop-perçu : contact au crédit duquel va ce qui dépasse le reste dû. Exclusif avec surplusCreditMemberId.',
+  })
+  @IsOptional()
+  @IsUUID()
+  surplusCreditContactId?: string | null;
 }

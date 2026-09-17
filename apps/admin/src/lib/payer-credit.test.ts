@@ -4,6 +4,10 @@ import {
   depositRefundCeilingCents,
   depositRefundHowText,
   depositRefundNotice,
+  manualPaymentSurplus,
+  parsePersonKey,
+  personKey,
+  surplusPaymentNotice,
   buildPayerCreditDepositInput,
   creditUseAmountLabel,
   describeCreditUse,
@@ -236,5 +240,44 @@ describe('rembourser une avance hors carte (tâche 4.2)', () => {
     for (const kind of ['TRANSFER', 'CHEQUE_PARTIAL', 'CHEQUE_DEPOSITED']) {
       expect(depositRefundNotice(kind, '15,00 €')).toBe('15,00 € à rendre par virement : le remboursement et son avoir sont enregistrés.');
     }
+  });
+});
+
+describe('trop-perçu d’un encaissement (tâche 4.1)', () => {
+  const base = { balanceCents: 5000, personKey: '' };
+
+  it('rien à verser tant que le montant ne dépasse pas le reste dû', () => {
+    expect(manualPaymentSurplus({ ...base, amountCents: 5000, method: 'MANUAL_CHECK' })).toEqual({ surplusCents: 0, error: null });
+    expect(manualPaymentSurplus({ ...base, amountCents: 3000, method: 'MANUAL_CASH' })).toEqual({ surplusCents: 0, error: null });
+  });
+
+  it('espèces ou virement au-delà du reste dû : il faut choisir la personne', () => {
+    expect(manualPaymentSurplus({ ...base, amountCents: 7000, method: 'MANUAL_CASH' })).toEqual({
+      surplusCents: 2000,
+      error: 'Le montant dépasse le reste dû (50,00 €) : choisissez au crédit de qui verser les 20,00 € de plus.',
+    });
+    expect(
+      manualPaymentSurplus({ ...base, amountCents: 7000, method: 'MANUAL_TRANSFER', personKey: 'c:c-paul' }),
+    ).toEqual({ surplusCents: 2000, error: null });
+  });
+
+  it('un chèque ne verse pas de surplus, même avec une personne choisie', () => {
+    expect(
+      manualPaymentSurplus({ ...base, amountCents: 7000, method: 'MANUAL_CHECK', personKey: 'm:m-1' }).error,
+    ).toBe('Le montant dépasse le reste dû (50,00 €). Un chèque ne règle qu’une pièce : encaissez le reste dû, puis le surplus en avance.');
+  });
+
+  it('la clé d’une personne fait l’aller-retour vers les identifiants de l’API', () => {
+    expect(personKey({ memberId: 'm-1', contactId: null })).toBe('m:m-1');
+    expect(personKey({ memberId: null, contactId: 'c-2' })).toBe('c:c-2');
+    expect(parsePersonKey('m:m-1')).toEqual({ memberId: 'm-1', contactId: null });
+    expect(parsePersonKey('c:c-2')).toEqual({ memberId: null, contactId: 'c-2' });
+    expect(parsePersonKey('')).toEqual({ memberId: null, contactId: null });
+  });
+
+  it('confirme la répartition', () => {
+    expect(surplusPaymentNotice(5000, 2000, 'Paul Payeur')).toBe(
+      '50,00 € encaissés sur la facture, 20,00 € versés au crédit de Paul Payeur.',
+    );
   });
 });

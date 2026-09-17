@@ -153,6 +153,18 @@ export class PayerCreditResolver {
     return this.payments.listPayerCreditCandidates(club.id, invoiceId);
   }
 
+  @Query(() => [PayerCreditCandidateGraph], {
+    name: 'clubInvoicePayerPeople',
+    description:
+      'Personnes qui peuvent payer cette facture, avec leur crédit même nul : au crédit de l’une d’elles peut aller le surplus d’un encaissement (ADR-0022, tâche 4.1).',
+  })
+  async clubInvoicePayerPeople(
+    @CurrentClub() club: Club,
+    @Args('invoiceId', { type: () => ID }) invoiceId: string,
+  ): Promise<PayerCreditCandidateGraph[]> {
+    return this.payments.listInvoicePayerPeople(club.id, invoiceId);
+  }
+
   @Mutation(() => PayerCreditApplyResultGraph, {
     name: 'applyPayerCreditToInvoice',
     description:

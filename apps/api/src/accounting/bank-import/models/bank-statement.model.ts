@@ -659,6 +659,9 @@ export class BankTransferResultGraph {
   @Field(() => Int)
   invoicesPaid!: number;
 
+  @Field(() => Int, { description: 'Part mise au crédit d’une personne, en centimes (0 sinon).' })
+  creditedCents!: number;
+
   @Field()
   lineMatched!: boolean;
 

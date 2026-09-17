@@ -4,6 +4,7 @@ import {
   APPLY_PAYER_CREDIT_TO_INVOICE,
   CLUB_INVOICE_DETAIL,
   CLUB_INVOICE_PAYER_CREDITS,
+  CLUB_INVOICE_PAYER_PEOPLE,
   CLUB_PAYER_CREDIT,
   CREATE_CLUB_CREDIT_NOTE,
   ISSUE_CLUB_INVOICE,
@@ -16,6 +17,7 @@ import type {
   ApplyPayerCreditToInvoiceMutationData,
   ClubInvoiceDetailQueryData,
   ClubInvoicePayerCreditsQueryData,
+  ClubInvoicePayerPeopleQueryData,
   ClubPayerCreditQueryData,
   ClubPaymentMethodStr,
   CreateClubCreditNoteMutationData,
@@ -32,7 +34,11 @@ import {
   depositRefundCeilingCents,
   depositRefundHowText,
   depositRefundNotice,
+  manualPaymentSurplus,
+  parsePersonKey,
+  personKey,
   proposedCreditApplyCents,
+  surplusPaymentNotice,
 } from '../../lib/payer-credit';
 import {
   computeDepositRefundableByPaymentId,
@@ -172,6 +178,9 @@ export function InvoiceDetailDrawer({
   const [payMethod, setPayMethod] = useState<ClubPaymentMethodStr>('MANUAL_CASH');
   const [payRef, setPayRef] = useState('');
   const [payError, setPayError] = useState<string | null>(null);
+  // Trop-perçu (ADR-0022, tâche 4.1) : au crédit de qui va le surplus.
+  const [paySurplusKey, setPaySurplusKey] = useState('');
+  const [payNotice, setPayNotice] = useState<string | null>(null);
   // Chèque (ADR-0015) : émetteur, banque, date de réception, photo.
   const [chequeDrawer, setChequeDrawer] = useState('');
   const [chequeBank, setChequeBank] = useState('');
@@ -271,6 +280,18 @@ export function InvoiceDetailDrawer({
   const creditCandidates = canUseCredit
     ? (creditData?.clubInvoicePayerCredits ?? [])
     : [];
+  // Au crédit de qui peut aller le surplus d'un encaissement : les payeurs de la
+  // facture, crédit nul compris. Lu seulement quand le formulaire est ouvert.
+  const { data: payerPeopleData } = useQuery<ClubInvoicePayerPeopleQueryData>(
+    CLUB_INVOICE_PAYER_PEOPLE,
+    {
+      variables: { invoiceId: invoiceId ?? '' },
+      skip: !invoiceId || !canUseCredit || !payOpen,
+      fetchPolicy: 'cache-and-network',
+    },
+  );
+  const payerPeople = payerPeopleData?.clubInvoicePayerPeople ?? [];
+  const payAmountCents = Math.round(Number(payAmount.replace(',', '.').trim()) * 100) || 0;
   const [applyCredit, applyCreditState] =
     useMutation<ApplyPayerCreditToInvoiceMutationData>(APPLY_PAYER_CREDIT_TO_INVOICE);
   const paidByCredit = !!inv?.payments.some(
@@ -401,6 +422,8 @@ export function InvoiceDetailDrawer({
         : 'MANUAL_CASH',
     );
     setPayRef('');
+    setPaySurplusKey('');
+    setPayNotice(null);
     setChequeDrawer(inv.familyLabel ?? '');
     setChequeBank('');
     setChequeReceivedOn(new Date().toISOString().slice(0, 10));
@@ -419,12 +442,18 @@ export function InvoiceDetailDrawer({
       setPayError('Montant invalide');
       return;
     }
-    if (cents > inv.balanceCents) {
-      setPayError(
-        `Le montant dépasse le reste dû (${formatEuros(inv.balanceCents)}).`,
-      );
+    const surplus = manualPaymentSurplus({
+      amountCents: cents,
+      balanceCents: inv.balanceCents,
+      method: payMethod,
+      personKey: paySurplusKey,
+    });
+    if (surplus.error) {
+      setPayError(surplus.error);
       return;
     }
+    const surplusPerson =
+      surplus.surplusCents > 0 ? parsePersonKey(paySurplusKey) : null;
     setPayError(null);
     try {
       await recordPayment({
@@ -434,6 +463,12 @@ export function InvoiceDetailDrawer({
             amountCents: cents,
             method: payMethod,
             externalRef: payRef.trim() || null,
+            ...(surplusPerson
+              ? {
+                  surplusCreditMemberId: surplusPerson.memberId,
+                  surplusCreditContactId: surplusPerson.contactId,
+                }
+              : {}),
             ...(payMethod === 'MANUAL_CHECK'
               ? {
                   cheque: {
@@ -449,6 +484,13 @@ export function InvoiceDetailDrawer({
         },
       });
       setPayOpen(false);
+      if (surplusPerson) {
+        const who =
+          payerPeople.find((p) => personKey(p) === paySurplusKey)?.displayName ?? 'la personne';
+        setPayNotice(
+          surplusPaymentNotice(cents - surplus.surplusCents, surplus.surplusCents, who),
+        );
+      }
       await refetch();
       onChanged();
     } catch (err) {
@@ -1016,6 +1058,12 @@ export function InvoiceDetailDrawer({
               </p>
             ) : null}
 
+            {payNotice ? (
+              <p className="cf-invoice-detail__empty" role="status">
+                {payNotice}
+              </p>
+            ) : null}
+
             {creditUseOpen ? (
               <form className="cf-invoice-pay-form" onSubmit={handleApplyCredit}>
                 <h3 className="cf-invoice-detail__section-title">
@@ -1142,6 +1190,37 @@ export function InvoiceDetailDrawer({
                     ) : null}
                   </label>
                 </div>
+                {payAmountCents > inv.balanceCents ? (
+                  payMethod === 'MANUAL_CASH' || payMethod === 'MANUAL_TRANSFER' ? (
+                    <label className="cf-field">
+                      <span className="cf-field__label">
+                        Verser les {formatEuros(payAmountCents - inv.balanceCents)} de plus
+                        au crédit de
+                      </span>
+                      <select
+                        className="cf-field__input"
+                        value={paySurplusKey}
+                        onChange={(e) => setPaySurplusKey(e.target.value)}
+                      >
+                        <option value="">— choisir —</option>
+                        {payerPeople.map((p) => (
+                          <option key={personKey(p)} value={personKey(p)}>
+                            {p.displayName} — crédit {formatEuros(p.balanceCents)}
+                          </option>
+                        ))}
+                      </select>
+                      <small className="cf-field__hint">
+                        La facture se solde de son reste dû ({formatEuros(inv.balanceCents)}) ;
+                        le surplus devient une avance, utilisable sur les prochaines factures.
+                      </small>
+                    </label>
+                  ) : (
+                    <p className="cf-field__hint">
+                      Un chèque ne règle qu’une pièce : encaissez le reste dû, puis le
+                      surplus en avance.
+                    </p>
+                  )
+                ) : null}
                 <label className="cf-field">
                   <span className="cf-field__label">
                     Référence (n° chèque, virement…)

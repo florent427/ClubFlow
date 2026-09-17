@@ -698,11 +698,50 @@ Remarques de la recette :
 
 ### Task 4.1 : Trop-perçu
 
-- [ ] Rapprochement d'un virement : une part mise « au crédit de » la personne
-  (reçu PAID sur la banque du relevé).
-- [ ] Encaissement en espèces ou par virement supérieur au reste dû : proposer
+- [x] Rapprochement d'un virement : une part mise « au crédit de » la personne
+  (reçu PAID sur la banque du relevé). Lot 4, livraison B.
+  - `acceptBankLineMemberPayment` accepte `creditPart { memberId | contactId,
+    amountCents }`, avec ou sans factures. La part compte dans le total, qui
+    doit couvrir le virement ; elle est enregistrée après les factures par
+    `recordPayerCreditDeposit` (virement, banque du relevé), et son écriture est
+    rapprochée de la ligne avec les autres. Un arrêt sur une facture la laisse
+    de côté ; son propre refus est dit, les factures restant encaissées.
+    Résultat : `creditedCents`.
+  - Carte du payeur : une ligne « Au crédit de … », préremplie de ce que les
+    factures n'absorbent pas ; un payeur sans facture ouverte peut tout
+    recevoir au crédit.
+- [x] Encaissement en espèces ou par virement supérieur au reste dû : proposer
   de verser le surplus au crédit, dans la même transaction. Chèque hors
   périmètre, car une fiche chèque ne correspond qu'à un paiement.
+  - `RecordManualPaymentInput.surplusCreditMemberId | surplusCreditContactId` :
+    la facture se solde de son reste dû, et le reçu d'avance du surplus naît
+    dans la même transaction, sous le verrou de la facture
+    (`createPayerCreditDepositInTx`, partagé avec l'avance au guichet). La
+    répartition confirmée est relue sous verrou : un reste dû qui baisse ou qui
+    monte entre-temps fait tout refuser. Prélèvement en cours : refusé. Écriture
+    de l'avance après le commit, sur le compte de l'encaissement.
+  - `clubInvoicePayerPeople(invoiceId)` : les payeurs de la facture, crédit nul
+    compris ; `clubInvoicePayerCredits` en garde ceux qui ont du crédit.
+  - Tiroir de facture : au-delà du reste dû, « Verser les X € de plus au crédit
+    de … » (espèces, virement) ; un chèque dit de saisir le reste dû, puis le
+    surplus en avance.
+- [x] Tests :
+  - `payer-credit-surplus.spec.ts` (11) sur le monde partagé, qui couvre :
+    - répartition en une transaction et écritures après le commit, compte de
+      l'encaissement gardé ;
+    - refus : sans personne, chèque, personne inconnue, prélèvement en cours ;
+    - reste dû qui baisse, puis qui monte, avant le verrou ;
+    - échec d'écriture de l'avance défait ;
+    - liste des payeurs au crédit nul.
+  - `bank-member-transfer.service.spec.ts` (+7) : ordre factures puis avance,
+    virement tout au crédit, totaux, parts invalides, arrêts dans les deux sens.
+  - Schéma : `creditPart`, `creditedCents`, `clubInvoicePayerPeople` et les
+    champs du surplus. Admin (+5) : contrôle du surplus, clés de personne,
+    message.
+- [x] Mutations à la main : 17 tuées sur 17. Trois premières formes ont été
+  rejouées : deux ne compilaient pas, une n'avait pas de motif unique.
+- [x] Vérifications : typecheck de l'API et de l'admin ; Jest complet, 1 908
+  tests ; vitest admin 181 ; ESLint des fichiers touchés.
 
 ### Task 4.2 : Rembourser le crédit
 

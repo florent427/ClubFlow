@@ -365,17 +365,46 @@ export class BankTransferAllocationInput {
   paidByContactId?: string | null;
 }
 
+/** Part d'un virement mise au crédit d'une personne (ADR-0022, tâche 4.1). */
+@InputType()
+export class BankTransferCreditPartInput {
+  @Field(() => ID, { nullable: true, description: 'Membre crédité. Exactement un de memberId / contactId.' })
+  @IsOptional()
+  @IsUUID()
+  memberId?: string | null;
+
+  @Field(() => ID, { nullable: true, description: 'Contact crédité. Exactement un de memberId / contactId.' })
+  @IsOptional()
+  @IsUUID()
+  contactId?: string | null;
+
+  @Field(() => Int)
+  @IsInt()
+  @Min(1)
+  amountCents!: number;
+}
+
 @InputType()
 export class AcceptBankLineMemberPaymentInput {
   @Field(() => ID)
   @IsUUID()
   lineId!: string;
 
-  @Field(() => [BankTransferAllocationInput])
+  @Field(() => [BankTransferAllocationInput], {
+    description: 'Parts affectées à des factures. Vide si tout le virement va au crédit.',
+  })
   @IsArray()
-  @ArrayMinSize(1)
   @ArrayMaxSize(20)
   @ValidateNested({ each: true })
   @Type(() => BankTransferAllocationInput)
   allocations!: BankTransferAllocationInput[];
+
+  @Field(() => BankTransferCreditPartInput, {
+    nullable: true,
+    description: 'Part du virement mise au crédit d’une personne : un reçu d’avance sur la banque du relevé.',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BankTransferCreditPartInput)
+  creditPart?: BankTransferCreditPartInput | null;
 }

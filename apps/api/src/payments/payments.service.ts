@@ -739,11 +739,35 @@ export class PaymentsService {
     if (balanceCents <= 0) {
       throw new BadRequestException('Facture déjà entièrement encaissée');
     }
+    // Trop-perçu (ADR-0022, tâche 4.1) : ce qui dépasse le reste dû peut aller
+    // au crédit d'une personne, dans la même transaction. Sans cette personne,
+    // un montant trop élevé reste refusé.
+    const surplusRef =
+      input.surplusCreditMemberId || input.surplusCreditContactId
+        ? {
+            memberId: input.surplusCreditMemberId ?? null,
+            contactId: input.surplusCreditContactId ?? null,
+          }
+        : null;
+    let surplusHolder: PayerCreditHolder | null = null;
     if (input.amountCents > balanceCents) {
-      throw new BadRequestException(
-        `Montant trop élevé : reste à payer ${balanceCents} cts (centimes).`,
-      );
+      if (!surplusRef) {
+        throw new BadRequestException(
+          `Montant trop élevé : reste à payer ${balanceCents} cts (centimes).`,
+        );
+      }
+      if (
+        input.method !== ClubPaymentMethod.MANUAL_CASH &&
+        input.method !== ClubPaymentMethod.MANUAL_TRANSFER
+      ) {
+        throw new BadRequestException(
+          'Seul un encaissement en espèces ou par virement verse son surplus au crédit : un chèque ne règle qu’une pièce. Encaissez le reste dû, et le surplus en avance.',
+        );
+      }
+      surplusHolder = await resolvePayerCreditHolder(this.prisma, clubId, surplusRef);
     }
+    const invoicePartCents = Math.min(input.amountCents, balanceCents);
+    const surplusCents = input.amountCents - invoicePartCents;
 
     // Un prélèvement peut être parti sans être encore dénoué — 3 à 5 jours en
     // SEPA. Il n'apparaît dans aucun Payment, donc `balanceCents` le croit
@@ -752,7 +776,7 @@ export class PaymentsService {
     // prélèvement se dénoue ensuite. On refuse la part qui ferait doublon,
     // sans bloquer un encaissement partiel qui, lui, ne chevauche rien.
     const engaged = await this.scheduleEngine.sumInFlightForInvoice(invoice.id);
-    if (engaged > 0 && input.amountCents > balanceCents - engaged) {
+    if (engaged > 0 && invoicePartCents > balanceCents - engaged) {
       throw new BadRequestException(
         `Un prélèvement de ${engaged} cts est en cours de dénouement sur cette facture. ` +
           `Vous pouvez encaisser au plus ${Math.max(0, balanceCents - engaged)} cts sans risque ` +
@@ -784,26 +808,29 @@ export class PaymentsService {
       input.method === ClubPaymentMethod.MANUAL_CHECK
         ? await this.buildChequeData(clubId, invoice.label, input, ref, userId)
         : null;
-    const { payment, settled } = await this.prisma.$transaction(async (tx) => {
+    const { payment, settled, deposit } = await this.prisma.$transaction(async (tx) => {
       // Relu sous verrou : deux saisies simultanées ne surpaient plus la
       // facture (ADR-0022, §3). Les contrôles d'avant restent, pour un refus
       // clair sans transaction.
       await lockInvoiceInTx(tx, invoice.id);
       const current = await resolveInvoiceBalance(tx, invoice.id, clubId);
+      // Avec un surplus, la répartition confirmée doit tenir : la facture se
+      // solde de ce qui restait à encaisser, ni plus ni moins.
       if (
         current.status !== InvoiceStatus.OPEN ||
-        input.amountCents > current.collectableCents
+        invoicePartCents > current.collectableCents ||
+        (surplusCents > 0 && invoicePartCents !== current.collectableCents)
       ) {
         throw new BadRequestException(
           `La facture vient de changer : reste à encaisser ${eurosFr(current.collectableCents)}. Rechargez-la avant de saisir.`,
         );
       }
-      return this.settleInvoicePaymentInTx(tx, {
+      const settledPayment = await this.settleInvoicePaymentInTx(tx, {
         clubId,
         invoice,
         balanceCents: current.balanceCents,
         payment: {
-          amountCents: input.amountCents,
+          amountCents: invoicePartCents,
           method: input.method,
           externalRef: ref,
           paidByMemberId: input.paidByMemberId ?? null,
@@ -811,6 +838,17 @@ export class PaymentsService {
         },
         chequeData,
       });
+      const surplusDeposit =
+        surplusCents > 0 && surplusHolder
+          ? await this.createPayerCreditDepositInTx(tx, {
+              clubId,
+              holder: surplusHolder,
+              amountCents: surplusCents,
+              method: input.method,
+              externalRef: ref,
+            })
+          : null;
+      return { ...settledPayment, deposit: surplusDeposit };
     });
 
     await this.afterInvoicePaymentCommit(clubId, {
@@ -821,6 +859,16 @@ export class PaymentsService {
       label: `Encaissement ${invoice.label}`,
       financialAccountId: input.financialAccountId ?? null,
     });
+    if (deposit) {
+      // Le surplus est une avance : TRANSFER vers 419100, sur le même compte.
+      await this.tryRecordIncome(
+        clubId,
+        deposit.payment.id,
+        deposit.label,
+        deposit.payment.amountCents,
+        input.financialAccountId ?? null,
+      );
+    }
 
     return payment;
   }
@@ -1032,6 +1080,25 @@ export class PaymentsService {
       balanceCents: number;
     }>
   > {
+    const people = await this.listInvoicePayerPeople(clubId, invoiceId);
+    return people.filter((p) => p.balanceCents > 0);
+  }
+
+  /**
+   * Les personnes qui peuvent payer cette facture, avec leur crédit, même nul :
+   * celles au crédit desquelles un trop-perçu peut aller (tâche 4.1).
+   */
+  async listInvoicePayerPeople(
+    clubId: string,
+    invoiceId: string,
+  ): Promise<
+    Array<{
+      memberId: string | null;
+      contactId: string | null;
+      displayName: string;
+      balanceCents: number;
+    }>
+  > {
     const invoice = await this.prisma.invoice.findFirst({
       where: { id: invoiceId, clubId },
     });
@@ -1069,7 +1136,6 @@ export class PaymentsService {
         throw err;
       }
       const credit = await readPayerCredit(this.prisma, clubId, holder);
-      if (credit.balanceCents <= 0) continue;
       candidates.push({
         memberId: payer.paidByMemberId,
         contactId: payer.paidByContactId,
@@ -1324,35 +1390,16 @@ export class PaymentsService {
           )
         : null;
 
-    const { invoice, payment } = await this.prisma.$transaction(async (tx) => {
-      const receipt = await tx.invoice.create({
-        data: {
-          clubId,
-          label,
-          baseAmountCents: input.amountCents,
-          amountCents: input.amountCents,
-          status: InvoiceStatus.PAID,
-          purpose: InvoicePurpose.PAYER_CREDIT_DEPOSIT,
-          payerCreditMemberId: holder.memberId,
-          payerCreditContactId: holder.contactId,
-        },
-      });
-      const p = await tx.payment.create({
-        data: {
-          clubId,
-          invoiceId: receipt.id,
-          amountCents: input.amountCents,
-          method: input.method,
-          externalRef: ref,
-          paidByMemberId: holder.memberId,
-          paidByContactId: holder.contactId,
-        },
-      });
-      if (chequeData) {
-        await tx.cheque.create({ data: { ...chequeData, paymentId: p.id } });
-      }
-      return { invoice: receipt, payment: p };
-    });
+    const { invoice, payment } = await this.prisma.$transaction((tx) =>
+      this.createPayerCreditDepositInTx(tx, {
+        clubId,
+        holder,
+        amountCents: input.amountCents,
+        method: input.method,
+        externalRef: ref,
+        chequeData,
+      }),
+    );
 
     await this.tryRecordIncome(
       clubId,
@@ -1363,6 +1410,52 @@ export class PaymentsService {
     );
 
     return { invoice, payment };
+  }
+
+  /**
+   * Le reçu d'avance PAYÉ, son paiement et, pour un chèque, sa fiche, dans la
+   * transaction de l'appelant. Partagé par l'avance au guichet et par le
+   * surplus d'un encaissement (tâche 4.1). L'écriture suit le commit.
+   */
+  private async createPayerCreditDepositInTx(
+    tx: Prisma.TransactionClient,
+    args: {
+      clubId: string;
+      holder: { memberId: string | null; contactId: string | null; displayName: string };
+      amountCents: number;
+      method: ClubPaymentMethod;
+      externalRef: string | null;
+      chequeData?: Omit<Prisma.ChequeUncheckedCreateInput, 'paymentId'> | null;
+    },
+  ): Promise<{ invoice: Invoice; payment: Payment; label: string }> {
+    const label = `Avance — ${args.holder.displayName}`;
+    const receipt = await tx.invoice.create({
+      data: {
+        clubId: args.clubId,
+        label,
+        baseAmountCents: args.amountCents,
+        amountCents: args.amountCents,
+        status: InvoiceStatus.PAID,
+        purpose: InvoicePurpose.PAYER_CREDIT_DEPOSIT,
+        payerCreditMemberId: args.holder.memberId,
+        payerCreditContactId: args.holder.contactId,
+      },
+    });
+    const payment = await tx.payment.create({
+      data: {
+        clubId: args.clubId,
+        invoiceId: receipt.id,
+        amountCents: args.amountCents,
+        method: args.method,
+        externalRef: args.externalRef,
+        paidByMemberId: args.holder.memberId,
+        paidByContactId: args.holder.contactId,
+      },
+    });
+    if (args.chequeData) {
+      await tx.cheque.create({ data: { ...args.chequeData, paymentId: payment.id } });
+    }
+    return { invoice: receipt, payment, label };
   }
 
   /**

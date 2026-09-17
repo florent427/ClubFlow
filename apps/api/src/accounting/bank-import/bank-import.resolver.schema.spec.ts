@@ -57,5 +57,10 @@ describe('BankImportResolver — schéma GraphQL', () => {
     );
     expect(sdl).toContain('invoicesPaid: Int!');
     expect(sdl).toContain('stoppedBecause: String');
+    // Trop-perçu d'un virement mis au crédit (ADR-0022, tâche 4.1).
+    const entree = sdl.match(/input AcceptBankLineMemberPaymentInput \{[^}]*\}/)?.[0] ?? '';
+    expect(entree).toContain('creditPart: BankTransferCreditPartInput');
+    expect(sdl).toMatch(/input BankTransferCreditPartInput \{[^}]*amountCents: Int![^}]*\}/);
+    expect(sdl).toMatch(/type BankTransferResultGraph \{[^}]*creditedCents: Int![^}]*\}/);
   });
 });

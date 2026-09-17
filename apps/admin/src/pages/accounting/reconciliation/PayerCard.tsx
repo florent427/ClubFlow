@@ -12,7 +12,12 @@ import { centsToInput, formatEuro, formatFr, inputToCents } from './format';
 type Props = {
   line: BankStatementLine;
   busy: boolean;
-  onAccept: (allocations: BankTransferAllocation[], payer: BankPayerCandidate) => void;
+  /** `creditCents` : part mise au crédit du payeur (ADR-0022, tâche 4.1), 0 sinon. */
+  onAccept: (
+    allocations: BankTransferAllocation[],
+    payer: BankPayerCandidate,
+    creditCents: number,
+  ) => void;
 };
 
 const MATCH_LABELS: Record<string, string> = {
@@ -36,19 +41,25 @@ export function PayerCard({ line, busy, onAccept }: Props) {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<BankPayerCandidate | null>(null);
   const [parts, setParts] = useState<Record<string, string>>({});
+  // Part du virement mise au crédit du payeur choisi (tâche 4.1).
+  const [creditPart, setCreditPart] = useState('');
   const [load, { data, loading }] = useLazyQuery<BankLinePayerCandidatesData>(
     BANK_LINE_PAYER_CANDIDATES,
     { fetchPolicy: 'network-only' },
   );
   const candidates = data?.bankLinePayerCandidates ?? [];
 
+  const creditCents = useMemo(() => {
+    const c = inputToCents(creditPart);
+    return c !== null && !Number.isNaN(c) && c > 0 ? c : 0;
+  }, [creditPart]);
   const total = useMemo(
     () =>
       Object.values(parts).reduce((s, v) => {
         const c = inputToCents(v);
         return s + (c !== null && !Number.isNaN(c) ? c : 0);
-      }, 0),
-    [parts],
+      }, 0) + creditCents,
+    [parts, creditCents],
   );
   const remaining = line.amountCents - total;
 
@@ -62,6 +73,9 @@ export function PayerCard({ line, busy, onAccept }: Props) {
     const next: Record<string, string> = {};
     for (const a of c.allocations) next[a.invoiceId] = centsToInput(a.amountCents);
     setParts(next);
+    // Ce que les factures n'absorbent pas est proposé au crédit du payeur.
+    const affecte = c.allocations.reduce((s, a) => s + a.amountCents, 0);
+    setCreditPart(affecte < line.amountCents ? centsToInput(line.amountCents - affecte) : '');
   }
 
   function submitSelected() {
@@ -69,7 +83,7 @@ export function PayerCard({ line, busy, onAccept }: Props) {
     const allocations = Object.entries(parts)
       .map(([invoiceId, v]) => ({ invoiceId, amountCents: inputToCents(v) ?? 0 }))
       .filter((a) => a.amountCents > 0);
-    onAccept(allocations, selected);
+    onAccept(allocations, selected, creditCents);
   }
 
   if (proposal && !open) {
@@ -114,6 +128,7 @@ export function PayerCard({ line, busy, onAccept }: Props) {
                   amountCents: a.amountCents,
                 })),
                 proposal,
+                0,
               )
             }
           >
@@ -188,10 +203,12 @@ export function PayerCard({ line, busy, onAccept }: Props) {
             ))}
           </div>
           {selected ? (
-            selected.invoices.length === 0 ? (
-              <p className="cf-muted">Aucune facture ouverte pour cette personne.</p>
-            ) : (
-              <>
+            <>
+              {selected.invoices.length === 0 ? (
+                <p className="cf-muted">
+                  Aucune facture ouverte pour cette personne : le virement peut aller à son crédit.
+                </p>
+              ) : (
                 <table className="cf-table">
                   <thead>
                     <tr>
@@ -221,7 +238,22 @@ export function PayerCard({ line, busy, onAccept }: Props) {
                     ))}
                   </tbody>
                 </table>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+              )}
+              <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+                <span>Au crédit de {payerName(selected)} (€)</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={creditPart}
+                  onChange={(e) => setCreditPart(e.target.value)}
+                  placeholder="0,00"
+                  style={{ width: 140, textAlign: 'right' }}
+                />
+                <small className="cf-muted">
+                  Un reçu d’avance sur la banque du relevé : utilisable sur ses prochaines factures.
+                </small>
+              </label>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
                   <span className="cf-muted">
                     Affecté {formatEuro(total)} / {formatEuro(line.amountCents)}
                     {remaining !== 0 ? ` (reste ${formatEuro(Math.abs(remaining))})` : ''}
@@ -235,8 +267,7 @@ export function PayerCard({ line, busy, onAccept }: Props) {
                     Encaisser
                   </button>
                 </div>
-              </>
-            )
+            </>
           ) : (
             <p className="cf-muted">Choisis un payeur pour voir ses factures ouvertes.</p>
           )}

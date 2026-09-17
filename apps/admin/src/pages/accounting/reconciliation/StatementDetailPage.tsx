@@ -673,7 +673,7 @@ export function StatementDetailPage() {
                               <PayerCard
                                 line={l}
                                 busy={categorizationBusy}
-                                onAccept={(allocations, candidate) =>
+                                onAccept={(allocations, candidate, creditCents) =>
                                   void run(
                                     () =>
                                       acceptTransfer({
@@ -690,10 +690,23 @@ export function StatementDetailPage() {
                                               paidByContactId:
                                                 candidate.payer.kind === 'CONTACT' ? candidate.payer.id : null,
                                             })),
+                                            // Ce que les factures n'absorbent pas va au crédit du payeur.
+                                            creditPart:
+                                              creditCents > 0
+                                                ? {
+                                                    memberId:
+                                                      candidate.payer.kind === 'MEMBER' ? candidate.payer.id : null,
+                                                    contactId:
+                                                      candidate.payer.kind === 'CONTACT' ? candidate.payer.id : null,
+                                                    amountCents: creditCents,
+                                                  }
+                                                : null,
                                           },
                                         },
                                       }),
-                                    'Virement encaissé, facture soldée',
+                                    creditCents > 0
+                                      ? `Virement encaissé, dont ${(creditCents / 100).toFixed(2).replace('.', ',')} € au crédit du payeur`
+                                      : 'Virement encaissé, facture soldée',
                                   )
                                 }
                               />

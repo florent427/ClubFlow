@@ -47,6 +47,9 @@ Une avance est une facture de nature `PAYER_CREDIT_DEPOSIT`, portée par une nou
 - **Carte** (« Créditer mon compte », portail et appli) : la session Stripe porte la personne en metadata. À réception de l'argent, le webhook crée le reçu payé et son paiement ; `stripePaymentIntentId`, unique, sert de clé d'idempotence.
   - **Qui** : le payeur d'un foyer, pour le crédit de son compte, de 1 € à 1 000 €. Proposé seulement si le club encaisse par carte.
   - **Compte émetteur** : l'événement doit venir du compte connecté du club, plateforme exclue. Sinon, comme pour une personne introuvable ou des metadata illisibles, rien n'est crédité : un ENCAISSEMENT ORPHELIN est journalisé, sans erreur que Stripe rejouerait.
+- **Trop-perçu** (tâche 4.1) : ce qui dépasse le reste dû peut devenir une avance, au lieu d'être refusé.
+  - **Encaissement en espèces ou par virement** : le trésorier désigne la personne. La facture se solde de son reste dû, et le reçu d'avance du surplus naît dans la même transaction, sous le verrou de la facture. La répartition confirmée est relue sous ce verrou : si le reste dû a changé, dans un sens ou dans l'autre, rien n'est écrit. Pas de surplus pour un chèque (une fiche, un paiement), ni pendant un prélèvement en cours.
+  - **Virement rapproché** : une part « au crédit de » la personne s'ajoute aux parts des factures, ou couvre seule le virement. Enregistrée après les factures, elle devient un reçu d'avance sur la banque du relevé, dont l'écriture est rapprochée de la ligne avec les autres. Un arrêt sur une facture la laisse de côté.
 - **PDF** : il s'intitule « Reçu d'avance ».
 - **Remboursement** : une avance se rembourse comme un encaissement, par un avoir sur le reçu (ADR-0011), jamais par une annulation.
   - **Par carte**, depuis le tiroir du reçu : au plus le crédit encore disponible, la part utilisée ayant quitté le crédit.
