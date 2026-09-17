@@ -123,6 +123,34 @@ export function buildPayerCreditDepositInput(
 }
 
 /**
+ * Comment l'argent d'une avance est rendu, selon le moyen du versement
+ * (ADR-0022, tâche 4.2 ; modèle de la boutique, ADR-0019). L'API décide ; ce
+ * texte le dit avant que le trésorier confirme.
+ */
+export function depositRefundHowText(method: ClubPaymentMethodStr): string {
+  switch (method) {
+    case 'STRIPE_CARD':
+      return 'L’argent est rendu à l’adhérent via Stripe, et l’avoir correspondant est émis automatiquement. Inutile d’en créer un à la main.';
+    case 'MANUAL_CASH':
+      return 'Rendu en espèces, depuis la caisse de l’encaissement. Le remboursement et son avoir sont enregistrés aussitôt.';
+    case 'MANUAL_TRANSFER':
+      return 'À rendre par virement, depuis la banque de l’encaissement. Le remboursement et son avoir sont enregistrés aussitôt : faites ensuite le virement.';
+    case 'MANUAL_CHECK':
+      return 'Chèque encore en portefeuille et rendu en entier : il est rendu à l’adhérent. Sinon, la somme se rend par virement, depuis la banque de sa remise ou celle du club.';
+    default:
+      return '';
+  }
+}
+
+/** Ce que dit le tiroir après le remboursement d'une avance hors carte. */
+export function depositRefundNotice(kind: string, amountLabel: string): string {
+  const fait = 'le remboursement et son avoir sont enregistrés.';
+  if (kind === 'CASH') return `${amountLabel} rendus en espèces : ${fait}`;
+  if (kind === 'CHEQUE_RETURN') return `Chèque de ${amountLabel} rendu : ${fait}`;
+  return `${amountLabel} à rendre par virement : ${fait}`;
+}
+
+/**
  * Ce qu'on peut rembourser par carte sur une avance : au plus ce qui reste
  * remboursable sur l'encaissement, et au plus le crédit encore disponible de la
  * personne. La part déjà utilisée a quitté le crédit.

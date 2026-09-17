@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { computeRefundableByPaymentId, isRefundRecorded } from './refundable-payments';
+import {
+  computeDepositRefundableByPaymentId,
+  computeRefundableByPaymentId,
+  isRefundRecorded,
+} from './refundable-payments';
 import type { ClubInvoiceDetailQueryData } from './types';
 
 type InvoicePayment =
@@ -131,5 +135,26 @@ describe('isRefundRecorded', () => {
     });
     expect(isRefundRecorded([encaissement, sansRef], null)).toBe(false);
     expect(isRefundRecorded([encaissement, sansRef], undefined)).toBe(false);
+  });
+});
+
+describe('computeDepositRefundableByPaymentId — reçu d’avance (tâche 4.2)', () => {
+  it('ouvre aussi les versements en espèces, par virement et par chèque, remboursements déduits', () => {
+    const map = computeDepositRefundableByPaymentId([
+      payment({ id: 'especes', method: 'MANUAL_CASH', externalRef: null, amountCents: 5000 }),
+      payment({ id: 'virement', method: 'MANUAL_TRANSFER', externalRef: 'VIR-12', amountCents: 3000 }),
+      payment({ id: 'cheque', method: 'MANUAL_CHECK', externalRef: '4917', amountCents: 2000 }),
+      payment({ id: 'carte', amountCents: 1000 }),
+      payment({ id: 'rendu', method: 'MANUAL_CASH', externalRef: null, amountCents: -1500, refundedPaymentId: 'especes' }),
+    ]);
+    expect(Object.fromEntries(map)).toEqual({ especes: 3500, virement: 3000, cheque: 2000, carte: 1000 });
+  });
+
+  it('une facture ordinaire ne rembourse toujours que la carte', () => {
+    const map = computeRefundableByPaymentId([
+      payment({ id: 'especes', method: 'MANUAL_CASH', externalRef: null }),
+      payment({ id: 'carte' }),
+    ]);
+    expect([...map.keys()]).toEqual(['carte']);
   });
 });

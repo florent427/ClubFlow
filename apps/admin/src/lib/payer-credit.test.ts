@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   buildApplyPayerCreditInput,
   depositRefundCeilingCents,
+  depositRefundHowText,
+  depositRefundNotice,
   buildPayerCreditDepositInput,
   creditUseAmountLabel,
   describeCreditUse,
@@ -216,5 +218,23 @@ describe('depositRefundCeilingCents — rembourser une avance par carte', () => 
   it('rien quand le crédit est épuisé ou négatif', () => {
     expect(depositRefundCeilingCents(5000, 0)).toBe(0);
     expect(depositRefundCeilingCents(5000, -300)).toBe(0);
+  });
+});
+
+describe('rembourser une avance hors carte (tâche 4.2)', () => {
+  it('dit comment l’argent sort, selon le moyen du versement', () => {
+    expect(depositRefundHowText('MANUAL_CASH')).toContain('Rendu en espèces');
+    expect(depositRefundHowText('MANUAL_TRANSFER')).toContain('À rendre par virement, depuis la banque de l’encaissement');
+    expect(depositRefundHowText('MANUAL_CHECK')).toContain('il est rendu à l’adhérent');
+    expect(depositRefundHowText('STRIPE_CARD')).toContain('via Stripe');
+    expect(depositRefundHowText('PAYER_CREDIT')).toBe('');
+  });
+
+  it('confirme ce qui a été fait, et ce qui reste à faire pour un virement', () => {
+    expect(depositRefundNotice('CASH', '20,00 €')).toBe('20,00 € rendus en espèces : le remboursement et son avoir sont enregistrés.');
+    expect(depositRefundNotice('CHEQUE_RETURN', '20,00 €')).toBe('Chèque de 20,00 € rendu : le remboursement et son avoir sont enregistrés.');
+    for (const kind of ['TRANSFER', 'CHEQUE_PARTIAL', 'CHEQUE_DEPOSITED']) {
+      expect(depositRefundNotice(kind, '15,00 €')).toBe('15,00 € à rendre par virement : le remboursement et son avoir sont enregistrés.');
+    }
   });
 });

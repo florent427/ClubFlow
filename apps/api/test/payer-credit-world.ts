@@ -112,6 +112,8 @@ export function monde() {
   const invoiceLines: Row[] = [];
   const invoices: Row[] = [];
   const payments: Row[] = [];
+  // Fiches chèque : `depositFinancialAccountId` est le compte bancaire de leur remise.
+  const cheques: Row[] = [];
   const events: string[] = [];
 
   let delaiLectureMs = 0;
@@ -290,7 +292,19 @@ export function monde() {
         findFirst: async ({ where, include }: any) => {
           const p = payments.find((x) => correspond(x, where, PAYMENT));
           if (!p) return null;
-          const lu = include?.invoice ? { ...p, invoice: { ...invoices.find((i) => i.id === p.invoiceId)! } } : { ...p };
+          const lu: Row = include?.invoice ? { ...p, invoice: { ...invoices.find((i) => i.id === p.invoiceId)! } } : { ...p };
+          if (include?.cheque) {
+            const c = cheques.find((x) => x.paymentId === p.id);
+            lu.cheque = c
+              ? {
+                  id: c.id,
+                  number: c.number,
+                  status: c.status,
+                  depositId: c.depositId,
+                  deposit: c.depositId ? { financialAccountId: c.depositFinancialAccountId } : null,
+                }
+              : null;
+          }
           await pause();
           return lu;
         },
@@ -328,6 +342,7 @@ export function monde() {
             paidByContactId: null,
             stripeRefundId: null,
             stripeAccountId: null,
+            financialAccountId: null,
             ...data,
             id: nouvelId('paiement'),
             createdAt: maintenant(),
@@ -340,7 +355,19 @@ export function monde() {
       paymentScheduleInstallment: {
         aggregate: async () => ({ _sum: { amountCents: null } }),
       },
-      cheque: { create: async () => ({}) },
+      cheque: {
+        create: async () => ({}),
+        // Écriture conditionnelle du chèque rendu : seul un chèque encore en portefeuille change.
+        updateMany: async ({ where, data }: any) => {
+          const lignes = cheques.filter((c) => correspond(c, where, ['id', 'clubId', 'status', 'depositId']));
+          for (const c of lignes) {
+            const avant = { ...c };
+            Object.assign(c, data);
+            ctx?.defaire.push(() => Object.assign(c, avant));
+          }
+          return { count: lignes.length };
+        },
+      },
     };
   }
 
@@ -513,7 +540,20 @@ export function monde() {
   }
 
   /** Une avance versée : un reçu payé et son encaissement (lot 1). */
-  function avance(ref: PayerCreditHolderRef, amountCents: number): void {
+  function avance(
+    ref: PayerCreditHolderRef,
+    amountCents: number,
+    options: {
+      method?: ClubPaymentMethod;
+      financialAccountId?: string | null;
+      cheque?: {
+        number: string;
+        status: string;
+        depositId?: string | null;
+        depositFinancialAccountId?: string | null;
+      };
+    } = {},
+  ): { recu: string; versement: string } {
     const recu = facture({
       familyId: null,
       purpose: InvoicePurpose.PAYER_CREDIT_DEPOSIT,
@@ -524,18 +564,32 @@ export function monde() {
       payerCreditMemberId: ref.memberId ?? null,
       payerCreditContactId: ref.contactId ?? null,
     });
+    const versement = nouvelId('versement');
     payments.push({
-      id: nouvelId('versement'),
+      id: versement,
       clubId: CLUB,
       invoiceId: recu,
       amountCents,
-      method: ClubPaymentMethod.MANUAL_CASH,
+      method: options.method ?? ClubPaymentMethod.MANUAL_CASH,
       externalRef: null,
+      financialAccountId: options.financialAccountId ?? null,
       paidByMemberId: ref.memberId ?? null,
       paidByContactId: ref.contactId ?? null,
       refundedPaymentId: null,
       createdAt: maintenant(),
     });
+    if (options.cheque) {
+      cheques.push({
+        id: nouvelId('cheque'),
+        clubId: CLUB,
+        paymentId: versement,
+        depositId: null,
+        depositFinancialAccountId: null,
+        notes: null,
+        ...options.cheque,
+      });
+    }
+    return { recu, versement };
   }
 
   async function credit(ref: PayerCreditHolderRef): Promise<number> {
@@ -558,6 +612,7 @@ export function monde() {
     contacts,
     invoices,
     payments,
+    cheques,
     events,
     shop,
     scheduleEngine,

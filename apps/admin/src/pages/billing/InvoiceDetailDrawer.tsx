@@ -9,6 +9,7 @@ import {
   ISSUE_CLUB_INVOICE,
   RECORD_CLUB_MANUAL_PAYMENT,
   REFUND_CLUB_PAYMENT,
+  REFUND_PAYER_CREDIT_DEPOSIT,
   VOID_CLUB_INVOICE,
 } from '../../lib/documents';
 import type {
@@ -23,14 +24,18 @@ import type {
   IssueClubInvoiceMutationData,
   RecordClubManualPaymentMutationData,
   RefundClubPaymentMutationData,
+  RefundPayerCreditDepositMutationData,
   VoidClubInvoiceMutationData,
 } from '../../lib/types';
 import {
   buildApplyPayerCreditInput,
   depositRefundCeilingCents,
+  depositRefundHowText,
+  depositRefundNotice,
   proposedCreditApplyCents,
 } from '../../lib/payer-credit';
 import {
+  computeDepositRefundableByPaymentId,
   computeRefundableByPaymentId,
   isRefundRecorded,
 } from '../../lib/refundable-payments';
@@ -152,8 +157,13 @@ export function InvoiceDetailDrawer({
     useMutation<RecordClubManualPaymentMutationData>(RECORD_CLUB_MANUAL_PAYMENT);
   const [createCreditNote, creditNoteState] =
     useMutation<CreateClubCreditNoteMutationData>(CREATE_CLUB_CREDIT_NOTE);
-  const [refundPayment, refundState] =
+  const [refundPayment, cardRefundState] =
     useMutation<RefundClubPaymentMutationData>(REFUND_CLUB_PAYMENT);
+  const [refundDeposit, depositRefundState] =
+    useMutation<RefundPayerCreditDepositMutationData>(REFUND_PAYER_CREDIT_DEPOSIT);
+  const refundState = {
+    loading: cardRefundState.loading || depositRefundState.loading,
+  };
 
   const [confirmKind, setConfirmKind] = useState<ConfirmKind>(null);
   const [voidReason, setVoidReason] = useState('');
@@ -267,8 +277,12 @@ export function InvoiceDetailDrawer({
     (p) => p.method === 'PAYER_CREDIT' && p.amountCents > 0,
   );
 
+  // Un reçu d'avance se rembourse aussi hors carte (ADR-0022, tâche 4.2).
   const refundableByPaymentId = useMemo(
-    () => computeRefundableByPaymentId(inv?.payments ?? []),
+    () =>
+      inv?.purpose === 'PAYER_CREDIT_DEPOSIT'
+        ? computeDepositRefundableByPaymentId(inv.payments)
+        : computeRefundableByPaymentId(inv?.payments ?? []),
     [inv],
   );
 
@@ -286,6 +300,12 @@ export function InvoiceDetailDrawer({
   const depositCredit = isDeposit
     ? (depositCreditData?.clubPayerCredit ?? null)
     : null;
+  /** Moyen de l'encaissement que le formulaire rembourse (carte hors avance). */
+  const refundSourceMethod: ClubPaymentMethodStr =
+    (isDeposit
+      ? inv?.payments.find((p) => p.id === refundPaymentId)?.method
+      : null) ?? 'STRIPE_CARD';
+
   /** Ce que le formulaire peut rembourser sur cet encaissement. */
   const refundCeilingCents = (paymentId: string) => {
     const refundable = refundableByPaymentId.get(paymentId) ?? 0;
@@ -511,6 +531,31 @@ export function InvoiceDetailDrawer({
       return;
     }
     setRefundError(null);
+    const source = inv?.payments.find((p) => p.id === refundPaymentId);
+    if (isDeposit && source && source.method !== 'STRIPE_CARD') {
+      try {
+        const res = await refundDeposit({
+          variables: {
+            paymentId: refundPaymentId,
+            reason: reasonTrim,
+            amountCents: cents,
+          },
+        });
+        const done = res.data?.refundPayerCreditDeposit;
+        setRefundPaymentId(null);
+        // Espèces, virement ou chèque : tout est écrit dans la transaction,
+        // rien n'attend de webhook.
+        setRefundNotice(
+          depositRefundNotice(done?.kind ?? 'TRANSFER', formatEuros(done?.amountCents ?? cents)),
+        );
+        await refetch();
+        await refetchDepositCredit();
+        onChanged();
+      } catch (err) {
+        setRefundError(err instanceof Error ? err.message : 'Erreur');
+      }
+      return;
+    }
     try {
       const res = await refundPayment({
         variables: {
@@ -945,7 +990,11 @@ export function InvoiceDetailDrawer({
                               className="btn-ghost"
                               onClick={() => handleOpenRefundForm(p.id)}
                               disabled={refundState.loading}
-                              title="Rembourser cet encaissement sur la carte de l’adhérent"
+                              title={
+                                p.method === 'STRIPE_CARD'
+                                  ? 'Rembourser cet encaissement sur la carte de l’adhérent'
+                                  : 'Rembourser ce versement par le moyen de l’avance'
+                              }
                             >
                               Rembourser
                             </button>
@@ -1200,15 +1249,15 @@ export function InvoiceDetailDrawer({
             {refundPaymentId ? (
               <form className="cf-invoice-pay-form" onSubmit={handleRefund}>
                 <h3 className="cf-invoice-detail__section-title">
-                  Rembourser sur la carte
+                  {refundSourceMethod === 'STRIPE_CARD'
+                    ? 'Rembourser sur la carte'
+                    : 'Rembourser l’avance'}
                 </h3>
                 <p
                   className="cf-invoice-detail__empty"
                   style={{ marginTop: 0 }}
                 >
-                  L’argent est rendu à l’adhérent via Stripe, et l’avoir
-                  correspondant est émis automatiquement. Inutile d’en créer
-                  un à la main.
+                  {depositRefundHowText(refundSourceMethod)}
                 </p>
                 {depositCredit ? (
                   <p

@@ -721,6 +721,17 @@ export type RefundClubPaymentMutationData = {
   refundClubPayment: { refundId: string; amountCents: number };
 };
 
+export type RefundPayerCreditDepositMutationData = {
+  refundPayerCreditDeposit: {
+    refundPaymentId: string;
+    creditNoteId: string;
+    amountCents: number;
+    /** CASH, TRANSFER, CHEQUE_RETURN, CHEQUE_PARTIAL ou CHEQUE_DEPOSITED. */
+    kind: string;
+    creditBalanceCents: number;
+  };
+};
+
 export type CreateClubCreditNoteMutationData = {
   createClubCreditNote: ClubInvoicesQueryData['clubInvoices'][number];
 };
