@@ -637,8 +637,60 @@ Limites connues :
 
 ### Task 3.4 : Recette staging
 
-- [ ] Avance par carte de test depuis le portail et depuis l'appli, puis
-  utilisation sur une facture. Webhook rejoué : pas de doublon.
+- [x] Recette de la livraison B le 2026-09-17 (commit `8f4bcf9`), sur QA Test
+  Club (compte Stripe connecté, mode test). Compte de test du membre « Florent
+  Test », payeur de deux foyers par une fiche membre et une fiche contact.
+  - **Déploiement** : `cardTopUpAvailable` et
+    `viewerCreatePayerCreditCheckoutSession` absents du schéma avant, présents
+    après.
+  - **Club sans Stripe** (club-demo) : `cardTopUpAvailable` faux, pas de
+    formulaire au portail, session refusée : « Paiement en ligne indisponible :
+    le club n'a pas encore connecté son compte Stripe. »
+  - **Portail** :
+    - formulaire affiché à crédit nul ;
+    - « 1000,01 » et « abc » refusés à la saisie ;
+    - 30 € soumis, Stripe Checkout en mode test, carte de test saisie par
+      Florent ;
+    - retour sur les factures : crédit de 30 €, une ligne « Avance versée ·
+      Carte bancaire ».
+  - **Webhook** :
+    - reçu PAYÉ (`5fa166dc…`) au nom de la fiche membre ;
+    - paiement carte portant son paiement Stripe et le compte connecté ;
+    - écriture TRANSFER 512300 / 419100, le compte 419100 étant créé à cette
+      première écriture ;
+    - frais Stripe de 1,23 € (627000 / 512300) ;
+    - rejeux signés depuis le VPS, le même événement puis un nouvel identifiant
+      pour le même paiement : HTTP 200, un seul reçu, un seul paiement, aucune
+      écriture de plus.
+  - **Utilisation** : facture de recette de 10 € (`f4901c7f…`) réglée par
+    « Utiliser mon crédit ». Elle est PAYÉE, avec une écriture INCOME 419100 /
+    706100 ; crédit de 20 €.
+  - **Remboursement** (tâche 4.2), depuis le tiroir du reçu :
+    - 20 € proposés et rappelés comme plafond ;
+    - 25 € refusés par l'admin, puis par l'API sans appel à Stripe : « Au plus
+      20,00 € : crédit disponible 20,00 €, remboursable sur cet encaissement
+      30,00 €. » ;
+    - 5 € remboursés et enregistrés à l'accord de Stripe : paiement négatif,
+      avoir, contre-passation TRANSFER 419100 / 512300 ;
+    - 15 € proposés et remboursés, puis bouton masqué ;
+    - les deux `charge.refunded` reçus et traités, sans doublon.
+  - **Après** : au portail, crédit de 0 € et historique de 4 lignes. En base,
+    30 € versés, 20 € rendus, 10 € imputés. Journal de l'API sans erreur
+    nouvelle ni ENCAISSEMENT ORPHELIN.
+- [ ] Depuis l'appli : non joué.
+
+Remarques de la recette :
+- Tiroir d'un reçu d'avance, corrigé avant la mise en prod (commit `9e7736e`) :
+  - le type annonçait qu'il « ne reçoit pas d'avoir », alors qu'un
+    remboursement par carte en émet un ;
+  - après un remboursement, le message annonçait l'avoir « dès la
+    confirmation de Stripe », alors qu'il était déjà émis ;
+  - chaque encaissement affichait ce qui restait « remboursable » sur lui,
+    sans tenir compte du crédit : « 10,00 € encore remboursables » à crédit
+    nul.
+- La contre-passation d'un avoir s'intitule « Avoir — Avoir — … ». Ce libellé
+  existait avant ce lot (11 écritures plus anciennes sur staging).
+- Stripe Checkout affiche « SKSR », le nom du compte Stripe de test.
 
 ---
 
