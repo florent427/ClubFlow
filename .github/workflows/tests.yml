@@ -60,3 +60,51 @@ jobs:
       - name: Tests
         working-directory: apps/${{ matrix.app }}
         run: ${{ matrix.app == 'api' && 'npx jest --ci --silent --maxWorkers=2' || 'npm test' }}
+
+  # Parcours de bout en bout de l'API sur une vraie base PostgreSQL 16, avec
+  # Mailpit pour les e-mails : inscription, profils, foyers, facturation.
+  e2e-api:
+    name: tests (api e2e)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: clubflow
+          POSTGRES_PASSWORD: clubflow
+          POSTGRES_DB: clubflow_e2e
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U clubflow -d clubflow_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      mailpit:
+        image: axllent/mailpit
+        ports: ['1025:1025']
+    env:
+      DATABASE_URL: postgresql://clubflow:clubflow@localhost:5432/clubflow_e2e
+      SMTP_HOST: 127.0.0.1
+      SMTP_PORT: '1025'
+      SMTP_AUTO_VERIFY_DOMAIN: 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+
+      - name: Install
+        working-directory: apps/api
+        run: npm ci
+
+      - name: Generate Prisma client
+        working-directory: apps/api
+        run: npx prisma generate
+
+      - name: Tests e2e
+        working-directory: apps/api
+        run: npm run test:e2e

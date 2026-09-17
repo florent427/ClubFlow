@@ -33,7 +33,9 @@ describe('ClubFlow API (e2e)', () => {
   let clubId: string | undefined;
 
   beforeAll(async () => {
-    execSync('npx prisma migrate deploy', {
+    // Comme au déploiement (ADR-0003) : l'ordre des migrations est cassé,
+    // `migrate deploy` échoue sur une base neuve.
+    execSync('npx prisma db push --skip-generate', {
       cwd: join(__dirname, '..'),
       stdio: 'inherit',
       env: process.env,
