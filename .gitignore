@@ -41,3 +41,30 @@ graphify-out/
 
 # Python bytecode (bin/graphify-enrich.py)
 __pycache__/
+
+# Env : toute variante .env.* reste hors dépôt, à tous les niveaux
+.env.*
+!.env.example
+!.env.*.example
+# Exceptions volontaires : URL publiques EXPO_PUBLIC_* seulement (aucun secret),
+# embarquées dans le build mobile. Ne JAMAIS y ajouter de secret.
+!apps/mobile/.env.production
+!apps/mobile/.env.staging
+
+# Clés, certificats, keystores et fichiers d'identifiants
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+google-services.json
+GoogleService-Info.plist
+credentials*.json
+
+# Sorties de build / cache / couverture
+dist/
+build/
+.next/
+.expo/
+coverage/
