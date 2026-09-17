@@ -51,9 +51,17 @@ export class BankTransferResolver {
         paidByMemberId: a.paidByMemberId ?? null,
         paidByContactId: a.paidByContactId ?? null,
       })),
+      input.creditPart
+        ? {
+            memberId: input.creditPart.memberId ?? null,
+            contactId: input.creditPart.contactId ?? null,
+            amountCents: input.creditPart.amountCents,
+          }
+        : null,
     );
     return {
       invoicesPaid: result.invoicesPaid,
+      creditedCents: result.creditedCents,
       lineMatched: result.lineMatched,
       stoppedBecause: result.stoppedBecause,
       statement: toDetail(await this.statements.getById(club.id, line)),

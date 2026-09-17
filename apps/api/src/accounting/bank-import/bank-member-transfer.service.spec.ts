@@ -11,7 +11,13 @@ import { BankMemberTransferService } from './bank-member-transfer.service';
 const CLUB = 'club-1';
 
 function makeWorld(
-  opts: { failOn?: string; entriesFor?: string[]; proposedEntryId?: string | null } = {},
+  opts: {
+    failOn?: string;
+    entriesFor?: string[];
+    proposedEntryId?: string | null;
+    /** Message du refus de la part au crédit, si elle doit échouer. */
+    creditFails?: string;
+  } = {},
 ) {
   const line = {
     id: 'l-1',
@@ -55,6 +61,7 @@ function makeWorld(
   prisma.$transaction = jest.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma));
 
   const recorded: Array<Record<string, unknown>> = [];
+  const deposits: Array<Record<string, unknown>> = [];
   const payments = {
     recordManualPayment: jest.fn(
       async (_clubId: string, input: Record<string, unknown>) => {
@@ -63,6 +70,13 @@ function makeWorld(
         }
         recorded.push(input);
         return { id: `pay-${recorded.length}` };
+      },
+    ),
+    recordPayerCreditDeposit: jest.fn(
+      async (_clubId: string, input: Record<string, unknown>) => {
+        if (opts.creditFails) throw new BadRequestException(opts.creditFails);
+        deposits.push(input);
+        return { invoice: { id: 'recu-1' }, payment: { id: `depot-${deposits.length}` } };
       },
     ),
   };
@@ -79,7 +93,7 @@ function makeWorld(
     reconciliation as never,
     audit as never,
   );
-  return { svc, line, recorded, payments, reconciliation, audit, deletedEntries, lineUpdates };
+  return { svc, line, recorded, deposits, payments, reconciliation, audit, deletedEntries, lineUpdates };
 }
 
 const ALLOCATIONS = [
@@ -206,5 +220,110 @@ describe('BankMemberTransferService.acceptMemberPayment', () => {
     await expect(
       w.svc.acceptMemberPayment(CLUB, 'user-1', 'l-1', ALLOCATIONS),
     ).rejects.toThrow(/à traiter/);
+  });
+});
+
+describe('BankMemberTransferService — part du virement mise au crédit (ADR-0022, tâche 4.1)', () => {
+  const PART_CREDIT = { memberId: 'm-dupont', contactId: null, amountCents: 15000 };
+
+  it('les factures d’abord, puis un reçu d’avance sur la banque du relevé, rapproché avec elles', async () => {
+    const w = makeWorld();
+    const out = await w.svc.acceptMemberPayment(
+      CLUB,
+      'user-1',
+      'l-1',
+      [{ invoiceId: 'inv-1', amountCents: 25000, paidByMemberId: 'm-dupont' }],
+      PART_CREDIT,
+    );
+
+    expect(out).toMatchObject({ invoicesPaid: 1, creditedCents: 15000, lineMatched: true, stoppedBecause: null });
+    expect(w.payments.recordManualPayment.mock.invocationCallOrder[0]).toBeLessThan(
+      w.payments.recordPayerCreditDeposit.mock.invocationCallOrder[0],
+    );
+    expect(w.deposits).toEqual([
+      {
+        memberId: 'm-dupont',
+        contactId: null,
+        amountCents: 15000,
+        method: 'MANUAL_TRANSFER',
+        externalRef: 'VIR SEPA DUPONT JEAN COTISATION',
+        financialAccountId: 'fa-1',
+      },
+    ]);
+    expect(w.reconciliation.match).toHaveBeenCalledWith(
+      CLUB,
+      'user-1',
+      'l-1',
+      [
+        { entryId: 'entry-1', amountCents: 25000 },
+        { entryId: 'entry-2', amountCents: 15000 },
+      ],
+      'PROPOSAL',
+    );
+    expect(w.audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ creditPart: PART_CREDIT, creditedCents: 15000, recordedPaymentIds: ['pay-1', 'depot-1'] }),
+      }),
+    );
+  });
+
+  it('tout le virement au crédit, sans facture', async () => {
+    const w = makeWorld();
+    const out = await w.svc.acceptMemberPayment(CLUB, 'user-1', 'l-1', [], {
+      memberId: null,
+      contactId: 'c-grand-mere',
+      amountCents: 40000,
+    });
+
+    expect(out).toMatchObject({ invoicesPaid: 0, creditedCents: 40000, lineMatched: true });
+    expect(w.recorded).toEqual([]);
+    expect(w.deposits).toEqual([expect.objectContaining({ contactId: 'c-grand-mere', amountCents: 40000 })]);
+  });
+
+  it('parts qui ne couvrent pas le virement, part au crédit comprise : refusé, rien d’enregistré', async () => {
+    const w = makeWorld();
+    await expect(
+      w.svc.acceptMemberPayment(
+        CLUB,
+        'user-1',
+        'l-1',
+        [{ invoiceId: 'inv-1', amountCents: 25000 }],
+        { ...PART_CREDIT, amountCents: 10000 },
+      ),
+    ).rejects.toThrow(/exactement le virement/);
+    expect(w.recorded).toEqual([]);
+    expect(w.deposits).toEqual([]);
+  });
+
+  it('ni facture ni part au crédit : refusé', async () => {
+    const w = makeWorld();
+    await expect(w.svc.acceptMemberPayment(CLUB, 'user-1', 'l-1', [], null)).rejects.toThrow('Aucune facture choisie.');
+  });
+
+  it('part au crédit nulle ou non entière : refusée', async () => {
+    const w = makeWorld();
+    for (const amountCents of [0, 1500.5]) {
+      await expect(
+        w.svc.acceptMemberPayment(CLUB, 'user-1', 'l-1', [], { ...PART_CREDIT, amountCents }),
+      ).rejects.toThrow('La part mise au crédit doit être un montant positif en centimes.');
+    }
+    expect(w.deposits).toEqual([]);
+  });
+
+  it('une facture refusée en route : la part au crédit n’est pas enregistrée', async () => {
+    const w = makeWorld({ failOn: 'inv-1' });
+    await expect(
+      w.svc.acceptMemberPayment(CLUB, 'user-1', 'l-1', [{ invoiceId: 'inv-1', amountCents: 25000 }], PART_CREDIT),
+    ).rejects.toThrow('Facture déjà soldée ou annulée');
+    expect(w.deposits).toEqual([]);
+    expect(w.reconciliation.match).not.toHaveBeenCalled();
+  });
+
+  it('la part au crédit refusée : les factures restent encaissées, l’arrêt est dit, rien n’est rapproché', async () => {
+    const w = makeWorld({ creditFails: 'Personne introuvable dans ce club' });
+    await expect(
+      w.svc.acceptMemberPayment(CLUB, 'user-1', 'l-1', [{ invoiceId: 'inv-1', amountCents: 25000 }], PART_CREDIT),
+    ).rejects.toThrow('1 encaissement(s) enregistré(s), puis arrêt : Personne introuvable dans ce club');
+    expect(w.recorded).toHaveLength(1);
   });
 });

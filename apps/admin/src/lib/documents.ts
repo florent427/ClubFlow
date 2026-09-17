@@ -843,6 +843,18 @@ export const CLUB_INVOICE_PAYER_CREDITS = gql`
   }
 `;
 
+/** Personnes qui peuvent payer une facture, crédit nul compris (tâche 4.1). */
+export const CLUB_INVOICE_PAYER_PEOPLE = gql`
+  query ClubInvoicePayerPeople($invoiceId: ID!) {
+    clubInvoicePayerPeople(invoiceId: $invoiceId) {
+      memberId
+      contactId
+      displayName
+      balanceCents
+    }
+  }
+`;
+
 export const APPLY_PAYER_CREDIT_TO_INVOICE = gql`
   mutation ApplyPayerCreditToInvoice($input: ApplyPayerCreditInput!) {
     applyPayerCreditToInvoice(input: $input) {
@@ -4627,6 +4639,7 @@ export const ACCEPT_BANK_LINE_MEMBER_PAYMENT = gql`
   mutation AcceptBankLineMemberPayment($input: AcceptBankLineMemberPaymentInput!) {
     acceptBankLineMemberPayment(input: $input) {
       invoicesPaid
+      creditedCents
       lineMatched
       stoppedBecause
       statement {

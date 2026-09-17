@@ -576,6 +576,15 @@ export type ClubInvoicePayerCreditsQueryData = {
   }[];
 };
 
+export type ClubInvoicePayerPeopleQueryData = {
+  clubInvoicePayerPeople: {
+    memberId: string | null;
+    contactId: string | null;
+    displayName: string;
+    balanceCents: number;
+  }[];
+};
+
 export type ApplyPayerCreditToInvoiceMutationData = {
   applyPayerCreditToInvoice: {
     paymentId: string;

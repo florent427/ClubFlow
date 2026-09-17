@@ -18,10 +18,19 @@ export interface TransferAllocationInput {
   paidByContactId?: string | null;
 }
 
+/** Part d'un virement mise au crédit d'une personne (ADR-0022, tâche 4.1). */
+export interface TransferCreditPartInput {
+  memberId: string | null;
+  contactId: string | null;
+  amountCents: number;
+}
+
 export interface AcceptTransferResult {
   /** Paiements réellement enregistrés, dans l'ordre. */
   recordedPaymentIds: string[];
   invoicesPaid: number;
+  /** Part mise au crédit, en centimes : 0 sans part, ou si elle n'a pas été enregistrée. */
+  creditedCents: number;
   /** Ligne rapprochée des écritures créées. */
   lineMatched: boolean;
   /** Ce qui a arrêté le traitement, s'il a été interrompu. */
@@ -63,6 +72,7 @@ export class BankMemberTransferService {
     userId: string,
     lineId: string,
     allocations: TransferAllocationInput[],
+    creditPart: TransferCreditPartInput | null = null,
   ): Promise<AcceptTransferResult> {
     const line = await this.prisma.bankStatementLine.findFirst({
       where: { id: lineId, clubId },
@@ -84,7 +94,12 @@ export class BankMemberTransferService {
         'Le relevé doit passer le contrôle d’intégrité avant tout encaissement.',
       );
     }
-    if (allocations.length === 0) throw new BadRequestException('Aucune facture choisie.');
+    if (allocations.length === 0 && !creditPart) {
+      throw new BadRequestException('Aucune facture choisie.');
+    }
+    if (creditPart && (!Number.isInteger(creditPart.amountCents) || creditPart.amountCents <= 0)) {
+      throw new BadRequestException('La part mise au crédit doit être un montant positif en centimes.');
+    }
     const ids = new Set(allocations.map((a) => a.invoiceId));
     if (ids.size !== allocations.length) {
       throw new BadRequestException('Une même facture figure deux fois.');
@@ -92,7 +107,8 @@ export class BankMemberTransferService {
     if (allocations.some((a) => !Number.isInteger(a.amountCents) || a.amountCents <= 0)) {
       throw new BadRequestException('Chaque part doit être un montant positif en centimes.');
     }
-    const total = allocations.reduce((s, a) => s + a.amountCents, 0);
+    const total =
+      allocations.reduce((s, a) => s + a.amountCents, 0) + (creditPart?.amountCents ?? 0);
     if (total !== line.amountCents) {
       throw new BadRequestException(
         `Les parts affectées doivent couvrir exactement le virement (${line.amountCents} cts).`,
@@ -107,6 +123,7 @@ export class BankMemberTransferService {
     const result: AcceptTransferResult = {
       recordedPaymentIds: [],
       invoicesPaid: 0,
+      creditedCents: 0,
       lineMatched: false,
       stoppedBecause: null,
     };
@@ -136,6 +153,34 @@ export class BankMemberTransferService {
       }
     }
 
+    // La part au crédit vient après les factures : un arrêt en route la laisse
+    // de côté, et le trésorier sait exactement ce qui a été enregistré. Elle
+    // devient un reçu d'avance sur la banque du relevé, dont l'écriture est
+    // rapprochée de la ligne avec les autres.
+    if (creditPart && !result.stoppedBecause) {
+      try {
+        const { payment } = await this.payments.recordPayerCreditDeposit(
+          clubId,
+          {
+            memberId: creditPart.memberId,
+            contactId: creditPart.contactId,
+            amountCents: creditPart.amountCents,
+            method: ClubPaymentMethod.MANUAL_TRANSFER,
+            externalRef,
+            financialAccountId: line.statement.financialAccountId,
+          },
+          userId,
+        );
+        result.recordedPaymentIds.push(payment.id);
+        result.creditedCents = creditPart.amountCents;
+      } catch (err) {
+        result.stoppedBecause = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `[virement ${line.id}] arrêt sur la part au crédit : ${result.stoppedBecause}`,
+        );
+      }
+    }
+
     if (result.recordedPaymentIds.length > 0) {
       result.lineMatched = await this.matchPaymentsToLine(
         clubId,
@@ -152,6 +197,8 @@ export class BankMemberTransferService {
         source: 'BANK_LINE_MEMBER_TRANSFER',
         lineId: line.id,
         allocations: allocations.map((a) => ({ invoiceId: a.invoiceId, amountCents: a.amountCents })),
+        creditPart,
+        creditedCents: result.creditedCents,
         recordedPaymentIds: result.recordedPaymentIds,
         lineMatched: result.lineMatched,
         stoppedBecause: result.stoppedBecause,
@@ -159,7 +206,7 @@ export class BankMemberTransferService {
     });
     if (result.stoppedBecause && result.recordedPaymentIds.length > 0) {
       throw new BadRequestException(
-        `${result.invoicesPaid} encaissement(s) enregistré(s), puis arrêt : ${result.stoppedBecause}`,
+        `${result.recordedPaymentIds.length} encaissement(s) enregistré(s), puis arrêt : ${result.stoppedBecause}`,
       );
     }
     if (result.stoppedBecause) {
