@@ -109,7 +109,7 @@ curl -s -X POST https://api.clubflow.topdigital.re/graphql \
 curl -s -X POST https://api.clubflow.topdigital.re/graphql \
   -H "Origin: https://clubflow.topdigital.re" \
   -H "Content-Type: application/json" \
-  -d '{"query":"mutation Test($i:CreateClubAndAdminInput!){createClubAndAdmin(input:$i){ok clubId clubSlug vitrineFallbackUrl emailSent}}","variables":{"i":{"clubName":"Test Club","clubSlug":"test-club","email":"test+'$(date +%s)'@example.com","password":"TestTest1234","firstName":"Test","lastName":"User","captchaToken":"10000000-aaaa-bbbb-cccc-000000000001"}}}' | jq .
+  -d '{"query":"mutation Test($i:CreateClubAndAdminInput!){createClubAndAdmin(input:$i){ok clubId clubSlug vitrineFallbackUrl emailSent}}","variables":{"i":{"clubName":"Test Club","clubSlug":"test-club","email":"test+'$(date +%s)'@example.com","password":"<mot-de-passe-de-test>","firstName":"Test","lastName":"User","captchaToken":"10000000-aaaa-bbbb-cccc-000000000001"}}}' | jq .
 # → { "data": { "createClubAndAdmin": { "ok": true, ... } } }
 # → ⚠️ captchaToken bidon ne marche que si HCAPTCHA_SECRET pas configuré côté API
 #   (mode dev). En prod, attendu : "CAPTCHA_FAILED".

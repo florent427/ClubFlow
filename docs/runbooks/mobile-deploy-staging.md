@@ -69,7 +69,7 @@ Ce que ça fait :
 3. L'app `ClubFlow` s'installe avec icône
 4. Lance — tu te connectes avec tes credentials staging :
    - Email : `florent.morel427@gmail.com`
-   - Mot de passe : `StagingClubFlow2026!` (ou celui que tu as choisi)
+   - Mot de passe : celui de ton compte staging (non versionné — à demander à Florent)
 
 ## Vérifier que ça pointe bien sur staging API
 

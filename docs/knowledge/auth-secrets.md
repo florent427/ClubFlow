@@ -7,7 +7,7 @@
 
 ### Admin web ClubFlow
 - **Email** : `admin@clubflow.local`
-- **Password initial** : `ClubFlowAdmin2026!` (à changer après 1er login)
+- **Password initial** : non documenté ici — à demander à Florent (hors dépôt ; à changer après 1er login)
 - **CLUB_ID** : `a8a1041c-ec1e-4e4d-a1cc-cd58247cf982`
 
 ## Secrets sur le serveur
