@@ -30,7 +30,10 @@ import {
   depositRefundCeilingCents,
   proposedCreditApplyCents,
 } from '../../lib/payer-credit';
-import { computeRefundableByPaymentId } from '../../lib/refundable-payments';
+import {
+  computeRefundableByPaymentId,
+  isRefundRecorded,
+} from '../../lib/refundable-payments';
 import { Drawer } from '../../components/ui/Drawer';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
 import { LoadingState } from '../../components/ui/LoadingState';
@@ -231,7 +234,7 @@ export function InvoiceDetailDrawer({
   const isCreditNote = inv?.isCreditNote === true;
   // Reçu d'avance (ADR-0022) : rien n'était dû, l'argent est au crédit de la
   // personne. L'API refuse de l'encaisser, de l'annuler ou de lui émettre un
-  // avoir ; il naît payé, donc seul l'avoir restait proposé ici.
+  // avoir à la main ; seul un remboursement lui en émet un.
   const isDeposit = inv?.purpose === 'PAYER_CREDIT_DEPOSIT';
   // Avoir disponible seulement sur factures émises ou payées et non-avoir.
   const canCreditNote =
@@ -286,9 +289,12 @@ export function InvoiceDetailDrawer({
   /** Ce que le formulaire peut rembourser sur cet encaissement. */
   const refundCeilingCents = (paymentId: string) => {
     const refundable = refundableByPaymentId.get(paymentId) ?? 0;
+    if (!isDeposit) return refundable;
+    // Tant que le crédit n'est pas lu, le plafond est inconnu : rien n'est
+    // proposé, plutôt qu'un montant que l'API refuserait.
     return depositCredit
       ? depositRefundCeilingCents(refundable, depositCredit.balanceCents)
-      : refundable;
+      : 0;
   };
 
   // Un avoir manuel sur une facture encaissée par carte ne rend PAS l'argent :
@@ -513,19 +519,31 @@ export function InvoiceDetailDrawer({
           amountCents: cents,
         },
       });
-      const rendered = res.data?.refundClubPayment.amountCents ?? cents;
+      const refund = res.data?.refundClubPayment ?? null;
+      const rendered = refund?.amountCents ?? cents;
       setRefundPaymentId(null);
-      // L'enregistrement en base (paiement négatif + avoir) est fait par le
-      // webhook Stripe, pas par la mutation : le refetch qui suit peut donc
-      // ne rien montrer encore. On le dit, sinon le trésorier croit à un
-      // échec et relance le remboursement.
+      // Pour une facture, le paiement négatif et l'avoir sont écrits par le
+      // webhook Stripe : le refetch qui suit peut ne rien montrer encore. On le
+      // dit, sinon le trésorier croit à un échec et relance le remboursement.
       setRefundNotice(
         `${formatEuros(rendered)} remboursés sur la carte. ` +
           "L'avoir correspondant apparaîtra ici dès la confirmation de Stripe " +
           '(quelques secondes).',
       );
-      await refetch();
-      if (isDeposit) await refetchDepositCredit();
+      // Une avance, elle, est enregistrée dès l'accord de Stripe : la
+      // relecture dit lequel des deux messages est vrai. Si elle échoue, le
+      // remboursement reste fait ; ce n'est pas une erreur à afficher.
+      try {
+        const fresh = await refetch();
+        if (isDeposit) await refetchDepositCredit();
+        if (isRefundRecorded(fresh.data?.clubInvoice.payments ?? [], refund?.refundId)) {
+          setRefundNotice(
+            `${formatEuros(rendered)} remboursés sur la carte : le remboursement et son avoir sont enregistrés.`,
+          );
+        }
+      } catch {
+        // Le prochain affichage du tiroir relira la facture.
+      }
       onChanged();
     } catch (err) {
       setRefundError(err instanceof Error ? err.message : 'Erreur');
@@ -746,7 +764,8 @@ export function InvoiceDetailDrawer({
                   <span className="cf-invoice-detail__meta-value">
                     Reçu d’avance : l’argent versé est au crédit de la
                     personne. Il ne s’encaisse pas, ne s’annule pas et ne
-                    reçoit pas d’avoir.
+                    reçoit pas d’avoir à la main : seul un remboursement lui
+                    en émet un.
                   </span>
                 </div>
               ) : null}
@@ -901,7 +920,9 @@ export function InvoiceDetailDrawer({
                       p.paidByFirstName || p.paidByLastName
                         ? `${p.paidByFirstName ?? ''} ${p.paidByLastName ?? ''}`.trim()
                         : null;
-                    const refundable = refundableByPaymentId.get(p.id) ?? 0;
+                    // Même plafond pour le libellé et pour le bouton : sur une
+                    // avance, la part utilisée ne se rembourse plus.
+                    const refundable = refundCeilingCents(p.id);
                     const isRefund = p.amountCents < 0;
                     return (
                       <li key={p.id} className="cf-invoice-payment">
@@ -918,7 +939,7 @@ export function InvoiceDetailDrawer({
                               ? ` · ${formatEuros(refundable)} encore remboursables`
                               : ''}
                           </div>
-                          {refundCeilingCents(p.id) > 0 ? (
+                          {refundable > 0 ? (
                             <button
                               type="button"
                               className="btn-ghost"
