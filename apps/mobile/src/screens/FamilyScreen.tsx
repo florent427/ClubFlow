@@ -24,14 +24,27 @@ import { JoinFamilyByPayerEmailCta } from '../components/JoinFamilyByPayerEmailC
 import { absolutizeMediaUrl } from '../lib/absolutize-url';
 import {
   VIEWER_ALL_FAMILY_BILLING,
+  VIEWER_APPLY_PAYER_CREDIT,
   VIEWER_CREATE_INVOICE_CHECKOUT_SESSION,
   VIEWER_LOCK_INVOICE_PAYMENT_CHOICE,
+  VIEWER_PAYER_CREDIT,
 } from '../lib/viewer-documents';
 import type {
   ViewerAllFamilyBillingData,
+  ViewerApplyPayerCreditData,
   ViewerFamilyBillingSummary,
+  ViewerPayerCredit,
+  ViewerPayerCreditData,
 } from '../lib/viewer-types';
 import { formatEuroCents } from '../lib/format';
+import {
+  payerCreditApplyCents,
+  payerCreditApplyConfirmation,
+  payerCreditKpi,
+  payerCreditMovementTitle,
+  shouldShowPayerCredit,
+  signedEuroCents,
+} from '../lib/payer-credit';
 import { palette, radius, shadow, spacing, typography } from '../lib/theme';
 
 type ViewerLockInvoicePaymentChoiceData = {
@@ -125,11 +138,98 @@ function MemberChip({
   );
 }
 
+/** « 12 sept. 2026 ». */
+function formatShortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+/**
+ * Crédit du compte (ADR-0022) : le sien, pas celui d'un foyer, d'où sa place
+ * hors des onglets. L'historique se déplie à la demande.
+ */
+function PayerCreditCard({ credit }: { credit: ViewerPayerCredit }) {
+  const [open, setOpen] = useState(false);
+  const kpi = payerCreditKpi(credit.balanceCents);
+  return (
+    <Card title="Crédit">
+      <View style={styles.creditHead}>
+        <Text style={styles.creditLabel}>{kpi.label}</Text>
+        <Text
+          style={[
+            styles.creditValue,
+            kpi.tone === 'ok' && styles.creditValueOk,
+            kpi.tone === 'due' && styles.creditValueDue,
+          ]}
+        >
+          {kpi.value}
+        </Text>
+      </View>
+      {credit.balanceCents < 0 ? (
+        <Text style={styles.hint}>Contactez le club pour le régulariser.</Text>
+      ) : credit.balanceCents > 0 ? (
+        <Text style={styles.hint}>
+          Utilisez-le depuis une facture à payer ci-dessous.
+        </Text>
+      ) : null}
+      {credit.movements.length > 0 ? (
+        <>
+          <Pressable
+            onPress={() => setOpen((v) => !v)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: open }}
+            style={styles.creditToggle}
+          >
+            <Text style={styles.creditToggleText}>
+              {open
+                ? 'Masquer l’historique'
+                : `Voir l’historique (${credit.movements.length})`}
+            </Text>
+            <Ionicons
+              name={open ? 'chevron-up' : 'chevron-down'}
+              size={16}
+              color={palette.primary}
+            />
+          </Pressable>
+          {open ? (
+            <View style={styles.payList}>
+              {credit.movements.map((m) => (
+                <View key={m.paymentId} style={styles.creditRow}>
+                  <View style={styles.flexShrink}>
+                    <Text style={styles.creditRowTitle}>
+                      {payerCreditMovementTitle(m)}
+                    </Text>
+                    <Text style={styles.payLine}>
+                      {formatShortDate(m.createdAt)}
+                    </Text>
+                  </View>
+                  <Text style={styles.creditRowAmount}>
+                    {signedEuroCents(m.amountCents)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </>
+      ) : null}
+    </Card>
+  );
+}
+
 export function FamilyScreen() {
   const { data, loading, error } = useQuery<ViewerAllFamilyBillingData>(
     VIEWER_ALL_FAMILY_BILLING,
     { errorPolicy: 'all', fetchPolicy: 'cache-and-network' },
   );
+  // Une erreur, module Paiement coupé compris, ne donne rien à afficher.
+  const { data: creditData } = useQuery<ViewerPayerCreditData>(
+    VIEWER_PAYER_CREDIT,
+    { errorPolicy: 'all', fetchPolicy: 'cache-and-network' },
+  );
+  const credit = creditData?.viewerPayerCredit ?? null;
 
   const summaries = useMemo(
     () => data?.viewerAllFamilyBillingSummaries ?? [],
@@ -195,6 +295,10 @@ export function FamilyScreen() {
 
       {anyPayerView ? <InviteFamilyMemberCta /> : null}
 
+      {anyPayerView && shouldShowPayerCredit(credit) ? (
+        <PayerCreditCard credit={credit} />
+      ) : null}
+
       {/* Onglets multi-foyer */}
       {multiFamily ? (
         <ScrollView
@@ -259,6 +363,7 @@ export function FamilyScreen() {
           summary={activeSummary}
           shared={shared}
           invoicesByFamily={invoicesByFamily}
+          creditBalanceCents={credit?.balanceCents ?? null}
         />
       )}
       </ScrollView>
@@ -270,10 +375,13 @@ function FamilySummaryView({
   summary,
   shared,
   invoicesByFamily,
+  creditBalanceCents,
 }: {
   summary: ViewerFamilyBillingSummary;
   shared: boolean;
   invoicesByFamily: Map<string, ViewerFamilyBillingSummary['invoices']>;
+  /** Crédit du compte ; null tant qu'il n'est pas connu. */
+  creditBalanceCents: number | null;
 }) {
   return (
     <>
@@ -364,13 +472,23 @@ function FamilySummaryView({
               <View key={familyId} style={styles.invoiceGroup}>
                 <Text style={styles.invoiceGroupTitle}>{label}</Text>
                 {invoices.map((inv) => (
-                  <InvoiceCard key={inv.id} inv={inv} />
+                  <InvoiceCard
+                    key={inv.id}
+                    inv={inv}
+                    creditBalanceCents={creditBalanceCents}
+                  />
                 ))}
               </View>
             );
           })
         ) : (
-          summary.invoices.map((inv) => <InvoiceCard key={inv.id} inv={inv} />)
+          summary.invoices.map((inv) => (
+            <InvoiceCard
+              key={inv.id}
+              inv={inv}
+              creditBalanceCents={creditBalanceCents}
+            />
+          ))
         )}
       </View>
     </>
@@ -379,8 +497,10 @@ function FamilySummaryView({
 
 function InvoiceCard({
   inv,
+  creditBalanceCents,
 }: {
   inv: ViewerFamilyBillingSummary['invoices'][number];
+  creditBalanceCents: number | null;
 }) {
   // Une facture est payable si elle a un solde > 0 et n'est pas en
   // brouillon / annulée. Pour le reste, le card reste affiché mais
@@ -395,6 +515,63 @@ function InvoiceCard({
   const [lockChoice] = useMutation<ViewerLockInvoicePaymentChoiceData>(
     VIEWER_LOCK_INVOICE_PAYMENT_CHOICE,
   );
+  const [applyPayerCredit, { loading: applyingCredit }] =
+    useMutation<ViewerApplyPayerCreditData>(VIEWER_APPLY_PAYER_CREDIT);
+  // Ce que « Utiliser mon crédit » réglerait ; 0 : pas de bouton.
+  const creditCents = payerCreditApplyCents(inv, creditBalanceCents);
+
+  // Le montant envoyé est celui que l'adhérent confirme : l'API le refuse
+  // s'il dépasse le crédit ou le reste dû relus sous verrou.
+  async function applyCredit(amountCents: number) {
+    try {
+      const { data } = await applyPayerCredit({
+        variables: { invoiceId: inv.id, amountCents },
+      });
+      const applied = data?.viewerApplyPayerCredit.amountCents ?? amountCents;
+      Alert.alert(
+        'Crédit utilisé',
+        `${formatEuroCents(applied)} réglés avec votre crédit.`,
+      );
+    } catch (err) {
+      Alert.alert(
+        'Erreur',
+        err instanceof Error
+          ? err.message
+          : 'Impossible de régler avec votre crédit.',
+      );
+    } finally {
+      // Réussite ou refus, la facture et le crédit se relisent. Un rechargement
+      // en échec ne doit pas lever hors du gestionnaire.
+      await client
+        .refetchQueries({
+          include: [VIEWER_ALL_FAMILY_BILLING, VIEWER_PAYER_CREDIT],
+        })
+        .catch(() => undefined);
+    }
+  }
+
+  function promptCredit() {
+    if (creditCents <= 0 || creditBalanceCents == null || applyingCredit) {
+      return;
+    }
+    Alert.alert(
+      'Utiliser mon crédit',
+      payerCreditApplyConfirmation({
+        invoiceLabel: inv.label,
+        applyCents: creditCents,
+        invoiceBalanceCents: inv.balanceCents,
+        creditBalanceCents,
+      }),
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: `Régler ${formatEuroCents(creditCents)}`,
+          onPress: () => void applyCredit(creditCents),
+        },
+      ],
+      { cancelable: true },
+    );
+  }
 
   // Repli hors ligne quand la carte n'aboutit pas : le payeur verrouille un
   // mode manuel et reçoit les modalités du club. Sans ça la seule issue
@@ -581,6 +758,33 @@ function InvoiceCard({
           )}
         </View>
       ) : null}
+      {creditCents > 0 ? (
+        <Pressable
+          onPress={promptCredit}
+          disabled={applyingCredit || starting}
+          accessibilityRole="button"
+          accessibilityLabel={`Utiliser mon crédit : régler ${formatEuroCents(creditCents)} pour ${inv.label}`}
+          style={({ pressed }) => [
+            styles.creditCta,
+            pressed && { opacity: 0.85 },
+          ]}
+        >
+          {applyingCredit ? (
+            <ActivityIndicator size="small" color={palette.primary} />
+          ) : (
+            <>
+              <Ionicons
+                name="wallet-outline"
+                size={16}
+                color={palette.primary}
+              />
+              <Text style={styles.payCtaText}>
+                Utiliser mon crédit · {formatEuroCents(creditCents)}
+              </Text>
+            </>
+          )}
+        </Pressable>
+      ) : null}
     </Pressable>
   );
 }
@@ -727,5 +931,47 @@ const styles = StyleSheet.create({
   payCtaText: {
     ...typography.smallStrong,
     color: palette.primary,
+  },
+
+  flexShrink: { flexShrink: 1 },
+  creditHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    gap: spacing.md,
+    marginBottom: spacing.xs,
+  },
+  creditLabel: { ...typography.small, color: palette.muted },
+  creditValue: { ...typography.h3, color: palette.ink },
+  creditValueOk: { color: palette.successText },
+  creditValueDue: { color: palette.warningText },
+  creditToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    minHeight: 44,
+  },
+  creditToggleText: { ...typography.smallStrong, color: palette.primary },
+  creditRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  creditRowTitle: { ...typography.small, color: palette.body },
+  creditRowAmount: { ...typography.smallStrong, color: palette.ink },
+  creditCta: {
+    marginTop: spacing.sm,
+    minHeight: 44,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: palette.primary,
+    backgroundColor: palette.surface,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
   },
 });

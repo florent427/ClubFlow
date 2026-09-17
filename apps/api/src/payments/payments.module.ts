@@ -13,6 +13,7 @@ import { PaymentsResolver } from './payments.resolver';
 import { PaymentsService } from './payments.service';
 import { PayerCreditResolver } from './payer-credit.resolver';
 import { PayerCreditService } from './payer-credit.service';
+import { ViewerPayerCreditResolver } from './viewer-payer-credit.resolver';
 import { PaymentScheduleAdminResolver } from './payment-schedule-admin.resolver';
 import { PaymentScheduleEngineService } from './payment-schedule-engine.service';
 import { PaymentScheduleNotifierService } from './payment-schedule-notifier.service';
@@ -54,6 +55,8 @@ import { StripeWebhookController } from './stripe-webhook.controller';
     // Crédit du payeur : avances encaissées sans facture (ADR-0022).
     PayerCreditService,
     PayerCreditResolver,
+    // Le crédit du compte connecté, au portail et dans l'appli (lot 3).
+    ViewerPayerCreditResolver,
     StripeCheckoutService,
     StripeConnectService,
     StripeConnectResolver,

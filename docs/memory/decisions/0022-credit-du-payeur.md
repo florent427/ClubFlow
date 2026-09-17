@@ -35,7 +35,7 @@ Le propriétaire du crédit est un **payeur** : un membre ou un contact, comme p
 
 - **Même compte utilisateur, même personne** : un membre et un contact rattachés au même compte dans le club partagent le crédit. Un contact promu membre le garde donc, sans migration. C'est possible parce qu'un compte n'a qu'une fiche membre par club (`@@unique([clubId, userId])`).
 - **Sans compte utilisateur** : un membre a son propre crédit.
-- **Le foyer** n'est pas propriétaire : il **affiche** la somme des crédits de ses payeurs.
+- **Le foyer** n'est pas propriétaire : il **affiche** le crédit de chacune de ses personnes, une ligne par personne, sans total.
 
 ### 2. Une avance est un « reçu d'avance », créé payé
 
@@ -67,6 +67,10 @@ Nouveau moyen de paiement `ClubPaymentMethod.PAYER_CREDIT` : un `Payment` sur la
   - **Avoir** : il éteint d'abord ce qui reste dû, et ne rend que ce qui a été payé au-delà du dû qu'il laisse, soit `min(avoir, max(0, payé net − max(0, montant − avoirs)))`. Les imputations sont rendues de la plus récente à la plus ancienne, chacune au plus de ce qui n'en a pas déjà été rendu.
   - **Annulation boutique** : chaque imputation revient au crédit, par un remboursement de nature `CREDIT`.
 - **Pas d'imputation automatique** : c'est l'admin ou le payeur qui choisit. Une proposition à la validation d'un panier pourra venir plus tard.
+- **Au portail et dans l'appli** :
+  - **Le crédit est celui du compte connecté**, jamais celui du profil actif. Un payeur peut activer le profil d'un autre adulte de son foyer ; le crédit de cet adulte reste le sien.
+  - **Les factures** sont celles que le profil actif peut régler en ligne, comme pour « Payer en ligne ». Hors de ce périmètre, une facture est introuvable. L'imputation refait ensuite le contrôle du payeur, sur la personne du compte.
+  - **Le montant** est celui que le payeur a confirmé. L'imputation le refuse s'il dépasse le crédit ou le reste dû qu'elle relit sous verrou.
 
 ### 4. Le solde se calcule à partir des paiements, il n'est stocké nulle part
 

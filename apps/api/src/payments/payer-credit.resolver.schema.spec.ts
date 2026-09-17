@@ -4,6 +4,7 @@ import { printSchema } from 'graphql';
 import '../graphql/register-enums';
 import { PayerCreditResolver } from './payer-credit.resolver';
 import { PaymentsResolver } from './payments.resolver';
+import { ViewerPayerCreditResolver } from './viewer-payer-credit.resolver';
 
 /**
  * Le schéma ne se construit qu'au démarrage de l'API : un champ nullable sans
@@ -48,5 +49,26 @@ describe('Crédit du payeur — schéma GraphQL (ADR-0022)', () => {
     );
     expect(sdl).toContain('invoiceStatus: InvoiceStatus!');
     expect(sdl).toMatch(/enum ClubPaymentMethod \{[^}]*PAYER_CREDIT[^}]*\}/);
+  });
+
+  it('expose le crédit au portail et dans l’appli, et le crédit d’un foyer à l’admin (lot 3)', async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [GraphQLSchemaBuilderModule],
+    }).compile();
+    const factory = moduleRef.get(GraphQLSchemaFactory);
+    const sdl = printSchema(
+      await factory.create([PayerCreditResolver, PaymentsResolver, ViewerPayerCreditResolver]),
+    );
+
+    expect(sdl).toContain('viewerPayerCredit: ViewerPayerCreditGraph!');
+    expect(sdl).toMatch(
+      /viewerApplyPayerCredit\(\s*invoiceId: ID!\s*("""[^"]*"""\s*)?amountCents: Int\s*\): PayerCreditApplyResultGraph!/,
+    );
+    expect(sdl).toMatch(/enum PayerCreditMovementKind \{\s+DEPOSIT\s+DEPOSIT_REFUND\s+USE\s+USE_RETURN\s+\}/);
+    expect(sdl).toContain('clubFamilyPayerCredits(familyId: ID!): [FamilyPayerCreditGraph!]!');
+    // Au portail, ni numéro de chèque ni identifiant Stripe.
+    const mouvement = sdl.match(/type ViewerPayerCreditMovementGraph \{[^}]*\}/)?.[0] ?? '';
+    expect(mouvement).toMatch(/method: ClubPaymentMethod\n/);
+    expect(mouvement).not.toContain('externalRef');
   });
 });

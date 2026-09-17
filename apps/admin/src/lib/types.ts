@@ -557,6 +557,16 @@ export type ClubPayerCreditQueryData = {
   };
 };
 
+/** Crédits des personnes d'un foyer ; un crédit négatif est à régulariser. */
+export type ClubFamilyPayerCreditsQueryData = {
+  clubFamilyPayerCredits: {
+    memberId: string | null;
+    contactId: string | null;
+    displayName: string;
+    balanceCents: number;
+  }[];
+};
+
 export type ClubInvoicePayerCreditsQueryData = {
   clubInvoicePayerCredits: {
     memberId: string | null;

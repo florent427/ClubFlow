@@ -816,6 +816,21 @@ export const RECORD_PAYER_CREDIT_DEPOSIT = gql`
   }
 `;
 
+/**
+ * Crédits des personnes d'un foyer, une ligne par personne, crédits nuls omis
+ * (ADR-0022, §1) : le foyer affiche, il ne possède rien.
+ */
+export const CLUB_FAMILY_PAYER_CREDITS = gql`
+  query ClubFamilyPayerCredits($familyId: ID!) {
+    clubFamilyPayerCredits(familyId: $familyId) {
+      memberId
+      contactId
+      displayName
+      balanceCents
+    }
+  }
+`;
+
 /** Qui peut régler cette facture avec son crédit (ADR-0022, §3). */
 export const CLUB_INVOICE_PAYER_CREDITS = gql`
   query ClubInvoicePayerCredits($invoiceId: ID!) {
