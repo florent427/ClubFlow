@@ -4,6 +4,7 @@ import { SmtpMailTransport } from './smtp-mail.transport';
 describe('SmtpMailTransport', () => {
   beforeEach(() => {
     jest.restoreAllMocks();
+    delete process.env.SMTP_AUTO_VERIFY_DOMAIN;
     delete process.env.SMTP_DNS_SPF_CHECK;
     delete process.env.SMTP_PUBLIC_EGRESS_IP;
     delete process.env.SMTP_DMARC_RUA_EMAIL;
@@ -18,6 +19,38 @@ describe('SmtpMailTransport', () => {
     expect(snap.verified).toBe(true);
     expect(snap.failed).toBe(false);
   });
+
+  it.each([
+    ['absente', undefined],
+    ['à false', 'false'],
+    ['vide', ''],
+  ])(
+    'refreshDomain : SMTP_AUTO_VERIFY_DOMAIN %s → rien de vérifié, ni prêt ni en échec (audit 1.4)',
+    async (_cas, valeur) => {
+      if (valeur !== undefined) process.env.SMTP_AUTO_VERIFY_DOMAIN = valeur;
+      const t = SmtpMailTransport.fromEnv();
+      const reg = await t.registerDomain('club.example');
+      const snap = await t.refreshDomain(reg.providerDomainId);
+      expect(snap).toEqual({
+        providerDomainId: reg.providerDomainId,
+        records: [],
+        verified: false,
+        failed: false,
+        inconclusive: true,
+      });
+    },
+  );
+
+  it.each(['true', '1', 'yes', 'TRUE'])(
+    'refreshDomain : SMTP_AUTO_VERIFY_DOMAIN=%s demandé explicitement → prêt',
+    async (valeur) => {
+      process.env.SMTP_AUTO_VERIFY_DOMAIN = valeur;
+      const t = SmtpMailTransport.fromEnv();
+      const snap = await t.refreshDomain((await t.registerDomain('dev.local')).providerDomainId);
+      expect(snap.verified).toBe(true);
+      expect(snap.inconclusive).toBeUndefined();
+    },
+  );
 
   it('refreshDomain: SMTP_DNS_SPF_CHECK sans IP publique → failed', async () => {
     process.env.SMTP_DNS_SPF_CHECK = 'true';

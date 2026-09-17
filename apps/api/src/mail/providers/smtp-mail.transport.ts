@@ -15,10 +15,16 @@ function normalizeFqdn(fqdn: string): string {
   return fqdn.trim().toLowerCase().replace(/\.$/, '');
 }
 
-/** Si « true » / absent : « Vérifier » marque le domaine prêt sans appel externe (relais SMTP = vous). */
+/**
+ * « Vérifier » ne marque un domaine prêt sans contrôle que si
+ * `SMTP_AUTO_VERIFY_DOMAIN` le demande explicitement (relais SMTP local, en
+ * développement). Absente, la variable ne vérifie plus rien : un domaine
+ * marqué prêt sans être authentifié chez le service d'envoi (Brevo) voit ses
+ * mails rejetés en silence (audit du 2026-09-14, point 1.4).
+ */
 function smtpAutoVerifyDomain(): boolean {
   const v = process.env.SMTP_AUTO_VERIFY_DOMAIN?.trim().toLowerCase();
-  return v !== '0' && v !== 'false' && v !== 'no';
+  return v === 'true' || v === '1' || v === 'yes';
 }
 
 function smtpDnsSpfCheckEnabled(): boolean {
@@ -111,12 +117,21 @@ export class SmtpMailTransport implements MailTransport {
         failed: !ok,
       };
     }
-    const verified = smtpAutoVerifyDomain();
+    if (smtpAutoVerifyDomain()) {
+      return {
+        providerDomainId,
+        records: [],
+        verified: true,
+        failed: false,
+      };
+    }
+    // Ce serveur n'a aucun moyen de contrôler le domaine : ni prêt, ni en échec.
     return {
       providerDomainId,
       records: [],
-      verified,
-      failed: !verified,
+      verified: false,
+      failed: false,
+      inconclusive: true,
     };
   }
 

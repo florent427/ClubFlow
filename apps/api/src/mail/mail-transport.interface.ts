@@ -47,6 +47,11 @@ export type DomainVerificationSnapshot = {
   verified: boolean;
   /** true si le fournisseur a marqué l’échec de vérification DNS. */
   failed: boolean;
+  /**
+   * true si le transport ne sait pas vérifier le domaine : le statut enregistré
+   * ne doit pas changer, dans un sens comme dans l'autre.
+   */
+  inconclusive?: boolean;
 };
 
 export interface MailTransport {
