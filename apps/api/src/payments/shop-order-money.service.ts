@@ -58,10 +58,120 @@ export type LoadedOrderInvoice = Prisma.InvoiceGetPayload<{
 /** Un rendu par espèces, virement ou chèque, à contre-passer après le commit. */
 export type ManualRefund = {
   creditNoteId: string;
+  /** Le paiement négatif qui trace l'argent rendu. */
+  refundPaymentId: string;
   sourcePaymentId: string;
   refundFinancialAccountId: string | null;
   amountCents: number;
 };
+
+/** L'encaissement rendu, tel que l'écriture d'un rendu manuel le lit. */
+export type ManualRefundSource = {
+  id: string;
+  financialAccountId: string | null;
+  paidByMemberId: string | null;
+  paidByContactId: string | null;
+};
+
+/**
+ * Écrit, dans la transaction de l'appelant, un rendu par espèces, virement ou
+ * chèque (ADR-0019) : le chèque rendu s'il est encore en portefeuille, le
+ * paiement négatif et l'avoir du montant rendu. La contre-passation suit le
+ * commit (`CreditNotesService.recordAccounting`).
+ *
+ * Partagé par la boutique et par le remboursement d'une avance (ADR-0022) :
+ * mêmes gardes, même paiement négatif, même avoir. `bank` garde, d'un rendu à
+ * l'autre, la banque par défaut du club une fois lue.
+ */
+export async function writeManualRefundInTx(
+  deps: {
+    creditNotes: CreditNotesService;
+    financialAccounts: Pick<ClubFinancialAccountsService, 'getDefault'>;
+  },
+  tx: Prisma.TransactionClient,
+  clubId: string,
+  original: ManualRefundSource,
+  action: ShopOrderRefundAction,
+  labels: {
+    /** Motif de l'avoir. */
+    refund: string;
+    /** Note portée sur un chèque rendu. */
+    chequeNote: string;
+  },
+  bank: { defaultId?: string | null } = {},
+): Promise<ManualRefund> {
+  if (action.kind === ShopOrderRefundKind.CARD) {
+    throw new Error('Un remboursement carte passe par Stripe, pas par un rendu manuel.');
+  }
+  if (action.kind === ShopOrderRefundKind.CHEQUE_RETURN) {
+    // Même garde que la remise en banque, dans l'autre sens : un chèque
+    // remis entre-temps ne se rend plus, et tout est annulé.
+    const returned = await tx.cheque.updateMany({
+      where: {
+        id: action.chequeId!,
+        clubId,
+        status: ChequeStatus.PENDING,
+        depositId: null,
+      },
+      data: { status: ChequeStatus.CANCELLED, notes: labels.chequeNote },
+    });
+    if (returned.count !== 1) {
+      throw new BadRequestException(
+        `Le chèque ${action.chequeNumber ? `n° ${action.chequeNumber} ` : ''}vient d’être remis en banque : recharge la page.`,
+      );
+    }
+  }
+
+  // Une part de chèque en portefeuille se reverse par virement depuis la
+  // banque du club : le chèque, lui, reste à remettre.
+  let outAccountId = action.bankAccountId;
+  if (action.kind === ShopOrderRefundKind.CHEQUE_PARTIAL) {
+    if (bank.defaultId === undefined) {
+      bank.defaultId =
+        (
+          await deps.financialAccounts.getDefault(
+            clubId,
+            ClubFinancialAccountKind.BANK,
+          )
+        )?.id ?? null;
+    }
+    if (!bank.defaultId) {
+      throw new BadRequestException(
+        'Aucun compte bancaire par défaut : impossible de reverser la part d’un chèque. Configure-le dans la comptabilité.',
+      );
+    }
+    outAccountId = bank.defaultId;
+  }
+
+  const refundPayment = await tx.payment.create({
+    data: {
+      clubId,
+      invoiceId: action.invoiceId,
+      amountCents: -action.amountCents,
+      method: REFUND_METHOD[action.kind],
+      refundedPaymentId: original.id,
+      financialAccountId: outAccountId ?? original.financialAccountId,
+      paidByMemberId: original.paidByMemberId,
+      paidByContactId: original.paidByContactId,
+    },
+  });
+  // L'avoir du montant rendu (ADR-0011) : sans lui, la facture
+  // redeviendrait due de ce que l'on vient de rendre.
+  const creditNote = await deps.creditNotes.create({
+    tx,
+    clubId,
+    parentInvoiceId: action.invoiceId,
+    amountCents: action.amountCents,
+    reason: labels.refund,
+  });
+  return {
+    creditNoteId: creditNote.id,
+    refundPaymentId: refundPayment.id,
+    sourcePaymentId: original.id,
+    refundFinancialAccountId: outAccountId,
+    amountCents: action.amountCents,
+  };
+}
 
 export type CardRefundResult = {
   paymentId: string;
@@ -249,7 +359,7 @@ export class ShopOrderMoneyService {
     },
   ): Promise<ManualRefund[]> {
     const manual: ManualRefund[] = [];
-    let clubBankId: string | null | undefined;
+    const bank: { defaultId?: string | null } = {};
 
     for (const action of plan.refunds) {
       if (action.kind === ShopOrderRefundKind.CARD) continue;
@@ -258,74 +368,17 @@ export class ShopOrderMoneyService {
       if (!original) {
         throw new Error(`Encaissement ${action.paymentId} absent des factures lues.`);
       }
-
-      if (action.kind === ShopOrderRefundKind.CHEQUE_RETURN) {
-        // Même garde que la remise en banque, dans l'autre sens : un chèque
-        // remis entre-temps ne se rend plus, et tout est annulé.
-        const returned = await tx.cheque.updateMany({
-          where: {
-            id: action.chequeId!,
-            clubId,
-            status: ChequeStatus.PENDING,
-            depositId: null,
-          },
-          data: { status: ChequeStatus.CANCELLED, notes: labels.chequeNote },
-        });
-        if (returned.count !== 1) {
-          throw new BadRequestException(
-            `Le chèque ${action.chequeNumber ? `n° ${action.chequeNumber} ` : ''}vient d’être remis en banque : recharge la page.`,
-          );
-        }
-      }
-
-      // Une part de chèque en portefeuille se reverse par virement depuis la
-      // banque du club : le chèque, lui, reste à remettre.
-      let outAccountId = action.bankAccountId;
-      if (action.kind === ShopOrderRefundKind.CHEQUE_PARTIAL) {
-        if (clubBankId === undefined) {
-          clubBankId =
-            (
-              await this.financialAccounts.getDefault(
-                clubId,
-                ClubFinancialAccountKind.BANK,
-              )
-            )?.id ?? null;
-        }
-        if (!clubBankId) {
-          throw new BadRequestException(
-            'Aucun compte bancaire par défaut : impossible de reverser la part d’un chèque. Configure-le dans la comptabilité.',
-          );
-        }
-        outAccountId = clubBankId;
-      }
-
-      await tx.payment.create({
-        data: {
+      manual.push(
+        await writeManualRefundInTx(
+          { creditNotes: this.creditNotes, financialAccounts: this.financialAccounts },
+          tx,
           clubId,
-          invoiceId: action.invoiceId,
-          amountCents: -action.amountCents,
-          method: REFUND_METHOD[action.kind],
-          refundedPaymentId: original.id,
-          financialAccountId: outAccountId ?? original.financialAccountId,
-          paidByMemberId: original.paidByMemberId,
-          paidByContactId: original.paidByContactId,
-        },
-      });
-      // L'avoir du montant rendu (ADR-0011) : sans lui, la facture
-      // redeviendrait due de ce que l'on vient de rendre.
-      const creditNote = await this.creditNotes.create({
-        tx,
-        clubId,
-        parentInvoiceId: action.invoiceId,
-        amountCents: action.amountCents,
-        reason: labels.refund,
-      });
-      manual.push({
-        creditNoteId: creditNote.id,
-        sourcePaymentId: original.id,
-        refundFinancialAccountId: outAccountId,
-        amountCents: action.amountCents,
-      });
+          original,
+          action,
+          labels,
+          bank,
+        ),
+      );
     }
 
     for (const w of plan.writeOffs) {

@@ -20,14 +20,38 @@ type InvoicePayment =
 export function computeRefundableByPaymentId(
   payments: readonly InvoicePayment[],
 ): Map<string, number> {
+  return netOfRefunds(
+    payments,
+    (p) => p.method === 'STRIPE_CARD' && !!p.externalRef?.startsWith('pi_'),
+  );
+}
+
+/**
+ * Même calcul pour un reçu d'avance (ADR-0022, tâche 4.2) : ses versements en
+ * espèces, par virement ou par chèque se remboursent aussi depuis ClubFlow. Le
+ * plafond du crédit disponible s'applique ensuite (`depositRefundCeilingCents`).
+ */
+export function computeDepositRefundableByPaymentId(
+  payments: readonly InvoicePayment[],
+): Map<string, number> {
+  return netOfRefunds(
+    payments,
+    (p) =>
+      p.method === 'MANUAL_CASH' ||
+      p.method === 'MANUAL_TRANSFER' ||
+      p.method === 'MANUAL_CHECK' ||
+      (p.method === 'STRIPE_CARD' && !!p.externalRef?.startsWith('pi_')),
+  );
+}
+
+function netOfRefunds(
+  payments: readonly InvoicePayment[],
+  refundableMethod: (p: InvoicePayment) => boolean,
+): Map<string, number> {
   const refundable = new Map<string, number>();
 
   for (const p of payments) {
-    if (
-      p.amountCents > 0 &&
-      p.method === 'STRIPE_CARD' &&
-      p.externalRef?.startsWith('pi_')
-    ) {
+    if (p.amountCents > 0 && refundableMethod(p)) {
       refundable.set(p.id, p.amountCents);
     }
   }

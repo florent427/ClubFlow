@@ -355,7 +355,12 @@ export function planShopOrderCancellation(
   };
 }
 
-function refundActionFor(
+/**
+ * Comment rendre `amountCents` d'un encaissement, selon son moyen (ADR-0019).
+ * Partagé avec le remboursement d'une avance (ADR-0022, tâche 4.2). Null, avec
+ * la raison dans `blockers`, si l'encaissement ne se rend pas depuis ClubFlow.
+ */
+export function refundActionFor(
   p: ShopOrderPlanPayment,
   invoiceId: string,
   amountCents: number,
@@ -414,7 +419,7 @@ function refundActionFor(
       }
       pushOnce(
         blockers,
-        `Le chèque ${cheque.number ? `n° ${cheque.number} ` : ''}est impayé ou annulé : régularise-le avant d’annuler.`,
+        `Le chèque ${cheque.number ? `n° ${cheque.number} ` : ''}est impayé ou annulé : régularise-le avant de le rembourser.`,
       );
       return null;
     }

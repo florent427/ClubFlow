@@ -716,11 +716,57 @@ Remarques de la recette :
     rendu au trésorier comme fait, le webhook l'écrit.
   - Contre-passation **TRANSFER** : DÉBIT 419100 / CRÉDIT trésorerie ; toute
     contre-passation d'un TRANSFER reste un TRANSFER.
-- [ ] En espèces ou par virement : paiement négatif sur le reçu et avoir, avec
-  la même contre-passation, sur le modèle du remboursement boutique
+- [x] Hors carte (lot 4, livraison A) : paiement négatif sur le reçu et avoir,
+  avec la même contre-passation, sur le modèle du remboursement boutique
   ([ADR-0019](../../memory/decisions/0019-boutique-annulation-remboursement.md)).
+  - `refundPayerCreditDeposit(paymentId, reason, amountCents?)` : au plus le
+    crédit disponible et le remboursable du versement, sous le verrou de la
+    personne puis du reçu. L'argent sort par le moyen de l'avance : espèces,
+    virement depuis la banque de l'encaissement, chèque rendu s'il est en
+    portefeuille et remboursé en entier, sinon virement depuis la banque de sa
+    remise ou du club.
+  - L'écriture d'un rendu manuel (chèque rendu sous garde, paiement négatif,
+    avoir) et le choix du moyen sortent du service boutique
+    (`writeManualRefundInTx`, `refundActionFor`) : un seul code pour les deux.
+  - Tiroir du reçu : « Rembourser » aussi sur un versement en espèces, par
+    virement ou par chèque, avec un texte qui dit comment l'argent sort.
+- [x] Tests : `payer-credit-manual-refund.spec.ts` (11) sur le monde partagé,
+  qui simule désormais les fiches chèque et leur rendu conditionnel. Il couvre :
+  - espèces, virement, chèque rendu, part de chèque, chèque remis ;
+  - plafond après un premier remboursement ;
+  - refus : au-delà du crédit, crédit épuisé, montant nul, versement carte,
+    encaissement de facture, ligne de remboursement, motif vide, chèque impayé ;
+  - imputation simultanée ;
+  - écriture en échec défaite, chèque compris.
+
+  S'y ajoutent le schéma (+1) et, côté admin, le remboursable d'un reçu et les
+  textes (+4). Les 156 tests boutique passent inchangés.
+- [x] Mutations à la main : 17 tuées sur 18. Survit le retrait du verrou du
+  reçu : sur ce chemin, le verrou de la personne sérialise déjà tout, et aucun
+  autre écrivain ne touche un reçu d'avance hors carte. Il reste, par règle
+  (§3 de l'ADR). Une première forme ne compilait pas ; rejouée.
+- [x] Vérifications : typecheck de l'API et de l'admin ; Jest complet, 1 890
+  tests ; vitest admin 176 ; ESLint des fichiers touchés. Rendu vérifié sur une
+  API simulée : avance en espèces, 5 € rendus, texte et plafond.
 
 ### Task 4.3 : Recette staging
 
 - [ ] Virement de 150 € pour une facture de 100 €.
-- [ ] Remboursement du crédit restant à un membre qui quitte le club.
+- [x] Remboursement du crédit hors carte, sur club-demo, le 2026-09-17 (commit
+  `8a49007`), au membre de Florent (crédit de 0 €).
+  - **Avances de recette** : 30 € en espèces, 20 € par virement sur la Banque
+    principale, 15 € par chèque RECETTE4A, soit un crédit de 65 €.
+  - **Depuis le vrai tiroir du reçu** : les textes disent comment l'argent sort,
+    le plafond suit le crédit.
+    - 10 € rendus en espèces, puis « 20,00 € encore remboursables » ;
+    - 20 € à rendre par virement ;
+    - chèque de 15 € rendu en entier, bouton masqué ensuite.
+  - **Refus côté API** au-delà du plafond : « Au plus 20,00 € : crédit
+    disponible 20,00 €, remboursable sur cet encaissement 20,00 €. »
+  - **En base** :
+    - trois paiements négatifs, chacun rattaché à son versement et à son compte
+      (530000, 512000, 511200), et trois avoirs ;
+    - contre-passations TRANSFER AUTO_REFUND, DÉBIT 419100 / CRÉDIT du même
+      compte, avec compte financier ;
+    - chèque passé « annulé » avec la note du motif ;
+    - crédit restant de 20 € ; journal de l'API sans erreur nouvelle.

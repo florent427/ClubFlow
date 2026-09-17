@@ -88,6 +88,28 @@ export class PayerCreditDepositResultGraph {
   balanceCents!: number;
 }
 
+/** Une avance rendue en espèces, par virement ou par chèque (ADR-0022, tâche 4.2). */
+@ObjectType()
+export class PayerCreditDepositRefundGraph {
+  @Field(() => ID, { description: 'Paiement négatif qui trace l’argent rendu.' })
+  refundPaymentId!: string;
+
+  @Field(() => ID, { description: 'Avoir émis sur le reçu d’avance.' })
+  creditNoteId!: string;
+
+  @Field(() => Int)
+  amountCents!: number;
+
+  @Field(() => String, {
+    description:
+      'Comment l’argent est rendu : CASH, TRANSFER, CHEQUE_RETURN, CHEQUE_PARTIAL ou CHEQUE_DEPOSITED.',
+  })
+  kind!: string;
+
+  @Field(() => Int, { description: 'Crédit de la personne après le remboursement.' })
+  creditBalanceCents!: number;
+}
+
 /** Une personne qui peut régler la facture avec son crédit. */
 @ObjectType()
 export class PayerCreditCandidateGraph {

@@ -1,5 +1,5 @@
 import { UseGuards } from '@nestjs/common';
-import { Args, ID, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Args, ID, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
 import type { Club } from '@prisma/client';
 import { CurrentClub } from '../common/decorators/current-club.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -16,9 +16,11 @@ import {
   FamilyPayerCreditGraph,
   PayerCreditApplyResultGraph,
   PayerCreditCandidateGraph,
+  PayerCreditDepositRefundGraph,
   PayerCreditDepositResultGraph,
   PayerCreditGraph,
 } from './models/payer-credit.model';
+import { PayerCreditRefundsService } from './payer-credit-refunds.service';
 import { PayerCreditService, type PayerCredit } from './payer-credit.service';
 import { PaymentsService } from './payments.service';
 
@@ -64,6 +66,7 @@ export class PayerCreditResolver {
   constructor(
     private readonly credits: PayerCreditService,
     private readonly payments: PaymentsService,
+    private readonly refunds: PayerCreditRefundsService,
   ) {}
 
   @Query(() => PayerCreditGraph, {
@@ -117,6 +120,25 @@ export class PayerCreditResolver {
       paymentId: payment.id,
       balanceCents: credit.balanceCents,
     };
+  }
+
+  @Mutation(() => PayerCreditDepositRefundGraph, {
+    name: 'refundPayerCreditDeposit',
+    description:
+      'Rembourse le versement d’une avance en espèces, par virement ou par chèque, au plus le crédit disponible (ADR-0022). Une avance carte se rembourse par refundClubPayment.',
+  })
+  async refundPayerCreditDeposit(
+    @CurrentClub() club: Club,
+    @Args('paymentId', { type: () => ID }) paymentId: string,
+    @Args('reason') reason: string,
+    @Args('amountCents', { type: () => Int, nullable: true })
+    amountCents?: number | null,
+  ): Promise<PayerCreditDepositRefundGraph> {
+    return this.refunds.refundDeposit(club.id, {
+      paymentId,
+      amountCents: amountCents ?? null,
+      reason,
+    });
   }
 
   @Query(() => [PayerCreditCandidateGraph], {

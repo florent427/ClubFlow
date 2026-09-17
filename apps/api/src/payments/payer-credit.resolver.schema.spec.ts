@@ -51,6 +51,22 @@ describe('Crédit du payeur — schéma GraphQL (ADR-0022)', () => {
     expect(sdl).toMatch(/enum ClubPaymentMethod \{[^}]*PAYER_CREDIT[^}]*\}/);
   });
 
+  it('expose le remboursement d’une avance hors carte (lot 4, tâche 4.2)', async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [GraphQLSchemaBuilderModule],
+    }).compile();
+    const factory = moduleRef.get(GraphQLSchemaFactory);
+    const sdl = printSchema(await factory.create([PayerCreditResolver, PaymentsResolver]));
+
+    expect(sdl).toContain(
+      'refundPayerCreditDeposit(paymentId: ID!, reason: String!, amountCents: Int): PayerCreditDepositRefundGraph!',
+    );
+    const resultat = sdl.match(/type PayerCreditDepositRefundGraph \{[^}]*\}/)?.[0] ?? '';
+    for (const champ of ['refundPaymentId: ID!', 'creditNoteId: ID!', 'amountCents: Int!', 'kind: String!', 'creditBalanceCents: Int!']) {
+      expect(resultat).toContain(champ);
+    }
+  });
+
   it('expose le crédit au portail et dans l’appli, et le crédit d’un foyer à l’admin (lot 3)', async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [GraphQLSchemaBuilderModule],

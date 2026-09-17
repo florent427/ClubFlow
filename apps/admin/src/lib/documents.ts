@@ -927,6 +927,27 @@ export const CLUB_INVOICE_DETAIL = gql`
   }
 `;
 
+/** Avance versée en espèces, par virement ou par chèque (ADR-0022, tâche 4.2). */
+export const REFUND_PAYER_CREDIT_DEPOSIT = gql`
+  mutation RefundPayerCreditDeposit(
+    $paymentId: ID!
+    $reason: String!
+    $amountCents: Int
+  ) {
+    refundPayerCreditDeposit(
+      paymentId: $paymentId
+      reason: $reason
+      amountCents: $amountCents
+    ) {
+      refundPaymentId
+      creditNoteId
+      amountCents
+      kind
+      creditBalanceCents
+    }
+  }
+`;
+
 export const REFUND_CLUB_PAYMENT = gql`
   mutation RefundClubPayment(
     $paymentId: String!

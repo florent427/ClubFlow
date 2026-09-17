@@ -53,6 +53,11 @@ Une avance est une facture de nature `PAYER_CREDIT_DEPOSIT`, portée par une nou
   - **Sous le verrou de la personne, puis du reçu**, le crédit se relit, le remboursement se crée chez Stripe et s'enregistre aussitôt s'il a abouti. Une imputation simultanée attend et voit le crédit diminué. Le webhook `charge.refunded` le retrouve sans l'écrire deux fois (`stripeRefundId` unique). Un remboursement en attente chez Stripe n'a rien rendu : le webhook l'enregistrera. Le crédit n'est pas réservé pendant l'attente ; s'il sert entre-temps, il devient négatif à l'enregistrement, à régulariser (§4).
   - **Enregistrement en échec** après l'accord de Stripe : le remboursement est rendu au trésorier comme fait, et le webhook l'écrit.
   - **Depuis le tableau de bord Stripe** : pas de plafond ; le crédit peut devenir négatif, à régulariser (§4).
+  - **En espèces, par virement ou par chèque**, depuis le même bouton, avec le même plafond et les mêmes verrous : l'argent sort par le moyen de l'avance, comme pour une commande boutique (ADR-0019).
+    - Espèces : rendues depuis la caisse de l'encaissement.
+    - Virement : à rendre depuis la banque de l'encaissement.
+    - Chèque : rendu s'il est encore en portefeuille et remboursé en entier ; sinon, la somme se rend par virement, depuis la banque de sa remise ou celle du club.
+    - Paiement négatif, avoir et chèque rendu tiennent dans une transaction ; la contre-passation TRANSFER suit le commit et porte le compte d'où l'argent sort.
 
 ### 3. Utiliser le crédit, c'est régler la facture « par crédit »
 
