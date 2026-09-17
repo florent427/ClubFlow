@@ -1831,7 +1831,7 @@ describe('ClubFlow API (e2e)', () => {
           createClubSponsorshipDeal(input: $input) { id sponsorName }
         }`,
         variables: {
-          input: { sponsorName: 'E2E Sponsor', amountCents: 25_000 },
+          input: { sponsorName: 'E2E Sponsor', kind: 'CASH', valueCents: 25_000 },
         },
       });
     expect(spoRes.status).toBe(200);
@@ -2102,7 +2102,9 @@ describe('ClubFlow API (e2e)', () => {
       expect(delC.body.errors).toBeUndefined();
       expect(delC.body.data.deleteClubContact).toBe(true);
 
-      await prisma.user.delete({ where: { email } });
+      // Plus aucune fiche ne référence le compte : il part avec le contact,
+      // pour qu'une nouvelle inscription à cette adresse reste possible.
+      expect(await prisma.user.findUnique({ where: { email } })).toBeNull();
     });
 
     it('promoteContactToMember crée un membre dans clubMembers', async () => {
