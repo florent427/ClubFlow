@@ -5,6 +5,16 @@ export function formatEuroCents(cents: number): string {
   }).format(cents / 100);
 }
 
+/** « 12 sept. 2026 » ; chaîne vide sans date. */
+export function formatShortDate(iso: string | null): string {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
 export function formatRangeHours(startIso: string, endIso: string): string {
   const s = new Date(startIso);
   const e = new Date(endIso);

@@ -158,6 +158,46 @@ export type ViewerAllFamilyBillingData = {
   viewerAllFamilyBillingSummaries: ViewerFamilyBillingSummary[];
 };
 
+/* --- Crédit du payeur (ADR-0022) --- */
+
+export type ViewerPayerCreditMovementKind =
+  | 'DEPOSIT'
+  | 'DEPOSIT_REFUND'
+  | 'USE'
+  | 'USE_RETURN';
+
+export type ViewerPayerCreditMovement = {
+  paymentId: string;
+  kind: ViewerPayerCreditMovementKind;
+  /** Libellé du reçu d'avance, ou de la facture réglée. */
+  label: string;
+  /** Moyen de versement d'une avance ; null pour une utilisation. */
+  method: string | null;
+  /** Effet sur le crédit : positif s'il l'augmente. */
+  amountCents: number;
+  createdAt: string;
+};
+
+export type ViewerPayerCredit = {
+  /** Négatif : à régulariser auprès du club. */
+  balanceCents: number;
+  /** Du plus récent au plus ancien. */
+  movements: ViewerPayerCreditMovement[];
+};
+
+export type ViewerPayerCreditData = { viewerPayerCredit: ViewerPayerCredit };
+
+export type ViewerApplyPayerCreditData = {
+  viewerApplyPayerCredit: {
+    paymentId: string;
+    invoiceId: string;
+    amountCents: number;
+    creditBalanceCents: number;
+    invoiceStatus: string;
+    invoiceBalanceCents: number;
+  };
+};
+
 export type ClubQueryData = {
   club: {
     id: string;

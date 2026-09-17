@@ -356,6 +356,44 @@ export const VIEWER_CREATE_INVOICE_CHECKOUT_SESSION = gql`
 `;
 
 /**
+ * Crédit du compte connecté (ADR-0022) : solde et historique. Gardé par le
+ * module Paiement : une erreur veut dire « rien à afficher », pas « 0 € ».
+ */
+export const VIEWER_PAYER_CREDIT = gql`
+  query ViewerPayerCredit {
+    viewerPayerCredit {
+      balanceCents
+      movements {
+        paymentId
+        kind
+        label
+        method
+        amountCents
+        createdAt
+      }
+    }
+  }
+`;
+
+/**
+ * Règle une facture du foyer avec le crédit du compte. `amountCents` : le
+ * montant que l'adhérent a confirmé ; l'API refuse s'il dépasse le crédit ou
+ * le reste dû relus sous verrou.
+ */
+export const VIEWER_APPLY_PAYER_CREDIT = gql`
+  mutation ViewerApplyPayerCredit($invoiceId: ID!, $amountCents: Int) {
+    viewerApplyPayerCredit(invoiceId: $invoiceId, amountCents: $amountCents) {
+      paymentId
+      invoiceId
+      amountCents
+      creditBalanceCents
+      invoiceStatus
+      invoiceBalanceCents
+    }
+  }
+`;
+
+/**
  * Identité visuelle du club : couleurs (palette vitrine) + logo + nom +
  * tagline. Utilisée par le ThemeProvider mobile pour styliser
  * dynamiquement l'app aux couleurs du club courant.

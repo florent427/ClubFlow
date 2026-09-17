@@ -33,6 +33,28 @@ export type PayerCreditHolder = {
 type Db = Pick<Prisma.TransactionClient, 'member' | 'contact'>;
 
 /**
+ * La personne d'un compte utilisateur dans le club : sa fiche membre, sinon sa
+ * fiche contact. Un compte n'a qu'une fiche de chaque par club, et les deux
+ * partagent le même crédit (§1). `null` si le compte n'a aucune fiche ici.
+ */
+export async function resolveAccountPayerCreditRef(
+  db: Db,
+  clubId: string,
+  userId: string,
+): Promise<PayerCreditHolderRef | null> {
+  const member = await db.member.findFirst({
+    where: { clubId, userId },
+    select: { id: true },
+  });
+  if (member) return { memberId: member.id };
+  const contact = await db.contact.findFirst({
+    where: { clubId, userId },
+    select: { id: true },
+  });
+  return contact ? { contactId: contact.id } : null;
+}
+
+/**
  * Résout la personne créditée et ses profils. Exactement un identifiant, et du
  * club : un identifiant d'un autre club est introuvable, jamais accepté.
  */

@@ -1,9 +1,11 @@
 import { useMutation, useQuery } from '@apollo/client/react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useClubModules } from '../../lib/club-modules-context';
 import {
   CLUB_CONTACTS,
   CLUB_FAMILIES,
+  CLUB_FAMILY_PAYER_CREDITS,
   CLUB_HOUSEHOLD_GROUPS,
   CLUB_MEMBERS,
   CREATE_HOUSEHOLD_GROUP,
@@ -18,10 +20,19 @@ import {
 } from '../../lib/documents';
 import type {
   ClubContactsQueryData,
+  ClubFamilyPayerCreditsQueryData,
   FamiliesQueryData,
   MembersQueryData,
 } from '../../lib/types';
 import { useMembersUi } from './members-ui-context';
+
+function formatEuros(cents: number): string {
+  return (cents / 100).toLocaleString('fr-FR', {
+    style: 'currency',
+    currency: 'EUR',
+    maximumFractionDigits: 2,
+  });
+}
 
 function FamilyLabelEditor({
   serverLabel,
@@ -81,6 +92,19 @@ export function FamilyDetailDrawer({
     useQuery<MembersQueryData>(CLUB_MEMBERS);
   const { data: contactsData, refetch: refetchContacts } =
     useQuery<ClubContactsQueryData>(CLUB_CONTACTS);
+  // Crédit des personnes du foyer (ADR-0022) : lecture seule, module Paiement.
+  const { isEnabled } = useClubModules();
+  const paymentOn = isEnabled('PAYMENT');
+  const {
+    data: creditsData,
+    loading: creditsLoading,
+    error: creditsError,
+    refetch: refetchCredits,
+  } = useQuery<ClubFamilyPayerCreditsQueryData>(CLUB_FAMILY_PAYER_CREDITS, {
+    variables: { familyId },
+    skip: !paymentOn,
+    fetchPolicy: 'cache-and-network',
+  });
 
   useEffect(() => {
     void refetchFamilies();
@@ -120,6 +144,8 @@ export function FamilyDetailDrawer({
     void refetchMembers();
     void refetchHg();
     void refetchContacts();
+    // Retirer ou ajouter une personne change les lignes du crédit.
+    if (paymentOn) void refetchCredits();
   }
 
   const [createHgMutation] = useMutation(CREATE_HOUSEHOLD_GROUP, {
@@ -541,6 +567,62 @@ export function FamilyDetailDrawer({
                 })}
               </ul>
             </div>
+
+            {paymentOn ? (
+              <div className="family-drawer__section payer-credit">
+                <h3 className="family-drawer__h">
+                  <span className="material-symbols-outlined" aria-hidden>
+                    savings
+                  </span>
+                  Crédit
+                </h3>
+                {creditsError ? (
+                  <p className="form-error" role="alert">
+                    Crédit indisponible : {creditsError.message}
+                  </p>
+                ) : creditsLoading && !creditsData ? (
+                  <p className="muted">Chargement…</p>
+                ) : (creditsData?.clubFamilyPayerCredits ?? []).length === 0 ? (
+                  <p className="muted">Aucun crédit parmi les personnes du foyer.</p>
+                ) : (
+                  <ul className="payer-credit__deposits">
+                    {(creditsData?.clubFamilyPayerCredits ?? []).map((c) => (
+                      <li
+                        key={c.memberId ?? c.contactId}
+                        className="payer-credit__deposit"
+                      >
+                        <div>
+                          <div>{c.displayName}</div>
+                          {c.balanceCents < 0 ? (
+                            <div className="muted">À régulariser</div>
+                          ) : null}
+                        </div>
+                        <div className="payer-credit__deposit-side">
+                          <strong>{formatEuros(c.balanceCents)}</strong>
+                          {c.memberId ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-tight"
+                              onClick={() => openAnnuaireForMember(c.memberId!)}
+                            >
+                              Fiche
+                            </button>
+                          ) : (
+                            <Link className="btn btn-ghost btn-tight" to="/contacts">
+                              Contacts
+                            </Link>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="muted members-form__hint">
+                  Le foyer ne détient pas de crédit : chacun a le sien, versé
+                  et utilisé depuis sa fiche ou depuis une facture.
+                </p>
+              </div>
+            ) : null}
 
             <div className="family-drawer__section">
               <h3 className="family-drawer__h">Payeur contact</h3>

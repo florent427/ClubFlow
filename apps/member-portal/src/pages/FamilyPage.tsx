@@ -3,12 +3,18 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { InviteFamilyMemberCta } from '../components/InviteFamilyMemberCta';
 import { JoinFamilyByPayerEmailCta } from '../components/JoinFamilyByPayerEmailCta';
-import { VIEWER_ALL_FAMILY_BILLING } from '../lib/viewer-documents';
+import { PayerCreditKpi } from '../components/billing/PayerCredit';
+import {
+  VIEWER_ALL_FAMILY_BILLING,
+  VIEWER_PAYER_CREDIT,
+} from '../lib/viewer-documents';
 import type {
   ViewerAllBillingData,
   ViewerFamilyBillingSummary,
+  ViewerPayerCreditData,
 } from '../lib/viewer-types';
 import { formatEuroCents } from '../lib/format';
+import { shouldShowPayerCredit } from '../lib/payer-credit';
 
 /**
  * Recommandation UX #8 — Reformulation du texte de rattachement familial
@@ -100,6 +106,13 @@ export function FamilyPage() {
     return summaries[0] ?? null;
   }, [summaries, selectedKey]);
 
+  // Le crédit est celui du compte, pas d'un foyer : hors des onglets.
+  const { data: creditData } = useQuery<ViewerPayerCreditData>(
+    VIEWER_PAYER_CREDIT,
+    { errorPolicy: 'all', fetchPolicy: 'cache-and-network' },
+  );
+  const credit = creditData?.viewerPayerCredit ?? null;
+
   const multiFamily = summaries.length > 1;
   const anyPayerView = summaries.some((s) => s.isPayerView);
   const shared = activeSummary?.isHouseholdGroupSpace === true;
@@ -140,6 +153,18 @@ export function FamilyPage() {
         <div className="mp-family-actions">
           <InviteFamilyMemberCta />
         </div>
+      ) : null}
+
+      {anyPayerView && shouldShowPayerCredit(credit) ? (
+        <section className="mp-billing-kpis" aria-label="Crédit">
+          <PayerCreditKpi credit={credit}>
+            <Link to="/factures" className="mp-link">
+              {credit.balanceCents > 0
+                ? 'Voir l’historique et l’utiliser'
+                : 'Voir l’historique'}
+            </Link>
+          </PayerCreditKpi>
+        </section>
       ) : null}
 
       {multiFamily ? (

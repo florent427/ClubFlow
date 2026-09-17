@@ -35,6 +35,8 @@ type Payment = {
   createdAt: Date;
   invoice: { id: string; label: string };
 };
+type Family = { id: string; clubId: string };
+type Link = { familyId: string; memberId: string | null; contactId: string | null; createdAt: Date };
 
 function selon<T extends Record<string, unknown>>(
   rows: T[],
@@ -65,6 +67,8 @@ function base() {
     { id: 'm-camille', clubId: 'club-1', userId: 'u-camille', firstName: 'Camille', lastName: 'Titulaire' },
     { id: 'm-sans-compte', clubId: 'club-1', userId: null, firstName: 'Léo', lastName: 'Guichet' },
     { id: 'm-ailleurs', clubId: 'club-2', userId: 'u-autre', firstName: 'Nina', lastName: 'Ailleurs' },
+    { id: 'm-sans-credit', clubId: 'club-1', userId: null, firstName: 'Zoé', lastName: 'Sanscrédit' },
+    { id: 'm-litige', clubId: 'club-1', userId: null, firstName: 'Inès', lastName: 'Litige' },
   ];
   const contacts: Contact[] = [
     { id: 'c-camille', clubId: 'club-1', userId: 'u-camille', firstName: 'Camille', lastName: 'Titulaire' },
@@ -101,6 +105,8 @@ function base() {
     // Le même compte dans un autre club.
     receipt({ id: 'r-club2', clubId: 'club-2', payerCreditContactId: 'c-camille-club2', payments: [pay('p6', 7000, 8)] }),
     receipt({ id: 'r-guichet', payerCreditMemberId: 'm-sans-compte', payments: [pay('p7', 1000, 9)] }),
+    // Avance utilisée, puis remboursée : le crédit devient négatif.
+    receipt({ id: 'r-litige', payerCreditMemberId: 'm-litige', payments: [pay('p8', 1000, 10), pay('p8-litige', -1000, 15)] }),
   ];
   const cotisation = { id: 'f-cotisation', label: 'Cotisation 2026' };
   const payments: Payment[] = [
@@ -114,9 +120,42 @@ function base() {
     { id: 'u-guichet', clubId: 'club-1', method: ClubPaymentMethod.PAYER_CREDIT, amountCents: 400, paidByMemberId: 'm-sans-compte', paidByContactId: null, createdAt: jour(12), invoice: cotisation },
     // Le même compte dans un autre club.
     { id: 'u-club2', clubId: 'club-2', method: ClubPaymentMethod.PAYER_CREDIT, amountCents: 700, paidByMemberId: null, paidByContactId: 'c-camille-club2', createdAt: jour(13), invoice: cotisation },
+    { id: 'u-litige', clubId: 'club-1', method: ClubPaymentMethod.PAYER_CREDIT, amountCents: 300, paidByMemberId: 'm-litige', paidByContactId: null, createdAt: jour(12), invoice: cotisation },
+  ];
+  const families: Family[] = [
+    { id: 'fam-1', clubId: 'club-1' },
+    { id: 'fam-club2', clubId: 'club-2' },
+  ];
+  // Dans le désordre : le foyer les liste par date de rattachement.
+  const links: Link[] = [
+    { familyId: 'fam-1', memberId: null, contactId: 'c-autre', createdAt: jour(5) },
+    { familyId: 'fam-1', memberId: 'm-camille', contactId: null, createdAt: jour(2) },
+    { familyId: 'fam-1', memberId: 'm-litige', contactId: null, createdAt: jour(6) },
+    { familyId: 'fam-1', memberId: 'm-sans-credit', contactId: null, createdAt: jour(4) },
+    // Le contact du compte de Camille : la même personne, une seule ligne.
+    { familyId: 'fam-1', memberId: null, contactId: 'c-camille', createdAt: jour(3) },
+    // Une fiche d'un autre club rattachée par erreur : pas de crédit ici.
+    { familyId: 'fam-1', memberId: 'm-ailleurs', contactId: null, createdAt: jour(7) },
+    { familyId: 'fam-1', memberId: 'm-sans-compte', contactId: null, createdAt: jour(1) },
+    { familyId: 'fam-club2', memberId: null, contactId: 'c-camille-club2', createdAt: jour(1) },
   ];
 
   const prisma = {
+    family: {
+      findFirst: jest.fn(async ({ where }: { where: Record<string, unknown> }) =>
+        selon(families, where, ['id', 'clubId'])[0] ?? null,
+      ),
+    },
+    familyMember: {
+      findMany: jest.fn(
+        async ({ where, orderBy }: { where: Record<string, unknown>; orderBy?: { createdAt: 'asc' | 'desc' } }) => {
+          const rows = selon(links, where, ['familyId']);
+          if (!orderBy) return rows;
+          const sens = orderBy.createdAt === 'asc' ? 1 : -1;
+          return [...rows].sort((a, b) => sens * (a.createdAt.getTime() - b.createdAt.getTime()));
+        },
+      ),
+    },
     member: {
       findFirst: jest.fn(async ({ where }: { where: Record<string, unknown> }) =>
         selon(members, where, ['id', 'clubId', 'userId'])[0] ?? null,
@@ -210,5 +249,22 @@ describe('PayerCreditService.credit', () => {
 
     await expect(svc.credit('club-1', { memberId: 'm-ailleurs' })).rejects.toBeInstanceOf(NotFoundException);
     await expect(svc.credit('club-1', { contactId: 'c-camille-club2' })).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('PayerCreditService.familyCredits — le crédit d’un foyer, une ligne par personne', () => {
+  it('chaque personne une fois, dans l’ordre du foyer ; crédit nul omis, crédit négatif gardé', async () => {
+    const lignes = await base().familyCredits('club-1', 'fam-1');
+
+    expect(lignes).toEqual([
+      { memberId: 'm-sans-compte', contactId: null, displayName: 'Léo Guichet', balanceCents: 600 },
+      { memberId: 'm-camille', contactId: null, displayName: 'Camille Titulaire', balanceCents: 6500 },
+      { memberId: null, contactId: 'c-autre', displayName: 'Paul Autre', balanceCents: 5000 },
+      { memberId: 'm-litige', contactId: null, displayName: 'Inès Litige', balanceCents: -300 },
+    ]);
+  });
+
+  it('un foyer d’un autre club est introuvable', async () => {
+    await expect(base().familyCredits('club-1', 'fam-club2')).rejects.toBeInstanceOf(NotFoundException);
   });
 });

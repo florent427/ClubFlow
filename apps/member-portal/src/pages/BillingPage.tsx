@@ -2,21 +2,36 @@ import { useMutation, useQuery } from '@apollo/client/react';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
+  VIEWER_APPLY_PAYER_CREDIT,
   VIEWER_CREATE_INVOICE_CHECKOUT_SESSION,
   VIEWER_FAMILY_BILLING,
+  VIEWER_PAYER_CREDIT,
 } from '../lib/viewer-documents';
 import type {
+  ViewerApplyPayerCreditData,
   ViewerBillingData,
   ViewerCreateInvoiceCheckoutSessionData,
+  ViewerPayerCreditData,
 } from '../lib/viewer-types';
-import { formatEuroCents } from '../lib/format';
+import { formatEuroCents, formatShortDate } from '../lib/format';
+import {
+  payerCreditApplyCents,
+  payerCreditApplyConfirmation,
+  paymentMethodLabel,
+  shouldShowPayerCredit,
+} from '../lib/payer-credit';
 import { EmptyState } from '../components/ui/EmptyState';
 import { LoadingState } from '../components/ui/LoadingState';
 import { ErrorState } from '../components/ui/ErrorState';
+import { ConfirmModal } from '../components/ui/ConfirmModal';
 import { useToast } from '../components/ToastProvider';
 import { DocumentsToSignBanner } from '../components/DocumentsToSignBanner';
 import { InvoicePaymentSchedule } from '../components/billing/InvoicePaymentSchedule';
 import { InvoiceManualPaymentChoice } from '../components/billing/InvoiceManualPaymentChoice';
+import {
+  PayerCreditHistory,
+  PayerCreditKpi,
+} from '../components/billing/PayerCredit';
 
 type StatusFilter = 'ALL' | 'OPEN' | 'PAID' | 'DRAFT';
 
@@ -33,32 +48,6 @@ function statusLabel(status: string): string {
     default:
       return status;
   }
-}
-
-function methodLabel(method: string): string {
-  switch (method) {
-    case 'STRIPE_CARD':
-      return 'Carte bancaire';
-    case 'MANUAL_CASH':
-      return 'Espèces';
-    case 'MANUAL_CHECK':
-      return 'Chèque';
-    case 'MANUAL_TRANSFER':
-      return 'Virement';
-    case 'PAYER_CREDIT':
-      return 'Crédit';
-    default:
-      return method;
-  }
-}
-
-function formatDate(iso: string | null): string {
-  if (!iso) return '';
-  return new Date(iso).toLocaleDateString('fr-FR', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
 }
 
 export function BillingPage() {
@@ -83,6 +72,20 @@ export function BillingPage() {
     useMutation<ViewerCreateInvoiceCheckoutSessionData>(
       VIEWER_CREATE_INVOICE_CHECKOUT_SESSION,
     );
+
+  // Crédit du compte (ADR-0022). Une erreur, module Paiement coupé compris,
+  // ne donne rien à afficher : ni solde, ni bouton.
+  const { data: creditData, refetch: refetchCredit } =
+    useQuery<ViewerPayerCreditData>(VIEWER_PAYER_CREDIT, {
+      errorPolicy: 'all',
+      fetchPolicy: 'cache-and-network',
+    });
+  const credit = creditData?.viewerPayerCredit ?? null;
+  const [applyPayerCredit] = useMutation<ViewerApplyPayerCreditData>(
+    VIEWER_APPLY_PAYER_CREDIT,
+  );
+  const [creditInvoiceId, setCreditInvoiceId] = useState<string | null>(null);
+  const [applyingCredit, setApplyingCredit] = useState(false);
 
   useEffect(() => {
     const paid = searchParams.get('paid');
@@ -120,6 +123,37 @@ export function BillingPage() {
 
   const summary = data?.viewerFamilyBillingSummary;
   const invoices = summary?.invoices ?? [];
+  const creditInvoice = invoices.find((inv) => inv.id === creditInvoiceId);
+  const creditApplyCents = creditInvoice
+    ? payerCreditApplyCents(creditInvoice, credit?.balanceCents)
+    : 0;
+
+  // Le montant envoyé est celui que l'adhérent vient de confirmer : l'API le
+  // refuse s'il dépasse le crédit ou le reste dû relus sous verrou.
+  async function handleApplyCredit(): Promise<void> {
+    if (!creditInvoice || creditApplyCents <= 0 || applyingCredit) return;
+    setApplyingCredit(true);
+    try {
+      const res = await applyPayerCredit({
+        variables: {
+          invoiceId: creditInvoice.id,
+          amountCents: creditApplyCents,
+        },
+      });
+      const applied =
+        res.data?.viewerApplyPayerCredit.amountCents ?? creditApplyCents;
+      showToast(`${formatEuroCents(applied)} réglés avec votre crédit.`, 'success');
+    } catch (e) {
+      const msg =
+        e instanceof Error ? e.message : 'Règlement par crédit impossible.';
+      showToast(msg, 'error');
+    } finally {
+      setApplyingCredit(false);
+      setCreditInvoiceId(null);
+      void refetch();
+      void refetchCredit();
+    }
+  }
 
   const totals = useMemo(() => {
     let open = 0;
@@ -207,7 +241,13 @@ export function BillingPage() {
           <span className="mp-billing-kpi__label">Factures</span>
           <span className="mp-billing-kpi__value">{invoices.length}</span>
         </article>
+        {shouldShowPayerCredit(credit) ? (
+          <PayerCreditKpi credit={credit} />
+        ) : null}
       </section>
+      {shouldShowPayerCredit(credit) ? (
+        <PayerCreditHistory movements={credit.movements} />
+      ) : null}
 
       <div className="mp-tabs" role="tablist" aria-label="Filtrer les factures">
         {(
@@ -282,7 +322,7 @@ export function BillingPage() {
                       <span
                         className={`mp-invoice-item__due${overdue ? ' mp-invoice-item__due--overdue' : ''}`}
                       >
-                        Échéance {formatDate(inv.dueAt)}
+                        Échéance {formatShortDate(inv.dueAt)}
                         {overdue ? ' · en retard' : ''}
                       </span>
                     ) : null}
@@ -344,10 +384,10 @@ export function BillingPage() {
                               >
                                 <div>
                                   <div className="mp-invoice-payments-list__method">
-                                    {methodLabel(p.method)}
+                                    {paymentMethodLabel(p.method)}
                                   </div>
                                   <div className="mp-invoice-payments-list__meta">
-                                    {formatDate(p.createdAt)} · {payer}
+                                    {formatShortDate(p.createdAt)} · {payer}
                                   </div>
                                 </div>
                                 <div className="mp-invoice-payments-list__amount">
@@ -379,6 +419,22 @@ export function BillingPage() {
                             ? 'Redirection…'
                             : `Payer en ligne ${formatEuroCents(inv.balanceCents)}`}
                         </button>
+                        {payerCreditApplyCents(inv, credit?.balanceCents) > 0 ? (
+                          <button
+                            type="button"
+                            className="mp-btn mp-btn-outline"
+                            onClick={() => setCreditInvoiceId(inv.id)}
+                            disabled={payingId !== null || applyingCredit}
+                          >
+                            <span
+                              className="material-symbols-outlined"
+                              aria-hidden
+                            >
+                              account_balance_wallet
+                            </span>
+                            {`Utiliser mon crédit ${formatEuroCents(payerCreditApplyCents(inv, credit?.balanceCents))}`}
+                          </button>
+                        ) : null}
                         <p className="mp-hint mp-invoice-item__tip">
                           Paiement sécurisé Stripe. Vous pouvez également régler
                           directement auprès du club.
@@ -404,6 +460,24 @@ export function BillingPage() {
           })}
         </ul>
       )}
+      <ConfirmModal
+        open={creditInvoice != null && creditApplyCents > 0}
+        title="Utiliser mon crédit"
+        message={
+          creditInvoice && credit
+            ? payerCreditApplyConfirmation({
+                invoiceLabel: creditInvoice.label,
+                applyCents: creditApplyCents,
+                invoiceBalanceCents: creditInvoice.balanceCents,
+                creditBalanceCents: credit.balanceCents,
+              })
+            : undefined
+        }
+        confirmLabel={`Régler ${formatEuroCents(creditApplyCents)}`}
+        loading={applyingCredit}
+        onConfirm={() => void handleApplyCredit()}
+        onCancel={() => setCreditInvoiceId(null)}
+      />
     </div>
   );
 }

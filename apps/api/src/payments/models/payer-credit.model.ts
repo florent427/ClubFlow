@@ -107,6 +107,27 @@ export class PayerCreditCandidateGraph {
   balanceCents!: number;
 }
 
+/** Le crédit d'une personne d'un foyer : le foyer affiche, il ne possède rien. */
+@ObjectType()
+export class FamilyPayerCreditGraph {
+  @Field(() => ID, {
+    nullable: true,
+    description: 'Fiche de la personne dans le foyer : un membre OU un contact.',
+  })
+  memberId!: string | null;
+
+  @Field(() => ID, { nullable: true })
+  contactId!: string | null;
+
+  @Field()
+  displayName!: string;
+
+  @Field(() => Int, {
+    description: 'Crédit de la personne, jamais nul ; négatif s’il est à régulariser.',
+  })
+  balanceCents!: number;
+}
+
 @ObjectType()
 export class PayerCreditApplyResultGraph {
   @Field(() => ID)

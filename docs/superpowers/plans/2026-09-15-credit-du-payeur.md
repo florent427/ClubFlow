@@ -438,18 +438,120 @@ Limites connues :
 
 ## Lot 3 — Portail et appli
 
+Choix de Florent : le correctif des routes REST (PDF, exports, médias) d'abord,
+à part (livré en 0.68.3) ; « Créditer mon compte » plafonné à 1 000 € ; le remboursement carte
+d'une avance fait avec ce lot ; le tiroir foyer, une ligne par personne. Le lot
+se livre en deux fois : A (tâches 3.1 et 3.2), puis B (tâche 3.3).
+
 ### Task 3.1 : Consultation
 
-- [ ] `viewerPayerCredit` pour le profil actif : solde et historique, en tête de
-  `/factures` et sur la page famille. Appli : écran Famille.
-- [ ] Admin : dans le tiroir foyer, total des crédits de ses payeurs, en lecture
-  seule.
+- [x] `viewerPayerCredit` : solde et historique **du compte connecté**, pas du
+  profil actif. Un payeur voit les profils de tous les membres de son foyer et
+  peut en activer un ; le crédit d'un autre adulte est son argent à lui.
+  - La personne du compte : sa fiche membre dans le club, sinon sa fiche contact
+    (`resolveAccountPayerCreditRef`), puis `resolvePayerCreditHolder`, qui réunit
+    les deux. Un compte sans fiche dans le club : crédit nul, historique vide.
+  - Historique à plat (`payerCreditMovements`) : un paiement par ligne, du plus
+    récent au plus ancien, chacun avec son effet sur le crédit (avance,
+    avance remboursée, utilisation, crédit rendu). La somme des lignes est le
+    solde. Sans référence de paiement : ni numéro de chèque, ni identifiant Stripe.
+  - Portail : indicateur « Crédit disponible » (ou « Crédit à régulariser ») et
+    historique replié en tête de `/factures` ; rappel sur la page Famille, hors
+    des onglets de foyer. Affichés pour un payeur seulement, et jamais sur une
+    requête en erreur (module Paiement coupé) : rien plutôt que « 0,00 € ».
+  - Appli : carte « Crédit » sur l'écran Famille, historique à la demande.
+- [x] Admin : `clubFamilyPayerCredits(familyId)`, section « Crédit » du tiroir
+  foyer, en lecture seule. Une ligne par personne liée au foyer, membre et
+  contact d'un même compte réunis ; crédit nul omis, crédit négatif gardé (« À
+  régulariser ») ; accès à la fiche. Masquée, et sans requête, module Paiement
+  coupé.
 
 ### Task 3.2 : « Utiliser mon crédit »
 
-- [ ] `viewerApplyPayerCredit(invoiceId, amountCents?)` : périmètre payeur du
-  portail, puis `PayerCreditService.apply`.
-- [ ] Bouton sur une facture ouverte, au portail et dans l'appli.
+- [x] `viewerApplyPayerCredit(invoiceId, amountCents?)` : périmètre payeur du
+  profil actif (`resolvePayerInvoiceWhere`, celui de « Payer en ligne »), puis
+  `PaymentsService.applyPayerCredit` au nom de la personne du compte, qui refait
+  le contrôle du payeur et relit crédit et reste dû sous verrou. Hors périmètre,
+  la facture est introuvable. Limité à 10 par minute.
+- [x] Bouton sur une facture ouverte, au portail et dans l'appli, montrant le
+  montant : le plus petit du reste dû et du crédit. Une confirmation dit ce qui
+  restera à payer et le crédit après ; le montant confirmé est envoyé, et l'API
+  le refuse s'il dépasse ce qu'elle relit. Facture et crédit se rechargent après
+  une réussite comme après un refus.
+- [x] Tests.
+  - `viewer-payer-credit.resolver.spec.ts`, 9 tests, sur le vrai calcul du
+    crédit, le vrai périmètre payeur et la vraie imputation : crédit du compte
+    et non du profil actif (affiché et dépensé), fiches du compte dans un autre
+    club, montant confirmé, défaut au plus petit, facture hors périmètre que la
+    personne pourrait pourtant régler, profil qui ne paie pour aucun foyer,
+    gardes du résolveur.
+  - `payer-credit-movements.spec.ts` (2), `payer-credit.service.spec.ts`
+    (+2, crédit d'un foyer), test de construction du schéma (+1).
+  - Le monde simulé de l'imputation passe dans `test/payer-credit-world.ts`,
+    partagé : tests et monde identiques à l'octet près, 22 tests verts, puis
+    relation `contact` d'un lien et foyer inclus pour le périmètre payeur.
+  - Portail et appli : `lib/payer-credit.ts` et ses 11 tests chacun.
+- [x] Mutations à la main : 25 tuées sur 25, chacune par les tests attendus.
+  - Personne du compte, 2 : fiche membre ou contact cherchée hors du club (1
+    rouge chacune).
+  - Historique, 7 : signe d'une utilisation (2) ; avance et remboursement
+    confondus (2) ; utilisation et crédit rendu confondus (2) ; ordre inversé
+    (2) ; ordre des lignes simultanées (1) ; moyen de versement perdu (2) ;
+    facture désignée par son identifiant (2).
+  - Résolveur, 8 : crédit affiché du profil actif (2) ; crédit dépensé du profil
+    actif (1) ; facture hors périmètre (1) ; profil sans foyer accepté (1) ;
+    montant confirmé ignoré (1) ; historique vide (1) ; sans la garde du profil
+    actif (1) ; sans le module Paiement (1).
+  - Modèle, 1 : référence de paiement exposée au portail (1). Sa première
+    forme ne compilait pas ; rejouée en champ facultatif.
+  - Foyer, 7 : foyer hors du club (1) ; une personne sur deux lignes (1) ;
+    crédit nul affiché (1) ; crédit négatif caché (1) ; ordre du foyer (1) ;
+    fiche d'un autre club qui fait échouer le foyer (1) ; contacts ignorés (1).
+- [x] Vérifications : typecheck de l'API, de l'admin, du portail et de l'appli
+  (`npm ci` dans `apps/mobile` du worktree, 0 erreur) ; Jest complet, 1 828
+  tests ; vitest portail 75, admin 167, appli 55.
+- [x] Rendu vérifié sur une API simulée (Docker arrêté) : portail (solde,
+  historique, confirmation, règlement puis rechargement, crédit négatif,
+  requête en erreur) ; tiroir foyer de l'admin (lignes, foyer sans crédit,
+  module Paiement coupé).
+- [x] Recette staging de la livraison A, sur club-demo, le 2026-09-17 (commit
+  `0f49025`), avec le crédit de 10 € de Florent laissé par le lot 2 :
+  - **Déploiement** : les trois champs répondaient « Cannot query field » avant,
+    « Unauthorized » sans jeton après, face à un champ témoin inexistant.
+    L'historique n'expose pas `externalRef`.
+  - **Crédit du compte, pas du profil actif** : 10,00 € et le même historique
+    de 7 lignes depuis le profil de Florent et depuis celui de son fils mineur,
+    sans compte. La somme des lignes est le solde, et concorde avec la base.
+  - **Tiroir foyer** (`clubFamilyPayerCredits`) : une ligne « Florent Morel,
+    10,00 € ».
+  - **Utiliser le crédit** sur la facture « Recette crédit lot 3 12h02 —
+    portail » (`b54158f2…`, 10 €, foyer `7cb6bebb…`) :
+    - depuis le profil du fils, refus « Seul le payeur du foyer peut régler une
+      facture en ligne. » ;
+    - 4 € confirmés : crédit 6 €, facture ouverte, reste 6 € ;
+    - 7 € refusés : « Au plus 6,00 € : crédit disponible 6,00 €, reste à
+      encaisser 6,00 €. » ;
+    - sans montant : 6 €, facture PAYÉE, crédit 0 € ;
+    - une nouvelle tentative : « Seule une facture ouverte se règle avec le
+      crédit. »
+  - **Après** : historique de 9 lignes pour 0 € ; plus de ligne pour le foyer,
+    et le tiroir de l'admin affiche « Aucun crédit parmi les personnes du
+    foyer. »
+  - **En base** : deux paiements `PAYER_CREDIT` de 4 et 6 € au nom de son
+    membre ; deux écritures INCOME validées, DÉBIT 419100 / CRÉDIT 706100, sans
+    compte financier ; crédit recalculé à 0 (60 € versés, 60 € imputés) ;
+    aucune erreur nouvelle au journal de l'API.
+  - **Non vus à l'écran sur staging** : le portail et l'appli, faute de session
+    adhérent ; leurs requêtes ont été jouées avec un jeton de profil
+    (`selectActiveViewerProfile`).
+
+Limites connues :
+- Une facture hors du périmètre « Payer en ligne » (adhésion sans foyer, achat
+  boutique d'un contact) ne se règle pas avec le crédit depuis le portail ;
+  l'admin le peut.
+- Un compte qui ne paie pour aucun foyer ne voit pas son crédit au portail.
+- La limite de 10 par minute n'est pas testée (configuration, comme les autres
+  mutations du portail).
 
 ### Task 3.3 : « Créditer mon compte » par carte
 

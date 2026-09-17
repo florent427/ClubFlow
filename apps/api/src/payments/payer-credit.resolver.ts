@@ -13,6 +13,7 @@ import { ModuleCode } from '../domain/module-registry/module-codes';
 import { ApplyPayerCreditInput } from './dto/apply-payer-credit.input';
 import { RecordPayerCreditDepositInput } from './dto/record-payer-credit-deposit.input';
 import {
+  FamilyPayerCreditGraph,
   PayerCreditApplyResultGraph,
   PayerCreditCandidateGraph,
   PayerCreditDepositResultGraph,
@@ -78,6 +79,18 @@ export class PayerCreditResolver {
     contactId?: string | null,
   ): Promise<PayerCreditGraph> {
     return toGraph(await this.credits.credit(club.id, { memberId, contactId }));
+  }
+
+  @Query(() => [FamilyPayerCreditGraph], {
+    name: 'clubFamilyPayerCredits',
+    description:
+      'Crédits des personnes d’un foyer, une ligne par personne, crédits nuls omis. Le foyer ne possède pas de crédit.',
+  })
+  async clubFamilyPayerCredits(
+    @CurrentClub() club: Club,
+    @Args('familyId', { type: () => ID }) familyId: string,
+  ): Promise<FamilyPayerCreditGraph[]> {
+    return this.credits.familyCredits(club.id, familyId);
   }
 
   @Mutation(() => PayerCreditDepositResultGraph, {
