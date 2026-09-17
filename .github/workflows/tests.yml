@@ -1,0 +1,62 @@
+name: tests
+
+# Les tests unitaires tournent à chaque PR et à chaque poussée sur main et
+# staging. Jusqu'ici, aucun workflow n'appelait jest ni vitest : les tests ne
+# tournaient qu'à la main (audit du 2026-09-14, priorité 3).
+#
+# Les branches `ci/**` servent à essayer ce workflow sans passer par staging.
+
+on:
+  pull_request:
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - '.github/workflows/tests.yml'
+  push:
+    branches: [main, staging, 'ci/**']
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - '.github/workflows/tests.yml'
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: tests (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [api, admin, member-portal, mobile]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/${{ matrix.app }}/package-lock.json
+
+      # L'appli mobile n'exécute pas ses scripts d'installation (Expo, modules
+      # natifs) : ses tests vitest n'en ont pas besoin.
+      - name: Install
+        working-directory: apps/${{ matrix.app }}
+        run: npm ci ${{ matrix.app == 'mobile' && '--ignore-scripts' || '' }}
+
+      # Client Prisma généré, pas versionné (cf. typecheck.yml).
+      - name: Generate Prisma client
+        if: matrix.app == 'api'
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://user:pass@localhost:5432/db
+        run: npx prisma generate
+
+      # Deux workers : les tests qui montent un vrai serveur GraphQL tiennent
+      # dans leur délai sur les deux cœurs d'un runner.
+      - name: Tests
+        working-directory: apps/${{ matrix.app }}
+        run: ${{ matrix.app == 'api' && 'npx jest --ci --silent --maxWorkers=2' || 'npm test' }}
