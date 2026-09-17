@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.72.0](https://github.com/florent427/ClubFlow/compare/v0.71.0...v0.72.0) (2026-09-17)
+
+
+### ✨ Features
+
+* **paiements:** trop-perçu versé au crédit du payeur (lot 4, livraison B) ([366163d](https://github.com/florent427/ClubFlow/commit/366163d344fa30c180891f3e70123f35ce941e1d))
+* **paiements:** verser un trop-perçu au crédit du payeur ([296364d](https://github.com/florent427/ClubFlow/commit/296364dcb9ef9156badced220c6e3e6c25a8c985))
+
 ## [0.71.0](https://github.com/florent427/ClubFlow/compare/v0.70.1...v0.71.0) (2026-09-17)
 
 
