@@ -16,7 +16,10 @@ export function memberPortalOrigin(): string {
  * la bascule entre les apps ; sinon le port local de développement.
  */
 export function publicApiOrigin(): string {
-  const direct = process.env.API_BASE_URL?.trim();
+  // `API_PUBLIC_URL` est celle que posent les serveurs (retour OAuth, médias) ;
+  // `API_BASE_URL` sert au rendu des PDF. On accepte les deux.
+  const direct =
+    process.env.API_PUBLIC_URL?.trim() || process.env.API_BASE_URL?.trim();
   if (direct) {
     return direct.replace(/\/$/, '');
   }

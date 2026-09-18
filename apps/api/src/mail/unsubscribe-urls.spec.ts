@@ -11,21 +11,29 @@ describe('adresses de désinscription', () => {
   });
 
   it('déduit l’API du portail quand rien ne la donne', () => {
+    delete process.env.API_PUBLIC_URL;
     delete process.env.API_BASE_URL;
     process.env.MEMBER_PORTAL_ORIGIN = 'https://portail.clubflow.topdigital.re';
     expect(publicApiOrigin()).toBe('https://api.clubflow.topdigital.re');
   });
 
   it('garde le préfixe d’environnement', () => {
+    delete process.env.API_PUBLIC_URL;
     delete process.env.API_BASE_URL;
     process.env.MEMBER_PORTAL_ORIGIN =
       'https://staging.portail.clubflow.topdigital.re';
     expect(publicApiOrigin()).toBe('https://staging.api.clubflow.topdigital.re');
   });
 
-  it('préfère API_BASE_URL quand elle est posée', () => {
-    process.env.API_BASE_URL = 'https://api.exemple.re/';
+  it('préfère l’URL publique posée par le serveur', () => {
+    process.env.API_PUBLIC_URL = 'https://api.exemple.re/';
     process.env.MEMBER_PORTAL_ORIGIN = 'https://portail.clubflow.topdigital.re';
+    expect(publicApiOrigin()).toBe('https://api.exemple.re');
+  });
+
+  it('accepte aussi celle du rendu des PDF', () => {
+    delete process.env.API_PUBLIC_URL;
+    process.env.API_BASE_URL = 'https://api.exemple.re';
     expect(publicApiOrigin()).toBe('https://api.exemple.re');
   });
 

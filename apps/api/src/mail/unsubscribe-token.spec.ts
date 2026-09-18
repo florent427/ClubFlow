@@ -72,9 +72,19 @@ describe('secret de signature', () => {
     expect(secret).not.toBe('verif');
   });
 
+  it('sinon celui des jetons de session, le seul posé sur les serveurs', () => {
+    delete process.env.MAIL_UNSUBSCRIBE_SECRET;
+    delete process.env.EMAIL_VERIFICATION_SECRET;
+    process.env.JWT_SECRET = 'secret-des-sessions';
+    const secret = unsubscribeSecret();
+    expect(secret).toBe('unsubscribe:secret-des-sessions');
+    expect(secret).not.toBe('secret-des-sessions');
+  });
+
   it('sans aucun secret, pas de jeton', () => {
     delete process.env.MAIL_UNSUBSCRIBE_SECRET;
     delete process.env.EMAIL_VERIFICATION_SECRET;
+    delete process.env.JWT_SECRET;
     expect(unsubscribeSecret()).toBeNull();
   });
 });

@@ -88,15 +88,21 @@ export function readUnsubscribeToken(
 
 /**
  * Secret de signature. `MAIL_UNSUBSCRIBE_SECRET` d'abord ; à défaut celui de
- * la vérification d'e-mail, déjà présent partout. Sans aucun des deux, pas de
- * jeton : la campagne part alors sans lien de désinscription plutôt que de
- * refuser de partir.
+ * la vérification d'e-mail, sinon celui des jetons de session — même chaîne
+ * que `EmailVerificationService`, car les serveurs ne posent en pratique que
+ * `JWT_SECRET`. Un secret emprunté est toujours dérivé : un jeton de
+ * désinscription ne vaut jamais jeton de session, ni l'inverse.
+ *
+ * Sans aucun des trois, pas de jeton : la campagne part alors sans lien de
+ * désinscription plutôt que de refuser de partir.
  */
 export function unsubscribeSecret(): string | null {
   const dedie = process.env.MAIL_UNSUBSCRIBE_SECRET?.trim();
   if (dedie) {
     return dedie;
   }
-  const verification = process.env.EMAIL_VERIFICATION_SECRET?.trim();
-  return verification ? `unsubscribe:${verification}` : null;
+  const emprunte =
+    process.env.EMAIL_VERIFICATION_SECRET?.trim() ||
+    process.env.JWT_SECRET?.trim();
+  return emprunte ? `unsubscribe:${emprunte}` : null;
 }
