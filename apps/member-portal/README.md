@@ -7,12 +7,12 @@ Application Vite + React pour l’espace membre (login, choix de profil, tableau
 1. Démarrer l’API (`apps/api`, port par défaut **3000**) avec une base à jour.
 2. Variables d’environnement (fichier `.env` à la racine de ce dossier) :
    - `VITE_GRAPHQL_HTTP` — URL du endpoint GraphQL (ex. `http://localhost:3000/graphql`). Si absent, cette valeur est utilisée par défaut.
-   - `VITE_ADMIN_APP_URL` — URL de base de l’**administration** pour le bouton du même nom (réservé aux comptes avec rôle club admin, bureau ou trésorerie côté API). En dev deux ports : `http://localhost:5173/`. En prod **même origine** : ex. `/admin`.
+   - `VITE_ADMIN_APP_URL` — URL de base de l’**administration** pour le bouton du même nom (réservé aux comptes avec rôle club admin, bureau ou trésorerie côté API). Optionnelle : en dev, `http://localhost:5173/` ; en prod, l’URL est déduite de l’hôte (`portail.X` → `app.X`, préfixe d’environnement gardé). À renseigner seulement si l’admin est ailleurs (même origine sous `/admin`, autre domaine).
 3. `npm install` puis `npm run dev` — l’app écoute en général sur **http://localhost:5174** (voir la sortie Vite).
 
 ### Bascule vers l’admin
 
-Le portail copie le JWT dans les clés **`clubflow_admin_*`** puis ouvre `VITE_ADMIN_APP_URL`. Le **club** enregistré pour l’admin peut être celui du profil membre **ou**, si vous avez un rôle back-office sur un autre club, le club indiqué par l’API (`adminWorkspaceClubId` dans `viewerMe`). Sans **même origine** en local, renseignez une URL absolue (voir aussi `apps/admin/README.md`).
+Le portail copie le JWT dans les clés **`clubflow_admin_*`** et le passe aussi dans le fragment `#sso=<jeton>&club=<club>`, seul canal qui traverse deux origines. Le **club** enregistré pour l’admin peut être celui du profil membre **ou**, si vous avez un rôle back-office sur un autre club, le club indiqué par l’API (`adminWorkspaceClubId` dans `viewerMe`). Le retour, depuis le bouton **Personnel** de l’admin, suit le même chemin (voir aussi `apps/admin/README.md`).
 
 En développement, l’API accepte les origines `http://localhost:*` et `http://127.0.0.1:*` (CORS avec cookies/credentials). Pour la production, configurez les origines explicites côté API.
 
