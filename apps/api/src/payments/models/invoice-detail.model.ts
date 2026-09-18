@@ -43,6 +43,12 @@ export class InvoicePaymentGraph {
   @Field(() => String, { nullable: true }) externalRef!: string | null;
   @Field(() => String, { nullable: true }) paidByFirstName!: string | null;
   @Field(() => String, { nullable: true }) paidByLastName!: string | null;
+  @Field(() => String, {
+    nullable: true,
+    description:
+      'Qui a saisi cet encaissement au club. Null pour un encaissement sans geste humain (carte, prélèvement) ou saisi avant cette trace.',
+  })
+  recordedByName!: string | null;
   @Field(() => Date) createdAt!: Date;
 
   @Field(() => ID, {

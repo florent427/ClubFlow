@@ -3,12 +3,14 @@ import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.gua
 import { PrismaModule } from '../prisma/prisma.module';
 import { ClubSendingDomainResolver } from './club-sending-domain.resolver';
 import { ClubSendingDomainService } from './club-sending-domain.service';
+import { MailUnsubscribeController } from './mail-unsubscribe.controller';
 import { MAIL_TRANSPORT } from './mail.constants';
 import { SmtpMailTransport } from './providers/smtp-mail.transport';
 import { TransactionalMailService } from './transactional-mail.service';
 
 @Module({
   imports: [PrismaModule],
+  controllers: [MailUnsubscribeController],
   providers: [
     ClubSendingDomainService,
     TransactionalMailService,

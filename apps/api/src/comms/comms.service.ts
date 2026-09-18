@@ -20,6 +20,11 @@ import { MembersService } from '../members/members.service';
 import { ClubSendingDomainService } from '../mail/club-sending-domain.service';
 import { MAIL_TRANSPORT } from '../mail/mail.constants';
 import type { MailTransport } from '../mail/mail-transport.interface';
+import {
+  buildUnsubscribeToken,
+  unsubscribeSecret,
+} from '../mail/unsubscribe-token';
+import { listUnsubscribeHeader } from '../mail/unsubscribe-urls';
 import { MessagingGateway } from '../messaging/messaging.gateway';
 import { MessagingService } from '../messaging/messaging.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -747,6 +752,9 @@ export class CommsService {
               campaign.body,
             )}</div>`,
             text: campaign.body,
+            // Chaque destinataire a son lien : il ne désinscrit que son
+            // adresse, et seulement de ce club.
+            listUnsubscribe: unsubscribeHeaderFor(clubId, norm),
           });
         } catch (err) {
           this.log.error(
@@ -909,4 +917,22 @@ function escapeHtml(s: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+/**
+ * En-tête `List-Unsubscribe` d'une campagne, pour ce destinataire et ce club.
+ *
+ * Sans secret de signature sur le serveur, la campagne part sans l'en-tête :
+ * un lien qu'on ne peut pas vérifier vaut moins que pas de lien, et bloquer
+ * l'envoi punirait le club pour une variable manquante.
+ */
+export function unsubscribeHeaderFor(
+  clubId: string,
+  email: string,
+): string | undefined {
+  const secret = unsubscribeSecret();
+  if (!secret) {
+    return undefined;
+  }
+  return listUnsubscribeHeader(buildUnsubscribeToken({ clubId, email }, secret));
 }

@@ -16,6 +16,7 @@ function payment(over: Partial<InvoicePayment> & { id: string }): InvoicePayment
     externalRef: 'pi_123',
     paidByFirstName: null,
     paidByLastName: null,
+    recordedByName: null,
     createdAt: '2026-01-01T10:00:00.000Z',
     refundedPaymentId: null,
     ...over,

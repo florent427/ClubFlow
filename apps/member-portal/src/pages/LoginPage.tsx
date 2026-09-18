@@ -8,6 +8,8 @@ import {
 import { useMutation, useQuery } from '@apollo/client/react';
 import { CLUB_BY_SLUG, LOGIN_WITH_PROFILES } from '../lib/documents';
 import type { LoginWithProfilesData } from '../lib/auth-types';
+import { ResendVerification } from '../components/ResendVerification';
+import { isUnverifiedEmailError } from '../lib/email-verification';
 
 type ClubBySlugData = {
   clubBySlug: {
@@ -231,6 +233,9 @@ export function LoginPage() {
             />
           </label>
           {error ? <p className="auth-error">{error}</p> : null}
+          {isUnverifiedEmailError(error) ? (
+            <ResendVerification email={email} />
+          ) : null}
           <button type="submit" className="auth-btn" disabled={loading}>
             {loading ? 'Connexion…' : 'Se connecter'}
           </button>

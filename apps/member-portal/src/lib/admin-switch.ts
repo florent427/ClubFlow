@@ -2,6 +2,23 @@
 const ADMIN_TOKEN_KEY = 'clubflow_admin_token';
 const ADMIN_CLUB_ID_KEY = 'clubflow_admin_club_id';
 
+/**
+ * Hôte de l'administration quand elle et le portail sont deux sous-domaines
+ * du même domaine : `portail.example.re` → `app.example.re`, en gardant le
+ * préfixe de l'environnement (`staging.portail.…` → `staging.app.…`).
+ *
+ * Sans cette déduction, la prod tombait sur `/admin`, que Caddy sert avec le
+ * `index.html` du portail : le bouton « Administration » rouvrait le portail.
+ * Miroir de `memberPortalHostFromAdminHost` côté admin.
+ */
+export function adminHostFromMemberPortalHost(host: string): string | null {
+  const m = /^(.*\.)?portail\.(.+\..+)$/.exec(host);
+  if (!m) {
+    return null;
+  }
+  return `${m[1] ?? ''}app.${m[2]}`;
+}
+
 export function adminAppTargetUrl(): string {
   const v = import.meta.env.VITE_ADMIN_APP_URL;
   if (typeof v === 'string' && v.trim()) {
@@ -9,6 +26,13 @@ export function adminAppTargetUrl(): string {
   }
   if (import.meta.env.DEV) {
     return 'http://localhost:5173/';
+  }
+  const derived =
+    typeof window === 'undefined'
+      ? null
+      : adminHostFromMemberPortalHost(window.location.hostname);
+  if (derived) {
+    return `${window.location.protocol}//${derived}/`;
   }
   return '/admin';
 }

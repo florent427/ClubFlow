@@ -161,6 +161,8 @@ describe('PaymentsService / encaissements manuels', () => {
           externalRef: 'VIR-123',
           paidByMemberId: null,
           paidByContactId: null,
+          // Qui a saisi : null quand l'appelant ne l'a pas dit.
+          recordedByUserId: null,
         },
       });
       return result;
@@ -320,6 +322,7 @@ describe('PaymentsService / encaissements manuels', () => {
           externalRef: null,
           paidByMemberId: null,
           paidByContactId: 'c-1',
+          recordedByUserId: null,
         },
       });
       return result;

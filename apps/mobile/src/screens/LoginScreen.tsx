@@ -19,7 +19,8 @@ import {
 } from '../components/ui';
 import { AuthClubBanner } from '../components/AuthClubBanner';
 import type { LoginWithProfilesData } from '../lib/auth-types';
-import { LOGIN_WITH_PROFILES } from '../lib/documents';
+import { LOGIN_WITH_PROFILES, RESEND_VERIFICATION } from '../lib/documents';
+import { isUnverifiedEmailError } from '../lib/email-verification';
 import * as storage from '../lib/storage';
 import {
   gradients as defaultGradients,
@@ -46,6 +47,27 @@ export function LoginScreen({ navigation }: Props) {
   const [login, { loading }] = useMutation<LoginWithProfilesData>(
     LOGIN_WITH_PROFILES,
   );
+  // Un lien de vérification vit 48 h. Passé ce délai, le renvoi est le seul
+  // recours : il s'affiche là où l'adhérent est bloqué.
+  const [renvoye, setRenvoye] = useState(false);
+  const [resendVerification, { loading: renvoiEnCours }] = useMutation<{
+    resendVerificationEmail: { ok: boolean };
+  }>(RESEND_VERIFICATION);
+
+  async function renvoyerVerification() {
+    try {
+      await resendVerification({
+        variables: { input: { email: email.trim() } },
+      });
+      setRenvoye(true);
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Envoi impossible pour le moment. Réessayez dans une minute.',
+      );
+    }
+  }
 
   async function onSubmit() {
     setError(null);
@@ -169,6 +191,29 @@ export function LoginScreen({ navigation }: Props) {
                   size="lg"
                   haptic
                 />
+                {/* Adresse pas encore vérifiée : le renvoi du lien, seul
+                    recours passé 48 h (parité avec le portail web). */}
+                {isUnverifiedEmailError(error) ? (
+                  renvoye ? (
+                    <Text style={styles.forgotText}>
+                      Nouveau lien envoyé. Pensez aux indésirables.
+                    </Text>
+                  ) : (
+                    <AnimatedPressable
+                      onPress={() => void renvoyerVerification()}
+                      accessibilityRole="button"
+                      accessibilityLabel="Renvoyer le lien de vérification"
+                      style={styles.forgotBtn}
+                      disabled={renvoiEnCours || !email.trim()}
+                    >
+                      <Text style={styles.forgotText}>
+                        {renvoiEnCours
+                          ? 'Envoi…'
+                          : 'Renvoyer le lien de vérification'}
+                      </Text>
+                    </AnimatedPressable>
+                  )
+                ) : null}
                 {/* Lien "Mot de passe oublié" — discret sous le bouton
                     Se connecter (parité avec /login portail web). */}
                 <AnimatedPressable

@@ -194,6 +194,7 @@ export class ViewerService {
       invoiceId: invoice.id,
       clubId: args.clubId,
       paidByMemberId: args.activeProfile.memberId ?? null,
+      paidByContactId: args.activeProfile.contactId ?? null,
       installmentsCount: installments,
       nativeApp: args.nativeApp,
     });
@@ -2441,6 +2442,7 @@ export class ViewerService {
         invoiceId,
         clubId: args.clubId,
         paidByMemberId: args.activeProfile.memberId ?? null,
+        paidByContactId: args.activeProfile.contactId ?? null,
         installmentsCount: installments,
       });
       return {

@@ -932,6 +932,7 @@ export const CLUB_INVOICE_DETAIL = gql`
         externalRef
         paidByFirstName
         paidByLastName
+        recordedByName
         createdAt
         refundedPaymentId
       }
@@ -1003,6 +1004,31 @@ export const UPSERT_CLUB_PRICING_RULE = gql`
       method
       adjustmentType
       adjustmentValue
+    }
+  }
+`;
+
+/**
+ * Le brouillon d'adhésion déjà ouvert pour ce membre sur la saison active.
+ * La fiche le retrouve après une fermeture : sans cela, il ne restait que
+ * dans l'état de l'écran, et la garde anti-doublon refusait d'en créer un
+ * autre.
+ */
+export const MEMBER_MEMBERSHIP_INVOICE_DRAFT = gql`
+  query MemberMembershipInvoiceDraft($memberId: ID!) {
+    memberMembershipInvoiceDraft(memberId: $memberId) {
+      id
+      clubId
+      familyId
+      clubSeasonId
+      label
+      baseAmountCents
+      amountCents
+      status
+      lockedPaymentMethod
+      dueAt
+      totalPaidCents
+      balanceCents
     }
   }
 `;

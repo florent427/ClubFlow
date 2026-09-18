@@ -106,21 +106,31 @@ export class MessagingService {
         },
       });
     }
-    const members = await this.prisma.member.findMany({
-      where: { clubId, status: MemberStatus.ACTIVE },
-      select: { id: true },
-    });
-    for (const m of members) {
-      await this.prisma.chatRoomMember.upsert({
-        where: {
-          roomId_memberId: { roomId: room.id, memberId: m.id },
-        },
-        create: {
+    // Cette synchronisation tourne à CHAQUE ouverture de la messagerie. Un
+    // `upsert` par membre actif faisait un aller-retour par membre — jusqu'à
+    // 62 pour SKSR, à chaque liste de salons (audit du 2026-09-14, point 2.6).
+    // On lit les deux côtés, puis on n'écrit que ce qui manque, en une fois.
+    const [membres, deja] = await Promise.all([
+      this.prisma.member.findMany({
+        where: { clubId, status: MemberStatus.ACTIVE },
+        select: { id: true },
+      }),
+      this.prisma.chatRoomMember.findMany({
+        where: { roomId: room.id },
+        select: { memberId: true },
+      }),
+    ]);
+    const inscrits = new Set(deja.map((r) => r.memberId));
+    const manquants = membres.filter((m) => !inscrits.has(m.id));
+    if (manquants.length > 0) {
+      // `skipDuplicates` : deux ouvertures simultanées ajoutent le même membre.
+      await this.prisma.chatRoomMember.createMany({
+        data: manquants.map((m) => ({
           roomId: room.id,
           memberId: m.id,
           role: ChatRoomMemberRole.MEMBER,
-        },
-        update: {},
+        })),
+        skipDuplicates: true,
       });
     }
     return { id: room.id };

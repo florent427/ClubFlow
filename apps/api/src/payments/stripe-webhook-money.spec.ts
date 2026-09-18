@@ -1,5 +1,10 @@
 import { Logger } from '@nestjs/common';
-import { ClubPaymentMethod, InvoiceStatus, MemberStatus } from '@prisma/client';
+import {
+  ClubPaymentMethod,
+  FamilyMemberLinkRole,
+  InvoiceStatus,
+  MemberStatus,
+} from '@prisma/client';
 import {
   INVOICE,
   PAYMENT,
@@ -54,8 +59,21 @@ const especes = (h: World, amountCents: number) =>
 const carte = (
   h: World,
   amountCents: number,
-  more: { paidByMemberId?: string; installmentId?: string } = {},
+  more: {
+    paidByMemberId?: string;
+    paidByContactId?: string;
+    installmentId?: string;
+  } = {},
 ) => h.stripePaymentSucceeded({ invoiceId: 'inv-stage', amountCents, ...more });
+
+/** Dominique, parent non adhérent, désigné payeur du foyer de la facture. */
+const payeurContact = (h: World) => {
+  h.familyMembers.push({
+    contactId: 'c-1',
+    familyId: 'fam-1',
+    linkRole: FamilyMemberLinkRole.PAYER,
+  });
+};
 
 const statut = (h: World) => h.invoices.find((i) => i.id === 'inv-stage')!.status;
 const encaisse = (h: World) =>
@@ -146,6 +164,59 @@ describe('un payeur que le contrôle refuse quand Stripe annonce l’argent', ()
       expect.objectContaining({ amountCents: 3000, paidByMemberId: 'm-1' }),
     ]);
     expect(avertissements).not.toHaveBeenCalled();
+  });
+
+  it('payeur contact du foyer : le paiement est à son nom, sans avertissement', async () => {
+    const h = stage();
+    payeurContact(h);
+
+    await expect(carte(h, 3000, { paidByContactId: 'c-1' })).resolves.toBeUndefined();
+
+    expect(h.payments).toEqual([
+      expect.objectContaining({
+        amountCents: 3000,
+        paidByMemberId: null,
+        paidByContactId: 'c-1',
+      }),
+    ]);
+    expect(statut(h)).toBe(InvoiceStatus.PAID);
+    expect(avertissements).not.toHaveBeenCalled();
+  });
+
+  it('contact qui n’est plus payeur du foyer : le paiement solde la facture à son nom', async () => {
+    const h = stage();
+
+    await expect(carte(h, 3000, { paidByContactId: 'c-1' })).resolves.toBeUndefined();
+
+    expect(h.payments).toEqual([
+      expect.objectContaining({ amountCents: 3000, paidByContactId: 'c-1' }),
+    ]);
+    expect(avertissements).toHaveBeenCalledWith(
+      payeurRefuse(
+        'c-1',
+        'Le contact payeur doit être désigné pour le foyer de la facture',
+        'Paiement enregistré à son nom.',
+      ),
+    );
+  });
+
+  it('contact absent du club : le paiement solde la facture sans payeur', async () => {
+    const h = stage();
+
+    await expect(
+      carte(h, 3000, { paidByContactId: 'c-supprime' }),
+    ).resolves.toBeUndefined();
+
+    expect(h.payments).toEqual([
+      expect.objectContaining({ amountCents: 3000, paidByContactId: null }),
+    ]);
+    expect(avertissements).toHaveBeenCalledWith(
+      payeurRefuse(
+        'c-supprime',
+        'Payeur contact introuvable pour ce club',
+        'Fiche absente du club : paiement enregistré sans payeur.',
+      ),
+    );
   });
 
   it('une lecture en panne n’est pas un refus : le webhook lève, et le rejeu de Stripe enregistre', async () => {

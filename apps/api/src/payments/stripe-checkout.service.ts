@@ -96,6 +96,13 @@ export class StripeCheckoutService {
     clubId: string;
     paidByMemberId: string | null;
     /**
+     * Payeur sans fiche d'adhérent : le parent non adhérent qui règle en ligne
+     * la cotisation de son enfant. Sans lui, le webhook n'avait aucun payeur à
+     * inscrire, et la facture affichait « Règlement » sans nom. Au plus un des
+     * deux est renseigné, comme pour une saisie manuelle.
+     */
+    paidByContactId?: string | null;
+    /**
      * Nombre de versements souhaités côté payeur (1 ou 3). Pour 3, on
      * active l'option `payment_method_options.card.installments` côté
      * Stripe — fonctionne uniquement si le compte Stripe du club a
@@ -191,6 +198,8 @@ export class StripeCheckoutService {
     };
     if (args.paidByMemberId) {
       metadata.paidByMemberId = args.paidByMemberId;
+    } else if (args.paidByContactId) {
+      metadata.paidByContactId = args.paidByContactId;
     }
 
     // Compte connecté du club : throw explicite si l'onboarding Stripe

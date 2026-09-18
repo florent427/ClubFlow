@@ -439,6 +439,36 @@ export class MembershipService {
     }));
   }
 
+  /**
+   * Le brouillon d'adhésion déjà ouvert pour ce membre sur la saison active,
+   * s'il existe.
+   *
+   * Sans cette lecture, fermer la fiche du membre avant « Finaliser » faisait
+   * disparaître le brouillon de l'écran, alors que la garde anti-doublon
+   * refusait d'en créer un autre : il fallait aller le chercher dans
+   * Facturation (audit du 2026-09-14, point 2.6).
+   */
+  async findMembershipInvoiceDraft(clubId: string, memberId: string) {
+    const season = await this.getActiveClubSeason(clubId);
+    if (!season) {
+      return null;
+    }
+    return this.prisma.invoice.findFirst({
+      where: {
+        clubId,
+        clubSeasonId: season.id,
+        status: InvoiceStatus.DRAFT,
+        lines: {
+          some: {
+            memberId,
+            kind: InvoiceLineKind.MEMBERSHIP_SUBSCRIPTION,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async createMembershipInvoiceDraft(
     clubId: string,
     userId: string,

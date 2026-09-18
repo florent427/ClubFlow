@@ -643,6 +643,12 @@ export type CreateMembershipInvoiceDraftMutationData = {
   createMembershipInvoiceDraft: ClubInvoicesQueryData['clubInvoices'][number];
 };
 
+export type MemberMembershipInvoiceDraftQueryData = {
+  memberMembershipInvoiceDraft:
+    | ClubInvoicesQueryData['clubInvoices'][number]
+    | null;
+};
+
 export type FinalizeMembershipInvoiceMutationData = {
   finalizeMembershipInvoice: ClubInvoicesQueryData['clubInvoices'][number];
 };
@@ -711,6 +717,8 @@ export type ClubInvoiceDetailQueryData = {
       externalRef: string | null;
       paidByFirstName: string | null;
       paidByLastName: string | null;
+      /** Qui a saisi l'encaissement au club ; null s'il n'y a pas eu de saisie. */
+      recordedByName: string | null;
       createdAt: string;
       /** Encaissement remboursé par cette ligne, si c'en est un. */
       refundedPaymentId: string | null;

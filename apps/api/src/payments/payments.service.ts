@@ -382,6 +382,8 @@ export class PaymentsService {
           include: {
             paidByMember: { select: { id: true, firstName: true, lastName: true } },
             paidByContact: { select: { id: true, firstName: true, lastName: true } },
+            // Qui a saisi l'encaissement : le trésorier sait à qui demander.
+            recordedBy: { select: { displayName: true, email: true } },
           },
         },
         creditNotes: {
@@ -835,6 +837,7 @@ export class PaymentsService {
           externalRef: ref,
           paidByMemberId: input.paidByMemberId ?? null,
           paidByContactId: input.paidByContactId ?? null,
+          recordedByUserId: userId,
         },
         chequeData,
       });
@@ -846,6 +849,7 @@ export class PaymentsService {
               amountCents: surplusCents,
               method: input.method,
               externalRef: ref,
+              recordedByUserId: userId,
             })
           : null;
       return { ...settledPayment, deposit: surplusDeposit };
@@ -893,6 +897,8 @@ export class PaymentsService {
         externalRef: string | null;
         paidByMemberId: string | null;
         paidByContactId: string | null;
+        /** Qui a saisi. Null pour un encaissement sans geste humain. */
+        recordedByUserId?: string | null;
       };
       chequeData?: Omit<Prisma.ChequeUncheckedCreateInput, 'paymentId'> | null;
     },
@@ -1397,6 +1403,7 @@ export class PaymentsService {
         amountCents: input.amountCents,
         method: input.method,
         externalRef: ref,
+        recordedByUserId: userId,
         chequeData,
       }),
     );
@@ -1425,6 +1432,8 @@ export class PaymentsService {
       amountCents: number;
       method: ClubPaymentMethod;
       externalRef: string | null;
+      /** Qui a saisi l'avance. Null pour une avance payée par carte. */
+      recordedByUserId?: string | null;
       chequeData?: Omit<Prisma.ChequeUncheckedCreateInput, 'paymentId'> | null;
     },
   ): Promise<{ invoice: Invoice; payment: Payment; label: string }> {
@@ -1450,6 +1459,7 @@ export class PaymentsService {
         externalRef: args.externalRef,
         paidByMemberId: args.holder.memberId,
         paidByContactId: args.holder.contactId,
+        recordedByUserId: args.recordedByUserId ?? null,
       },
     });
     if (args.chequeData) {
@@ -1755,6 +1765,12 @@ export class PaymentsService {
         pi.metadata.paidByMemberId.length > 0
           ? pi.metadata.paidByMemberId
           : null;
+      // Payeur sans fiche d'adhérent (parent non adhérent qui règle en ligne).
+      const paidByContactId =
+        typeof pi.metadata?.paidByContactId === 'string' &&
+        pi.metadata.paidByContactId.length > 0
+          ? pi.metadata.paidByContactId
+          : null;
       // Présent uniquement quand le paiement vient du moteur d'échéancier.
       const installmentId =
         typeof pi.metadata?.installmentId === 'string' &&
@@ -1769,6 +1785,7 @@ export class PaymentsService {
         paidByMemberId,
         eventAccount,
         installmentId,
+        paidByContactId,
       );
     }
   }
@@ -1925,6 +1942,7 @@ export class PaymentsService {
     paidByMemberId: string | null,
     stripeAccountId: string | null = null,
     installmentId: string | null = null,
+    paidByContactId: string | null = null,
   ): Promise<void> {
     // Sans filtre sur le statut : il se décide sous le verrou, plus bas. Filtrée
     // sur OPEN, cette lecture prenait le rejeu d'un paiement qui avait soldé la
@@ -1960,7 +1978,11 @@ export class PaymentsService {
         return;
       }
     }
-    const payer = await this.stripePaymentPayer(invoice, paidByMemberId);
+    const payer = await this.stripePaymentPayer(
+      invoice,
+      paidByMemberId,
+      paidByContactId,
+    );
 
     // Ce qui décide de l'écriture se relit sous le verrou de la facture
     // (ADR-0022, §3), pris avant toute écriture, commande boutique comprise.
@@ -2014,6 +2036,7 @@ export class PaymentsService {
           method: ClubPaymentMethod.STRIPE_CARD,
           externalRef: paymentIntentId,
           paidByMemberId: payer.paidByMemberId,
+          paidByContactId: payer.paidByContactId,
           // Compte sur lequel l'argent est réellement tombé : indispensable
           // pour rembourser sur le bon compte plus tard (ADR-0008).
           stripeAccountId,
@@ -2085,8 +2108,8 @@ export class PaymentsService {
     if (payer.refusal) {
       this.logger.warn(
         `[stripe] paymentIntent ${paymentIntentId} (facture ${invoiceId}, club ${clubId}) : ` +
-          `le payeur ${paidByMemberId} ne passe plus le contrôle — ${payer.refusal}. ` +
-          (payer.paidByMemberId
+          `le payeur ${paidByMemberId ?? paidByContactId} ne passe plus le contrôle — ${payer.refusal}. ` +
+          (payer.paidByMemberId ?? payer.paidByContactId
             ? 'Paiement enregistré à son nom.'
             : 'Fiche absente du club : paiement enregistré sans payeur.'),
       );
@@ -2170,19 +2193,52 @@ export class PaymentsService {
   private async stripePaymentPayer(
     invoice: InvoiceForPayer,
     paidByMemberId: string | null,
-  ): Promise<{ paidByMemberId: string | null; refusal: string | null }> {
-    if (!paidByMemberId) return { paidByMemberId: null, refusal: null };
-    try {
-      await this.assertPaidByMemberAllowedForInvoice(invoice, paidByMemberId);
-      return { paidByMemberId, refusal: null };
-    } catch (err) {
-      if (!(err instanceof BadRequestException)) throw err;
-      const member = await this.prisma.member.findFirst({
-        where: { id: paidByMemberId, clubId: invoice.clubId },
-        select: { id: true },
-      });
-      return { paidByMemberId: member?.id ?? null, refusal: err.message };
+    paidByContactId: string | null = null,
+  ): Promise<{
+    paidByMemberId: string | null;
+    paidByContactId: string | null;
+    refusal: string | null;
+  }> {
+    if (paidByMemberId) {
+      try {
+        await this.assertPaidByMemberAllowedForInvoice(invoice, paidByMemberId);
+        return { paidByMemberId, paidByContactId: null, refusal: null };
+      } catch (err) {
+        if (!(err instanceof BadRequestException)) throw err;
+        const member = await this.prisma.member.findFirst({
+          where: { id: paidByMemberId, clubId: invoice.clubId },
+          select: { id: true },
+        });
+        return {
+          paidByMemberId: member?.id ?? null,
+          paidByContactId: null,
+          refusal: err.message,
+        };
+      }
     }
+    // Payeur contact : même contrôle, sur sa fiche de contact. Le parent non
+    // adhérent qui règle la cotisation de son enfant passe par là.
+    if (paidByContactId) {
+      try {
+        await this.assertPaidByContactAllowedForInvoice(
+          invoice,
+          paidByContactId,
+        );
+        return { paidByMemberId: null, paidByContactId, refusal: null };
+      } catch (err) {
+        if (!(err instanceof BadRequestException)) throw err;
+        const contact = await this.prisma.contact.findFirst({
+          where: { id: paidByContactId, clubId: invoice.clubId },
+          select: { id: true },
+        });
+        return {
+          paidByMemberId: null,
+          paidByContactId: contact?.id ?? null,
+          refusal: err.message,
+        };
+      }
+    }
+    return { paidByMemberId: null, paidByContactId: null, refusal: null };
   }
 
   /**

@@ -293,6 +293,10 @@ export class PaymentsResolver {
           p.paidByMember?.firstName ?? p.paidByContact?.firstName ?? null,
         paidByLastName:
           p.paidByMember?.lastName ?? p.paidByContact?.lastName ?? null,
+        // Le nom affiché du compte, sinon son adresse : un identifiant
+        // technique ne dirait rien au trésorier.
+        recordedByName:
+          p.recordedBy?.displayName?.trim() || p.recordedBy?.email || null,
         createdAt: p.createdAt,
         refundedPaymentId: p.refundedPaymentId ?? null,
       })),
