@@ -10,6 +10,7 @@ import {
   CREATE_MEMBERSHIP_INVOICE_DRAFT,
   ELIGIBLE_MEMBERSHIP_PRODUCTS,
   FINALIZE_MEMBERSHIP_INVOICE,
+  MEMBER_MEMBERSHIP_INVOICE_DRAFT,
   MEMBERSHIP_ONE_TIME_FEES,
   RECORD_CLUB_MANUAL_PAYMENT,
   SET_MEMBER_DYNAMIC_GROUPS,
@@ -28,6 +29,7 @@ import type {
   CreateMembershipInvoiceDraftMutationData,
   DynamicGroupsQueryData,
   EligibleMembershipProductsQueryData,
+  MemberMembershipInvoiceDraftQueryData,
   MembershipOneTimeFeesQueryData,
   MembersQueryData,
   RecordClubManualPaymentMutationData,
@@ -247,6 +249,21 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
     ClubInvoicesQueryData['clubInvoices'][number] | null
   >(null);
 
+  // Le brouillon déjà ouvert pour ce membre : il survit à la fermeture de la
+  // fiche, alors que `draftPreview` ne vit que dans cet écran. Sans lui, un
+  // brouillon oublié bloquait la création du suivant sans rien montrer.
+  const { data: existingDraftData } =
+    useQuery<MemberMembershipInvoiceDraftQueryData>(
+      MEMBER_MEMBERSHIP_INVOICE_DRAFT,
+      {
+        variables: { memberId: member.id },
+        skip: !paymentOn,
+        fetchPolicy: 'cache-and-network',
+      },
+    );
+  const openDraft =
+    draftPreview ?? existingDraftData?.memberMembershipInvoiceDraft ?? null;
+
   const selectedProduct = eligibleProducts.find(
     (p) => p.id === selectedProductId,
   );
@@ -278,7 +295,13 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
     useMutation<CreateMembershipInvoiceDraftMutationData>(
       CREATE_MEMBERSHIP_INVOICE_DRAFT,
       {
-        refetchQueries: [{ query: CLUB_INVOICES }],
+        refetchQueries: [
+          { query: CLUB_INVOICES },
+          {
+            query: MEMBER_MEMBERSHIP_INVOICE_DRAFT,
+            variables: { memberId: member.id },
+          },
+        ],
         onCompleted: (res) => {
           setDraftPreview(res.createMembershipInvoiceDraft);
           setCotMsg('Brouillon créé — vérifie le récapitulatif avant de finaliser.');
@@ -290,7 +313,14 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
   const [finalizeInv, { loading: finalizing }] = useMutation(
     FINALIZE_MEMBERSHIP_INVOICE,
     {
-      refetchQueries: [{ query: CLUB_INVOICES }, { query: CLUB_MEMBERS }],
+      refetchQueries: [
+        { query: CLUB_INVOICES },
+        { query: CLUB_MEMBERS },
+        {
+          query: MEMBER_MEMBERSHIP_INVOICE_DRAFT,
+          variables: { memberId: member.id },
+        },
+      ],
       onCompleted: () => {
         setCotMsg('Facture finalisée (statut OPEN).');
         setDraftPreview(null);
@@ -350,12 +380,12 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
   }
 
   async function submitFinalize() {
-    if (!draftPreview) return;
+    if (!openDraft) return;
     setCotMsg(null);
     await finalizeInv({
       variables: {
         input: {
-          invoiceId: draftPreview.id,
+          invoiceId: openDraft.id,
           lockedPaymentMethod: payMethodResolved,
         },
       },
@@ -652,10 +682,17 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
                     Aucun encaissement tant que la facture est en brouillon (
                     DRAFT ).
                   </p>
+                  {openDraft ? (
+                    <p className="members-form__hint">
+                      Un brouillon est déjà ouvert pour ce membre sur cette
+                      saison : finalise-le ci-dessous, ou supprime-le depuis
+                      Facturation avant d’en créer un autre.
+                    </p>
+                  ) : null}
                   <button
                     type="button"
                     className="btn btn-primary"
-                    disabled={creatingDraft || !selectedProductId}
+                    disabled={creatingDraft || !selectedProductId || !!openDraft}
                     onClick={() => void submitDraft()}
                   >
                     {creatingDraft ? 'Création…' : 'Créer le brouillon'}
@@ -756,15 +793,20 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
                 </div>
               ) : null}
 
-              {draftPreview ? (
+              {openDraft ? (
                 <div className="members-form__fieldset">
                   <span className="members-form__legend">Finaliser</span>
                   <p className="muted">
-                    Facture {draftPreview.id.slice(0, 8)}… —{' '}
-                    <strong>{draftPreview.label}</strong> — total métier{' '}
-                    {(draftPreview.baseAmountCents / 100).toFixed(2)} € —{' '}
-                    statut {draftPreview.status}
+                    Facture {openDraft.id.slice(0, 8)}… —{' '}
+                    <strong>{openDraft.label}</strong> — total métier{' '}
+                    {(openDraft.baseAmountCents / 100).toFixed(2)} € —{' '}
+                    statut {openDraft.status}
                   </p>
+                  {!draftPreview ? (
+                    <p className="members-form__hint">
+                      Brouillon retrouvé, créé lors d’un passage précédent.
+                    </p>
+                  ) : null}
                   <label className="field">
                     <span>Mode de paiement</span>
                     <select

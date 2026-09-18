@@ -643,6 +643,12 @@ export type CreateMembershipInvoiceDraftMutationData = {
   createMembershipInvoiceDraft: ClubInvoicesQueryData['clubInvoices'][number];
 };
 
+export type MemberMembershipInvoiceDraftQueryData = {
+  memberMembershipInvoiceDraft:
+    | ClubInvoicesQueryData['clubInvoices'][number]
+    | null;
+};
+
 export type FinalizeMembershipInvoiceMutationData = {
   finalizeMembershipInvoice: ClubInvoicesQueryData['clubInvoices'][number];
 };

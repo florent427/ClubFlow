@@ -316,6 +316,23 @@ export class MembershipResolver {
     return true;
   }
 
+  @Query(() => InvoiceGraph, {
+    name: 'memberMembershipInvoiceDraft',
+    nullable: true,
+    description:
+      'Brouillon d’adhésion déjà ouvert pour ce membre sur la saison active, s’il existe. La fiche du membre le retrouve après fermeture, au lieu de le laisser dans Facturation.',
+  })
+  async memberMembershipInvoiceDraft(
+    @CurrentClub() club: Club,
+    @Args('memberId', { type: () => ID }) memberId: string,
+  ): Promise<InvoiceGraph | null> {
+    const inv = await this.membership.findMembershipInvoiceDraft(
+      club.id,
+      memberId,
+    );
+    return inv ? toInvoiceGraph(inv) : null;
+  }
+
   @Mutation(() => InvoiceGraph)
   async createMembershipInvoiceDraft(
     @CurrentClub() club: Club,
