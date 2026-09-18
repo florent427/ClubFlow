@@ -7,6 +7,7 @@ import type { MessagingGateway } from '../messaging/messaging.gateway';
 import type { MessagingService } from '../messaging/messaging.service';
 import type { NotificationsService } from '../notifications/notifications.service';
 import type { PrismaService } from '../prisma/prisma.service';
+import { readUnsubscribeToken } from '../mail/unsubscribe-token';
 import type { TelegramApiService } from '../telegram/telegram-api.service';
 import { CommsService } from './comms.service';
 
@@ -154,6 +155,49 @@ describe('CommsService.sendCampaign : pas de campagne « envoyée » sans canal 
         kind: 'campaign',
         from: { name: 'Club', address: 'noreply@club.test' },
       }),
+    );
+  });
+
+  it('chaque campagne porte le lien de désinscription du destinataire', async () => {
+    process.env.MAIL_UNSUBSCRIBE_SECRET = 'secret-de-test';
+    process.env.MEMBER_PORTAL_ORIGIN = 'https://portail.exemple.re';
+    const w = monde({ channels: [CommunicationChannel.EMAIL], domaineCampagne: true });
+
+    await w.service.sendCampaign(CLUB, 'camp-1');
+
+    const envois = w.mail.sendEmail.mock.calls as unknown as Array<
+      [{ listUnsubscribe?: string }]
+    >;
+    const envoi = envois[0][0];
+    const urls = (envoi.listUnsubscribe ?? '').match(/<([^>]+)>/g) ?? [];
+    // La première adresse est celle que la boîte mail appelle toute seule.
+    expect(urls[0]).toMatch(
+      /^<https:\/\/api\.exemple\.re\/mail\/unsubscribe\?token=/,
+    );
+    expect(urls[1]).toMatch(
+      /^<https:\/\/portail\.exemple\.re\/desinscription\?token=/,
+    );
+
+    // Le jeton ne désinscrit que cette adresse, de ce club.
+    const token = decodeURIComponent(
+      /token=([^>]+)>/.exec(urls[0] ?? '')?.[1] ?? '',
+    );
+    expect(readUnsubscribeToken(token, 'secret-de-test')).toEqual({
+      clubId: CLUB,
+      email: 'alice@exemple.test',
+    });
+  });
+
+  it('sans secret de signature, la campagne part sans lien plutôt que pas du tout', async () => {
+    delete process.env.MAIL_UNSUBSCRIBE_SECRET;
+    delete process.env.EMAIL_VERIFICATION_SECRET;
+    const w = monde({ channels: [CommunicationChannel.EMAIL], domaineCampagne: true });
+
+    const res = await w.service.sendCampaign(CLUB, 'camp-1');
+
+    expect(res.status).toBe('SENT');
+    expect(w.mail.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ listUnsubscribe: undefined }),
     );
   });
 

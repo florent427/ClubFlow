@@ -153,3 +153,37 @@ describe('SmtpMailTransport.sendEmail — pièces jointes', () => {
     );
   });
 });
+
+describe('SmtpMailTransport.sendEmail — désinscription', () => {
+  const envoi = async (listUnsubscribe?: string) => {
+    const sendMail = jest.fn().mockResolvedValue({ messageId: 'm-1' });
+    const transport = new SmtpMailTransport({ sendMail } as never);
+    await transport.sendEmail({
+      clubId: 'club-1',
+      kind: 'campaign',
+      from: { name: 'Dojo', address: 'noreply@dojo.fr' },
+      to: 'parent@example.fr',
+      subject: 'Stage de Toussaint',
+      html: '<p>Inscriptions ouvertes</p>',
+      listUnsubscribe,
+    });
+    return (sendMail.mock.calls[0][0] as { headers: Record<string, string> })
+      .headers;
+  };
+
+  it('accompagne le lien de l’en-tête un clic : sans lui, aucun bouton « Se désabonner »', async () => {
+    const headers = await envoi('<https://api.exemple.re/mail/unsubscribe?token=t>');
+
+    expect(headers['List-Unsubscribe']).toBe(
+      '<https://api.exemple.re/mail/unsubscribe?token=t>',
+    );
+    expect(headers['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click');
+  });
+
+  it('sans lien, aucun des deux en-têtes', async () => {
+    const headers = await envoi(undefined);
+
+    expect(headers['List-Unsubscribe']).toBeUndefined();
+    expect(headers['List-Unsubscribe-Post']).toBeUndefined();
+  });
+});

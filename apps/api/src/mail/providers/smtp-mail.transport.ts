@@ -144,6 +144,9 @@ export class SmtpMailTransport implements MailTransport {
     };
     if (params.listUnsubscribe) {
       headers['List-Unsubscribe'] = params.listUnsubscribe;
+      // RFC 8058 : sans cet en-tête, Gmail et Outlook n'affichent pas le
+      // bouton « Se désabonner » et n'appellent pas l'URL tout seuls.
+      headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
     }
     try {
       const info = await this.transporter.sendMail({

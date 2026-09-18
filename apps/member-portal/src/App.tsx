@@ -15,6 +15,7 @@ import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import { UnsubscribePage } from './pages/UnsubscribePage';
 import { VerifyEmailPage } from './pages/VerifyEmailPage';
 import { OAuthCallbackPage } from './pages/OAuthCallbackPage';
 import { SelectProfilePage } from './pages/SelectProfilePage';
@@ -79,6 +80,8 @@ export default function App() {
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
             <Route path="/verify-email" element={<VerifyEmailPage />} />
+            {/* Suivie depuis un e-mail de campagne, sans compte. */}
+            <Route path="/desinscription" element={<UnsubscribePage />} />
             <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
             <Route path="/rejoindre" element={<JoinFamilyInvitePage />} />
             <Route path="/site/:slug" element={<PublicSiteLayout />}>
