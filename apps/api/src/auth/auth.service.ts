@@ -80,6 +80,35 @@ export class AuthService {
     return raw;
   }
 
+  /**
+   * Club dont l'identité écrit un e-mail transactionnel à ce compte : son
+   * espace contact, sinon sa fiche de membre, sinon le club de
+   * l'environnement.
+   *
+   * Sans cela, un renvoi de lien ou une réinitialisation partaient toujours
+   * sous le nom et le domaine d'envoi du club de `CLUB_ID`, quel que soit le
+   * club de la personne (audit du 2026-09-14, point 2.4).
+   */
+  private async clubIdForUser(userId: string): Promise<string> {
+    const contact = await this.prisma.contact.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+      select: { clubId: true },
+    });
+    if (contact) {
+      return contact.clubId;
+    }
+    const member = await this.prisma.member.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+      select: { clubId: true },
+    });
+    if (member) {
+      return member.clubId;
+    }
+    return this.clubIdFromEnv();
+  }
+
   private buildVerifyUrl(rawToken: string): string {
     const base = (
       process.env.MEMBER_PORTAL_ORIGIN ?? 'http://localhost:5174'
@@ -429,9 +458,9 @@ export class AuthService {
 
   async resendVerificationEmail(email: string): Promise<ResendVerificationResult> {
     const norm = email.trim().toLowerCase();
-    const clubId = this.clubIdFromEnv();
     const user = await this.prisma.user.findUnique({ where: { email: norm } });
     if (user && !user.emailVerifiedAt && user.passwordHash) {
+      const clubId = await this.clubIdForUser(user.id);
       const raw = await this.emailVerification.issueTokenForUser(user.id);
       await this.mail.sendEmailVerificationLink(
         clubId,
@@ -444,12 +473,12 @@ export class AuthService {
 
   async requestPasswordReset(email: string): Promise<RequestPasswordResetResult> {
     const norm = email.trim().toLowerCase();
-    const clubId = this.clubIdFromEnv();
     const user = await this.prisma.user.findUnique({ where: { email: norm } });
     // Un compte vérifié SANS mot de passe (Google seul, inscription en
     // conflit) doit pouvoir en choisir un : le lien part dans la boîte dont la
     // maîtrise est déjà prouvée.
     if (user?.emailVerifiedAt) {
+      const clubId = await this.clubIdForUser(user.id);
       const raw = await this.passwordReset.issueTokenForUser(user.id);
       await this.mail.sendPasswordResetLink(
         clubId,

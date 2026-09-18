@@ -513,6 +513,21 @@ body {
   max-width: 14rem;
 }
 
+/* Renvoi du lien de vérification, proposé là où l'adhérent est bloqué. */
+.auth-resend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(0, 6, 102, 0.12);
+}
+
+.auth-resend .auth-btn-secondary {
+  margin-top: 0.25rem;
+  max-width: none;
+}
+
 .auth-footer {
   margin: 1.25rem 0 0;
   text-align: center;

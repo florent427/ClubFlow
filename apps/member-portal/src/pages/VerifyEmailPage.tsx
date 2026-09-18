@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation } from '@apollo/client/react';
 import { VERIFY_EMAIL } from '../lib/documents';
 import type { VerifyEmailData } from '../lib/auth-types';
+import { ResendVerification } from '../components/ResendVerification';
 import {
   clearAuth,
   clearClubId,
@@ -139,11 +140,16 @@ export function VerifyEmailPage() {
           </p>
         ) : null}
         {phase === 'error' ? (
-          <p className="auth-footer">
-            <Link to="/login" className="auth-link">
-              Retour à la connexion
-            </Link>
-          </p>
+          <>
+            {/* Un lien de vérification vit 48 h. Passé ce délai, le renvoi est
+                le seul recours : il vit ici, où l'adhérent arrive. */}
+            <ResendVerification email="" />
+            <p className="auth-footer">
+              <Link to="/login" className="auth-link">
+                Retour à la connexion
+              </Link>
+            </p>
+          </>
         ) : null}
       </div>
     </div>

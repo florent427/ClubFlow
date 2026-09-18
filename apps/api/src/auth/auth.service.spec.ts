@@ -177,6 +177,7 @@ function clausesSimulees(where: object, connues: string[]): void {
 function baseInscription() {
   const users: UserRow[] = [];
   const contacts: ContactRow[] = [];
+  const membres: Array<{ id: string; userId: string; clubId: string }> = [];
   const familles: Array<{ id: string; clubId: string; payeurs: string[] }> = [];
   const jetons: JetonRow[] = [];
   const identites: Array<{ userId: string; provider: string; providerSubject: string }> = [];
@@ -278,6 +279,11 @@ function baseInscription() {
         clausesSimulees(where, ['userId']);
         return contacts.filter((c) => c.userId === where.userId);
       }),
+      // Le club qui signe un e-mail transactionnel : l'espace contact d'abord.
+      findFirst: jest.fn(async ({ where }: { where: { userId: string } }) => {
+        clausesSimulees(where, ['userId']);
+        return contacts.find((c) => c.userId === where.userId) ?? null;
+      }),
       create: jest.fn(async ({ data }: { data: Omit<ContactRow, 'id'> }) => {
         const contact = { id: nouvelId('contact'), ...data };
         contacts.push(contact);
@@ -305,6 +311,13 @@ function baseInscription() {
           return contact;
         },
       ),
+    },
+    // Fiches d'adhérent du compte : le repli quand il n'a pas d'espace contact.
+    member: {
+      findFirst: jest.fn(async ({ where }: { where: { userId: string } }) => {
+        clausesSimulees(where, ['userId']);
+        return membres.find((m) => m.userId === where.userId) ?? null;
+      }),
     },
     familyMember: {
       findFirst: jest.fn(
@@ -413,12 +426,14 @@ function baseInscription() {
       }),
     },
   };
-  return { prisma, users, contacts, familles, jetons, identites, adhesionsClub };
+  return { prisma, users, contacts, membres, familles, jetons, identites, adhesionsClub };
 }
 
 type Envoi = {
   genre: 'verification' | 'compte-existant' | 'reinitialisation';
   to: string;
+  /** Club dont l'identité signe l'envoi : nom, domaine, bannière. */
+  clubId?: string;
   url?: string;
   options?: { choosePasswordUrl?: string; clubName?: string; forgotPasswordUrl?: string };
 };
@@ -427,8 +442,8 @@ function parcoursInscription(base = baseInscription()) {
   const envoyes: Envoi[] = [];
   const mail = {
     sendEmailVerificationLink: jest.fn(
-      async (_clubId: string, to: string, url: string, options?: { choosePasswordUrl?: string }) => {
-        envoyes.push({ genre: 'verification', to, url, options });
+      async (clubId: string, to: string, url: string, options?: { choosePasswordUrl?: string }) => {
+        envoyes.push({ genre: 'verification', to, clubId, url, options });
       },
     ),
     sendSignupAttemptOnExistingAccount: jest.fn(
@@ -436,8 +451,8 @@ function parcoursInscription(base = baseInscription()) {
         envoyes.push({ genre: 'compte-existant', to, options });
       },
     ),
-    sendPasswordResetLink: jest.fn(async (_clubId: string, to: string, url: string) => {
-      envoyes.push({ genre: 'reinitialisation', to, url });
+    sendPasswordResetLink: jest.fn(async (clubId: string, to: string, url: string) => {
+      envoyes.push({ genre: 'reinitialisation', to, clubId, url });
     }),
   };
   const families = {
@@ -795,6 +810,86 @@ describe('AuthService.upsertUserFromGoogleOAuth — adresse déjà inscrite', ()
     await expect(svc.login({ email: CAMILLE, password: SECRET_CAMILLE })).resolves.toMatchObject({
       accessToken: 'jwt',
     });
+  });
+});
+
+/**
+ * Un e-mail transactionnel part sous l'identité d'un club : son nom, sa
+ * bannière, son domaine d'envoi. Le renvoi de lien et la réinitialisation
+ * prenaient toujours le club de `CLUB_ID`, donc le mauvais dès qu'une
+ * plateforme sert plusieurs clubs (audit du 2026-09-14, point 2.4).
+ */
+describe('AuthService — le club qui signe un e-mail transactionnel', () => {
+  avecClubIdEnv();
+
+  it('renvoi du lien : le club de l’espace contact, pas celui de l’environnement', async () => {
+    const base = baseInscription();
+    base.users.push({
+      id: 'user-camille',
+      email: CAMILLE,
+      passwordHash: await empreinte(SECRET_CAMILLE),
+      emailVerifiedAt: null,
+      displayName: null,
+    });
+    base.contacts.push({
+      id: 'contact-camille',
+      userId: 'user-camille',
+      clubId: 'club-b',
+      firstName: 'Camille',
+      lastName: 'Titulaire',
+    });
+    const { svc, envoyes } = parcoursInscription(base);
+
+    await expect(svc.resendVerificationEmail(CAMILLE)).resolves.toEqual({ ok: true });
+
+    expect(envoyes).toEqual([
+      expect.objectContaining({ genre: 'verification', to: CAMILLE, clubId: 'club-b' }),
+    ]);
+  });
+
+  it('sans espace contact, le club de la fiche d’adhérent', async () => {
+    const base = baseInscription();
+    base.users.push({
+      id: 'user-camille',
+      email: CAMILLE,
+      passwordHash: await empreinte(SECRET_CAMILLE),
+      emailVerifiedAt: new Date('2026-05-01'),
+      displayName: null,
+    });
+    base.membres.push({ id: 'membre-camille', userId: 'user-camille', clubId: 'club-b' });
+    const { svc, envoyes } = parcoursInscription(base);
+
+    await expect(svc.requestPasswordReset(CAMILLE)).resolves.toEqual({ ok: true });
+
+    expect(envoyes).toEqual([
+      expect.objectContaining({ genre: 'reinitialisation', to: CAMILLE, clubId: 'club-b' }),
+    ]);
+  });
+
+  it('un compte sans aucune fiche retombe sur le club de l’environnement', async () => {
+    const base = baseInscription();
+    base.users.push({
+      id: 'user-camille',
+      email: CAMILLE,
+      passwordHash: await empreinte(SECRET_CAMILLE),
+      emailVerifiedAt: null,
+      displayName: null,
+    });
+    const { svc, envoyes } = parcoursInscription(base);
+
+    await expect(svc.resendVerificationEmail(CAMILLE)).resolves.toEqual({ ok: true });
+
+    expect(envoyes).toEqual([
+      expect.objectContaining({ genre: 'verification', clubId: 'club-a' }),
+    ]);
+  });
+
+  it('une adresse inconnue n’envoie rien et ne dit rien', async () => {
+    const { svc, envoyes } = parcoursInscription();
+
+    await expect(svc.resendVerificationEmail(CAMILLE)).resolves.toEqual({ ok: true });
+
+    expect(envoyes).toEqual([]);
   });
 });
 
