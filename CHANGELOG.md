@@ -9,6 +9,28 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.73.0](https://github.com/florent427/ClubFlow/compare/v0.72.0...v0.73.0) (2026-09-18)
+
+
+### ✨ Features
+
+* **campagnes:** lien de désinscription dans chaque campagne ([6661804](https://github.com/florent427/ClubFlow/commit/6661804edc06732e7153c80e8a5fbe170625c223))
+* **paiements:** garder qui a saisi un encaissement ([d3b7e21](https://github.com/florent427/ClubFlow/commit/d3b7e21dbcf0845e92aab71bfcc51b94b429d8b1))
+
+
+### 🐛 Bug Fixes
+
+* **adhesion:** retrouver le brouillon de cotisation depuis la fiche du membre ([ac8226c](https://github.com/florent427/ClubFlow/commit/ac8226c5894e9609a523060a5cdf917ec611a58e))
+* **admin,portail:** gardes de route par module et bascule entre les deux apps ([782a481](https://github.com/florent427/ClubFlow/commit/782a48116b3486f9decca60bc44bf89eb944c968))
+* **auth:** un écran pour renvoyer le lien de vérification, sous le bon club ([8c433c4](https://github.com/florent427/ClubFlow/commit/8c433c4bcec221bd9b744630c953b251ce0ea2c7))
+* **campagnes:** signer la désinscription avec un secret que les serveurs posent ([7922c33](https://github.com/florent427/ClubFlow/commit/7922c3319d2bcaf60c657c60f03e3fdee1d5b57f))
+* **paiements:** enregistrer le payeur contact d'un paiement par carte ([98e6023](https://github.com/florent427/ClubFlow/commit/98e6023f4efedb7d3afe06752f1ed5f41a5d0520))
+
+
+### ⚡ Performance
+
+* **messagerie:** synchroniser le salon Communauté en une écriture ([76da72a](https://github.com/florent427/ClubFlow/commit/76da72adf38a627364b8eb7b6b89286d32478c38))
+
 ## [0.72.0](https://github.com/florent427/ClubFlow/compare/v0.71.0...v0.72.0) (2026-09-17)
 
 
