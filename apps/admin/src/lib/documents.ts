@@ -932,6 +932,7 @@ export const CLUB_INVOICE_DETAIL = gql`
         externalRef
         paidByFirstName
         paidByLastName
+        recordedByName
         createdAt
         refundedPaymentId
       }

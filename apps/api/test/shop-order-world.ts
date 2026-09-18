@@ -515,6 +515,8 @@ export function makeWorld(seed: {
       firstName: 'Camille',
       lastName: 'MARTIN',
       email: 'camille.martin@example.fr',
+      /** Compte du portail rattaché à la fiche ; aucun dans ce monde. */
+      userId: null as string | null,
     },
   ];
   const families = [

@@ -1022,6 +1022,11 @@ export function InvoiceDetailDrawer({
                           <div className="cf-invoice-payment__meta">
                             {formatDateTime(p.createdAt)}
                             {payer ? ` · ${payer}` : ''}
+                            {/* Qui a saisi : absent d'un encaissement par
+                                carte, que personne ne saisit. */}
+                            {p.recordedByName
+                              ? ` · saisi par ${p.recordedByName}`
+                              : ''}
                             {refundable > 0 && refundable < p.amountCents
                               ? ` · ${formatEuros(refundable)} encore remboursables`
                               : ''}

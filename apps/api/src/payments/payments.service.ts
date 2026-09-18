@@ -382,6 +382,8 @@ export class PaymentsService {
           include: {
             paidByMember: { select: { id: true, firstName: true, lastName: true } },
             paidByContact: { select: { id: true, firstName: true, lastName: true } },
+            // Qui a saisi l'encaissement : le trésorier sait à qui demander.
+            recordedBy: { select: { displayName: true, email: true } },
           },
         },
         creditNotes: {
@@ -835,6 +837,7 @@ export class PaymentsService {
           externalRef: ref,
           paidByMemberId: input.paidByMemberId ?? null,
           paidByContactId: input.paidByContactId ?? null,
+          recordedByUserId: userId,
         },
         chequeData,
       });
@@ -846,6 +849,7 @@ export class PaymentsService {
               amountCents: surplusCents,
               method: input.method,
               externalRef: ref,
+              recordedByUserId: userId,
             })
           : null;
       return { ...settledPayment, deposit: surplusDeposit };
@@ -893,6 +897,8 @@ export class PaymentsService {
         externalRef: string | null;
         paidByMemberId: string | null;
         paidByContactId: string | null;
+        /** Qui a saisi. Null pour un encaissement sans geste humain. */
+        recordedByUserId?: string | null;
       };
       chequeData?: Omit<Prisma.ChequeUncheckedCreateInput, 'paymentId'> | null;
     },
@@ -1397,6 +1403,7 @@ export class PaymentsService {
         amountCents: input.amountCents,
         method: input.method,
         externalRef: ref,
+        recordedByUserId: userId,
         chequeData,
       }),
     );
@@ -1425,6 +1432,8 @@ export class PaymentsService {
       amountCents: number;
       method: ClubPaymentMethod;
       externalRef: string | null;
+      /** Qui a saisi l'avance. Null pour une avance payée par carte. */
+      recordedByUserId?: string | null;
       chequeData?: Omit<Prisma.ChequeUncheckedCreateInput, 'paymentId'> | null;
     },
   ): Promise<{ invoice: Invoice; payment: Payment; label: string }> {
@@ -1450,6 +1459,7 @@ export class PaymentsService {
         externalRef: args.externalRef,
         paidByMemberId: args.holder.memberId,
         paidByContactId: args.holder.contactId,
+        recordedByUserId: args.recordedByUserId ?? null,
       },
     });
     if (args.chequeData) {

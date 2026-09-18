@@ -244,11 +244,11 @@ model Club {
   shopOrders         ShopOrder[]
 
   /// Approvisionnement (ADR-0013).
-  shopSuppliers          ShopSupplier[]
-  shopPurchaseOrders     ShopPurchaseOrder[]
-  shopPurchaseOrderLines ShopPurchaseOrderLine[]
-  shopReceptions         ShopPurchaseReception[]
-  shopReceptionLines     ShopPurchaseReceptionLine[]
+  shopSuppliers               ShopSupplier[]
+  shopPurchaseOrders          ShopPurchaseOrder[]
+  shopPurchaseOrderLines      ShopPurchaseOrderLine[]
+  shopReceptions              ShopPurchaseReception[]
+  shopReceptionLines          ShopPurchaseReceptionLine[]
   shopProductSuppliers        ShopProductSupplier[]
   shopProductSupplierVariants ShopProductSupplierVariant[]
 }
@@ -464,6 +464,7 @@ model User {
   passwordResetTokens     PasswordResetToken[]
   pushSubscriptions       PushSubscription[]
   notifications           UserNotification[]
+  paymentsRecorded        Payment[]                @relation("PaymentRecordedBy")
 }
 
 enum OAuthProvider {
@@ -809,7 +810,7 @@ model Member {
   projectContributions      ProjectContributor[]
   accountingAllocations     AccountingAllocation[]
   /// Reçus d'avance qui créditent ce membre (ADR-0022).
-  payerCreditDeposits       Invoice[]                    @relation("InvoicePayerCreditMember")
+  payerCreditDeposits       Invoice[]                   @relation("InvoicePayerCreditMember")
 
   @@unique([clubId, userId])
   @@unique([clubId, pseudo])
@@ -2138,15 +2139,15 @@ model Invoice {
   payerCreditMemberId  String?
   payerCreditContactId String?
 
-  club            Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  family          Family?          @relation(fields: [familyId], references: [id], onDelete: SetNull)
-  householdGroup  HouseholdGroup?  @relation(fields: [householdGroupId], references: [id], onDelete: SetNull)
-  clubSeason      ClubSeason?      @relation(fields: [clubSeasonId], references: [id], onDelete: SetNull)
+  club            Club                 @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  family          Family?              @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  householdGroup  HouseholdGroup?      @relation(fields: [householdGroupId], references: [id], onDelete: SetNull)
+  clubSeason      ClubSeason?          @relation(fields: [clubSeasonId], references: [id], onDelete: SetNull)
   lines           InvoiceLine[]
   payments        Payment[]
   paymentSchedule PaymentSchedule?
   membershipCart  MembershipCart?
-  shopOrder       ShopOrder?       @relation(fields: [shopOrderId], references: [id], onDelete: SetNull)
+  shopOrder       ShopOrder?           @relation(fields: [shopOrderId], references: [id], onDelete: SetNull)
   shopAdjustment  ShopOrderAdjustment? @relation(fields: [shopAdjustmentId], references: [id], onDelete: SetNull)
 
   parentInvoice Invoice?  @relation("InvoiceCreditNotes", fields: [parentInvoiceId], references: [id], onDelete: SetNull)
@@ -2179,6 +2180,10 @@ model Payment {
   /// Null = legacy ou paiement créé avant configuration multi-comptes.
   /// Résolu via `ClubFinancialAccountsService.resolveForPayment(clubId, method)`.
   financialAccountId String?
+  /// Qui a saisi cet encaissement au club. Null quand personne ne l'a saisi
+  /// — carte, prélèvement, rejeu d'un webhook — ou quand la saisie est
+  /// antérieure à cette trace. Seule la remise de chèques en gardait une.
+  recordedByUserId   String?
   /// Compte Stripe sur lequel l'encaissement a réellement eu lieu
   /// (`acct_xxx` du club, cf. ADR-0008). Indispensable pour rembourser sur
   /// le BON compte si le club change de compte connecté par la suite.
@@ -2226,6 +2231,7 @@ model Payment {
   invoice                 Invoice                     @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
   paidByMember            Member?                     @relation("PaymentPaidByMember", fields: [paidByMemberId], references: [id], onDelete: SetNull)
   paidByContact           Contact?                    @relation("PaymentPaidByContact", fields: [paidByContactId], references: [id], onDelete: SetNull)
+  recordedBy              User?                       @relation("PaymentRecordedBy", fields: [recordedByUserId], references: [id], onDelete: SetNull)
   financialAccount        ClubFinancialAccount?       @relation(fields: [financialAccountId], references: [id], onDelete: SetNull)
   accountingEntries       AccountingEntry[]
   grantInstallments       GrantInstallment[]
@@ -2249,6 +2255,7 @@ model Payment {
   @@index([stripeFeesSyncedAt, createdAt])
   /// Somme déjà remboursée sur un encaissement donné.
   @@index([refundedPaymentId])
+  @@index([recordedByUserId])
 }
 
 /// Moyen de prélèvement d'un échéancier (cf. ADR-0009).
@@ -3380,12 +3387,12 @@ model ShopProductVariant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  club          Club                    @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  product       ShopProduct             @relation(fields: [productId], references: [id], onDelete: Cascade)
-  movements     ShopStockMovement[]
-  orderLines    ShopOrderLine[]
-  purchaseLines ShopPurchaseOrderLine[]
-  cartItems     ShopCartItem[]
+  club              Club                         @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  product           ShopProduct                  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  movements         ShopStockMovement[]
+  orderLines        ShopOrderLine[]
+  purchaseLines     ShopPurchaseOrderLine[]
+  cartItems         ShopCartItem[]
   /// Exceptions de référence ou de prix chez un fournisseur (ADR-0021 §1).
   supplierOverrides ShopProductSupplierVariant[]
 
@@ -3454,8 +3461,8 @@ model ShopSupplier {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  club   Club                @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  orders ShopPurchaseOrder[]
+  club          Club                  @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  orders        ShopPurchaseOrder[]
   /// Les produits que ce fournisseur fournit (ADR-0021).
   productOffers ShopProductSupplier[]
 
@@ -3699,30 +3706,30 @@ model ShopStockMovement {
 }
 
 model ShopOrder {
-  id          String          @id @default(uuid())
-  clubId      String
-  memberId    String?
-  contactId   String?
-  status      ShopOrderStatus @default(PENDING)
-  totalCents  Int
-  note        String?         @db.VarChar(500)
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-  paidAt      DateTime?
+  id                   String          @id @default(uuid())
+  clubId               String
+  memberId             String?
+  contactId            String?
+  status               ShopOrderStatus @default(PENDING)
+  totalCents           Int
+  note                 String?         @db.VarChar(500)
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  paidAt               DateTime?
   /// Horodatage de l'annulation. Sert à distinguer une commande jamais
   /// annulée d'une commande annulée puis rouverte — ce dernier cas n'existe
   /// pas, la machine à états ne permettant aucune transition depuis CANCELLED.
-  cancelledAt DateTime?
+  cancelledAt          DateTime?
   /// Motif de l'annulation par le club (ADR-0019), repris sur les avoirs.
   /// NULL pour une annulation par l'adhérent ou antérieure au lot.
-  cancelReason      String? @db.VarChar(500)
-  cancelledByUserId String?
+  cancelReason         String?         @db.VarChar(500)
+  cancelledByUserId    String?
   /// Version des CGV acceptée au passage de commande (ADR-0017). NULL : aucune
   /// CGV en vigueur à ce moment, ou vente au comptoir — la remise signée
   /// portera alors l'acceptation. La relation est la preuve : NoAction interdit
   /// de supprimer un PDF qu'une commande a accepté.
-  termsAssetId    String?
-  termsAcceptedAt DateTime?
+  termsAssetId         String?
+  termsAcceptedAt      DateTime?
   /// Sortie de stock (ADR-0017), posée par la PREMIÈRE des deux actions :
   /// règlement complet, ou remise signée d'une commande encore en attente.
   /// NULL sur une commande payée avant le 2026-09-13 : elle est sortie à son
@@ -3732,10 +3739,10 @@ model ShopOrder {
   /// Remise physique à l'adhérent, prouvée par sa signature (ADR-0017).
   deliveredAt          DateTime?
   deliveredByUserId    String?
-  deliverySignerName   String?   @db.VarChar(160)
+  deliverySignerName   String?         @db.VarChar(160)
   /// Signature PNG en data URL, figée par la MÊME écriture que la remise. Le
   /// bon de livraison PDF se reproduit à la demande à partir de ces données.
-  deliverySignaturePng String?   @db.Text
+  deliverySignaturePng String?         @db.Text
   /// Lignes REMISES, figées par la même écriture que la remise (ADR-0020) :
   /// `{ lines: [{ label, quantity, unitPriceCents }], totalCents }`. Le bon de
   /// livraison les imprime : un échange ou une annulation d'article après la
@@ -3743,13 +3750,13 @@ model ShopOrder {
   /// et, pour une remise antérieure au lot, figées au premier ajustement.
   deliveredLines       Json?
 
-  club       Club            @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  termsAsset MediaAsset?     @relation("ShopOrderTerms", fields: [termsAssetId], references: [id], onDelete: NoAction)
-  lines      ShopOrderLine[]
+  club        Club                  @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  termsAsset  MediaAsset?           @relation("ShopOrderTerms", fields: [termsAssetId], references: [id], onDelete: NoAction)
+  lines       ShopOrderLine[]
   /// Facture qui finance cette commande (paiement en ligne). Back-relation du
   /// lien porté par `Invoice.shopOrderId`. NULL tant qu'aucune facture n'a été
   /// émise — une commande créée à la main par l'admin n'en a pas.
-  invoice Invoice?
+  invoice     Invoice?
   /// Annulations d'articles et échanges (ADR-0020).
   adjustments ShopOrderAdjustment[]
 
@@ -3843,12 +3850,12 @@ model ShopOrderAdjustment {
 
   createdAt DateTime @default(now())
 
-  order        ShopOrder      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order             ShopOrder      @relation(fields: [orderId], references: [id], onDelete: Cascade)
   // NoAction et non Restrict : à la suppression d'une commande, ses lignes et
   // ses ajustements partent dans la même cascade ; la contrainte n'est vérifiée
   // qu'en fin d'instruction.
-  returnedLine ShopOrderLine  @relation("ShopOrderAdjustmentReturnedLine", fields: [returnedLineId], references: [id], onDelete: NoAction)
-  newLine      ShopOrderLine? @relation("ShopOrderAdjustmentNewLine", fields: [newLineId], references: [id], onDelete: NoAction)
+  returnedLine      ShopOrderLine  @relation("ShopOrderAdjustmentReturnedLine", fields: [returnedLineId], references: [id], onDelete: NoAction)
+  newLine           ShopOrderLine? @relation("ShopOrderAdjustmentNewLine", fields: [newLineId], references: [id], onDelete: NoAction)
   /// Facture du reste à payer d'un échange (lien porté par `Invoice.shopAdjustmentId`).
   supplementInvoice Invoice?
 

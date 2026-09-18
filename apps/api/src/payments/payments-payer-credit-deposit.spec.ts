@@ -166,6 +166,8 @@ describe('PaymentsService.recordPayerCreditDeposit', () => {
         externalRef: null,
         paidByMemberId: 'm-camille',
         paidByContactId: null,
+        // Le compte qui a saisi l'avance au guichet.
+        recordedByUserId: 'user-admin',
       },
     });
     expect(h.tx.cheque.create).not.toHaveBeenCalled();
