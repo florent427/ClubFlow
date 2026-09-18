@@ -45,6 +45,35 @@
 >
 > Restent les parcours sans test de la section 3.
 
+> **Suivi, 2026-09-18, priorité 2** : tous les points sont traités.
+> - **2.1 et gardes manquantes (2.6)** : la page Messagerie suit MESSAGING, et
+>   les pages ouvertes par URL directe ont leur garde (événements, projets,
+>   réservations, vie du club, blog, facturation, paramètres de paiement, de
+>   tarification et de comptabilité).
+> - **2.2** : la session Stripe transmet le payeur contact, et le webhook
+>   l'inscrit sur l'encaissement. Un parent non adhérent qui règle en ligne
+>   apparaît enfin sur la facture.
+> - **2.3** : la bascule passe la session par le fragment `#sso=`, dans les
+>   deux sens, et l'URL de l'autre app est déduite de l'hôte. Le retour
+>   portail → admin était cassé en prod lui aussi : `/admin` sur l'hôte du
+>   portail renvoyait le portail.
+> - **2.4** : le renvoi du lien de vérification a un écran, dans le portail et
+>   dans l'appli. Au passage, ce mail et celui de réinitialisation partent sous
+>   l'identité du club de la personne, et non plus sous celle de `CLUB_ID`.
+> - **2.5, première moitié** : chaque campagne porte son lien de désinscription
+>   (`List-Unsubscribe`, un clic), et le point d'entrée remplit la liste de
+>   suppression, déjà respectée à l'envoi. **Reste** : les rebonds et les
+>   plaintes, qui demandent un webhook Brevo et une clé d'API que le serveur
+>   n'a pas — même blocage que le point 1.4.
+> - **2.6** : le brouillon de cotisation se retrouve depuis la fiche du membre ;
+>   la synchronisation du salon « Communauté » écrit une fois au lieu d'une par
+>   membre ; un encaissement garde qui l'a saisi.
+>
+> Section 5 : `admin-switch.ts` du mobile et `EmailVerifiedGuard`, tous deux
+> morts, sont retirés. Les autres points de documentation périmée de cette
+> section l'étaient déjà eux-mêmes : le runbook Postfix porte sa note
+> d'historique, et `rotate-secrets.md` couvre la clé Brevo.
+
 ## En bref
 
 - **L'essentiel est livré.**
