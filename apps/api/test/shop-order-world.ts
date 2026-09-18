@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import {
   ChequeStatus,
   ClubPaymentMethod,
+  FamilyMemberLinkRole,
   InvoiceStatus,
   MemberStatus,
   MembershipCartStatus,
@@ -519,8 +520,27 @@ export function makeWorld(seed: {
   const families = [
     { id: 'fam-1', clubId: 'club-1', householdGroupId: null as string | null },
   ];
-  /** Les rattachements d'un membre à un foyer. */
-  const familyMembers = [{ memberId: 'm-1', familyId: 'fam-1' }];
+  /** Dominique : le parent non adhérent, payeur du foyer sans fiche de membre. */
+  const contacts = [
+    {
+      id: 'c-1',
+      clubId: 'club-1',
+      firstName: 'Dominique',
+      lastName: 'MARTIN',
+      email: 'dominique.martin@example.fr',
+    },
+  ];
+  /**
+   * Les rattachements à un foyer, d'un membre ou d'un contact. `linkRole`
+   * distingue le payeur du foyer des autres membres : le contrôle du payeur
+   * contact l'exige.
+   */
+  const familyMembers: Array<{
+    memberId?: string | null;
+    contactId?: string | null;
+    familyId: string;
+    linkRole?: FamilyMemberLinkRole;
+  }> = [{ memberId: 'm-1', familyId: 'fam-1' }];
   /** Ordre des gestes : ce qui est APRÈS le commit se lit ici. */
   const events: string[] = [];
   let seq = 0;
@@ -1128,7 +1148,17 @@ export function makeWorld(seed: {
     },
     contact: {
       findMany: jest.fn(async () => respond([])),
-      findFirst: jest.fn(async () => respond(null)),
+      // Le contrôle du payeur contact cherche la fiche dans CE club.
+      findFirst: jest.fn(async ({ where, select }: any) => {
+        allowOnly(where, ['id', 'clubId']);
+        const c = contacts.find(
+          (x) =>
+            x.id === where.id &&
+            (where.clubId === undefined || x.clubId === where.clubId),
+        );
+        if (!c) return respond(null);
+        return respond(select ? pick(c, select) : clone(c));
+      }),
     },
     family: {
       findFirst: jest.fn(async ({ where, select }: any) => {
@@ -1142,12 +1172,16 @@ export function makeWorld(seed: {
     // facture ou son groupe foyer.
     familyMember: {
       findFirst: jest.fn(async ({ where, select }: any) => {
-        allowOnly(where, ['memberId', 'familyId', 'family']);
+        allowOnly(where, ['memberId', 'contactId', 'familyId', 'family', 'linkRole']);
         allowOnly(where.family ?? {}, ['clubId', 'householdGroupId']);
         const link = familyMembers.find((l) => {
           const f = families.find((x) => x.id === l.familyId);
           return (
-            l.memberId === where.memberId &&
+            (where.memberId === undefined ||
+              (l.memberId ?? null) === where.memberId) &&
+            (where.contactId === undefined ||
+              (l.contactId ?? null) === where.contactId) &&
+            (where.linkRole === undefined || l.linkRole === where.linkRole) &&
             (where.familyId === undefined || l.familyId === where.familyId) &&
             (where.family?.clubId === undefined || f?.clubId === where.family.clubId) &&
             (where.family?.householdGroupId === undefined ||
@@ -1399,6 +1433,7 @@ export function makeWorld(seed: {
     paymentIntentId?: string;
     eventId?: string;
     paidByMemberId?: string;
+    paidByContactId?: string;
     installmentId?: string;
   }) => {
     const paymentIntentId = args.paymentIntentId ?? 'pi_carte';
@@ -1414,6 +1449,9 @@ export function makeWorld(seed: {
             invoiceId: args.invoiceId,
             clubId: 'club-1',
             ...(args.paidByMemberId ? { paidByMemberId: args.paidByMemberId } : {}),
+            ...(args.paidByContactId
+              ? { paidByContactId: args.paidByContactId }
+              : {}),
             ...(args.installmentId ? { installmentId: args.installmentId } : {}),
           },
           amount_received: args.amountCents,
@@ -1503,6 +1541,7 @@ export function makeWorld(seed: {
     adjustments,
     carts,
     members,
+    contacts,
     families,
     familyMembers,
     webhookEvents,
