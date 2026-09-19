@@ -9,6 +9,18 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.74.0](https://github.com/florent427/ClubFlow/compare/v0.73.0...v0.74.0) (2026-09-19)
+
+
+### ✨ Features
+
+* **paiements:** annuler un encaissement saisi par erreur ([4a04883](https://github.com/florent427/ClubFlow/commit/4a04883c4e7650be322d75df915080e8f8d579ef))
+
+
+### 🐛 Bug Fixes
+
+* **admin:** le montant d'un chèque se saisit, il n'est plus prérempli ([bc2c32e](https://github.com/florent427/ClubFlow/commit/bc2c32ee0c47a36d0ebf88607151794c16182107))
+
 ## [0.73.0](https://github.com/florent427/ClubFlow/compare/v0.72.0...v0.73.0) (2026-09-18)
 
 
