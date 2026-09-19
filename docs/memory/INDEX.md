@@ -53,6 +53,7 @@
 | [`jest-structuredclone-date-autre-contexte.md`](pitfalls/jest-structuredclone-date-autre-contexte.md) | Piège — `structuredClone` dans Jest rend des `Date` d'un autre contexte |
 | [`juge-non-fiable-verdict-sans-valeur.md`](pitfalls/juge-non-fiable-verdict-sans-valeur.md) | Le juge non fiable : un verdict rendu sur un signal dont on n'a pas vérifié le sens |
 | [`module-natif-ne-passe-pas-par-metro.md`](pitfalls/module-natif-ne-passe-pas-par-metro.md) | `Cannot find native module` : un module natif ne s'installe pas par Metro |
+| [`montant-prerempli-enregistre-tel-quel.md`](pitfalls/montant-prerempli-enregistre-tel-quel.md) | Piège — Un montant pré-rempli finit par être enregistré tel quel |
 | [`mot-de-passe-compte-non-verifie.md`](pitfalls/mot-de-passe-compte-non-verifie.md) | Piège — Mot de passe d'un compte non vérifié : l'écraser OU le garder ouvre une reprise de compte |
 | [`nestjs-graphql-nullable-needs-explicit-type.md`](pitfalls/nestjs-graphql-nullable-needs-explicit-type.md) | Piège — `@Field({ nullable: true })` GraphQL crash sans type explicite |
 | [`nestjs-graphql-union-type-explicite.md`](pitfalls/nestjs-graphql-union-type-explicite.md) | Piège — un `@Field` sur une union `string | null` fait tomber l'API au démarrage |
@@ -127,7 +128,7 @@
 
 ---
 
-_Index généré le 2026-09-18 12:47 UTC par `bin/memory-index`._
+_Index généré le 2026-09-19 07:07 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`
