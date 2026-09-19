@@ -879,6 +879,20 @@ export const CLUB_PRICING_RULES = gql`
   }
 `;
 
+/**
+ * Annule un encaissement saisi par erreur (espèces, chèque, virement) : la
+ * dette revient entière, sans avoir, la recette est contre-passée et un chèque
+ * encore en portefeuille est annulé.
+ */
+export const CANCEL_CLUB_MANUAL_PAYMENT = gql`
+  mutation CancelClubManualPayment($paymentId: ID!, $reason: String!) {
+    cancelClubManualPayment(paymentId: $paymentId, reason: $reason) {
+      id
+      amountCents
+    }
+  }
+`;
+
 export const CLUB_INVOICE_DETAIL = gql`
   query ClubInvoice($id: String!) {
     clubInvoice(id: $id) {
@@ -902,6 +916,7 @@ export const CLUB_INVOICE_DETAIL = gql`
       parentInvoiceId
       creditNoteReason
       purpose
+      shopOrderId
       payerCreditMemberId
       payerCreditContactId
       lines {
@@ -933,6 +948,7 @@ export const CLUB_INVOICE_DETAIL = gql`
         paidByFirstName
         paidByLastName
         recordedByName
+        cancellationReason
         createdAt
         refundedPaymentId
       }

@@ -49,6 +49,12 @@ export class InvoicePaymentGraph {
       'Qui a saisi cet encaissement au club. Null pour un encaissement sans geste humain (carte, prélèvement) ou saisi avant cette trace.',
   })
   recordedByName!: string | null;
+  @Field(() => String, {
+    nullable: true,
+    description:
+      'Sur une ligne négative : le motif si elle ANNULE une saisie erronée (rien n’a été reçu, la dette reste). Null pour un remboursement.',
+  })
+  cancellationReason!: string | null;
   @Field(() => Date) createdAt!: Date;
 
   @Field(() => ID, {
@@ -110,6 +116,13 @@ export class InvoiceDetailGraph {
       'CHARGE : facture ordinaire. PAYER_CREDIT_DEPOSIT : reçu d’avance, qui crédite une personne (ADR-0022).',
   })
   purpose!: InvoicePurpose;
+
+  @Field(() => ID, {
+    nullable: true,
+    description:
+      'Commande boutique réglée par cette facture. Ses encaissements s’annulent avec la commande, pas un par un.',
+  })
+  shopOrderId!: string | null;
 
   @Field(() => ID, {
     nullable: true,

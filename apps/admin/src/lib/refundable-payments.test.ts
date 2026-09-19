@@ -17,6 +17,7 @@ function payment(over: Partial<InvoicePayment> & { id: string }): InvoicePayment
     paidByFirstName: null,
     paidByLastName: null,
     recordedByName: null,
+    cancellationReason: null,
     createdAt: '2026-01-01T10:00:00.000Z',
     refundedPaymentId: null,
     ...over,

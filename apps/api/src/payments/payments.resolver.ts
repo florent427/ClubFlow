@@ -18,6 +18,7 @@ import { InvoiceGraph } from './models/invoice.model';
 import { InvoiceDetailGraph } from './models/invoice-detail.model';
 import { PaymentGraph } from './models/payment.model';
 import { InvoiceRemindersService } from './invoice-reminders.service';
+import { ManualPaymentCancellationService } from './manual-payment-cancellation.service';
 import { PaymentsService } from './payments.service';
 import { StripeRefundsService } from './stripe-refunds.service';
 import { Field, ID, Int, ObjectType } from '@nestjs/graphql';
@@ -92,6 +93,7 @@ export class PaymentsResolver {
     private readonly payments: PaymentsService,
     private readonly refunds: StripeRefundsService,
     private readonly reminders: InvoiceRemindersService,
+    private readonly cancellations: ManualPaymentCancellationService,
   ) {}
 
   @Query(() => [OverdueInvoiceGraph], { name: 'clubOverdueInvoices' })
@@ -241,6 +243,35 @@ export class PaymentsResolver {
     };
   }
 
+  @Mutation(() => PaymentGraph, {
+    name: 'cancelClubManualPayment',
+    description:
+      'Annule un encaissement saisi à la main par erreur (espèces, chèque, virement) : une ligne négative remet le reste dû, sans avoir, la recette est contre-passée et un chèque encore en portefeuille est annulé. Renvoie la ligne d’annulation.',
+  })
+  async cancelClubManualPayment(
+    @CurrentClub() club: Club,
+    @CurrentUser() user: RequestUser,
+    @Args('paymentId', { type: () => ID }) paymentId: string,
+    @Args('reason') reason: string,
+  ): Promise<PaymentGraph> {
+    const p = await this.cancellations.cancel(
+      club.id,
+      user.userId,
+      paymentId,
+      reason,
+    );
+    return {
+      id: p.id,
+      invoiceId: p.invoiceId,
+      amountCents: p.amountCents,
+      method: p.method,
+      externalRef: p.externalRef,
+      paidByMemberId: p.paidByMemberId ?? null,
+      paidByContactId: p.paidByContactId ?? null,
+      createdAt: p.createdAt,
+    };
+  }
+
   @Query(() => InvoiceDetailGraph, { name: 'clubInvoice' })
   async clubInvoice(
     @CurrentClub() club: Club,
@@ -297,6 +328,7 @@ export class PaymentsResolver {
         // technique ne dirait rien au trésorier.
         recordedByName:
           p.recordedBy?.displayName?.trim() || p.recordedBy?.email || null,
+        cancellationReason: p.cancellationReason ?? null,
         createdAt: p.createdAt,
         refundedPaymentId: p.refundedPaymentId ?? null,
       })),
@@ -305,6 +337,7 @@ export class PaymentsResolver {
       creditNoteReason: inv.creditNoteReason ?? null,
       voidReason: inv.voidReason ?? null,
       purpose: inv.purpose,
+      shopOrderId: inv.shopOrderId ?? null,
       payerCreditMemberId: inv.payerCreditMemberId ?? null,
       payerCreditContactId: inv.payerCreditContactId ?? null,
     };

@@ -1883,13 +1883,62 @@ export class AccountingService {
    * Crée une contre-passation manuelle (inversion des lignes) datée
    * d'aujourd'hui. L'entry source doit être POSTED ou LOCKED.
    */
+  /**
+   * La recette d'un encaissement, si elle existe encore, et ce qui empêche de
+   * la contre-passer. `null` quand il n'y en a pas : module comptable coupé au
+   * moment de l'encaissement, ou recette déjà contre-passée.
+   */
+  async paymentIncomeEntryState(
+    clubId: string,
+    paymentId: string,
+  ): Promise<{ entryId: string; blockedBecause: string | null } | null> {
+    const entry = await this.prisma.accountingEntry.findFirst({
+      where: {
+        clubId,
+        paymentId,
+        source: AccountingEntrySource.AUTO_MEMBER_PAYMENT,
+        cancelledAt: null,
+      },
+      select: {
+        id: true,
+        lockedAt: true,
+        consolidatedAt: true,
+        lines: { select: { bankReconciledAt: true } },
+      },
+    });
+    if (!entry) {
+      return null;
+    }
+    if (entry.lockedAt || entry.consolidatedAt) {
+      return {
+        entryId: entry.id,
+        blockedBecause:
+          'La recette de cet encaissement est verrouillée en comptabilité : il ne s’annule plus ici. Corrige-la par une contre-passation datée d’un mois ouvert.',
+      };
+    }
+    if (entry.lines.some((l) => l.bankReconciledAt)) {
+      return {
+        entryId: entry.id,
+        blockedBecause:
+          'Cet encaissement est rapproché d’une ligne de relevé bancaire : défais d’abord le rapprochement.',
+      };
+    }
+    return { entryId: entry.id, blockedBecause: null };
+  }
+
   async createContraEntry(
     clubId: string,
     userId: string,
     entryId: string,
     reason: string,
+    /**
+     * Transaction de l'appelant, quand la contre-passation doit naître avec
+     * autre chose ou pas du tout : l'annulation d'un encaissement et celle de
+     * sa recette. Sans elle, la contre-passation ouvre sa propre transaction.
+     */
+    outerTx?: Prisma.TransactionClient,
   ) {
-    const source = await this.prisma.accountingEntry.findFirst({
+    const source = await (outerTx ?? this.prisma).accountingEntry.findFirst({
       where: { id: entryId, clubId },
       include: { lines: true },
     });
@@ -1902,7 +1951,7 @@ export class AccountingService {
     const now = new Date();
     await this.period.assertDateIsOpen(clubId, now);
 
-    const contra = await this.prisma.$transaction(async (tx) => {
+    const run = async (tx: Prisma.TransactionClient) => {
       const c = await tx.accountingEntry.create({
         data: {
           clubId,
@@ -1949,15 +1998,23 @@ export class AccountingService {
         },
       });
       return c;
-    });
+    };
+    const contra = outerTx
+      ? await run(outerTx)
+      : await this.prisma.$transaction(run);
 
-    await this.audit.log({
-      clubId,
-      userId,
-      entryId: source.id,
-      action: AccountingAuditAction.CONTRAPASS,
-      metadata: { reason, contraEntryId: contra.id },
-    });
+    // Dans la transaction de l'appelant s'il y en a une : la contre-passation
+    // n'est pas encore visible hors de celle-ci.
+    await this.audit.log(
+      {
+        clubId,
+        userId,
+        entryId: source.id,
+        action: AccountingAuditAction.CONTRAPASS,
+        metadata: { reason, contraEntryId: contra.id },
+      },
+      outerTx,
+    );
 
     return contra;
   }
