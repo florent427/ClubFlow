@@ -21,6 +21,7 @@ import {
   CLUB_MANUAL_PAYMENT_METHODS,
   clubPaymentMethodLabel,
 } from '../../lib/payment-labels';
+import { readManualPaymentAmount } from '../../lib/manual-payment-amount';
 import type {
   ActiveClubSeasonQueryData,
   ClubInvoicesQueryData,
@@ -395,13 +396,12 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
   async function submitManualPayment() {
     if (!encInvoice) return;
     setEncMsg(null);
-    const t = encEuros.trim().replace(',', '.');
-    const n = Number.parseFloat(t);
-    if (!Number.isFinite(n) || n <= 0) {
-      setEncMsg('Montant invalide.');
+    const lu = readManualPaymentAmount(encEuros, encMethod);
+    if (lu.error !== null) {
+      setEncMsg(lu.error);
       return;
     }
-    const cents = Math.round(n * 100);
+    const cents = lu.cents;
     if (cents < 1 || cents > encInvoice.balanceCents) {
       setEncMsg(
         `Montant entre 0,01 € et ${(encInvoice.balanceCents / 100).toFixed(2)} €.`,
@@ -755,7 +755,13 @@ export function MemberAdhesionPanels({ member }: { member: MemberRow }) {
                           inputMode="decimal"
                           value={encEuros}
                           onChange={(e) => setEncEuros(e.target.value)}
-                          placeholder={`ex. ${(encInvoice.balanceCents / 100).toFixed(2)}`}
+                          placeholder={
+                            // Un chèque se saisit tel qu'écrit dessus : ne pas
+                            // souffler le reste dû.
+                            encMethod === 'MANUAL_CHECK'
+                              ? 'Montant écrit sur le chèque'
+                              : `ex. ${(encInvoice.balanceCents / 100).toFixed(2)}`
+                          }
                         />
                       </label>
                       <label className="field">
