@@ -12,6 +12,7 @@ import {
 import Stripe from 'stripe';
 import { MembershipCartService } from '../src/membership/membership-cart.service';
 import { CreditNotesService } from '../src/payments/credit-notes.service';
+import { ManualPaymentCancellationService } from '../src/payments/manual-payment-cancellation.service';
 import { PaymentsService } from '../src/payments/payments.service';
 import { ShopOrderAdjustmentsService } from '../src/payments/shop-order-adjustments.service';
 import { ShopOrderMoneyService } from '../src/payments/shop-order-money.service';
@@ -1042,23 +1043,45 @@ export function makeWorld(seed: {
       // Un webhook relit ce qu'il a déjà enregistré : le paiement de son
       // paymentIntent, son remboursement, ou l'encaissement que celui-ci rend.
       findFirst: jest.fn(async ({ where, select, include }: any) => {
-        allowOnly(where, ['clubId', 'invoiceId', 'externalRef', 'stripeRefundId', 'amountCents']);
+        allowOnly(where, [
+          'id',
+          'clubId',
+          'invoiceId',
+          'externalRef',
+          'stripeRefundId',
+          'amountCents',
+          'refundedPaymentId',
+        ]);
         const p = payments.find(
           (x) =>
+            (where.id === undefined || x.id === where.id) &&
             (where.clubId === undefined || x.clubId === where.clubId) &&
             (where.invoiceId === undefined || x.invoiceId === where.invoiceId) &&
             (where.externalRef === undefined || x.externalRef === where.externalRef) &&
             (where.stripeRefundId === undefined ||
               x.stripeRefundId === where.stripeRefundId) &&
+            (where.refundedPaymentId === undefined ||
+              (x.refundedPaymentId ?? null) === where.refundedPaymentId) &&
             count(x.amountCents, where.amountCents),
         );
         if (!p) return respond(null);
         if (select) return respond(pick(p, select));
         const row: Record<string, unknown> = clone(p);
         if (include) {
-          allowOnly(include, ['invoice']);
-          const inv = invoices.find((i) => i.id === p.invoiceId);
-          row.invoice = inv ? pick(inv, include.invoice.select) : null;
+          allowOnly(include, ['invoice', 'cheque']);
+          if (include.invoice) {
+            const inv = invoices.find((i) => i.id === p.invoiceId);
+            row.invoice = !inv
+              ? null
+              : include.invoice === true
+                ? clone(inv)
+                : pick(inv, include.invoice.select);
+          }
+          if (include.cheque) {
+            // Le chèque qui règle ce paiement (`Cheque.paymentId`).
+            const c = cheques.find((x) => x.paymentId === p.id);
+            row.cheque = c ? clone(c) : null;
+          }
         }
         return respond(row);
       }),
@@ -1338,6 +1361,26 @@ export function makeWorld(seed: {
         _financialAccountId?: string | null,
       ) => undefined,
     ),
+    // La recette d'un encaissement : aucune par défaut (module coupé).
+    paymentIncomeEntryState: jest.fn(
+      async (
+        _clubId: string,
+        _paymentId: string,
+      ): Promise<{ entryId: string; blockedBecause: string | null } | null> =>
+        null,
+    ),
+    // La transaction de l'appelant arrive en dernier : on la garde, pour
+    // vérifier que la contre-passation naît dans la même.
+    createContraEntry: trace(
+      'contra',
+      async (
+        _clubId: string,
+        _userId: string,
+        _entryId: string,
+        _reason: string,
+        _tx?: unknown,
+      ) => ({ id: 'contra-1' }),
+    ),
   };
   const creditNotes = new CreditNotesService(db, accounting as never);
   const stripeRefunds = {
@@ -1384,6 +1427,9 @@ export function makeWorld(seed: {
     financialAccounts as never,
   );
   const refunds = new ShopOrderRefundsService(db, shop, money, preorders as never);
+  // Annuler un encaissement saisi par erreur : sa recette passe par le double
+  // de la comptabilité, le reste par ce monde.
+  const cancellations = new ManualPaymentCancellationService(db, accounting as never);
   const adjust = new ShopOrderAdjustmentsService(db, shop, money, preorders as never);
   // Les frais d'un encaissement carte, lus chez Stripe après le commit.
   const stripeFees = {
@@ -1529,6 +1575,7 @@ export function makeWorld(seed: {
     refunds,
     adjust,
     paymentsService,
+    cancellations,
     cartService,
     refundConfirmations,
     stripePaymentSucceeded,

@@ -515,6 +515,10 @@ export type ClubInvoicesQueryData = {
   }[];
 };
 
+export type CancelClubManualPaymentMutationData = {
+  cancelClubManualPayment: { id: string; amountCents: number };
+};
+
 export type RecordClubManualPaymentMutationData = {
   recordClubManualPayment: {
     id: string;
@@ -687,6 +691,8 @@ export type ClubInvoiceDetailQueryData = {
     parentInvoiceId: string | null;
     creditNoteReason: string | null;
     purpose: InvoicePurposeStr;
+    /** Commande boutique réglée par la facture : ses encaissements s'annulent avec elle. */
+    shopOrderId: string | null;
     payerCreditMemberId: string | null;
     payerCreditContactId: string | null;
     lines: {
@@ -719,6 +725,8 @@ export type ClubInvoiceDetailQueryData = {
       paidByLastName: string | null;
       /** Qui a saisi l'encaissement au club ; null s'il n'y a pas eu de saisie. */
       recordedByName: string | null;
+      /** Motif d'une ligne qui ANNULE une saisie erronée ; null pour un remboursement. */
+      cancellationReason: string | null;
       createdAt: string;
       /** Encaissement remboursé par cette ligne, si c'en est un. */
       refundedPaymentId: string | null;

@@ -47,6 +47,7 @@ import { invoicePaymentTotals } from '../payments/invoice-totals';
 import { assertNotPayerCreditMethod } from '../payments/payment-method-rules';
 import { StripeCheckoutService } from '../payments/stripe-checkout.service';
 import { PlanningService } from '../planning/planning.service';
+import { withoutCancelledEntries } from '../payments/cancelled-entries';
 import { PrismaService } from '../prisma/prisma.service';
 import { ViewerCourseSlotGraph } from './models/viewer-course-slot.model';
 import { ViewerFamilyBillingSummaryGraph } from './models/viewer-family-billing.model';
@@ -1301,7 +1302,11 @@ export class ViewerService {
         creditNotesSum,
         inv.isCreditNote,
       );
-      const payments: ViewerInvoicePaymentSnippetGraph[] = inv.payments.map(
+      // Sans les saisies annulées : le payeur ne les a jamais faites, et la
+      // paire (montant, puis son opposé) passerait pour un remboursement.
+      const payments: ViewerInvoicePaymentSnippetGraph[] = withoutCancelledEntries(
+        inv.payments,
+      ).map(
         (p) => ({
           id: p.id,
           amountCents: p.amountCents,

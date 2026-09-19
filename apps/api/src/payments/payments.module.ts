@@ -12,6 +12,7 @@ import { InvoiceRemindersService } from './invoice-reminders.service';
 import { PaymentsResolver } from './payments.resolver';
 import { PaymentsService } from './payments.service';
 import { PayerCreditRefundsService } from './payer-credit-refunds.service';
+import { ManualPaymentCancellationService } from './manual-payment-cancellation.service';
 import { PayerCreditResolver } from './payer-credit.resolver';
 import { PayerCreditService } from './payer-credit.service';
 import { ViewerPayerCreditResolver } from './viewer-payer-credit.resolver';
@@ -58,6 +59,8 @@ import { StripeWebhookController } from './stripe-webhook.controller';
     PayerCreditResolver,
     // Rembourser une avance hors carte (tâche 4.2).
     PayerCreditRefundsService,
+    // Annuler un encaissement saisi par erreur.
+    ManualPaymentCancellationService,
     // Le crédit du compte connecté, au portail et dans l'appli (lot 3).
     ViewerPayerCreditResolver,
     StripeCheckoutService,

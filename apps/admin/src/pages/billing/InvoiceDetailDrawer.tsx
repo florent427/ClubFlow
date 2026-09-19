@@ -2,6 +2,7 @@ import { useMutation, useQuery } from '@apollo/client/react';
 import { useMemo, useState } from 'react';
 import {
   APPLY_PAYER_CREDIT_TO_INVOICE,
+  CANCEL_CLUB_MANUAL_PAYMENT,
   CLUB_INVOICE_DETAIL,
   CLUB_INVOICE_PAYER_CREDITS,
   CLUB_INVOICE_PAYER_PEOPLE,
@@ -15,6 +16,7 @@ import {
 } from '../../lib/documents';
 import type {
   ApplyPayerCreditToInvoiceMutationData,
+  CancelClubManualPaymentMutationData,
   ClubInvoiceDetailQueryData,
   ClubInvoicePayerCreditsQueryData,
   ClubInvoicePayerPeopleQueryData,
@@ -45,6 +47,15 @@ import {
   computeRefundableByPaymentId,
   isRefundRecorded,
 } from '../../lib/refundable-payments';
+import {
+  amountAfterMethodChange,
+  initialManualPaymentAmount,
+  readManualPaymentAmount,
+} from '../../lib/manual-payment-amount';
+import {
+  canCancelManualPayment,
+  isCancellationLine,
+} from '../../lib/manual-payment-cancellation';
 import { Drawer } from '../../components/ui/Drawer';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
 import { LoadingState } from '../../components/ui/LoadingState';
@@ -170,6 +181,13 @@ export function InvoiceDetailDrawer({
   const refundState = {
     loading: cardRefundState.loading || depositRefundState.loading,
   };
+  // Annuler un encaissement saisi par erreur : la dette revient, sans avoir.
+  const [cancelPayment, cancelState] =
+    useMutation<CancelClubManualPaymentMutationData>(CANCEL_CLUB_MANUAL_PAYMENT);
+  const [cancelPaymentId, setCancelPaymentId] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [cancelNotice, setCancelNotice] = useState<string | null>(null);
 
   const [confirmKind, setConfirmKind] = useState<ConfirmKind>(null);
   const [voidReason, setVoidReason] = useState('');
@@ -409,18 +427,19 @@ export function InvoiceDetailDrawer({
 
   function handleOpenPayForm() {
     if (!inv) return;
-    setPayAmount((inv.balanceCents / 100).toFixed(2));
     // Pour un enregistrement MANUEL on pré-sélectionne un mode manuel.
     // STRIPE_CARD n'est jamais valide ici (les paiements Stripe sont
     // créés automatiquement par le webhook, pas via ce formulaire). Si
     // la facture est verrouillée sur Stripe, on suggère MANUAL_CASH par
     // défaut tout en laissant l'admin choisir le bon mode.
     const locked = inv.lockedPaymentMethod;
-    setPayMethod(
+    const method: ClubPaymentMethodStr =
       locked && locked !== 'STRIPE_CARD' && locked !== 'PAYER_CREDIT'
         ? locked
-        : 'MANUAL_CASH',
-    );
+        : 'MANUAL_CASH';
+    setPayMethod(method);
+    // Un chèque se saisit tel qu'écrit dessus : pas de reste dû pré-rempli.
+    setPayAmount(initialManualPaymentAmount(method, inv.balanceCents));
     setPayRef('');
     setPaySurplusKey('');
     setPayNotice(null);
@@ -430,18 +449,19 @@ export function InvoiceDetailDrawer({
     setChequeImageAssetId(null);
     setChequeImageName(null);
     setPayError(null);
+    setCancelPaymentId(null);
     setPayOpen(true);
   }
 
   async function handleRecordPayment(e: React.FormEvent) {
     e.preventDefault();
     if (!inv) return;
-    const normalized = payAmount.replace(',', '.').trim();
-    const cents = Math.round(Number(normalized) * 100);
-    if (!Number.isFinite(cents) || cents <= 0) {
-      setPayError('Montant invalide');
+    const lu = readManualPaymentAmount(payAmount, payMethod);
+    if (lu.error !== null) {
+      setPayError(lu.error);
       return;
     }
+    const cents = lu.cents;
     const surplus = manualPaymentSurplus({
       amountCents: cents,
       balanceCents: inv.balanceCents,
@@ -537,11 +557,50 @@ export function InvoiceDetailDrawer({
     }
   }
 
+  function handleOpenCancelForm(paymentId: string) {
+    // Un seul geste à la fois : annuler une saisie n'est pas rembourser.
+    setRefundPaymentId(null);
+    setCreditOpen(false);
+    setPayOpen(false);
+    setCancelPaymentId(paymentId);
+    setCancelReason('');
+    setCancelError(null);
+    setCancelNotice(null);
+  }
+
+  async function handleCancelPayment(e: React.FormEvent) {
+    e.preventDefault();
+    if (!cancelPaymentId || !inv) return;
+    const motif = cancelReason.trim();
+    if (!motif) {
+      setCancelError('Motif requis : dis pourquoi cette saisie est annulée.');
+      return;
+    }
+    const annule = inv.payments.find((p) => p.id === cancelPaymentId);
+    setCancelError(null);
+    try {
+      await cancelPayment({
+        variables: { paymentId: cancelPaymentId, reason: motif },
+      });
+      setCancelPaymentId(null);
+      setCancelNotice(
+        annule
+          ? `Saisie de ${formatEuros(annule.amountCents)} annulée : ce montant est de nouveau dû. Saisis le bon encaissement ci-dessous.`
+          : 'Saisie annulée.',
+      );
+      await refetch();
+      onChanged();
+    } catch (err) {
+      setCancelError(err instanceof Error ? err.message : 'Annulation impossible.');
+    }
+  }
+
   function handleOpenRefundForm(paymentId: string) {
     const remaining = refundCeilingCents(paymentId);
     // Les deux formulaires visent le même geste par deux chemins opposés :
     // les afficher ensemble inviterait à faire les deux.
     setCreditOpen(false);
+    setCancelPaymentId(null);
     setRefundPaymentId(paymentId);
     setRefundAmount((remaining / 100).toFixed(2));
     setRefundReason('');
@@ -1011,11 +1070,19 @@ export function InvoiceDetailDrawer({
                     // avance, la part utilisée ne se rembourse plus.
                     const refundable = refundCeilingCents(p.id);
                     const isRefund = p.amountCents < 0;
+                    // Une annulation dit « jamais reçu », un remboursement
+                    // « rendu » : les confondre fausserait la lecture.
+                    const isCancellation = isCancellationLine(p);
+                    const cancellable = canCancelManualPayment(inv, p, inv.payments);
                     return (
                       <li key={p.id} className="cf-invoice-payment">
                         <div>
                           <div className="cf-invoice-payment__method">
-                            {isRefund ? 'Remboursement · ' : ''}
+                            {isCancellation
+                              ? 'Saisie annulée · '
+                              : isRefund
+                                ? 'Remboursement · '
+                                : ''}
                             {METHOD_LABELS[p.method]}
                             {p.externalRef ? ` · ${p.externalRef}` : ''}
                           </div>
@@ -1025,12 +1092,26 @@ export function InvoiceDetailDrawer({
                             {/* Qui a saisi : absent d'un encaissement par
                                 carte, que personne ne saisit. */}
                             {p.recordedByName
-                              ? ` · saisi par ${p.recordedByName}`
+                              ? isCancellation
+                                ? ` · annulée par ${p.recordedByName}`
+                                : ` · saisi par ${p.recordedByName}`
                               : ''}
+                            {isCancellation ? ` · motif : ${p.cancellationReason}` : ''}
                             {refundable > 0 && refundable < p.amountCents
                               ? ` · ${formatEuros(refundable)} encore remboursables`
                               : ''}
                           </div>
+                          {cancellable ? (
+                            <button
+                              type="button"
+                              className="btn-ghost"
+                              onClick={() => handleOpenCancelForm(p.id)}
+                              disabled={cancelState.loading}
+                              title="Retirer cette saisie erronée : le montant redevient dû, sans avoir"
+                            >
+                              Annuler la saisie
+                            </button>
+                          ) : null}
                           {refundable > 0 ? (
                             <button
                               type="button"
@@ -1150,13 +1231,20 @@ export function InvoiceDetailDrawer({
                 <div className="cf-form-row">
                   <label className="cf-field">
                     <span className="cf-field__label">Montant (€)</span>
+                    {/* Pas de `required` : le navigateur afficherait sa
+                        bulle générique à la place du message qui dit quoi
+                        saisir (voir readManualPaymentAmount). */}
                     <input
                       className="cf-field__input"
                       type="text"
                       inputMode="decimal"
                       value={payAmount}
+                      placeholder={
+                        payMethod === 'MANUAL_CHECK'
+                          ? 'Montant écrit sur le chèque'
+                          : undefined
+                      }
                       onChange={(e) => setPayAmount(e.target.value)}
-                      required
                     />
                   </label>
                   <label className="cf-field">
@@ -1164,9 +1252,18 @@ export function InvoiceDetailDrawer({
                     <select
                       className="cf-field__input"
                       value={payMethod}
-                      onChange={(e) =>
-                        setPayMethod(e.target.value as ClubPaymentMethodStr)
-                      }
+                      onChange={(e) => {
+                        const next = e.target.value as ClubPaymentMethodStr;
+                        setPayAmount(
+                          amountAfterMethodChange(
+                            payAmount,
+                            payMethod,
+                            next,
+                            inv.balanceCents,
+                          ),
+                        );
+                        setPayMethod(next);
+                      }}
                     >
                       {/*
                         Ce drawer enregistre des paiements MANUELS — l'admin
@@ -1328,6 +1425,62 @@ export function InvoiceDetailDrawer({
               <p className="cf-invoice-detail__empty" role="status">
                 {refundNotice}
               </p>
+            ) : null}
+
+            {cancelNotice ? (
+              <p className="cf-invoice-detail__empty" role="status">
+                {cancelNotice}
+              </p>
+            ) : null}
+
+            {cancelPaymentId ? (
+              <form className="cf-invoice-pay-form" onSubmit={handleCancelPayment}>
+                <h3 className="cf-invoice-detail__section-title">
+                  Annuler la saisie
+                </h3>
+                <p
+                  className="cf-invoice-detail__empty"
+                  style={{ marginTop: 0 }}
+                >
+                  Pour une saisie erronée : mauvais montant, mauvaise facture.
+                  Le montant redevient dû, sans avoir, et sa recette est
+                  contre-passée. Un chèque encore en portefeuille est retiré ;
+                  un chèque déjà remis en banque ne s’annule pas ici.
+                </p>
+                <label className="cf-field">
+                  <span className="cf-field__label">Motif *</span>
+                  <textarea
+                    className="cf-field__input"
+                    value={cancelReason}
+                    onChange={(e) => setCancelReason(e.target.value)}
+                    rows={2}
+                    maxLength={500}
+                    placeholder="Montant faux : le chèque est de 91,50 €…"
+                  />
+                </label>
+                {cancelError ? (
+                  <p className="cf-form-error" role="alert">
+                    {cancelError}
+                  </p>
+                ) : null}
+                <div className="cf-form-actions">
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => setCancelPaymentId(null)}
+                    disabled={cancelState.loading}
+                  >
+                    Garder la saisie
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn-primary"
+                    disabled={cancelState.loading}
+                  >
+                    {cancelState.loading ? 'Annulation…' : 'Annuler la saisie'}
+                  </button>
+                </div>
+              </form>
             ) : null}
 
             {refundPaymentId ? (

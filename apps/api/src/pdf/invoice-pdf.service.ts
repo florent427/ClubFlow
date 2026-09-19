@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InvoicePurpose, InvoiceStatus } from '@prisma/client';
 import PDFDocument from 'pdfkit';
 import sharp from 'sharp';
+import { withoutCancelledEntries } from '../payments/cancelled-entries';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -549,14 +550,16 @@ export class InvoicePdfService {
     doc.moveDown(1);
 
     // ===== Paiements reçus =====
-    if (inv.payments.length > 0 && !isCredit) {
+    // Sans les saisies annulées : le payeur ne les a jamais faites.
+    const recus = withoutCancelledEntries(inv.payments);
+    if (recus.length > 0 && !isCredit) {
       doc
         .fillColor('#0b1d2a')
         .font('Helvetica-Bold')
         .fontSize(10)
         .text('Paiements reçus', 48, doc.y);
       doc.fillColor('#212529').font('Helvetica').fontSize(9);
-      for (const p of inv.payments) {
+      for (const p of recus) {
         const name =
           (p.paidByMember
             ? `${p.paidByMember.firstName} ${p.paidByMember.lastName}`
@@ -588,10 +591,7 @@ export class InvoicePdfService {
     // le reste du rendu. Le tampon est semi-transparent pour laisser lire le
     // contenu sous-jacent.
     if (inv.status === InvoiceStatus.PAID && !isCredit && !isDeposit) {
-      const lastPayment =
-        inv.payments.length > 0
-          ? inv.payments[inv.payments.length - 1]
-          : null;
+      const lastPayment = recus.length > 0 ? recus[recus.length - 1] : null;
       drawPaidStamp(doc, lastPayment?.createdAt ?? null);
     }
 
