@@ -2687,6 +2687,7 @@ export class MembershipCartService {
       from: profile.from,
       to,
       subject,
+      preheader: 'Votre facture d’adhésion est disponible dans votre espace membre.',
       html,
       text,
     });

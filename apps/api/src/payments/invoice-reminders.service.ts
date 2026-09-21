@@ -238,6 +238,7 @@ ${invoice.club.name}`;
       from: profile.from,
       to: payerEmail,
       subject,
+      preheader: `Il reste un solde à régler sur ${invoice.label}.`,
       html,
       text,
     });

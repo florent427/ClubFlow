@@ -219,3 +219,25 @@ describe('humanUnsubscribeUrl', () => {
     expect(humanUnsubscribeUrl('')).toBeNull();
   });
 });
+
+describe('BrandedMailTransport — texte d’aperçu', () => {
+  it('pose le preheader fourni, une seule fois échappé', async () => {
+    const w = monde();
+
+    await w.transport.sendEmail(
+      params({ preheader: 'Marie O’Brien & fils vous invitent' }),
+    );
+
+    const envoye = dernierEnvoi(w.inner);
+    expect(envoye.html).toContain('Marie O’Brien &amp; fils vous invitent');
+    expect(envoye.html).not.toContain('&amp;amp;');
+  });
+
+  it('n’insère rien quand l’appelant n’en fournit pas', async () => {
+    const w = monde();
+
+    await w.transport.sendEmail(params());
+
+    expect(dernierEnvoi(w.inner).html).not.toContain('display:none');
+  });
+});

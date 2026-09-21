@@ -6,6 +6,7 @@ import {
 import {
   clubMailTextSignature,
   isFullHtmlDocument,
+  preheaderFromText,
   renderClubMailLayout,
 } from './club-mail-layout';
 
@@ -155,5 +156,34 @@ describe('renderClubMailLayout — lisibilité du logo', () => {
     expect(balise).toContain('background:#ffffff');
     expect(balise).toContain('padding:8px');
     expect(balise).toContain('alt="Shotokan Karaté Sud Réunion"');
+  });
+});
+
+describe('preheaderFromText', () => {
+  it('reprend le début d’un message libre', () => {
+    expect(preheaderFromText('Le stage de rentrée aura lieu samedi.')).toBe(
+      'Le stage de rentrée aura lieu samedi.',
+    );
+  });
+
+  it('aplatit le HTML et les sauts de ligne', () => {
+    expect(
+      preheaderFromText('<div>Bonjour,\n\n  le stage <strong>arrive</strong>.</div>'),
+    ).toBe('Bonjour, le stage arrive.');
+  });
+
+  it('coupe au mot entier et pose des points de suspension', () => {
+    const long = 'abcde '.repeat(40);
+    const p = preheaderFromText(long, 40);
+    expect(p!.length).toBeLessThanOrEqual(41);
+    expect(p!.endsWith('…')).toBe(true);
+    expect(p).not.toContain('abcd…');
+  });
+
+  it('rend undefined quand il n’y a rien à annoncer', () => {
+    expect(preheaderFromText('')).toBeUndefined();
+    expect(preheaderFromText('   \n  ')).toBeUndefined();
+    expect(preheaderFromText(null)).toBeUndefined();
+    expect(preheaderFromText('<br/>')).toBeUndefined();
   });
 });

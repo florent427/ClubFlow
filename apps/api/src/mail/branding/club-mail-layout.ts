@@ -195,6 +195,34 @@ ${footerBlock(b, unsubscribeUrl)}
 </html>`;
 }
 
+/**
+ * Texte d'aperçu tiré d'un message à contenu libre (campagne, message rapide,
+ * annonce d'événement) : son début vaut mieux que le repli du client, qui
+ * affiche les premiers mots du rendu — c'est-à-dire le nom du club.
+ */
+export function preheaderFromText(
+  text: string | null | undefined,
+  max = 140,
+): string | undefined {
+  const plat = (text ?? '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    // Retirer une balise laisse une espace devant la ponctuation qui suit
+    // (« arrive . ») : visible dans la liste des messages.
+    .replace(/ +([,.])/g, (_, ponctuation: string) => ponctuation)
+    .trim();
+  if (!plat) {
+    return undefined;
+  }
+  if (plat.length <= max) {
+    return plat;
+  }
+  // Coupe au dernier mot entier pour ne pas laisser une syllabe orpheline.
+  const tronque = plat.slice(0, max);
+  const espace = tronque.lastIndexOf(' ');
+  return `${(espace > max * 0.6 ? tronque.slice(0, espace) : tronque).trimEnd()}…`;
+}
+
 /** Signature ajoutée à la version texte, pour que les deux disent la même chose. */
 export function clubMailTextSignature(
   b: ClubMailBranding,
