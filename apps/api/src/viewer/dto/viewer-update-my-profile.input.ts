@@ -6,6 +6,7 @@ import {
   IsString,
   Length,
 } from 'class-validator';
+import { MEMBER_PHOTO_URL_MAX } from '../../members/member-photo-intake';
 
 @InputType()
 export class ViewerUpdateMyProfileInput {
@@ -32,10 +33,14 @@ export class ViewerUpdateMyProfileInput {
   @Length(0, 32)
   phone?: string;
 
+  // Le portail n'envoie qu'une URL de média : il n'a pas de recadrage inline,
+  // sa photo passe par `/media/upload`. La borne est donc celle d'une URL, et
+  // non celle de l'admin, qui accepte une image inline convertie à l'écriture
+  // (cf. `MEMBER_PHOTO_DATA_URL_MAX`).
   @Field({ nullable: true })
   @IsOptional()
   @IsString()
-  @Length(0, 512)
+  @Length(0, MEMBER_PHOTO_URL_MAX)
   photoUrl?: string;
 
   // ── Coordonnées postales ──────────────────────────────────────────

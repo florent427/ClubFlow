@@ -56,6 +56,9 @@ function service(receipts: Receipt[]) {
     {} as never,
     {} as never,
     {} as never,
+    // MediaAssetsService : la suppression d'un membre ne touche pas aux
+    // médias, un double vide suffit.
+    {} as never,
   );
   return { svc, prisma };
 }

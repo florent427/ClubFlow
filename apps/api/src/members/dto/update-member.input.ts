@@ -15,6 +15,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { MemberCustomFieldValueInput } from './member-custom-field-value.input';
+import { MEMBER_PHOTO_DATA_URL_MAX } from '../member-photo-intake';
 
 @InputType()
 export class UpdateMemberInput {
@@ -80,7 +81,10 @@ export class UpdateMemberInput {
   @Field({ nullable: true })
   @IsOptional()
   @IsString()
-  @MaxLength(524_288)
+  // Image inline acceptée en ENTRÉE : l'admin recadre dans un canvas et
+  // envoie une data URL. Elle est convertie en MediaAsset à l'écriture
+  // (absorberPhotoMembre), donc la colonne ne reçoit qu'une URL.
+  @MaxLength(MEMBER_PHOTO_DATA_URL_MAX)
   photoUrl?: string;
 
   @Field({ nullable: true })

@@ -48,6 +48,8 @@ import { ClubMemberFieldLayoutGraph } from './models/club-member-field-layout.mo
 import { ClubMemberEmailDuplicateInfoGraph } from './models/club-member-email-duplicate-info.model';
 import { MemberGraph } from './models/member.model';
 import { MemberPseudoService } from '../messaging/member-pseudo.service';
+import { MediaAssetsService } from '../media/media-assets.service';
+import { absorberPhotoMembre } from './member-photo-intake';
 import { stripMediaSignature } from '../media/media-url-signer.service';
 
 type FamilyMemberWithNames = {
@@ -77,6 +79,7 @@ export class MembersService {
     @Inject(forwardRef(() => MembershipCartService))
     private readonly membershipCart: MembershipCartService,
     private readonly memberActivation: MemberAccountActivationService,
+    private readonly media: MediaAssetsService,
   ) {}
 
   private assertMemberIdentityComplete(
@@ -633,6 +636,14 @@ export class MembersService {
       input.roles && input.roles.length > 0
         ? input.roles
         : [MemberClubRole.STUDENT];
+    // Hors transaction : l'absorption écrit un fichier et un MediaAsset,
+    // que la transaction de la fiche n'a pas à porter.
+    const photoUrl = await absorberPhotoMembre(
+      this.media,
+      clubId,
+      null,
+      stripMediaSignature(input.photoUrl),
+    );
     const row = await this.prisma.$transaction(async (tx) => {
       const pseudo = await this.memberPseudo.pickAvailablePseudo(
         tx,
@@ -654,7 +665,7 @@ export class MembersService {
           postalCode: input.postalCode ?? null,
           city: input.city ?? null,
           birthDate: input.birthDate ? new Date(input.birthDate) : null,
-          photoUrl: stripMediaSignature(input.photoUrl),
+          photoUrl,
           medicalCertExpiresAt: input.medicalCertExpiresAt
             ? new Date(input.medicalCertExpiresAt)
             : null,
@@ -813,8 +824,14 @@ export class MembersService {
       }
       if (input.photoUrl !== undefined) {
         // Un formulaire peut renvoyer l'URL signée qu'il a lue : on ne
-        // persiste que la forme canonique. Cf. stripMediaSignature.
-        patch.photoUrl = stripMediaSignature(input.photoUrl);
+        // persiste que la forme canonique. Cf. stripMediaSignature. Une
+        // photo recadrée arrive en data URL : elle devient un MediaAsset.
+        patch.photoUrl = await absorberPhotoMembre(
+          this.media,
+          clubId,
+          null,
+          stripMediaSignature(input.photoUrl),
+        );
       }
       if (input.medicalCertExpiresAt !== undefined) {
         patch.medicalCertExpiresAt = input.medicalCertExpiresAt

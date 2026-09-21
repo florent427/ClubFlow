@@ -4,6 +4,7 @@ import { FamiliesModule } from '../families/families.module';
 import { MailModule } from '../mail/mail.module';
 import { MessagingModule } from '../messaging/messaging.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { MediaModule } from '../media/media.module';
 import { MembershipModule } from '../membership/membership.module';
 import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.guard';
 import { ClubContactsResolver } from './club-contacts.resolver';
@@ -23,6 +24,7 @@ import { MembersService } from './members.service';
     forwardRef(() => MembershipModule),
     forwardRef(() => AuthModule),
     MailModule,
+    MediaModule,
   ],
   providers: [
     MemberFieldConfigService,
