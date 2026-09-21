@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.75.1](https://github.com/florent427/ClubFlow/compare/v0.75.0...v0.75.1) (2026-09-21)
+
+
+### 🐛 Bug Fixes
+
+* **mail:** laisser le logo occuper tout le disque de l'en-tête ([f80401b](https://github.com/florent427/ClubFlow/commit/f80401bc35584e0b23320364e2c324f176130cba))
+* **mail:** le logo occupe tout le disque de l'en-tête ([8e3f0fd](https://github.com/florent427/ClubFlow/commit/8e3f0fd23ae831b9ab6bf897e286cddec71d4a90))
+
 ## [0.75.0](https://github.com/florent427/ClubFlow/compare/v0.74.1...v0.75.0) (2026-09-21)
 
 
