@@ -13,7 +13,7 @@ import {
   getClubflowHostedMailSuffix,
   slugToMailDnsLabel,
 } from './hosted-mail.utils';
-import { smtpProviderIdForFqdn } from './providers/smtp-id';
+import { isSmtpProviderId, smtpProviderIdForFqdn } from './providers/smtp-id';
 import { buildSmtpMailFrom, type SmtpMailFrom } from './mail-from';
 
 export type MailUsageKind = 'campaign' | 'transactional';
@@ -183,8 +183,9 @@ export class ClubSendingDomainService {
     if (!row) {
       throw new BadRequestException('Domaine inconnu');
     }
-    const providerId =
-      row.providerDomainId ?? smtpProviderIdForFqdn(normalizeFqdn(row.fqdn));
+    const providerId = isSmtpProviderId(row.providerDomainId)
+      ? row.providerDomainId
+      : smtpProviderIdForFqdn(normalizeFqdn(row.fqdn));
     const t = this.requireTransport();
     const snap = await t.refreshDomain(providerId);
     if (snap.inconclusive) {
@@ -225,6 +226,9 @@ export class ClubSendingDomainService {
       where: { id: row.id },
       data: {
         verificationStatus,
+        // Répare au passage une ligne héritée dont l’identifiant venait de
+        // l’ancien fournisseur d’API (cf. isSmtpProviderId).
+        providerDomainId: providerId,
         dnsRecordsJson: JSON.stringify(snap.records),
         lastCheckedAt: new Date(),
       },
