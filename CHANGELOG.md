@@ -9,6 +9,20 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.75.0](https://github.com/florent427/ClubFlow/compare/v0.74.1...v0.75.0) (2026-09-21)
+
+
+### ✨ Features
+
+* **mail:** annoncer chaque e-mail par un texte d'aperçu ([4772a45](https://github.com/florent427/ClubFlow/commit/4772a4529052f42639d0efd71542ef92c1b9c02c))
+* **mail:** changer le rôle d'un domaine d'envoi sans le supprimer ([960988d](https://github.com/florent427/ClubFlow/commit/960988d4a3ce52ded02d46ee50f78c9863e40e57))
+* **mail:** enveloppe commune aux e-mails, à la charte du club ([c7d0670](https://github.com/florent427/ClubFlow/commit/c7d06706ca8895ef1d1ef80e8f4d86e70663d3d6))
+
+
+### 🐛 Bug Fixes
+
+* **mail:** poser le logo sur une pastille claire dans l'en-tête ([d0e4bac](https://github.com/florent427/ClubFlow/commit/d0e4bac3d359e87913374c88f65524e290cbfea5))
+
 ## [0.74.1](https://github.com/florent427/ClubFlow/compare/v0.74.0...v0.74.1) (2026-09-21)
 
 
