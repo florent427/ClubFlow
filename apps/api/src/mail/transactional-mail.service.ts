@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Inject } from '@nestjs/common';
 import { MAIL_TRANSPORT } from './mail.constants';
 import type { MailTransport } from './mail-transport.interface';
 import { ClubSendingDomainService } from './club-sending-domain.service';
+import { preheaderFromText } from './branding/club-mail-layout';
 
 function escapeHtml(s: string): string {
   return s
@@ -50,6 +51,7 @@ export class TransactionalMailService {
       from: profile.from,
       to: trimmed,
       subject: 'ClubFlow — confirmez votre adresse e-mail',
+      preheader: 'Confirmez votre adresse pour activer votre compte.',
       html: `<p>Bonjour,</p><p>Pour activer votre compte, veuillez confirmer votre adresse e-mail :</p><p><a href="${verifyUrl}">Confirmer mon e-mail</a></p><p>Lien (copier-coller) : ${verifyUrl}</p>${conflict ? `<p>${conflict}</p>` : ''}<p>${IGNORE_IF_NOT_YOU}</p>`,
       text: [
         `Confirmez votre adresse e-mail en ouvrant ce lien : ${verifyUrl}`,
@@ -87,6 +89,7 @@ export class TransactionalMailService {
       from: profile.from,
       to: trimmed,
       subject: 'ClubFlow — vous avez déjà un compte',
+      preheader: 'Une inscription vient d’être tentée avec votre adresse.',
       html: `<p>Bonjour,</p><p>Une inscription à <strong>${escapeHtml(clubName)}</strong> vient d’être demandée avec votre adresse e-mail, qui a déjà un compte ClubFlow.</p><p>${ifYou}</p><p>${ifNotYou}</p>`,
       text: [
         'Bonjour,',
@@ -181,6 +184,7 @@ export class TransactionalMailService {
       from: profile.from,
       to: trimmed,
       subject,
+      preheader: `Reliez Telegram pour recevoir les messages de ${clubName} sur votre téléphone.`,
       html,
       text,
     });
@@ -204,6 +208,7 @@ export class TransactionalMailService {
       from: profile.from,
       to: trimmed,
       subject: 'ClubFlow — réinitialisation de votre mot de passe',
+      preheader: 'Votre lien de réinitialisation, valable 1 heure.',
       html: `<p>Bonjour,</p><p>Vous avez demandé à réinitialiser votre mot de passe. Ce lien est valable 1 heure :</p><p><a href="${resetUrl}">Réinitialiser mon mot de passe</a></p><p>Lien (copier-coller) : ${resetUrl}</p><p>Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail.</p>`,
       text: `Réinitialisez votre mot de passe en ouvrant ce lien (valable 1 heure) : ${resetUrl}`,
     });
@@ -283,6 +288,7 @@ export class TransactionalMailService {
       from: profile.from,
       to: trimmed,
       subject,
+      preheader: `Choisissez votre mot de passe pour accéder à votre espace ${clubName}.`,
       html,
       text,
     });
@@ -378,6 +384,9 @@ export class TransactionalMailService {
       from: profile.from,
       to: trimmed,
       subject,
+      // Le nom BRUT : l'enveloppe échappe le preheader, et `safeInviter` l'est
+      // déjà — un « O'Brien » ressortirait en « O&#39;Brien » dans l'aperçu.
+      preheader: `${inviterName.trim() || 'Un parent'} vous invite à suivre les inscriptions et les paiements de votre famille.`,
       html,
       text,
     });
@@ -473,6 +482,7 @@ export class TransactionalMailService {
       to: trimmed,
       replyTo: visitorEmail,
       subject,
+      preheader: preheaderFromText(options.message),
       html,
       text,
     });
@@ -514,6 +524,7 @@ export class TransactionalMailService {
       from: profile.from,
       to: trimmed,
       subject: `Bon de livraison — ${options.clubName}`,
+      preheader: 'Votre bon de livraison est en pièce jointe.',
       html: `<p>Bonjour,</p><p>Vous trouverez ci-joint le bon de livraison de la commande <strong>${escapeHtml(
         options.orderReference,
       )}</strong>${escapeHtml(pour)}, retirée le ${escapeHtml(date)}.</p><p>${escapeHtml(
@@ -564,6 +575,7 @@ export class TransactionalMailService {
       from: profile.from,
       to: trimmed,
       subject: `Bon d’échange — ${options.clubName}`,
+      preheader: 'Votre bon d’échange est en pièce jointe.',
       html: `<p>Bonjour,</p><p>Vous trouverez ci-joint le bon d’échange <strong>${escapeHtml(
         options.exchangeReference,
       )}</strong> de la commande ${escapeHtml(options.orderReference)}${escapeHtml(
@@ -624,6 +636,7 @@ export class TransactionalMailService {
       to: trimmed,
       ...(replyTo.includes('@') ? { replyTo } : {}),
       subject: `Bon de commande ${reference} — ${clubName}`,
+      preheader: 'Notre bon de commande est en pièce jointe.',
       html: `<p>Bonjour,</p><p>Veuillez trouver ci-joint notre bon de commande <strong>${escapeHtml(
         reference,
       )}</strong>.${escapeHtml(livraison)}</p><p>Merci de nous en confirmer la bonne réception.</p><p>${escapeHtml(
@@ -663,6 +676,7 @@ export class TransactionalMailService {
       from: profile.from,
       to: trimmed,
       subject: 'ClubFlow — e-mail de test',
+      preheader: 'E-mail de test envoyé depuis ClubFlow.',
       html: `<p>Ceci est un e-mail de test envoyé depuis ClubFlow pour le club (${clubId}).</p>`,
       text: 'E-mail de test ClubFlow.',
     });

@@ -39,6 +39,7 @@ import {
   type AudienceFilterInput,
 } from './dto/audience-filter.input';
 import { QuickMessageRecipientType } from './enums/quick-message-recipient.enum';
+import { preheaderFromText } from '../mail/branding/club-mail-layout';
 
 /** Forme parsée du `audienceFilterJson` stocké en DB. */
 type StoredAudienceFilter = {
@@ -446,6 +447,7 @@ export class CommsService {
           from: mailProfile.from,
           to: emailTo,
           subject: input.title,
+          preheader: preheaderFromText(input.body),
           html: `<div style="white-space:pre-wrap">${escapeHtml(input.body)}</div>`,
           text: input.body,
         });
@@ -748,6 +750,7 @@ export class CommsService {
             from: mailProfile.from,
             to: raw,
             subject: campaign.title,
+            preheader: preheaderFromText(campaign.body),
             html: `<div style="white-space:pre-wrap">${escapeHtml(
               campaign.body,
             )}</div>`,

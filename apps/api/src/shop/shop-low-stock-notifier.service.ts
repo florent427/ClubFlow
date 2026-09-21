@@ -113,6 +113,10 @@ export class ShopLowStockNotifierService {
           items.length === 1
             ? `Stock bas — ${name(items[0]!)}`
             : `Stock bas — ${items.length} articles à réapprovisionner`,
+        preheader:
+          items.length === 1
+            ? `${name(items[0]!)} est passé sous son seuil de réapprovisionnement.`
+            : `${items.length} articles sont passés sous leur seuil de réapprovisionnement.`,
         html: `
           <p>Bonjour,</p>
           <p>${

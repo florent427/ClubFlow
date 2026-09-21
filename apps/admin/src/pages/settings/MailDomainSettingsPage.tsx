@@ -8,6 +8,7 @@ import {
   DELETE_CLUB_SENDING_DOMAIN,
   REFRESH_CLUB_SENDING_DOMAIN,
   SEND_CLUB_TRANSACTIONAL_TEST_EMAIL,
+  UPDATE_CLUB_SENDING_DOMAIN_PURPOSE,
 } from '../../lib/documents';
 import type {
   ClubHostedMailOfferQueryData,
@@ -32,6 +33,8 @@ export function MailDomainSettingsPage() {
   const [testTo, setTestTo] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  /** Rôle choisi dans la liste d’un domaine tant que le serveur n’a pas répondu. */
+  const [purposeDrafts, setPurposeDrafts] = useState<Record<string, string>>({});
 
   const [createHostedDomain, { loading: creatingHosted }] = useMutation(
     CREATE_CLUB_HOSTED_SENDING_DOMAIN,
@@ -79,6 +82,23 @@ export function MailDomainSettingsPage() {
       onError: (e) => {
         setErr(e.message);
         setMsg(null);
+      },
+    },
+  );
+
+  const [updateDomainPurpose, { loading: updatingPurpose }] = useMutation(
+    UPDATE_CLUB_SENDING_DOMAIN_PURPOSE,
+    {
+      onCompleted: () => {
+        setMsg('Rôle du domaine mis à jour.');
+        setErr(null);
+        setPurposeDrafts({});
+        void refetch();
+      },
+      onError: (e) => {
+        setErr(e.message);
+        setMsg(null);
+        setPurposeDrafts({});
       },
     },
   );
@@ -240,10 +260,35 @@ export function MailDomainSettingsPage() {
                   <div className="mail-domain-card__head">
                     <strong>{d.fqdn}</strong>
                     <span className="mail-domain-card__badge">
-                      {d.purpose} · {d.verificationStatus}
+                      {d.verificationStatus}
                       {d.isClubflowHosted ? ' · ClubFlow' : ''}
                     </span>
                   </div>
+                  <label className="members-field">
+                    <span className="members-field__label">Usage</span>
+                    <select
+                      className="members-field__input"
+                      value={purposeDrafts[d.id] ?? d.purpose}
+                      disabled={updatingPurpose || refreshing || deleting}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        setPurposeDrafts((prev) => ({ ...prev, [d.id]: next }));
+                        void updateDomainPurpose({
+                          variables: { domainId: d.id, purpose: next },
+                        });
+                      }}
+                    >
+                      {PURPOSES.map((p) => (
+                        <option key={p.value} value={p.value}>
+                          {p.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <p className="members-panel__p members-panel__muted">
+                    Le rôle se change à tout moment, sans supprimer le domaine
+                    ni refaire la vérification.
+                  </p>
                   {d.isClubflowHosted ? (
                     <p className="members-panel__p members-panel__muted">
                       Sous-domaine hébergé ClubFlow : DNS et SMTP sont en principe

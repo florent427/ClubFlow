@@ -139,6 +139,9 @@ export class PaymentScheduleNotifierService {
         subject: args.definitive
           ? `Prélèvement impossible — ${invoice.label}`
           : `Prélèvement refusé — ${invoice.label}`,
+        preheader: args.definitive
+          ? `Le prélèvement de ${invoice.label} a définitivement échoué.`
+          : `Le prélèvement de ${invoice.label} a échoué, une nouvelle tentative est prévue.`,
         html: `
           <p>Bonjour ${escapeHtml(firstName)},</p>
           <p>Le prélèvement de <strong>${amount} €</strong> prévu pour
@@ -249,6 +252,7 @@ ${clubName}`,
         from: profile.from,
         to,
         subject: `Avis de prélèvement — ${invoice.label}`,
+        preheader: `Prélèvement à venir sur votre compte pour ${invoice.label}.`,
         html: `
           <p>Bonjour ${escapeHtml(firstName)},</p>
           <p>Vous venez d'autoriser <strong>${escapeHtml(invoice.club.name)}</strong>
@@ -332,6 +336,7 @@ ${invoice.club.name}`,
         from: profile.from,
         to,
         subject: `Prélèvement en échec définitif — ${invoice.label}`,
+        preheader: `Le prélèvement de ${invoice.label} a définitivement échoué.`,
         html: `
           <p>Le prélèvement automatique de <strong>${amount} €</strong> sur la
           facture <em>${escapeHtml(invoice.label)}</em> a échoué après trois
@@ -394,6 +399,7 @@ Aucune nouvelle tentative n'aura lieu. Le montant reste dû.`,
         from: profile.from,
         to,
         subject: `Confirmation requise pour votre prélèvement — ${invoice.label}`,
+        preheader: `Votre banque demande une confirmation pour le prélèvement de ${invoice.label}.`,
         html: `
           <p>Bonjour ${escapeHtml(firstName)},</p>
           <p>Votre banque demande une confirmation de votre part pour le

@@ -940,6 +940,7 @@ ${club.name}`;
           from: profile.from,
           to: info.email,
           subject,
+          preheader: `Des documents attendent votre signature chez ${club.name}.`,
           html,
           text,
         });

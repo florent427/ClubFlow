@@ -25,6 +25,7 @@ import { resolveDynamicGroupsMemberIds } from '../members/dynamic-group-membersh
 import { PrismaService } from '../prisma/prisma.service';
 import type { SendEventConvocationInput } from './dto/send-event-convocation.input';
 import { EventConvocationMode } from './enums/event-convocation-mode.enum';
+import { preheaderFromText } from '../mail/branding/club-mail-layout';
 
 type Viewer = {
   memberId?: string | null;
@@ -764,6 +765,7 @@ export class EventsService {
         from: profile.from,
         to: email,
         subject: `${club.name} — Inscription confirmée : ${event.title}`,
+        preheader: `Votre inscription à ${event.title} est confirmée.`,
         html: `<div style="white-space:pre-wrap;font-family:Arial,Helvetica,sans-serif;color:#1e293b;font-size:15px;line-height:1.55">${escapeHtml(
           text,
         )}</div>`,
@@ -1334,6 +1336,7 @@ export class EventsService {
           from: profile.from,
           to: raw,
           subject,
+          preheader: preheaderFromText(bodyText),
           html: bodyHtml,
           text: bodyText,
         });
