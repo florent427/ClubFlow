@@ -99,6 +99,20 @@ avait par ailleurs échoué sur `Duplicate release tag: v0.23.1` — fausse
 piste : il s'était corrigé seul en reposant l'étiquette `autorelease:
 tagged`, et n'a rien à voir avec le tag manquant.
 
+2026-09-21, **deux fois dans la même journée** : v0.75.0 (promotion de
+l'enveloppe e-mail) puis v0.75.1 (correctif du logo, une heure plus tard).
+Les deux PR de release, [#269](https://github.com/florent427/ClubFlow/pull/269)
+et [#271](https://github.com/florent427/ClubFlow/pull/271), ont été
+auto-fusionnées sans qu'aucun tag soit coupé ; une passe de
+`gh workflow run release-please.yml --ref main` a suffi à chaque fois.
+
+Ce n'est donc pas un incident rare : **toute promotion le déclenche**. Le
+« correctif de fond » évoqué plus haut n'en est plus un si l'on continue
+de compter sur la mémoire de l'opérateur — un PAT ou un GitHub App token
+règle la chose une fois pour toutes. Tant qu'il n'est pas posé, considérer
+le dispatch comme une **étape du runbook de promotion**, pas comme un
+rattrapage.
+
 ## Lié
 
 - [release-please-no-trigger.md](release-please-no-trigger.md)

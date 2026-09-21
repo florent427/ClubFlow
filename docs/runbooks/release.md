@@ -23,12 +23,27 @@
    - Ouvre/met à jour la PR "chore(main): release vX.Y.Z"
    - AUTO-MERGE squash via API REST
 
-3. Le merge crée :
-   - tag git vX.Y.Z
-   - GitHub Release avec CHANGELOG section auto
+3. ⚠️ Le merge ne crée RIEN tout seul. Le push d'auto-merge est signé par
+   GITHUB_TOKEN, qui ne réveille aucun workflow (garde-fou anti-boucle).
+   Le tag n'arrive QUE si on relance la main :
 
-4. deploy.yml retrigger sur le nouveau tag
-   - SSH Hetzner → clubflow-deploy.sh → smoke test
+       gh workflow run release-please.yml --ref main
+
+   Ce lancement publie le tag vX.Y.Z et la GitHub Release.
+   Ce n'est pas un rattrapage exceptionnel : ça arrive à CHAQUE
+   promotion (cf. pitfalls/github-token-ne-retrigger-pas.md).
+
+4. deploy.yml ne repart pas non plus sur le tag — même cause.
+   Sans conséquence : le déploiement a déjà eu lieu au merge de la PR de
+   contenu. Le commit de release ne porte que CHANGELOG.md + manifeste.
+```
+
+**Contrôle après le dispatch** — le manifeste et la dernière release
+doivent concorder :
+
+```bash
+gh release list --limit 1
+git show "origin/main:.release-please-manifest.json"
 ```
 
 ## Release manuelle (cas d'urgence)
