@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.75.3](https://github.com/florent427/ClubFlow/compare/v0.75.2...v0.75.3) (2026-09-21)
+
+
+### 🐛 Bug Fixes
+
+* **membres:** plus aucune photo en base64 dans la fiche ([dd6ef40](https://github.com/florent427/ClubFlow/commit/dd6ef40def42d35c078e072d083933d68ad1ab49))
+* **membres:** plus aucune photo en base64 dans la fiche ([8f28562](https://github.com/florent427/ClubFlow/commit/8f285627caf2151b2e497c1b96819cc6ac14c977))
+
 ## [0.75.2](https://github.com/florent427/ClubFlow/compare/v0.75.1...v0.75.2) (2026-09-21)
 
 
