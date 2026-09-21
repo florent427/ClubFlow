@@ -231,6 +231,54 @@ export class ClubSendingDomainService {
     });
   }
 
+  /**
+   * Corrige le rôle d’un domaine déjà enregistré, sans le supprimer ni
+   * repasser par la vérification. Vécu en prod le 2026-09-21 : le domaine
+   * vérifié de SKSR portait `TRANSACTIONAL`, donc l’envoi de campagne était
+   * refusé, et le seul recours par l’UI était de le supprimer puis de le
+   * recréer — ce qui cassait aussi les e-mails transactionnels entre-temps.
+   *
+   * La garde est la même qu’à la création : un rôle déjà couvert par un
+   * autre domaine VÉRIFIÉ du club est refusé, sinon deux domaines
+   * revendiqueraient le même usage et `getVerifiedMailProfile` trancherait
+   * au hasard de l’ordre des lignes.
+   */
+  async updatePurpose(
+    clubId: string,
+    domainId: string,
+    purpose: ClubSendingDomainPurpose,
+  ) {
+    const row = await this.prisma.clubSendingDomain.findFirst({
+      where: { id: domainId, clubId },
+    });
+    if (!row) {
+      throw new BadRequestException('Domaine inconnu');
+    }
+    if (row.purpose === purpose) {
+      return row;
+    }
+
+    const others = await this.prisma.clubSendingDomain.findMany({
+      where: {
+        clubId,
+        verificationStatus: 'VERIFIED',
+        id: { not: row.id },
+      },
+    });
+    for (const o of others) {
+      if (verificationConflict(o.purpose, purpose)) {
+        throw new BadRequestException(
+          'Un autre domaine vérifié couvre déjà ce type d’envoi. Changez d’abord son rôle ou retirez-le.',
+        );
+      }
+    }
+
+    return this.prisma.clubSendingDomain.update({
+      where: { id: row.id },
+      data: { purpose },
+    });
+  }
+
   async deleteDomain(clubId: string, domainId: string): Promise<void> {
     const row = await this.prisma.clubSendingDomain.findFirst({
       where: { id: domainId, clubId },

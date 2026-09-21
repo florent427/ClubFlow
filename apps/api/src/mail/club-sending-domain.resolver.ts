@@ -124,6 +124,17 @@ export class ClubSendingDomainResolver {
     return mapRowToGraph(r);
   }
 
+  @Mutation(() => ClubSendingDomainGraph)
+  async updateClubSendingDomainPurpose(
+    @CurrentClub() club: Club,
+    @Args('domainId', { type: () => ID }) domainId: string,
+    @Args('purpose', { type: () => ClubSendingDomainPurpose })
+    purpose: ClubSendingDomainPurpose,
+  ): Promise<ClubSendingDomainGraph> {
+    const r = await this.domains.updatePurpose(club.id, domainId, purpose);
+    return mapRowToGraph(r);
+  }
+
   @Mutation(() => Boolean)
   async deleteClubSendingDomain(
     @CurrentClub() club: Club,

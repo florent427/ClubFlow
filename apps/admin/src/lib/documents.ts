@@ -1559,6 +1559,20 @@ export const REFRESH_CLUB_SENDING_DOMAIN = gql`
   }
 `;
 
+export const UPDATE_CLUB_SENDING_DOMAIN_PURPOSE = gql`
+  mutation UpdateClubSendingDomainPurpose(
+    $domainId: ID!
+    $purpose: ClubSendingDomainPurpose!
+  ) {
+    updateClubSendingDomainPurpose(domainId: $domainId, purpose: $purpose) {
+      id
+      fqdn
+      purpose
+      verificationStatus
+    }
+  }
+`;
+
 export const DELETE_CLUB_SENDING_DOMAIN = gql`
   mutation DeleteClubSendingDomain($domainId: ID!) {
     deleteClubSendingDomain(domainId: $domainId)
