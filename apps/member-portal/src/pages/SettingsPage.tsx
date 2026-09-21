@@ -20,6 +20,7 @@ import type {
   EditableProfileFieldKey,
   ViewerMeData,
 } from '../lib/viewer-types';
+import { entreePhoto, entreeProfilSaisi } from '../lib/profile-update-input';
 import { useToast } from '../components/ToastProvider';
 import { PushNotificationsCard } from '../components/PushNotificationsCard';
 
@@ -87,18 +88,12 @@ export function SettingsPage() {
     return m;
   }, [me]);
 
-  /**
-   * Coordonnées à envoyer. Un champ que le club n'expose pas est OMIS —
-   * l'envoyer, même vide, ferait refuser la mutation.
-   */
-  function coordonneesSaisies(): Record<string, string> {
-    const out: Record<string, string> = {};
-    if (champs.has('PHONE')) out.phone = phone.trim();
-    if (champs.has('ADDRESS_LINE')) out.addressLine = addressLine.trim();
-    if (champs.has('POSTAL_CODE')) out.postalCode = postalCode.trim();
-    if (champs.has('CITY')) out.city = city.trim();
-    if (champs.has('BIRTH_DATE') && birthDate) out.birthDate = birthDate;
-    return out;
+  /** Entrée du formulaire : les champs saisis, sans la photo. */
+  function entreeFormulaire() {
+    return entreeProfilSaisi(
+      { firstName, lastName, email, phone, addressLine, postalCode, city, birthDate },
+      new Set(champs.keys()),
+    );
   }
 
   const [updateProfile, { loading: saving }] = useMutation<UpdateProfileData>(
@@ -166,15 +161,7 @@ export function SettingsPage() {
       // Les autres champs (firstName, lastName, etc.) restent éditables
       // et seront enregistrés au submit du formulaire comme avant.
       void updateProfile({
-        variables: {
-          input: {
-            firstName: firstName.trim(),
-            lastName: lastName.trim(),
-            email: email.trim() || null,
-            phone: phone.trim(),
-            photoUrl: data.publicUrl,
-          },
-        },
+        variables: { input: entreePhoto(data.publicUrl) },
       });
       showToast('Photo de profil mise à jour.', 'success');
     } catch (err) {
@@ -191,15 +178,7 @@ export function SettingsPage() {
   function handleRemovePhoto(): void {
     setPhotoUrl('');
     void updateProfile({
-      variables: {
-        input: {
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-          email: email.trim() || null,
-          ...coordonneesSaisies(),
-          photoUrl: '',
-        },
-      },
+      variables: { input: entreePhoto('') },
     });
     showToast('Photo de profil retirée.', 'success');
   }
@@ -208,15 +187,7 @@ export function SettingsPage() {
     e.preventDefault();
     setStatus(null);
     void updateProfile({
-      variables: {
-        input: {
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-          email: email.trim() || null,
-          ...coordonneesSaisies(),
-          photoUrl: photoUrl.trim(),
-        },
-      },
+      variables: { input: entreeFormulaire() },
     });
   }
 
