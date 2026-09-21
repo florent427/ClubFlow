@@ -144,9 +144,10 @@ describe('clubMailTextSignature', () => {
 });
 
 describe('renderClubMailLayout — lisibilité du logo', () => {
-  it('pose le logo sur une pastille claire, pas à même le bandeau sombre', () => {
-    // Le logo de SKSR est en #040302 : sans fond clair, il serait noir sur
-    // noir, et un format sans transparence arriverait en aplat blanc.
+  it('pose le logo sur un disque clair, pas à même le bandeau sombre', () => {
+    // Les contours du logo de SKSR sont en #040302 : sans fond clair, ils se
+    // fondraient dans le bandeau, et un format sans transparence — le JPEG
+    // que produit le routeur d'envoi — arriverait en aplat.
     const html = renderClubMailLayout({
       branding: clubMailBranding(SKSR),
       bodyHtml: CORPS,
@@ -154,8 +155,22 @@ describe('renderClubMailLayout — lisibilité du logo', () => {
 
     const balise = /<img[^>]+>/.exec(html)?.[0] ?? '';
     expect(balise).toContain('background:#ffffff');
-    expect(balise).toContain('padding:8px');
+    expect(balise).toContain('border-radius:50%');
     expect(balise).toContain('alt="Shotokan Karaté Sud Réunion"');
+  });
+
+  it('laisse le logo occuper tout le disque, sans marge intérieure', () => {
+    // Un padding laissait un anneau blanc entre le logo et le bord du disque.
+    const balise =
+      /<img[^>]+>/.exec(
+        renderClubMailLayout({ branding: clubMailBranding(SKSR), bodyHtml: CORPS }),
+      )?.[0] ?? '';
+
+    expect(balise).not.toMatch(/padding:\s*[1-9]/);
+    // La taille déclarée en attribut doit suivre celle du style, sinon les
+    // clients qui ignorent le CSS affichent un autre gabarit.
+    expect(balise).toContain('width="72"');
+    expect(balise).toContain('width:72px');
   });
 });
 

@@ -41,15 +41,17 @@ export function isFullHtmlDocument(html: string): boolean {
 
 function headerBlock(b: ClubMailBranding): string {
   const name = escapeHtml(b.clubName);
-  // Pastille claire derrière le logo. Un logo de club est le plus souvent
-  // monochrome sombre sur fond transparent (celui de SKSR est en #040302) :
-  // posé à même le bandeau `ink`, il serait noir sur noir. La pastille le
-  // rend lisible quelle que soit la couleur du logo, et donne un fond franc
-  // aux formats sans transparence — un PNG transparent converti en JPEG par
-  // le routeur d'envoi arrive en aplat blanc.
+  // Fond clair derrière le logo : posé à même le bandeau `ink`, un logo aux
+  // contours sombres ou aux zones transparentes se fondrait dans le noir. Le
+  // fond donne aussi un aplat franc aux formats sans transparence — le
+  // routeur d'envoi réhéberge les images et les convertit en JPEG.
+  //
+  // Sans marge intérieure : le logo occupe tout le disque. Un logo qui n'est
+  // pas déjà rond est rogné en cercle, comme un avatar — c'est le prix du
+  // disque, et il vaut mieux que l'anneau blanc d'un logo trop petit.
   const inner = b.logoUrl
-    ? `<img src="${escapeHtml(b.logoUrl)}" alt="${name}" width="64" height="64"
-           style="display:block;margin:0 auto 12px;width:64px;height:64px;border:0;padding:8px;background:#ffffff;border-radius:50%;" />
+    ? `<img src="${escapeHtml(b.logoUrl)}" alt="${name}" width="72" height="72"
+           style="display:block;margin:0 auto 12px;width:72px;height:72px;border:0;background:#ffffff;border-radius:50%;object-fit:cover;" />
        <div style="font-size:17px;font-weight:600;letter-spacing:.02em;color:#ffffff;">${name}</div>`
     : `<div style="font-size:21px;font-weight:600;letter-spacing:.03em;color:#ffffff;">${name}</div>`;
 
