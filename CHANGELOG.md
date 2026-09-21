@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.75.2](https://github.com/florent427/ClubFlow/compare/v0.75.1...v0.75.2) (2026-09-21)
+
+
+### 🐛 Bug Fixes
+
+* **portail:** l'adhérent ne peut plus enregistrer son profil ([e969451](https://github.com/florent427/ClubFlow/commit/e969451ddb1436198063ebef821c5fee055f9227))
+* **portail:** l'adhérent ne peut plus enregistrer son profil ([f2faf82](https://github.com/florent427/ClubFlow/commit/f2faf827f9740062a52e71fa2e44b559a3e13647))
+
 ## [0.75.1](https://github.com/florent427/ClubFlow/compare/v0.75.0...v0.75.1) (2026-09-21)
 
 
