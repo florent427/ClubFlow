@@ -23,8 +23,19 @@ export type SendClubEmailParams = {
   to: string;
   replyTo?: string;
   subject: string;
+  /**
+   * **Fragment** HTML : le corps du message, sans `<html>` ni `<body>`.
+   * L'en-tête, le pied et la charte du club sont posés par
+   * `BrandedMailTransport`. Un document complet donnerait un document
+   * imbriqué dans un autre.
+   */
   html: string;
   text?: string;
+  /**
+   * Ligne lue dans la liste des messages avant ouverture. Sans elle, les
+   * clients affichent le début du corps — le plus souvent « Bonjour, ».
+   */
+  preheader?: string;
   /** En-tête List-Unsubscribe (campagnes marketing). */
   listUnsubscribe?: string;
   /** Pièces jointes — bon de livraison PDF, par exemple. */

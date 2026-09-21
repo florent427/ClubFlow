@@ -72,66 +72,35 @@ export function renderMembershipCartValidatedEmail(
     })
     .join('');
 
+  // Fragment : l'en-tete, le pied et la charte du club viennent de
+  // `renderClubMailLayout`. Les jetons {{accent}} sont remplaces par la
+  // couleur du club au moment de l'envoi.
   const html = `
-<!DOCTYPE html>
-<html lang="fr">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
-<body style="margin:0;padding:0;background:#f4f6f8;font-family:Georgia,'Times New Roman',serif;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f6f8;padding:24px 12px;">
-    <tr>
-      <td align="center">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(15,23,42,0.08);">
-          <tr>
-            <td style="background:linear-gradient(135deg,#0f766e 0%,#134e4a 100%);padding:28px 24px;text-align:center;color:#ffffff;">
-              <p style="margin:0;font-size:13px;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.85);">ClubFlow</p>
-              <h1 style="margin:8px 0 0;font-size:22px;line-height:1.25;font-weight:600;">${safeClub}</h1>
-              <p style="margin:6px 0 0;font-size:14px;color:rgba(255,255,255,0.8);">Projet d’adhésion ${safeSeason} validé</p>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:28px 24px 8px;color:#1e293b;font-size:16px;line-height:1.6;">
-              <p style="margin:0 0 16px;">Bonjour ${safePayer},</p>
-              <p style="margin:0 0 16px;">Votre projet d’adhésion pour la saison <strong>${safeSeason}</strong> a été validé. La facture correspondante vient d’être émise et le paiement peut désormais être initié depuis votre espace membre.</p>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:8px 24px 24px;">
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-family:system-ui,-apple-system,sans-serif;font-size:14px;">
-                <thead>
-                  <tr style="background:#f1f5f9;">
-                    <th align="left" style="padding:12px 16px;color:#475569;font-weight:600;">Bénéficiaire</th>
-                    <th align="right" style="padding:12px 16px;color:#475569;font-weight:600;">Montant</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${rows}
-                  <tr>
-                    <td style="padding:14px 16px;border-top:2px solid #0f766e;font-weight:600;color:#0f766e;">TOTAL TTC</td>
-                    <td style="padding:14px 16px;border-top:2px solid #0f766e;text-align:right;font-weight:700;color:#0f766e;font-variant-numeric:tabular-nums;">
-                      ${formatCents(totalCents)}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </td>
-          </tr>
-          <tr>
-            <td align="center" style="padding:8px 24px 28px;">
-              <a href="${invoiceUrl}" style="display:inline-block;padding:14px 28px;background:#0d9488;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;border-radius:999px;font-family:system-ui,-apple-system,sans-serif;">Voir ma facture &amp; payer</a>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:0 24px 24px;color:#64748b;font-size:13px;line-height:1.5;border-top:1px solid #e2e8f0;">
-              <p style="margin:16px 0 8px;">Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :<br/><span style="word-break:break-all;color:#0f766e;">${escapeHtml(invoiceUrl)}</span></p>
-              <p style="margin:0;">Merci pour votre confiance&nbsp;!<br/>L’équipe ${safeClub}</p>
-            </td>
-          </tr>
-        </table>
-      </td>
+<h1 style="margin:0 0 20px;font-size:20px;line-height:1.3;font-weight:600;color:{{ink}};">Projet d’adhésion ${safeSeason} validé</h1>
+<p style="margin:0 0 16px;">Bonjour ${safePayer},</p>
+<p style="margin:0 0 24px;">Votre projet d’adhésion pour la saison <strong>${safeSeason}</strong> a été validé auprès de ${safeClub}. La facture correspondante vient d’être émise et le paiement peut désormais être initié depuis votre espace membre.</p>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-size:14px;margin:0 0 24px;">
+  <thead>
+    <tr style="background:#f1f5f9;">
+      <th align="left" style="padding:12px 16px;color:#475569;font-weight:600;">Bénéficiaire</th>
+      <th align="right" style="padding:12px 16px;color:#475569;font-weight:600;">Montant</th>
     </tr>
-  </table>
-</body>
-</html>`.trim();
+  </thead>
+  <tbody>
+    ${rows}
+    <tr>
+      <td style="padding:14px 16px;border-top:2px solid {{accent}};font-weight:600;">TOTAL TTC</td>
+      <td style="padding:14px 16px;border-top:2px solid {{accent}};text-align:right;font-weight:700;font-variant-numeric:tabular-nums;">${formatCents(totalCents)}</td>
+    </tr>
+  </tbody>
+</table>
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 24px;">
+  <tr><td style="background:{{accent}};border-radius:6px;">
+    <a href="${invoiceUrl}" style="display:inline-block;padding:13px 26px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;">Voir ma facture &amp; payer</a>
+  </td></tr>
+</table>
+<p style="margin:0 0 8px;font-size:13px;color:#64748b;">Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :<br /><span style="word-break:break-all;">${escapeHtml(invoiceUrl)}</span></p>
+<p style="margin:16px 0 0;">Merci pour votre confiance !</p>`.trim();
 
   const lines = items.map(
     (item) =>
