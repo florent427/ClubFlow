@@ -141,3 +141,19 @@ describe('clubMailTextSignature', () => {
     expect(sig).toContain('https://portail.test/desinscription?t=1');
   });
 });
+
+describe('renderClubMailLayout — lisibilité du logo', () => {
+  it('pose le logo sur une pastille claire, pas à même le bandeau sombre', () => {
+    // Le logo de SKSR est en #040302 : sans fond clair, il serait noir sur
+    // noir, et un format sans transparence arriverait en aplat blanc.
+    const html = renderClubMailLayout({
+      branding: clubMailBranding(SKSR),
+      bodyHtml: CORPS,
+    });
+
+    const balise = /<img[^>]+>/.exec(html)?.[0] ?? '';
+    expect(balise).toContain('background:#ffffff');
+    expect(balise).toContain('padding:8px');
+    expect(balise).toContain('alt="Shotokan Karaté Sud Réunion"');
+  });
+});

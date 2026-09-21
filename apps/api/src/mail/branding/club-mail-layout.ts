@@ -41,9 +41,15 @@ export function isFullHtmlDocument(html: string): boolean {
 
 function headerBlock(b: ClubMailBranding): string {
   const name = escapeHtml(b.clubName);
+  // Pastille claire derrière le logo. Un logo de club est le plus souvent
+  // monochrome sombre sur fond transparent (celui de SKSR est en #040302) :
+  // posé à même le bandeau `ink`, il serait noir sur noir. La pastille le
+  // rend lisible quelle que soit la couleur du logo, et donne un fond franc
+  // aux formats sans transparence — un PNG transparent converti en JPEG par
+  // le routeur d'envoi arrive en aplat blanc.
   const inner = b.logoUrl
     ? `<img src="${escapeHtml(b.logoUrl)}" alt="${name}" width="64" height="64"
-           style="display:block;margin:0 auto 10px;width:64px;height:64px;border:0;border-radius:50%;object-fit:cover;" />
+           style="display:block;margin:0 auto 12px;width:64px;height:64px;border:0;padding:8px;background:#ffffff;border-radius:50%;" />
        <div style="font-size:17px;font-weight:600;letter-spacing:.02em;color:#ffffff;">${name}</div>`
     : `<div style="font-size:21px;font-weight:600;letter-spacing:.03em;color:#ffffff;">${name}</div>`;
 
