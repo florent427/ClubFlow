@@ -51,6 +51,7 @@ describe('StripeCheckoutService.expireCheckoutSessionForInvoice', () => {
     service = new StripeCheckoutService(
       prisma as unknown as PrismaService,
       {} as unknown as StripeConnectService,
+      {} as never,
     );
     errors = [];
     jest

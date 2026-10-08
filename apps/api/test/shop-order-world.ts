@@ -1453,6 +1453,8 @@ export function makeWorld(seed: {
     refundConfirmations,
     creditNotes,
     shop,
+    // Aucune facture de ces scénarios n'est une adhésion mensuelle.
+    { createFor: async () => ({ kind: 'none', reason: 'hors sujet' }) } as never,
   );
 
   /**

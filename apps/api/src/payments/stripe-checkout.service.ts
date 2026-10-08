@@ -8,6 +8,7 @@ import { InvoiceStatus, PaymentScheduleStatus } from '@prisma/client';
 import Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { invoicePaymentTotals } from './invoice-totals';
+import { MonthlyContinuationService } from './monthly-continuation.service';
 import type { PayerCreditHolderRef } from './payer-credit-holder';
 import {
   assertPayerCreditTopUpAmount,
@@ -31,6 +32,7 @@ export class StripeCheckoutService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly connect: StripeConnectService,
+    private readonly monthlyContinuation: MonthlyContinuationService,
   ) {}
 
   private getStripe(): Stripe {
@@ -217,6 +219,18 @@ export class StripeCheckoutService {
     if (installmentsRequested) {
       metadata.installmentsRequested = String(args.installmentsCount);
     }
+    // Cotisation mensuelle : la facture d'adhésion ne porte que le premier
+    // mois. La carte est enregistrée pour les suivants, que le webhook met en
+    // échéancier. L'accord affiché sur la page de paiement est ce qui autorise
+    // ces débits sans que l'adhérent soit présent. Incompatible avec le
+    // paiement en plusieurs fois par carte, qui ne vise que l'annuel.
+    const monthlyConsent = installmentsRequested
+      ? null
+      : await this.monthlyContinuation.consentForCheckout(
+          invoice.clubId,
+          invoice.id,
+          club?.name ?? 'le club',
+        );
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
@@ -234,7 +248,17 @@ export class StripeCheckoutService {
         },
       ],
       metadata,
-      payment_intent_data: { metadata },
+      payment_intent_data: {
+        metadata,
+        ...(monthlyConsent ? { setup_future_usage: 'off_session' as const } : {}),
+      },
+      ...(monthlyConsent
+        ? {
+            // Une carte ne se réutilise qu'attachée à un client.
+            customer_creation: 'always' as const,
+            custom_text: { submit: { message: monthlyConsent.slice(0, 1200) } },
+          }
+        : {}),
       // Stripe propose au payeur le choix "comptant ou en plusieurs
       // fois" si le compte du club a activé les installments France.
       // On exprime simplement l'intention ; en cas d'incompatibilité,

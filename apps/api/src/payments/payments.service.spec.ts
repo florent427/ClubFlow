@@ -10,6 +10,7 @@ import { PaymentScheduleEngineService } from './payment-schedule-engine.service'
 import { PaymentScheduleService } from './payment-schedule.service';
 import { PaymentsService } from './payments.service';
 import { StripeConnectService } from './stripe-connect.service';
+import { MonthlyContinuationService } from './monthly-continuation.service';
 import { StripeFeesService } from './stripe-fees.service';
 import { StripeRefundsService } from './stripe-refunds.service';
 import { CreditNotesService } from './credit-notes.service';
@@ -127,6 +128,7 @@ describe('PaymentsService / Stripe webhook', () => {
         // Dépendances Connect / échéancier : ces specs ne les exercent pas,
         // mais Nest exige que le constructeur soit résoluble.
         { provide: StripeConnectService, useValue: stripeConnect },
+        { provide: MonthlyContinuationService, useValue: { createFor: async () => ({ kind: 'none', reason: 'hors sujet' }) } },
         { provide: StripeFeesService, useValue: stripeFees },
         // Remboursements : non exercés par ces specs, mais le constructeur
         // doit rester résoluble.

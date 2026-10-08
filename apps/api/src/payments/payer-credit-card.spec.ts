@@ -53,7 +53,12 @@ afterEach(() => {
 
 const clubDe = (w: Monde) => w.clubs[0] as Club;
 const checkoutDe = (w: Monde) =>
-  new StripeCheckoutService(w.prisma as never, new StripeConnectService(w.prisma as never));
+  new StripeCheckoutService(
+    w.prisma as never,
+    new StripeConnectService(w.prisma as never),
+    // Une avance n'est pas une adhésion : aucune carte à enregistrer.
+    { consentForCheckout: async () => null } as never,
+  );
 const recus = (w: Monde) => w.invoices.filter((i) => i.purpose === InvoicePurpose.PAYER_CREDIT_DEPOSIT);
 
 describe('« Créditer mon compte » : la session Stripe (ADR-0022, lot 3)', () => {

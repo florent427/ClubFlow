@@ -16,6 +16,7 @@ import { ManualPaymentCancellationService } from './manual-payment-cancellation.
 import { PayerCreditResolver } from './payer-credit.resolver';
 import { PayerCreditService } from './payer-credit.service';
 import { ViewerPayerCreditResolver } from './viewer-payer-credit.resolver';
+import { MonthlyContinuationService } from './monthly-continuation.service';
 import { PaymentScheduleAdminResolver } from './payment-schedule-admin.resolver';
 import { PaymentScheduleEngineService } from './payment-schedule-engine.service';
 import { PaymentScheduleNotifierService } from './payment-schedule-notifier.service';
@@ -84,6 +85,7 @@ import { StripeWebhookController } from './stripe-webhook.controller';
     PaymentScheduleNotifierService,
     PaymentScheduleResolver,
     PaymentScheduleAdminResolver,
+    MonthlyContinuationService,
     InvoicePayerScopeService,
     InvoiceRemindersService,
     ClubModuleEnabledGuard,

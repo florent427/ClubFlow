@@ -32,6 +32,7 @@ function makeResolver(opts?: { lockHeld?: boolean }) {
     { runDue: jest.fn() } as unknown as PaymentScheduleEngineService,
     { sweepPendingFees: sweep } as unknown as StripeFeesService,
     { withLock } as unknown as SchedulerLockService,
+    {} as never,
   );
 
   return { resolver, sweep, withLock };

@@ -187,6 +187,7 @@ export const VIEWER_FAMILY_BILLING = gql`
         amountCents
         totalPaidCents
         balanceCents
+        coveredBySchedule
         payments {
           id
           amountCents
@@ -244,6 +245,7 @@ export const VIEWER_ALL_FAMILY_BILLING = gql`
         amountCents
         totalPaidCents
         balanceCents
+        coveredBySchedule
         payments {
           id
           amountCents

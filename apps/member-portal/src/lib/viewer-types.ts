@@ -151,6 +151,8 @@ export type ViewerFamilyBillingSummary = {
     amountCents: number;
     totalPaidCents: number;
     balanceCents: number;
+    /** Un échéancier règle la facture : pas de paiement comptant en ligne. */
+    coveredBySchedule: boolean;
     payments: Array<{
       id: string;
       amountCents: number;

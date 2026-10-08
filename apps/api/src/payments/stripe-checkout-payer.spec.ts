@@ -3,6 +3,7 @@ import { InvoiceStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StripeCheckoutService } from './stripe-checkout.service';
 import { StripeConnectService } from './stripe-connect.service';
+import { MonthlyContinuationService } from './monthly-continuation.service';
 
 /**
  * Le payeur voyage dans les métadonnées de la session : c'est tout ce que le
@@ -45,6 +46,7 @@ describe('StripeCheckoutService — le payeur passé à Stripe', () => {
         StripeCheckoutService,
         { provide: PrismaService, useValue: prisma },
         { provide: StripeConnectService, useValue: connect },
+        { provide: MonthlyContinuationService, useValue: { consentForCheckout: async () => null } },
       ],
     }).compile();
 

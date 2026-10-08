@@ -431,6 +431,8 @@ export function monde() {
     remboursements,
     creditNotes,
     shop as never,
+    // Aucune facture de ces scénarios n'est une adhésion mensuelle.
+    { createFor: async () => ({ kind: 'none', reason: 'hors sujet' }) } as never,
   );
 
   /**

@@ -2138,6 +2138,12 @@ model Invoice {
   /// pas la personne à qui l'argent appartient.
   payerCreditMemberId  String?
   payerCreditContactId String?
+  /// Facture des mensualités restantes d'une cotisation au rythme mensuel :
+  /// l'id de la facture d'adhésion qu'elle prolonge, dont la cotisation ne
+  /// couvrait que le premier mois. @unique : une seule suite par adhésion, ce
+  /// qui rend sa création idempotente (rejeu de webhook, rattrapage relancé).
+  /// NULL = facture ordinaire.
+  monthlyContinuationOfId String? @unique
 
   club            Club                 @relation(fields: [clubId], references: [id], onDelete: Cascade)
   family          Family?              @relation(fields: [familyId], references: [id], onDelete: SetNull)
@@ -2152,6 +2158,9 @@ model Invoice {
 
   parentInvoice Invoice?  @relation("InvoiceCreditNotes", fields: [parentInvoiceId], references: [id], onDelete: SetNull)
   creditNotes   Invoice[] @relation("InvoiceCreditNotes")
+
+  monthlyContinuationOf Invoice? @relation("InvoiceMonthlyContinuation", fields: [monthlyContinuationOfId], references: [id], onDelete: Restrict)
+  monthlyContinuation   Invoice? @relation("InvoiceMonthlyContinuation")
 
   payerCreditMember  Member?  @relation("InvoicePayerCreditMember", fields: [payerCreditMemberId], references: [id], onDelete: Restrict)
   payerCreditContact Contact? @relation("InvoicePayerCreditContact", fields: [payerCreditContactId], references: [id], onDelete: Restrict)

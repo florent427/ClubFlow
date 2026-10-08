@@ -373,6 +373,119 @@ Aucune nouvelle tentative n'aura lieu. Le montant reste dû.`,
    * l'oriente vers son espace, où il règle en étant présent : la banque
    * l'authentifie alors normalement.
    */
+  /**
+   * Invite le payeur à enregistrer sa carte pour les mensualités restantes
+   * d'une cotisation mensuelle (facture créée par le rattrapage, sans carte).
+   * Sans cette étape, rien ne sera jamais prélevé.
+   *
+   * @returns `true` si le courrier est parti.
+   */
+  async notifyMonthlyCardSetup(scheduleId: string): Promise<boolean> {
+    try {
+      const schedule = await this.prisma.paymentSchedule.findUnique({
+        where: { id: scheduleId },
+        include: {
+          installments: { orderBy: { seq: 'asc' } },
+          invoice: {
+            include: {
+              club: { select: { name: true } },
+              family: {
+                include: {
+                  familyMembers: {
+                    where: { linkRole: FamilyMemberLinkRole.PAYER },
+                    include: {
+                      member: { select: { firstName: true, email: true } },
+                      contact: {
+                        select: {
+                          firstName: true,
+                          user: { select: { email: true } },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+      const first = schedule?.installments[0];
+      const last = schedule?.installments[schedule.installments.length - 1];
+      if (!schedule || !first || !last) return false;
+
+      const invoice = schedule.invoice;
+      const payerLink = invoice.family?.familyMembers?.[0];
+      const to =
+        payerLink?.contact?.user?.email ?? payerLink?.member?.email ?? null;
+      if (!to) {
+        this.logger.warn(
+          `[mensualites] ${scheduleId} : aucun e-mail de payeur, invitation non envoyée`,
+        );
+        return false;
+      }
+      const firstName =
+        payerLink?.contact?.firstName ?? payerLink?.member?.firstName ?? '';
+      const profile = await this.domains.getVerifiedMailProfile(
+        schedule.clubId,
+        'transactional',
+      );
+      const url = `${this.portalBaseUrl()}/facturation`;
+      const club = invoice.club.name;
+      const monthly = euros(first.amountCents);
+      const count = schedule.installments.length;
+      const now = Date.now();
+      const dueNow = schedule.installments
+        .filter((i) => i.dueOn.getTime() <= now)
+        .reduce((sum, i) => sum + i.amountCents, 0);
+      const later = schedule.installments.find((i) => i.dueOn.getTime() > now);
+      const day = later?.dueOn.getUTCDate() ?? null;
+
+      const nowSentence =
+        dueNow > 0
+          ? `${euros(dueNow)} € déjà dus seront débités dès l'enregistrement de la carte`
+          : null;
+      const laterSentence = later
+        ? `les mensualités suivantes partiront automatiquement le ${day} de chaque mois, jusqu'au ${formatDueDate(last.dueOn)}`
+        : null;
+      const calendar = [nowSentence, laterSentence].filter(Boolean).join(', puis ');
+
+      await this.transport.sendEmail({
+        clubId: schedule.clubId,
+        kind: 'transactional',
+        from: profile.from,
+        to,
+        subject: `Cotisation mensuelle : enregistrez votre carte — ${club}`,
+        preheader: `Une étape pour régler vos mensualités (${monthly} € par mois) automatiquement.`,
+        html: `
+          <p>Bonjour ${escapeHtml(firstName)},</p>
+          <p>Vous avez choisi de régler la cotisation au mois. Le premier mois a
+          été payé à l'adhésion ; il reste <strong>${count} mensualité${count > 1 ? 's' : ''}
+          de ${monthly} €</strong> (<em>${escapeHtml(invoice.label)}</em>).</p>
+          <p>Pour qu'elles soient prélevées automatiquement, enregistrez votre
+          carte bancaire une seule fois depuis votre espace membre :
+          ${escapeHtml(calendar)}.</p>
+          <p><a href="${url}">Enregistrer ma carte</a></p>
+          <p>Cordialement,<br>${escapeHtml(club)}</p>
+        `,
+        text: `Bonjour ${firstName},
+
+Vous avez choisi de régler la cotisation au mois. Le premier mois a été payé à l'adhésion ; il reste ${count} mensualité${count > 1 ? 's' : ''} de ${monthly} € (« ${invoice.label} »).
+
+Pour qu'elles soient prélevées automatiquement, enregistrez votre carte bancaire une seule fois depuis votre espace membre : ${calendar}.
+
+${url}
+
+${club}`,
+      });
+      return true;
+    } catch (err) {
+      this.logger.warn(
+        `[mensualites] invitation impossible pour ${scheduleId} : ${(err as Error).message}`,
+      );
+      return false;
+    }
+  }
+
   async notifyRequiresAction(installmentId: string): Promise<void> {
     try {
       const inst = await this.loadContext(installmentId);

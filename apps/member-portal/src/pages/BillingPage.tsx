@@ -411,7 +411,9 @@ export function BillingPage() {
                     ) : (
                       <p className="mp-hint">Aucun paiement enregistré.</p>
                     )}
-                    {inv.balanceCents > 0 ? (
+                    {/* Une facture réglée par échéancier ne se paie pas
+                        comptant : le serveur le refuserait. */}
+                    {inv.balanceCents > 0 && !inv.coveredBySchedule ? (
                       <div className="mp-invoice-item__pay">
                         <button
                           type="button"
