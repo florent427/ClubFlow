@@ -9,6 +9,19 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.76.0](https://github.com/florent427/ClubFlow/compare/v0.75.3...v0.76.0) (2026-10-08)
+
+
+### ✨ Features
+
+* **paiements:** prélèvement automatique des cotisations mensuelles le 10 du mois ([467e78e](https://github.com/florent427/ClubFlow/commit/467e78ef0d6a85e62adffc45370e7cc17ace697b))
+* **paiements:** prélever automatiquement les mensualités des cotisations mensuelles le 10 du mois ([e25ed00](https://github.com/florent427/ClubFlow/commit/e25ed00f9f6069fe428eca2050084bad21a3c8e8))
+
+
+### 🐛 Bug Fixes
+
+* **paiements:** pas de mensualités pour une adhésion d'une saison terminée ([2066af8](https://github.com/florent427/ClubFlow/commit/2066af8ad9df4a08956273bd8ed20cd4bc545376))
+
 ## [0.75.3](https://github.com/florent427/ClubFlow/compare/v0.75.2...v0.75.3) (2026-09-21)
 
 
