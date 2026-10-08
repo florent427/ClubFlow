@@ -41,4 +41,10 @@ export class ViewerInvoiceSummaryGraph {
 
   @Field(() => [ViewerInvoicePaymentSnippetGraph])
   payments!: ViewerInvoicePaymentSnippetGraph[];
+
+  @Field({
+    description:
+      'Un échéancier en cours (ou en attente du moyen de paiement) règle la facture : le paiement comptant en ligne est refusé.',
+  })
+  coveredBySchedule!: boolean;
 }

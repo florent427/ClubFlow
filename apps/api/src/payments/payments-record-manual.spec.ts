@@ -9,6 +9,7 @@ import { PaymentScheduleEngineService } from './payment-schedule-engine.service'
 import { PaymentScheduleService } from './payment-schedule.service';
 import { PaymentsService } from './payments.service';
 import { StripeConnectService } from './stripe-connect.service';
+import { MonthlyContinuationService } from './monthly-continuation.service';
 import { StripeFeesService } from './stripe-fees.service';
 import { StripeRefundsService } from './stripe-refunds.service';
 import { CreditNotesService } from './credit-notes.service';
@@ -83,6 +84,7 @@ describe('PaymentsService / encaissements manuels', () => {
         { provide: DocumentsGatingService, useValue: documentsGating },
         // Non exercées par ces specs, mais le constructeur doit être résoluble.
         { provide: StripeConnectService, useValue: {} },
+        { provide: MonthlyContinuationService, useValue: { createFor: async () => ({ kind: 'none', reason: 'hors sujet' }) } },
         {
           provide: StripeFeesService,
           // Frais « best effort » : le double ne fait rien et ne lève jamais,

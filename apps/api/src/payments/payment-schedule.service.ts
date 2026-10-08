@@ -11,7 +11,9 @@ import {
 } from '@prisma/client';
 import Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
+import { SCHEDULING_TIMEZONE } from '../scheduling/scheduling.constants';
 import { resolveInvoiceBalance } from './invoice-balance';
+import { dateInZone } from './monthly-continuation-plan';
 import { buildSetupNotice } from './payment-schedule-notice';
 import {
   buildInstallmentPlan,
@@ -176,10 +178,12 @@ export class PaymentScheduleService {
       schedule.stripeCustomerId ??
       (await this.createCustomer(stripe, stripeAccount, schedule.id, clubId));
 
+    const local = dateInZone(new Date(), SCHEDULING_TIMEZONE);
     const setupNotice = buildSetupNotice({
       clubName: schedule.invoice.club.name,
       method: schedule.method,
       installments: schedule.installments,
+      today: new Date(Date.UTC(local.year, local.month, local.day)),
     });
 
     const base = this.portalBaseUrl();

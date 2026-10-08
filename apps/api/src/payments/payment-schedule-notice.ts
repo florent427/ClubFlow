@@ -62,6 +62,11 @@ export function buildSetupNotice(args: {
   clubName: string;
   method: PaymentScheduleMethod;
   installments: NoticeInstallment[];
+  /**
+   * Date civile du jour (minuit UTC, comme `dueOn`). Une échéance carte déjà
+   * exigible part dès l'enregistrement de la carte : la mention doit le dire.
+   */
+  today?: Date;
 }): string | null {
   const remaining = args.installments
     .filter((i) => DEBITABLE_INSTALLMENT_STATUSES.includes(i.status))
@@ -73,6 +78,26 @@ export function buildSetupNotice(args: {
   const total = remaining.reduce((sum, i) => sum + i.amountCents, 0);
   const firstDue = formatDueDate(remaining[0]!.dueOn);
   const club = args.clubName;
+
+  const today = args.today?.getTime();
+  const dueNow =
+    today === undefined ? [] : remaining.filter((i) => i.dueOn.getTime() <= today);
+  if (args.method === PaymentScheduleMethod.CARD && dueNow.length > 0) {
+    const later = remaining.slice(dueNow.length);
+    const nowTotal = dueNow.reduce((sum, i) => sum + i.amountCents, 0);
+    const days = new Set(later.map((i) => i.dueOn.getUTCDate()));
+    const rest =
+      later.length === 0
+        ? ''
+        : later.length > 1 && days.size === 1
+          ? `, puis ${later.length} débits mensuels, le ${[...days][0]} de chaque mois`
+          : `, puis ${later.length} ${plural(later.length, 'débit')} à partir du ${formatDueDate(later[0]!.dueOn)}`;
+    return (
+      `Échéancier ${club} : ${count} ${plural(count, 'débit')} sur votre ` +
+      `carte pour un total de ${formatEuros(total)} €, dont ` +
+      `${formatEuros(nowTotal)} € dès l'enregistrement de la carte${rest}.`
+    ).slice(0, CUSTOM_TEXT_MAX);
+  }
 
   const message =
     args.method === PaymentScheduleMethod.SEPA_DEBIT

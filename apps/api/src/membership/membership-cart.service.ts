@@ -1145,6 +1145,11 @@ export class MembershipCartService {
           familyId,
           clubSeasonId: seasonId,
           status: { in: [InvoiceStatus.OPEN, InvoiceStatus.PAID] },
+          // Les mensualités restantes d'une cotisation mensuelle ne sont pas
+          // une seconde adhésion. Leur ligne vaut N mois : la compter
+          // ferait passer ce membre pour le plus cher du foyer et fausserait
+          // le rang des remises famille.
+          monthlyContinuationOfId: null,
           ...(excludeInvoiceId ? { id: { not: excludeInvoiceId } } : {}),
         },
       },

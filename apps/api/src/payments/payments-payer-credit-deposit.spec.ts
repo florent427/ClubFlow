@@ -11,6 +11,7 @@ import { PaymentScheduleEngineService } from './payment-schedule-engine.service'
 import { PaymentScheduleService } from './payment-schedule.service';
 import { PaymentsService } from './payments.service';
 import { StripeConnectService } from './stripe-connect.service';
+import { MonthlyContinuationService } from './monthly-continuation.service';
 import { StripeFeesService } from './stripe-fees.service';
 import { StripeRefundsService } from './stripe-refunds.service';
 
@@ -122,6 +123,7 @@ async function service(h: ReturnType<typeof harness>): Promise<PaymentsService> 
       { provide: ClubFinancialAccountsService, useValue: h.financialAccounts },
       { provide: DocumentsGatingService, useValue: {} },
       { provide: StripeConnectService, useValue: {} },
+      { provide: MonthlyContinuationService, useValue: { createFor: async () => ({ kind: 'none', reason: 'hors sujet' }) } },
       { provide: StripeFeesService, useValue: {} },
       { provide: StripeRefundsService, useValue: {} },
       { provide: CreditNotesService, useValue: h.creditNotes },

@@ -28,7 +28,7 @@ function baseInterdite(): never {
 const aucun = {} as never;
 
 function paiements(prisma: never): PaymentsService {
-  return new PaymentsService(prisma, aucun, aucun, aucun, aucun, aucun, aucun, aucun, aucun, aucun, aucun);
+  return new PaymentsService(prisma, aucun, aucun, aucun, aucun, aucun, aucun, aucun, aucun, aucun, aucun, aucun);
 }
 
 async function refuse(promesse: Promise<unknown>, motif: RegExp): Promise<void> {

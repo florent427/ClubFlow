@@ -431,6 +431,19 @@ function ScheduleRecap({
   const attention = worstAttentionStatus(schedule.installments);
   const notice = attention ? attentionNotice(attention) : null;
 
+  // Échéances déjà exigibles : elles partent dès que la carte est enregistrée
+  // (le mois en cours d'une cotisation mensuelle, par exemple). Le dire évite
+  // d'annoncer « aucun montant débité » à tort.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const dueNowCents = schedule.installments
+    .filter(
+      (i) =>
+        (i.status === 'SCHEDULED' || i.status === 'FAILED_RETRYABLE') &&
+        i.dueOn.slice(0, 10) <= todayIso,
+    )
+    .reduce((sum, i) => sum + i.amountCents, 0);
+  const neverPaid = paidCents === 0;
+
   // Enregistrement interrompu : la mutation accepte de rejouer un échéancier
   // qui attend encore son moyen de paiement, on renvoie donc l'adhérent sur
   // la page sécurisée du prestataire.
@@ -486,12 +499,15 @@ function ScheduleRecap({
 
       {schedule.status === 'PENDING_SETUP' ? (
         <div className="mp-hint mp-hint--block mp-hint--warn">
-          <strong>Enregistrement non terminé</strong>
+          <strong>
+            {neverPaid ? 'Moyen de paiement à enregistrer' : 'Enregistrement non terminé'}
+          </strong>
           <p>
             Votre moyen de paiement n’est pas encore enregistré : les
-            prélèvements ne démarreront qu’une fois cette étape terminée. Vous
-            pouvez la reprendre là où vous vous étiez arrêté, aucun montant ne
-            sera débité maintenant.
+            prélèvements ne démarreront qu’une fois cette étape terminée.{' '}
+            {dueNowCents > 0
+              ? `${formatEuroCents(dueNowCents)} déjà dus seront débités dès l’enregistrement, puis chaque échéance à sa date.`
+              : 'Aucun montant ne sera débité maintenant.'}
           </p>
           <button
             type="button"
@@ -499,7 +515,11 @@ function ScheduleRecap({
             onClick={() => void handleResumeSetup()}
             disabled={resuming}
           >
-            {resuming ? 'Redirection…' : 'Reprendre l’enregistrement'}
+            {resuming
+              ? 'Redirection…'
+              : schedule.method === 'CARD'
+                ? 'Enregistrer ma carte'
+                : 'Reprendre l’enregistrement'}
           </button>
         </div>
       ) : null}

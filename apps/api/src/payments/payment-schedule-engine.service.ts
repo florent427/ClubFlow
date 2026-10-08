@@ -97,7 +97,16 @@ export class PaymentScheduleEngineService {
    * Un échec sur une échéance n'interrompt pas le passage : chaque ligne est
    * traitée isolément, sinon un club en erreur bloquerait tous les autres.
    */
-  async runDue(opts?: { now?: Date; clubId?: string }): Promise<ScheduleRunReport> {
+  async runDue(opts?: {
+    now?: Date;
+    clubId?: string;
+    /**
+     * Restreint le passage à un échéancier. Sert juste après l'enregistrement
+     * de la carte : une mensualité déjà due part aussitôt, sans attendre le
+     * passage du lendemain matin.
+     */
+    scheduleId?: string;
+  }): Promise<ScheduleRunReport> {
     const now = opts?.now ?? new Date();
     // Avant de prélever, on rattrape les échéances restées bloquées : sinon
     // de l'argent encaissé resterait invisible pour l'échéancier.
@@ -113,6 +122,7 @@ export class PaymentScheduleEngineService {
     const due = await this.prisma.paymentScheduleInstallment.findMany({
       where: {
         ...(opts?.clubId ? { clubId: opts.clubId } : {}),
+        ...(opts?.scheduleId ? { scheduleId: opts.scheduleId } : {}),
         OR: [
           // Jamais tentée et exigible.
           { status: InstallmentStatus.SCHEDULED, dueOn: { lte: now } },

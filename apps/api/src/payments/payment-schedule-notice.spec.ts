@@ -140,3 +140,34 @@ describe('buildSetupNotice', () => {
     expect(text.length).toBeLessThanOrEqual(CUSTOM_TEXT_MAX);
   });
 });
+
+describe('buildSetupNotice — carte, échéance déjà exigible', () => {
+  const due = (iso: string, amountCents = 3000): NoticeInstallment => ({
+    amountCents,
+    dueOn: new Date(`${iso}T00:00:00Z`),
+    status: S.SCHEDULED,
+  });
+  const card = (installments: NoticeInstallment[], today?: string) =>
+    buildSetupNotice({
+      clubName: CLUB,
+      method: PaymentScheduleMethod.CARD,
+      installments,
+      today: today ? new Date(`${today}T00:00:00Z`) : undefined,
+    })!;
+
+  it('annonce le débit immédiat puis le jour fixe des mensualités', () => {
+    const text = card(
+      [due('2026-10-08'), due('2026-11-10'), due('2026-12-10')],
+      '2026-10-08',
+    );
+    expect(text).toContain("dont 30,00 € dès l'enregistrement de la carte");
+    expect(text).toContain('puis 2 débits mensuels, le 10 de chaque mois');
+    // Ce serait faux : la mensualité d'octobre part aussitôt.
+    expect(text).not.toContain("Aucun montant n'est débité maintenant");
+  });
+
+  it('sans échéance exigible, la mention reste celle d’avant', () => {
+    const text = card([due('2026-11-10'), due('2026-12-10')], '2026-10-08');
+    expect(text).toContain("Aucun montant n'est débité maintenant");
+  });
+});

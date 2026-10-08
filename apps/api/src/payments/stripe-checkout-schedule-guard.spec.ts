@@ -4,6 +4,7 @@ import { InvoiceStatus, PaymentScheduleStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StripeCheckoutService } from './stripe-checkout.service';
 import { StripeConnectService } from './stripe-connect.service';
+import { MonthlyContinuationService } from './monthly-continuation.service';
 
 /**
  * Verrou 1 du dispositif anti double encaissement (cf. ADR-0009).
@@ -61,6 +62,7 @@ describe('StripeCheckoutService — refus si un échéancier couvre la facture',
         StripeCheckoutService,
         { provide: PrismaService, useValue: prisma },
         { provide: StripeConnectService, useValue: connect },
+        { provide: MonthlyContinuationService, useValue: { consentForCheckout: async () => null } },
       ],
     }).compile();
 
@@ -198,6 +200,7 @@ describe('StripeCheckoutService — le solde demandé déduit les avoirs', () =>
         StripeCheckoutService,
         { provide: PrismaService, useValue: prisma },
         { provide: StripeConnectService, useValue: connect },
+        { provide: MonthlyContinuationService, useValue: { consentForCheckout: async () => null } },
       ],
     }).compile();
     const service = moduleRef.get(StripeCheckoutService);

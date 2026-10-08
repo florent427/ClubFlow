@@ -47,6 +47,10 @@ import {
   type PayerCreditHolderRef,
 } from './payer-credit-holder';
 import { readPayerCreditTopUpMetadata } from './payer-credit-top-up';
+import {
+  MonthlyContinuationService,
+  type SavedCard,
+} from './monthly-continuation.service';
 import { assertNotPayerCreditMethod } from './payment-method-rules';
 import { applyPricing } from './pricing-rules';
 import { lockInvoiceInTx, lockPayerCreditInTx } from './settlement-locks';
@@ -77,6 +81,27 @@ const PAYER_CREDIT_DEPOSIT_METHODS: ReadonlySet<ClubPaymentMethod> =
     ClubPaymentMethod.MANUAL_CHECK,
     ClubPaymentMethod.MANUAL_TRANSFER,
   ]);
+
+/**
+ * Carte que Checkout a enregistrée pour des débits ultérieurs, ou `null`.
+ *
+ * Seul `setup_future_usage: 'off_session'` vaut accord de l'adhérent : une
+ * carte simplement utilisée pour payer ne peut pas être redébitée.
+ */
+function savedCardOf(
+  pi: Stripe.PaymentIntent,
+  stripeAccountId: string | null,
+): SavedCard | null {
+  if (pi.setup_future_usage !== 'off_session' || !stripeAccountId) return null;
+  const customerId =
+    typeof pi.customer === 'string' ? pi.customer : (pi.customer?.id ?? null);
+  const paymentMethodId =
+    typeof pi.payment_method === 'string'
+      ? pi.payment_method
+      : (pi.payment_method?.id ?? null);
+  if (!customerId || !paymentMethodId) return null;
+  return { stripeAccountId, customerId, paymentMethodId };
+}
 
 function eurosFr(cents: number): string {
   return `${(cents / 100).toFixed(2).replace('.', ',')} €`;
@@ -113,6 +138,7 @@ export class PaymentsService {
     private readonly stripeRefunds: StripeRefundsService,
     private readonly creditNotes: CreditNotesService,
     private readonly shop: ShopService,
+    private readonly monthlyContinuation: MonthlyContinuationService,
   ) {}
 
   /**
@@ -1612,6 +1638,12 @@ export class PaymentsService {
         paymentMethodId,
         mandateReference,
       });
+      // Une échéance déjà due — le mois en cours d'une cotisation mensuelle —
+      // part tout de suite, l'adhérent venant d'enregistrer sa carte. Sans
+      // ça elle attendrait le passage du lendemain matin. Sans risque de
+      // double débit en cas de rejeu : réservation atomique et clé
+      // d'idempotence du moteur.
+      await this.scheduleEngine.runDue({ scheduleId });
       return;
     }
 
@@ -1786,6 +1818,7 @@ export class PaymentsService {
         eventAccount,
         installmentId,
         paidByContactId,
+        installmentId ? null : savedCardOf(pi, eventAccount),
       );
     }
   }
@@ -1943,6 +1976,7 @@ export class PaymentsService {
     stripeAccountId: string | null = null,
     installmentId: string | null = null,
     paidByContactId: string | null = null,
+    savedCard: SavedCard | null = null,
   ): Promise<void> {
     // Sans filtre sur le statut : il se décide sous le verrou, plus bas. Filtrée
     // sur OPEN, cette lecture prenait le rejeu d'un paiement qui avait soldé la
@@ -2087,6 +2121,8 @@ export class PaymentsService {
           installmentId,
           settlement.paymentId,
         );
+      } else {
+        await this.continueMonthlyMembership(clubId, invoiceId, savedCard);
       }
       await this.trySyncFees(settlement.paymentId);
       return;
@@ -2127,6 +2163,8 @@ export class PaymentsService {
     // écriture lui-même — un seul chemin crée un encaissement (ADR-0009).
     if (installmentId) {
       await this.scheduleEngine.markInstallmentPaid(installmentId, payment.id);
+    } else {
+      await this.continueMonthlyMembership(clubId, invoiceId, savedCard);
     }
 
     // En DERNIER, et sans jamais lever. Les frais sont une information de
@@ -2134,6 +2172,32 @@ export class PaymentsService {
     // doivent en dépendre. En carte ils sont déjà connus ; en SEPA la charge
     // n'est pas dénouée et c'est le balayage quotidien qui repassera.
     await this.trySyncFees(payment.id);
+  }
+
+  /**
+   * Adhésion au rythme mensuel soldée : crée la facture des mois restants de
+   * la saison et son échéancier carte (`MonthlyContinuationService`). Sans
+   * effet sur toute autre facture.
+   *
+   * C'est une GARANTIE, pas un accessoire : sans elle, les mois suivants ne
+   * sont jamais réclamés. On la laisse donc lever — Stripe rejoue le webhook,
+   * et le chemin du rejeu la reprend ; la création est idempotente.
+   */
+  private async continueMonthlyMembership(
+    clubId: string,
+    invoiceId: string,
+    savedCard: SavedCard | null,
+  ): Promise<void> {
+    const outcome = await this.monthlyContinuation.createFor(
+      clubId,
+      invoiceId,
+      { card: savedCard },
+    );
+    // Carte déjà enregistrée : une mensualité due aujourd'hui (adhésion d'un
+    // mois passé, payée en retard) part sans attendre le lendemain matin.
+    if (outcome.kind === 'created' && outcome.active) {
+      await this.scheduleEngine.runDue({ scheduleId: outcome.scheduleId });
+    }
   }
 
   /**

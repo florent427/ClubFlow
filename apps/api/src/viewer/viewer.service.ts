@@ -14,6 +14,7 @@ import {
   MemberCivility,
   MemberClubRole,
   MemberStatus,
+  PaymentScheduleStatus,
   ShopOrderStatus,
   SubscriptionBillingRhythm,
   type Prisma,
@@ -1263,6 +1264,7 @@ export class ViewerService {
         },
         select: { amountCents: true },
       },
+      paymentSchedule: { select: { status: true } },
     };
     const [openRows, paidRows] = await Promise.all([
       this.prisma.invoice.findMany({
@@ -1331,6 +1333,10 @@ export class ViewerService {
         totalPaidCents,
         balanceCents,
         payments,
+        // Même règle que le refus du paiement comptant (StripeCheckoutService).
+        coveredBySchedule:
+          inv.paymentSchedule?.status === PaymentScheduleStatus.ACTIVE ||
+          inv.paymentSchedule?.status === PaymentScheduleStatus.PENDING_SETUP,
       };
     };
 
