@@ -193,6 +193,18 @@ describe('MonthlyContinuationService.createFor — la suite d’une adhésion me
       'la saison se termine avec le mois payé',
       { createdAt: new Date('2027-08-02T08:00:00Z') },
     ],
+    [
+      // Trouvé en recette staging : juin, juillet et août 2026 seraient
+      // tombés dus d'un coup, saison finie.
+      'appartient à une saison terminée',
+      {
+        createdAt: new Date('2026-05-12T08:00:00Z'),
+        clubSeason: {
+          startsOn: new Date('2025-09-01T00:00:00Z'),
+          endsOn: new Date('2026-08-31T00:00:00Z'),
+        },
+      },
+    ],
   ])('rien quand l’adhésion %s', async (_why, over) => {
     const { service, created } = world([adhesion(over)]);
 

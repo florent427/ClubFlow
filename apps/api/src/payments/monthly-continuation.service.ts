@@ -166,11 +166,25 @@ export class MonthlyContinuationService {
     if (months.length === 0) {
       return { kind: 'none', reason: 'saison terminée après le mois payé' };
     }
+    // Une saison close ne se réclame plus : tous ses mois tomberaient dus
+    // d'un coup, pour une activité que l'adhérent ne peut plus suivre.
+    const today = dateInZone(now, SCHEDULING_TIMEZONE);
+    const seasonEnd = source.clubSeason.endsOn;
+    if (
+      Date.UTC(today.year, today.month, today.day) >
+      Date.UTC(
+        seasonEnd.getUTCFullYear(),
+        seasonEnd.getUTCMonth(),
+        seasonEnd.getUTCDate(),
+      )
+    ) {
+      return { kind: 'none', reason: 'saison terminée' };
+    }
 
     const installments = buildMonthlyContinuationPlan({
       monthlyCents,
       months,
-      today: dateInZone(now, SCHEDULING_TIMEZONE),
+      today,
     });
     return {
       kind: 'plan',
