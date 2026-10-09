@@ -188,6 +188,7 @@ export const VIEWER_FAMILY_BILLING = gql`
         totalPaidCents
         balanceCents
         coveredBySchedule
+        awaitingCardSetup
         payments {
           id
           amountCents
@@ -246,6 +247,7 @@ export const VIEWER_ALL_FAMILY_BILLING = gql`
         totalPaidCents
         balanceCents
         coveredBySchedule
+        awaitingCardSetup
         payments {
           id
           amountCents

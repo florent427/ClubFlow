@@ -984,6 +984,14 @@ export class PaymentsService {
         args.invoiceId,
         InvoiceStatus.PAID,
       );
+    } else {
+      // Un acompte sur une facture échelonnée paie les échéances les plus
+      // anciennes : sinon le moteur redébiterait le mois déjà réglé.
+      await this.scheduleEngine.settleEarliestInstallments(
+        args.invoiceId,
+        args.paymentId,
+        args.amountCents,
+      );
     }
     await this.tryRecordIncome(
       clubId,

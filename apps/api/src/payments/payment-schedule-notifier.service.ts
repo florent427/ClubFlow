@@ -5,6 +5,7 @@ import { MAIL_TRANSPORT } from '../mail/mail.constants';
 import type { MailTransport } from '../mail/mail-transport.interface';
 import { PrismaService } from '../prisma/prisma.service';
 import { formatDueDate, formatEuros } from './payment-format';
+import { DEBITABLE_INSTALLMENT_STATUSES } from './payment-schedule-notice';
 
 function escapeHtml(s: string): string {
   return s
@@ -380,7 +381,10 @@ Aucune nouvelle tentative n'aura lieu. Le montant reste dû.`,
    *
    * @returns `true` si le courrier est parti.
    */
-  async notifyMonthlyCardSetup(scheduleId: string): Promise<boolean> {
+  async notifyMonthlyCardSetup(
+    scheduleId: string,
+    opts: { reminder?: boolean } = {},
+  ): Promise<boolean> {
     try {
       const schedule = await this.prisma.paymentSchedule.findUnique({
         where: { id: scheduleId },
@@ -409,8 +413,13 @@ Aucune nouvelle tentative n'aura lieu. Le montant reste dû.`,
           },
         },
       });
-      const first = schedule?.installments[0];
-      const last = schedule?.installments[schedule.installments.length - 1];
+      // Seules les échéances encore à prélever : un mois déjà réglé (avance
+      // imputée, paiement au club) ne doit pas être annoncé comme dû.
+      const pending = (schedule?.installments ?? []).filter((i) =>
+        DEBITABLE_INSTALLMENT_STATUSES.includes(i.status),
+      );
+      const first = pending[0];
+      const last = pending[pending.length - 1];
       if (!schedule || !first || !last) return false;
 
       const invoice = schedule.invoice;
@@ -429,15 +438,22 @@ Aucune nouvelle tentative n'aura lieu. Le montant reste dû.`,
         schedule.clubId,
         'transactional',
       );
-      const url = `${this.portalBaseUrl()}/facturation`;
+      // La facture s'ouvre dépliée, son bouton « Enregistrer ma carte » en vue.
+      // Le lien vers la seule page Facturation laissait la liste repliée : des
+      // familles ont pris « Créditer mon compte » pour l'enregistrement de la
+      // carte et versé une avance (2026-10-08).
+      const url = `${this.portalBaseUrl()}/facturation?facture=${invoice.id}`;
       const club = invoice.club.name;
       const monthly = euros(first.amountCents);
-      const count = schedule.installments.length;
+      const count = pending.length;
       const now = Date.now();
-      const dueNow = schedule.installments
+      const dueNow = pending
         .filter((i) => i.dueOn.getTime() <= now)
         .reduce((sum, i) => sum + i.amountCents, 0);
-      const later = schedule.installments.find((i) => i.dueOn.getTime() > now);
+      const later = pending.find((i) => i.dueOn.getTime() > now);
+      const reminder = opts.reminder === true;
+      const warning =
+        "Attention : « Créditer mon compte » ne remplace pas l'enregistrement de la carte. Utilisez le bouton « Enregistrer ma carte » de la facture des mensualités.";
       const day = later?.dueOn.getUTCDate() ?? null;
 
       const nowSentence =
@@ -454,7 +470,7 @@ Aucune nouvelle tentative n'aura lieu. Le montant reste dû.`,
         kind: 'transactional',
         from: profile.from,
         to,
-        subject: `Cotisation mensuelle : enregistrez votre carte — ${club}`,
+        subject: `${reminder ? 'Rappel — ' : ''}Cotisation mensuelle : enregistrez votre carte — ${club}`,
         preheader: `Une étape pour régler vos mensualités (${monthly} € par mois) automatiquement.`,
         html: `
           <p>Bonjour ${escapeHtml(firstName)},</p>
@@ -464,6 +480,7 @@ Aucune nouvelle tentative n'aura lieu. Le montant reste dû.`,
           <p>Pour qu'elles soient prélevées automatiquement, enregistrez votre
           carte bancaire une seule fois depuis votre espace membre :
           ${escapeHtml(calendar)}.</p>
+          ${reminder ? `<p><strong>${escapeHtml(warning)}</strong></p>` : ''}
           <p><a href="${url}">Enregistrer ma carte</a></p>
           <p>Cordialement,<br>${escapeHtml(club)}</p>
         `,
@@ -472,7 +489,9 @@ Aucune nouvelle tentative n'aura lieu. Le montant reste dû.`,
 Vous avez choisi de régler la cotisation au mois. Le premier mois a été payé à l'adhésion ; il reste ${count} mensualité${count > 1 ? 's' : ''} de ${monthly} € (« ${invoice.label} »).
 
 Pour qu'elles soient prélevées automatiquement, enregistrez votre carte bancaire une seule fois depuis votre espace membre : ${calendar}.
-
+${reminder ? `
+${warning}
+` : ''}
 ${url}
 
 ${club}`,

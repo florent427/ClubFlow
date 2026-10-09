@@ -179,6 +179,33 @@ export function BillingPage() {
     return invoices.filter((inv) => inv.status === filter);
   }, [invoices, filter]);
 
+  const awaitingCard = invoices.filter((inv) => inv.awaitingCardSetup);
+
+  // Déplie la facture et l'amène à l'écran : son bouton « Enregistrer ma
+  // carte » est dans le détail.
+  function openInvoice(invoiceId: string): void {
+    setFilter('ALL');
+    setExpandedId(invoiceId);
+    requestAnimationFrame(() =>
+      document
+        .getElementById(`facture-${invoiceId}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+    );
+  }
+
+  // Arrivée par un lien `?facture=` (e-mail, tableau de bord) : la facture
+  // est dépliée, encore faut-il qu'elle soit à l'écran, sous les indicateurs.
+  const linkedInvoiceLoaded =
+    expandedId != null && invoices.some((inv) => inv.id === expandedId);
+  const [scrolledToLinked, setScrolledToLinked] = useState(false);
+  useEffect(() => {
+    if (!linkedInvoiceLoaded || scrolledToLinked || !expandedId) return;
+    setScrolledToLinked(true);
+    document
+      .getElementById(`facture-${expandedId}`)
+      ?.scrollIntoView({ block: 'start' });
+  }, [linkedInvoiceLoaded, scrolledToLinked, expandedId]);
+
   if (error && !data) {
     return (
       <div className="mp-page">
@@ -231,6 +258,31 @@ export function BillingPage() {
         {summary.familyLabel ? ` (${summary.familyLabel})` : ''}.
       </p>
 
+      {/* Une carte à enregistrer passe avant tout le reste : tant qu'elle ne
+          l'est pas, rien n'est prélevé. Le bouton était caché dans la facture
+          repliée, et des familles ont pris « Créditer mon compte » pour lui. */}
+      {awaitingCard.map((inv) => (
+        <div
+          key={inv.id}
+          className="mp-hint mp-hint--block mp-hint--warn"
+          role="status"
+        >
+          <strong>Enregistrez votre carte pour vos mensualités</strong>
+          <p>
+            {inv.label} : les mensualités sont prélevées automatiquement chaque
+            mois, une fois votre carte enregistrée. Créditer votre compte ne
+            suffit pas.
+          </p>
+          <button
+            type="button"
+            className="mp-btn mp-btn-primary mp-btn-sm"
+            onClick={() => openInvoice(inv.id)}
+          >
+            Enregistrer ma carte
+          </button>
+        </div>
+      ))}
+
       <section className="mp-billing-kpis">
         <article
           className={`mp-billing-kpi ${totals.open > 0 ? 'mp-billing-kpi--due' : ''}`}
@@ -257,7 +309,11 @@ export function BillingPage() {
       {shouldShowPayerCredit(credit) ? (
         <PayerCreditHistory movements={credit.movements} />
       ) : null}
-      {credit?.cardTopUpAvailable ? <PayerCreditTopUp /> : null}
+      {/* Masqué tant qu'une carte est attendue : c'est lui qu'on prenait pour
+          l'enregistrement de la carte. */}
+      {credit?.cardTopUpAvailable && awaitingCard.length === 0 ? (
+        <PayerCreditTopUp />
+      ) : null}
 
       <div className="mp-tabs" role="tablist" aria-label="Filtrer les factures">
         {(
@@ -312,7 +368,7 @@ export function BillingPage() {
               inv.dueAt &&
               new Date(inv.dueAt).getTime() < Date.now();
             return (
-              <li key={inv.id} className="mp-invoice-item">
+              <li key={inv.id} id={`facture-${inv.id}`} className="mp-invoice-item">
                 <button
                   type="button"
                   className="mp-invoice-item__toggle"

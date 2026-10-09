@@ -60,6 +60,16 @@ export class StripeFeesSweepReportGraph {
   abandoned!: number;
 }
 
+/** Bilan d'une relance des cartes à enregistrer. */
+@ObjectType()
+export class MonthlyCardReminderGraph {
+  @Field(() => Int, { description: 'Échéanciers encore en attente de carte.' })
+  pending!: number;
+
+  @Field(() => Int, { description: 'Relances envoyées.' })
+  sent!: number;
+}
+
 /** Une adhésion mensuelle examinée par le rattrapage des mensualités. */
 @ObjectType()
 export class MonthlyContinuationRowGraph {
@@ -171,6 +181,18 @@ export class PaymentScheduleAdminResolver {
     // la vérité — rien n'a été examiné par CET appel — sans faire échouer une
     // action d'administration dont le travail est de toute façon en cours.
     return report ?? { examined: 0, resolved: 0, abandoned: 0 };
+  }
+
+  @Mutation(() => MonthlyCardReminderGraph, {
+    name: 'remindMonthlyCardSetup',
+    description:
+      'Relance par e-mail les payeurs dont les mensualités attendent encore l’enregistrement de la carte. Avec dryRun, compte sans rien envoyer.',
+  })
+  async remindMonthlyCardSetup(
+    @CurrentClub() club: Club,
+    @Args('dryRun', { type: () => Boolean }) dryRun: boolean,
+  ): Promise<MonthlyCardReminderGraph> {
+    return this.monthlyContinuation.remindPendingCardSetup(club.id, { dryRun });
   }
 
   @Mutation(() => [MonthlyContinuationRowGraph], {

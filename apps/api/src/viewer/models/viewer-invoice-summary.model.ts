@@ -47,4 +47,10 @@ export class ViewerInvoiceSummaryGraph {
       'Un échéancier en cours (ou en attente du moyen de paiement) règle la facture : le paiement comptant en ligne est refusé.',
   })
   coveredBySchedule!: boolean;
+
+  @Field({
+    description:
+      'L’échéancier de la facture attend que le payeur enregistre son moyen de paiement : rien ne sera prélevé d’ici là.',
+  })
+  awaitingCardSetup!: boolean;
 }

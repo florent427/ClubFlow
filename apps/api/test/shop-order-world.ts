@@ -1397,6 +1397,8 @@ export function makeWorld(seed: {
   };
   const scheduleEngine = {
     sumInFlightForInvoice: jest.fn(async (_invoiceId: string) => 0),
+    // Aucune facture boutique n'est échelonnée.
+    settleEarliestInstallments: jest.fn(async () => 0),
     closeScheduleForInvoice: trace(
       'schedule',
       async (_invoiceId: string, _status: InvoiceStatus) => undefined,
