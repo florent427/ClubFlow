@@ -30,11 +30,13 @@ describe('PaymentsService / encaissements manuels', () => {
   let accounting: { recordIncomeFromPayment: jest.Mock };
   let documentsGating: { hasUnsignedRequiredDocuments: jest.Mock };
   let closeSchedule: jest.Mock;
+  let settleEarliest: jest.Mock;
   let sumInFlight: jest.Mock;
   let shop: { fulfillPaidShopOrderInTx: jest.Mock };
 
   beforeEach(async () => {
     closeSchedule = jest.fn().mockResolvedValue(undefined);
+    settleEarliest = jest.fn().mockResolvedValue(0);
     // Par défaut : aucun prélèvement en vol sur la facture.
     sumInFlight = jest.fn().mockResolvedValue(0);
     shop = { fulfillPaidShopOrderInTx: jest.fn().mockResolvedValue(undefined) };
@@ -101,6 +103,7 @@ describe('PaymentsService / encaissements manuels', () => {
           useValue: {
             closeScheduleForInvoice: closeSchedule,
             sumInFlightForInvoice: sumInFlight,
+            settleEarliestInstallments: settleEarliest,
           },
         },
         { provide: ShopService, useValue: shop },
@@ -242,6 +245,8 @@ describe('PaymentsService / encaissements manuels', () => {
     });
 
     expect(closeSchedule).not.toHaveBeenCalled();
+    // L'acompte paie les échéances les plus anciennes, pas la dernière.
+    expect(settleEarliest).toHaveBeenCalledWith('inv-1', expect.any(String), 4000);
   });
 
   it('un échec d’écriture comptable ne fait PAS échouer l’encaissement', async () => {

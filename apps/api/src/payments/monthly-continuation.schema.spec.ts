@@ -28,5 +28,7 @@ describe('Mensualités — schéma GraphQL', () => {
     expect(sdl).toContain('monthlyCents: Int');
     expect(sdl).toContain('firstMonth: String');
     expect(sdl).toContain('coveredBySchedule: Boolean!');
+    expect(sdl).toContain('awaitingCardSetup: Boolean!');
+    expect(sdl).toContain('remindMonthlyCardSetup(dryRun: Boolean!): MonthlyCardReminderGraph!');
   });
 });

@@ -153,6 +153,8 @@ export type ViewerFamilyBillingSummary = {
     balanceCents: number;
     /** Un échéancier règle la facture : pas de paiement comptant en ligne. */
     coveredBySchedule: boolean;
+    /** Échéancier en attente du moyen de paiement : rien ne sera prélevé. */
+    awaitingCardSetup: boolean;
     payments: Array<{
       id: string;
       amountCents: number;

@@ -1337,6 +1337,8 @@ export class ViewerService {
         coveredBySchedule:
           inv.paymentSchedule?.status === PaymentScheduleStatus.ACTIVE ||
           inv.paymentSchedule?.status === PaymentScheduleStatus.PENDING_SETUP,
+        awaitingCardSetup:
+          inv.paymentSchedule?.status === PaymentScheduleStatus.PENDING_SETUP,
       };
     };
 

@@ -257,14 +257,18 @@ describe('PaymentScheduleNotifierService.notifyMonthlyCardSetup', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { PaymentScheduleNotifierService } = require('./payment-schedule-notifier.service');
 
-  it('invite le payeur à enregistrer sa carte, avec le calendrier réel', async () => {
+  async function mailFor(
+    statuses: string[],
+    opts: { reminder?: boolean } = {},
+  ): Promise<{ sent: boolean; mail?: { to: string; subject: string; text: string } }> {
     jest.useFakeTimers().setSystemTime(new Date('2026-10-08T06:00:00Z'));
     const sendEmail = jest.fn().mockResolvedValue(undefined);
-    const installments = [
-      '2026-10-08',
-      '2026-11-10',
-      '2026-12-10',
-    ].map((d, i) => ({ seq: i + 1, dueOn: new Date(`${d}T00:00:00Z`), amountCents: 3000 }));
+    const installments = ['2026-10-08', '2026-11-10', '2026-12-10'].map((d, i) => ({
+      seq: i + 1,
+      dueOn: new Date(`${d}T00:00:00Z`),
+      amountCents: 3000,
+      status: statuses[i],
+    }));
     const prisma = {
       paymentSchedule: {
         findUnique: jest.fn(async ({ where }: { where: { id: string } }) =>
@@ -274,6 +278,7 @@ describe('PaymentScheduleNotifierService.notifyMonthlyCardSetup', () => {
                 clubId: CLUB,
                 installments,
                 invoice: {
+                  id: 'inv-suite-1',
                   label: 'Cotisation mensuelle — octobre 2026 à décembre 2026',
                   club: { name: 'SKSR' },
                   family: {
@@ -292,16 +297,43 @@ describe('PaymentScheduleNotifierService.notifyMonthlyCardSetup', () => {
       { getVerifiedMailProfile: async () => ({ from: 'SKSR <noreply@sksr.re>' }) } as never,
       { sendEmail } as never,
     );
+    try {
+      const sent = await notifier.notifyMonthlyCardSetup('sched-1', opts);
+      return { sent, mail: sendEmail.mock.calls[0]?.[0] };
+    } finally {
+      jest.useRealTimers();
+    }
+  }
 
-    const sent = await notifier.notifyMonthlyCardSetup('sched-1');
-    jest.useRealTimers();
+  it('invite le payeur à enregistrer sa carte, avec le calendrier réel', async () => {
+    const { sent, mail } = await mailFor(['SCHEDULED', 'SCHEDULED', 'SCHEDULED']);
 
     expect(sent).toBe(true);
-    const mail = sendEmail.mock.calls[0]![0] as { to: string; subject: string; text: string };
-    expect(mail.to).toBe('aurore@example.test');
-    expect(mail.subject).toContain('enregistrez votre carte');
-    expect(mail.text).toContain('3 mensualités de 30,00 €');
-    expect(mail.text).toContain("30,00 € déjà dus seront débités dès l'enregistrement de la carte");
-    expect(mail.text).toContain('le 10 de chaque mois');
+    expect(mail!.to).toBe('aurore@example.test');
+    expect(mail!.subject).toBe('Cotisation mensuelle : enregistrez votre carte — SKSR');
+    expect(mail!.text).toContain('3 mensualités de 30,00 €');
+    expect(mail!.text).toContain("30,00 € déjà dus seront débités dès l'enregistrement de la carte");
+    expect(mail!.text).toContain('le 10 de chaque mois');
+    // Le lien ouvre la facture dépliée, pas la liste repliée.
+    expect(mail!.text).toContain('/facturation?facture=inv-suite-1');
+    expect(mail!.text).not.toContain('Créditer mon compte');
+  });
+
+  it('relance : octobre réglé par une avance n’est plus annoncé comme dû', async () => {
+    const { mail } = await mailFor(['PAID', 'SCHEDULED', 'SCHEDULED'], { reminder: true });
+
+    expect(mail!.subject).toBe('Rappel — Cotisation mensuelle : enregistrez votre carte — SKSR');
+    expect(mail!.text).toContain('2 mensualités de 30,00 €');
+    expect(mail!.text).not.toContain('déjà dus');
+    expect(mail!.text).toContain('le 10 de chaque mois');
+    // L'erreur vue le 2026-10-08 : l'avance prise pour l'enregistrement.
+    expect(mail!.text).toContain('« Créditer mon compte » ne remplace pas');
+  });
+
+  it('rien à envoyer quand tout est réglé', async () => {
+    const { sent, mail } = await mailFor(['PAID', 'PAID', 'PAID'], { reminder: true });
+
+    expect(sent).toBe(false);
+    expect(mail).toBeUndefined();
   });
 });

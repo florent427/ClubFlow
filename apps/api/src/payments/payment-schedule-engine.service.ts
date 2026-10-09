@@ -190,6 +190,78 @@ export class PaymentScheduleEngineService {
   }
 
   /**
+   * Un règlement fait HORS échéancier (crédit du payeur, espèces, chèque…)
+   * sans solder la facture paie d'abord les échéances les plus anciennes,
+   * celles qu'il couvre en entier, dans l'ordre.
+   *
+   * Sans ça, le moteur ne voyait qu'un solde réduit : il prélevait quand même
+   * l'échéance du mois, et c'était la DERNIÈRE qui sautait. Une famille qui
+   * réglait octobre au club était redébitée d'octobre par carte.
+   *
+   * Seules les échéances encore à prélever sont prises, chacune par une mise
+   * à jour conditionnelle sur son statut : une échéance que le moteur vient de
+   * réserver (PROCESSING) n'est jamais touchée, et inversement le moteur ne
+   * peut plus réserver une échéance passée PAID.
+   *
+   * @returns le nombre d'échéances soldées.
+   */
+  async settleEarliestInstallments(
+    invoiceId: string,
+    paymentId: string,
+    amountCents: number,
+  ): Promise<number> {
+    const schedule = await this.prisma.paymentSchedule.findUnique({
+      where: { invoiceId },
+      include: {
+        installments: {
+          where: {
+            status: {
+              in: [
+                InstallmentStatus.SCHEDULED,
+                InstallmentStatus.FAILED_RETRYABLE,
+                InstallmentStatus.REQUIRES_ACTION,
+              ],
+            },
+          },
+          orderBy: { seq: 'asc' },
+        },
+      },
+    });
+    if (
+      !schedule ||
+      (schedule.status !== PaymentScheduleStatus.ACTIVE &&
+        schedule.status !== PaymentScheduleStatus.PENDING_SETUP)
+    ) {
+      return 0;
+    }
+
+    let left = amountCents;
+    let settled = 0;
+    for (const inst of schedule.installments) {
+      if (inst.amountCents > left) break;
+      const updated = await this.prisma.paymentScheduleInstallment.updateMany({
+        where: { id: inst.id, status: inst.status },
+        data: {
+          status: InstallmentStatus.PAID,
+          // `paymentId` est unique : un règlement qui couvre plusieurs
+          // échéances n'est relié qu'à la première.
+          paymentId: settled === 0 ? paymentId : null,
+          nextAttemptAt: null,
+        },
+      });
+      if (updated.count !== 1) break;
+      left -= inst.amountCents;
+      settled += 1;
+    }
+    if (settled > 0) {
+      this.logger.log(
+        `[echeancier] ${schedule.id} : ${settled} échéance(s) soldée(s) par le règlement ${paymentId}`,
+      );
+    }
+    return settled;
+  }
+
+  /**
    * Variante appelée depuis PaymentsService quand une facture est soldée ou
    * annulée en dehors de l'échéancier (règlement manuel, avoir, annulation).
    *

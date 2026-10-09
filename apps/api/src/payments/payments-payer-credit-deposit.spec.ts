@@ -128,7 +128,7 @@ async function service(h: ReturnType<typeof harness>): Promise<PaymentsService> 
       { provide: StripeRefundsService, useValue: {} },
       { provide: CreditNotesService, useValue: h.creditNotes },
       { provide: PaymentScheduleService, useValue: {} },
-      { provide: PaymentScheduleEngineService, useValue: { closeScheduleForInvoice: jest.fn() } },
+      { provide: PaymentScheduleEngineService, useValue: { closeScheduleForInvoice: jest.fn(), settleEarliestInstallments: jest.fn(async () => 0) } },
       { provide: ShopService, useValue: {} },
     ],
   }).compile();

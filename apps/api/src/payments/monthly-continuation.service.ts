@@ -388,4 +388,36 @@ export class MonthlyContinuationService {
     }
     return rows;
   }
+
+  /**
+   * Relance les payeurs dont la suite mensuelle attend encore la carte.
+   * `dryRun` compte sans rien envoyer.
+   *
+   * @returns les échéanciers concernés, et ceux dont le courrier est parti.
+   */
+  async remindPendingCardSetup(
+    clubId: string,
+    opts: { dryRun: boolean },
+  ): Promise<{ pending: number; sent: number }> {
+    const schedules = await this.prisma.paymentSchedule.findMany({
+      where: {
+        clubId,
+        status: PaymentScheduleStatus.PENDING_SETUP,
+        invoice: {
+          status: InvoiceStatus.OPEN,
+          monthlyContinuationOfId: { not: null },
+        },
+      },
+      select: { id: true },
+    });
+    let sent = 0;
+    if (!opts.dryRun) {
+      for (const s of schedules) {
+        if (await this.notifier.notifyMonthlyCardSetup(s.id, { reminder: true })) {
+          sent += 1;
+        }
+      }
+    }
+    return { pending: schedules.length, sent };
+  }
 }

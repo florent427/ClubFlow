@@ -396,6 +396,8 @@ export function monde() {
   };
   const scheduleEngine = {
     sumInFlightForInvoice: jest.fn(async () => 0),
+    // Aucune facture de ces scénarios n'est échelonnée.
+    settleEarliestInstallments: jest.fn(async () => 0),
     closeScheduleForInvoice: jest.fn(async (invoiceId: string) => {
       events.push(`échéancier clos ${invoiceId}`);
     }),
