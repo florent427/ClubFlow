@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.76.1](https://github.com/florent427/ClubFlow/compare/v0.76.0...v0.76.1) (2026-10-09)
+
+
+### 🐛 Bug Fixes
+
+* **paiements:** la carte des mensualités ne se confond plus avec une avance ([7a5a91c](https://github.com/florent427/ClubFlow/commit/7a5a91cd9d5b8d5cfee448d13cb8c177053c4599))
+* **paiements:** la carte des mensualités ne se confond plus avec une avance ([0a82dfb](https://github.com/florent427/ClubFlow/commit/0a82dfbab9eafd527efd9aa6243eb0b71dca3a99))
+
 ## [0.76.0](https://github.com/florent427/ClubFlow/compare/v0.75.3...v0.76.0) (2026-10-08)
 
 
