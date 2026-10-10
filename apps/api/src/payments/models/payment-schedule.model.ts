@@ -26,6 +26,25 @@ export class PaymentScheduleInstallmentGraph {
   status!: PaymentScheduleInstallmentStatus;
 }
 
+/** Coordonnées d'un virement mensuel fait par la famille. */
+@ObjectType()
+export class MonthlyTransferInstructionsGraph {
+  @Field({ description: 'Bénéficiaire : le club.' })
+  beneficiary!: string;
+
+  @Field(() => String, {
+    nullable: true,
+    description: 'IBAN du compte bancaire du club ; null s’il n’est pas renseigné.',
+  })
+  iban!: string | null;
+
+  @Field(() => String, { nullable: true })
+  bic!: string | null;
+
+  @Field({ description: 'Référence à indiquer sur chaque virement.' })
+  reference!: string;
+}
+
 @ObjectType()
 export class PaymentScheduleGraph {
   @Field(() => ID)
@@ -56,6 +75,13 @@ export class PaymentScheduleGraph {
     description: 'Échéances triées par rang croissant.',
   })
   installments!: PaymentScheduleInstallmentGraph[];
+
+  @Field(() => MonthlyTransferInstructionsGraph, {
+    nullable: true,
+    description:
+      'Coordonnées du virement, pour un échéancier réglé par virement mensuel (MANUAL_TRANSFER) ; null sinon.',
+  })
+  transfer?: MonthlyTransferInstructionsGraph | null;
 }
 
 @ObjectType()

@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from '@apollo/client/react';
 import { useMemo, useState } from 'react';
 import {
+  VIEWER_CHOOSE_MONTHLY_TRANSFER,
   VIEWER_CREATE_PAYMENT_SCHEDULE,
   VIEWER_INVOICE_PAYMENT_SCHEDULE,
   VIEWER_START_PAYMENT_SCHEDULE_SETUP,
@@ -9,6 +10,7 @@ import type {
   PaymentScheduleInstallmentStatus,
   PaymentScheduleMethod,
   PaymentScheduleStatus,
+  ViewerChooseMonthlyTransferData,
   ViewerCreatePaymentScheduleData,
   ViewerInvoicePaymentScheduleData,
   ViewerPaymentSchedule,
@@ -173,7 +175,14 @@ function scheduleStatusLabel(status: PaymentScheduleStatus): string {
 const SEPA_DEBIT_AVAILABLE = false;
 
 function methodLabel(method: PaymentScheduleMethod): string {
-  return method === 'CARD' ? 'Carte bancaire' : 'Prélèvement bancaire (SEPA)';
+  switch (method) {
+    case 'CARD':
+      return 'Carte bancaire';
+    case 'MANUAL_TRANSFER':
+      return 'Virement bancaire, chaque mois';
+    default:
+      return 'Prélèvement bancaire (SEPA)';
+  }
 }
 
 function formatDueDate(iso: string): string {
@@ -423,6 +432,33 @@ function ScheduleRecap({
   const [startSetup] = useMutation<ViewerStartPaymentScheduleSetupData>(
     VIEWER_START_PAYMENT_SCHEDULE_SETUP,
   );
+  const [chooseTransfer] = useMutation<ViewerChooseMonthlyTransferData>(
+    VIEWER_CHOOSE_MONTHLY_TRANSFER,
+  );
+  const [choosingTransfer, setChoosingTransfer] = useState(false);
+  const byTransfer = schedule.method === 'MANUAL_TRANSFER';
+  const nextDue = schedule.installments.find(
+    (i) => i.status === 'SCHEDULED' || i.status === 'FAILED_RETRYABLE',
+  );
+
+  // Virement chaque mois au lieu de la carte : plus de prélèvement ni de
+  // relance ; le club enregistre chaque virement reçu.
+  async function handleChooseTransfer(): Promise<void> {
+    if (choosingTransfer) return;
+    setChoosingTransfer(true);
+    try {
+      await chooseTransfer({ variables: { scheduleId: schedule.id } });
+      showToast('Virement mensuel choisi : les coordonnées sont affichées.', 'success');
+    } catch (e) {
+      showToast(
+        e instanceof Error ? e.message : 'Choix du virement impossible pour le moment.',
+        'error',
+      );
+    } finally {
+      setChoosingTransfer(false);
+      onRefresh();
+    }
+  }
 
   const paidCents = schedule.installments
     .filter((i) => i.status === 'PAID')
@@ -521,6 +557,63 @@ function ScheduleRecap({
                 ? 'Enregistrer ma carte'
                 : 'Reprendre l’enregistrement'}
           </button>
+          {schedule.method === 'CARD' ? (
+            <button
+              type="button"
+              className="mp-btn mp-btn-outline mp-btn-sm"
+              onClick={() => void handleChooseTransfer()}
+              disabled={choosingTransfer || resuming}
+            >
+              {choosingTransfer
+                ? 'Un instant…'
+                : 'Je préfère payer par virement chaque mois'}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {byTransfer && schedule.status === 'ACTIVE' ? (
+        <div className="mp-hint mp-hint--block" role="status">
+          <strong>Virement bancaire, chaque mois</strong>
+          <p>
+            Faites un virement de chaque échéance avant sa date (tableau
+            ci-dessous)
+            {nextDue
+              ? `, la prochaine de ${formatEuroCents(nextDue.amountCents)} pour le ${formatDueDate(nextDue.dueOn)}`
+              : ''}
+            . Un virement permanent à votre banque est le plus simple. Le club
+            enregistre chaque virement reçu.
+          </p>
+          {schedule.transfer ? (
+            <dl className="mp-invoice-detail-list">
+              <div>
+                <dt>Bénéficiaire</dt>
+                <dd>{schedule.transfer.beneficiary}</dd>
+              </div>
+              <div>
+                <dt>IBAN</dt>
+                <dd>{schedule.transfer.iban ?? 'communiqué par le club'}</dd>
+              </div>
+              {schedule.transfer.bic ? (
+                <div>
+                  <dt>BIC</dt>
+                  <dd>{schedule.transfer.bic}</dd>
+                </div>
+              ) : null}
+              <div>
+                <dt>Référence à indiquer</dt>
+                <dd>{schedule.transfer.reference}</dd>
+              </div>
+            </dl>
+          ) : null}
+          <button
+            type="button"
+            className="mp-btn mp-btn-outline mp-btn-sm"
+            onClick={() => void handleResumeSetup()}
+            disabled={resuming}
+          >
+            {resuming ? 'Redirection…' : 'Passer au prélèvement par carte'}
+          </button>
         </div>
       ) : null}
 
@@ -574,8 +667,10 @@ function ScheduleRecap({
       </div>
 
       <p className="mp-hint mp-invoice-item__tip">
-        Les échéances sont prélevées automatiquement à leurs dates. En cas de
-        question, contactez le club.
+        {byTransfer
+          ? 'Chaque échéance est à régler par virement avant sa date.'
+          : 'Les échéances sont prélevées automatiquement à leurs dates.'}{' '}
+        En cas de question, contactez le club.
       </p>
     </div>
   );

@@ -270,8 +270,8 @@ export function BillingPage() {
           <strong>Enregistrez votre carte pour vos mensualités</strong>
           <p>
             {inv.label} : les mensualités sont prélevées automatiquement chaque
-            mois, une fois votre carte enregistrée. Créditer votre compte ne
-            suffit pas.
+            mois, une fois votre carte enregistrée. Vous pouvez aussi choisir
+            le virement mensuel. Créditer votre compte ne suffit pas.
           </p>
           <button
             type="button"
@@ -509,12 +509,16 @@ export function BillingPage() {
                         </p>
                       </div>
                     ) : null}
-                    {/* Repli hors ligne : virement / chèque / espèces. */}
-                    <InvoiceManualPaymentChoice
-                      invoiceId={inv.id}
-                      balanceCents={inv.balanceCents}
-                      invoiceStatus={inv.status}
-                    />
+                    {/* Repli hors ligne : virement / chèque / espèces. Pas sur
+                        une facture échelonnée : il annoncerait tout le solde,
+                        et le virement mensuel se choisit dans l'échéancier. */}
+                    {!inv.coveredBySchedule ? (
+                      <InvoiceManualPaymentChoice
+                        invoiceId={inv.id}
+                        balanceCents={inv.balanceCents}
+                        invoiceStatus={inv.status}
+                      />
+                    ) : null}
                     {/* Échéancier : proposé à côté du paiement comptant. */}
                     <InvoicePaymentSchedule
                       invoiceId={inv.id}

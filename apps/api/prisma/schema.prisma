@@ -2281,6 +2281,10 @@ enum PaymentScheduleMethod {
   /// Mandat SEPA Direct Debit (RUM). Quelques centimes par prélèvement et
   /// pas d'expiration, mais préavis obligatoire et rejet plus lent.
   SEPA_DEBIT
+  /// Virement fait chaque mois par la famille elle-même. Rien n'est prélevé :
+  /// le moteur ignore ces échéanciers, et chaque virement saisi par le club
+  /// solde l'échéance la plus ancienne. L'échéancier est ACTIVE dès le choix.
+  MANUAL_TRANSFER
 }
 
 enum PaymentScheduleStatus {
