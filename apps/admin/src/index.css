@@ -12911,3 +12911,63 @@ body[data-overlay-active='true'] .cf-aiko-panel {
   flex: 0 0 auto;
   font-size: 0.78rem;
 }
+
+/* --- États financiers (bilan et compte de résultat provisoires) --- */
+.fs-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.fs-table .fs-section td {
+  background: #f1f3f4;
+}
+
+.fs-table .fs-total td {
+  border-top: 2px solid #191c1d;
+}
+
+.fs-print-header {
+  display: none;
+}
+
+@media print {
+  .cf-sidenav,
+  .cf-topbar,
+  .cf-footer,
+  .cf-tabbar,
+  .no-print {
+    display: none !important;
+  }
+
+  .cf-shell {
+    background: #fff;
+  }
+
+  .cf-main {
+    margin: 0;
+    padding: 0;
+    min-height: 0;
+  }
+
+  .fs-print-header {
+    display: block;
+    margin-bottom: 12px;
+  }
+
+  .fs-print-header h1 {
+    margin: 0 0 4px;
+    font-size: 20px;
+  }
+
+  .fs-block {
+    break-inside: avoid-page;
+    box-shadow: none;
+    border: none;
+  }
+
+  .fs-columns {
+    grid-template-columns: 1fr 1fr;
+  }
+}
