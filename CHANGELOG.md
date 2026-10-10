@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.77.0](https://github.com/florent427/ClubFlow/compare/v0.76.1...v0.77.0) (2026-10-10)
+
+
+### ✨ Features
+
+* **paiements:** mensualités par virement, chaque mois ([db157a8](https://github.com/florent427/ClubFlow/commit/db157a8a6278126fbb3b864e05f88b735d095895))
+* **paiements:** régler ses mensualités par virement chaque mois ([c5786d6](https://github.com/florent427/ClubFlow/commit/c5786d6072b59f1d9ee71de9f53f8a3bd98254e4))
+
 ## [0.76.1](https://github.com/florent427/ClubFlow/compare/v0.76.0...v0.76.1) (2026-10-09)
 
 
