@@ -95,7 +95,47 @@ export class PaymentScheduleResolver {
       where: { invoiceId: id, clubId: club.id },
       include: { installments: { orderBy: { seq: 'asc' } } },
     });
-    return schedule ? toPaymentScheduleGraph(schedule) : null;
+    return schedule ? this.withTransfer(club.id, schedule) : null;
+  }
+
+  @Mutation(() => PaymentScheduleGraph, {
+    name: 'viewerChooseMonthlyTransfer',
+    description:
+      'Le payeur règle ses échéances par virement, chaque mois, au lieu d’enregistrer sa carte. Plus aucun prélèvement ni relance de carte ; chaque virement saisi par le club solde l’échéance la plus ancienne. Renvoie les coordonnées du virement.',
+  })
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  async viewerChooseMonthlyTransfer(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('scheduleId') scheduleId: string,
+  ): Promise<PaymentScheduleGraph> {
+    // Même contrôle que l'enregistrement de la carte : seul le payeur du
+    // foyer de la facture touche à son échéancier.
+    const schedule = await this.prisma.paymentSchedule.findFirst({
+      where: { id: scheduleId, clubId: club.id },
+      select: { id: true, invoiceId: true },
+    });
+    if (!schedule) {
+      throw new NotFoundException('Échéancier introuvable.');
+    }
+    await this.requirePayableInvoiceId(club, user, schedule.invoiceId);
+    const updated = await this.schedules.chooseMonthlyTransfer(club.id, schedule.id);
+    return this.withTransfer(club.id, updated);
+  }
+
+  /** Projection, plus les coordonnées du virement pour un virement mensuel. */
+  private async withTransfer(
+    clubId: string,
+    schedule: Parameters<typeof toPaymentScheduleGraph>[0],
+  ): Promise<PaymentScheduleGraph> {
+    const graph = toPaymentScheduleGraph(schedule);
+    if (schedule.method === PaymentScheduleMethod.MANUAL_TRANSFER) {
+      graph.transfer = await this.schedules.transferInstructions(
+        clubId,
+        schedule.invoiceId,
+      );
+    }
+    return graph;
   }
 
   @Mutation(() => PaymentScheduleGraph, {

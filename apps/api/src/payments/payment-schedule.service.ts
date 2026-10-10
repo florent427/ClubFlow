@@ -71,6 +71,14 @@ export class PaymentScheduleService {
     firstDueOn?: Date;
     intervalMonths?: number;
   }) {
+    // Le virement mensuel se choisit sur un échéancier existant
+    // (`chooseMonthlyTransfer`) : créé ici, il naîtrait en attente d'un moyen
+    // de paiement qui ne viendra jamais, et serait relancé à tort.
+    if (args.method === PaymentScheduleMethod.MANUAL_TRANSFER) {
+      throw new BadRequestException(
+        'Le virement mensuel se choisit sur un échéancier existant.',
+      );
+    }
     const invoice = await this.prisma.invoice.findFirst({
       where: { id: args.invoiceId, clubId: args.clubId },
       include: { paymentSchedule: true },
@@ -181,7 +189,11 @@ export class PaymentScheduleService {
     const local = dateInZone(new Date(), SCHEDULING_TIMEZONE);
     const setupNotice = buildSetupNotice({
       clubName: schedule.invoice.club.name,
-      method: schedule.method,
+      // Un virement mensuel qui passe à la carte s'annonce comme une carte.
+      method:
+        schedule.method === PaymentScheduleMethod.SEPA_DEBIT
+          ? PaymentScheduleMethod.SEPA_DEBIT
+          : PaymentScheduleMethod.CARD,
       installments: schedule.installments,
       today: new Date(Date.UTC(local.year, local.month, local.day)),
     });
@@ -227,6 +239,67 @@ export class PaymentScheduleService {
     });
 
     return { url: session.url, sessionId: session.id };
+  }
+
+  /**
+   * La famille choisit de régler ses échéances par virement, chaque mois,
+   * au lieu d'enregistrer sa carte.
+   *
+   * L'échéancier devient ACTIVE en MANUAL_TRANSFER : le moteur ne le prélève
+   * plus, les relances de carte ne le visent plus, et chaque virement saisi
+   * par le club solde l'échéance la plus ancienne. Un échéancier déjà payé
+   * par carte peut aussi passer au virement ; la carte reste enregistrée mais
+   * n'est plus débitée.
+   */
+  async chooseMonthlyTransfer(clubId: string, scheduleId: string) {
+    const schedule = await this.prisma.paymentSchedule.findFirst({
+      where: { id: scheduleId, clubId },
+    });
+    if (!schedule) throw new NotFoundException('Échéancier introuvable.');
+    if (
+      schedule.status !== PaymentScheduleStatus.PENDING_SETUP &&
+      schedule.status !== PaymentScheduleStatus.ACTIVE
+    ) {
+      throw new BadRequestException('Cet échéancier est terminé ou annulé.');
+    }
+    if (schedule.method === PaymentScheduleMethod.SEPA_DEBIT) {
+      throw new BadRequestException(
+        'Un mandat de prélèvement est en place : contactez le club pour le changer.',
+      );
+    }
+    const updated = await this.prisma.paymentSchedule.update({
+      where: { id: schedule.id },
+      data: {
+        method: PaymentScheduleMethod.MANUAL_TRANSFER,
+        status: PaymentScheduleStatus.ACTIVE,
+      },
+      include: { installments: { orderBy: { seq: 'asc' } } },
+    });
+    this.logger.log(`[echeancier] ${schedule.id} : virement mensuel choisi`);
+    return updated;
+  }
+
+  /**
+   * Coordonnées du virement mensuel : compte bancaire du club (le compte par
+   * défaut d'abord), et une référence courte que le club retrouve sur son
+   * relevé — le début de l'identifiant de la facture, affiché aussi dans la
+   * liste des factures de l'admin.
+   */
+  async transferInstructions(clubId: string, invoiceId: string) {
+    const [club, account] = await Promise.all([
+      this.prisma.club.findUnique({ where: { id: clubId }, select: { name: true } }),
+      this.prisma.clubFinancialAccount.findFirst({
+        where: { clubId, kind: 'BANK', isActive: true, iban: { not: null } },
+        orderBy: [{ isDefault: 'desc' }, { sortOrder: 'asc' }],
+        select: { iban: true, bic: true },
+      }),
+    ]);
+    return {
+      beneficiary: club?.name ?? '',
+      iban: account?.iban ?? null,
+      bic: account?.bic ?? null,
+      reference: `COTIS-${invoiceId.slice(0, 8).toUpperCase()}`,
+    };
   }
 
   /** Crée le Customer sur le compte connecté et le mémorise. */
@@ -284,6 +357,11 @@ export class PaymentScheduleService {
         stripePaymentMethodId: args.paymentMethodId,
         stripeAccountId: args.stripeAccountId,
         status: PaymentScheduleStatus.ACTIVE,
+        // La famille qui payait par virement passe à la carte : sans ce
+        // changement, le moteur continuerait de l'ignorer.
+        ...(schedule.method === PaymentScheduleMethod.MANUAL_TRANSFER
+          ? { method: PaymentScheduleMethod.CARD }
+          : {}),
         ...(args.mandateReference
           ? {
               sepaMandateReference: args.mandateReference,

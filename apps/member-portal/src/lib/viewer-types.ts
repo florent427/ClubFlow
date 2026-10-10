@@ -498,7 +498,7 @@ export type ViewerApplyPayerCreditData = {
 
 /* --- Paiement en plusieurs fois (échéanciers) --- */
 
-export type PaymentScheduleMethod = 'CARD' | 'SEPA_DEBIT';
+export type PaymentScheduleMethod = 'CARD' | 'SEPA_DEBIT' | 'MANUAL_TRANSFER';
 
 export type PaymentScheduleStatus =
   | 'PENDING_SETUP'
@@ -531,6 +531,17 @@ export type ViewerPaymentSchedule = {
   totalCents: number;
   installmentCount: number;
   installments: ViewerPaymentScheduleInstallment[];
+  /** Coordonnées du virement mensuel ; null hors MANUAL_TRANSFER. */
+  transfer: {
+    beneficiary: string;
+    iban: string | null;
+    bic: string | null;
+    reference: string;
+  } | null;
+};
+
+export type ViewerChooseMonthlyTransferData = {
+  viewerChooseMonthlyTransfer: ViewerPaymentSchedule;
 };
 
 /** `null` tant que la facture n'a pas d'échéancier. */

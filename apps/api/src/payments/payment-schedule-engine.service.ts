@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import {
   InvoiceStatus,
   PaymentScheduleInstallmentStatus as InstallmentStatus,
+  PaymentScheduleMethod,
   PaymentScheduleStatus,
 } from '@prisma/client';
 import Stripe from 'stripe';
@@ -132,8 +133,12 @@ export class PaymentScheduleEngineService {
             nextAttemptAt: { lte: now },
           },
         ],
-        // Seuls les échéanciers réellement prélevables.
-        schedule: { status: PaymentScheduleStatus.ACTIVE },
+        // Seuls les échéanciers réellement prélevables. Un virement mensuel
+        // est fait par la famille : rien à prélever.
+        schedule: {
+          status: PaymentScheduleStatus.ACTIVE,
+          method: { not: PaymentScheduleMethod.MANUAL_TRANSFER },
+        },
       },
       include: { schedule: true },
       orderBy: [{ dueOn: 'asc' }, { seq: 'asc' }],

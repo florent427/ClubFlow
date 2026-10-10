@@ -810,6 +810,12 @@ const VIEWER_PAYMENT_SCHEDULE_FIELDS = `
     amountCents
     status
   }
+  transfer {
+    beneficiary
+    iban
+    bic
+    reference
+  }
 `;
 
 /** Échéancier d'une facture — renvoie null si la facture n'en a pas encore. */
@@ -833,6 +839,15 @@ export const VIEWER_CREATE_PAYMENT_SCHEDULE = gql`
       method: $method
       installmentCount: $installmentCount
     ) {
+      ${VIEWER_PAYMENT_SCHEDULE_FIELDS}
+    }
+  }
+`;
+
+/** Règle l'échéancier par virement mensuel, au lieu de la carte. */
+export const VIEWER_CHOOSE_MONTHLY_TRANSFER = gql`
+  mutation ViewerChooseMonthlyTransfer($scheduleId: String!) {
+    viewerChooseMonthlyTransfer(scheduleId: $scheduleId) {
       ${VIEWER_PAYMENT_SCHEDULE_FIELDS}
     }
   }
