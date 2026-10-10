@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.78.0](https://github.com/florent427/ClubFlow/compare/v0.77.0...v0.78.0) (2026-10-10)
+
+
+### ✨ Features
+
+* **compta:** bilan et compte de résultat provisoires à une date ([9370505](https://github.com/florent427/ClubFlow/commit/9370505d76ddf70c889b7b7660c697254ee59231))
+* **compta:** bilan et compte de résultat provisoires à une date ([51254a8](https://github.com/florent427/ClubFlow/commit/51254a86fa5211b583e29672b327191f74f984a2))
+
 ## [0.77.0](https://github.com/florent427/ClubFlow/compare/v0.76.1...v0.77.0) (2026-10-10)
 
 
