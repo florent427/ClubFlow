@@ -239,6 +239,11 @@ export const NAV_SECTIONS: NavSection[] = [
             label: 'Rapprochement bancaire',
             modules: ['ACCOUNTING'],
           },
+          {
+            to: '/comptabilite/etats-financiers',
+            label: 'Bilan & résultat',
+            modules: ['ACCOUNTING'],
+          },
         ],
       },
       {

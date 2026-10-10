@@ -3022,3 +3022,49 @@ export type BankLineVolunteerCandidatesData = {
 
 export type StripeTransitStatusData = { stripeTransitStatus: StripeTransitStatus };
 export type SyncStripeTransitData = { syncStripeTransit: StripeTransitSyncReport };
+
+export type StatementLine = {
+  accountCode: string;
+  label: string;
+  amountCents: number;
+};
+
+export type StatementSection = {
+  key: string;
+  label: string;
+  totalCents: number;
+  lines: StatementLine[];
+};
+
+export type FinancialStatements = {
+  asOf: string;
+  fiscalYearLabel: string;
+  fiscalYearStartsOn: string;
+  fiscalYearEndsOn: string;
+  incomeStatement: {
+    expenses: StatementSection[];
+    revenues: StatementSection[];
+    totalExpensesCents: number;
+    totalRevenuesCents: number;
+    resultCents: number;
+    inKindUses: StatementLine[];
+    inKindContributions: StatementLine[];
+    totalInKindUsesCents: number;
+    totalInKindContributionsCents: number;
+  };
+  balanceSheet: {
+    assets: StatementSection[];
+    liabilities: StatementSection[];
+    totalAssetsCents: number;
+    totalLiabilitiesCents: number;
+    imbalanceCents: number;
+  };
+  unclassified: StatementLine[];
+  needsReviewCount: number;
+  needsReviewCents: number;
+  draftCount: number;
+  financialAccountsWithoutOpening: string[];
+};
+
+export type ClubFinancialStatementsData = { clubFinancialStatements: FinancialStatements };
+export type ClubIdentityData = { club: { id: string; name: string } };

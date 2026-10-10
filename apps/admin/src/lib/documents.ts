@@ -4873,3 +4873,58 @@ export const SYNC_STRIPE_TRANSIT = gql`
     }
   }
 `;
+
+const STATEMENT_SECTION_FIELDS = `
+  key
+  label
+  totalCents
+  lines {
+    accountCode
+    label
+    amountCents
+  }
+`;
+
+export const CLUB_FINANCIAL_STATEMENTS = gql`
+  query ClubFinancialStatements($asOf: String) {
+    clubFinancialStatements(asOf: $asOf) {
+      asOf
+      fiscalYearLabel
+      fiscalYearStartsOn
+      fiscalYearEndsOn
+      incomeStatement {
+        expenses { ${STATEMENT_SECTION_FIELDS} }
+        revenues { ${STATEMENT_SECTION_FIELDS} }
+        totalExpensesCents
+        totalRevenuesCents
+        resultCents
+        inKindUses { accountCode label amountCents }
+        inKindContributions { accountCode label amountCents }
+        totalInKindUsesCents
+        totalInKindContributionsCents
+      }
+      balanceSheet {
+        assets { ${STATEMENT_SECTION_FIELDS} }
+        liabilities { ${STATEMENT_SECTION_FIELDS} }
+        totalAssetsCents
+        totalLiabilitiesCents
+        imbalanceCents
+      }
+      unclassified { accountCode label amountCents }
+      needsReviewCount
+      needsReviewCents
+      draftCount
+      financialAccountsWithoutOpening
+    }
+  }
+`;
+
+/** Nom du club seul, pour l'en-tête d'un état imprimé (sans le logo). */
+export const CLUB_IDENTITY = gql`
+  query ClubIdentity {
+    club {
+      id
+      name
+    }
+  }
+`;

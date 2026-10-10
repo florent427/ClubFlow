@@ -32,6 +32,8 @@ import { CategorizationLearningService } from './bank-import/categorization-lear
 import { CashBookService } from './cash/cash-book.service';
 import { CashBookResolver } from './cash/cash-book.resolver';
 import { PdfPageRenderer } from './ocr-shared';
+import { FinancialStatementsResolver } from './statements/financial-statements.resolver';
+import { FinancialStatementsService } from './statements/financial-statements.service';
 
 @Module({
   imports: [PrismaModule, AiModule, MediaModule],
@@ -58,6 +60,8 @@ import { PdfPageRenderer } from './ocr-shared';
     BankPayerLookupService,
     BankVolunteerLookupService,
     VolunteerAdvancesService,
+    FinancialStatementsService,
+    FinancialStatementsResolver,
     CashBookService,
     CategorizationLearningService,
     PdfPageRenderer,
