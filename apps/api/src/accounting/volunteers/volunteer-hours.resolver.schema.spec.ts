@@ -32,6 +32,21 @@ describe('VolunteerHoursResolver — schéma GraphQL', () => {
       'postClubVolunteerHours(input: PostVolunteerHoursInput!): VolunteerHoursPostingGraph!',
     );
     expect(sdl).toContain('cancelClubVolunteerHoursPosting(id: ID!): Boolean!');
+    expect(sdl).toContain(
+      'clubVolunteerHoursCategories(includeArchived: Boolean): [VolunteerHoursCategoryGraph!]!',
+    );
+    expect(sdl).toContain(
+      'createClubVolunteerHoursCategory(input: VolunteerHoursCategoryInputGraph!): VolunteerHoursCategoryGraph!',
+    );
+    expect(sdl).toContain(
+      'updateClubVolunteerHoursCategory(id: ID!, input: VolunteerHoursCategoryInputGraph!): VolunteerHoursCategoryGraph!',
+    );
+    expect(sdl).toContain(
+      'setClubVolunteerHoursCategoryArchived(id: ID!, archived: Boolean!): VolunteerHoursCategoryGraph!',
+    );
+    expect(sdl).toContain('deleteClubVolunteerHoursCategory(id: ID!): Boolean!');
+    expect(sdl).toContain('categoryId: ID');
+    expect(sdl).toContain('categoryLabel: String');
     expect(sdl).toContain('hourlyRateCents: Int');
     expect(sdl).toContain('postingEntryId: ID');
     expect(sdl).toContain('entryStatus: String');

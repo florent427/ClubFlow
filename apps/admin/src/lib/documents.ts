@@ -4782,6 +4782,8 @@ const VOLUNTEER_HOURS_FIELDS = `
   volunteerName
   workedOn
   minutes
+  categoryId
+  categoryLabel
   activity
   hourlyRateCents
   valueCents
@@ -4789,6 +4791,14 @@ const VOLUNTEER_HOURS_FIELDS = `
   postingId
   postingEntryId
   createdAt
+`;
+
+const VOLUNTEER_HOURS_CATEGORY_FIELDS = `
+  id
+  label
+  hourlyRateCents
+  archived
+  hoursCount
 `;
 
 const VOLUNTEER_HOURS_POSTING_FIELDS = `
@@ -4824,6 +4834,9 @@ export const VOLUNTEER_PEOPLE = gql`
 export const CLUB_VOLUNTEER_HOURS = gql`
   query ClubVolunteerHours($from: String, $to: String) {
     clubVolunteerHourlyRate
+    clubVolunteerHoursCategories(includeArchived: true) {
+      ${VOLUNTEER_HOURS_CATEGORY_FIELDS}
+    }
     clubVolunteerHours(from: $from, to: $to) {
       ${VOLUNTEER_HOURS_FIELDS}
     }
@@ -4836,6 +4849,36 @@ export const CLUB_VOLUNTEER_HOURS = gql`
 export const SET_CLUB_VOLUNTEER_HOURLY_RATE = gql`
   mutation SetClubVolunteerHourlyRate($hourlyRateCents: Int) {
     setClubVolunteerHourlyRate(hourlyRateCents: $hourlyRateCents)
+  }
+`;
+
+export const CREATE_CLUB_VOLUNTEER_HOURS_CATEGORY = gql`
+  mutation CreateClubVolunteerHoursCategory($input: VolunteerHoursCategoryInputGraph!) {
+    createClubVolunteerHoursCategory(input: $input) {
+      ${VOLUNTEER_HOURS_CATEGORY_FIELDS}
+    }
+  }
+`;
+
+export const UPDATE_CLUB_VOLUNTEER_HOURS_CATEGORY = gql`
+  mutation UpdateClubVolunteerHoursCategory($id: ID!, $input: VolunteerHoursCategoryInputGraph!) {
+    updateClubVolunteerHoursCategory(id: $id, input: $input) {
+      ${VOLUNTEER_HOURS_CATEGORY_FIELDS}
+    }
+  }
+`;
+
+export const SET_CLUB_VOLUNTEER_HOURS_CATEGORY_ARCHIVED = gql`
+  mutation SetClubVolunteerHoursCategoryArchived($id: ID!, $archived: Boolean!) {
+    setClubVolunteerHoursCategoryArchived(id: $id, archived: $archived) {
+      ${VOLUNTEER_HOURS_CATEGORY_FIELDS}
+    }
+  }
+`;
+
+export const DELETE_CLUB_VOLUNTEER_HOURS_CATEGORY = gql`
+  mutation DeleteClubVolunteerHoursCategory($id: ID!) {
+    deleteClubVolunteerHoursCategory(id: $id)
   }
 `;
 

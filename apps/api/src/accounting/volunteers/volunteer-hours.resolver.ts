@@ -33,12 +33,46 @@ import type { RequestUser } from '../../common/types/request-user';
 import { ModuleCode } from '../../domain/module-registry/module-codes';
 import { formatIsoDate, parseIsoDate } from '../accounting-fiscal-year.service';
 import {
+  VolunteerHoursCategoryRow,
   VolunteerHoursPostingRow,
   VolunteerHoursRow,
   VolunteerHoursService,
 } from './volunteer-hours.service';
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Type de bénévolat du club et son taux horaire. */
+@ObjectType()
+export class VolunteerHoursCategoryGraph {
+  @Field(() => ID)
+  id!: string;
+
+  @Field()
+  label!: string;
+
+  @Field(() => Int, { description: 'Taux horaire en centimes.' })
+  hourlyRateCents!: number;
+
+  @Field()
+  archived!: boolean;
+
+  @Field(() => Int, { description: 'Nombre de saisies qui portent ce type.' })
+  hoursCount!: number;
+}
+
+@InputType()
+export class VolunteerHoursCategoryInputGraph {
+  @Field()
+  @IsString()
+  @MaxLength(120)
+  label!: string;
+
+  @Field(() => Int, { description: 'Taux horaire en centimes.' })
+  @IsInt()
+  @Min(0)
+  @Max(100_000)
+  hourlyRateCents!: number;
+}
 
 /** Heures de bénévolat d'une personne pour une activité, un jour donné. */
 @ObjectType()
@@ -60,6 +94,12 @@ export class VolunteerHoursGraph {
 
   @Field(() => Int)
   minutes!: number;
+
+  @Field(() => ID, { nullable: true })
+  categoryId!: string | null;
+
+  @Field(() => String, { nullable: true, description: 'Libellé du type de bénévolat.' })
+  categoryLabel!: string | null;
 
   @Field()
   activity!: string;
@@ -136,14 +176,20 @@ export class VolunteerHoursInputGraph {
   @Max(24 * 60)
   minutes!: number;
 
-  @Field()
+  @Field(() => ID, { nullable: true, description: 'Type de bénévolat (fixe le taux proposé).' })
+  @IsOptional()
+  @IsUUID()
+  categoryId?: string | null;
+
+  @Field(() => String, { nullable: true, description: 'Précision ; vide = libellé du type.' })
+  @IsOptional()
   @IsString()
   @MaxLength(120)
-  activity!: string;
+  activity?: string | null;
 
   @Field(() => Int, {
     nullable: true,
-    description: 'Taux horaire en centimes ; absent = taux par défaut du club.',
+    description: 'Taux horaire en centimes ; absent = taux du type, sinon du club.',
   })
   @IsOptional()
   @IsInt()
@@ -178,6 +224,8 @@ function toHoursGraph(r: VolunteerHoursRow): VolunteerHoursGraph {
     volunteerName: person ? `${person.firstName} ${person.lastName}`.trim() : '—',
     workedOn: formatIsoDate(r.workedOn),
     minutes: r.minutes,
+    categoryId: r.categoryId,
+    categoryLabel: r.category?.label ?? null,
     activity: r.activity,
     hourlyRateCents: r.hourlyRateCents,
     valueCents: r.valueCents,
@@ -185,6 +233,16 @@ function toHoursGraph(r: VolunteerHoursRow): VolunteerHoursGraph {
     postingId: r.postingId,
     postingEntryId: r.posting?.entryId ?? null,
     createdAt: r.createdAt,
+  };
+}
+
+function toCategoryGraph(c: VolunteerHoursCategoryRow): VolunteerHoursCategoryGraph {
+  return {
+    id: c.id,
+    label: c.label,
+    hourlyRateCents: c.hourlyRateCents,
+    archived: c.archivedAt !== null,
+    hoursCount: c._count.hours,
   };
 }
 
@@ -208,7 +266,8 @@ function toServiceInput(input: VolunteerHoursInputGraph) {
     contactId: input.contactId ?? null,
     workedOn: parseIsoDate(input.workedOn),
     minutes: input.minutes,
-    activity: input.activity,
+    categoryId: input.categoryId ?? null,
+    activity: input.activity ?? null,
     hourlyRateCents: input.hourlyRateCents ?? null,
     notes: input.notes ?? null,
   };
@@ -221,10 +280,56 @@ function toServiceInput(input: VolunteerHoursInputGraph) {
 export class VolunteerHoursResolver {
   constructor(private readonly hours: VolunteerHoursService) {}
 
+  @Query(() => [VolunteerHoursCategoryGraph], {
+    name: 'clubVolunteerHoursCategories',
+    description: 'Types de bénévolat du club et leurs taux horaires.',
+  })
+  async clubVolunteerHoursCategories(
+    @CurrentClub() club: Club,
+    @Args('includeArchived', { type: () => Boolean, nullable: true }) includeArchived: boolean | null,
+  ): Promise<VolunteerHoursCategoryGraph[]> {
+    return (await this.hours.listCategories(club.id, includeArchived ?? false)).map(toCategoryGraph);
+  }
+
+  @Mutation(() => VolunteerHoursCategoryGraph, { name: 'createClubVolunteerHoursCategory' })
+  async createClubVolunteerHoursCategory(
+    @CurrentClub() club: Club,
+    @Args('input') input: VolunteerHoursCategoryInputGraph,
+  ): Promise<VolunteerHoursCategoryGraph> {
+    return toCategoryGraph(await this.hours.createCategory(club.id, input));
+  }
+
+  @Mutation(() => VolunteerHoursCategoryGraph, { name: 'updateClubVolunteerHoursCategory' })
+  async updateClubVolunteerHoursCategory(
+    @CurrentClub() club: Club,
+    @Args('id', { type: () => ID }) id: string,
+    @Args('input') input: VolunteerHoursCategoryInputGraph,
+  ): Promise<VolunteerHoursCategoryGraph> {
+    return toCategoryGraph(await this.hours.updateCategory(club.id, id, input));
+  }
+
+  @Mutation(() => VolunteerHoursCategoryGraph, { name: 'setClubVolunteerHoursCategoryArchived' })
+  async setClubVolunteerHoursCategoryArchived(
+    @CurrentClub() club: Club,
+    @Args('id', { type: () => ID }) id: string,
+    @Args('archived', { type: () => Boolean }) archived: boolean,
+  ): Promise<VolunteerHoursCategoryGraph> {
+    return toCategoryGraph(await this.hours.setCategoryArchived(club.id, id, archived));
+  }
+
+  @Mutation(() => Boolean, { name: 'deleteClubVolunteerHoursCategory' })
+  async deleteClubVolunteerHoursCategory(
+    @CurrentClub() club: Club,
+    @Args('id', { type: () => ID }) id: string,
+  ): Promise<boolean> {
+    await this.hours.deleteCategory(club.id, id);
+    return true;
+  }
+
   @Query(() => Int, {
     name: 'clubVolunteerHourlyRate',
     nullable: true,
-    description: 'Taux horaire par défaut du bénévolat, en centimes (null = non défini).',
+    description: 'Taux horaire des saisies sans type, en centimes (null = non défini).',
   })
   clubVolunteerHourlyRate(@CurrentClub() club: Club): Promise<number | null> {
     return this.hours.getHourlyRate(club.id);

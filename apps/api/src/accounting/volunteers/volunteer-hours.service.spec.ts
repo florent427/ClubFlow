@@ -12,9 +12,19 @@ import { VolunteerHoursService, volunteerValueCents } from './volunteer-hours.se
 const CLUB = 'club-1';
 const OTHER_CLUB = 'club-2';
 
+type Category = {
+  id: string;
+  clubId: string;
+  label: string;
+  hourlyRateCents: number;
+  archivedAt: Date | null;
+  sortOrder: number;
+};
+
 type Hours = {
   id: string;
   clubId: string;
+  categoryId: string | null;
   memberId: string | null;
   contactId: string | null;
   workedOn: Date;
@@ -48,6 +58,7 @@ function matches(h: Hours, where: Record<string, unknown>): boolean {
   }
   if (where.clubId !== undefined && h.clubId !== where.clubId) return false;
   if ('postingId' in where && h.postingId !== where.postingId) return false;
+  if ('categoryId' in where && h.categoryId !== where.categoryId) return false;
   const w = where.workedOn as { gte?: Date; lte?: Date } | undefined;
   if (w?.gte && h.workedOn < w.gte) return false;
   if (w?.lte && h.workedOn > w.lte) return false;
@@ -56,6 +67,7 @@ function matches(h: Hours, where: Record<string, unknown>): boolean {
 
 function makeSvc(opts: { rate?: number | null; entryStatus?: string } = {}) {
   const hours: Hours[] = [];
+  const categories: Category[] = [];
   const lines: Line[] = [];
   const entries: Array<Record<string, unknown> & { id: string }> = [];
   const postings: Array<Record<string, unknown> & { id: string }> = [];
@@ -70,11 +82,20 @@ function makeSvc(opts: { rate?: number | null; entryStatus?: string } = {}) {
         people[kind].find((p) => p.id === where.id && p.clubId === where.clubId) ?? null,
     ),
   });
+  const categoryOf = (h: Hours) => {
+    const c = categories.find((x) => x.id === h.categoryId);
+    return c ? { label: c.label } : null;
+  };
   const withPeople = (h: Hours) => ({
     ...h,
     member: people.member.find((p) => p.id === h.memberId) ?? null,
     contact: people.contact.find((p) => p.id === h.contactId) ?? null,
+    category: categoryOf(h),
     posting: null,
+  });
+  const withCount = (c: Category) => ({
+    ...c,
+    _count: { hours: hours.filter((h) => h.categoryId === c.id).length },
   });
   const postingView = (p: Record<string, unknown> & { id: string }) => ({
     ...p,
@@ -96,13 +117,17 @@ function makeSvc(opts: { rate?: number | null; entryStatus?: string } = {}) {
       })),
     },
     volunteerHours: {
+      count: jest.fn(
+        async ({ where }: { where: Record<string, unknown> }) =>
+          hours.filter((h) => matches(h, where)).length,
+      ),
       create: jest.fn(async ({ data }: { data: Omit<Hours, 'id' | 'createdAt' | 'postingId'> }) => {
         const h = { id: `h-${++seq}`, postingId: null, createdAt: new Date(), ...data } as Hours;
         hours.push(h);
         return withPeople(h);
       }),
       findMany: jest.fn(async ({ where }: { where: Record<string, unknown> }) =>
-        hours.filter((h) => matches(h, where)),
+        hours.filter((h) => matches(h, where)).map((h) => ({ ...h, category: categoryOf(h) })),
       ),
       findFirst: jest.fn(
         async ({ where }: { where: Record<string, unknown> }) =>
@@ -123,6 +148,47 @@ function makeSvc(opts: { rate?: number | null; entryStatus?: string } = {}) {
         const count = hours.length - keep.length;
         hours.splice(0, hours.length, ...keep);
         return { count };
+      }),
+    },
+    volunteerHoursCategory: {
+      findFirst: jest.fn(
+        async ({
+          where,
+        }: {
+          where: {
+            id?: string;
+            clubId: string;
+            label?: { equals: string; mode: string };
+            NOT?: { id: string };
+          };
+          orderBy?: unknown;
+        }) =>
+          [...categories]
+            .sort((a, b) => b.sortOrder - a.sortOrder)
+            .find(
+              (c) =>
+                c.clubId === where.clubId &&
+                (where.id === undefined || c.id === where.id) &&
+                (where.label === undefined ||
+                  c.label.toLowerCase() === where.label.equals.toLowerCase()) &&
+                (where.NOT === undefined || c.id !== where.NOT.id),
+            ) ?? null,
+      ),
+      create: jest.fn(async ({ data }: { data: Omit<Category, 'id' | 'archivedAt'> }) => {
+        const c = { id: `cat-${++seq}`, archivedAt: null, ...data } as Category;
+        categories.push(c);
+        return withCount(c);
+      }),
+      update: jest.fn(
+        async ({ where, data }: { where: { id: string }; data: Partial<Category> }) => {
+          const c = categories.find((x) => x.id === where.id)!;
+          Object.assign(c, data);
+          return withCount(c);
+        },
+      ),
+      delete: jest.fn(async ({ where }: { where: { id: string } }) => {
+        const i = categories.findIndex((x) => x.id === where.id);
+        return categories.splice(i, 1)[0];
       }),
     },
     accountingEntry: {
@@ -180,7 +246,7 @@ function makeSvc(opts: { rate?: number | null; entryStatus?: string } = {}) {
     audit as unknown as AccountingAuditService,
     period as unknown as AccountingPeriodService,
   );
-  return { svc, hours, lines, entries, postings, period };
+  return { svc, hours, categories, lines, entries, postings, period };
 }
 
 const input = (over: Record<string, unknown> = {}) => ({
@@ -315,5 +381,100 @@ describe('VolunteerHoursService — comptabilisation', () => {
     await expect(ctx.svc.cancelPosting(CLUB, 'u-1', posting.id)).rejects.toThrow(/clôturée/);
     expect(ctx.postings).toHaveLength(1);
     expect(ctx.hours[0].postingId).toBe(posting.id);
+  });
+});
+
+describe('VolunteerHoursService — types de bénévolat (plusieurs taux)', () => {
+  async function withTypes() {
+    const ctx = makeSvc({ rate: 1_231 });
+    const enseignement = await ctx.svc.createCategory(CLUB, {
+      label: 'Enseignement du karaté',
+      hourlyRateCents: 2_500,
+    });
+    const secretariat = await ctx.svc.createCategory(CLUB, {
+      label: 'Secrétariat',
+      hourlyRateCents: 1_500,
+    });
+    return { ...ctx, enseignement, secretariat };
+  }
+
+  it('le taux vient du type ; à défaut de type, du club ; la saisie peut le forcer', async () => {
+    const { svc, hours, enseignement } = await withTypes();
+    await svc.create(CLUB, 'u-1', input({ categoryId: enseignement.id, activity: null, minutes: 60 }));
+    await svc.create(CLUB, 'u-1', input({ minutes: 60, activity: 'Rangement dojo' }));
+    await svc.create(
+      CLUB,
+      'u-1',
+      input({ categoryId: enseignement.id, minutes: 60, hourlyRateCents: 3_000 }),
+    );
+
+    expect(hours.map((h) => [h.activity, h.hourlyRateCents, h.valueCents])).toEqual([
+      ['Enseignement du karaté', 2_500, 2_500],
+      ['Rangement dojo', 1_231, 1_231],
+      ['Encadrement des cours enfants', 3_000, 3_000],
+    ]);
+  });
+
+  it('changer le taux d’un type ne revalorise pas les heures déjà saisies', async () => {
+    const { svc, hours, enseignement } = await withTypes();
+    await svc.create(CLUB, 'u-1', input({ categoryId: enseignement.id, minutes: 60 }));
+    await svc.updateCategory(CLUB, enseignement.id, {
+      label: 'Enseignement du karaté',
+      hourlyRateCents: 2_800,
+    });
+    await svc.create(CLUB, 'u-1', input({ categoryId: enseignement.id, minutes: 60 }));
+
+    expect(hours.map((h) => h.valueCents)).toEqual([2_500, 2_800]);
+  });
+
+  it('comptabilisation : une ligne 864 par type, chacune à son taux', async () => {
+    const { svc, lines, enseignement, secretariat } = await withTypes();
+    await svc.create(CLUB, 'u-1', input({ categoryId: enseignement.id, minutes: 120, activity: 'Cours enfants' }));
+    await svc.create(CLUB, 'u-1', input({ categoryId: enseignement.id, minutes: 60, activity: 'Cours adultes' }));
+    await svc.create(CLUB, 'u-1', input({ categoryId: secretariat.id, minutes: 90 }));
+
+    await svc.post(CLUB, 'u-1', { periodStart: d('2026-10-01'), periodEnd: d('2026-10-31') });
+
+    expect(lines.map((l) => [l.accountCode, l.label ?? null, l.debitCents, l.creditCents])).toEqual([
+      ['864000', 'Enseignement du karaté', 7_500, 0],
+      ['864000', 'Secrétariat', 2_250, 0],
+      ['870000', null, 0, 9_750],
+    ]);
+  });
+
+  it('un type archivé n’est plus proposé à une nouvelle saisie mais reste sur les anciennes', async () => {
+    const { svc, hours, enseignement } = await withTypes();
+    await svc.create(CLUB, 'u-1', input({ categoryId: enseignement.id }));
+    await svc.setCategoryArchived(CLUB, enseignement.id, true);
+
+    await expect(
+      svc.create(CLUB, 'u-1', input({ categoryId: enseignement.id })),
+    ).rejects.toThrow(/archivé/);
+    await expect(
+      svc.update(CLUB, hours[0].id, input({ categoryId: enseignement.id, minutes: 30 })),
+    ).resolves.toMatchObject({ minutes: 30 });
+  });
+
+  it('un type utilisé ne se supprime pas ; un type vierge, si', async () => {
+    const { svc, categories, enseignement, secretariat } = await withTypes();
+    await svc.create(CLUB, 'u-1', input({ categoryId: enseignement.id }));
+
+    await expect(svc.deleteCategory(CLUB, enseignement.id)).rejects.toThrow(/archive/);
+    await svc.deleteCategory(CLUB, secretariat.id);
+    expect(categories.map((c) => c.label)).toEqual(['Enseignement du karaté']);
+  });
+
+  it('refuse un doublon de libellé, sans tenir compte de la casse', async () => {
+    const { svc } = await withTypes();
+    await expect(
+      svc.createCategory(CLUB, { label: 'secrétariat', hourlyRateCents: 1_000 }),
+    ).rejects.toThrow(/existe déjà/);
+  });
+
+  it('un type d’un autre club est introuvable', async () => {
+    const { svc, enseignement } = await withTypes();
+    await expect(
+      svc.create(OTHER_CLUB, 'u-1', input({ categoryId: enseignement.id })),
+    ).rejects.toThrow(/introuvable/);
   });
 });

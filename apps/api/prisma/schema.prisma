@@ -216,8 +216,9 @@ model Club {
   /// rapproché : une ligne de relevé antérieure est ignorée « hors reprise ».
   /// Null = reprise non définie, le rapprochement bancaire est indisponible.
   accountingStartsOn   DateTime? @db.Date
-  /// Taux horaire de valorisation du bénévolat (centimes), proposé par défaut
-  /// à chaque saisie d'heures. Null = pas encore choisi : la saisie l'exige.
+  /// Taux horaire de valorisation du bénévolat (centimes) pour une saisie
+  /// sans type de bénévolat. Null = aucun : la saisie exige alors un type ou
+  /// un taux propre.
   volunteerHourlyRateCents Int?
 
   accountingAccounts         AccountingAccount[]
@@ -233,6 +234,7 @@ model Club {
   categorizationRules        AccountingCategorizationRule[]
   volunteerReimbursements    VolunteerReimbursement[]
   volunteerHours             VolunteerHours[]
+  volunteerHoursCategories   VolunteerHoursCategory[]
   volunteerHoursPostings     VolunteerHoursPosting[]
   cashCounts                 CashCount[]
 
@@ -1830,7 +1832,11 @@ model VolunteerHours {
   workedOn  DateTime @db.Date
   /// Durée en minutes (1 h 30 = 90) : pas de décimales flottantes.
   minutes   Int
-  /// Activité en clair (« Encadrement des cours enfants », « Buvette tournoi »).
+  /// Type de bénévolat (enseignement, secrétariat…) : fixe le taux proposé
+  /// et regroupe les heures dans l'écriture. Null = saisie sans type.
+  categoryId String?
+  /// Précision en clair (« Cours enfants du mercredi », « Buvette tournoi ») ;
+  /// le libellé du type quand rien n'est précisé.
   activity  String
   /// Taux horaire appliqué, en centimes, figé à la saisie.
   hourlyRateCents Int
@@ -1844,14 +1850,38 @@ model VolunteerHours {
   updatedAt       DateTime @updatedAt
 
   club    Club                   @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  member  Member?                @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  contact Contact?               @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  posting VolunteerHoursPosting? @relation(fields: [postingId], references: [id], onDelete: SetNull)
+  member   Member?                 @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  contact  Contact?                @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  category VolunteerHoursCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  posting  VolunteerHoursPosting?  @relation(fields: [postingId], references: [id], onDelete: SetNull)
 
   @@index([clubId, workedOn])
   @@index([clubId, postingId])
+  @@index([categoryId])
   @@index([memberId])
   @@index([contactId])
+}
+
+/// Type de bénévolat du club et son taux horaire : la valorisation dépend de
+/// la nature de l'aide (coût de remplacement d'une prestation équivalente).
+/// Ex. aide logistique au SMIC, enseignement par un éducateur qualifié plus
+/// haut. Un type utilisé ne se supprime pas, il s'archive.
+model VolunteerHoursCategory {
+  id              String    @id @default(uuid())
+  clubId          String
+  label           String
+  hourlyRateCents Int
+  /// Archivé : n'est plus proposé à la saisie, reste sur les heures passées.
+  archivedAt      DateTime?
+  sortOrder       Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  club  Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  hours VolunteerHours[]
+
+  @@unique([clubId, label])
+  @@index([clubId])
 }
 
 /// Comptabilisation du bénévolat d'une période : une écriture en nature

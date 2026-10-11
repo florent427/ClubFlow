@@ -2950,6 +2950,8 @@ export type VolunteerHours = {
   volunteerName: string;
   workedOn: string;
   minutes: number;
+  categoryId: string | null;
+  categoryLabel: string | null;
   activity: string;
   hourlyRateCents: number;
   valueCents: number;
@@ -2973,8 +2975,18 @@ export type VolunteerHoursPosting = {
   createdAt: string;
 };
 
+/** Type de bénévolat du club et son taux horaire. */
+export type VolunteerHoursCategory = {
+  id: string;
+  label: string;
+  hourlyRateCents: number;
+  archived: boolean;
+  hoursCount: number;
+};
+
 export type ClubVolunteerHoursData = {
   clubVolunteerHourlyRate: number | null;
+  clubVolunteerHoursCategories: VolunteerHoursCategory[];
   clubVolunteerHours: VolunteerHours[];
   clubVolunteerHoursPostings: VolunteerHoursPosting[];
 };

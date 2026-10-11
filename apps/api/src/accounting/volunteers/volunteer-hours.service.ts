@@ -37,17 +37,30 @@ export interface VolunteerHoursInput {
   contactId?: string | null;
   workedOn: Date;
   minutes: number;
-  activity: string;
-  /** Absent = taux par défaut du club. */
+  /** Type de bénévolat : fixe le taux proposé et le regroupement comptable. */
+  categoryId?: string | null;
+  /** Précision libre ; vide = libellé du type. */
+  activity?: string | null;
+  /** Absent = taux du type, sinon taux par défaut du club. */
   hourlyRateCents?: number | null;
   notes?: string | null;
+}
+
+export interface VolunteerHoursCategoryInput {
+  label: string;
+  hourlyRateCents: number;
 }
 
 const HOURS_INCLUDE = {
   member: { select: { firstName: true, lastName: true } },
   contact: { select: { firstName: true, lastName: true } },
+  category: { select: { label: true } },
   posting: { select: { id: true, entryId: true, periodStart: true, periodEnd: true } },
 } satisfies Prisma.VolunteerHoursInclude;
+
+export type VolunteerHoursCategoryRow = Prisma.VolunteerHoursCategoryGetPayload<{
+  include: { _count: { select: { hours: true } } };
+}>;
 
 export type VolunteerHoursRow = Prisma.VolunteerHoursGetPayload<{
   include: typeof HOURS_INCLUDE;
@@ -58,8 +71,8 @@ export type VolunteerHoursPostingRow = Prisma.VolunteerHoursPostingGetPayload<{
 }>;
 
 /**
- * Bénévolat valorisé : heures saisies par personne et par activité,
- * valorisées au taux horaire du club, puis comptabilisées par période en
+ * Bénévolat valorisé : heures saisies par personne et par type de bénévolat,
+ * valorisées au taux de leur type (ou du club), puis comptabilisées par période en
  * une écriture en nature 864000 / 870000. Neutre sur le résultat : elle
  * n'apparaît qu'en pied du compte de résultat.
  *
@@ -94,6 +107,80 @@ export class VolunteerHoursService {
     });
     return club.volunteerHourlyRateCents;
   }
+
+  // --- Types de bénévolat --------------------------------------------------
+
+  async listCategories(
+    clubId: string,
+    includeArchived: boolean,
+  ): Promise<VolunteerHoursCategoryRow[]> {
+    return this.prisma.volunteerHoursCategory.findMany({
+      where: { clubId, ...(includeArchived ? {} : { archivedAt: null }) },
+      include: { _count: { select: { hours: true } } },
+      orderBy: [{ archivedAt: 'asc' }, { sortOrder: 'asc' }, { label: 'asc' }],
+    });
+  }
+
+  async createCategory(
+    clubId: string,
+    input: VolunteerHoursCategoryInput,
+  ): Promise<VolunteerHoursCategoryRow> {
+    const data = await this.prepareCategory(clubId, input, null);
+    const last = await this.prisma.volunteerHoursCategory.findFirst({
+      where: { clubId },
+      orderBy: { sortOrder: 'desc' },
+      select: { sortOrder: true },
+    });
+    return this.prisma.volunteerHoursCategory.create({
+      data: { clubId, ...data, sortOrder: (last?.sortOrder ?? -1) + 1 },
+      include: { _count: { select: { hours: true } } },
+    });
+  }
+
+  /**
+   * Renomme ou change le taux d'un type. Le nouveau taux ne vaut que pour
+   * les prochaines saisies : celles déjà faites gardent leur valeur figée.
+   */
+  async updateCategory(
+    clubId: string,
+    id: string,
+    input: VolunteerHoursCategoryInput,
+  ): Promise<VolunteerHoursCategoryRow> {
+    await this.findCategory(clubId, id);
+    const data = await this.prepareCategory(clubId, input, id);
+    return this.prisma.volunteerHoursCategory.update({
+      where: { id },
+      data,
+      include: { _count: { select: { hours: true } } },
+    });
+  }
+
+  async setCategoryArchived(
+    clubId: string,
+    id: string,
+    archived: boolean,
+  ): Promise<VolunteerHoursCategoryRow> {
+    await this.findCategory(clubId, id);
+    return this.prisma.volunteerHoursCategory.update({
+      where: { id },
+      data: { archivedAt: archived ? new Date() : null },
+      include: { _count: { select: { hours: true } } },
+    });
+  }
+
+  /** Supprime un type jamais utilisé ; un type utilisé s'archive. */
+  async deleteCategory(clubId: string, id: string): Promise<void> {
+    await this.findCategory(clubId, id);
+    const used = await this.prisma.volunteerHours.count({ where: { clubId, categoryId: id } });
+    if (used > 0) {
+      throw new BadRequestException(
+        `Ce type porte ${used} saisie(s) : archive-le plutôt, il restera sur les heures passées.`,
+      );
+    }
+    await this.prisma.volunteerHoursCategory.delete({ where: { id } });
+  }
+
+  // --- Heures -----------------------------------------------------------------
 
   async list(
     clubId: string,
@@ -133,8 +220,8 @@ export class VolunteerHoursService {
     id: string,
     input: VolunteerHoursInput,
   ): Promise<VolunteerHoursRow> {
-    await this.findUnposted(clubId, id);
-    const data = await this.prepare(clubId, input);
+    const current = await this.findUnposted(clubId, id);
+    const data = await this.prepare(clubId, input, current.categoryId);
     // `postingId: null` dans le where : une comptabilisation concurrente
     // entre la lecture et l'écriture fait échouer la mise à jour.
     const res = await this.prisma.volunteerHours.updateMany({
@@ -185,7 +272,13 @@ export class VolunteerHoursService {
         postingId: null,
         workedOn: { gte: input.periodStart, lte: input.periodEnd },
       },
-      select: { id: true, activity: true, minutes: true, valueCents: true },
+      select: {
+        id: true,
+        activity: true,
+        minutes: true,
+        valueCents: true,
+        category: { select: { label: true } },
+      },
     });
     if (hours.length === 0) {
       throw new BadRequestException('Aucune heure à comptabiliser sur cette période.');
@@ -196,11 +289,13 @@ export class VolunteerHoursService {
       throw new BadRequestException('Valeur nulle : vérifie le taux horaire des heures saisies.');
     }
 
-    // Une ligne d'emploi par activité : lisible au grand livre, et l'annexe
-    // peut détailler le bénévolat par nature d'activité.
+    // Une ligne d'emploi par type de bénévolat (par activité pour une saisie
+    // sans type) : lisible au grand livre, et l'annexe détaille le bénévolat
+    // par nature, chacune à son taux.
     const byActivity = new Map<string, number>();
     for (const h of hours) {
-      byActivity.set(h.activity, (byActivity.get(h.activity) ?? 0) + h.valueCents);
+      const key = h.category?.label ?? h.activity;
+      byActivity.set(key, (byActivity.get(key) ?? 0) + h.valueCents);
     }
     const useLines = [...byActivity.entries()]
       .filter(([, cents]) => cents > 0)
@@ -362,7 +457,15 @@ export class VolunteerHoursService {
 
   // ---------------------------------------------------------------------
 
-  private async prepare(clubId: string, input: VolunteerHoursInput) {
+  /**
+   * @param currentCategoryId type actuel de la saisie modifiée : un type
+   * archivé depuis reste accepté sur elle, pas sur une nouvelle saisie.
+   */
+  private async prepare(
+    clubId: string,
+    input: VolunteerHoursInput,
+    currentCategoryId: string | null = null,
+  ) {
     const memberId = input.memberId || null;
     const contactId = input.contactId || null;
     if ((memberId ? 1 : 0) + (contactId ? 1 : 0) !== 1) {
@@ -384,22 +487,38 @@ export class VolunteerHoursService {
     if (!Number.isInteger(input.minutes) || input.minutes <= 0 || input.minutes > MAX_MINUTES) {
       throw new BadRequestException('Durée invalide : entre 1 minute et 24 heures.');
     }
-    const activity = input.activity.trim();
+    const categoryId = input.categoryId || null;
+    let category: { label: string; hourlyRateCents: number } | null = null;
+    if (categoryId) {
+      const c = await this.prisma.volunteerHoursCategory.findFirst({
+        where: { id: categoryId, clubId },
+        select: { label: true, hourlyRateCents: true, archivedAt: true },
+      });
+      if (!c) throw new NotFoundException('Type de bénévolat introuvable dans ce club');
+      if (c.archivedAt && categoryId !== currentCategoryId) {
+        throw new BadRequestException(`Le type « ${c.label} » est archivé.`);
+      }
+      category = c;
+    }
+    const activity = input.activity?.trim() || category?.label || '';
     if (!activity || activity.length > MAX_ACTIVITY_LENGTH) {
       throw new BadRequestException(
-        `Activité requise (${MAX_ACTIVITY_LENGTH} caractères au plus).`,
+        `Choisis un type de bénévolat ou décris l'activité (${MAX_ACTIVITY_LENGTH} caractères au plus).`,
       );
     }
-    const rate = input.hourlyRateCents ?? (await this.getHourlyRate(clubId));
+    // Taux : celui de la saisie, sinon celui du type, sinon celui du club.
+    const rate =
+      input.hourlyRateCents ?? category?.hourlyRateCents ?? (await this.getHourlyRate(clubId));
     if (rate === null || rate === undefined) {
       throw new BadRequestException(
-        'Aucun taux horaire : renseigne celui du club ou celui de cette saisie.',
+        'Aucun taux horaire : choisis un type de bénévolat, ou renseigne le taux du club ou de cette saisie.',
       );
     }
     this.assertRate(rate);
     return {
       memberId,
       contactId,
+      categoryId,
       workedOn: input.workedOn,
       minutes: input.minutes,
       activity,
@@ -407,6 +526,39 @@ export class VolunteerHoursService {
       valueCents: volunteerValueCents(input.minutes, rate),
       notes: input.notes?.trim() || null,
     };
+  }
+
+  private async prepareCategory(
+    clubId: string,
+    input: VolunteerHoursCategoryInput,
+    selfId: string | null,
+  ) {
+    const label = input.label.trim();
+    if (!label || label.length > MAX_ACTIVITY_LENGTH) {
+      throw new BadRequestException(
+        `Libellé du type requis (${MAX_ACTIVITY_LENGTH} caractères au plus).`,
+      );
+    }
+    this.assertRate(input.hourlyRateCents);
+    const clash = await this.prisma.volunteerHoursCategory.findFirst({
+      where: {
+        clubId,
+        label: { equals: label, mode: 'insensitive' },
+        ...(selfId ? { NOT: { id: selfId } } : {}),
+      },
+      select: { id: true },
+    });
+    if (clash) throw new BadRequestException(`Le type « ${label} » existe déjà.`);
+    return { label, hourlyRateCents: input.hourlyRateCents };
+  }
+
+  private async findCategory(clubId: string, id: string) {
+    const row = await this.prisma.volunteerHoursCategory.findFirst({
+      where: { id, clubId },
+      select: { id: true },
+    });
+    if (!row) throw new NotFoundException('Type de bénévolat introuvable');
+    return row;
   }
 
   private assertRate(cents: number): void {
@@ -418,7 +570,7 @@ export class VolunteerHoursService {
   private async findUnposted(clubId: string, id: string) {
     const row = await this.prisma.volunteerHours.findFirst({
       where: { id, clubId },
-      select: { id: true, postingId: true },
+      select: { id: true, postingId: true, categoryId: true },
     });
     if (!row) throw new NotFoundException('Saisie introuvable');
     if (row.postingId) throw this.alreadyPosted();

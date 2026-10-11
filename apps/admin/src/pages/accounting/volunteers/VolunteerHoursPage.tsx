@@ -5,15 +5,20 @@ import {
   CANCEL_CLUB_VOLUNTEER_HOURS_POSTING,
   CLUB_VOLUNTEER_HOURS,
   CREATE_CLUB_VOLUNTEER_HOURS,
+  CREATE_CLUB_VOLUNTEER_HOURS_CATEGORY,
   DELETE_CLUB_VOLUNTEER_HOURS,
+  DELETE_CLUB_VOLUNTEER_HOURS_CATEGORY,
   POST_CLUB_VOLUNTEER_HOURS,
   SET_CLUB_VOLUNTEER_HOURLY_RATE,
+  SET_CLUB_VOLUNTEER_HOURS_CATEGORY_ARCHIVED,
   UPDATE_CLUB_VOLUNTEER_HOURS,
+  UPDATE_CLUB_VOLUNTEER_HOURS_CATEGORY,
   VOLUNTEER_PEOPLE,
 } from '../../../lib/documents';
 import type {
   ClubVolunteerHoursData,
   VolunteerHours,
+  VolunteerHoursCategory,
   VolunteerHoursPosting,
   VolunteerPeopleData,
 } from '../../../lib/types';
@@ -54,10 +59,13 @@ type Draft = {
   workedOn: string;
   hours: string;
   minutes: string;
+  categoryId: string;
   activity: string;
   rate: string;
   notes: string;
 };
+
+type CategoryDraft = { id: string | null; label: string; rate: string };
 
 const EMPTY_DRAFT: Draft = {
   id: null,
@@ -65,6 +73,7 @@ const EMPTY_DRAFT: Draft = {
   workedOn: todayIso(),
   hours: '',
   minutes: '',
+  categoryId: '',
   activity: '',
   rate: '',
   notes: '',
@@ -94,6 +103,14 @@ export function VolunteerHoursPage() {
   const [cancelPosting, { loading: cancelling }] = useMutation(
     CANCEL_CLUB_VOLUNTEER_HOURS_POSTING,
   );
+  const [createCategory, { loading: creatingCategory }] = useMutation(
+    CREATE_CLUB_VOLUNTEER_HOURS_CATEGORY,
+  );
+  const [updateCategory, { loading: updatingCategory }] = useMutation(
+    UPDATE_CLUB_VOLUNTEER_HOURS_CATEGORY,
+  );
+  const [setCategoryArchived] = useMutation(SET_CLUB_VOLUNTEER_HOURS_CATEGORY_ARCHIVED);
+  const [deleteCategory] = useMutation(DELETE_CLUB_VOLUNTEER_HOURS_CATEGORY);
 
   const clubRate = data?.clubVolunteerHourlyRate ?? null;
   const [rateInput, setRateInput] = useState('');
@@ -101,6 +118,7 @@ export function VolunteerHoursPage() {
     setRateInput(centsToInput(clubRate));
   }, [clubRate]);
 
+  const categories = data?.clubVolunteerHoursCategories ?? [];
   const rows = data?.clubVolunteerHours ?? [];
   const postings = data?.clubVolunteerHoursPostings ?? [];
   const pending = rows.filter((r) => !r.postingId);
@@ -123,6 +141,18 @@ export function VolunteerHoursPage() {
       m.set(key, cur);
     }
     return [...m.values()].sort((a, b) => b.minutes - a.minutes);
+  }, [rows]);
+  // Récapitulatif par type : c'est le détail que demande l'annexe.
+  const byCategory = useMemo(() => {
+    const m = new Map<string, { label: string; minutes: number; cents: number }>();
+    for (const r of rows) {
+      const label = r.categoryLabel ?? 'Sans type';
+      const cur = m.get(label) ?? { label, minutes: 0, cents: 0 };
+      cur.minutes += r.minutes;
+      cur.cents += r.valueCents;
+      m.set(label, cur);
+    }
+    return [...m.values()].sort((a, b) => b.cents - a.cents);
   }, [rows]);
 
   // Bénévoles proposables : adhérents, puis contacts qui ne sont pas déjà
@@ -154,6 +184,8 @@ export function VolunteerHoursPage() {
   );
 
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [categoryDraft, setCategoryDraft] = useState<CategoryDraft | null>(null);
+  const [categoryToDelete, setCategoryToDelete] = useState<VolunteerHoursCategory | null>(null);
   const [toDelete, setToDelete] = useState<VolunteerHours | null>(null);
   const [confirmPost, setConfirmPost] = useState(false);
   const [toCancel, setToCancel] = useState<VolunteerHoursPosting | null>(null);
@@ -178,6 +210,52 @@ export function VolunteerHoursPage() {
     }
   }
 
+  async function onSubmitCategory(e: FormEvent) {
+    e.preventDefault();
+    if (!categoryDraft) return;
+    const cents = parseEurosToCents(categoryDraft.rate);
+    if (cents === null || Number.isNaN(cents)) {
+      showToast('Taux invalide : un montant en euros, ex. 25,00', 'error');
+      return;
+    }
+    const input = { label: categoryDraft.label.trim(), hourlyRateCents: cents };
+    try {
+      if (categoryDraft.id) {
+        await updateCategory({ variables: { id: categoryDraft.id, input } });
+        showToast('Type modifié — le nouveau taux vaut pour les prochaines saisies', 'success');
+      } else {
+        await createCategory({ variables: { input } });
+        showToast('Type de bénévolat ajouté', 'success');
+      }
+      setCategoryDraft(null);
+      await refetch();
+    } catch (err) {
+      showToast(errorMessage(err), 'error');
+    }
+  }
+
+  async function onToggleArchived(c: VolunteerHoursCategory) {
+    try {
+      await setCategoryArchived({ variables: { id: c.id, archived: !c.archived } });
+      showToast(c.archived ? 'Type réactivé' : 'Type archivé', 'success');
+      await refetch();
+    } catch (err) {
+      showToast(errorMessage(err), 'error');
+    }
+  }
+
+  async function onDeleteCategory() {
+    if (!categoryToDelete) return;
+    try {
+      await deleteCategory({ variables: { id: categoryToDelete.id } });
+      showToast('Type supprimé', 'success');
+      setCategoryToDelete(null);
+      await refetch();
+    } catch (err) {
+      showToast(errorMessage(err), 'error');
+    }
+  }
+
   function openNew() {
     setDraft({ ...EMPTY_DRAFT, workedOn: to && to < todayIso() ? to : todayIso() });
   }
@@ -192,8 +270,13 @@ export function VolunteerHoursPage() {
       workedOn: r.workedOn,
       hours: String(Math.floor(r.minutes / 60)),
       minutes: String(r.minutes % 60),
-      activity: r.activity,
-      rate: r.hourlyRateCents === clubRate ? '' : centsToInput(r.hourlyRateCents),
+      categoryId: r.categoryId ?? '',
+      activity: r.activity === r.categoryLabel ? '' : r.activity,
+      rate:
+        r.hourlyRateCents ===
+        (categories.find((c) => c.id === r.categoryId)?.hourlyRateCents ?? clubRate)
+          ? ''
+          : centsToInput(r.hourlyRateCents),
       notes: r.notes ?? '',
     });
   }
@@ -221,7 +304,8 @@ export function VolunteerHoursPage() {
       contactId: person.contactId,
       workedOn: draft.workedOn,
       minutes,
-      activity: draft.activity.trim(),
+      categoryId: draft.categoryId || null,
+      activity: draft.activity.trim() || null,
       hourlyRateCents: rate,
       notes: draft.notes.trim() || null,
     };
@@ -278,7 +362,9 @@ export function VolunteerHoursPage() {
   const draftMinutes = draft
     ? (Number(draft.hours) || 0) * 60 + (Number(draft.minutes) || 0)
     : 0;
-  const draftRate = draft ? parseEurosToCents(draft.rate) ?? clubRate : null;
+  const draftCategory = draft ? categories.find((c) => c.id === draft.categoryId) : undefined;
+  const draftDefaultRate = draftCategory?.hourlyRateCents ?? clubRate;
+  const draftRate = draft ? parseEurosToCents(draft.rate) ?? draftDefaultRate : null;
   const draftValue =
     draftRate !== null && !Number.isNaN(draftRate) && draftMinutes > 0
       ? Math.round((draftMinutes * draftRate) / 60)
@@ -291,7 +377,8 @@ export function VolunteerHoursPage() {
         <h1 className="members-loom__title">Bénévolat valorisé</h1>
         <p className="members-loom__lede">
           Les heures données au club par ses bénévoles, valorisées au taux
-          horaire, puis comptabilisées en contribution volontaire en nature
+          de leur type (enseignement, secrétariat, aide aux événements…), puis
+          comptabilisées en contribution volontaire en nature
           (864 Personnel bénévole / 870 Bénévolat). Le résultat ne change pas :
           la valeur apparaît en pied du compte de résultat, et sert aux
           dossiers de subvention.
@@ -299,10 +386,107 @@ export function VolunteerHoursPage() {
       </header>
 
       <section className="members-panel">
-        <h2 className="members-panel__h">Taux horaire du club</h2>
-        <form className="cf-form-row" onSubmit={onSaveRate} style={{ alignItems: 'flex-end' }}>
-          <label className="cf-field" style={{ maxWidth: 220 }}>
-            <span>Taux par défaut (€ / heure)</span>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            flexWrap: 'wrap',
+          }}
+        >
+          <h2 className="members-panel__h" style={{ margin: 0 }}>
+            Types de bénévolat et taux horaires
+          </h2>
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={() => setCategoryDraft({ id: null, label: '', rate: '' })}
+          >
+            Ajouter un type
+          </button>
+        </div>
+        <p className="cf-muted" style={{ marginTop: 8 }}>
+          La valeur d’une heure dépend de l’aide apportée : le coût de
+          remplacement d’une prestation équivalente. Par exemple : aide aux
+          événements au SMIC, secrétariat, enseignement par un éducateur
+          qualifié, encadrement technique spécialisé. Les taux élevés doivent
+          pouvoir se justifier (grille salariale, coût employeur, tarif
+          professionnel) ; indique la méthode dans l’annexe des comptes.
+        </p>
+        {categories.length === 0 ? (
+          <p className="cf-muted">
+            Aucun type de bénévolat. Ajoute-en un par nature d’aide, chacun
+            avec son taux.
+          </p>
+        ) : (
+          <table className="cf-table">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th style={{ textAlign: 'right' }}>Taux</th>
+                <th style={{ textAlign: 'right' }}>Saisies</th>
+                <th style={{ width: 260 }} />
+              </tr>
+            </thead>
+            <tbody>
+              {categories.map((c) => (
+                <tr key={c.id} style={c.archived ? { opacity: 0.55 } : undefined}>
+                  <td>
+                    <strong>{c.label}</strong>
+                    {c.archived ? (
+                      <span className="cf-pill" style={{ marginLeft: 8 }}>
+                        Archivé
+                      </span>
+                    ) : null}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>{formatEuro(c.hourlyRateCents)}/h</td>
+                  <td style={{ textAlign: 'right' }}>{c.hoursCount}</td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                      <button
+                        type="button"
+                        className="btn-ghost btn-ghost--sm"
+                        onClick={() =>
+                          setCategoryDraft({
+                            id: c.id,
+                            label: c.label,
+                            rate: centsToInput(c.hourlyRateCents),
+                          })
+                        }
+                      >
+                        Modifier
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost btn-ghost--sm"
+                        onClick={() => void onToggleArchived(c)}
+                      >
+                        {c.archived ? 'Réactiver' : 'Archiver'}
+                      </button>
+                      {c.hoursCount === 0 ? (
+                        <button
+                          type="button"
+                          className="btn-ghost btn-ghost--sm"
+                          onClick={() => setCategoryToDelete(c)}
+                        >
+                          Supprimer
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <form
+          className="cf-form-row"
+          onSubmit={onSaveRate}
+          style={{ alignItems: 'flex-end', marginTop: 12 }}
+        >
+          <label className="cf-field" style={{ maxWidth: 260 }}>
+            <span>Taux d’une saisie sans type (€ / heure)</span>
             <input
               inputMode="decimal"
               value={rateInput}
@@ -315,10 +499,9 @@ export function VolunteerHoursPage() {
           </button>
         </form>
         <p className="cf-muted" style={{ marginTop: 8 }}>
-          Usage courant : SMIC horaire brut chargé, ou le taux d’un salarié
-          équivalent pour un encadrant qualifié (taux modifiable sur chaque
-          saisie). Indique la méthode retenue dans l’annexe des comptes. Un
-          nouveau taux ne s’applique qu’aux prochaines saisies.
+          Un nouveau taux ne s’applique qu’aux prochaines saisies : les heures
+          déjà saisies gardent leur valeur. Le taux reste modifiable sur
+          chaque saisie.
         </p>
       </section>
 
@@ -382,7 +565,7 @@ export function VolunteerHoursPage() {
               <tr>
                 <th>Date</th>
                 <th>Bénévole</th>
-                <th>Activité</th>
+                <th>Type / activité</th>
                 <th style={{ textAlign: 'right' }}>Durée</th>
                 <th style={{ textAlign: 'right' }}>Taux</th>
                 <th style={{ textAlign: 'right' }}>Valeur</th>
@@ -398,7 +581,12 @@ export function VolunteerHoursPage() {
                     <strong>{r.volunteerName}</strong>
                   </td>
                   <td>
-                    {r.activity}
+                    {r.categoryLabel ? <strong>{r.categoryLabel}</strong> : r.activity}
+                    {r.categoryLabel && r.activity !== r.categoryLabel ? (
+                      <small className="cf-muted" style={{ display: 'block' }}>
+                        {r.activity}
+                      </small>
+                    ) : null}
                     {r.notes ? (
                       <small className="cf-muted" style={{ display: 'block' }}>
                         {r.notes}
@@ -444,6 +632,30 @@ export function VolunteerHoursPage() {
         )}
       </section>
 
+      {byCategory.length > 0 ? (
+        <section className="members-panel">
+          <h2 className="members-panel__h">Par type de bénévolat (période)</h2>
+          <table className="cf-table">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th style={{ textAlign: 'right' }}>Heures</th>
+                <th style={{ textAlign: 'right' }}>Valeur</th>
+              </tr>
+            </thead>
+            <tbody>
+              {byCategory.map((c) => (
+                <tr key={c.label}>
+                  <td>{c.label}</td>
+                  <td style={{ textAlign: 'right' }}>{formatDuration(c.minutes)}</td>
+                  <td style={{ textAlign: 'right' }}>{formatEuro(c.cents)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      ) : null}
+
       {byVolunteer.length > 1 ? (
         <section className="members-panel">
           <h2 className="members-panel__h">Par bénévole (période)</h2>
@@ -473,7 +685,7 @@ export function VolunteerHoursPage() {
         {postings.length === 0 ? (
           <p className="cf-muted">
             Aucune comptabilisation. « Comptabiliser la période » crée une
-            écriture 864 / 870 datée du dernier jour, une ligne par activité.
+            écriture 864 / 870 datée du dernier jour, une ligne par type de bénévolat.
           </p>
         ) : (
           <table className="cf-table">
@@ -594,12 +806,28 @@ export function VolunteerHoursPage() {
               </label>
             </div>
             <label className="cf-field">
-              <span>Activité *</span>
+              <span>Type de bénévolat</span>
+              <select
+                value={draft.categoryId}
+                onChange={(e) => setDraft({ ...draft, categoryId: e.target.value })}
+              >
+                <option value="">— Sans type (taux du club) —</option>
+                {categories
+                  .filter((c) => !c.archived || c.id === draft.categoryId)
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label} — {formatEuro(c.hourlyRateCents)}/h
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label className="cf-field">
+              <span>{draft.categoryId ? 'Précision (facultatif)' : 'Activité *'}</span>
               <input
                 list="cf-volunteer-activities"
                 value={draft.activity}
                 maxLength={120}
-                placeholder="ex. Encadrement des cours enfants"
+                placeholder="ex. Cours enfants du mercredi"
                 onChange={(e) => setDraft({ ...draft, activity: e.target.value })}
               />
               <datalist id="cf-volunteer-activities">
@@ -614,7 +842,9 @@ export function VolunteerHoursPage() {
                 inputMode="decimal"
                 value={draft.rate}
                 placeholder={
-                  clubRate !== null ? `${centsToInput(clubRate)} (taux du club)` : 'Aucun taux club'
+                  draftDefaultRate !== null
+                    ? `${centsToInput(draftDefaultRate)} (${draftCategory ? 'taux du type' : 'taux du club'})`
+                    : 'Aucun taux : choisis un type'
                 }
                 onChange={(e) => setDraft({ ...draft, rate: e.target.value })}
               />
@@ -631,6 +861,66 @@ export function VolunteerHoursPage() {
           </form>
         ) : null}
       </Drawer>
+
+      <Drawer
+        open={categoryDraft !== null}
+        onClose={() => setCategoryDraft(null)}
+        title={categoryDraft?.id ? 'Modifier le type de bénévolat' : 'Nouveau type de bénévolat'}
+        footer={
+          <div className="cf-drawer-foot">
+            <button type="button" className="btn-ghost" onClick={() => setCategoryDraft(null)}>
+              Annuler
+            </button>
+            <button
+              type="submit"
+              form="cf-volunteer-category"
+              className="btn-primary"
+              disabled={creatingCategory || updatingCategory}
+            >
+              Enregistrer
+            </button>
+          </div>
+        }
+      >
+        {categoryDraft ? (
+          <form id="cf-volunteer-category" onSubmit={onSubmitCategory} className="cf-form">
+            <label className="cf-field">
+              <span>Type *</span>
+              <input
+                value={categoryDraft.label}
+                maxLength={120}
+                placeholder="ex. Enseignement du karaté par un éducateur qualifié"
+                onChange={(e) => setCategoryDraft({ ...categoryDraft, label: e.target.value })}
+              />
+            </label>
+            <label className="cf-field">
+              <span>Taux horaire (€ / h) *</span>
+              <input
+                inputMode="decimal"
+                value={categoryDraft.rate}
+                placeholder="ex. 25,00"
+                onChange={(e) => setCategoryDraft({ ...categoryDraft, rate: e.target.value })}
+              />
+            </label>
+            {categoryDraft.id ? (
+              <p className="cf-muted">
+                Le nouveau taux vaut pour les prochaines saisies ; les heures
+                déjà saisies gardent leur valeur.
+              </p>
+            ) : null}
+          </form>
+        ) : null}
+      </Drawer>
+
+      <ConfirmModal
+        open={categoryToDelete !== null}
+        title="Supprimer ce type de bénévolat ?"
+        message={categoryToDelete ? `« ${categoryToDelete.label} » n’a aucune saisie.` : undefined}
+        confirmLabel="Supprimer"
+        danger
+        onConfirm={() => void onDeleteCategory()}
+        onCancel={() => setCategoryToDelete(null)}
+      />
 
       <ConfirmModal
         open={toDelete !== null}
