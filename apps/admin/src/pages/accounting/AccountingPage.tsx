@@ -550,8 +550,12 @@ export function AccountingPage() {
           (a.kind === 'EXPENSE' || a.kind === 'ASSET') && a.isActive,
       );
     if (kind === 'IN_KIND')
+      // Emplois 86x : la ressource 87x est la contrepartie calculée.
       return accounts.filter(
-        (a) => a.kind === 'NEUTRAL_IN_KIND' && a.isActive,
+        (a) =>
+          a.kind === 'NEUTRAL_IN_KIND' &&
+          a.code.startsWith('86') &&
+          a.isActive,
       );
     return accounts;
   }, [accounts, kind]);
@@ -1578,9 +1582,10 @@ export function AccountingPage() {
                                     ? isIncomeSide
                                     : e.kind === 'INCOME'
                                       ? isExpenseSide
-                                      : // IN_KIND : pas de "banque" — toujours considérer
-                                        // comme article modifiable
-                                        false;
+                                      : // IN_KIND : pas de banque — la
+                                        // contrepartie est la ressource
+                                        // 87x, calculée par le serveur
+                                        l.accountCode.startsWith('87');
                                 const validated = Boolean(l.validatedAt);
                                 const currentEdit =
                                   lineAccountEdits[l.id] ?? l.accountCode;
@@ -1607,7 +1612,10 @@ export function AccountingPage() {
                                         a.kind === 'ASSET'
                                       );
                                     if (e.kind === 'IN_KIND')
-                                      return a.kind === 'NEUTRAL_IN_KIND';
+                                      return (
+                                        a.kind === 'NEUTRAL_IN_KIND' &&
+                                        a.code.startsWith('86')
+                                      );
                                     return true;
                                   },
                                 );

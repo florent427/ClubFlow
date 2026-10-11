@@ -111,7 +111,12 @@ export class AccountingSuggestionService {
         : input.kind === 'EXPENSE'
           ? accounts.filter((a) => a.kind === 'EXPENSE' || a.kind === 'ASSET')
           : input.kind === 'IN_KIND'
-            ? accounts.filter((a) => a.kind === 'NEUTRAL_IN_KIND')
+            ? // Emplois 86x seulement : la ressource 87x est la contrepartie
+              // calculée, jamais l'article.
+              accounts.filter(
+                (a) =>
+                  a.kind === 'NEUTRAL_IN_KIND' && a.code.startsWith('86'),
+              )
             : accounts;
 
     const apiKey = await this.aiSettings.getDecryptedApiKey(clubId);
