@@ -216,6 +216,9 @@ model Club {
   /// rapproché : une ligne de relevé antérieure est ignorée « hors reprise ».
   /// Null = reprise non définie, le rapprochement bancaire est indisponible.
   accountingStartsOn   DateTime? @db.Date
+  /// Taux horaire de valorisation du bénévolat (centimes), proposé par défaut
+  /// à chaque saisie d'heures. Null = pas encore choisi : la saisie l'exige.
+  volunteerHourlyRateCents Int?
 
   accountingAccounts         AccountingAccount[]
   accountingCohorts          AccountingCohort[]
@@ -229,6 +232,8 @@ model Club {
   bankStatements             BankStatement[]
   categorizationRules        AccountingCategorizationRule[]
   volunteerReimbursements    VolunteerReimbursement[]
+  volunteerHours             VolunteerHours[]
+  volunteerHoursPostings     VolunteerHoursPosting[]
   cashCounts                 CashCount[]
 
   documents       ClubDocument[]
@@ -494,6 +499,7 @@ model Contact {
   pendingMembershipItems MembershipCartPendingItem[] @relation("PendingItemContact")
   projectContributions   ProjectContributor[]
   sponsorshipDeals       SponsorshipDeal[]
+  volunteerHours         VolunteerHours[]
   /// Reçus d'avance qui créditent ce contact (ADR-0022).
   payerCreditDeposits    Invoice[]                   @relation("InvoicePayerCreditContact")
 
@@ -793,6 +799,7 @@ model Member {
   paymentsAsPaidBy          Payment[]                    @relation("PaymentPaidByMember")
   advancedAccountingEntries AccountingEntry[]            @relation("AccountingEntryAdvancedBy")
   volunteerReimbursements   VolunteerReimbursement[]
+  volunteerHours            VolunteerHours[]
   telegramChatId            String?                      @map("telegram_chat_id")
   telegramLinkedAt          DateTime?                    @map("telegram_linked_at")
   telegramLinkTokens        TelegramLinkToken[]
@@ -1810,6 +1817,64 @@ model VolunteerReimbursementItem {
   @@index([entryId])
 }
 
+/// Heures de bénévolat d'une personne pour une activité, un jour donné.
+/// Valorisées au taux figé à la saisie ; comptabilisées par période
+/// (VolunteerHoursPosting), après quoi elles ne se modifient plus.
+model VolunteerHours {
+  id        String   @id @default(uuid())
+  clubId    String
+  /// Le bénévole : un adhérent OU un contact (parent, proche), exactement un.
+  memberId  String?
+  contactId String?
+  /// Jour de l'activité ; c'est lui qui range les heures dans une période.
+  workedOn  DateTime @db.Date
+  /// Durée en minutes (1 h 30 = 90) : pas de décimales flottantes.
+  minutes   Int
+  /// Activité en clair (« Encadrement des cours enfants », « Buvette tournoi »).
+  activity  String
+  /// Taux horaire appliqué, en centimes, figé à la saisie.
+  hourlyRateCents Int
+  /// Valeur = minutes × taux / 60, arrondie au centime, figée à la saisie.
+  valueCents      Int
+  notes           String?
+  /// Comptabilisation qui l'a portée ; null = pas encore comptabilisée.
+  postingId       String?
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  club    Club                   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  member  Member?                @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  contact Contact?               @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  posting VolunteerHoursPosting? @relation(fields: [postingId], references: [id], onDelete: SetNull)
+
+  @@index([clubId, workedOn])
+  @@index([clubId, postingId])
+  @@index([memberId])
+  @@index([contactId])
+}
+
+/// Comptabilisation du bénévolat d'une période : une écriture en nature
+/// 864000 / 870000 pour toutes les heures non comptabilisées de la période.
+model VolunteerHoursPosting {
+  id              String   @id @default(uuid())
+  clubId          String
+  periodStart     DateTime @db.Date
+  periodEnd       DateTime @db.Date
+  totalMinutes    Int
+  totalCents      Int
+  /// Écriture DÉBIT 864000 / CRÉDIT 870000 datée de la fin de période.
+  entryId         String?  @unique
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  club  Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  entry AccountingEntry? @relation(fields: [entryId], references: [id], onDelete: SetNull)
+  hours VolunteerHours[]
+
+  @@index([clubId, periodEnd])
+}
+
 /// Comptage d'une caisse : ce qu'on a trouvé dans le tiroir, face à ce que
 /// la comptabilité attendait ce jour-là. C'est le relevé de la caisse — le
 /// pendant de `BankStatement` pour le 53x — à ceci près que personne ne
@@ -2621,6 +2686,9 @@ enum AccountingEntrySource {
   /// Dépôt d'espèces en banque (53x → 51x) ou retrait (51x → 53x). C'est la
   /// ligne banque « VERSEMENT ESPECES » / « RETRAIT » qui la rapproche.
   CASH_TRANSFER
+  /// Valorisation du bénévolat d'une période : DÉBIT 864000 / CRÉDIT 870000,
+  /// contribution volontaire en nature (règlement ANC 2018-06).
+  VOLUNTEER_HOURS
 }
 
 /// Côté comptable d'une ligne d'écriture. AUTO = dérivé à la création
@@ -2733,6 +2801,7 @@ model AccountingEntry {
   financialAccount       ClubFinancialAccount?        @relation(fields: [financialAccountId], references: [id], onDelete: SetNull)
   advancedByMember       Member?                      @relation("AccountingEntryAdvancedBy", fields: [advancedByMemberId], references: [id], onDelete: SetNull)
   volunteerReimbursement VolunteerReimbursement?
+  volunteerHoursPosting  VolunteerHoursPosting?
   reimbursementItems     VolunteerReimbursementItem[]
   cashCountAdjustment    CashCount?
   /// `SetNull` et non `Cascade` : supprimer une commande fournisseur ne doit

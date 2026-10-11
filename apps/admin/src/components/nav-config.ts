@@ -230,6 +230,11 @@ export const NAV_SECTIONS: NavSection[] = [
             modules: ['ACCOUNTING'],
           },
           {
+            to: '/comptabilite/benevolat',
+            label: 'Bénévolat valorisé',
+            modules: ['ACCOUNTING'],
+          },
+          {
             to: '/comptabilite/caisse',
             label: 'Livre de caisse',
             modules: ['ACCOUNTING'],
