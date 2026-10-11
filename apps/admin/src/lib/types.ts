@@ -2942,6 +2942,65 @@ export type VolunteerAdvanceBalancesData = { volunteerAdvanceBalances: Volunteer
 export type VolunteerOpenItemsData = { volunteerOpenItems: VolunteerOpenItem[] };
 export type VolunteerReimbursementsData = { volunteerReimbursements: VolunteerReimbursement[] };
 
+/** Heures de bénévolat d'une personne pour une activité, un jour donné. */
+export type VolunteerHours = {
+  id: string;
+  memberId: string | null;
+  contactId: string | null;
+  volunteerName: string;
+  workedOn: string;
+  minutes: number;
+  categoryId: string | null;
+  categoryLabel: string | null;
+  activity: string;
+  hourlyRateCents: number;
+  valueCents: number;
+  notes: string | null;
+  /** Null tant que les heures ne sont pas comptabilisées. */
+  postingId: string | null;
+  postingEntryId: string | null;
+  createdAt: string;
+};
+
+/** Comptabilisation du bénévolat d'une période (écriture 864/870). */
+export type VolunteerHoursPosting = {
+  id: string;
+  periodStart: string;
+  periodEnd: string;
+  totalMinutes: number;
+  totalCents: number;
+  hoursCount: number;
+  entryId: string | null;
+  entryStatus: string | null;
+  createdAt: string;
+};
+
+/** Type de bénévolat du club et son taux horaire. */
+export type VolunteerHoursCategory = {
+  id: string;
+  label: string;
+  hourlyRateCents: number;
+  archived: boolean;
+  hoursCount: number;
+};
+
+export type ClubVolunteerHoursData = {
+  clubVolunteerHourlyRate: number | null;
+  clubVolunteerHoursCategories: VolunteerHoursCategory[];
+  clubVolunteerHours: VolunteerHours[];
+  clubVolunteerHoursPostings: VolunteerHoursPosting[];
+};
+
+export type VolunteerPeopleData = {
+  clubMembers: { id: string; firstName: string; lastName: string; status: string }[];
+  clubContacts: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    linkedMemberId: string | null;
+  }[];
+};
+
 /** Un mouvement du livre de caisse, avec le solde qu'il laisse derrière lui. */
 export type CashBookLine = {
   entryId: string;

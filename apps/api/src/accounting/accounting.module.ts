@@ -28,6 +28,8 @@ import { BankPayerLookupService } from './bank-import/bank-payer-lookup.service'
 import { BankVolunteerLookupService } from './bank-import/bank-volunteer-lookup.service';
 import { VolunteerAdvancesService } from './volunteers/volunteer-advances.service';
 import { VolunteerAdvancesResolver } from './volunteers/volunteer-advances.resolver';
+import { VolunteerHoursResolver } from './volunteers/volunteer-hours.resolver';
+import { VolunteerHoursService } from './volunteers/volunteer-hours.service';
 import { CategorizationLearningService } from './bank-import/categorization-learning.service';
 import { CashBookService } from './cash/cash-book.service';
 import { CashBookResolver } from './cash/cash-book.resolver';
@@ -68,6 +70,8 @@ import { FinancialStatementsService } from './statements/financial-statements.se
     AccountingResolver,
     BankImportResolver,
     VolunteerAdvancesResolver,
+    VolunteerHoursService,
+    VolunteerHoursResolver,
     CashBookResolver,
     ClubModuleEnabledGuard,
   ],

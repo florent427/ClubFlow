@@ -31,6 +31,13 @@ import { AccountingSuggestionService } from './accounting-suggestion.service';
 import { ClubFinancialAccountsService } from './club-financial-accounts.service';
 import { BankReconciliationService } from './bank-import/bank-reconciliation.service';
 import { PAYER_CREDIT_ACCOUNT_CODE } from './payer-credit.constants';
+import {
+  IN_KIND_DEFAULT_USE_ACCOUNT,
+  IN_KIND_RESOURCE_PREFIX,
+  computeInKindCounterparts,
+  isInKindResourceAccount,
+  isInKindUseAccount,
+} from './in-kind-counterparts';
 
 /** Filtres supportés sur la query liste. */
 export interface ListEntriesFilter {
@@ -1089,16 +1096,21 @@ export class AccountingService {
     await this.period.assertDateIsOpen(clubId, occurredAt);
 
     const account = await this.lookupAccount(clubId, input.accountCode);
+    // Une contribution en nature ne touche pas la trésorerie : pas de
+    // compte financier, ses contreparties 87x se déduisent de l'emploi 86x.
+    const inKind = input.kind === AccountingEntryKind.IN_KIND;
+    if (inKind) this.assertInKindUseAccount(account.code);
     // Résolution de la contrepartie : explicite (input.financialAccountId)
     // ou défaut BANK du club via fallback.
-    const fin = await this.resolveFinancialAccountForManual(
-      clubId,
-      input.financialAccountId ?? null,
-    );
-    const bankAccount = await this.lookupAccount(
-      clubId,
-      fin.accountingAccount.code,
-    );
+    const fin = inKind
+      ? null
+      : await this.resolveFinancialAccountForManual(
+          clubId,
+          input.financialAccountId ?? null,
+        );
+    const bankAccount = fin
+      ? await this.lookupAccount(clubId, fin.accountingAccount.code)
+      : null;
 
     const side = this.deriveSide(account.kind, input.kind, account.code);
 
@@ -1114,7 +1126,7 @@ export class AccountingService {
           vatTotalCents: input.vatAmountCents ?? null,
           occurredAt,
           createdByUserId: userId,
-          financialAccountId: fin.id,
+          financialAccountId: fin?.id ?? null,
           // Documentés « persistés sur l'entry » par ManualEntryInput, mais
           // jamais écrits ici : un chèque hors facture perdait son mode et
           // son numéro (vu en base staging le 2026-09-10).
@@ -1142,25 +1154,31 @@ export class AccountingService {
         },
       });
 
-      // Ligne contrepartie : banque avec côté inverse
-      const counterSide =
-        side === AccountingLineSide.DEBIT
-          ? AccountingLineSide.CREDIT
-          : AccountingLineSide.DEBIT;
-      await tx.accountingEntryLine.create({
-        data: {
-          entryId: entry.id,
-          clubId,
-          accountCode: bankAccount.code,
-          accountLabel: bankAccount.label,
-          side: counterSide,
-          debitCents:
-            counterSide === AccountingLineSide.DEBIT ? input.amountCents : 0,
-          creditCents:
-            counterSide === AccountingLineSide.CREDIT ? input.amountCents : 0,
-          sortOrder: 1,
-        },
-      });
+      if (bankAccount) {
+        // Ligne contrepartie : banque avec côté inverse
+        const counterSide =
+          side === AccountingLineSide.DEBIT
+            ? AccountingLineSide.CREDIT
+            : AccountingLineSide.DEBIT;
+        await tx.accountingEntryLine.create({
+          data: {
+            entryId: entry.id,
+            clubId,
+            accountCode: bankAccount.code,
+            accountLabel: bankAccount.label,
+            side: counterSide,
+            debitCents:
+              counterSide === AccountingLineSide.DEBIT ? input.amountCents : 0,
+            creditCents:
+              counterSide === AccountingLineSide.CREDIT ? input.amountCents : 0,
+            sortOrder: 1,
+          },
+        });
+      } else {
+        await this.createInKindCounterpartLines(tx, clubId, entry.id, [
+          { accountCode: account.code, debitCents: input.amountCents },
+        ], 1);
+      }
 
       // 1 allocation par ligne principale (portant les dimensions analytiques)
       await this.allocation.persistAllocationsForLine(tx, mainLine.id, clubId, [
@@ -1208,6 +1226,81 @@ export class AccountingService {
     );
 
     return created;
+  }
+
+  /**
+   * Un article d'écriture en nature est un emploi 86x : sa ressource 87x
+   * est une contrepartie calculée, jamais saisie.
+   */
+  private assertInKindUseAccount(code: string): void {
+    if (!isInKindUseAccount(code)) {
+      throw new BadRequestException(
+        `Contribution en nature : l'article doit porter un compte d'emploi 86x ` +
+          `(ex. 864000 Personnel bénévole), pas ${code}. ` +
+          `La contrepartie 87x est calculée automatiquement.`,
+      );
+    }
+  }
+
+  /**
+   * Crée les contreparties 87x (crédit) qui équilibrent les emplois 86x
+   * d'une écriture en nature. Validées d'office : ce sont des lignes
+   * calculées, pas des articles à catégoriser.
+   */
+  private async createInKindCounterpartLines(
+    db: Prisma.TransactionClient,
+    clubId: string,
+    entryId: string,
+    useLines: ReadonlyArray<{ accountCode: string; debitCents: number }>,
+    firstSortOrder: number,
+  ): Promise<void> {
+    const counterparts = computeInKindCounterparts(useLines);
+    for (let i = 0; i < counterparts.length; i++) {
+      const c = counterparts[i];
+      const account = await this.lookupAccount(clubId, c.accountCode);
+      await db.accountingEntryLine.create({
+        data: {
+          entryId,
+          clubId,
+          accountCode: account.code,
+          accountLabel: account.label,
+          side: AccountingLineSide.CREDIT,
+          debitCents: 0,
+          creditCents: c.creditCents,
+          sortOrder: firstSortOrder + i,
+          validatedAt: new Date(),
+        },
+      });
+    }
+  }
+
+  /**
+   * Recalcule les contreparties 87x d'une écriture en nature après le
+   * changement de compte d'un article (IA ou revue) : l'emploi a pu passer
+   * de 861 à 864, la ressource doit suivre (871 → 870).
+   */
+  private async syncInKindCounterparts(
+    db: Prisma.TransactionClient,
+    clubId: string,
+    entryId: string,
+  ): Promise<void> {
+    const lines = await db.accountingEntryLine.findMany({
+      where: { entryId },
+      select: { accountCode: true, debitCents: true, sortOrder: true },
+    });
+    const useLines = lines.filter((l) => isInKindUseAccount(l.accountCode));
+    await db.accountingEntryLine.deleteMany({
+      where: { entryId, accountCode: { startsWith: IN_KIND_RESOURCE_PREFIX } },
+    });
+    const firstSortOrder =
+      useLines.reduce((max, l) => Math.max(max, l.sortOrder), -1) + 1;
+    await this.createInKindCounterpartLines(
+      db,
+      clubId,
+      entryId,
+      useLines,
+      firstSortOrder,
+    );
   }
 
   /**
@@ -1274,20 +1367,32 @@ export class AccountingService {
       input.kind === AccountingEntryKind.INCOME
         ? await this.mapping.resolveAccountCode(clubId, 'INCOME_GENERIC')
         : input.kind === AccountingEntryKind.IN_KIND
-          ? '871000'
+          ? IN_KIND_DEFAULT_USE_ACCOUNT
           : await this.mapping.resolveAccountCode(clubId, 'EXPENSE_GENERIC');
+
+    // Contribution en nature : ni banque ni caisse, les contreparties 87x
+    // se déduisent des emplois 86x portés par les articles.
+    const inKind = input.kind === AccountingEntryKind.IN_KIND;
+    if (inKind) {
+      for (const art of articles) {
+        if (art.accountCode?.trim()) {
+          this.assertInKindUseAccount(art.accountCode.trim());
+        }
+      }
+    }
 
     // Résolution de la contrepartie : explicite via input.financialAccountId
     // (l'utilisateur a choisi "encaissé sur Caisse buvette") OU défaut BANK
     // du club (rétrocompat).
-    const fin = await this.resolveFinancialAccountForManual(
-      clubId,
-      input.financialAccountId ?? null,
-    );
-    const bankAccount = await this.lookupAccount(
-      clubId,
-      fin.accountingAccount.code,
-    );
+    const fin = inKind
+      ? null
+      : await this.resolveFinancialAccountForManual(
+          clubId,
+          input.financialAccountId ?? null,
+        );
+    const bankAccount = fin
+      ? await this.lookupAccount(clubId, fin.accountingAccount.code)
+      : null;
 
     // Pour chaque article : résout le compte (soit fourni par user, soit
     // fallback en attente d'IA), calcule le côté débit/crédit, et
@@ -1347,7 +1452,7 @@ export class AccountingService {
           vatTotalCents: input.vatAmountCents ?? null,
           occurredAt,
           createdByUserId: userId,
-          financialAccountId: fin.id,
+          financialAccountId: fin?.id ?? null,
         },
       });
 
@@ -1399,24 +1504,37 @@ export class AccountingService {
         );
       }
 
-      // Ligne contrepartie banque (total facture) — auto-validée car
-      // c'est la contrepartie, pas une ligne "article" à catégoriser.
-      await tx.accountingEntryLine.create({
-        data: {
-          entryId: entry.id,
+      if (bankAccount) {
+        // Ligne contrepartie banque (total facture) — auto-validée car
+        // c'est la contrepartie, pas une ligne "article" à catégoriser.
+        await tx.accountingEntryLine.create({
+          data: {
+            entryId: entry.id,
+            clubId,
+            accountCode: bankAccount.code,
+            accountLabel: bankAccount.label,
+            side: counterSide,
+            debitCents:
+              counterSide === AccountingLineSide.DEBIT ? input.amountCents : 0,
+            creditCents:
+              counterSide === AccountingLineSide.CREDIT ? input.amountCents : 0,
+            sortOrder: preparedLines.length,
+            validatedAt: new Date(),
+            validatedByUserId: userId,
+          },
+        });
+      } else {
+        await this.createInKindCounterpartLines(
+          tx,
           clubId,
-          accountCode: bankAccount.code,
-          accountLabel: bankAccount.label,
-          side: counterSide,
-          debitCents:
-            counterSide === AccountingLineSide.DEBIT ? input.amountCents : 0,
-          creditCents:
-            counterSide === AccountingLineSide.CREDIT ? input.amountCents : 0,
-          sortOrder: preparedLines.length,
-          validatedAt: new Date(),
-          validatedByUserId: userId,
-        },
-      });
+          entry.id,
+          preparedLines.map((p) => ({
+            accountCode: p.accountCode,
+            debitCents: p.amountCents,
+          })),
+          preparedLines.length,
+        );
+      }
 
       if (input.documentMediaAssetIds?.length) {
         for (const assetId of input.documentMediaAssetIds) {
@@ -1513,6 +1631,15 @@ export class AccountingService {
           );
           continue;
         }
+        if (
+          kind === AccountingEntryKind.IN_KIND &&
+          !isInKindUseAccount(suggestion.accountCode)
+        ) {
+          this.logger.warn(
+            `[Entry ${entryId}] ⚠️ Article "${art.articleLabel}" : IA propose ${suggestion.accountCode}, pas un emploi 86x — ignoré`,
+          );
+          continue;
+        }
 
         const newAccount = await this.lookupAccount(
           clubId,
@@ -1550,6 +1677,9 @@ export class AccountingService {
               iaConfidencePct: confPct,
             },
           });
+          if (kind === AccountingEntryKind.IN_KIND) {
+            await this.syncInKindCounterparts(tx, clubId, entryId);
+          }
           return { status: 'ok' as const, lineId: updated.id };
         });
 
@@ -1645,7 +1775,9 @@ export class AccountingService {
       label: string;
       kind: AccountingAccountKind;
     } | null = null;
+    const entryIsInKind = entry.kind === AccountingEntryKind.IN_KIND;
     if (needsAccountChange && corrections.accountCode) {
+      if (entryIsInKind) this.assertInKindUseAccount(corrections.accountCode);
       newAccount = await this.lookupAccount(clubId, corrections.accountCode);
     }
 
@@ -1657,7 +1789,14 @@ export class AccountingService {
       label: string;
       accountingAccount: { code: string; label: string };
     } | null = null;
-    if (corrections.financialAccountId !== undefined && corrections.financialAccountId !== null) {
+    // Une contribution en nature ne passe ni par la banque ni par la
+    // caisse : un compte financier envoyé (le mobile pré-sélectionne celui
+    // par défaut) est ignoré.
+    if (
+      !entryIsInKind &&
+      corrections.financialAccountId !== undefined &&
+      corrections.financialAccountId !== null
+    ) {
       const fa = await this.prisma.clubFinancialAccount.findFirst({
         where: { id: corrections.financialAccountId, clubId },
         include: {
@@ -1742,8 +1881,14 @@ export class AccountingService {
         // Logique :
         // - Dépense : ligne DÉBIT = article, ligne CRÉDIT = banque/caisse
         // - Recette : ligne DÉBIT = banque/caisse, ligne CRÉDIT = produit
+        // - Nature : pas de banque ; la contrepartie est la ressource 87x
+        //   (crédit), recalculée après la boucle.
         const entryIsExpense = entry.kind === 'EXPENSE';
-        const isBankLine = entryIsExpense ? isIncomeSide : isExpenseSide;
+        const isBankLine = entryIsInKind
+          ? isInKindResourceAccount(line.accountCode)
+          : entryIsExpense
+            ? isIncomeSide
+            : isExpenseSide;
         const dataLine: Record<string, unknown> = {};
 
         // Override explicite par lineAmounts (priorité)
@@ -1787,6 +1932,9 @@ export class AccountingService {
             data: dataLine,
           });
         }
+      }
+      if (entryIsInKind) {
+        await this.syncInKindCounterparts(tx, clubId, entryId);
       }
 
       // 3. Update allocations (cohorte + discipline + projet + montant)
@@ -2056,6 +2204,15 @@ export class AccountingService {
     // Si nouveau compte fourni → on change le compte + on recalcule side
     let updatedLine = line;
     if (newAccountCode && newAccountCode !== line.accountCode) {
+      const inKind = line.entry.kind === AccountingEntryKind.IN_KIND;
+      if (inKind) {
+        if (isInKindResourceAccount(line.accountCode)) {
+          throw new BadRequestException(
+            'Contrepartie calculée : changer le compte de l’article 86x, la ressource 87x suit.',
+          );
+        }
+        this.assertInKindUseAccount(newAccountCode);
+      }
       const newAccount = await this.lookupAccount(clubId, newAccountCode);
       const newSide = this.deriveSide(
         newAccount.kind,
@@ -2063,18 +2220,24 @@ export class AccountingService {
         newAccount.code,
       );
       const amt = line.debitCents + line.creditCents;
-      updatedLine = (await this.prisma.accountingEntryLine.update({
-        where: { id: lineId },
-        data: {
-          accountCode: newAccount.code,
-          accountLabel: newAccount.label,
-          side: newSide,
-          debitCents: newSide === AccountingLineSide.DEBIT ? amt : 0,
-          creditCents: newSide === AccountingLineSide.CREDIT ? amt : 0,
-          validatedAt: new Date(),
-          validatedByUserId: userId,
-        },
-        include: { entry: true },
+      updatedLine = (await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.accountingEntryLine.update({
+          where: { id: lineId },
+          data: {
+            accountCode: newAccount.code,
+            accountLabel: newAccount.label,
+            side: newSide,
+            debitCents: newSide === AccountingLineSide.DEBIT ? amt : 0,
+            creditCents: newSide === AccountingLineSide.CREDIT ? amt : 0,
+            validatedAt: new Date(),
+            validatedByUserId: userId,
+          },
+          include: { entry: true },
+        });
+        if (inKind) {
+          await this.syncInKindCounterparts(tx, clubId, line.entry.id);
+        }
+        return updated;
       })) as typeof line;
     } else {
       updatedLine = (await this.prisma.accountingEntryLine.update({
@@ -2214,6 +2377,16 @@ export class AccountingService {
           suggestion.errorMessage ?? "IA n'a pas proposé de compte",
       };
     }
+    const inKind = line.entry.kind === AccountingEntryKind.IN_KIND;
+    if (inKind && !isInKindUseAccount(suggestion.accountCode)) {
+      return {
+        lineId,
+        accountCode: null,
+        confidencePct: null,
+        reasoning: null,
+        errorMessage: `IA a proposé ${suggestion.accountCode}, pas un compte d'emploi 86x`,
+      };
+    }
 
     const newAccount = await this.lookupAccount(clubId, suggestion.accountCode);
     const newSide = this.deriveSide(
@@ -2225,19 +2398,24 @@ export class AccountingService {
       (suggestion.confidencePerField.accountCode ?? 0) * 100,
     );
 
-    await this.prisma.accountingEntryLine.update({
-      where: { id: lineId },
-      data: {
-        accountCode: newAccount.code,
-        accountLabel: newAccount.label,
-        label: articleLabel,
-        side: newSide,
-        debitCents: newSide === AccountingLineSide.DEBIT ? amountCents : 0,
-        creditCents: newSide === AccountingLineSide.CREDIT ? amountCents : 0,
-        iaSuggestedAccountCode: newAccount.code,
-        iaReasoning: suggestion.reasoning?.slice(0, 500) ?? null,
-        iaConfidencePct: confPct,
-      },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.accountingEntryLine.update({
+        where: { id: lineId },
+        data: {
+          accountCode: newAccount.code,
+          accountLabel: newAccount.label,
+          label: articleLabel,
+          side: newSide,
+          debitCents: newSide === AccountingLineSide.DEBIT ? amountCents : 0,
+          creditCents: newSide === AccountingLineSide.CREDIT ? amountCents : 0,
+          iaSuggestedAccountCode: newAccount.code,
+          iaReasoning: suggestion.reasoning?.slice(0, 500) ?? null,
+          iaConfidencePct: confPct,
+        },
+      });
+      if (inKind) {
+        await this.syncInKindCounterparts(tx, clubId, line.entry.id);
+      }
     });
 
     await this.audit.log({
@@ -2293,6 +2471,11 @@ export class AccountingService {
       throw new ForbiddenException(
         `Changement de compte interdit pour une écriture ${entry.status}. ` +
           `Utilise une contre-passation.`,
+      );
+    }
+    if (entry.kind === AccountingEntryKind.IN_KIND) {
+      throw new BadRequestException(
+        'Une contribution en nature ne passe ni par la banque ni par la caisse.',
       );
     }
     const fin = await this.prisma.clubFinancialAccount.findFirst({

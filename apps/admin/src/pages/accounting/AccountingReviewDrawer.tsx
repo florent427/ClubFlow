@@ -234,7 +234,9 @@ export function AccountingReviewDrawer({
     if (entry.kind === 'INCOME') return a.kind === 'INCOME';
     if (entry.kind === 'EXPENSE')
       return a.kind === 'EXPENSE' || a.kind === 'ASSET';
-    if (entry.kind === 'IN_KIND') return a.kind === 'NEUTRAL_IN_KIND';
+    // IN_KIND : emplois 86x, la ressource 87x est calculée par le serveur.
+    if (entry.kind === 'IN_KIND')
+      return a.kind === 'NEUTRAL_IN_KIND' && a.code.startsWith('86');
     return true;
   });
   const cohorts = cohortsData?.clubAccountingCohorts ?? [];
@@ -561,7 +563,7 @@ export function AccountingReviewDrawer({
           </div>
 
           {/* Compte financier de contrepartie (banque/caisse) */}
-          {financialAccounts.length > 0 ? (
+          {financialAccounts.length > 0 && entry?.kind !== 'IN_KIND' ? (
             <label className="cf-field">
               <span>Encaissé / payé sur (contrepartie)</span>
               <select

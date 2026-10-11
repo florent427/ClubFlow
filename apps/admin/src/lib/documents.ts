@@ -4773,6 +4773,151 @@ export const RECORD_VOLUNTEER_REIMBURSEMENT = gql`
   }
 `;
 
+// ── Bénévolat valorisé (heures → écriture en nature 864/870) ─────────────
+
+const VOLUNTEER_HOURS_FIELDS = `
+  id
+  memberId
+  contactId
+  volunteerName
+  workedOn
+  minutes
+  categoryId
+  categoryLabel
+  activity
+  hourlyRateCents
+  valueCents
+  notes
+  postingId
+  postingEntryId
+  createdAt
+`;
+
+const VOLUNTEER_HOURS_CATEGORY_FIELDS = `
+  id
+  label
+  hourlyRateCents
+  archived
+  hoursCount
+`;
+
+const VOLUNTEER_HOURS_POSTING_FIELDS = `
+  id
+  periodStart
+  periodEnd
+  totalMinutes
+  totalCents
+  hoursCount
+  entryId
+  entryStatus
+  createdAt
+`;
+
+/** Personnes proposables comme bénévoles : adhérents et contacts du club. */
+export const VOLUNTEER_PEOPLE = gql`
+  query VolunteerPeople {
+    clubMembers {
+      id
+      firstName
+      lastName
+      status
+    }
+    clubContacts {
+      id
+      firstName
+      lastName
+      linkedMemberId
+    }
+  }
+`;
+
+export const CLUB_VOLUNTEER_HOURS = gql`
+  query ClubVolunteerHours($from: String, $to: String) {
+    clubVolunteerHourlyRate
+    clubVolunteerHoursCategories(includeArchived: true) {
+      ${VOLUNTEER_HOURS_CATEGORY_FIELDS}
+    }
+    clubVolunteerHours(from: $from, to: $to) {
+      ${VOLUNTEER_HOURS_FIELDS}
+    }
+    clubVolunteerHoursPostings {
+      ${VOLUNTEER_HOURS_POSTING_FIELDS}
+    }
+  }
+`;
+
+export const SET_CLUB_VOLUNTEER_HOURLY_RATE = gql`
+  mutation SetClubVolunteerHourlyRate($hourlyRateCents: Int) {
+    setClubVolunteerHourlyRate(hourlyRateCents: $hourlyRateCents)
+  }
+`;
+
+export const CREATE_CLUB_VOLUNTEER_HOURS_CATEGORY = gql`
+  mutation CreateClubVolunteerHoursCategory($input: VolunteerHoursCategoryInputGraph!) {
+    createClubVolunteerHoursCategory(input: $input) {
+      ${VOLUNTEER_HOURS_CATEGORY_FIELDS}
+    }
+  }
+`;
+
+export const UPDATE_CLUB_VOLUNTEER_HOURS_CATEGORY = gql`
+  mutation UpdateClubVolunteerHoursCategory($id: ID!, $input: VolunteerHoursCategoryInputGraph!) {
+    updateClubVolunteerHoursCategory(id: $id, input: $input) {
+      ${VOLUNTEER_HOURS_CATEGORY_FIELDS}
+    }
+  }
+`;
+
+export const SET_CLUB_VOLUNTEER_HOURS_CATEGORY_ARCHIVED = gql`
+  mutation SetClubVolunteerHoursCategoryArchived($id: ID!, $archived: Boolean!) {
+    setClubVolunteerHoursCategoryArchived(id: $id, archived: $archived) {
+      ${VOLUNTEER_HOURS_CATEGORY_FIELDS}
+    }
+  }
+`;
+
+export const DELETE_CLUB_VOLUNTEER_HOURS_CATEGORY = gql`
+  mutation DeleteClubVolunteerHoursCategory($id: ID!) {
+    deleteClubVolunteerHoursCategory(id: $id)
+  }
+`;
+
+export const CREATE_CLUB_VOLUNTEER_HOURS = gql`
+  mutation CreateClubVolunteerHours($input: VolunteerHoursInputGraph!) {
+    createClubVolunteerHours(input: $input) {
+      ${VOLUNTEER_HOURS_FIELDS}
+    }
+  }
+`;
+
+export const UPDATE_CLUB_VOLUNTEER_HOURS = gql`
+  mutation UpdateClubVolunteerHours($id: ID!, $input: VolunteerHoursInputGraph!) {
+    updateClubVolunteerHours(id: $id, input: $input) {
+      ${VOLUNTEER_HOURS_FIELDS}
+    }
+  }
+`;
+
+export const DELETE_CLUB_VOLUNTEER_HOURS = gql`
+  mutation DeleteClubVolunteerHours($id: ID!) {
+    deleteClubVolunteerHours(id: $id)
+  }
+`;
+
+export const POST_CLUB_VOLUNTEER_HOURS = gql`
+  mutation PostClubVolunteerHours($input: PostVolunteerHoursInput!) {
+    postClubVolunteerHours(input: $input) {
+      ${VOLUNTEER_HOURS_POSTING_FIELDS}
+    }
+  }
+`;
+
+export const CANCEL_CLUB_VOLUNTEER_HOURS_POSTING = gql`
+  mutation CancelClubVolunteerHoursPosting($id: ID!) {
+    cancelClubVolunteerHoursPosting(id: $id)
+  }
+`;
+
 // ── Livre de caisse (lot 7) ───────────────────────────────────────────────
 
 const CASH_COUNT_FIELDS = `
