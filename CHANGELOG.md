@@ -9,6 +9,19 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.79.0](https://github.com/florent427/ClubFlow/compare/v0.78.0...v0.79.0) (2026-10-11)
+
+
+### ✨ Features
+
+* **compta:** bénévolat valorisé — heures, taux horaire et écriture 864/870 ([c7cdb31](https://github.com/florent427/ClubFlow/commit/c7cdb313838c8e75d62473e211f703727d8bf2ab))
+* **compta:** types de bénévolat, chacun avec son taux horaire ([f87cc04](https://github.com/florent427/ClubFlow/commit/f87cc0482f01e37ce8cf94c7e447b7c4f437176c))
+
+
+### 🐛 Bug Fixes
+
+* **compta:** contributions en nature équilibrées 86x/87x sans banque ([c973aa4](https://github.com/florent427/ClubFlow/commit/c973aa46aa77d0fb79da752662042aec3722201e))
+
 ## [0.78.0](https://github.com/florent427/ClubFlow/compare/v0.77.0...v0.78.0) (2026-10-10)
 
 
