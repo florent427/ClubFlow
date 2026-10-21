@@ -1,4 +1,5 @@
 import { Field, ID, Int, ObjectType } from '@nestjs/graphql';
+import { SignedPhotoField } from '../../media/signed-photo-field.decorator';
 
 @ObjectType()
 export class ClubSignedDocumentGraph {
@@ -21,7 +22,9 @@ export class ClubSignedDocumentGraph {
   signedAssetId!: string;
 
   /** URL publique du PDF signé (rendu final avec overlay). */
-  @Field(() => String, { nullable: true })
+  // Fichier privé : chargé par un <iframe>, un <img> ou un lien, sans
+  // en-tête d'auth — d'où la signature (cf. MediaUrlSignerService).
+  @SignedPhotoField()
   signedAssetUrl!: string | null;
 
   @Field()

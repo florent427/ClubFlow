@@ -112,7 +112,9 @@ export class ProjectSectionAttachmentGraph {
   @Field(() => Int)
   sizeBytes!: number;
 
-  @Field(() => String, { nullable: true })
+  // Fichier privé : chargé par un <iframe>, un <img> ou un lien, sans
+  // en-tête d'auth — d'où la signature (cf. MediaUrlSignerService).
+  @SignedPhotoField()
   publicUrl!: string | null;
 
   @Field()
