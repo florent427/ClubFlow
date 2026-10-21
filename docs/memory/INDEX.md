@@ -54,6 +54,7 @@
 | [`handleconnection-async-messages-avant-controle.md`](pitfalls/handleconnection-async-messages-avant-controle.md) | Piège — `handleConnection` asynchrone : les messages arrivent avant la fin du contrôle |
 | [`jest-structuredclone-date-autre-contexte.md`](pitfalls/jest-structuredclone-date-autre-contexte.md) | Piège — `structuredClone` dans Jest rend des `Date` d'un autre contexte |
 | [`juge-non-fiable-verdict-sans-valeur.md`](pitfalls/juge-non-fiable-verdict-sans-valeur.md) | Le juge non fiable : un verdict rendu sur un signal dont on n'a pas vérifié le sens |
+| [`ligne-invisible-bloque-la-validation.md`](pitfalls/ligne-invisible-bloque-la-validation.md) | Piège — une ligne que l'écran ne montre pas bloque la validation « toutes lignes » |
 | [`module-natif-ne-passe-pas-par-metro.md`](pitfalls/module-natif-ne-passe-pas-par-metro.md) | `Cannot find native module` : un module natif ne s'installe pas par Metro |
 | [`montant-prerempli-enregistre-tel-quel.md`](pitfalls/montant-prerempli-enregistre-tel-quel.md) | Piège — Un montant pré-rempli finit par être enregistré tel quel |
 | [`mot-de-passe-compte-non-verifie.md`](pitfalls/mot-de-passe-compte-non-verifie.md) | Piège — Mot de passe d'un compte non vérifié : l'écraser OU le garder ouvre une reprise de compte |
@@ -130,7 +131,7 @@
 
 ---
 
-_Index généré le 2026-10-21 05:35 UTC par `bin/memory-index`._
+_Index généré le 2026-10-21 06:25 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`
