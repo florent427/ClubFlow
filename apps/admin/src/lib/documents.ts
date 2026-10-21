@@ -37,6 +37,18 @@ export const VIEWER_PROFILES = gql`
   }
 `;
 
+/**
+ * Jeton dont le profil actif est `memberId` — pour ouvrir le portail sur le
+ * profil du club courant (cf. `resolveMemberPortalSession`).
+ */
+export const SELECT_ACTIVE_VIEWER_PROFILE = gql`
+  mutation AdminSelectActiveViewerProfile($memberId: ID!) {
+    selectActiveViewerProfile(memberId: $memberId) {
+      accessToken
+    }
+  }
+`;
+
 export const MY_ADMIN_CLUBS = gql`
   query MyAdminClubs {
     myAdminClubs {

@@ -1,3 +1,5 @@
+import { decodeJwtPayload } from './jwt';
+
 /** Aligné sur `apps/member-portal/src/lib/storage.ts` (pas d’import croisé). */
 const MEMBER_TOKEN_KEY = 'clubflow_member_token';
 const MEMBER_CLUB_ID_KEY = 'clubflow_member_club_id';
@@ -52,6 +54,72 @@ export function memberPortalSwitchUrl(
 ): string {
   const sep = target.includes('#') ? '&' : '#';
   return `${target}${sep}sso=${encodeURIComponent(token)}&club=${encodeURIComponent(clubId)}`;
+}
+
+/** Ce que la bascule a besoin de savoir d'un profil du compte. */
+export type PortalProfileCandidate = {
+  memberId: string | null;
+  clubId: string;
+  isPrimaryProfile: boolean;
+};
+
+/**
+ * Profil membre à activer pour ouvrir le portail depuis le club `clubId`.
+ *
+ * Le jeton de l'admin porte le profil actif choisi À LA CONNEXION : le profil
+ * principal, tous clubs confondus. Changer de club dans l'admin ne le change
+ * pas. Le transmettre tel quel au portail avec `x-club-id = clubId` faisait
+ * refuser toutes les requêtes `viewer…` (`ViewerActiveProfileGuard` exige que
+ * le profil actif soit du club de l'en-tête) : accueil vide, et
+ * `/select-profile` renvoyait à l'accueil puisqu'un profil actif existait.
+ *
+ * Règle : un profil du club courant ; à défaut (le compte n'est membre que
+ * d'autres clubs), un profil d'un autre club, et c'est alors CE club qu'ouvre
+ * le portail. Dans le groupe retenu, on garde le profil déjà actif s'il en
+ * fait partie, sinon le profil principal, sinon le premier.
+ */
+export function pickMemberPortalProfile(
+  profiles: readonly PortalProfileCandidate[],
+  clubId: string,
+  activeMemberId: string | null,
+): { memberId: string; clubId: string } | null {
+  const members = profiles.filter(
+    (p): p is PortalProfileCandidate & { memberId: string } =>
+      Boolean(p.memberId),
+  );
+  const inClub = members.filter((p) => p.clubId === clubId);
+  const pool = inClub.length > 0 ? inClub : members;
+  const picked =
+    pool.find((p) => p.memberId === activeMemberId) ??
+    pool.find((p) => p.isPrimaryProfile) ??
+    pool[0];
+  return picked ? { memberId: picked.memberId, clubId: picked.clubId } : null;
+}
+
+/**
+ * Session à transmettre au portail : un jeton dont le profil actif appartient
+ * au club transmis. Le jeton courant est réutilisé quand son profil actif est
+ * déjà le bon ; sinon `selectProfile` (la mutation
+ * `selectActiveViewerProfile`) en émet un nouveau. Le jeton de l'admin, lui,
+ * reste inchangé.
+ */
+export async function resolveMemberPortalSession(
+  token: string,
+  clubId: string,
+  profiles: readonly PortalProfileCandidate[],
+  selectProfile: (memberId: string) => Promise<string>,
+): Promise<{ token: string; clubId: string } | null> {
+  const activeMemberId =
+    decodeJwtPayload<{ activeProfileMemberId?: string }>(token)
+      ?.activeProfileMemberId ?? null;
+  const picked = pickMemberPortalProfile(profiles, clubId, activeMemberId);
+  if (!picked) {
+    return null;
+  }
+  if (picked.memberId === activeMemberId) {
+    return { token, clubId: picked.clubId };
+  }
+  return { token: await selectProfile(picked.memberId), clubId: picked.clubId };
 }
 
 export function navigateToMemberPortal(token: string, clubId: string): void {
