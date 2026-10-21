@@ -3,6 +3,8 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.guard';
 import { AiModule } from '../ai/ai.module';
 import { MediaModule } from '../media/media.module';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { PdfModule } from '../pdf/pdf.module';
 import { AccountingExportController } from './accounting-export.controller';
 import { AccountingResolver } from './accounting.resolver';
 import { AccountingService } from './accounting.service';
@@ -30,6 +32,10 @@ import { VolunteerAdvancesService } from './volunteers/volunteer-advances.servic
 import { VolunteerAdvancesResolver } from './volunteers/volunteer-advances.resolver';
 import { VolunteerHoursResolver } from './volunteers/volunteer-hours.resolver';
 import { VolunteerHoursService } from './volunteers/volunteer-hours.service';
+import { MileageService } from './mileage/mileage.service';
+import { MileageResolver } from './mileage/mileage.resolver';
+import { MileageViewerResolver } from './mileage/mileage-viewer.resolver';
+import { TaxReceiptsService } from './mileage/tax-receipts.service';
 import { CategorizationLearningService } from './bank-import/categorization-learning.service';
 import { CashBookService } from './cash/cash-book.service';
 import { CashBookResolver } from './cash/cash-book.resolver';
@@ -38,7 +44,7 @@ import { FinancialStatementsResolver } from './statements/financial-statements.r
 import { FinancialStatementsService } from './statements/financial-statements.service';
 
 @Module({
-  imports: [PrismaModule, AiModule, MediaModule],
+  imports: [PrismaModule, AiModule, MediaModule, NotificationsModule, PdfModule],
   controllers: [AccountingExportController],
   providers: [
     AccountingService,
@@ -72,6 +78,10 @@ import { FinancialStatementsService } from './statements/financial-statements.se
     VolunteerAdvancesResolver,
     VolunteerHoursService,
     VolunteerHoursResolver,
+    MileageService,
+    MileageResolver,
+    MileageViewerResolver,
+    TaxReceiptsService,
     CashBookResolver,
     ClubModuleEnabledGuard,
   ],

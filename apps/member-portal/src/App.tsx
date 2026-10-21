@@ -36,6 +36,7 @@ import { AdhesionPage } from './pages/AdhesionPage';
 import { DocumentsToSignPage } from './pages/DocumentsToSignPage';
 import { MyProjectsPage } from './pages/MyProjectsPage';
 import { MyProjectUploadPage } from './pages/MyProjectUploadPage';
+import { MileagePage } from './pages/mileage/MileagePage';
 import { JoinFamilyInvitePage } from './pages/JoinFamilyInvitePage';
 import { PublicSiteLayout } from './pages/public/PublicSiteLayout';
 import { PublicHomePage } from './pages/public/PublicHomePage';
@@ -131,6 +132,14 @@ export default function App() {
                 element={
                   <MemberOnly>
                     <MessagingPage />
+                  </MemberOnly>
+                }
+              />
+              <Route
+                path="/frais-kilometriques"
+                element={
+                  <MemberOnly>
+                    <MileagePage />
                   </MemberOnly>
                 }
               />

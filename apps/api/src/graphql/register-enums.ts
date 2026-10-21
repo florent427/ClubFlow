@@ -1,5 +1,12 @@
 import { registerEnumType } from '@nestjs/graphql';
 import {
+  MileageClaimStatus,
+  MileageSettlement,
+  MileageVehicleKind,
+  TaxReceiptOrganismType,
+  TaxReceiptStatus,
+} from '@prisma/client';
+import {
   AccountingAccountKind,
   AccountingAuditAction,
   AccountingDocumentKind,
@@ -142,3 +149,8 @@ registerEnumType(CourseSlotBookingStatus, {
 registerEnumType(BlogPostStatus, { name: 'BlogPostStatus' });
 registerEnumType(ShopOrderStatus, { name: 'ShopOrderStatus' });
 registerEnumType(UserNotificationKind, { name: 'UserNotificationKind' });
+registerEnumType(MileageVehicleKind, { name: 'MileageVehicleKind' });
+registerEnumType(MileageClaimStatus, { name: 'MileageClaimStatus' });
+registerEnumType(MileageSettlement, { name: 'MileageSettlement' });
+registerEnumType(TaxReceiptOrganismType, { name: 'TaxReceiptOrganismType' });
+registerEnumType(TaxReceiptStatus, { name: 'TaxReceiptStatus' });
