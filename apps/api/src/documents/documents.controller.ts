@@ -86,8 +86,11 @@ export class DocumentsController {
       throw new ForbiddenException();
     }
 
+    // Le droit vient d'être vérifié ci-dessus ; `clubId` le transmet à
+    // `streamFor`, qui sans lui traite l'appel comme anonyme (404).
     const { row, stream } = await this.mediaAssets.streamFor(
       signed.signedAssetId,
+      { clubId },
     );
     res.setHeader('Content-Type', row.mimeType);
     const encoded = encodeURIComponent(row.fileName);
