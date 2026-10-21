@@ -217,6 +217,12 @@ export function MileageClaimsList({
 
   return (
     <div>
+      <p className="mp-text-muted">
+        Une note regroupe les déplacements d’une période (ex. un mois). Un
+        déplacement ponctuel (tournoi, réunion…) s’ajoute dans la note : ouvrez-la
+        ou créez-en une, puis « Ajouter un déplacement ponctuel ».
+      </p>
+
       {!hasVehicle ? (
         <div className="mp-hint mp-hint--block mp-hint--warn">
           <strong>Ajoutez d’abord un véhicule</strong>
@@ -681,7 +687,7 @@ export function MileageClaimEditor({
       {editable ? (
         <>
           <div className="mp-form-card">
-            <h2 className="mp-section-title">Ajouter un déplacement</h2>
+            <h2 className="mp-section-title">Ajouter un déplacement ponctuel</h2>
             {activeVehicles.length === 0 ? (
               <div className="mp-hint mp-hint--block mp-hint--warn">
                 <strong>Aucun véhicule actif</strong>

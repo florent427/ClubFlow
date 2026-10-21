@@ -30,6 +30,7 @@ import {
   recurringDates,
   tripMeters,
   vehicleYearKey,
+  weekdayCounts,
   type PricedTrip,
   type VehicleForPricing,
 } from './mileage-compute';
@@ -41,6 +42,8 @@ export const MILEAGE_DONATION_ACCOUNT = '756100';
 
 /** Plus long intervalle qu'on remplit d'un coup depuis les trajets récurrents. */
 const MAX_RECURRING_RANGE_DAYS = 93;
+/** Trajets d'un même trajet récurrent sur un jour : au-delà, c'est une faute de saisie. */
+const MAX_TRIPS_PER_DAY = 4;
 /** Un aller de plus de 2 000 km est une faute de frappe. */
 const MAX_DISTANCE_METERS = 2_000_000;
 
@@ -349,9 +352,10 @@ export class MileageService {
 
   /**
    * Ajoute à la note les déplacements des trajets récurrents actifs du
-   * bénévole entre deux dates. Un jour déjà couvert par ce trajet récurrent,
-   * dans cette note ou une autre non refusée, n'est pas ajouté deux fois :
-   * relancer le remplissage ne double rien.
+   * bénévole entre deux dates. Ce qu'un jour compte déjà de déplacements de
+   * ce trajet récurrent, dans cette note ou une autre non refusée, est
+   * déduit : relancer le remplissage ne double rien, et ne complète que ce
+   * qui manque quand le trajet passe à plusieurs fois par jour.
    */
   async addRecurringTrips(
     clubId: string,
@@ -382,15 +386,21 @@ export class MileageService {
       },
       select: { recurringTripId: true, tripDate: true },
     });
-    const taken = new Set(
-      existing.map((e) => `${e.recurringTripId}:${e.tripDate.toISOString().slice(0, 10)}`),
-    );
+    const taken = new Map<string, number>();
+    for (const e of existing) {
+      const key = `${e.recurringTripId}:${e.tripDate.toISOString().slice(0, 10)}`;
+      taken.set(key, (taken.get(key) ?? 0) + 1);
+    }
 
     const rows: Prisma.MileageTripCreateManyInput[] = [];
     for (const r of recurring) {
       for (const date of recurringDates(r, range.from, to)) {
         const key = `${r.id}:${date.toISOString().slice(0, 10)}`;
-        if (taken.has(key)) continue;
+        const left = taken.get(key) ?? 0;
+        if (left > 0) {
+          taken.set(key, left - 1);
+          continue;
+        }
         rows.push({
           clubId,
           claimId,
@@ -859,9 +869,14 @@ export class MileageService {
   private async prepareRecurring(clubId: string, memberId: string, input: RecurringTripInput) {
     await this.assertVehicleOf(clubId, memberId, input.vehicleId);
     assertDistance(input.distanceMeters);
-    const weekdays = [...new Set(input.weekdays)].sort();
+    const weekdays = [...input.weekdays].sort((a, b) => a - b);
     if (weekdays.length === 0 || weekdays.some((d) => !Number.isInteger(d) || d < 1 || d > 7)) {
       throw new BadRequestException('Choisis au moins un jour de la semaine.');
+    }
+    if ([...weekdayCounts(weekdays).values()].some((n) => n > MAX_TRIPS_PER_DAY)) {
+      throw new BadRequestException(
+        `Au plus ${MAX_TRIPS_PER_DAY} trajets par jour : au-delà, crée un autre trajet récurrent.`,
+      );
     }
     if (input.endsOn && input.endsOn < input.startsOn) {
       throw new BadRequestException('La fin précède le début.');

@@ -62,8 +62,9 @@ export function MileageRecurring({
     <div>
       <p className="mp-text-muted">
         Un trajet que vous faites chaque semaine (entraînement, cours à
-        encadrer…) se déclare une fois ici ; une note se remplit ensuite
-        d’un clic avec les jours prévus.
+        encadrer…) se déclare une fois ici, avec le nombre de trajets de chaque
+        jour ; une note se remplit ensuite d’un clic avec les jours prévus. Un
+        déplacement ponctuel s’ajoute directement dans une note.
       </p>
 
       {!hasActiveVehicle ? (
@@ -152,7 +153,7 @@ export function MileageRecurring({
                 <div className="mp-mileage-trip__meta">
                   {formatWeekdays(r.weekdays)} · {r.vehicleLabel} ·{' '}
                   {formatKm(r.roundTrip ? r.distanceMeters * 2 : r.distanceMeters)} par
-                  jour
+                  trajet
                 </div>
                 <div className="mp-mileage-trip__meta">
                   Depuis le {formatIsoDay(r.startsOn)}

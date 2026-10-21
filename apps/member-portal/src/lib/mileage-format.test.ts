@@ -4,7 +4,9 @@ import {
   claimBadge,
   daysBetween,
   firstDayOfMonthIso,
+  countWeekdays,
   formatWeekdays,
+  weekdaysFromCounts,
   kmInputToMeters,
   metersToKmInput,
   todayIso,
@@ -50,6 +52,17 @@ describe('dates', () => {
 describe('formatWeekdays', () => {
   it('trie dans l’ordre de la semaine', () => {
     expect(formatWeekdays([5, 1, 3])).toBe('Lun, Mer, Ven');
+  });
+
+  it('indique les jours à plusieurs trajets', () => {
+    expect(formatWeekdays([4, 2, 2])).toBe('Mar ×2, Jeu');
+  });
+});
+
+describe('countWeekdays / weekdaysFromCounts', () => {
+  it('passe d’une forme à l’autre sans rien perdre', () => {
+    expect(countWeekdays([4, 2, 2])).toEqual({ 2: 2, 4: 1 });
+    expect(weekdaysFromCounts({ 4: 1, 2: 2, 6: 0 })).toEqual([2, 2, 4]);
   });
 });
 

@@ -843,7 +843,7 @@ export function MileageEntryTab() {
             {editable ? (
               <>
                 <h3 className="members-panel__h" style={{ marginTop: 20 }}>
-                  Ajouter un déplacement
+                  Ajouter un déplacement ponctuel
                 </h3>
                 {activeVehicles.length === 0 ? (
                   <p className="cf-muted">

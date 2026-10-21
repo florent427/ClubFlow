@@ -37,11 +37,15 @@ export const ORGANISM_TYPE_LABEL: Record<TaxReceiptOrganismType, string> = {
 
 const WEEKDAY_SHORT = ['', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
 
-/** [1, 3, 5] → « lun., mer., ven. » */
+/**
+ * [1, 3, 5] → « lun., mer., ven. » ; un jour répété compte plusieurs
+ * trajets : [2, 2, 4] → « mar. ×2, jeu. ».
+ */
 export function formatWeekdays(days: number[]): string {
-  return [...days]
-    .sort((a, b) => a - b)
-    .map((d) => WEEKDAY_SHORT[d] ?? '?')
+  const counts = new Map<number, number>();
+  for (const d of [...days].sort((a, b) => a - b)) counts.set(d, (counts.get(d) ?? 0) + 1);
+  return [...counts]
+    .map(([d, n]) => `${WEEKDAY_SHORT[d] ?? '?'}${n > 1 ? ` ×${n}` : ''}`)
     .join(', ');
 }
 
