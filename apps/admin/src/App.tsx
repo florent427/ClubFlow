@@ -36,6 +36,7 @@ import { ChequesPage } from './pages/accounting/cheques/ChequesPage';
 import { ReconciliationPage } from './pages/accounting/reconciliation/ReconciliationPage';
 import { VolunteersPage } from './pages/accounting/volunteers/VolunteersPage';
 import { VolunteerHoursPage } from './pages/accounting/volunteers/VolunteerHoursPage';
+import { MileagePage } from './pages/accounting/mileage/MileagePage';
 import { CashBookPage } from './pages/accounting/cash/CashBookPage';
 import { FinancialStatementsPage } from './pages/accounting/statements/FinancialStatementsPage';
 import { StatementDetailPage } from './pages/accounting/reconciliation/StatementDetailPage';
@@ -156,6 +157,7 @@ export default function App() {
             <Route path="comptabilite/rapprochement" element={<ReconciliationPage />} />
             <Route path="comptabilite/benevoles" element={<VolunteersPage />} />
             <Route path="comptabilite/benevolat" element={<VolunteerHoursPage />} />
+            <Route path="comptabilite/frais-kilometriques" element={<MileagePage />} />
             <Route path="comptabilite/caisse" element={<CashBookPage />} />
             <Route path="comptabilite/etats-financiers" element={<FinancialStatementsPage />} />
             <Route path="comptabilite/rapprochement/:statementId" element={<StatementDetailPage />} />

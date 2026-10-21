@@ -27,6 +27,20 @@ model Club {
   /// E-mail de contact du club affiché sur l'en-tête de facture.
   contactEmail  String?
 
+  /// === Reçus fiscaux (Cerfa 11580, abandon de frais des bénévoles) ===
+  /// Le club peut-il délivrer des reçus fiscaux ? C'est au club d'en juger
+  /// (intérêt général, gestion désintéressée) : ClubFlow ne fait qu'imprimer.
+  taxReceiptEnabled        Boolean                 @default(false)
+  /// Qualité de l'organisme cochée sur le reçu.
+  taxReceiptOrganismType   TaxReceiptOrganismType?
+  /// Objet de l'association tel qu'il figure sur le reçu.
+  taxReceiptPurpose        String?
+  /// Numéro RNA (W…) ou de préfecture, imprimé dans l'en-tête du reçu.
+  rnaNumber                String?
+  /// Nom et qualité du signataire des reçus (président, trésorier).
+  taxReceiptSignatoryName  String?
+  taxReceiptSignatoryTitle String?
+
   /// === Stripe Connect Express (cf. ADR-0008) ===
   /// Compte connecté du club (`acct_xxx`). L'encaissement se fait EN DIRECT
   /// sur ce compte (direct charges) : l'argent va au club, jamais à la
@@ -210,12 +224,12 @@ model Club {
   /// 1er janvier : rien ne change pour les clubs existants. Un club sportif
   /// choisira typiquement le 1er septembre, aligné sur sa saison. Février est
   /// plafonné à 28 côté service : un exercice commence à date fixe.
-  fiscalYearStartMonth Int       @default(1)
-  fiscalYearStartDay   Int       @default(1)
+  fiscalYearStartMonth     Int       @default(1)
+  fiscalYearStartDay       Int       @default(1)
   /// Date de reprise de la comptabilité dans ClubFlow. Rien d'antérieur n'est
   /// rapproché : une ligne de relevé antérieure est ignorée « hors reprise ».
   /// Null = reprise non définie, le rapprochement bancaire est indisponible.
-  accountingStartsOn   DateTime? @db.Date
+  accountingStartsOn       DateTime? @db.Date
   /// Taux horaire de valorisation du bénévolat (centimes) pour une saisie
   /// sans type de bénévolat. Null = aucun : la saisie exige alors un type ou
   /// un taux propre.
@@ -236,6 +250,11 @@ model Club {
   volunteerHours             VolunteerHours[]
   volunteerHoursCategories   VolunteerHoursCategory[]
   volunteerHoursPostings     VolunteerHoursPosting[]
+  mileageVehicles            MileageVehicle[]
+  mileageRecurringTrips      MileageRecurringTrip[]
+  mileageClaims              MileageClaim[]
+  mileageTrips               MileageTrip[]
+  taxReceipts                TaxReceipt[]
   cashCounts                 CashCount[]
 
   documents       ClubDocument[]
@@ -802,6 +821,10 @@ model Member {
   advancedAccountingEntries AccountingEntry[]            @relation("AccountingEntryAdvancedBy")
   volunteerReimbursements   VolunteerReimbursement[]
   volunteerHours            VolunteerHours[]
+  mileageVehicles           MileageVehicle[]
+  mileageRecurringTrips     MileageRecurringTrip[]
+  mileageClaims             MileageClaim[]
+  taxReceipts               TaxReceipt[]
   telegramChatId            String?                      @map("telegram_chat_id")
   telegramLinkedAt          DateTime?                    @map("telegram_linked_at")
   telegramLinkTokens        TelegramLinkToken[]
@@ -1823,21 +1846,21 @@ model VolunteerReimbursementItem {
 /// Valorisées au taux figé à la saisie ; comptabilisées par période
 /// (VolunteerHoursPosting), après quoi elles ne se modifient plus.
 model VolunteerHours {
-  id        String   @id @default(uuid())
-  clubId    String
+  id              String   @id @default(uuid())
+  clubId          String
   /// Le bénévole : un adhérent OU un contact (parent, proche), exactement un.
-  memberId  String?
-  contactId String?
+  memberId        String?
+  contactId       String?
   /// Jour de l'activité ; c'est lui qui range les heures dans une période.
-  workedOn  DateTime @db.Date
+  workedOn        DateTime @db.Date
   /// Durée en minutes (1 h 30 = 90) : pas de décimales flottantes.
-  minutes   Int
+  minutes         Int
   /// Type de bénévolat (enseignement, secrétariat…) : fixe le taux proposé
   /// et regroupe les heures dans l'écriture. Null = saisie sans type.
-  categoryId String?
+  categoryId      String?
   /// Précision en clair (« Cours enfants du mercredi », « Buvette tournoi ») ;
   /// le libellé du type quand rien n'est précisé.
-  activity  String
+  activity        String
   /// Taux horaire appliqué, en centimes, figé à la saisie.
   hourlyRateCents Int
   /// Valeur = minutes × taux / 60, arrondie au centime, figée à la saisie.
@@ -1849,7 +1872,7 @@ model VolunteerHours {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  club    Club                   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  club     Club                    @relation(fields: [clubId], references: [id], onDelete: Cascade)
   member   Member?                 @relation(fields: [memberId], references: [id], onDelete: Cascade)
   contact  Contact?                @relation(fields: [contactId], references: [id], onDelete: Cascade)
   category VolunteerHoursCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
@@ -1903,6 +1926,208 @@ model VolunteerHoursPosting {
   hours VolunteerHours[]
 
   @@index([clubId, periodEnd])
+}
+
+/// Type de véhicule au sens du barème kilométrique fiscal.
+enum MileageVehicleKind {
+  CAR
+  MOTORCYCLE
+  /// Cyclomoteur (50 cm³ et moins) : sa puissance fiscale n'entre pas en jeu.
+  MOPED
+}
+
+/// Vie d'une note de frais kilométriques.
+enum MileageClaimStatus {
+  /// En cours de saisie par le bénévole (ou renvoyée pour correction).
+  DRAFT
+  /// Soumise, attend la décision du trésorier.
+  SUBMITTED
+  /// Validée : montant figé et écriture passée.
+  APPROVED
+  /// Refusée, définitivement.
+  REJECTED
+}
+
+/// Ce que devient une note validée.
+enum MileageSettlement {
+  /// Le club rembourse : la note rejoint ce qu'il doit au bénévole (467100).
+  REIMBURSEMENT
+  /// Le bénévole renonce au remboursement : don, qui ouvre droit à un reçu
+  /// fiscal (abandon de frais, article 200 du CGI).
+  DONATION
+}
+
+/// Qualité de l'organisme cochée sur le reçu fiscal.
+enum TaxReceiptOrganismType {
+  /// Association ou fondation reconnue d'utilité publique.
+  PUBLIC_UTILITY
+  /// Œuvre ou organisme d'intérêt général.
+  GENERAL_INTEREST
+}
+
+enum TaxReceiptStatus {
+  ISSUED
+  /// Annulé : ses notes redeviennent disponibles pour un nouveau reçu.
+  CANCELLED
+}
+
+/// Véhicule personnel d'un bénévole, avec ce qui fixe sa ligne du barème.
+/// Un véhicule utilisé ne se supprime pas, il s'archive.
+model MileageVehicle {
+  id               String             @id @default(uuid())
+  clubId           String
+  memberId         String
+  /// « Clio grise », « Scooter » : pour s'y retrouver.
+  label            String
+  kind             MileageVehicleKind
+  /// Puissance fiscale (CV) de la carte grise ; null pour un cyclomoteur.
+  fiscalHorsepower Int?
+  /// 100 % électrique : barème majoré de 20 %.
+  isElectric       Boolean            @default(false)
+  archivedAt       DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  club           Club                   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  member         Member                 @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  trips          MileageTrip[]
+  recurringTrips MileageRecurringTrip[]
+
+  @@index([clubId, memberId])
+}
+
+/// Trajet que le bénévole refait régulièrement (domicile → gymnase les
+/// mardis et jeudis) : il génère les déplacements datés d'une note, que le
+/// bénévole ajuste ensuite (vacances, séance annulée).
+model MileageRecurringTrip {
+  id             String    @id @default(uuid())
+  clubId         String
+  memberId       String
+  vehicleId      String
+  fromLabel      String
+  toLabel        String
+  purpose        String
+  /// Distance d'un aller, en mètres.
+  distanceMeters Int
+  roundTrip      Boolean   @default(true)
+  /// Jours de la semaine, 1 = lundi … 7 = dimanche (ISO 8601).
+  weekdays       Int[]
+  startsOn       DateTime  @db.Date
+  endsOn         DateTime? @db.Date
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  club    Club           @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  member  Member         @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  vehicle MileageVehicle @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  trips   MileageTrip[]
+
+  @@index([clubId, memberId])
+}
+
+/// Note de frais kilométriques d'un bénévole : ses déplacements d'une
+/// période, soumis ensemble au trésorier. Le montant n'est figé qu'à la
+/// validation, car le barème dépend des km déjà indemnisés dans l'année.
+model MileageClaim {
+  id               String             @id @default(uuid())
+  clubId           String
+  memberId         String
+  /// « Octobre 2026 », « Tournoi régional ».
+  title            String
+  settlement       MileageSettlement  @default(REIMBURSEMENT)
+  status           MileageClaimStatus @default(DRAFT)
+  memberNote       String?
+  submittedAt      DateTime?
+  reviewedAt       DateTime?
+  reviewedByUserId String?
+  /// Motif d'un refus ou d'un renvoi pour correction.
+  reviewComment    String?
+  /// Montant figé à la validation, en centimes.
+  amountCents      Int?
+  /// Vrai si le barème de l'année n'était pas encore publié à la validation.
+  scaleProvisional Boolean            @default(false)
+  /// Écriture DÉBIT 625100 / CRÉDIT 467100 (ou 756100 pour un don).
+  entryId          String?            @unique
+  /// Reçu fiscal qui couvre ce don ; null tant qu'aucun n'est émis.
+  taxReceiptId     String?
+  createdByUserId  String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  club       Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  member     Member           @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  entry      AccountingEntry? @relation(fields: [entryId], references: [id], onDelete: SetNull)
+  taxReceipt TaxReceipt?      @relation(fields: [taxReceiptId], references: [id], onDelete: SetNull)
+  trips      MileageTrip[]
+
+  @@index([clubId, status])
+  @@index([clubId, memberId])
+  @@index([taxReceiptId])
+}
+
+/// Un déplacement d'une note.
+model MileageTrip {
+  id              String   @id @default(uuid())
+  clubId          String
+  claimId         String
+  vehicleId       String
+  tripDate        DateTime @db.Date
+  fromLabel       String
+  toLabel         String
+  purpose         String
+  /// Distance d'un aller, en mètres.
+  distanceMeters  Int
+  roundTrip       Boolean  @default(false)
+  /// Trajet récurrent qui l'a généré, le cas échéant.
+  recurringTripId String?
+  /// Montant figé à la validation, en centimes.
+  amountCents     Int?
+  /// Ligne du barème appliquée, figée à la validation (« Voiture 5 CV »).
+  scaleLabel      String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  club          Club                  @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  claim         MileageClaim          @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  vehicle       MileageVehicle        @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  recurringTrip MileageRecurringTrip? @relation(fields: [recurringTripId], references: [id], onDelete: SetNull)
+
+  @@index([claimId])
+  @@index([vehicleId, tripDate])
+  @@index([recurringTripId])
+}
+
+/// Reçu fiscal (Cerfa 11580) délivré à un bénévole pour ses abandons de
+/// frais d'une année civile. Numéroté sans trou par club ; l'identité du
+/// club et du donateur est figée à l'émission.
+model TaxReceipt {
+  id                String           @id @default(uuid())
+  clubId            String
+  memberId          String
+  /// Année civile des dons.
+  year              Int
+  /// Rang dans l'année, pour le numéro « 2026-0007 ».
+  sequence          Int
+  number            String
+  amountCents       Int
+  status            TaxReceiptStatus @default(ISSUED)
+  issuedOn          DateTime         @db.Date
+  /// Identité du donateur, du club et liste des notes, figées à l'émission.
+  snapshot          Json
+  createdByUserId   String?
+  cancelledAt       DateTime?
+  cancelledByUserId String?
+  cancelReason      String?
+  createdAt         DateTime         @default(now())
+
+  club   Club           @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  member Member         @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  claims MileageClaim[]
+
+  @@unique([clubId, number])
+  @@unique([clubId, year, sequence])
+  @@index([clubId, memberId])
 }
 
 /// Comptage d'une caisse : ce qu'on a trouvé dans le tiroir, face à ce que
@@ -2227,18 +2452,18 @@ model Invoice {
 
   /// CHARGE pour une facture ordinaire ; PAYER_CREDIT_DEPOSIT pour un reçu
   /// d'avance (ADR-0022), qui ne porte aucune dette.
-  purpose              InvoicePurpose @default(CHARGE)
+  purpose                 InvoicePurpose @default(CHARGE)
   /// Personne créditée par un reçu d'avance : un membre OU un contact, jamais
   /// les deux ; null pour une facture ordinaire. `Restrict` : on ne supprime
   /// pas la personne à qui l'argent appartient.
-  payerCreditMemberId  String?
-  payerCreditContactId String?
+  payerCreditMemberId     String?
+  payerCreditContactId    String?
   /// Facture des mensualités restantes d'une cotisation au rythme mensuel :
   /// l'id de la facture d'adhésion qu'elle prolonge, dont la cotisation ne
   /// couvrait que le premier mois. @unique : une seule suite par adhésion, ce
   /// qui rend sa création idempotente (rejeu de webhook, rattrapage relancé).
   /// NULL = facture ordinaire.
-  monthlyContinuationOfId String? @unique
+  monthlyContinuationOfId String?        @unique
 
   club            Club                 @relation(fields: [clubId], references: [id], onDelete: Cascade)
   family          Family?              @relation(fields: [familyId], references: [id], onDelete: SetNull)
@@ -2719,6 +2944,9 @@ enum AccountingEntrySource {
   /// Valorisation du bénévolat d'une période : DÉBIT 864000 / CRÉDIT 870000,
   /// contribution volontaire en nature (règlement ANC 2018-06).
   VOLUNTEER_HOURS
+  /// Note de frais kilométriques validée : DÉBIT 625100 / CRÉDIT 467100 à
+  /// rembourser, ou CRÉDIT 756100 quand le bénévole y renonce (don).
+  MILEAGE_CLAIM
 }
 
 /// Côté comptable d'une ligne d'écriture. AUTO = dérivé à la création
@@ -2832,6 +3060,7 @@ model AccountingEntry {
   advancedByMember       Member?                      @relation("AccountingEntryAdvancedBy", fields: [advancedByMemberId], references: [id], onDelete: SetNull)
   volunteerReimbursement VolunteerReimbursement?
   volunteerHoursPosting  VolunteerHoursPosting?
+  mileageClaim           MileageClaim?
   reimbursementItems     VolunteerReimbursementItem[]
   cashCountAdjustment    CashCount?
   /// `SetNull` et non `Cascade` : supprimer une commande fournisseur ne doit

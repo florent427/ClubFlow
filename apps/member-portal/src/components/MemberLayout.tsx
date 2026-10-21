@@ -52,6 +52,7 @@ function breadcrumbLabel(pathname: string): string {
   if (pathname.startsWith('/reservations')) return 'Réservations';
   if (pathname.startsWith('/documents-a-signer')) return 'Documents à signer';
   if (pathname.startsWith('/factures')) return 'Factures';
+  if (pathname.startsWith('/frais-kilometriques')) return 'Frais kilométriques';
   if (pathname.startsWith('/mes-projets') || pathname.startsWith('/projets')) {
     return 'Mes projets';
   }
@@ -231,6 +232,15 @@ export function MemberLayout() {
           >
             <span className="mp-ico material-symbols-outlined">storefront</span>
             Boutique
+          </ModuleGatedNavLink>
+          {/* Notes de frais du bénévole : servies par le module comptabilité. */}
+          <ModuleGatedNavLink
+            to="/frais-kilometriques"
+            modules={['ACCOUNTING']}
+            className={navClass}
+          >
+            <span className="mp-ico material-symbols-outlined">directions_car</span>
+            Frais kilométriques
           </ModuleGatedNavLink>
           <NavLink to="/messagerie" className={navClass}>
             <span className="mp-ico material-symbols-outlined">chat</span>

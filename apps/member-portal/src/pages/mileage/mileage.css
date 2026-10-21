@@ -1,0 +1,190 @@
+/* Frais kilométriques — complète les classes mp-* de index.css. */
+
+.mp-mileage-tabs {
+  display: flex;
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+.mp-mileage-tabs .mp-tab {
+  white-space: nowrap;
+}
+
+.mp-mileage .mp-field select,
+.mp-mileage .mp-field textarea {
+  padding: 9px 11px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+}
+.mp-mileage .mp-field textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+.mp-mileage .mp-field input,
+.mp-mileage .mp-field select,
+.mp-mileage .mp-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+}
+.mp-mileage .mp-form-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+}
+
+.mp-mileage-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 8px 0 4px;
+}
+
+.mp-mileage-amount {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+.mp-mileage-amount small {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  margin-left: 6px;
+}
+
+.mp-mileage-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+.mp-mileage-summary > div {
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.mp-mileage-summary dt {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+  margin: 0;
+}
+.mp-mileage-summary dd {
+  margin: 2px 0 0;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.mp-mileage-trips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mp-mileage-trip {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mp-mileage-trip__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.mp-mileage-trip__route {
+  font-weight: 700;
+  color: #0f172a;
+  overflow-wrap: anywhere;
+}
+.mp-mileage-trip__meta {
+  font-size: 0.85rem;
+  color: #475569;
+  overflow-wrap: anywhere;
+}
+.mp-mileage-trip__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.mp-mileage-fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mp-mileage-fieldset > span {
+  font-size: 12px;
+  color: #475569;
+  font-weight: 600;
+}
+
+.mp-mileage-weekdays {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mp-mileage-weekday {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  user-select: none;
+}
+.mp-mileage-weekday--on {
+  background: rgba(0, 86, 197, 0.1);
+  border-color: #0056c5;
+  color: #0056c5;
+  font-weight: 600;
+}
+.mp-mileage-weekday input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.mp-mileage-archived {
+  opacity: 0.65;
+}
+
+@media (max-width: 600px) {
+  .mp-mileage .mp-form-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+  .mp-mileage .mp-form-actions .mp-btn,
+  .mp-mileage .mp-form-actions .mp-btn-primary {
+    width: 100%;
+  }
+}
+
+/* .mp-back-link est pensé pour un <Link> : on neutralise le style du bouton. */
+.mp-mileage-back {
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+}

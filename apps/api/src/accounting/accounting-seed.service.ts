@@ -93,6 +93,9 @@ export class AccountingSeedService {
     { code: '743000', label: 'Subventions organismes privés (FDVA, fondations)', kind: 'INCOME', sortOrder: 63 },
     { code: '754000', label: 'Sponsoring / Mécénat', kind: 'INCOME', sortOrder: 70 },
     { code: '756000', label: 'Dons manuels', kind: 'INCOME', sortOrder: 71 },
+    // Un bénévole renonce au remboursement de ses frais (kilométriques) :
+    // c'est un don au club, qui ouvre droit à un reçu fiscal.
+    { code: '756100', label: 'Dons – abandons de frais des bénévoles', kind: 'INCOME', sortOrder: 71 },
     { code: '758000', label: 'Produits divers de gestion courante', kind: 'INCOME', sortOrder: 72 },
 
     // === Immobilisations (biens durables ≥ 500€ HT) — classe 2 ===

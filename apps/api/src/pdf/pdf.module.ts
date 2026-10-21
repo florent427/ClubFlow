@@ -6,6 +6,7 @@ import { InvoicePdfService } from './invoice-pdf.service';
 import { ShopDeliveryNotePdfService } from './shop-delivery-note-pdf.service';
 import { ShopExchangeNotePdfService } from './shop-exchange-note-pdf.service';
 import { ShopPurchaseOrderPdfService } from './shop-purchase-order-pdf.service';
+import { TaxReceiptPdfService } from './tax-receipt-pdf.service';
 
 @Module({
   imports: [PrismaModule],
@@ -16,6 +17,7 @@ import { ShopPurchaseOrderPdfService } from './shop-purchase-order-pdf.service';
     ShopDeliveryNotePdfService,
     ShopExchangeNotePdfService,
     ShopPurchaseOrderPdfService,
+    TaxReceiptPdfService,
   ],
   exports: [
     InvoicePdfService,
@@ -23,6 +25,7 @@ import { ShopPurchaseOrderPdfService } from './shop-purchase-order-pdf.service';
     ShopDeliveryNotePdfService,
     ShopExchangeNotePdfService,
     ShopPurchaseOrderPdfService,
+    TaxReceiptPdfService,
   ],
 })
 export class PdfModule {}
