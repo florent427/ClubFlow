@@ -231,16 +231,22 @@ export class MessagingGateway implements OnGatewayConnection {
       }>;
     },
   ): void {
-    // L'avatar part vers un `<img>` / `<Image>` client, qui n'enverra aucun
-    // en-tête : il lui faut une URL signée, comme sur le chemin GraphQL.
-    // Le middleware de champ ne voit pas ce payload — il ne traverse aucun
-    // modèle GraphQL —, d'où la signature explicite ici.
+    // L'avatar et les pièces jointes partent vers un `<img>` / `<Image>`
+    // client, qui n'enverra aucun en-tête : il leur faut une URL signée,
+    // comme sur le chemin GraphQL. Le middleware de champ ne voit pas ce
+    // payload — il ne traverse aucun modèle GraphQL —, d'où la signature
+    // explicite ici.
     this.server.to(roomChannel(roomId)).emit('chat:message', {
       ...payload,
       sender: {
         ...payload.sender,
         photoUrl: this.signer.signUrl(payload.sender.photoUrl),
       },
+      attachments: payload.attachments?.map((a) => ({
+        ...a,
+        mediaUrl: this.signer.signUrl(a.mediaUrl) ?? a.mediaUrl,
+        thumbnailUrl: this.signer.signUrl(a.thumbnailUrl),
+      })),
     });
   }
 

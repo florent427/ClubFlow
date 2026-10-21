@@ -7,12 +7,17 @@ import '../graphql/register-enums';
 import { AccountingDocumentGraph } from '../accounting/models/accounting-entry.model';
 import { GrantDocumentGraph } from '../external-finance/models/grant-application.model';
 import { SponsorshipDocumentGraph } from '../external-finance/models/sponsorship-deal.model';
+import { ClubDocumentGraph } from '../documents/models/club-document.model';
+import { ClubSignedDocumentGraph } from '../documents/models/club-signed-document.model';
+import { ChatMessageAttachmentGql } from '../messaging/models/chat-message-gql.model';
+import { ProjectSectionAttachmentGraph } from '../projects/models/club-project.model';
 import { MediaUrlSignerService } from './media-url-signer.service';
 
 /**
- * Justificatifs (compta, subventions, sponsoring) affichés par l'admin dans
- * un `<iframe>` ou un lien : le navigateur n'y joint aucun en-tête, donc le
- * droit de lecture doit voyager dans l'URL. Sans signature, `GET /media/:id`
+ * Fichiers privés (justificatifs compta / subventions / sponsoring, documents
+ * à signer, pièces jointes du chat et des projets) affichés dans un
+ * `<iframe>`, une `<img>` ou un lien : le navigateur n'y joint aucun en-tête,
+ * donc le droit de lecture doit voyager dans l'URL. Sans signature, `GET /media/:id`
  * répond « Asset introuvable » sur ces fichiers privés (prod, 2026-10-21).
  *
  * Le middleware de champ ne s'exécute qu'avec un vrai serveur GraphQL : un
@@ -43,6 +48,26 @@ class JustificatifsResolver {
   sponsorshipDoc(): Pick<SponsorshipDocumentGraph, 'publicUrl'> {
     return { publicUrl: STORED_URL };
   }
+
+  @Query(() => ClubDocumentGraph)
+  clubDoc(): Pick<ClubDocumentGraph, 'mediaAssetUrl'> {
+    return { mediaAssetUrl: STORED_URL };
+  }
+
+  @Query(() => ClubSignedDocumentGraph)
+  signedDoc(): Pick<ClubSignedDocumentGraph, 'signedAssetUrl'> {
+    return { signedAssetUrl: STORED_URL };
+  }
+
+  @Query(() => ChatMessageAttachmentGql)
+  chatAttachment(): Pick<ChatMessageAttachmentGql, 'mediaUrl' | 'thumbnailUrl'> {
+    return { mediaUrl: STORED_URL, thumbnailUrl: STORED_URL };
+  }
+
+  @Query(() => ProjectSectionAttachmentGraph)
+  projectAttachment(): Pick<ProjectSectionAttachmentGraph, 'publicUrl'> {
+    return { publicUrl: STORED_URL };
+  }
 }
 
 jest.setTimeout(30_000);
@@ -68,13 +93,22 @@ describe('URL des justificatifs — signée à la sortie GraphQL', () => {
     await app.close();
   });
 
-  it.each(['accountingDoc', 'grantDoc', 'sponsorshipDoc'])(
-    '%s.publicUrl est servie par GET /media/:id sans en-tête',
-    async (field) => {
+  it.each([
+    ['accountingDoc', 'publicUrl'],
+    ['grantDoc', 'publicUrl'],
+    ['sponsorshipDoc', 'publicUrl'],
+    ['clubDoc', 'mediaAssetUrl'],
+    ['signedDoc', 'signedAssetUrl'],
+    ['chatAttachment', 'mediaUrl'],
+    ['chatAttachment', 'thumbnailUrl'],
+    ['projectAttachment', 'publicUrl'],
+  ])(
+    '%s.%s est servie par GET /media/:id sans en-tête',
+    async (query, field) => {
       const res = await request(app.getHttpServer())
         .post('/graphql')
-        .send({ query: `{ ${field} { publicUrl } }` });
-      const url = String(res.body?.data?.[field]?.publicUrl);
+        .send({ query: `{ ${query} { ${field} } }` });
+      const url = String(res.body?.data?.[query]?.[field]);
 
       expect(url.startsWith(`${STORED_URL}?`)).toBe(true);
       const params = new URL(url).searchParams;
