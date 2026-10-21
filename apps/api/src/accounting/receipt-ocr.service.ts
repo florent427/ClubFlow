@@ -893,6 +893,11 @@ export class ReceiptOcrService {
             debitCents: 0,
             creditCents: totalCents,
             sortOrder: sortOrder++,
+            // La contrepartie n'est pas une proposition de l'IA : c'est le
+            // compte de trésorerie choisi. Validée d'office, comme dans la
+            // saisie manuelle — sinon validateEntryLine ne voit jamais
+            // « toutes les lignes validées » et l'écriture reste à valider.
+            validatedAt: new Date(),
           },
         });
       }
@@ -1691,6 +1696,11 @@ Règles :
             debitCents: 0,
             creditCents: totalCents,
             sortOrder: sortOrder++,
+            // La contrepartie n'est pas une proposition de l'IA : c'est le
+            // compte de trésorerie choisi. Validée d'office, comme dans la
+            // saisie manuelle — sinon validateEntryLine ne voit jamais
+            // « toutes les lignes validées » et l'écriture reste à valider.
+            validatedAt: new Date(),
           },
         });
       }
