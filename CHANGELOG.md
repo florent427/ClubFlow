@@ -9,6 +9,18 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.80.0](https://github.com/florent427/ClubFlow/compare/v0.79.5...v0.80.0) (2026-10-21)
+
+
+### ✨ Features
+
+* **compta:** frais kilométriques des bénévoles et reçus fiscaux ([649badf](https://github.com/florent427/ClubFlow/commit/649badf40873c8d83c7613a5c0cfb75e25715ebf))
+
+
+### 🐛 Bug Fixes
+
+* **compta:** états de chargement et retour des frais kilométriques ([61ce1b9](https://github.com/florent427/ClubFlow/commit/61ce1b96e4b07669e4509180147db5bffc1417ab))
+
 ## [0.79.5](https://github.com/florent427/ClubFlow/compare/v0.79.4...v0.79.5) (2026-10-21)
 
 
