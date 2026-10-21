@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
   ACCOUNTING_ENTRY_CONSOLIDATION_PREVIEW,
@@ -136,11 +136,32 @@ export function AccountingPage() {
     () => computeRange(period, customFrom, customTo),
     [period, customFrom, customTo],
   );
-  const { data: entriesData, refetch: refetchEntries, loading } =
-    useQuery<ClubAccountingEntriesData>(CLUB_ACCOUNTING_ENTRIES, {
-      fetchPolicy: 'cache-and-network',
-      variables: { from: range.from, to: range.to },
-    });
+  const {
+    data: entriesData,
+    refetch: refetchEntries,
+    loading,
+    startPolling: startPollingEntries,
+    stopPolling: stopPollingEntries,
+  } = useQuery<ClubAccountingEntriesData>(CLUB_ACCOUNTING_ENTRIES, {
+    fetchPolicy: 'cache-and-network',
+    variables: { from: range.from, to: range.to },
+  });
+  // L'analyse d'un reçu tourne en arrière-plan côté API : la mutation rend
+  // une écriture vide « Analyse OCR en cours… » que le pipeline complète
+  // ensuite. Tant qu'une écriture est dans cet état, on rafraîchit la liste
+  // pour que le résultat apparaisse sans recharger la page. Au-delà de
+  // 10 minutes, l'analyse est tenue pour morte (API redémarrée en cours de
+  // route) : on cesse de rafraîchir plutôt que de le faire indéfiniment.
+  const anyOcrProcessing = (entriesData?.clubAccountingEntries ?? []).some(
+    (e) =>
+      e.aiProcessingStartedAt != null &&
+      Date.now() - new Date(e.aiProcessingStartedAt).getTime() < 10 * 60_000,
+  );
+  useEffect(() => {
+    if (!anyOcrProcessing) return undefined;
+    startPollingEntries(4000);
+    return () => stopPollingEntries();
+  }, [anyOcrProcessing, startPollingEntries, stopPollingEntries]);
   const { data: summaryData, refetch: refetchSummary } =
     useQuery<ClubAccountingSummaryData>(CLUB_ACCOUNTING_SUMMARY, {
       fetchPolicy: 'cache-and-network',
@@ -804,8 +825,8 @@ export function AccountingPage() {
         );
       } else {
         showToast(
-          'Reçu analysé ! Vérifie les champs surlignés puis valide.',
-          'success',
+          'Reçu envoyé : analyse IA en cours, l’écriture se complétera d’elle-même dans la liste.',
+          'info',
         );
       }
       setStatusFilter('NEEDS_REVIEW');
@@ -1735,7 +1756,7 @@ export function AccountingPage() {
                                                 <option key={a.id} value={a.id}>
                                                   {a.label} ({a.accountingAccountCode})
                                                 </option>
-                                              ))}
+                                              ))}
                                             {e.kind === 'EXPENSE' ? (
                                               <optgroup label="Avancé par un bénévole">
                                                 {(membersData?.clubMembers ?? [])
