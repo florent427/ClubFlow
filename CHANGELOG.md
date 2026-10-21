@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.79.4](https://github.com/florent427/ClubFlow/compare/v0.79.3...v0.79.4) (2026-10-21)
+
+
+### 🐛 Bug Fixes
+
+* **documents:** le téléchargement d'un document signé lit le fichier au nom du club ([1c8e226](https://github.com/florent427/ClubFlow/commit/1c8e226c3f98f1ea55274cfff13c11e80ce0dae0))
+* **documents:** le téléchargement d'un document signé lit le fichier au nom du club ([1d7829a](https://github.com/florent427/ClubFlow/commit/1d7829a9f099dec996670c3119123bfefb2b4e69))
+
 ## [0.79.3](https://github.com/florent427/ClubFlow/compare/v0.79.2...v0.79.3) (2026-10-21)
 
 
