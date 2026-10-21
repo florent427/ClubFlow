@@ -64,8 +64,11 @@ export function TaxReceiptsTab() {
   useEffect(() => {
     setForm(toForm(settings));
   }, [settings]);
+  // Les réglages n'ont pas d'id : Apollo ne peut pas fusionner la réponse
+  // de la mutation dans le cache, il faut relire la requête.
   const [saveSettings, { loading: savingSettings }] = useMutation(
     UPDATE_CLUB_TAX_RECEIPT_SETTINGS,
+    { refetchQueries: [CLUB_TAX_RECEIPT_SETTINGS], awaitRefetchQueries: true },
   );
 
   // ── Reçus de l'année ──
@@ -179,7 +182,7 @@ export function TaxReceiptsTab() {
           <div className="cf-form-row">
             <label className="cf-field" style={{ flex: 1 }}>
               <span>Qualité de l’organisme{form.enabled ? ' *' : ''}</span>
-              <select
+              <select className="cf-field__input"
                 value={form.organismType}
                 onChange={(e) =>
                   setForm({ ...form, organismType: e.target.value as TaxReceiptOrganismType | '' })
@@ -195,7 +198,7 @@ export function TaxReceiptsTab() {
             </label>
             <label className="cf-field" style={{ flex: 1 }}>
               <span>N° RNA</span>
-              <input
+              <input className="cf-field__input"
                 value={form.rna}
                 placeholder="W123456789"
                 maxLength={40}
@@ -205,7 +208,7 @@ export function TaxReceiptsTab() {
           </div>
           <label className="cf-field">
             <span>Objet du club{form.enabled ? ' *' : ''}</span>
-            <textarea
+            <textarea className="cf-field__input"
               rows={2}
               maxLength={500}
               value={form.purpose}
@@ -216,7 +219,7 @@ export function TaxReceiptsTab() {
           <div className="cf-form-row">
             <label className="cf-field" style={{ flex: 1 }}>
               <span>Signataire{form.enabled ? ' *' : ''}</span>
-              <input
+              <input className="cf-field__input"
                 value={form.signatoryName}
                 maxLength={120}
                 placeholder="Prénom Nom"
@@ -225,7 +228,7 @@ export function TaxReceiptsTab() {
             </label>
             <label className="cf-field" style={{ flex: 1 }}>
               <span>Qualité du signataire</span>
-              <input
+              <input className="cf-field__input"
                 value={form.signatoryTitle}
                 maxLength={120}
                 placeholder="Ex. Trésorier"
@@ -256,7 +259,7 @@ export function TaxReceiptsTab() {
           </h2>
           <label className="cf-field" style={{ margin: 0 }}>
             <span>Année</span>
-            <select value={year} onChange={(e) => setYear(Number(e.target.value))}>
+            <select className="cf-field__input" value={year} onChange={(e) => setYear(Number(e.target.value))}>
               {years.map((y) => (
                 <option key={y} value={y}>
                   {y}

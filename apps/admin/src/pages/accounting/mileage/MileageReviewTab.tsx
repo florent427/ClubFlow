@@ -85,7 +85,7 @@ export function MileageReviewTab() {
         <div className="cf-form-row" style={{ alignItems: 'flex-end' }}>
           <label className="cf-field" style={{ flex: 1 }}>
             <span>Statut</span>
-            <select
+            <select className="cf-field__input"
               value={status}
               onChange={(e) => setStatus(e.target.value as MileageClaimStatus | '')}
             >
@@ -98,7 +98,7 @@ export function MileageReviewTab() {
           </label>
           <label className="cf-field" style={{ flex: 2 }}>
             <span>Bénévole</span>
-            <select value={memberId} onChange={(e) => setMemberId(e.target.value)}>
+            <select className="cf-field__input" value={memberId} onChange={(e) => setMemberId(e.target.value)}>
               <option value="">Tous les bénévoles</option>
               {members.map((m) => (
                 <option key={m.id} value={m.id}>

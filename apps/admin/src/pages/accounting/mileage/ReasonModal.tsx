@@ -56,7 +56,7 @@ function OpenReasonModal({
             </>
           ) : null}
           <span style={{ display: 'block', marginTop: 8, fontWeight: 600 }}>{label} *</span>
-          <textarea
+          <textarea className="cf-field__input"
             value={text}
             rows={4}
             autoFocus

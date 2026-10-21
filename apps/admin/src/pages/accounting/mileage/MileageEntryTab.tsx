@@ -387,7 +387,7 @@ export function MileageEntryTab() {
       <section className="members-panel">
         <label className="cf-field" style={{ maxWidth: 420 }}>
           <span>Bénévole</span>
-          <select value={memberId} onChange={(e) => pickMember(e.target.value)}>
+          <select className="cf-field__input" value={memberId} onChange={(e) => pickMember(e.target.value)}>
             <option value="">— Choisir un membre —</option>
             {members.map((m) => (
               <option key={m.id} value={m.id}>
@@ -651,7 +651,7 @@ export function MileageEntryTab() {
           <form id="cf-mileage-vehicle" onSubmit={onSubmitVehicle} className="cf-form">
             <label className="cf-field">
               <span>Nom *</span>
-              <input
+              <input className="cf-field__input"
                 value={vehicleDraft.label}
                 placeholder="Ex. Clio grise"
                 maxLength={80}
@@ -661,7 +661,7 @@ export function MileageEntryTab() {
             <div className="cf-form-row">
               <label className="cf-field" style={{ flex: 1 }}>
                 <span>Type *</span>
-                <select
+                <select className="cf-field__input"
                   value={vehicleDraft.kind}
                   onChange={(e) =>
                     setVehicleDraft({
@@ -680,7 +680,7 @@ export function MileageEntryTab() {
               {vehicleDraft.kind !== 'MOPED' ? (
                 <label className="cf-field" style={{ flex: 1 }}>
                   <span>Puissance fiscale (CV) *</span>
-                  <input
+                  <input className="cf-field__input"
                     type="number"
                     min={1}
                     max={50}
@@ -731,7 +731,7 @@ export function MileageEntryTab() {
           <form id="cf-mileage-claim" onSubmit={onSubmitClaimDraft} className="cf-form">
             <label className="cf-field">
               <span>Titre *</span>
-              <input
+              <input className="cf-field__input"
                 value={claimDraft.title}
                 placeholder="Ex. Déplacements de septembre"
                 onChange={(e) => setClaimDraft({ ...claimDraft, title: e.target.value })}
@@ -739,7 +739,7 @@ export function MileageEntryTab() {
             </label>
             <label className="cf-field">
               <span>Règlement *</span>
-              <select
+              <select className="cf-field__input"
                 value={claimDraft.settlement}
                 onChange={(e) =>
                   setClaimDraft({
@@ -759,7 +759,7 @@ export function MileageEntryTab() {
             </p>
             <label className="cf-field">
               <span>Note du bénévole</span>
-              <textarea
+              <textarea className="cf-field__input"
                 rows={3}
                 value={claimDraft.memberNote}
                 onChange={(e) => setClaimDraft({ ...claimDraft, memberNote: e.target.value })}
@@ -854,7 +854,7 @@ export function MileageEntryTab() {
                     <div className="cf-form-row">
                       <label className="cf-field" style={{ flex: 1 }}>
                         <span>Date *</span>
-                        <input
+                        <input className="cf-field__input"
                           type="date"
                           value={trip.tripDate}
                           max={todayIso()}
@@ -863,7 +863,7 @@ export function MileageEntryTab() {
                       </label>
                       <label className="cf-field" style={{ flex: 2 }}>
                         <span>Véhicule *</span>
-                        <select
+                        <select className="cf-field__input"
                           value={trip.vehicleId}
                           onChange={(e) => setTrip({ ...trip, vehicleId: e.target.value })}
                         >
@@ -878,7 +878,7 @@ export function MileageEntryTab() {
                     <div className="cf-form-row">
                       <label className="cf-field" style={{ flex: 1 }}>
                         <span>Départ *</span>
-                        <input
+                        <input className="cf-field__input"
                           value={trip.fromLabel}
                           placeholder="Ex. Domicile, Saint-Denis"
                           onChange={(e) => setTrip({ ...trip, fromLabel: e.target.value })}
@@ -886,7 +886,7 @@ export function MileageEntryTab() {
                       </label>
                       <label className="cf-field" style={{ flex: 1 }}>
                         <span>Arrivée *</span>
-                        <input
+                        <input className="cf-field__input"
                           value={trip.toLabel}
                           placeholder="Ex. Gymnase, Saint-Pierre"
                           onChange={(e) => setTrip({ ...trip, toLabel: e.target.value })}
@@ -896,7 +896,7 @@ export function MileageEntryTab() {
                     <div className="cf-form-row">
                       <label className="cf-field" style={{ flex: 2 }}>
                         <span>Motif *</span>
-                        <input
+                        <input className="cf-field__input"
                           value={trip.purpose}
                           placeholder="Ex. Compétition régionale"
                           onChange={(e) => setTrip({ ...trip, purpose: e.target.value })}
@@ -904,7 +904,7 @@ export function MileageEntryTab() {
                       </label>
                       <label className="cf-field" style={{ flex: 1 }}>
                         <span>Distance aller (km) *</span>
-                        <input
+                        <input className="cf-field__input"
                           inputMode="decimal"
                           value={trip.km}
                           placeholder="12,5"
@@ -948,7 +948,7 @@ export function MileageEntryTab() {
                     <div className="cf-form-row" style={{ alignItems: 'flex-end' }}>
                       <label className="cf-field" style={{ flex: 1 }}>
                         <span>Du</span>
-                        <input
+                        <input className="cf-field__input"
                           type="date"
                           value={fillFrom}
                           onChange={(e) => setFillFrom(e.target.value)}
@@ -956,7 +956,7 @@ export function MileageEntryTab() {
                       </label>
                       <label className="cf-field" style={{ flex: 1 }}>
                         <span>Au</span>
-                        <input
+                        <input className="cf-field__input"
                           type="date"
                           value={fillTo}
                           max={todayIso()}
