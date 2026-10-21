@@ -972,7 +972,9 @@ ${club.name}`;
   ): Promise<Buffer> {
     // Vérifie l'appartenance au club avant de streamer.
     await this.mediaAssets.get(clubId, mediaAssetId);
-    const { stream } = await this.mediaAssets.streamFor(mediaAssetId);
+    const { stream } = await this.mediaAssets.streamFor(mediaAssetId, {
+      clubId,
+    });
     return await streamToBuffer(stream);
   }
 }

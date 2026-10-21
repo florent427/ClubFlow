@@ -289,7 +289,7 @@ export class ReceiptOcrService {
     let buffers: Buffer[];
     try {
       buffers = await Promise.all(
-        orderedAssets.map((a) => this.loadAssetBuffer(a.id)),
+        orderedAssets.map((a) => this.loadAssetBuffer(clubId, a.id)),
       );
     } catch (err) {
       this.logger.error(
@@ -1731,8 +1731,13 @@ Règles :
    * (ça plantait avec "Fichier source introuvable sur disque" sur les
    * adapters non-local ou avec un cwd inattendu).
    */
-  private async loadAssetBuffer(assetId: string): Promise<Buffer> {
-    const { stream } = await this.mediaAssets.streamFor(assetId);
+  private async loadAssetBuffer(
+    clubId: string,
+    assetId: string,
+  ): Promise<Buffer> {
+    // Sans `clubId`, `streamFor` traite l'appel comme anonyme et répond 404
+    // sur tout asset privé — c'est-à-dire sur tous les reçus.
+    const { stream } = await this.mediaAssets.streamFor(assetId, { clubId });
     const chunks: Buffer[] = [];
     for await (const chunk of stream) {
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array));
