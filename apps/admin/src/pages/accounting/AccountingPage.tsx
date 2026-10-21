@@ -1115,8 +1115,13 @@ export function AccountingPage() {
           <tbody>
             {filtered.map((e) => {
               // Distingue les lignes article (hors banque/caisse = contrepartie)
+              // Contrepartie = trésorerie (51x banques, 53x caisses), même
+              // règle que le backend — pas seulement 512000 / 530000, sinon
+              // un compte bancaire 512100 passe pour un article.
               const articleLines = e.lines.filter(
-                (l) => l.accountCode !== '512000' && l.accountCode !== '530000',
+                (l) =>
+                  !l.accountCode.startsWith('51') &&
+                  !l.accountCode.startsWith('53'),
               );
               const firstArticleLine = articleLines[0] ?? e.lines[0];
               const firstAlloc = firstArticleLine?.allocations[0];
