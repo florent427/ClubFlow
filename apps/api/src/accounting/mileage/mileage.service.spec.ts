@@ -55,6 +55,21 @@ const vehicles = {
 function makeSvc(opts: { taxReceiptEnabled?: boolean; reimbursed?: boolean } = {}) {
   const claims: Claim[] = [];
   const trips: Trip[] = [];
+  const recurring: Array<{
+    id: string;
+    clubId: string;
+    memberId: string;
+    vehicleId: string;
+    fromLabel: string;
+    toLabel: string;
+    purpose: string;
+    distanceMeters: number;
+    roundTrip: boolean;
+    weekdays: number[];
+    startsOn: Date;
+    endsOn: Date | null;
+    archivedAt: Date | null;
+  }> = [];
   const entries: Array<Record<string, unknown> & { id: string }> = [];
   const lines: Array<Record<string, unknown>> = [];
   let seq = 0;
@@ -74,10 +89,15 @@ function makeSvc(opts: { taxReceiptEnabled?: boolean; reimbursed?: boolean } = {
     trips.filter((t) => {
       if (where.clubId && t.clubId !== where.clubId) return false;
       if (where.vehicleId?.in && !where.vehicleId.in.includes(t.vehicleId)) return false;
+      if (where.recurringTripId?.in && !where.recurringTripId.in.includes(t.recurringTripId)) {
+        return false;
+      }
       if (where.tripDate?.gte && t.tripDate < where.tripDate.gte) return false;
       if (where.tripDate?.lte && t.tripDate > where.tripDate.lte) return false;
       const claim = claims.find((c) => c.id === t.claimId)!;
-      if (where.claim?.status && claim.status !== where.claim.status) return false;
+      const status = where.claim?.status;
+      if (typeof status === 'string' && claim.status !== status) return false;
+      if (status?.not && claim.status === status.not) return false;
       return true;
     }),
   );
@@ -108,8 +128,42 @@ function makeSvc(opts: { taxReceiptEnabled?: boolean; reimbursed?: boolean } = {
         return { count: hit.length };
       }),
     },
+    mileageRecurringTrip: {
+      findMany: jest.fn(async ({ where }: any) =>
+        recurring.filter(
+          (r) =>
+            r.clubId === where.clubId &&
+            r.memberId === where.memberId &&
+            (where.archivedAt !== null || r.archivedAt === null) &&
+            (where.vehicle?.archivedAt !== null ||
+              vehicles[r.vehicleId as 'v1' | 'v2'].archivedAt === null),
+        ),
+      ),
+      findFirst: jest.fn(async ({ where }: any) =>
+        recurring.find(
+            (r) =>
+              r.id === where.id &&
+              r.clubId === where.clubId &&
+              (!where.memberId || r.memberId === where.memberId),
+          ) ?? null,
+      ),
+      update: jest.fn(async ({ where, data }: any) => {
+        const r = recurring.find((x) => x.id === where.id)!;
+        Object.assign(r, data);
+        return { ...r, vehicle: vehicles[r.vehicleId as 'v1' | 'v2'] };
+      }),
+    },
+    mileageVehicle: {
+      findFirst: jest.fn(async ({ where }: any) => vehicles[where.id as 'v1' | 'v2'] ?? null),
+    },
     mileageTrip: {
       findMany: tripFindMany,
+      createMany: jest.fn(async ({ data }: any) => {
+        for (const row of data) {
+          trips.push({ id: `t-${++seq}`, amountCents: null, scaleLabel: null, createdAt: new Date(), ...row });
+        }
+        return { count: data.length };
+      }),
       update: jest.fn(async ({ where, data }: any) => {
         const t = trips.find((x) => x.id === where.id)!;
         Object.assign(t, data);
@@ -197,7 +251,24 @@ function makeSvc(opts: { taxReceiptEnabled?: boolean; reimbursed?: boolean } = {
       createdAt: new Date(),
     });
   };
-  return { svc, claims, trips, entries, lines, addClaim, addTrip, period, notifications };
+  const addRecurring = (id: string, weekdays: number[]) => {
+    recurring.push({
+      id,
+      clubId: CLUB,
+      memberId: 'm-lea',
+      vehicleId: 'v1',
+      fromLabel: 'Domicile',
+      toLabel: 'Dojo',
+      purpose: 'Cours',
+      distanceMeters: 12_500,
+      roundTrip: true,
+      weekdays,
+      startsOn: d('2026-01-01'),
+      endsOn: null,
+      archivedAt: null,
+    });
+  };
+  return { svc, claims, trips, recurring, entries, lines, addClaim, addTrip, addRecurring, period, notifications };
 }
 
 describe('MileageService — validation', () => {
@@ -314,5 +385,73 @@ describe('MileageService — revue', () => {
     const view = await t.svc.returnClaim(CLUB, 'admin', 'c1', 'Il manque le 12/10');
     expect(view.status).toBe('DRAFT');
     expect(view.reviewComment).toBe('Il manque le 12/10');
+  });
+});
+
+describe('MileageService — trajets récurrents', () => {
+  const lea = { kind: 'member' as const, memberId: 'm-lea', userId: 'u-lea' };
+  // Semaine du lundi 2026-10-05 au dimanche 2026-10-11.
+  const week = { from: d('2026-10-05'), to: d('2026-10-11') };
+  const datesOf = (trips: Trip[]) => trips.map((t) => t.tripDate.toISOString().slice(0, 10)).sort();
+
+  it('ajoute autant de déplacements qu’un jour compte de trajets', async () => {
+    const t = makeSvc();
+    t.addClaim('c1', 'DRAFT');
+    t.addRecurring('r1', [2, 2, 4]);
+
+    const { added } = await t.svc.addRecurringTrips(CLUB, lea, 'c1', week);
+
+    expect(added).toBe(3);
+    expect(datesOf(t.trips)).toEqual(['2026-10-06', '2026-10-06', '2026-10-08']);
+  });
+
+  it('ne complète que les trajets manquants, même d’une autre note', async () => {
+    const t = makeSvc();
+    t.addClaim('c0', 'SUBMITTED');
+    t.addClaim('c1', 'DRAFT');
+    // Le mardi a déjà un trajet déclaré, quand le récurrent n'en comptait qu'un.
+    t.addTrip('c0', 'old', 'v1', '2026-10-06', 12_500, true);
+    t.trips[0].recurringTripId = 'r1';
+    t.addRecurring('r1', [2, 2, 4]);
+
+    const { added } = await t.svc.addRecurringTrips(CLUB, lea, 'c1', week);
+
+    expect(added).toBe(2);
+    expect(datesOf(t.trips.filter((x) => x.claimId === 'c1'))).toEqual(['2026-10-06', '2026-10-08']);
+    // Relancer n'ajoute plus rien.
+    expect((await t.svc.addRecurringTrips(CLUB, lea, 'c1', week)).added).toBe(0);
+  });
+
+  it('ne compte pas les déplacements d’une note refusée', async () => {
+    const t = makeSvc();
+    t.addClaim('c0', 'REJECTED');
+    t.addClaim('c1', 'DRAFT');
+    t.addTrip('c0', 'old', 'v1', '2026-10-06', 12_500, true);
+    t.trips[0].recurringTripId = 'r1';
+    t.addRecurring('r1', [2]);
+
+    expect((await t.svc.addRecurringTrips(CLUB, lea, 'c1', week)).added).toBe(1);
+  });
+
+  it('garde les jours répétés et refuse plus de 4 trajets par jour', async () => {
+    const t = makeSvc();
+    t.addRecurring('r1', [1]);
+    const input = {
+      vehicleId: 'v1',
+      fromLabel: 'Domicile',
+      toLabel: 'Dojo',
+      purpose: 'Cours',
+      distanceMeters: 12_500,
+      roundTrip: true,
+      startsOn: d('2026-01-01'),
+      endsOn: null,
+    };
+
+    await t.svc.updateRecurringTrip(CLUB, lea, 'r1', { ...input, weekdays: [4, 2, 2] });
+    expect(t.recurring[0].weekdays).toEqual([2, 2, 4]);
+
+    await expect(
+      t.svc.updateRecurringTrip(CLUB, lea, 'r1', { ...input, weekdays: [3, 3, 3, 3, 3] }),
+    ).rejects.toThrow('Au plus 4 trajets par jour');
   });
 });

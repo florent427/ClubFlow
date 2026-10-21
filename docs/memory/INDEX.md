@@ -91,6 +91,7 @@
 | [`throttler-sans-trust-proxy.md`](pitfalls/throttler-sans-trust-proxy.md) | Piège — Throttler derrière Caddy sans `trust proxy` : un seul compteur pour toute la plateforme |
 | [`typecheck-noop-solution-tsconfig.md`](pitfalls/typecheck-noop-solution-tsconfig.md) | Piège — `npx tsc --noEmit` qui vérifie 0 fichier et sort 0 |
 | [`une-supposition-survit-a-la-decision.md`](pitfalls/une-supposition-survit-a-la-decision.md) | Piège — une supposition qui survit à la décision compte deux fois |
+| [`vitrine-google-fonts-deploy-arrete.md`](pitfalls/vitrine-google-fonts-deploy-arrete.md) | Piège — Google Fonts injoignable au build vitrine : la prod reste à moitié déployée |
 | [`windows-scp-crlf-bash-script.md`](pitfalls/windows-scp-crlf-bash-script.md) | Piège — `scp` Windows transfère les `.sh` avec line endings CRLF |
 
 ## 🏛️ Décisions architecturales (ADR)
@@ -133,7 +134,7 @@
 
 ---
 
-_Index généré le 2026-10-21 06:44 UTC par `bin/memory-index`._
+_Index généré le 2026-10-21 07:00 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`

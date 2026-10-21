@@ -4,15 +4,18 @@ import type {
 } from './mileage-documents';
 
 /** Lun…Dim, index ISO 1 = lundi … 7 = dimanche. */
-export const WEEKDAYS: ReadonlyArray<{ iso: number; short: string }> = [
-  { iso: 1, short: 'Lun' },
-  { iso: 2, short: 'Mar' },
-  { iso: 3, short: 'Mer' },
-  { iso: 4, short: 'Jeu' },
-  { iso: 5, short: 'Ven' },
-  { iso: 6, short: 'Sam' },
-  { iso: 7, short: 'Dim' },
+export const WEEKDAYS: ReadonlyArray<{ iso: number; short: string; long: string }> = [
+  { iso: 1, short: 'Lun', long: 'lundi' },
+  { iso: 2, short: 'Mar', long: 'mardi' },
+  { iso: 3, short: 'Mer', long: 'mercredi' },
+  { iso: 4, short: 'Jeu', long: 'jeudi' },
+  { iso: 5, short: 'Ven', long: 'vendredi' },
+  { iso: 6, short: 'Sam', long: 'samedi' },
+  { iso: 7, short: 'Dim', long: 'dimanche' },
 ];
+
+/** Trajets d'un même trajet récurrent sur un jour, comme l'API. */
+export const MAX_TRIPS_PER_DAY = 4;
 
 export const VEHICLE_KIND_LABELS: Record<MileageVehicleKind, string> = {
   CAR: 'Voiture',
@@ -78,10 +81,23 @@ export function daysBetween(fromIso: string, toIso: string): number {
   return Math.round((t - f) / 86_400_000);
 }
 
-/** [3, 1, 5] → « Lun, Mer, Ven ». */
+/** Un jour répété = plusieurs trajets ce jour-là : [4, 2, 2] → { 2: 2, 4: 1 }. */
+export function countWeekdays(weekdays: number[]): Record<number, number> {
+  const counts: Record<number, number> = {};
+  for (const d of weekdays) counts[d] = (counts[d] ?? 0) + 1;
+  return counts;
+}
+
+/** { 2: 2, 4: 1 } → [2, 2, 4]. */
+export function weekdaysFromCounts(counts: Record<number, number>): number[] {
+  return WEEKDAYS.flatMap((w) => Array<number>(counts[w.iso] ?? 0).fill(w.iso));
+}
+
+/** [3, 1, 5] → « Lun, Mer, Ven » ; [2, 2, 4] → « Mar ×2, Jeu ». */
 export function formatWeekdays(weekdays: number[]): string {
-  return WEEKDAYS.filter((w) => weekdays.includes(w.iso))
-    .map((w) => w.short)
+  const counts = countWeekdays(weekdays);
+  return WEEKDAYS.filter((w) => counts[w.iso])
+    .map((w) => (counts[w.iso] > 1 ? `${w.short} ×${counts[w.iso]}` : w.short))
     .join(', ');
 }
 

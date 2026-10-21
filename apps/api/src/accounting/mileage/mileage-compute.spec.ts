@@ -33,6 +33,14 @@ describe('déplacements', () => {
     // Sans fin de validité, borné par l'intervalle demandé.
     expect(recurringDates({ ...r, endsOn: null }, d('2026-11-01'), d('2026-11-06'))).toHaveLength(2);
   });
+
+  it('répète la date d’un jour qui compte plusieurs trajets', () => {
+    const r = { weekdays: [4, 2, 2], startsOn: d('2026-10-01'), endsOn: null };
+    const dates = recurringDates(r, d('2026-10-05'), d('2026-10-11')).map((x) =>
+      x.toISOString().slice(0, 10),
+    );
+    expect(dates).toEqual(['2026-10-06', '2026-10-06', '2026-10-08']);
+  });
 });
 
 describe('chiffrage d’une note', () => {

@@ -136,34 +136,53 @@
   font-weight: 600;
 }
 
-.mp-mileage-weekdays {
-  display: flex;
-  flex-wrap: wrap;
+/* Semaine type : un compteur de trajets par jour. */
+.mp-mileage-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 6px;
 }
-.mp-mileage-weekday {
-  position: relative;
-  display: inline-flex;
+.mp-mileage-day {
+  display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 4px;
-  padding: 6px 10px;
+  padding: 6px 2px;
   border: 1px solid #cbd5e1;
-  border-radius: 999px;
+  border-radius: 10px;
   font-size: 0.85rem;
-  cursor: pointer;
-  user-select: none;
 }
-.mp-mileage-weekday--on {
+.mp-mileage-day--on {
   background: rgba(0, 86, 197, 0.1);
   border-color: #0056c5;
   color: #0056c5;
   font-weight: 600;
 }
-.mp-mileage-weekday input {
-  position: absolute;
-  opacity: 0;
-  width: 1px;
-  height: 1px;
+.mp-mileage-day__stepper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.mp-mileage-day__stepper button {
+  width: 28px;
+  height: 24px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+.mp-mileage-day__stepper button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.mp-mileage-day__stepper output {
+  min-width: 1.5em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .mp-mileage-archived {

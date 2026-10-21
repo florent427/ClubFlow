@@ -73,6 +73,13 @@ export function priceTrips(
   return trips.map((t) => priced.get(t.id)!);
 }
 
+/** Nombre de trajets par jour ISO : [2, 2, 4] → { 2 → 2, 4 → 1 }. */
+export function weekdayCounts(weekdays: number[]): Map<number, number> {
+  const counts = new Map<number, number>();
+  for (const d of weekdays) counts.set(d, (counts.get(d) ?? 0) + 1);
+  return counts;
+}
+
 /** Jour ISO de la semaine : 1 = lundi … 7 = dimanche. */
 export function isoWeekday(d: Date): number {
   const day = d.getUTCDay();
@@ -82,6 +89,8 @@ export function isoWeekday(d: Date): number {
 /**
  * Les dates où un trajet récurrent a lieu entre `from` et `to` (inclus),
  * dans sa période de validité. Dates en minuit UTC, comme les `@db.Date`.
+ * Un jour présent plusieurs fois dans `weekdays` donne autant de fois sa
+ * date : `[2, 2]` = deux trajets chaque mardi.
  */
 export function recurringDates(
   recurring: { weekdays: number[]; startsOn: Date; endsOn: Date | null },
@@ -90,12 +99,12 @@ export function recurringDates(
 ): Date[] {
   const start = Math.max(from.getTime(), recurring.startsOn.getTime());
   const end = Math.min(to.getTime(), recurring.endsOn ? recurring.endsOn.getTime() : Infinity);
-  const days = new Set(recurring.weekdays);
+  const times = weekdayCounts(recurring.weekdays);
   const out: Date[] = [];
   const DAY = 86_400_000;
   for (let t = start; t <= end; t += DAY) {
     const d = new Date(t);
-    if (days.has(isoWeekday(d))) out.push(d);
+    for (let i = 0; i < (times.get(isoWeekday(d)) ?? 0); i++) out.push(d);
   }
   return out;
 }

@@ -2010,7 +2010,9 @@ model MileageRecurringTrip {
   /// Distance d'un aller, en mètres.
   distanceMeters Int
   roundTrip      Boolean   @default(true)
-  /// Jours de la semaine, 1 = lundi … 7 = dimanche (ISO 8601).
+  /// Jours de la semaine, 1 = lundi … 7 = dimanche (ISO 8601). Un jour
+  /// répété compte autant de trajets ce jour-là : [2, 2, 4] = deux le
+  /// mardi, un le jeudi.
   weekdays       Int[]
   startsOn       DateTime  @db.Date
   endsOn         DateTime? @db.Date

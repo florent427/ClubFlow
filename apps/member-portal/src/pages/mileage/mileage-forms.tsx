@@ -9,12 +9,15 @@ import type {
   MileageVehicleKind,
 } from '../../lib/mileage-documents';
 import {
+  MAX_TRIPS_PER_DAY,
   VEHICLE_KIND_LABELS,
   WEEKDAYS,
+  countWeekdays,
   errorMessage,
   kmInputToMeters,
   metersToKmInput,
   todayIso,
+  weekdaysFromCounts,
 } from '../../lib/mileage-format';
 
 /** Véhicules sélectionnables : actifs, plus celui déjà choisi s'il est archivé. */
@@ -361,18 +364,19 @@ export function RecurringForm({
     initial ? metersToKmInput(initial.distanceMeters) : '',
   );
   const [roundTrip, setRoundTrip] = useState(initial?.roundTrip ?? true);
-  const [weekdays, setWeekdays] = useState<number[]>(initial?.weekdays ?? []);
+  const [dayCounts, setDayCounts] = useState<Record<number, number>>(() =>
+    countWeekdays(initial?.weekdays ?? []),
+  );
   const [startsOn, setStartsOn] = useState(initial?.startsOn ?? todayIso());
   const [endsOn, setEndsOn] = useState(initial?.endsOn ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function toggleDay(iso: number) {
-    setWeekdays((prev) =>
-      prev.includes(iso)
-        ? prev.filter((d) => d !== iso)
-        : [...prev, iso].sort((a, b) => a - b),
-    );
+  function stepDay(iso: number, delta: number) {
+    setDayCounts((prev) => ({
+      ...prev,
+      [iso]: Math.min(MAX_TRIPS_PER_DAY, Math.max(0, (prev[iso] ?? 0) + delta)),
+    }));
   }
 
   async function submit(e: FormEvent) {
@@ -383,8 +387,9 @@ export function RecurringForm({
       setError('Indiquez une distance en kilomètres (ex. 12,5).');
       return;
     }
+    const weekdays = weekdaysFromCounts(dayCounts);
     if (weekdays.length === 0) {
-      setError('Cochez au moins un jour de la semaine.');
+      setError('Indiquez au moins un trajet dans la semaine.');
       return;
     }
     if (!vehicleId) {
@@ -456,25 +461,43 @@ export function RecurringForm({
           setRoundTrip={setRoundTrip}
         />
         <fieldset className="mp-mileage-fieldset mp-field-wide">
-          <span>Jours</span>
-          <div className="mp-mileage-weekdays">
+          <span>Semaine type : trajets par jour</span>
+          <div className="mp-mileage-week">
             {WEEKDAYS.map((w) => {
-              const on = weekdays.includes(w.iso);
+              const n = dayCounts[w.iso] ?? 0;
               return (
-                <label
+                <div
                   key={w.iso}
-                  className={`mp-mileage-weekday${on ? ' mp-mileage-weekday--on' : ''}`}
+                  className={`mp-mileage-day${n > 0 ? ' mp-mileage-day--on' : ''}`}
                 >
-                  <input
-                    type="checkbox"
-                    checked={on}
-                    onChange={() => toggleDay(w.iso)}
-                  />
-                  {w.short}
-                </label>
+                  <span className="mp-mileage-day__name">{w.short}</span>
+                  <div className="mp-mileage-day__stepper">
+                    <button
+                      type="button"
+                      aria-label={`Un trajet de moins le ${w.long}`}
+                      disabled={n === 0}
+                      onClick={() => stepDay(w.iso, -1)}
+                    >
+                      −
+                    </button>
+                    <output aria-label={`Trajets le ${w.long}`}>{n}</output>
+                    <button
+                      type="button"
+                      aria-label={`Un trajet de plus le ${w.long}`}
+                      disabled={n >= MAX_TRIPS_PER_DAY}
+                      onClick={() => stepDay(w.iso, 1)}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
               );
             })}
           </div>
+          <p className="mp-hint">
+            Deux allers-retours le mardi : mettez 2 sur Mar. Chaque trajet compte
+            la distance ci-dessus.
+          </p>
         </fieldset>
         <label className="mp-field">
           <span>À partir du</span>

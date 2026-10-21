@@ -116,7 +116,9 @@ export class MileageRecurringTripGraph {
   @Field()
   roundTrip!: boolean;
 
-  @Field(() => [Int], { description: '1 = lundi … 7 = dimanche.' })
+  @Field(() => [Int], {
+    description: '1 = lundi … 7 = dimanche ; un jour répété = plusieurs trajets ce jour-là.',
+  })
   weekdays!: number[];
 
   @Field({ description: 'YYYY-MM-DD' })
@@ -162,7 +164,7 @@ export class MileageRecurringTripInputGraph {
   @Field(() => [Int])
   @IsArray()
   @ArrayMinSize(1)
-  @ArrayMaxSize(7)
+  @ArrayMaxSize(28)
   @IsInt({ each: true })
   @Min(1, { each: true })
   @Max(7, { each: true })
