@@ -45,6 +45,7 @@
 | [`echec-silencieux-chemin-erreur.md`](pitfalls/echec-silencieux-chemin-erreur.md) | L'échec qui ne dit rien : un chemin d'erreur muet se lit comme « rien ne s'est passé » |
 | [`env-production-perdus-reset-hard.md`](pitfalls/env-production-perdus-reset-hard.md) | Piège — `.env.production` perdus après `git reset --hard` |
 | [`garantie-derriere-effet-de-bord.md`](pitfalls/garantie-derriere-effet-de-bord.md) | Piège — une garantie placée derrière un effet de bord qui peut échouer |
+| [`garde-media-durcie-appelants-oublies.md`](pitfalls/garde-media-durcie-appelants-oublies.md) | Piège — durcir la garde des médias casse en silence ceux qui ne passent pas le club |
 | [`gh-pr-create-no-commits.md`](pitfalls/gh-pr-create-no-commits.md) | Piège — `gh pr create` "No commits between" après squash merge |
 | [`gha-pr-permission.md`](pitfalls/gha-pr-permission.md) | Piège — GitHub Actions ne peut pas créer ou approuver de PRs |
 | [`github-token-ne-retrigger-pas.md`](pitfalls/github-token-ne-retrigger-pas.md) | Le tag de release n'est jamais coupé : GITHUB_TOKEN ne réveille aucun workflow |
@@ -129,7 +130,7 @@
 
 ---
 
-_Index généré le 2026-09-21 11:51 UTC par `bin/memory-index`._
+_Index généré le 2026-10-21 05:35 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`
