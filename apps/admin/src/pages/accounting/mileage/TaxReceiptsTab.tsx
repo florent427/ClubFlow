@@ -268,7 +268,7 @@ export function TaxReceiptsTab() {
             </select>
           </label>
         </div>
-        {!settings?.taxReceiptEnabled ? (
+        {settings && !settings.taxReceiptEnabled ? (
           <p className="cf-muted">
             Les reçus fiscaux ne sont pas activés : active-les dans les réglages
             ci-dessus pour pouvoir les émettre.
@@ -355,7 +355,9 @@ export function TaxReceiptsTab() {
       <section className="members-panel">
         <h2 className="members-panel__h">Reçus émis en {year}</h2>
         {receipts.length === 0 ? (
-          <p className="cf-muted">Aucun reçu pour cette année.</p>
+          <p className="cf-muted">
+            {loading ? 'Chargement…' : 'Aucun reçu pour cette année.'}
+          </p>
         ) : (
           <table className="cf-table">
             <thead>

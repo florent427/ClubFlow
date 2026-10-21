@@ -344,7 +344,7 @@ function RecurringFill({ claimId }: { claimId: string }) {
       const added = res.data?.viewerAddMileageRecurringTrips.added ?? 0;
       setResult(
         added === 0
-          ? 'Aucun déplacement ajouté : ils sont déjà dans la note, ou aucun trajet récurrent ne tombe sur cette période.'
+          ? 'Aucun déplacement ajouté : ils sont déjà déclarés dans une de vos notes, ou aucun trajet récurrent ne tombe sur cette période.'
           : `${added} déplacement${added > 1 ? 's' : ''} ajouté${added > 1 ? 's' : ''}. Ceux déjà présents n’ont pas été dupliqués ; supprimez les jours où vous n’êtes pas venu.`,
       );
     } catch (err) {
@@ -513,8 +513,11 @@ export function MileageClaimEditor({
 
   const claim = data?.viewerMileageClaim;
   const back = (
-    <button type="button" className="mp-btn" onClick={onBack}>
-      ← Mes notes
+    <button type="button" className="mp-back-link mp-mileage-back" onClick={onBack}>
+      <span className="material-symbols-outlined" aria-hidden>
+        arrow_back
+      </span>
+      Mes notes
     </button>
   );
 

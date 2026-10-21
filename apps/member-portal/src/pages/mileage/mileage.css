@@ -180,3 +180,11 @@
     width: 100%;
   }
 }
+
+/* .mp-back-link est pensé pour un <Link> : on neutralise le style du bouton. */
+.mp-mileage-back {
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
