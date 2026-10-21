@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.79.2](https://github.com/florent427/ClubFlow/compare/v0.79.1...v0.79.2) (2026-10-21)
+
+
+### 🐛 Bug Fixes
+
+* **compta:** une écriture scannée passe en validée quand ses articles le sont ([115fd4c](https://github.com/florent427/ClubFlow/commit/115fd4c86581a0b311266b19f7e0f5e231a688e6))
+* **compta:** une écriture scannée passe en validée quand ses articles le sont ([3db485a](https://github.com/florent427/ClubFlow/commit/3db485ae4f096e5bffa89f67da9963534fb86796))
+
 ## [0.79.1](https://github.com/florent427/ClubFlow/compare/v0.79.0...v0.79.1) (2026-10-21)
 
 
