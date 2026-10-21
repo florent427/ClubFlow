@@ -66,6 +66,15 @@ export class ViewerMemberGraph {
   @Field(() => Date, { nullable: true })
   birthDate!: Date | null;
 
+  @Field(() => String, { nullable: true })
+  birthCity!: string | null;
+
+  @Field(() => String, { nullable: true })
+  birthCityInseeCode!: string | null;
+
+  @Field(() => String, { nullable: true })
+  birthCountryCode!: string | null;
+
   @Field(() => [EditableProfileFieldGraph], {
     description:
       'Champs de coordonnées que CE club expose dans son formulaire de ' +

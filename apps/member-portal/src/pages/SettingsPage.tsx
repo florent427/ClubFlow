@@ -23,6 +23,14 @@ import type {
 import { entreePhoto, entreeProfilSaisi } from '../lib/profile-update-input';
 import { useToast } from '../components/ToastProvider';
 import { PushNotificationsCard } from '../components/PushNotificationsCard';
+import { PhoneField } from '../components/coordinates/PhoneField';
+import { AddressFields } from '../components/coordinates/AddressFields';
+import { BirthPlaceField } from '../components/coordinates/BirthPlaceField';
+import {
+  birthPlaceOf,
+  toE164Guess,
+  type BirthPlaceValue,
+} from '../lib/coordinates';
 
 type UpdateProfileData = {
   viewerUpdateMyProfile: {
@@ -46,11 +54,16 @@ export function SettingsPage() {
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  // Un ancien numéro (sans indicatif, ou fixe) n'est renvoyé que si
+  // l'utilisateur y touche : sinon l'API, qui exige un portable
+  // international, refuserait l'enregistrement du reste du profil.
+  const [phoneTouched, setPhoneTouched] = useState(false);
   const [photoUrl, setPhotoUrl] = useState('');
   const [addressLine, setAddressLine] = useState('');
   const [postalCode, setPostalCode] = useState('');
   const [city, setCity] = useState('');
   const [birthDate, setBirthDate] = useState('');
+  const [birthPlace, setBirthPlace] = useState<BirthPlaceValue>(birthPlaceOf(null));
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [status, setStatus] = useState<null | {
@@ -63,13 +76,16 @@ export function SettingsPage() {
     setFirstName(me.firstName ?? '');
     setLastName(me.lastName ?? '');
     setEmail(me.email ?? '');
-    setPhone(me.phone ?? '');
+    // Ancien numéro sans indicatif : repris avec un indicatif deviné.
+    setPhone(toE164Guess(me.phone) ?? '');
+    setPhoneTouched(false);
     setPhotoUrl(me.photoUrl ?? '');
     setAddressLine(me.addressLine ?? '');
     setPostalCode(me.postalCode ?? '');
     setCity(me.city ?? '');
     // <input type="date"> veut YYYY-MM-DD ; l'API rend un ISO complet.
     setBirthDate(me.birthDate ? me.birthDate.slice(0, 10) : '');
+    setBirthPlace(birthPlaceOf(me));
   }, [me]);
 
   /**
@@ -90,10 +106,22 @@ export function SettingsPage() {
 
   /** Entrée du formulaire : les champs saisis, sans la photo. */
   function entreeFormulaire() {
-    return entreeProfilSaisi(
-      { firstName, lastName, email, phone, addressLine, postalCode, city, birthDate },
+    const entree = entreeProfilSaisi(
+      {
+        firstName,
+        lastName,
+        email,
+        phone,
+        addressLine,
+        postalCode,
+        city,
+        birthDate,
+        birthPlace: isContact ? null : birthPlace,
+      },
       new Set(champs.keys()),
     );
+    if (!phoneTouched) delete entree.phone;
+    return entree;
   }
 
   const [updateProfile, { loading: saving }] = useMutation<UpdateProfileData>(
@@ -257,18 +285,14 @@ export function SettingsPage() {
               * d'une liste en dur. Un club qui ne demande pas la date de
               * naissance ne la verra pas apparaître ici. */}
             {champs.has('PHONE') ? (
-              <label className="mp-field">
-                <span>
-                  {champs.get('PHONE')!.label}
-                  {champs.get('PHONE')!.required ? ' *' : ''}
-                </span>
-                <input
-                  type="tel"
-                  value={phone}
-                  required={champs.get('PHONE')!.required}
-                  onChange={(e) => setPhone(e.target.value)}
-                />
-              </label>
+              <PhoneField
+                label={`${champs.get('PHONE')!.label}${champs.get('PHONE')!.required ? ' *' : ''}`}
+                value={phone}
+                onChange={(v) => {
+                  setPhoneTouched(true);
+                  setPhone(v);
+                }}
+              />
             ) : null}
             {champs.has('BIRTH_DATE') ? (
               <label className="mp-field">
@@ -284,54 +308,77 @@ export function SettingsPage() {
                 />
               </label>
             ) : null}
-            {champs.has('ADDRESS_LINE') ? (
-              <label className="mp-field mp-field-wide">
-                <span>
-                  {champs.get('ADDRESS_LINE')!.label}
-                  {champs.get('ADDRESS_LINE')!.required ? ' *' : ''}
-                </span>
-                <input
-                  type="text"
-                  value={addressLine}
-                  required={champs.get('ADDRESS_LINE')!.required}
-                  autoComplete="street-address"
-                  placeholder="12 rue des Lataniers"
-                  onChange={(e) => setAddressLine(e.target.value)}
+            {champs.has('ADDRESS_LINE') &&
+            champs.has('POSTAL_CODE') &&
+            champs.has('CITY') ? (
+              <div className="mp-field-wide">
+                <AddressFields
+                  value={{ addressLine, postalCode, city }}
+                  onChange={(v) => {
+                    setAddressLine(v.addressLine);
+                    setPostalCode(v.postalCode);
+                    setCity(v.city);
+                  }}
                 />
-              </label>
-            ) : null}
-            {champs.has('POSTAL_CODE') ? (
-              <label className="mp-field">
-                <span>
-                  {champs.get('POSTAL_CODE')!.label}
-                  {champs.get('POSTAL_CODE')!.required ? ' *' : ''}
-                </span>
-                <input
-                  type="text"
-                  value={postalCode}
-                  required={champs.get('POSTAL_CODE')!.required}
-                  autoComplete="postal-code"
-                  inputMode="numeric"
-                  placeholder="97427"
-                  onChange={(e) => setPostalCode(e.target.value)}
-                />
-              </label>
-            ) : null}
-            {champs.has('CITY') ? (
-              <label className="mp-field">
-                <span>
-                  {champs.get('CITY')!.label}
-                  {champs.get('CITY')!.required ? ' *' : ''}
-                </span>
-                <input
-                  type="text"
-                  value={city}
-                  required={champs.get('CITY')!.required}
-                  autoComplete="address-level2"
-                  placeholder="L'Étang-Salé"
-                  onChange={(e) => setCity(e.target.value)}
-                />
-              </label>
+              </div>
+            ) : (
+              <>
+              {champs.has('ADDRESS_LINE') ? (
+                <label className="mp-field mp-field-wide">
+                  <span>
+                    {champs.get('ADDRESS_LINE')!.label}
+                    {champs.get('ADDRESS_LINE')!.required ? ' *' : ''}
+                  </span>
+                  <input
+                    type="text"
+                    value={addressLine}
+                    required={champs.get('ADDRESS_LINE')!.required}
+                    autoComplete="street-address"
+                    placeholder="12 rue des Lataniers"
+                    onChange={(e) => setAddressLine(e.target.value)}
+                  />
+                </label>
+              ) : null}
+              {champs.has('POSTAL_CODE') ? (
+                <label className="mp-field">
+                  <span>
+                    {champs.get('POSTAL_CODE')!.label}
+                    {champs.get('POSTAL_CODE')!.required ? ' *' : ''}
+                  </span>
+                  <input
+                    type="text"
+                    value={postalCode}
+                    required={champs.get('POSTAL_CODE')!.required}
+                    autoComplete="postal-code"
+                    inputMode="numeric"
+                    placeholder="97427"
+                    onChange={(e) => setPostalCode(e.target.value)}
+                  />
+                </label>
+              ) : null}
+              {champs.has('CITY') ? (
+                <label className="mp-field">
+                  <span>
+                    {champs.get('CITY')!.label}
+                    {champs.get('CITY')!.required ? ' *' : ''}
+                  </span>
+                  <input
+                    type="text"
+                    value={city}
+                    required={champs.get('CITY')!.required}
+                    autoComplete="address-level2"
+                    placeholder="L'Étang-Salé"
+                    onChange={(e) => setCity(e.target.value)}
+                  />
+                </label>
+              ) : null}
+              </>
+            )}
+            {!isContact ? (
+              <div className="mp-field mp-field-wide">
+                <span>Lieu de naissance</span>
+                <BirthPlaceField value={birthPlace} onChange={setBirthPlace} />
+              </div>
             ) : null}
             <div className="mp-field mp-field-wide">
               <span>Photo de profil</span>

@@ -145,6 +145,9 @@ export const CLUB_MEMBERS = gql`
       addressLine
       postalCode
       city
+      birthCity
+      birthCityInseeCode
+      birthCountryCode
       status
       birthDate
       photoUrl
@@ -228,6 +231,10 @@ export const CLUB_CONTACTS = gql`
       lastName
       email
       emailVerified
+      phone
+      addressLine
+      postalCode
+      city
       linkedMemberId
       canDeleteContact
       createdAt
@@ -246,6 +253,10 @@ export const CLUB_CONTACT = gql`
       lastName
       email
       emailVerified
+      phone
+      addressLine
+      postalCode
+      city
       linkedMemberId
       canDeleteContact
       createdAt
@@ -262,6 +273,10 @@ export const UPDATE_CLUB_CONTACT = gql`
       lastName
       email
       emailVerified
+      phone
+      addressLine
+      postalCode
+      city
       linkedMemberId
       canDeleteContact
       updatedAt
@@ -1184,6 +1199,9 @@ export const UPDATE_CLUB_MEMBER = gql`
       addressLine
       postalCode
       city
+      birthCity
+      birthCityInseeCode
+      birthCountryCode
       birthDate
       photoUrl
       medicalCertExpiresAt

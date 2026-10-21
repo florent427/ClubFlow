@@ -79,6 +79,21 @@ export class MemberGraph {
   @Field(() => String, { nullable: true })
   city!: string | null;
 
+  @Field(() => String, { nullable: true })
+  birthCity!: string | null;
+
+  @Field(() => String, {
+    nullable: true,
+    description: 'Code INSEE de la commune de naissance (France seulement)',
+  })
+  birthCityInseeCode!: string | null;
+
+  @Field(() => String, {
+    nullable: true,
+    description: 'Pays de naissance, ISO 3166-1 alpha-2',
+  })
+  birthCountryCode!: string | null;
+
   @Field(() => Date, { nullable: true })
   birthDate!: Date | null;
 

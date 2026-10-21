@@ -27,6 +27,10 @@ import { EditPendingCartItemModal } from '../components/cart/EditPendingCartItem
 import { useToast } from '../components/ToastProvider';
 import { formatEuroCents } from '../lib/format';
 import { DocumentsToSignBanner } from '../components/DocumentsToSignBanner';
+import {
+  NewMemberCoordinatesFields,
+  useNewMemberCoordinates,
+} from '../components/coordinates/NewMemberCoordinates';
 
 type Civility = 'MR' | 'MME';
 
@@ -737,6 +741,9 @@ function RegisterSelfAsMemberModal({
   const [billingRhythm, setBillingRhythm] =
     useState<SelfBillingRhythm>('ANNUAL');
   const [localError, setLocalError] = useState<string | null>(null);
+  // Titulaire du compte : portable et adresse sont ceux du compte, seul le
+  // lieu de naissance est propre à la fiche adhérent.
+  const coords = useNewMemberCoordinates(false);
 
   const [register, { loading }] = useMutation<RegisterSelfResponse>(
     VIEWER_REGISTER_SELF_AS_MEMBER,
@@ -822,6 +829,11 @@ function RegisterSelfAsMemberModal({
       setLocalError('Sélectionnez au moins une formule.');
       return;
     }
+    const coordsError = coords.validate();
+    if (coordsError) {
+      setLocalError(coordsError);
+      return;
+    }
     try {
       const { data } = await register({
         variables: {
@@ -835,6 +847,7 @@ function RegisterSelfAsMemberModal({
             // autant ne pas lui envoyer une sélection qu'on sait fausse.
             membershipProductIds: selectedFormulas.map((f) => f.id),
             billingRhythm,
+            ...coords.payload(),
           },
         },
       });
@@ -924,6 +937,8 @@ function RegisterSelfAsMemberModal({
             disabled={loading}
           />
         </label>
+
+        <NewMemberCoordinatesFields {...coords.fieldsProps} disabled={loading} />
 
         {birthDate ? (
           <fieldset className="mp-fieldset">

@@ -60,6 +60,13 @@ import {
 } from './models/viewer-linked-household-family.model';
 import { ViewerFamilyJoinResultGraph } from './models/viewer-family-join-result.model';
 import { ViewerMemberGraph } from './models/viewer-member.model';
+import { ViewerCoordinatesService } from './viewer-coordinates.service';
+import {
+  normalizeMobilePhone,
+  requireAddress,
+  requireBirthPlace,
+  requireMobilePhone,
+} from '../common/coordinates/coordinates';
 import { MemberPseudoService } from '../messaging/member-pseudo.service';
 import { stripMediaSignature } from '../media/media-url-signer.service';
 
@@ -108,6 +115,7 @@ export class ViewerService {
     private readonly memberActivation: MemberAccountActivationService,
     private readonly documentsGating: DocumentsGatingService,
     private readonly fieldConfig: MemberFieldConfigService,
+    private readonly coordinates: ViewerCoordinatesService,
   ) {}
 
   /**
@@ -658,6 +666,9 @@ export class ViewerService {
       postalCode: m.postalCode ?? null,
       city: m.city ?? null,
       birthDate: m.birthDate ?? null,
+      birthCity: m.birthCity ?? null,
+      birthCityInseeCode: m.birthCityInseeCode ?? null,
+      birthCountryCode: m.birthCountryCode ?? null,
       editableProfileFields: await this.editableProfileFields(clubId),
       civility: m.civility,
       medicalCertExpiresAt: m.medicalCertExpiresAt,
@@ -732,13 +743,20 @@ export class ViewerService {
       photoUrl: c.photoUrl ?? null,
       email: c.user?.email ?? null,
       phone: c.phone ?? null,
-      // `Contact` n'a pas de colonnes postales : rien à exposer, et rien à
-      // proposer à la saisie. La liste vide n'est pas un oubli.
-      addressLine: null,
-      postalCode: null,
-      city: null,
+      // Le compte payeur porte portable et adresse (exigés à l'adhésion en
+      // ligne), pas d'état civil : celui-ci vit sur la fiche adhérent.
+      addressLine: c.addressLine ?? null,
+      postalCode: c.postalCode ?? null,
+      city: c.city ?? null,
       birthDate: null,
-      editableProfileFields: [],
+      birthCity: null,
+      birthCityInseeCode: null,
+      birthCountryCode: null,
+      editableProfileFields: ViewerService.CHAMPS_PROFIL_CONTACT.map((key) => ({
+        key,
+        label: catalogFieldLabelFr(key),
+        required: false,
+      })),
       civility: MemberCivility.MR,
       medicalCertExpiresAt: null,
       gradeLevelId: null,
@@ -1569,6 +1587,13 @@ export class ViewerService {
       lastName: string;
       civility: MemberCivility;
       birthDate: string;
+      birthCity: string;
+      birthCityInseeCode?: string | null;
+      birthCountryCode: string;
+      phone: string;
+      addressLine: string;
+      postalCode: string;
+      city: string;
       /** Multi-formules : 1 ou plusieurs formules d'adhésion. */
       membershipProductIds: string[];
       billingRhythm?: SubscriptionBillingRhythm | null;
@@ -1579,6 +1604,15 @@ export class ViewerService {
     firstName: string;
     lastName: string;
   }> {
+    // Coordonnées exigées à l'adhésion en ligne : celles de l'enfant, et
+    // celles du compte payeur, qui doivent être complètes au préalable.
+    const childWho = `${input.firstName.trim()} ${input.lastName.trim()}`;
+    const childCoordinates = {
+      phone: requireMobilePhone(input.phone, childWho),
+      ...requireAddress(input, childWho),
+      ...requireBirthPlace(input, childWho),
+    };
+    await this.coordinates.assertAccountComplete(clubId, activeProfile);
     let familyId: string | null = null;
     let payerEmail: string | null = null;
     if (activeProfile.memberId) {
@@ -1685,6 +1719,7 @@ export class ViewerService {
         // `finalizePendingItems` attribuerait le userId du parent
         // à la fiche Member de l'enfant (bug).
         contactId: null,
+        coordinates: childCoordinates,
         membershipProductIds: input.membershipProductIds,
         billingRhythm:
           input.billingRhythm ?? SubscriptionBillingRhythm.ANNUAL,
@@ -1716,6 +1751,9 @@ export class ViewerService {
       postalCode?: string | null;
       city?: string | null;
       birthDate?: string | null;
+      birthCity?: string | null;
+      birthCityInseeCode?: string | null;
+      birthCountryCode?: string | null;
     },
   ): Promise<ViewerMemberGraph> {
     const m = await this.prisma.member.findFirst({
@@ -1780,7 +1818,9 @@ export class ViewerService {
     };
 
     appliquerChamp(MemberCatalogFieldKey.PHONE, patch.phone, (v) => {
-      data.phone = v;
+      // Un numéro saisi doit être un portable international : c'est la
+      // forme qu'exige l'adhésion en ligne (cf. common/coordinates).
+      data.phone = v ? requireMobilePhone(v) : null;
     });
     appliquerChamp(MemberCatalogFieldKey.ADDRESS_LINE, patch.addressLine, (v) => {
       data.addressLine = v;
@@ -1796,6 +1836,16 @@ export class ViewerService {
       // vide donnerait Invalid Date, d'où le passage explicite par null.
       data.birthDate = v ? new Date(v) : null;
     });
+    // Lieu de naissance : hors catalogue, l'adhésion en ligne l'exige.
+    if (patch.birthCity !== undefined || patch.birthCountryCode !== undefined) {
+      if (safeTrim(patch.birthCity) || safeTrim(patch.birthCountryCode)) {
+        Object.assign(data, requireBirthPlace(patch));
+      } else {
+        data.birthCity = null;
+        data.birthCityInseeCode = null;
+        data.birthCountryCode = null;
+      }
+    }
     let nextEmail: string | null = null;
     // L'email est traité à part : il déclenche l'activation de compte
     // (mail au Member). NB : `Member.email` est non-nullable en DB
@@ -1851,6 +1901,9 @@ export class ViewerService {
       lastName?: string | null;
       phone?: string | null;
       photoUrl?: string | null;
+      addressLine?: string | null;
+      postalCode?: string | null;
+      city?: string | null;
     },
   ): Promise<ViewerMemberGraph> {
     const c = await this.prisma.contact.findFirst({
@@ -1882,7 +1935,13 @@ export class ViewerService {
     }
     const phoneTrim = safeTrim(patch.phone);
     if (phoneTrim !== undefined) {
-      data.phone = phoneTrim || null;
+      data.phone = phoneTrim ? requireMobilePhone(phoneTrim) : null;
+    }
+    // Adresse du compte payeur : exigée à l'adhésion en ligne. Une chaîne
+    // vide efface, comme sur la fiche adhérent.
+    for (const key of ['addressLine', 'postalCode', 'city'] as const) {
+      const v = safeTrim(patch[key]);
+      if (v !== undefined) data[key] = v || null;
     }
     // Idem côté Contact : jamais d'URL signée en base.
     const photoUrlTrim = stripMediaSignature(safeTrim(patch.photoUrl));
@@ -1965,6 +2024,17 @@ export class ViewerService {
     MemberCatalogFieldKey.POSTAL_CODE,
     MemberCatalogFieldKey.CITY,
     MemberCatalogFieldKey.BIRTH_DATE,
+  ];
+
+  /**
+   * Compte payeur : hors catalogue du club, qui régit la fiche adhérent.
+   * Ces champs sont ceux que l'adhésion en ligne exige du compte.
+   */
+  private static readonly CHAMPS_PROFIL_CONTACT: MemberCatalogFieldKey[] = [
+    MemberCatalogFieldKey.PHONE,
+    MemberCatalogFieldKey.ADDRESS_LINE,
+    MemberCatalogFieldKey.POSTAL_CODE,
+    MemberCatalogFieldKey.CITY,
   ];
 
   private async editableProfileFields(
@@ -2341,6 +2411,7 @@ export class ViewerService {
     if (!familyId || cart.familyId !== familyId) {
       throw new BadRequestException('Projet d’adhésion hors de votre foyer.');
     }
+    await this.coordinates.assertCartComplete(clubId, activeProfile, cartId);
     return this.membershipCart.validateCart(clubId, userId, cartId);
   }
 
@@ -2420,6 +2491,11 @@ export class ViewerService {
     if (!familyId || cart.familyId !== familyId) {
       throw new BadRequestException('Panier d’adhésion hors de votre foyer.');
     }
+    await this.coordinates.assertCartComplete(
+      args.clubId,
+      args.activeProfile,
+      args.cartId,
+    );
     const installments = normalizeInstallments(args.installmentsCount);
 
     // Étape 1 : valider le panier (finalisation pending → Members
@@ -2852,6 +2928,9 @@ export class ViewerService {
     input: {
       civility: MemberCivility;
       birthDate: string;
+      birthCity: string;
+      birthCityInseeCode?: string | null;
+      birthCountryCode: string;
       membershipProductIds: string[];
       billingRhythm?: SubscriptionBillingRhythm | null;
     },
@@ -2861,6 +2940,7 @@ export class ViewerService {
     firstName: string;
     lastName: string;
   }> {
+    const birthPlace = requireBirthPlace(input);
     if (activeProfile.memberId) {
       throw new BadRequestException(
         'Ce profil est déjà enregistré comme adhérent du club.',
@@ -2908,6 +2988,12 @@ export class ViewerService {
         'Prénom et nom obligatoires sur votre profil.',
       );
     }
+    // L'adhérent est le titulaire du compte : ses coordonnées sont celles
+    // du compte, qui doivent être complètes.
+    const accountCoordinates = await this.coordinates.assertAccountComplete(
+      clubId,
+      activeProfile,
+    );
 
     // Trouver le foyer cible (créé en amont par l'inscription enfants ;
     // sinon on le crée ici comme avant pour avoir un cart).
@@ -2948,6 +3034,7 @@ export class ViewerService {
         birthDate: new Date(input.birthDate),
         email,
         contactId: activeProfile.contactId,
+        coordinates: { ...accountCoordinates, ...birthPlace },
         membershipProductIds: input.membershipProductIds,
         billingRhythm: input.billingRhythm ?? null,
       },

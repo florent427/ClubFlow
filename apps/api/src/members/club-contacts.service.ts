@@ -13,6 +13,7 @@ import { FamiliesService } from '../families/families.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MemberPseudoService } from '../messaging/member-pseudo.service';
 import { assertMemberEmailAllowedInClub } from './member-email-family-rule';
+import { lenientAdminPhone, lenientAdminText } from './admin-coordinates';
 
 /** Civilité par défaut à la promotion contact → membre (MVP). À corriger en annuaire si besoin. */
 export const PROMOTE_CONTACT_DEFAULT_CIVILITY = MemberCivility.MR;
@@ -25,6 +26,10 @@ export type ClubContactRecord = {
   lastName: string;
   email: string;
   emailVerified: boolean;
+  phone: string | null;
+  addressLine: string | null;
+  postalCode: string | null;
+  city: string | null;
   linkedMemberId: string | null;
   canDeleteContact: boolean;
   createdAt: Date;
@@ -62,6 +67,10 @@ export class ClubContactsService {
       lastName: row.lastName,
       email: row.user.email,
       emailVerified: row.user.emailVerifiedAt != null,
+      phone: row.phone,
+      addressLine: row.addressLine,
+      postalCode: row.postalCode,
+      city: row.city,
       linkedMemberId,
       canDeleteContact: linkedMemberId == null,
       createdAt: row.createdAt,
@@ -101,7 +110,14 @@ export class ClubContactsService {
   async updateClubContact(
     clubId: string,
     contactId: string,
-    input: { firstName: string; lastName: string },
+    input: {
+      firstName: string;
+      lastName: string;
+      phone?: string | null;
+      addressLine?: string | null;
+      postalCode?: string | null;
+      city?: string | null;
+    },
   ): Promise<ClubContactRecord> {
     const row = await this.prisma.contact.findFirst({
       where: { id: contactId, clubId },
@@ -119,7 +135,16 @@ export class ClubContactsService {
     await this.prisma.$transaction([
       this.prisma.contact.update({
         where: { id: contactId },
-        data: { firstName, lastName },
+        data: {
+          firstName,
+          lastName,
+          // Admin souple : champ absent = inchangé, vide = effacé, portable
+          // reconnu ramené en E.164, autre saisie gardée telle quelle.
+          phone: lenientAdminPhone(input.phone),
+          addressLine: lenientAdminText(input.addressLine),
+          postalCode: lenientAdminText(input.postalCode),
+          city: lenientAdminText(input.city),
+        },
       }),
       this.prisma.user.update({
         where: { id: row.userId },
@@ -285,6 +310,11 @@ export class ClubContactsService {
         civility: overrides?.civility ?? PROMOTE_CONTACT_DEFAULT_CIVILITY,
         email: user.email,
         birthDate: overrides?.birthDate ?? null,
+        // Coordonnées déjà saisies sur le contact : reprises sur la fiche.
+        phone: row.phone,
+        addressLine: row.addressLine,
+        postalCode: row.postalCode,
+        city: row.city,
         status: MemberStatus.ACTIVE,
       },
       select: { id: true },

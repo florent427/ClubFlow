@@ -25,6 +25,9 @@ export type ViewerMeData = {
     postalCode: string | null;
     city: string | null;
     birthDate: string | null;
+    birthCity: string | null;
+    birthCityInseeCode: string | null;
+    birthCountryCode: string | null;
     /**
      * Champs de coordonnées que CE club expose. Le formulaire ne rend que
      * ceux-là : un club qui masque la date de naissance ne doit pas la voir

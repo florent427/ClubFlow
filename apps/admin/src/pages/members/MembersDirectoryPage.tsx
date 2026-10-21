@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom';
 import { QuickMessageModal } from '../../components/QuickMessageModal';
 import { QueryError } from '../../components/QueryError';
 import { CardList, CardListItem } from '../../components/ui/CardList';
+import { memberCoordinateGaps } from '../../components/coordinates/completeness';
+import { IncompleteBadge } from '../../components/coordinates/IncompleteBadge';
 import { useIsMobile } from '../../lib/use-media-query';
 import {
   CLUB_DYNAMIC_GROUPS,
@@ -526,6 +528,7 @@ export function MembersDirectoryPage() {
                       >
                         {m.status === 'ACTIVE' ? 'Actif' : 'Inactif'}
                       </span>
+                      <IncompleteBadge gaps={memberCoordinateGaps(m)} compact />
                       {m.roles.map((r) => (
                         <span key={r} className="members-pill">
                           {r}
@@ -629,7 +632,8 @@ export function MembersDirectoryPage() {
                       </td>
                       <td>
                         <span className="members-table__name">
-                          {m.firstName} {m.lastName}
+                          {m.firstName} {m.lastName}{' '}
+                          <IncompleteBadge gaps={memberCoordinateGaps(m)} compact />
                         </span>
                         {m.email ? (
                           <span className="members-table__sub">{m.email}</span>

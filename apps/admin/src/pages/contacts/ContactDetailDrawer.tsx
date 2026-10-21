@@ -1,6 +1,14 @@
 import { useMutation, useQuery } from '@apollo/client/react';
 import { useEffect, useState } from 'react';
 import { PayerCreditPanel } from '../../components/PayerCreditPanel';
+import {
+  AddressFields,
+  type AddressValue,
+} from '../../components/coordinates/AddressFields';
+import { contactCoordinateGaps } from '../../components/coordinates/completeness';
+import { IncompleteBadge } from '../../components/coordinates/IncompleteBadge';
+import { PhoneField } from '../../components/coordinates/PhoneField';
+import { phoneForSave } from '../../components/coordinates/phone';
 import { QuickMessageModal } from '../../components/QuickMessageModal';
 import { useClubCommunicationEnabled } from '../../lib/useClubCommunicationEnabled';
 import {
@@ -43,6 +51,12 @@ export function ContactDetailDrawer({
 }) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState<AddressValue>({
+    addressLine: '',
+    postalCode: '',
+    city: '',
+  });
   const [localError, setLocalError] = useState<string | null>(null);
   const commEnabled = useClubCommunicationEnabled();
   const [quickMsgOpen, setQuickMsgOpen] = useState(false);
@@ -66,8 +80,22 @@ export function ContactDetailDrawer({
     if (!c) return;
     setFirstName(c.firstName);
     setLastName(c.lastName);
+    setPhone(c.phone ?? '');
+    setAddress({
+      addressLine: c.addressLine ?? '',
+      postalCode: c.postalCode ?? '',
+      city: c.city ?? '',
+    });
     setLocalError(null);
-  }, [c?.id, c?.firstName, c?.lastName]);
+  }, [
+    c?.id,
+    c?.firstName,
+    c?.lastName,
+    c?.phone,
+    c?.addressLine,
+    c?.postalCode,
+    c?.city,
+  ]);
 
   const [updateContact, { loading: saving }] =
     useMutation<UpdateClubContactMutationData>(UPDATE_CLUB_CONTACT);
@@ -116,6 +144,11 @@ export function ContactDetailDrawer({
             id: contactId,
             firstName: firstName.trim(),
             lastName: lastName.trim(),
+            // Chaîne vide = effacé côté API ; admin souple, rien d'exigé.
+            phone: phoneForSave(phone) ?? '',
+            addressLine: address.addressLine.trim(),
+            postalCode: address.postalCode.trim(),
+            city: address.city.trim(),
           },
         },
       });
@@ -220,6 +253,7 @@ export function ContactDetailDrawer({
               <h2 className="family-drawer__title" id="contact-drawer-title">
                 Contact portail
               </h2>
+              {c ? <IncompleteBadge gaps={contactCoordinateGaps(c)} /> : null}
               {c ? (
                 <p className="muted family-drawer__hint">
                   E-mail (non modifiable ici) : <strong>{c.email}</strong>
@@ -293,6 +327,8 @@ export function ContactDetailDrawer({
                 autoComplete="off"
               />
             </label>
+            <PhoneField value={phone} onChange={setPhone} />
+            <AddressFields value={address} onChange={setAddress} />
             <div className="members-form__actions" style={{ marginTop: '1rem' }}>
               <button
                 type="button"

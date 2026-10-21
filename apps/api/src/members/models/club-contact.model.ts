@@ -23,6 +23,21 @@ export class ClubContactGraph {
   @Field()
   emailVerified!: boolean;
 
+  @Field(() => String, {
+    nullable: true,
+    description: 'Portable, E.164 si saisi via le sélecteur de pays',
+  })
+  phone!: string | null;
+
+  @Field(() => String, { nullable: true })
+  addressLine!: string | null;
+
+  @Field(() => String, { nullable: true })
+  postalCode!: string | null;
+
+  @Field(() => String, { nullable: true })
+  city!: string | null;
+
   @Field(() => ID, { nullable: true })
   linkedMemberId!: string | null;
 

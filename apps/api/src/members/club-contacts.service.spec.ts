@@ -269,6 +269,31 @@ describe('ClubContactsService', () => {
       });
       expect(PROMOTE_CONTACT_DEFAULT_CIVILITY).toBe(MemberCivility.MR);
     });
+
+    it('reprend le portable et l’adresse du contact sur la fiche créée', async () => {
+      prisma.contact.findFirst.mockResolvedValue({
+        ...baseContact,
+        phone: '+262692123456',
+        addressLine: '1 rue A',
+        postalCode: '97400',
+        city: 'Saint-Denis',
+      });
+      prisma.member.findFirst.mockResolvedValue(null);
+      prisma.member.create.mockResolvedValue({ id: 'mem-new' });
+      prisma.contact.findMany.mockResolvedValue([]);
+
+      await service.promoteContactToMember(clubId, contactId);
+
+      expect(prisma.member.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          phone: '+262692123456',
+          addressLine: '1 rue A',
+          postalCode: '97400',
+          city: 'Saint-Denis',
+        }),
+        select: { id: true },
+      });
+    });
   });
 
   describe('updateClubContact', () => {
@@ -310,6 +335,41 @@ describe('ClubContactsService', () => {
       });
       expect(rec.firstName).toBe('Paul');
       expect(rec.lastName).toBe('Martin');
+    });
+
+    it('enregistre les coordonnées sans rien exiger : portable en E.164 si reconnu, brut sinon', async () => {
+      prisma.contact.findFirst.mockResolvedValue(baseContact);
+      prisma.member.findFirst.mockResolvedValue(null);
+      prisma.contact.update.mockResolvedValue({});
+
+      await service.updateClubContact(clubId, contactId, {
+        firstName: 'Jean',
+        lastName: 'Dupont',
+        phone: ' +262 692 12 34 56 ',
+        addressLine: ' 1 rue A ',
+        postalCode: '',
+        city: undefined,
+      });
+      expect(prisma.contact.update).toHaveBeenLastCalledWith({
+        where: { id: contactId },
+        data: expect.objectContaining({
+          phone: '+262692123456',
+          addressLine: '1 rue A',
+          postalCode: null,
+        }),
+      });
+      const data = prisma.contact.update.mock.calls.at(-1)[0].data;
+      expect(data.city).toBeUndefined();
+
+      await service.updateClubContact(clubId, contactId, {
+        firstName: 'Jean',
+        lastName: 'Dupont',
+        phone: '0692 12 34 56',
+      });
+      expect(prisma.contact.update).toHaveBeenLastCalledWith({
+        where: { id: contactId },
+        data: expect.objectContaining({ phone: '0692 12 34 56' }),
+      });
     });
 
     it('NotFound si contact absent', async () => {

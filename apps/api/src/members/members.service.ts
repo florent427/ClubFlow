@@ -46,6 +46,11 @@ import { DynamicGroupGraph } from './models/dynamic-group.model';
 import { GradeLevelGraph } from './models/grade-level.model';
 import { ClubMemberFieldLayoutGraph } from './models/club-member-field-layout.model';
 import { ClubMemberEmailDuplicateInfoGraph } from './models/club-member-email-duplicate-info.model';
+import {
+  lenientAdminBirthPlace,
+  lenientAdminPhone,
+  lenientAdminText,
+} from './admin-coordinates';
 import { MemberGraph } from './models/member.model';
 import { MemberPseudoService } from '../messaging/member-pseudo.service';
 import { MediaAssetsService } from '../media/media-assets.service';
@@ -211,6 +216,9 @@ export class MembersService {
       addressLine: row.addressLine,
       postalCode: row.postalCode,
       city: row.city,
+      birthCity: row.birthCity,
+      birthCityInseeCode: row.birthCityInseeCode,
+      birthCountryCode: row.birthCountryCode,
       birthDate: row.birthDate,
       photoUrl: row.photoUrl,
       medicalCertExpiresAt: row.medicalCertExpiresAt,
@@ -636,6 +644,9 @@ export class MembersService {
       input.roles && input.roles.length > 0
         ? input.roles
         : [MemberClubRole.STUDENT];
+    // Admin souple : un portable reconnu passe en E.164, le reste est gardé
+    // tel quel ; le lieu de naissance est validé s'il est saisi.
+    const birthPlace = lenientAdminBirthPlace(input);
     // Hors transaction : l'absorption écrit un fichier et un MediaAsset,
     // que la transaction de la fiche n'a pas à porter.
     const photoUrl = await absorberPhotoMembre(
@@ -660,10 +671,13 @@ export class MembersService {
           pseudo,
           civility: input.civility,
           email: emailTrimmed,
-          phone: input.phone ?? null,
-          addressLine: input.addressLine ?? null,
-          postalCode: input.postalCode ?? null,
-          city: input.city ?? null,
+          phone: lenientAdminPhone(input.phone) ?? null,
+          addressLine: lenientAdminText(input.addressLine) ?? null,
+          postalCode: lenientAdminText(input.postalCode) ?? null,
+          city: lenientAdminText(input.city) ?? null,
+          birthCity: birthPlace?.birthCity ?? null,
+          birthCityInseeCode: birthPlace?.birthCityInseeCode ?? null,
+          birthCountryCode: birthPlace?.birthCountryCode ?? null,
           birthDate: input.birthDate ? new Date(input.birthDate) : null,
           photoUrl,
           medicalCertExpiresAt: input.medicalCertExpiresAt
@@ -805,6 +819,8 @@ export class MembersService {
       });
     }
 
+    const birthPlace = lenientAdminBirthPlace(input, existing);
+
     await this.prisma.$transaction(async (tx) => {
       const patch: Prisma.MemberUncheckedUpdateInput = {};
       if (input.firstName !== undefined) patch.firstName = input.firstName;
@@ -813,10 +829,19 @@ export class MembersService {
         patch.civility = input.civility;
       }
       if (input.email !== undefined) patch.email = input.email.trim();
-      if (input.phone !== undefined) patch.phone = input.phone;
-      if (input.addressLine !== undefined) patch.addressLine = input.addressLine;
-      if (input.postalCode !== undefined) patch.postalCode = input.postalCode;
-      if (input.city !== undefined) patch.city = input.city;
+      if (input.phone !== undefined) patch.phone = lenientAdminPhone(input.phone);
+      if (input.addressLine !== undefined) {
+        patch.addressLine = lenientAdminText(input.addressLine);
+      }
+      if (input.postalCode !== undefined) {
+        patch.postalCode = lenientAdminText(input.postalCode);
+      }
+      if (input.city !== undefined) patch.city = lenientAdminText(input.city);
+      if (birthPlace) {
+        patch.birthCity = birthPlace.birthCity;
+        patch.birthCityInseeCode = birthPlace.birthCityInseeCode;
+        patch.birthCountryCode = birthPlace.birthCountryCode;
+      }
       if (input.birthDate !== undefined) {
         patch.birthDate = input.birthDate
           ? new Date(input.birthDate as string)

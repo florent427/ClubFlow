@@ -22,6 +22,10 @@ function toGraph(r: Awaited<ReturnType<ClubContactsService['getClubContact']>>):
     lastName: r.lastName,
     email: r.email,
     emailVerified: r.emailVerified,
+    phone: r.phone,
+    addressLine: r.addressLine,
+    postalCode: r.postalCode,
+    city: r.city,
     linkedMemberId: r.linkedMemberId,
     canDeleteContact: r.canDeleteContact,
     createdAt: r.createdAt,
@@ -66,6 +70,10 @@ export class ClubContactsResolver {
       {
         firstName: input.firstName,
         lastName: input.lastName,
+        phone: input.phone,
+        addressLine: input.addressLine,
+        postalCode: input.postalCode,
+        city: input.city,
       },
     );
     return toGraph(row);

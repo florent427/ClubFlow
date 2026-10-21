@@ -10,7 +10,9 @@ import {
   IsUUID,
   MaxLength,
   MinLength,
+  Length,
 } from 'class-validator';
+import { COORDINATE_LIMITS } from './viewer-coordinates.input';
 import { MemberCivility, SubscriptionBillingRhythm } from '@prisma/client';
 
 @InputType()
@@ -122,6 +124,25 @@ export class ViewerRegisterSelfAsMemberInput {
   @Field(() => String)
   @IsString()
   birthDate!: string;
+
+  @Field(() => String, { description: 'Ville de naissance (libellé).' })
+  @IsString()
+  @Length(1, COORDINATE_LIMITS.birthCity)
+  birthCity!: string;
+
+  @Field(() => String, {
+    nullable: true,
+    description: 'Code INSEE de la commune française choisie dans l’autocomplétion.',
+  })
+  @IsOptional()
+  @IsString()
+  @Length(0, COORDINATE_LIMITS.inseeCode)
+  birthCityInseeCode?: string | null;
+
+  @Field(() => String, { description: 'Pays de naissance, ISO 3166-1 alpha-2.' })
+  @IsString()
+  @Length(2, COORDINATE_LIMITS.countryCode)
+  birthCountryCode!: string;
 
   /**
    * Formules d'adhésion sélectionnées par l'utilisateur. Au moins 1.

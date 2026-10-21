@@ -511,6 +511,20 @@ export class MembershipCartService {
       birthDate: Date;
       email: string;
       contactId?: string | null;
+      /**
+       * Coordonnées et lieu de naissance déjà validés par l'appelant
+       * (cf. common/coordinates). Absents des appels antérieurs à leur
+       * obligation : la validation du panier côté payeur les exige alors.
+       */
+      coordinates?: {
+        phone: string;
+        addressLine: string;
+        postalCode: string;
+        city: string;
+        birthCity: string;
+        birthCityInseeCode: string | null;
+        birthCountryCode: string;
+      } | null;
       membershipProductIds: string[];
       billingRhythm?: SubscriptionBillingRhythm | null;
     },
@@ -599,6 +613,7 @@ export class MembershipCartService {
         birthDate: input.birthDate,
         email: input.email,
         contactId: input.contactId ?? null,
+        ...(input.coordinates ?? {}),
         membershipProductIds: input.membershipProductIds,
         billingRhythm: input.billingRhythm ?? SubscriptionBillingRhythm.ANNUAL,
       },
@@ -2544,6 +2559,13 @@ export class MembershipCartService {
           civility: p.civility,
           email: p.email,
           birthDate: p.birthDate,
+          phone: p.phone,
+          addressLine: p.addressLine,
+          postalCode: p.postalCode,
+          city: p.city,
+          birthCity: p.birthCity,
+          birthCityInseeCode: p.birthCityInseeCode,
+          birthCountryCode: p.birthCountryCode,
           status: 'ACTIVE',
           ...(userId ? { userId } : {}),
         },

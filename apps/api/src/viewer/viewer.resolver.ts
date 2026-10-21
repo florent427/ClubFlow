@@ -10,6 +10,9 @@ import { ClubContextGuard } from '../common/guards/club-context.guard';
 import { GqlJwtAuthGuard } from '../common/guards/gql-jwt-auth.guard';
 import { ViewerActiveProfileGuard } from '../common/guards/viewer-active-profile.guard';
 import type { RequestUser } from '../common/types/request-user';
+import { ViewerUpdateCoordinatesInput } from './dto/viewer-coordinates.input';
+import { ViewerCoordinatesStatusGraph } from './models/viewer-coordinates.model';
+import { ViewerCoordinatesService } from './viewer-coordinates.service';
 import { ModuleCode } from '../domain/module-registry/module-codes';
 import { AcceptFamilyInviteInput } from '../families/dto/accept-family-invite.input';
 import { CreateFamilyInviteInput } from '../families/dto/create-family-invite.input';
@@ -59,6 +62,7 @@ export class ViewerResolver {
     private readonly viewer: ViewerService,
     private readonly familyInvites: FamilyInviteService,
     private readonly membershipCart: MembershipCartService,
+    private readonly coordinates: ViewerCoordinatesService,
   ) {}
 
   @Query(() => ViewerMemberGraph, { name: 'viewerMe' })
@@ -388,9 +392,57 @@ export class ViewerResolver {
         lastName: input.lastName,
         civility: input.civility,
         birthDate: input.birthDate,
+        birthCity: input.birthCity,
+        birthCityInseeCode: input.birthCityInseeCode ?? null,
+        birthCountryCode: input.birthCountryCode,
+        phone: input.phone,
+        addressLine: input.addressLine,
+        postalCode: input.postalCode,
+        city: input.city,
         membershipProductIds: input.membershipProductIds,
         billingRhythm: input.billingRhythm ?? null,
       },
+    );
+  }
+
+  @Query(() => ViewerCoordinatesStatusGraph, {
+    name: 'viewerCoordinatesStatus',
+    description:
+      "Coordonnées du compte payeur et, si un panier est donné, fiches à compléter avant validation (portable, adresse, ville de naissance).",
+  })
+  viewerCoordinatesStatus(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('cartId', { type: () => ID, nullable: true }) cartId?: string | null,
+  ): Promise<ViewerCoordinatesStatusGraph> {
+    return this.coordinates.status(
+      club.id,
+      {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      cartId ?? null,
+    );
+  }
+
+  @Mutation(() => ViewerCoordinatesStatusGraph, {
+    name: 'viewerUpdateCoordinates',
+    description:
+      'Complète les coordonnées du compte, d’une inscription en attente ou d’un adhérent du foyer.',
+  })
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  viewerUpdateCoordinates(
+    @CurrentUser() user: RequestUser,
+    @CurrentClub() club: Club,
+    @Args('input') input: ViewerUpdateCoordinatesInput,
+  ): Promise<ViewerCoordinatesStatusGraph> {
+    return this.coordinates.update(
+      club.id,
+      {
+        memberId: user.activeProfileMemberId ?? null,
+        contactId: user.activeProfileContactId ?? null,
+      },
+      input,
     );
   }
 
@@ -409,16 +461,16 @@ export class ViewerResolver {
       );
     }
     if (user.activeProfileContactId) {
-      // `Contact` n'a pas de colonnes postales. On REFUSE plutôt que de
-      // laisser tomber les champs en silence : un appel qui répond 200 en
-      // n'enregistrant rien est le pire des deux mondes.
-      const postaux = (
-        ['addressLine', 'postalCode', 'city', 'birthDate'] as const
+      // `Contact` porte l'adresse mais pas l'état civil. On REFUSE plutôt
+      // que de laisser tomber les champs en silence : un appel qui répond
+      // 200 en n'enregistrant rien est le pire des deux mondes.
+      const etatCivil = (
+        ['birthDate', 'birthCity', 'birthCityInseeCode', 'birthCountryCode'] as const
       ).filter((k) => input[k] !== undefined);
-      if (postaux.length > 0) {
+      if (etatCivil.length > 0) {
         throw new BadRequestException(
-          'Un profil payeur ne porte pas de coordonnées postales ' +
-            `(${postaux.join(', ')}) : elles se saisissent sur la fiche adhérent.`,
+          'Un profil payeur ne porte pas d’état civil ' +
+            `(${etatCivil.join(', ')}) : il se saisit sur la fiche adhérent.`,
         );
       }
       return this.viewer.updateMyProfileAsContact(
@@ -430,6 +482,9 @@ export class ViewerResolver {
           lastName: input.lastName,
           phone: input.phone,
           photoUrl: input.photoUrl,
+          addressLine: input.addressLine,
+          postalCode: input.postalCode,
+          city: input.city,
         },
       );
     }
@@ -918,6 +973,9 @@ export class ViewerResolver {
       {
         civility: input.civility,
         birthDate: input.birthDate,
+        birthCity: input.birthCity,
+        birthCityInseeCode: input.birthCityInseeCode ?? null,
+        birthCountryCode: input.birthCountryCode,
         membershipProductIds: input.membershipProductIds,
         billingRhythm: input.billingRhythm ?? undefined,
       },

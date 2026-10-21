@@ -14,6 +14,8 @@ import { useMembersUi } from '../members/members-ui-context';
 import { ContactDetailDrawer } from './ContactDetailDrawer';
 import { QueryError } from '../../components/QueryError';
 import { CardList, CardListItem } from '../../components/ui/CardList';
+import { contactCoordinateGaps } from '../../components/coordinates/completeness';
+import { IncompleteBadge } from '../../components/coordinates/IncompleteBadge';
 import { useIsMobile } from '../../lib/use-media-query';
 
 type VerifiedFilter = 'all' | 'yes' | 'no';
@@ -295,7 +297,9 @@ export function ContactsPage() {
                       )}
                       {c.linkedMemberId ? (
                         <span className="cf-badge cf-badge--info">Fiche membre</span>
-                      ) : null}
+                      ) : (
+                        <IncompleteBadge gaps={contactCoordinateGaps(c)} compact />
+                      )}
                     </>
                   }
                   trailing={
@@ -345,6 +349,12 @@ export function ContactsPage() {
                     >
                       <td>
                         <span className="members-table__name">{c.lastName}</span>
+                        {c.linkedMemberId ? null : (
+                          <>
+                            {' '}
+                            <IncompleteBadge gaps={contactCoordinateGaps(c)} compact />
+                          </>
+                        )}
                       </td>
                       <td>{c.firstName}</td>
                       <td>{c.email}</td>

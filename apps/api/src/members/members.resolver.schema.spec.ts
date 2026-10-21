@@ -2,6 +2,7 @@ import { GraphQLSchemaBuilderModule, GraphQLSchemaFactory } from '@nestjs/graphq
 import { Test } from '@nestjs/testing';
 import { printSchema } from 'graphql';
 import '../graphql/register-enums';
+import { ClubContactsResolver } from './club-contacts.resolver';
 import { MembersResolver } from './members.resolver';
 
 /**
@@ -29,6 +30,31 @@ describe('MembersResolver — schéma GraphQL', () => {
     );
     expect(sdl).toContain(
       'removeMemberFromDynamicGroup(input: RemoveMemberFromDynamicGroupInput!): Boolean!',
+    );
+  });
+
+  it('expose les coordonnées (lieu de naissance, adresse du contact) côté admin', async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [GraphQLSchemaBuilderModule],
+    }).compile();
+    const factory = moduleRef.get(GraphQLSchemaFactory);
+    const schema = await factory.create([MembersResolver, ClubContactsResolver]);
+
+    const fieldsOf = (name: string): string[] => {
+      const t = schema.getType(name) as
+        | { getFields: () => Record<string, unknown> }
+        | undefined;
+      return t ? Object.keys(t.getFields()) : [];
+    };
+    const birth = ['birthCity', 'birthCityInseeCode', 'birthCountryCode'];
+    const postal = ['phone', 'addressLine', 'postalCode', 'city'];
+
+    expect(fieldsOf('MemberGraph')).toEqual(expect.arrayContaining(birth));
+    expect(fieldsOf('CreateMemberInput')).toEqual(expect.arrayContaining(birth));
+    expect(fieldsOf('UpdateMemberInput')).toEqual(expect.arrayContaining(birth));
+    expect(fieldsOf('ClubContact')).toEqual(expect.arrayContaining(postal));
+    expect(fieldsOf('UpdateClubContactInput')).toEqual(
+      expect.arrayContaining(postal),
     );
   });
 });

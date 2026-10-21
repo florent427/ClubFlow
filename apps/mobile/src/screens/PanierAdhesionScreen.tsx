@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useMutation, useQuery } from '@apollo/client/react';
 import { useNavigation } from '@react-navigation/native';
 import {
@@ -22,6 +23,9 @@ import {
 import { CartItemFeesSection } from '../components/CartItemFeesSection';
 import { RegisterChildMemberCta } from '../components/RegisterChildMemberCta';
 import { RegisterSelfMemberCta } from '../components/RegisterSelfMemberCta';
+import { CoordinatesGapCard } from '../components/coordinates';
+import { VIEWER_COORDINATES_STATUS } from '../lib/coordinates-documents';
+import type { CoordinatesStatus } from '../lib/coordinates';
 import {
   VIEWER_ACTIVE_CART,
   VIEWER_OPEN_CART,
@@ -89,6 +93,37 @@ export function PanierAdhesionScreen() {
     data?.viewerActiveMembershipCart ??
     reopenableData?.viewerReopenableMembershipCart ??
     null;
+
+  // Fiches incomplètes (portable, adresse, ville de naissance) : l'API
+  // refuse la validation tant qu'il en reste ; on les fait compléter ici.
+  const cartOpen = cart?.status === 'OPEN';
+  const { data: coordsData, refetch: refetchCoords } = useQuery<{
+    viewerCoordinatesStatus: CoordinatesStatus;
+  }>(VIEWER_COORDINATES_STATUS, {
+    variables: { cartId: cart?.id ?? null },
+    skip: !cartOpen,
+    fetchPolicy: 'cache-and-network',
+  });
+  const coordsStatus = cartOpen ? (coordsData?.viewerCoordinatesStatus ?? null) : null;
+  const coordGaps = coordsStatus?.gaps ?? [];
+
+  // Composition du panier : une ligne retirée ne doit pas laisser derrière
+  // elle une fiche « à compléter » qui bloquerait la validation.
+  const compositionKey = [
+    ...(cart?.items.map((it) => it.id) ?? []),
+    ...(cart?.pendingItems.map((p) => p.id) ?? []),
+  ].join(',');
+  const lastCompositionKey = useRef(compositionKey);
+  useEffect(() => {
+    if (lastCompositionKey.current === compositionKey) return;
+    lastCompositionKey.current = compositionKey;
+    if (cartOpen) void refetchCoords();
+  }, [compositionKey, cartOpen, refetchCoords]);
+
+  function refreshAfterAdd() {
+    void refetch();
+    if (cartOpen) void refetchCoords();
+  }
 
   const [openCart, { loading: opening }] = useMutation(VIEWER_OPEN_CART, {
     refetchQueries: [{ query: VIEWER_ACTIVE_CART }],
@@ -205,6 +240,9 @@ export function PanierAdhesionScreen() {
                 'La facture a été générée. Direction l’onglet Famille pour le règlement.',
               );
             } catch (err) {
+              // Le message de l'API nomme les personnes et ce qui manque ;
+              // on relit le statut pour afficher les fiches à compléter.
+              void refetchCoords();
               Alert.alert(
                 'Validation impossible',
                 err instanceof Error ? err.message : 'Erreur inconnue.',
@@ -264,6 +302,7 @@ export function PanierAdhesionScreen() {
           { paddingBottom: insets.bottom + spacing.xxxl },
         ]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {error ? (
           <EmptyState
@@ -540,14 +579,30 @@ export function PanierAdhesionScreen() {
             {/* === CTAs ajout au panier (enfant + soi-même) === */}
             <Card title="Ajouter au panier">
               <View style={{ gap: spacing.sm }}>
-                <RegisterChildMemberCta
-                  onSuccess={() => void refetch()}
-                />
-                <RegisterSelfMemberCta
-                  onSuccess={() => void refetch()}
-                />
+                <RegisterChildMemberCta onSuccess={refreshAfterAdd} />
+                <RegisterSelfMemberCta onSuccess={refreshAfterAdd} />
               </View>
             </Card>
+
+            {/* === Coordonnées à compléter avant validation === */}
+            {coordsStatus && coordGaps.length > 0 ? (
+              <Card title="Coordonnées à compléter">
+                <Text style={styles.body}>
+                  Portable, adresse et ville de naissance sont obligatoires
+                  pour chaque adhérent avant de valider le panier.
+                </Text>
+                <View style={{ gap: spacing.md, marginTop: spacing.md }}>
+                  {coordGaps.map((g) => (
+                    <CoordinatesGapCard
+                      key={`${g.target}:${g.targetId ?? ''}`}
+                      gap={g}
+                      status={coordsStatus}
+                      onSaved={() => refetchCoords()}
+                    />
+                  ))}
+                </View>
+              </Card>
+            ) : null}
 
             {/* === Total + Validation === */}
             <Card title="Récapitulatif">
@@ -566,10 +621,20 @@ export function PanierAdhesionScreen() {
                   }
                   icon="checkmark-circle-outline"
                   onPress={confirmValidate}
-                  disabled={validating || !cart.canValidate || itemsCount === 0}
+                  disabled={
+                    validating ||
+                    !cart.canValidate ||
+                    itemsCount === 0 ||
+                    coordGaps.length > 0
+                  }
                   fullWidth
                 />
               </View>
+              {coordGaps.length > 0 && itemsCount > 0 ? (
+                <Text style={styles.warn}>
+                  Complétez les coordonnées ci-dessus avant de valider.
+                </Text>
+              ) : null}
               {!cart.canValidate && itemsCount > 0 ? (
                 <Text style={styles.warn}>
                   Le panier ne peut pas encore être validé (alertes à

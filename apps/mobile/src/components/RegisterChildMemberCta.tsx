@@ -1,4 +1,4 @@
-import { useLazyQuery, useMutation } from '@apollo/client/react';
+import { useLazyQuery, useMutation, useQuery } from '@apollo/client/react';
 import { useEffect, useState } from 'react';
 import {
   Modal,
@@ -18,6 +18,18 @@ import {
   VIEWER_ELIGIBLE_MEMBERSHIP_FORMULAS,
   VIEWER_REGISTER_CHILD_MEMBER,
 } from '../lib/viewer-documents';
+import { VIEWER_COORDINATES_STATUS } from '../lib/coordinates-documents';
+import {
+  draftFromGraph,
+  resolvePersonCoordinates,
+  type CoordinatesErrors,
+  type CoordinatesStatus,
+  type PersonCoordinatesDraft,
+} from '../lib/coordinates';
+import {
+  AccountCoordinatesSection,
+  PersonCoordinatesForm,
+} from './coordinates';
 
 type Civility = 'MR' | 'MME';
 type BillingRhythm = 'ANNUAL' | 'MONTHLY';
@@ -54,7 +66,10 @@ function formatEuros(cents: number): string {
 /**
  * CTA « Inscrire un enfant » — version mobile.
  * Étapes : prénom, nom, civilité, date de naissance (date picker FR),
- * sélection formule (auto-fetch après identité+naissance), rythme.
+ * lieu de naissance, portable et adresse de l'enfant (cases « même … que
+ * le compte »), sélection formule (auto-fetch après identité+naissance),
+ * rythme. Le compte payeur doit avoir des coordonnées complètes : sinon la
+ * section « Vos coordonnées » est proposée en tête.
  * Génère un PendingItem dans le panier d'adhésion.
  *
  * `onSuccess` est appelé après création du PendingItem pour permettre
@@ -74,6 +89,31 @@ export function RegisterChildMemberCta({
   const [formulaId, setFormulaId] = useState<string>('');
   const [billingRhythm, setBillingRhythm] = useState<BillingRhythm>('ANNUAL');
   const [error, setError] = useState<string | null>(null);
+  const [coords, setCoords] = useState<PersonCoordinatesDraft>(() =>
+    draftFromGraph(null),
+  );
+  const [coordsErrors, setCoordsErrors] = useState<CoordinatesErrors | null>(
+    null,
+  );
+
+  const { data: statusData, refetch: refetchStatus } = useQuery<{
+    viewerCoordinatesStatus: CoordinatesStatus;
+  }>(VIEWER_COORDINATES_STATUS, {
+    skip: !open,
+    fetchPolicy: 'cache-and-network',
+  });
+  const status = statusData?.viewerCoordinatesStatus ?? null;
+  const accountComplete = status?.accountComplete === true;
+
+  // Cases « même … que le compte » cochées d'office dès que le compte est
+  // complet (y compris juste après l'avoir complété dans cette modale).
+  useEffect(() => {
+    setCoords((d) => ({
+      ...d,
+      samePhone: accountComplete,
+      sameAddress: accountComplete,
+    }));
+  }, [accountComplete]);
 
   const [registerChild, { loading }] = useMutation(VIEWER_REGISTER_CHILD_MEMBER);
   const [fetchFormulas, { data: formulasData, loading: formulasLoading }] =
@@ -114,6 +154,8 @@ export function RegisterChildMemberCta({
     setFormulaId('');
     setBillingRhythm('ANNUAL');
     setError(null);
+    setCoords(draftFromGraph(null, { phone: accountComplete, address: accountComplete }));
+    setCoordsErrors(null);
   }
 
   function onPickerChange(event: DateTimePickerEvent, selected?: Date) {
@@ -139,6 +181,21 @@ export function RegisterChildMemberCta({
       setError('Sélectionnez une date de naissance.');
       return;
     }
+    if (!accountComplete) {
+      setError('Enregistrez d’abord vos coordonnées (portable et adresse).');
+      return;
+    }
+    const resolved = resolvePersonCoordinates(coords, {
+      account: status?.account ?? null,
+      offerSameAsAccount: accountComplete,
+      requireBirthPlace: true,
+    });
+    if (!resolved.ok) {
+      setCoordsErrors(resolved.errors);
+      setError('Complétez le lieu de naissance et les coordonnées de l’enfant.');
+      return;
+    }
+    setCoordsErrors(null);
     if (!formulaId) {
       setError('Sélectionnez une formule d’adhésion.');
       return;
@@ -151,6 +208,7 @@ export function RegisterChildMemberCta({
             lastName: lastName.trim(),
             civility,
             birthDate,
+            ...resolved.input,
             membershipProductIds: [formulaId],
             billingRhythm,
           },
@@ -205,7 +263,17 @@ export function RegisterChildMemberCta({
             <Ionicons name="close" size={24} color="#1565c0" />
           </Pressable>
         </View>
-        <ScrollView contentContainerStyle={styles.modalBody}>
+        <ScrollView
+          contentContainerStyle={styles.modalBody}
+          keyboardShouldPersistTaps="handled"
+        >
+              {status && !accountComplete ? (
+                <AccountCoordinatesSection
+                  account={status.account}
+                  onSaved={() => refetchStatus()}
+                />
+              ) : null}
+
               <Text style={styles.label}>Prénom</Text>
               <TextInput
                 style={styles.input}
@@ -283,6 +351,16 @@ export function RegisterChildMemberCta({
               <Text style={styles.hint}>
                 Nécessaire pour proposer la bonne formule d'adhésion.
               </Text>
+
+              <Text style={styles.sectionTitle}>Coordonnées de l'enfant</Text>
+              <PersonCoordinatesForm
+                draft={coords}
+                onChange={setCoords}
+                account={status?.account ?? null}
+                offerSameAsAccount={accountComplete}
+                showBirthPlace
+                errors={coordsErrors}
+              />
 
               <Text style={styles.label}>Formule d'adhésion</Text>
               {!identityComplete ? (
@@ -386,8 +464,11 @@ export function RegisterChildMemberCta({
               {error ? <Text style={styles.error}>{error}</Text> : null}
 
               <Pressable
-                style={[styles.btnPrimary, (loading || !formulaId) && styles.btnDisabled]}
-                disabled={loading || !formulaId}
+                style={[
+                  styles.btnPrimary,
+                  (loading || !formulaId || !accountComplete) && styles.btnDisabled,
+                ]}
+                disabled={loading || !formulaId || !accountComplete}
                 onPress={() => void onSubmit()}
               >
                 <Text style={styles.btnPrimaryText}>
@@ -425,6 +506,12 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 18, fontWeight: '700', color: '#0f172a' },
   modalBody: { padding: 16, gap: 12 },
   label: { fontSize: 13, fontWeight: '600', color: '#475569' },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginTop: 8,
+  },
   hint: { fontSize: 12, color: '#64748b' },
   warn: { fontSize: 12, color: '#b45309' },
   error: { color: '#dc2626', fontSize: 13 },

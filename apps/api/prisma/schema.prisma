@@ -501,15 +501,20 @@ enum OAuthProvider {
 
 /// Prospect / contact portail — distinct du membre adhérent (`Member`)
 model Contact {
-  id        String   @id @default(uuid())
-  clubId    String
-  userId    String
-  firstName String
-  lastName  String
-  phone     String?
-  photoUrl  String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(uuid())
+  clubId      String
+  userId      String
+  firstName   String
+  lastName    String
+  /// Portable E.164 (+262…, +33…). Exigé à l'adhésion en ligne.
+  phone       String?
+  /// Adresse postale du compte payeur, exigée à l'adhésion en ligne.
+  addressLine String?
+  postalCode  String?
+  city        String?
+  photoUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   club                   Club                        @relation(fields: [clubId], references: [id], onDelete: Cascade)
   user                   User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -798,6 +803,11 @@ model Member {
   postalCode           String?
   city                 String?
   birthDate            DateTime?
+  /// Lieu de naissance : ville (libellé), code INSEE si commune française
+  /// choisie dans le référentiel, pays ISO 3166-1 alpha-2.
+  birthCity            String?
+  birthCityInseeCode   String?
+  birthCountryCode     String?
   photoUrl             String?
   medicalCertExpiresAt DateTime?
   status               MemberStatus   @default(ACTIVE)
@@ -4382,6 +4392,16 @@ model MembershipCartPendingItem {
   /// adulte). Null pour un enfant ajouté par le payeur (pas de Contact
   /// préalable).
   contactId                String?
+  /// Coordonnées et lieu de naissance saisis à l'inscription, copiés sur
+  /// le Member à la finalisation. Null sur les inscriptions antérieures à
+  /// leur obligation : la validation du panier les exige alors.
+  phone                    String?
+  addressLine              String?
+  postalCode               String?
+  city                     String?
+  birthCity                String?
+  birthCityInseeCode       String?
+  birthCountryCode         String?
   /// IDs de MembershipProduct sélectionnés. Toujours ≥ 1.
   membershipProductIds     String[]
   billingRhythm            SubscriptionBillingRhythm @default(ANNUAL)
