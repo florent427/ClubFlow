@@ -9,7 +9,13 @@ import { MediaUrlSignerService } from './media-url-signer.service';
  */
 const signer = new MediaUrlSignerService();
 
-const signPhotoUrl: FieldMiddleware = async (_ctx, next) => {
+/**
+ * Middleware de champ qui signe une URL média à la sortie GraphQL. Exporté
+ * pour les champs NON nullables (`@Field({ middleware: [signMediaUrl] })`),
+ * que `SignedPhotoField` — nullable — ne couvre pas : un justificatif
+ * comptable a toujours un fichier.
+ */
+export const signMediaUrl: FieldMiddleware = async (_ctx, next) => {
   const value = (await next()) as unknown;
   if (typeof value !== 'string') return value;
   return signer.signUrl(value);
@@ -31,6 +37,6 @@ export function SignedPhotoField(description?: string): PropertyDecorator {
   return Field(() => String, {
     nullable: true,
     description,
-    middleware: [signPhotoUrl],
+    middleware: [signMediaUrl],
   });
 }

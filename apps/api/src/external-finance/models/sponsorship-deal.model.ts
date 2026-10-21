@@ -1,4 +1,5 @@
 import { Field, ID, Int, ObjectType } from '@nestjs/graphql';
+import { signMediaUrl } from '../../media/signed-photo-field.decorator';
 import {
   SponsorshipDealStatus,
   SponsorshipDocumentKind,
@@ -46,7 +47,9 @@ export class SponsorshipDocumentGraph {
   @Field()
   fileName!: string;
 
-  @Field()
+  // Fichier privé du club : sans signature, un <iframe>/<a> (qui
+  // n'envoie aucun en-tête) reçoit 404. Cf. MediaUrlSignerService.
+  @Field({ middleware: [signMediaUrl] })
   publicUrl!: string;
 
   @Field()
