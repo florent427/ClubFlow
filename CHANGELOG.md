@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.79.5](https://github.com/florent427/ClubFlow/compare/v0.79.4...v0.79.5) (2026-10-21)
+
+
+### 🐛 Bug Fixes
+
+* **media:** signe les URL des documents à signer et des pièces jointes ([f06e9bd](https://github.com/florent427/ClubFlow/commit/f06e9bdfd6b989bf012e6a2853fa723a43df98d4))
+* **media:** signe les URL des documents à signer et des pièces jointes ([0a2c812](https://github.com/florent427/ClubFlow/commit/0a2c8121551a6d598737e5d07c95fcd896c04af1))
+
 ## [0.79.4](https://github.com/florent427/ClubFlow/compare/v0.79.3...v0.79.4) (2026-10-21)
 
 
