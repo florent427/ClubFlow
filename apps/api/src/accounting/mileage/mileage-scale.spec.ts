@@ -56,7 +56,7 @@ describe('barème kilométrique', () => {
   it("signale une année sans barème publié et prend le dernier connu", () => {
     const s = resolveScale(car5, 2031);
     expect(s.provisional).toBe(true);
-    expect(s.scaleYear).toBe(2025);
-    expect(resolveScale(car5, 2025).provisional).toBe(false);
+    expect(s.scaleYear).toBe(2026);
+    expect(resolveScale(car5, 2026).provisional).toBe(false);
   });
 });

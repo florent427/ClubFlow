@@ -58,10 +58,10 @@ const twoWheels = (kind: MileageVehicleKind, minCv: number, maxCv: number | null
 });
 
 /**
- * Barème publié pour les revenus 2023, reconduit à l'identique pour 2024 et
- * 2025. À compléter chaque printemps quand l'administration publie le
- * suivant : une année absente prend le dernier barème connu, signalé comme
- * provisoire.
+ * Barème publié pour les revenus 2023, reconduit à l'identique pour 2024,
+ * 2025 et 2026 (brochure fiscale d'avril 2026). À compléter chaque
+ * printemps quand l'administration publie le suivant : une année absente
+ * prend le dernier barème connu, signalé comme provisoire.
  */
 const SCALE_2024: ScaleRow[] = [
   car(0, 3, 'Voiture 3 CV et moins', 529, 316, 106_500, 370),
@@ -79,6 +79,7 @@ const SCALES: Record<number, ScaleRow[]> = {
   2023: SCALE_2024,
   2024: SCALE_2024,
   2025: SCALE_2024,
+  2026: SCALE_2024,
 };
 
 /** Majoration des véhicules 100 % électriques, en pour cent. */
