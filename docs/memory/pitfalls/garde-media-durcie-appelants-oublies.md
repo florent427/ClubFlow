@@ -110,3 +110,4 @@ En prod, le symptôme serveur se grep :
 - [pitfalls/rest-x-club-id-sans-appartenance.md](rest-x-club-id-sans-appartenance.md) — le durcissement voisin, côté routes REST
 - [pitfalls/double-ignore-une-clause-du-where.md](double-ignore-une-clause-du-where.md) — même famille : un double plus permissif que le vrai
 - [pitfalls/test-verifie-la-forme-pas-le-comportement.md](test-verifie-la-forme-pas-le-comportement.md)
+- [pitfalls/ligne-invisible-bloque-la-validation.md](ligne-invisible-bloque-la-validation.md) — même parcours « Scanner un reçu », second défaut

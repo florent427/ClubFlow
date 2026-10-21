@@ -18,6 +18,7 @@
 
 | Fichier | Sujet |
 |---|---|
+| [`apollo-mutation-type-sans-id.md`](pitfalls/apollo-mutation-type-sans-id.md) | Piège — une mutation qui renvoie un type sans `id` ne met pas l'écran à jour |
 | [`apollo-server-csrf-cross-origin.md`](pitfalls/apollo-server-csrf-cross-origin.md) | Piège — Apollo Server v5 bloque les POST cross-origin sans header non-simple |
 | [`apollo-typename-dans-les-inputs.md`](pitfalls/apollo-typename-dans-les-inputs.md) | Piège — renvoyer un objet lu par Apollo comme input GraphQL (`__typename`) |
 | [`atob-latin1-et-base64url.md`](pitfalls/atob-latin1-et-base64url.md) | `atob()` ne décode ni l'UTF-8 ni le base64url : mojibake visible, déconnexions invisibles |
@@ -46,6 +47,7 @@
 | [`env-production-perdus-reset-hard.md`](pitfalls/env-production-perdus-reset-hard.md) | Piège — `.env.production` perdus après `git reset --hard` |
 | [`garantie-derriere-effet-de-bord.md`](pitfalls/garantie-derriere-effet-de-bord.md) | Piège — une garantie placée derrière un effet de bord qui peut échouer |
 | [`garde-media-durcie-appelants-oublies.md`](pitfalls/garde-media-durcie-appelants-oublies.md) | Piège — durcir la garde des médias casse en silence ceux qui ne passent pas le club |
+| [`garde-nest-provider-module-manquant.md`](pitfalls/garde-nest-provider-module-manquant.md) | Piège — une garde qui injecte un service tue le démarrage du module qui l'oublie |
 | [`gh-pr-create-no-commits.md`](pitfalls/gh-pr-create-no-commits.md) | Piège — `gh pr create` "No commits between" après squash merge |
 | [`gha-pr-permission.md`](pitfalls/gha-pr-permission.md) | Piège — GitHub Actions ne peut pas créer ou approuver de PRs |
 | [`github-token-ne-retrigger-pas.md`](pitfalls/github-token-ne-retrigger-pas.md) | Le tag de release n'est jamais coupé : GITHUB_TOKEN ne réveille aucun workflow |
@@ -131,7 +133,7 @@
 
 ---
 
-_Index généré le 2026-10-21 06:25 UTC par `bin/memory-index`._
+_Index généré le 2026-10-21 06:44 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`
