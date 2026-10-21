@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.79.3](https://github.com/florent427/ClubFlow/compare/v0.79.2...v0.79.3) (2026-10-21)
+
+
+### 🐛 Bug Fixes
+
+* **media:** signer l'URL des justificatifs comptables, de subvention et de sponsoring ([59dd26a](https://github.com/florent427/ClubFlow/commit/59dd26a8212cb34e4aa9fa1fcf46f381933d7010))
+* **media:** signer l'URL des justificatifs comptables, de subvention et de sponsoring ([6e0eb31](https://github.com/florent427/ClubFlow/commit/6e0eb3170913f5f242b04483204b3fdb1f25ce68))
+
 ## [0.79.2](https://github.com/florent427/ClubFlow/compare/v0.79.1...v0.79.2) (2026-10-21)
 
 
