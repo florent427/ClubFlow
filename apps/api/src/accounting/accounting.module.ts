@@ -3,6 +3,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { ClubModuleEnabledGuard } from '../common/guards/club-module-enabled.guard';
 import { AiModule } from '../ai/ai.module';
 import { MediaModule } from '../media/media.module';
+import { FamiliesModule } from '../families/families.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PdfModule } from '../pdf/pdf.module';
 import { AccountingExportController } from './accounting-export.controller';
@@ -44,7 +45,7 @@ import { FinancialStatementsResolver } from './statements/financial-statements.r
 import { FinancialStatementsService } from './statements/financial-statements.service';
 
 @Module({
-  imports: [PrismaModule, AiModule, MediaModule, NotificationsModule, PdfModule],
+  imports: [PrismaModule, AiModule, MediaModule, NotificationsModule, PdfModule, FamiliesModule],
   controllers: [AccountingExportController],
   providers: [
     AccountingService,
