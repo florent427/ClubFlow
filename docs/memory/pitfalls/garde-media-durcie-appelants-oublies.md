@@ -34,6 +34,11 @@ autres consommateurs, qui ont continué de compiler et de passer leurs tests :
 | `DocumentsController` (téléchargement d'un document signé) | idem | 2026-10-21 |
 | `AccountingDocumentGraph.publicUrl` (aperçu compta) | URL non signée | v0.79.3 |
 | `GrantDocumentGraph` / `SponsorshipDocumentGraph.publicUrl` | URL non signée | v0.79.3 |
+| `ClubDocumentGraph.mediaAssetUrl` (document à signer, `<iframe>` portail, pdf.js admin) | URL non signée | 2026-10-21 |
+| `ClubSignedDocumentGraph.signedAssetUrl` (lien admin) | URL non signée | 2026-10-21 |
+| `ChatMessageAttachmentGql.mediaUrl` / `thumbnailUrl` (pièces jointes mobile) | URL non signée | 2026-10-21 |
+| `MessagingGateway.emitChatMessage` (pièces jointes poussées en WS) | URL non signée, hors GraphQL | 2026-10-21 |
+| `ProjectSectionAttachmentGraph.publicUrl` (lien admin) | URL non signée | 2026-10-21 |
 
 ## Cause root
 

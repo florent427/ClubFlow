@@ -6,6 +6,10 @@ import {
   ObjectType,
   registerEnumType,
 } from '@nestjs/graphql';
+import {
+  SignedPhotoField,
+  signMediaUrl,
+} from '../../media/signed-photo-field.decorator';
 import { ChatMessageAttachmentKind } from '@prisma/client';
 import { ChatMemberSnippetGraph } from './chat-room-gql.model';
 
@@ -48,11 +52,13 @@ export class ChatMessageAttachmentGql {
   mediaAssetId!: string;
 
   /** URL publique du média (servi via `GET /media/:id`). */
-  @Field(() => String)
+  // Fichier privé : chargé par un <iframe>, un <img> ou un lien, sans
+  // en-tête d'auth — d'où la signature (cf. MediaUrlSignerService).
+  @Field(() => String, { middleware: [signMediaUrl] })
   mediaUrl!: string;
 
   /** URL d'un thumbnail (vidéo) — null si pas généré. */
-  @Field(() => String, { nullable: true })
+  @SignedPhotoField()
   thumbnailUrl!: string | null;
 
   @Field(() => String)
