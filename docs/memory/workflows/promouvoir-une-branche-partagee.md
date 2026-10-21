@@ -82,6 +82,52 @@ gh pr checks <n> --watch
 gh pr merge <n> --merge
 ```
 
+## Variante : ne promouvoir QUE son correctif
+
+Quand `origin/main..origin/staging` contient le travail non publié d'une
+autre session (fonctionnalité en cours, pas encore validée par Florent),
+une PR `staging → main` l'embarquerait. On ne promeut alors que son
+propre commit, par une branche de correctif tirée de `main`.
+
+```bash
+git fetch origin
+W="$TEMP/hotfix-<sujet>"
+git worktree add -b hotfix/<sujet> "$W" origin/main
+git -C "$W" cherry-pick <sha-sur-staging>
+git -C "$W" push -u origin hotfix/<sujet>
+gh pr create --base main --head hotfix/<sujet> --title "<type>(<scope>): ..." --body "..."
+gh pr checks <n> --watch
+gh pr merge <n> --merge
+gh run watch <id-deploy.yml> --exit-status
+gh workflow run release-please.yml --ref main   # coupe le tag
+gh release list --limit 1                       # le tag doit être là
+```
+
+Puis réaligner `staging` **sans perdre le travail tiers** : pas d'avance
+rapide possible (staging a des commits que main n'a pas), donc fusion de
+`main` dans une copie détachée de `origin/staging`, poussée par refspec :
+
+```bash
+git -C "$W" checkout --detach origin/staging
+git -C "$W" merge --no-edit origin/main
+git -C "$W" diff --stat origin/staging HEAD     # ne doit montrer que CHANGELOG + manifest
+```
+
+```powershell
+# PowerShell : Git Bash réécrit `HEAD:refs/heads/staging` en chemin Windows
+git -C "$env:TEMP\hotfix-<sujet>" push origin HEAD:refs/heads/staging
+```
+
+Enfin : `git worktree remove`, suppression de la branche locale et
+distante, smoke des 4 vhosts et de `{ __typename }` sur l'API.
+
+Le commit cherry-pické a un autre SHA que celui de `staging` : c'est
+normal, le merge de réalignement les réconcilie sans conflit puisque le
+contenu est identique.
+
+Suivi 4 fois le 2026-10-21 (v0.79.2 → v0.79.5), la fonctionnalité
+kilométrique d'une session parallèle restant sur `staging`.
+
 ## La règle
 
 **On ne promeut jamais ce qu'on n'a pas vérifié soi-même**, même quand ça

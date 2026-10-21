@@ -8,9 +8,13 @@ import { ClubSwitcher } from './ClubSwitcher';
 import { AikoChatWidget } from './agent/AikoChatWidget';
 import { MobileTabBar } from './MobileTabBar';
 import { useIsMobile } from '../lib/use-media-query';
-import { VIEWER_PROFILES } from '../lib/documents';
+import { SELECT_ACTIVE_VIEWER_PROFILE, VIEWER_PROFILES } from '../lib/documents';
 import { apolloClient } from '../lib/apollo';
-import { navigateToMemberPortal } from '../lib/member-portal-switch';
+import {
+  navigateToMemberPortal,
+  resolveMemberPortalSession,
+} from '../lib/member-portal-switch';
+import { useToast } from './ToastProvider';
 import type { ViewerProfilesQueryData } from '../lib/types';
 import { decodeJwtIdentity } from '../lib/jwt';
 import { clearSession, getClubId, getToken, hasActiveClub } from '../lib/storage';
@@ -221,6 +225,8 @@ function SubItemRow({
 
 export function AdminLayout({ children }: { children?: ReactNode }) {
   const navigate = useNavigate();
+  const { showToast } = useToast();
+  const [switchingToPortal, setSwitchingToPortal] = useState(false);
   const location = useLocation();
   const token = getToken();
   const clubId = getClubId();
@@ -351,9 +357,37 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
     });
   }, [collapsedSections, location.pathname]);
 
-  function goPersonnel() {
-    if (!hasMemberProfiles || !token || !clubId) return;
-    navigateToMemberPortal(token, clubId);
+  async function goPersonnel() {
+    if (!hasMemberProfiles || !token || !clubId || switchingToPortal) return;
+    setSwitchingToPortal(true);
+    try {
+      const session = await resolveMemberPortalSession(
+        token,
+        clubId,
+        viewerProfiles,
+        async (memberId) => {
+          const { data } = await apolloClient.mutate<{
+            selectActiveViewerProfile: { accessToken: string };
+          }>({
+            mutation: SELECT_ACTIVE_VIEWER_PROFILE,
+            variables: { memberId },
+          });
+          const accessToken = data?.selectActiveViewerProfile.accessToken;
+          if (!accessToken) throw new Error('Réponse inattendue du serveur.');
+          return accessToken;
+        },
+      );
+      if (!session) return;
+      navigateToMemberPortal(session.token, session.clubId);
+    } catch {
+      // Ne pas transmettre le jeton de l'admin à la place : le portail
+      // l'accepterait puis refuserait toutes ses requêtes.
+      setSwitchingToPortal(false);
+      showToast(
+        'Impossible d’ouvrir l’espace personnel. Réessayez.',
+        'error',
+      );
+    }
   }
 
   function logout() {
@@ -479,9 +513,9 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
               <button
                 type="button"
                 className="cf-sidenav__link cf-sidenav__link--button cf-mobile-only"
-                disabled={!hasMemberProfiles}
+                disabled={!hasMemberProfiles || switchingToPortal}
                 title={personnelTitle}
-                onClick={() => goPersonnel()}
+                onClick={() => void goPersonnel()}
               >
                 <span className="material-symbols-outlined" aria-hidden>
                   switch_account
@@ -554,9 +588,9 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
                 <button
                   type="button"
                   className="cf-role-toggle__btn"
-                  disabled={!hasMemberProfiles}
+                  disabled={!hasMemberProfiles || switchingToPortal}
                   title={personnelTitle}
-                  onClick={() => goPersonnel()}
+                  onClick={() => void goPersonnel()}
                 >
                   Personnel
                 </button>

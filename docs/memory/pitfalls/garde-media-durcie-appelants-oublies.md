@@ -64,6 +64,10 @@ le fichier quels que soient les arguments.
   - nullable → `@SignedPhotoField()` ;
   - non nullable → `@Field({ middleware: [signMediaUrl] })`
     (`media/signed-photo-field.decorator.ts`).
+- Payload qui ne traverse aucun modèle GraphQL (émission WebSocket, e-mail,
+  push) : le middleware de champ ne le voit pas, signer à l'émission avec
+  `MediaUrlSignerService.signUrl()` (cf. `MessagingGateway.emitChatMessage`,
+  `messaging-gateway-emit.spec.ts`).
 - Persister une URL venue du client : `stripMediaSignature()` avant écriture.
 - Double de `streamFor` dans un test : **refuser comme le vrai** quand le
   club manque (cf. `receipt-ocr-media-access.spec.ts`).
@@ -88,13 +92,15 @@ mènent, pas seulement la route modifiée :
 ```bash
 grep -rn -A3 "streamFor(" apps/api/src --include=*.ts | grep -v "spec.ts"
 grep -rnE "^\s+(publicUrl|fileUrl|url)[?!]?:" apps/api/src --include=*.model.ts -B2 | grep "@Field"
+grep -rn -A12 "\.emit(" apps/api/src --include=*.gateway.ts | grep -iE "url"
 ```
 
 Le premier : chaque appel doit montrer `{ clubId }` (ou `signed`) dans ses
 trois lignes — les appels s'écrivent souvent sur plusieurs lignes, un
 `grep -v clubId` sur la seule ligne d'appel donne de faux positifs. Le
 second liste les URL encore brutes : vérifier pour chacune si l'asset est
-privé et affiché par un navigateur.
+privé et affiché par un navigateur. Le troisième repère les URL poussées
+en temps réel, hors GraphQL : chacune doit passer par `signUrl()`.
 
 En prod, le symptôme serveur se grep :
 `grep "Asset introuvable" /var/log/clubflow-api*.log`.
@@ -104,3 +110,4 @@ En prod, le symptôme serveur se grep :
 - [pitfalls/rest-x-club-id-sans-appartenance.md](rest-x-club-id-sans-appartenance.md) — le durcissement voisin, côté routes REST
 - [pitfalls/double-ignore-une-clause-du-where.md](double-ignore-une-clause-du-where.md) — même famille : un double plus permissif que le vrai
 - [pitfalls/test-verifie-la-forme-pas-le-comportement.md](test-verifie-la-forme-pas-le-comportement.md)
+- [pitfalls/ligne-invisible-bloque-la-validation.md](ligne-invisible-bloque-la-validation.md) — même parcours « Scanner un reçu », second défaut

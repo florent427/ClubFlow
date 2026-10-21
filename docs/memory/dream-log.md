@@ -90,3 +90,21 @@
 - Refusés : aucun (« all »)
 - Note : session boutique/paiement/mobile + promotion en prod v0.31.0. Trois
   des cinq pièges ont été signalés par Florent, pas détectés par moi.
+
+## 2026-10-21 10:40
+- Score : 88/8 — gonflé : chaque correctif compte deux fois (commit sur
+  `staging` + cherry-pick du hotfix), et les correctifs média/OCR de la
+  session étaient déjà capitalisés par `/learn` une heure plus tôt.
+  Signal réel neuf : 4 commits kilométriques d'une session parallèle.
+- Commits scannés (SHA, pour exclusion future) : 491a082, 61ce1b9,
+  0a2c812, f40288b, 74f4d2f, 1d7829a, 400d777, 83ee1c0, 27c892e, 6e0eb31,
+  01a8869, ab9d5cc, 3db485a, 78080dd, 99c7c45, a201ffb
+- Créés : `pitfalls/garde-nest-provider-module-manquant.md` (ab9d5cc),
+  `pitfalls/apollo-mutation-type-sans-id.md` (27c892e)
+- Mis à jour : `pitfalls/garde-media-durcie-appelants-oublies.md` (lien
+  vers `ligne-invisible-bloque-la-validation`, orphelin)
+- Refusés : aucun (« all »)
+- Note : les deux commandes de détection écrites d'abord ne
+  discriminaient pas (sous-dossier sans module ; `grep -L` par fichier
+  quand un fichier contient plusieurs types). Réécrites et vérifiées sur
+  le commit fautif et sur HEAD avant commit.
