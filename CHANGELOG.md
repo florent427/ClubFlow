@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.82.2](https://github.com/florent427/ClubFlow/compare/v0.82.1...v0.82.2) (2026-10-22)
+
+
+### 🐛 Bug Fixes
+
+* **ci:** main exige le seul check ci-ok, l'auto-merge redevient possible ([c1a656c](https://github.com/florent427/ClubFlow/commit/c1a656cace476a216a97d49c3f86b753e456aae0))
+* **ci:** main exige le seul check ci-ok, l'auto-merge redevient possible ([5e722c0](https://github.com/florent427/ClubFlow/commit/5e722c0632ba7cc9eca1d8ee603d26000c7975f8))
+
 ## [0.82.1](https://github.com/florent427/ClubFlow/compare/v0.82.0...v0.82.1) (2026-10-22)
 
 
