@@ -8,12 +8,11 @@ name: typecheck
 # (`"files": []` + `references`) qui fait vérifier 0 fichier et sortir 0.
 # cf. docs/memory/pitfalls/typecheck-noop-solution-tsconfig.md
 
+# Sur les PR, ce workflow est appelé par `ci.yml` (job agrégateur `ci-ok`,
+# seul check obligatoire sur main) quand le diff touche `apps/**` : pas de
+# déclencheur `pull_request` ici, sinon il tournerait deux fois.
 on:
-  pull_request:
-    paths:
-      - 'apps/**'
-      - 'packages/**'
-      - '.github/workflows/typecheck.yml'
+  workflow_call:
   push:
     branches: [main, staging]
     paths:

@@ -10,13 +10,10 @@ on:
       - 'docs/architecture/**'
       - 'bin/memory-index'
       - '.github/workflows/validate-memory.yml'
-  pull_request:
-    paths:
-      - 'docs/memory/**'
-      - 'docs/knowledge/**'
-      - 'docs/runbooks/**'
-      - 'docs/architecture/**'
-      - 'bin/memory-index'
+  # Sur les PR, ce workflow est appelé par `ci.yml` (job agrégateur `ci-ok`,
+  # seul check obligatoire sur main) quand le diff touche la doc : pas de
+  # déclencheur `pull_request` ici, sinon il tournerait deux fois.
+  workflow_call:
 
 jobs:
   validate:

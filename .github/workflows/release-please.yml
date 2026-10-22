@@ -15,6 +15,8 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  # Statut `ci-ok` posé sur la tête de la PR de release (cf. plus bas).
+  statuses: write
 
 jobs:
   release-please:
@@ -36,8 +38,24 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_JSON: ${{ steps.release.outputs.pr }}
         run: |
+          set -euo pipefail
           PR_NUMBER=$(echo "$PR_JSON" | jq -r '.number')
+          HEAD_SHA=$(gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER" --jq '.head.sha')
+
+          # main exige le check `ci-ok` (ruleset .github/rulesets/main-ci-ok.json).
+          # Ouverte par GITHUB_TOKEN, cette PR ne déclenche aucun workflow, donc
+          # personne d'autre ne posera ce check : on pose le statut ici. Le
+          # commit de release ne touche que CHANGELOG.md et le manifeste,
+          # rien que `ci.yml` vérifierait. La tête est relue juste avant, et
+          # `sha` au merge refuse la fusion si la branche a bougé entre-temps.
+          echo "Statut ci-ok sur $HEAD_SHA (PR #$PR_NUMBER)"
+          gh api -X POST "repos/${{ github.repository }}/statuses/$HEAD_SHA" \
+            -f state=success \
+            -f context=ci-ok \
+            -f description="PR de release : CHANGELOG et manifeste seulement" \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
           echo "Auto-merging release PR #$PR_NUMBER"
-          # --merge direct : la PR est mergeable immédiatement (pas de checks bloquants)
           gh api -X PUT "repos/${{ github.repository }}/pulls/$PR_NUMBER/merge" \
-            -F merge_method=squash
+            -F merge_method=squash \
+            -f sha="$HEAD_SHA"

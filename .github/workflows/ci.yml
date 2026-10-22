@@ -1,0 +1,100 @@
+name: ci
+
+# Point d'entrée unique des vérifications de PR, et source du SEUL check
+# obligatoire sur main : le job `ci-ok`.
+#
+# Pourquoi un agrégateur : `typecheck.yml` et `tests.yml` ne concernent que
+# `apps/**`, `validate-memory.yml` que `docs/**`. Si on rendait ces checks
+# obligatoires directement, une PR qui ne touche que la doc ne les recevrait
+# jamais et resterait bloquée. Ici, `ci-ok` tourne sur TOUTES les PR : il
+# attend les vérifications concernées par le diff et réussit si elles ont
+# réussi ou ont été sautées faute de fichiers concernés.
+#
+# La PR de release de release-please n'exécute aucun workflow (ouverte par
+# GITHUB_TOKEN) : `release-please.yml` pose lui-même un statut `ci-ok` sur
+# sa tête avant de la fusionner. Cf. docs/runbooks/release.md.
+
+on:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  # paths-filter lit la liste des fichiers de la PR par l'API.
+  pull-requests: read
+
+jobs:
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      apps: ${{ steps.filter.outputs.apps }}
+      docs: ${{ steps.filter.outputs.docs }}
+    steps:
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            apps:
+              - 'apps/**'
+              - 'packages/**'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/typecheck.yml'
+              - '.github/workflows/tests.yml'
+            docs:
+              - 'docs/memory/**'
+              - 'docs/knowledge/**'
+              - 'docs/runbooks/**'
+              - 'docs/architecture/**'
+              - 'bin/memory-index'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/validate-memory.yml'
+
+  typecheck:
+    needs: changes
+    if: needs.changes.outputs.apps == 'true'
+    uses: ./.github/workflows/typecheck.yml
+
+  tests:
+    needs: changes
+    if: needs.changes.outputs.apps == 'true'
+    uses: ./.github/workflows/tests.yml
+
+  validate-memory:
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    uses: ./.github/workflows/validate-memory.yml
+
+  # Le nom de ce job est le contexte exigé par le ruleset de main
+  # (.github/rulesets/main-ci-ok.json). Ne pas le renommer sans changer le
+  # ruleset ET le statut posé par release-please.yml.
+  ci-ok:
+    name: ci-ok
+    needs: [changes, typecheck, tests, validate-memory]
+    # Toujours exécuté, sinon un job sauté rendrait `ci-ok` « skipped », et
+    # un check obligatoire sauté ne compte pas comme réussi.
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verdict
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          # `skipped` est un succès : rien à vérifier pour ce diff.
+          # `failure` et `cancelled` font échouer le check.
+          bad=$(echo "$RESULTS" | jq -r '[to_entries[] | select(.value.result != "success" and .value.result != "skipped") | .key] | join(", ")')
+          if [ -n "$bad" ]; then
+            echo "::error::Vérifications en échec : $bad"
+            exit 1
+          fi
+          # `changes` ne doit jamais être sauté : sans lui, tout serait
+          # sauté et le verdict vert ne prouverait rien.
+          [ "$(echo "$RESULTS" | jq -r '.changes.result')" = "success" ] || {
+            echo "::error::Le job changes n'a pas tourné"
+            exit 1
+          }
+          echo "ci-ok"
