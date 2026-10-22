@@ -7,6 +7,7 @@ import {
   Length,
 } from 'class-validator';
 import { MEMBER_PHOTO_URL_MAX } from '../../members/member-photo-intake';
+import { COORDINATE_LIMITS } from './viewer-coordinates.input';
 
 @InputType()
 export class ViewerUpdateMyProfileInput {
@@ -44,9 +45,9 @@ export class ViewerUpdateMyProfileInput {
   photoUrl?: string;
 
   // ── Coordonnées postales ──────────────────────────────────────────
-  // Réservées aux profils ADHÉRENT : `Contact` n'a pas ces colonnes.
-  // Chaque champ n'est accepté que si le club l'affiche dans son
-  // catalogue de fiche adhérent — cf. ViewerService.updateMyProfile.
+  // Profil ADHÉRENT : chaque champ n'est accepté que si le club l'affiche
+  // dans son catalogue de fiche adhérent — cf. ViewerService.updateMyProfile.
+  // Profil CONTACT : toujours acceptés, l'adhésion en ligne les exige.
 
   @Field({ nullable: true })
   @IsOptional()
@@ -73,4 +74,23 @@ export class ViewerUpdateMyProfileInput {
   @IsOptional()
   @IsDateString()
   birthDate?: string;
+
+  // ── Lieu de naissance (profil adhérent) ───────────────────────────
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsString()
+  @Length(0, COORDINATE_LIMITS.birthCity)
+  birthCity?: string;
+
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsString()
+  @Length(0, COORDINATE_LIMITS.inseeCode)
+  birthCityInseeCode?: string;
+
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsString()
+  @Length(0, COORDINATE_LIMITS.countryCode)
+  birthCountryCode?: string;
 }

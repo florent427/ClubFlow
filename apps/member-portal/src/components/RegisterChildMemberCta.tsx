@@ -15,6 +15,10 @@ import type {
   ViewerRegisterChildMemberData,
 } from '../lib/viewer-types';
 import { useToast } from './ToastProvider';
+import {
+  NewMemberCoordinatesFields,
+  useNewMemberCoordinates,
+} from './coordinates/NewMemberCoordinates';
 
 type Civility = 'MR' | 'MME';
 
@@ -45,6 +49,7 @@ export function RegisterChildMemberCta() {
   const [billingRhythm, setBillingRhythm] =
     useState<SubscriptionBillingRhythm>('ANNUAL');
   const [localError, setLocalError] = useState<string | null>(null);
+  const coords = useNewMemberCoordinates(true);
 
   const [registerChild, { loading }] = useMutation<ViewerRegisterChildMemberData>(
     VIEWER_REGISTER_CHILD_MEMBER,
@@ -101,6 +106,7 @@ export function RegisterChildMemberCta() {
     setCivility('MR');
     setMembershipProductId('');
     setBillingRhythm('ANNUAL');
+    coords.reset();
   }
 
   async function onSubmit() {
@@ -113,6 +119,11 @@ export function RegisterChildMemberCta() {
       setLocalError('Sélectionnez une formule d’adhésion.');
       return;
     }
+    const coordsError = coords.validate();
+    if (coordsError) {
+      setLocalError(coordsError);
+      return;
+    }
     try {
       const { data } = await registerChild({
         variables: {
@@ -123,6 +134,7 @@ export function RegisterChildMemberCta() {
             birthDate,
             membershipProductIds: [membershipProductId],
             billingRhythm,
+            ...coords.payload(),
           },
         },
       });
@@ -240,6 +252,8 @@ export function RegisterChildMemberCta() {
               disabled={loading}
             />
           </label>
+
+          <NewMemberCoordinatesFields {...coords.fieldsProps} disabled={loading} />
 
           <label className="mp-field">
             <span>Formule d’adhésion</span>

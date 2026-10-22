@@ -19,6 +19,15 @@ import {
   VIEWER_REGISTER_SELF_AS_MEMBER,
 } from '../lib/viewer-documents';
 import type { ViewerMeData } from '../lib/viewer-types';
+import { VIEWER_COORDINATES_STATUS } from '../lib/coordinates-documents';
+import {
+  EMPTY_BIRTH_PLACE,
+  birthPlaceError,
+  birthPlaceInput,
+  type BirthPlaceValue,
+  type CoordinatesStatus,
+} from '../lib/coordinates';
+import { AccountCoordinatesSection, BirthPlaceField } from './coordinates';
 
 type Civility = 'MR' | 'MME';
 type BillingRhythm = 'ANNUAL' | 'MONTHLY';
@@ -55,7 +64,9 @@ function formatEuros(cents: number): string {
 /**
  * CTA « M'inscrire moi-même » version cart-based.
  * Utilise l'identité du viewer (firstName/lastName auto via VIEWER_ME),
- * demande civilité + date de naissance + sélection formule + rythme.
+ * demande civilité + date de naissance + lieu de naissance + sélection
+ * formule + rythme. Portable et adresse sont ceux du compte, qui doit être
+ * complet : sinon la section « Vos coordonnées » est proposée en tête.
  * Crée un PendingItem via `viewerRegisterSelfAsMember` — le Member sera
  * créé à la validation du panier (parité avec RegisterChildMemberCta).
  */
@@ -78,6 +89,17 @@ export function RegisterSelfMemberCta({
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [billingRhythm, setBillingRhythm] = useState<BillingRhythm>('ANNUAL');
   const [error, setError] = useState<string | null>(null);
+  const [birthPlace, setBirthPlace] = useState<BirthPlaceValue>(EMPTY_BIRTH_PLACE);
+  const [birthPlaceErr, setBirthPlaceErr] = useState<string | null>(null);
+
+  const { data: statusData, refetch: refetchStatus } = useQuery<{
+    viewerCoordinatesStatus: CoordinatesStatus;
+  }>(VIEWER_COORDINATES_STATUS, {
+    skip: !open,
+    fetchPolicy: 'cache-and-network',
+  });
+  const status = statusData?.viewerCoordinatesStatus ?? null;
+  const accountComplete = status?.accountComplete === true;
 
   const [register, { loading }] = useMutation(VIEWER_REGISTER_SELF_AS_MEMBER);
   const [fetchFormulas, { data: formulasData, loading: formulasLoading }] =
@@ -139,6 +161,8 @@ export function RegisterSelfMemberCta({
     setSelectedProductIds([]);
     setBillingRhythm('ANNUAL');
     setError(null);
+    setBirthPlace(EMPTY_BIRTH_PLACE);
+    setBirthPlaceErr(null);
   }
 
   function onPickerChange(event: DateTimePickerEvent, selected?: Date) {
@@ -163,6 +187,16 @@ export function RegisterSelfMemberCta({
       setError('Sélectionnez une date de naissance.');
       return;
     }
+    if (!accountComplete) {
+      setError('Enregistrez d’abord vos coordonnées (portable et adresse).');
+      return;
+    }
+    const placeErr = birthPlaceError(birthPlace);
+    setBirthPlaceErr(placeErr);
+    if (placeErr) {
+      setError(placeErr);
+      return;
+    }
     if (selectedProductIds.length === 0) {
       setError('Sélectionnez au moins une formule.');
       return;
@@ -173,6 +207,7 @@ export function RegisterSelfMemberCta({
           input: {
             civility,
             birthDate,
+            ...birthPlaceInput(birthPlace),
             membershipProductIds: selectedProductIds,
             billingRhythm,
           },
@@ -221,7 +256,17 @@ export function RegisterSelfMemberCta({
             <Ionicons name="close" size={24} color="#1565c0" />
           </Pressable>
         </View>
-        <ScrollView contentContainerStyle={styles.modalBody}>
+        <ScrollView
+          contentContainerStyle={styles.modalBody}
+          keyboardShouldPersistTaps="handled"
+        >
+          {status && !accountComplete ? (
+            <AccountCoordinatesSection
+              account={status.account}
+              onSaved={() => refetchStatus()}
+            />
+          ) : null}
+
           <Text style={styles.identityCard}>
             Adhérent : <Text style={styles.identityStrong}>
               {viewerFirstName} {viewerLastName}
@@ -276,6 +321,15 @@ export function RegisterSelfMemberCta({
           <Text style={styles.hint}>
             Nécessaire pour proposer la bonne formule d'adhésion.
           </Text>
+
+          <BirthPlaceField
+            value={birthPlace}
+            onChange={(next) => {
+              setBirthPlace(next);
+              setBirthPlaceErr(null);
+            }}
+            error={birthPlaceErr}
+          />
 
           <Text style={styles.label}>
             Formule(s) d'adhésion
@@ -405,9 +459,12 @@ export function RegisterSelfMemberCta({
           <Pressable
             style={[
               styles.btnPrimary,
-              (loading || selectedProductIds.length === 0) && styles.btnDisabled,
+              (loading || selectedProductIds.length === 0 || !accountComplete) &&
+                styles.btnDisabled,
             ]}
-            disabled={loading || selectedProductIds.length === 0}
+            disabled={
+              loading || selectedProductIds.length === 0 || !accountComplete
+            }
             onPress={() => void onSubmit()}
           >
             <Text style={styles.btnPrimaryText}>

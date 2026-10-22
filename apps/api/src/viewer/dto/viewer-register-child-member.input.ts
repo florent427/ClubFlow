@@ -9,9 +9,11 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Length,
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { COORDINATE_LIMITS } from './viewer-coordinates.input';
 
 @InputType()
 export class ViewerRegisterChildMemberInput {
@@ -34,6 +36,49 @@ export class ViewerRegisterChildMemberInput {
   @Field({ description: 'Date de naissance de l’enfant (ISO YYYY-MM-DD).' })
   @IsDateString()
   birthDate!: string;
+
+  @Field(() => String, { description: 'Ville de naissance (libellé).' })
+  @IsString()
+  @Length(1, COORDINATE_LIMITS.birthCity)
+  birthCity!: string;
+
+  @Field(() => String, {
+    nullable: true,
+    description: 'Code INSEE de la commune française choisie dans l’autocomplétion.',
+  })
+  @IsOptional()
+  @IsString()
+  @Length(0, COORDINATE_LIMITS.inseeCode)
+  birthCityInseeCode?: string | null;
+
+  @Field(() => String, { description: 'Pays de naissance, ISO 3166-1 alpha-2.' })
+  @IsString()
+  @Length(2, COORDINATE_LIMITS.countryCode)
+  birthCountryCode!: string;
+
+  /**
+   * Coordonnées de l'enfant. Le portail propose de reprendre celles du
+   * compte (adresse et portable séparément) ; il envoie alors les valeurs.
+   */
+  @Field(() => String, { description: 'Portable au format E.164 (+262…).' })
+  @IsString()
+  @Length(1, COORDINATE_LIMITS.phone)
+  phone!: string;
+
+  @Field(() => String)
+  @IsString()
+  @Length(1, COORDINATE_LIMITS.addressLine)
+  addressLine!: string;
+
+  @Field(() => String)
+  @IsString()
+  @Length(1, COORDINATE_LIMITS.postalCode)
+  postalCode!: string;
+
+  @Field(() => String)
+  @IsString()
+  @Length(1, COORDINATE_LIMITS.city)
+  city!: string;
 
   /**
    * Formules d'adhésion choisies (1 à N). Multi-formules supporté

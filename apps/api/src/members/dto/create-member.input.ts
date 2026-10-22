@@ -63,6 +63,33 @@ export class CreateMemberInput {
   @MaxLength(100)
   city?: string;
 
+  @Field(() => String, {
+    nullable: true,
+    description: 'Ville de naissance (commune française ou ville étrangère)',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  birthCity?: string | null;
+
+  @Field(() => String, {
+    nullable: true,
+    description: 'Code INSEE de la commune de naissance (France seulement)',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(5)
+  birthCityInseeCode?: string | null;
+
+  @Field(() => String, {
+    nullable: true,
+    description: 'Pays de naissance, ISO 3166-1 alpha-2 (FR, MG…)',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2)
+  birthCountryCode?: string | null;
+
   @Field({ nullable: true })
   @IsOptional()
   @IsDateString()

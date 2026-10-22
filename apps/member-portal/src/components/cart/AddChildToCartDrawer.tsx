@@ -8,6 +8,10 @@ import {
 import { VIEWER_ELIGIBLE_MEMBERSHIP_FORMULAS } from '../../lib/viewer-documents';
 import { useToast } from '../ToastProvider';
 import { formatEuroCents } from '../../lib/format';
+import {
+  NewMemberCoordinatesFields,
+  useNewMemberCoordinates,
+} from '../coordinates/NewMemberCoordinates';
 
 type Civility = 'MR' | 'MME';
 type BillingRhythm = 'ANNUAL' | 'MONTHLY';
@@ -35,6 +39,7 @@ export function AddChildToCartDrawer({ open, onClose }: Props) {
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [billingRhythm, setBillingRhythm] = useState<BillingRhythm>('ANNUAL');
   const [localError, setLocalError] = useState<string | null>(null);
+  const coords = useNewMemberCoordinates(true);
 
   const [registerChild, { loading }] =
     useMutation<RegisterChildPendingResponse>(VIEWER_REGISTER_CHILD_FOR_CART, {
@@ -122,6 +127,7 @@ export function AddChildToCartDrawer({ open, onClose }: Props) {
     setSelectedProductIds([]);
     setBillingRhythm('ANNUAL');
     setLocalError(null);
+    coords.reset();
   }
 
   function handleClose(): void {
@@ -140,6 +146,11 @@ export function AddChildToCartDrawer({ open, onClose }: Props) {
       setLocalError('Sélectionnez au moins une formule d’adhésion.');
       return;
     }
+    const coordsError = coords.validate();
+    if (coordsError) {
+      setLocalError(coordsError);
+      return;
+    }
     try {
       const { data } = await registerChild({
         variables: {
@@ -155,6 +166,7 @@ export function AddChildToCartDrawer({ open, onClose }: Props) {
             // autant ne pas lui envoyer une sélection qu'on sait fausse.
             membershipProductIds: selectedFormulas.map((f) => f.id),
             billingRhythm,
+            ...coords.payload(),
           },
         },
       });
@@ -267,6 +279,8 @@ export function AddChildToCartDrawer({ open, onClose }: Props) {
             disabled={loading}
           />
         </label>
+
+        <NewMemberCoordinatesFields {...coords.fieldsProps} disabled={loading} />
 
         {birthDate && firstName.trim() && lastName.trim() ? (
           <fieldset className="mp-fieldset">

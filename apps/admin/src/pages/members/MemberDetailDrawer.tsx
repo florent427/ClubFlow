@@ -1,5 +1,12 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { Link } from 'react-router-dom';
 import { QuickMessageModal } from '../../components/QuickMessageModal';
 import { useToast } from '../../components/ToastProvider';
@@ -39,6 +46,21 @@ import { MemberAccountLinkPanel } from './MemberAccountLinkPanel';
 import { MemberAdhesionPanels } from './MemberAdhesionPanels';
 import { PayerCreditPanel } from '../../components/PayerCreditPanel';
 import { MemberPhotoField } from './MemberPhotoField';
+import { AddressFields } from '../../components/coordinates/AddressFields';
+import {
+  BirthPlaceField,
+  type BirthPlaceValue,
+} from '../../components/coordinates/BirthPlaceField';
+import {
+  ADDRESS_CATALOG_KEYS,
+  addressCatalogRequired,
+  firstAddressCatalogKey,
+  isAddressCatalogKey,
+} from '../../components/coordinates/catalog';
+import { memberCoordinateGaps } from '../../components/coordinates/completeness';
+import { IncompleteBadge } from '../../components/coordinates/IncompleteBadge';
+import { PhoneField } from '../../components/coordinates/PhoneField';
+import { phoneForSave } from '../../components/coordinates/phone';
 
 /* eslint-disable react-hooks/set-state-in-effect -- hydratation / reset formulaire tiroir membre */
 type MemberRow = MembersQueryData['clubMembers'][number];
@@ -51,6 +73,9 @@ function buildMemberFormPristineSnapshot(
   customDefs: { id: string }[],
 ): string {
   const keys = new Set(catalogWithoutPhoto.map((s) => s.fieldKey));
+  if ([...keys].some(isAddressCatalogKey)) {
+    for (const k of ADDRESS_CATALOG_KEYS) keys.add(k);
+  }
   const sortedCatalogKeys = [...keys].sort();
   const fromMember: Record<string, string> = {
     PHONE: m.phone ?? '',
@@ -77,6 +102,11 @@ function buildMemberFormPristineSnapshot(
     civility: m.civility,
     photoUrl: (m.photoUrl ?? '').trim(),
     birthDate: m.birthDate ? m.birthDate.slice(0, 10) : '',
+    birthPlace: [
+      (m.birthCity ?? '').trim(),
+      m.birthCityInseeCode ?? '',
+      m.birthCountryCode ?? '',
+    ],
     gradeId: m.gradeLevelId ?? m.gradeLevel?.id ?? '',
     roles: [...m.roles].sort(),
     customRoleIds: m.customRoles.map((c) => c.id).sort(),
@@ -99,6 +129,7 @@ function buildMemberFormDraftSnapshot(
     civility: string;
     photoUrl: string;
     birthDate: string;
+    birthPlace: BirthPlaceValue;
     gradeId: string;
     builtinRoles: string[];
     customRoleIds: string[];
@@ -111,6 +142,9 @@ function buildMemberFormDraftSnapshot(
   },
 ): string {
   const keys = new Set(catalogWithoutPhoto.map((s) => s.fieldKey));
+  if ([...keys].some(isAddressCatalogKey)) {
+    for (const k of ADDRESS_CATALOG_KEYS) keys.add(k);
+  }
   const sortedCatalogKeys = [...keys].sort();
   const catalogScalars: Record<string, string> = {};
   for (const k of sortedCatalogKeys) {
@@ -127,6 +161,11 @@ function buildMemberFormDraftSnapshot(
     civility: draft.civility,
     photoUrl: (draft.photoUrl ?? '').trim(),
     birthDate: draft.birthDate,
+    birthPlace: [
+      draft.birthPlace.birthCity.trim(),
+      draft.birthPlace.birthCityInseeCode,
+      draft.birthPlace.birthCountryCode,
+    ],
     gradeId: draft.gradeId,
     roles: [...draft.builtinRoles].sort(),
     customRoleIds: [...draft.customRoleIds].sort(),
@@ -151,6 +190,11 @@ export function MemberDetailDrawer({
   const [civility, setCivility] = useState<string>('');
   const [email, setEmail] = useState('');
   const [birthDate, setBirthDate] = useState('');
+  const [birthPlace, setBirthPlace] = useState<BirthPlaceValue>({
+    birthCity: '',
+    birthCityInseeCode: '',
+    birthCountryCode: '',
+  });
   const [gradeId, setGradeId] = useState('');
   const [builtinRoles, setBuiltinRoles] = useState<string[]>(['STUDENT']);
   const [customRoleIds, setCustomRoleIds] = useState<string[]>([]);
@@ -259,6 +303,7 @@ export function MemberDetailDrawer({
         civility,
         photoUrl,
         birthDate,
+        birthPlace,
         gradeId,
         builtinRoles,
         customRoleIds,
@@ -280,6 +325,7 @@ export function MemberDetailDrawer({
     civility,
     photoUrl,
     birthDate,
+    birthPlace,
     gradeId,
     builtinRoles,
     customRoleIds,
@@ -317,6 +363,9 @@ export function MemberDetailDrawer({
         member.addressLine ?? '',
         member.postalCode ?? '',
         member.city ?? '',
+        member.birthCity ?? '',
+        member.birthCityInseeCode ?? '',
+        member.birthCountryCode ?? '',
         member.photoUrl ?? '',
         member.birthDate ?? '',
         member.medicalCertExpiresAt ?? '',
@@ -341,6 +390,11 @@ export function MemberDetailDrawer({
     setEmail(member.email);
     setPhotoUrl(member.photoUrl ?? '');
     setBirthDate(member.birthDate ? member.birthDate.slice(0, 10) : '');
+    setBirthPlace({
+      birthCity: member.birthCity ?? '',
+      birthCityInseeCode: member.birthCityInseeCode ?? '',
+      birthCountryCode: member.birthCountryCode ?? '',
+    });
     setGradeId(member.gradeLevelId ?? member.gradeLevel?.id ?? '');
     setBuiltinRoles(
       member.roles.length > 0 ? [...member.roles] : ['STUDENT'],
@@ -598,17 +652,18 @@ export function MemberDetailDrawer({
       input.gradeLevelId = gradeId || null;
     }
     if (catalogKeysShown.has('PHONE')) {
-      input.phone = catalogScalars.PHONE?.trim() || null;
+      // Ce qui est affiché : un ancien numéro reconnu part en E.164.
+      input.phone = phoneForSave(catalogScalars.PHONE);
     }
-    if (catalogKeysShown.has('ADDRESS_LINE')) {
+    // Le bloc adresse affiche ses trois champs dès que l'un est au catalogue.
+    if (firstAddressCatalogKey(catalogFieldsWithoutPhoto)) {
       input.addressLine = catalogScalars.ADDRESS_LINE?.trim() || null;
-    }
-    if (catalogKeysShown.has('POSTAL_CODE')) {
       input.postalCode = catalogScalars.POSTAL_CODE?.trim() || null;
-    }
-    if (catalogKeysShown.has('CITY')) {
       input.city = catalogScalars.CITY?.trim() || null;
     }
+    input.birthCity = birthPlace.birthCity.trim() || null;
+    input.birthCityInseeCode = birthPlace.birthCityInseeCode || null;
+    input.birthCountryCode = birthPlace.birthCountryCode || null;
     if (catalogKeysShown.has('MEDICAL_CERT_EXPIRES_AT')) {
       const v = catalogScalars.MEDICAL_CERT_EXPIRES_AT?.trim();
       input.medicalCertExpiresAt = v || null;
@@ -821,6 +876,7 @@ export function MemberDetailDrawer({
                 >
                   {member.status === 'ACTIVE' ? 'Actif' : 'Inactif'}
                 </span>
+                <IncompleteBadge gaps={memberCoordinateGaps(member)} />
                 {member.gradeLevel?.label ? (
                   <span className="cf-badge cf-badge--info">
                     <span
@@ -988,17 +1044,62 @@ export function MemberDetailDrawer({
             const req = s.required ? ' *' : '';
             if (s.fieldKey === 'BIRTH_DATE') {
               return (
-                <label key={s.fieldKey} className="field">
-                  <span>
-                    {label}
-                    {req}
-                  </span>
-                  <input
-                    type="date"
-                    value={birthDate}
-                    onChange={(e) => setBirthDate(e.target.value)}
-                  />
-                </label>
+                <Fragment key={s.fieldKey}>
+                  <label className="field">
+                    <span>
+                      {label}
+                      {req}
+                    </span>
+                    <input
+                      type="date"
+                      value={birthDate}
+                      onChange={(e) => setBirthDate(e.target.value)}
+                    />
+                  </label>
+                  <BirthPlaceField value={birthPlace} onChange={setBirthPlace} />
+                </Fragment>
+              );
+            }
+            if (s.fieldKey === 'PHONE') {
+              return (
+                <PhoneField
+                  key={s.fieldKey}
+                  label={label}
+                  required={s.required}
+                  value={catalogScalars.PHONE ?? ''}
+                  onChange={(v) =>
+                    setCatalogScalars((prev) => ({ ...prev, PHONE: v }))
+                  }
+                />
+              );
+            }
+            if (isAddressCatalogKey(s.fieldKey)) {
+              if (s.fieldKey !== firstAddressCatalogKey(catalogFieldsWithoutPhoto)) {
+                return null;
+              }
+              return (
+                <AddressFields
+                  key="address"
+                  required={addressCatalogRequired(catalogFieldsWithoutPhoto)}
+                  labels={{
+                    addressLine: MEMBER_CATALOG_FIELD_LABELS.ADDRESS_LINE,
+                    postalCode: MEMBER_CATALOG_FIELD_LABELS.POSTAL_CODE,
+                    city: MEMBER_CATALOG_FIELD_LABELS.CITY,
+                  }}
+                  value={{
+                    addressLine: catalogScalars.ADDRESS_LINE ?? '',
+                    postalCode: catalogScalars.POSTAL_CODE ?? '',
+                    city: catalogScalars.CITY ?? '',
+                  }}
+                  onChange={(a) =>
+                    setCatalogScalars((prev) => ({
+                      ...prev,
+                      ADDRESS_LINE: a.addressLine,
+                      POSTAL_CODE: a.postalCode,
+                      CITY: a.city,
+                    }))
+                  }
+                />
               );
             }
             if (s.fieldKey === 'GRADE_LEVEL') {
@@ -1060,6 +1161,11 @@ export function MemberDetailDrawer({
               </label>
             );
           })}
+
+          {/* Lieu de naissance : à côté de la date si elle est au catalogue. */}
+          {catalogFieldsWithoutPhoto.some((s) => s.fieldKey === 'BIRTH_DATE') ? null : (
+            <BirthPlaceField value={birthPlace} onChange={setBirthPlace} />
+          )}
 
           {customDefsSorted.map((d) => {
             let options: string[] = [];

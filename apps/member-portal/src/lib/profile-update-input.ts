@@ -24,6 +24,12 @@ export type SaisieProfil = {
   city: string;
   /** Format `YYYY-MM-DD` tel que rendu par `<input type="date">`. */
   birthDate: string;
+  /** Lieu de naissance : fiche adhérent seulement (absent pour un compte). */
+  birthPlace?: {
+    birthCity: string;
+    birthCityInseeCode: string | null;
+    birthCountryCode: string;
+  } | null;
 };
 
 export type EntreeProfil = {
@@ -35,6 +41,9 @@ export type EntreeProfil = {
   postalCode?: string;
   city?: string;
   birthDate?: string;
+  birthCity?: string;
+  birthCityInseeCode?: string | null;
+  birthCountryCode?: string;
   photoUrl?: string;
 };
 
@@ -70,6 +79,13 @@ export function entreeProfilSaisi(
   // la chaîne vide.
   if (champsExposes.has('BIRTH_DATE') && saisie.birthDate) {
     entree.birthDate = saisie.birthDate;
+  }
+  // Lieu de naissance : hors catalogue, exigé à l'adhésion en ligne. Omis
+  // tant qu'il n'est pas saisi, pour ne pas bloquer le reste du profil.
+  if (saisie.birthPlace?.birthCity.trim()) {
+    entree.birthCity = saisie.birthPlace.birthCity.trim();
+    entree.birthCityInseeCode = saisie.birthPlace.birthCityInseeCode;
+    entree.birthCountryCode = saisie.birthPlace.birthCountryCode;
   }
   return entree;
 }

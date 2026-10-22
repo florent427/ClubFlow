@@ -5,6 +5,7 @@ import {
 } from '../../lib/cart-documents';
 import { formatEuroCents } from '../../lib/format';
 import { PaymentChoiceModal } from './PaymentChoiceModal';
+import { CartCoordinatesGaps } from '../coordinates/CartCoordinatesGaps';
 
 interface Props {
   cart: Cart;
@@ -21,8 +22,21 @@ export function CartSummary({ cart }: Props) {
   const blockedByManual = cart.requiresManualAssignmentCount > 0;
   const itemCount = cart.items.length + (cart.pendingItems?.length ?? 0);
   const blockedByEmpty = itemCount === 0;
+  // Fiches sans portable, adresse ou ville de naissance : l'API refuse la
+  // validation, on la bloque donc dès l'écran. Inconnu (null) tant que le
+  // contrôle n'a pas répondu.
+  const [coordinateGaps, setCoordinateGaps] = useState<number | null>(null);
+  const blockedByCoordinates = coordinateGaps !== 0;
   const canValidate =
-    cart.canValidate && !blockedByManual && !blockedByEmpty;
+    cart.canValidate &&
+    !blockedByManual &&
+    !blockedByEmpty &&
+    !blockedByCoordinates;
+  // Remonté à chaque ajout ou retrait : le contrôle porte sur le contenu.
+  const coordinatesKey = [
+    ...cart.items.map((i) => i.memberId),
+    ...(cart.pendingItems ?? []).map((p) => p.id),
+  ].join(',');
 
   // Détermine le rythme dominant du panier pour proposer (ou non) le
   // 3×. Règle : si AU MOINS un article du panier est annuel, on
@@ -98,6 +112,14 @@ export function CartSummary({ cart }: Props) {
           formule sélectionnée. Modifiez ou supprimez-les pour finaliser
           votre commande.
         </p>
+      ) : null}
+
+      {cart.status === 'OPEN' && !blockedByEmpty ? (
+        <CartCoordinatesGaps
+          key={coordinatesKey}
+          cartId={cart.id}
+          onGapsCount={setCoordinateGaps}
+        />
       ) : null}
 
       <button

@@ -5685,3 +5685,134 @@ a:focus-visible {
     animation: none;
   }
 }
+
+/* ================================================================
+   Coordonnées obligatoires à l'adhésion : portable, adresse, naissance
+   ================================================================ */
+
+.mp-phone-field .PhoneInput {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+}
+.mp-phone-field .PhoneInput--focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+.mp-phone-field .PhoneInputInput {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  padding: 9px 0;
+  font-size: 14px;
+  background: transparent;
+}
+.mp-phone-field input[aria-invalid='true'] {
+  color: #ba1a1a;
+}
+
+.mp-autocomplete {
+  position: relative;
+}
+.mp-autocomplete__list {
+  position: absolute;
+  z-index: 30;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: 4px 0 0;
+  padding: 4px;
+  list-style: none;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-shadow: 0 12px 24px -8px rgba(25, 28, 29, 0.18);
+  max-height: 260px;
+  overflow-y: auto;
+}
+.mp-autocomplete__list button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  color: #191c1d;
+  cursor: pointer;
+}
+.mp-autocomplete__list button:hover,
+.mp-autocomplete__list button:focus-visible {
+  background: rgba(37, 99, 235, 0.08);
+  outline: 0;
+}
+
+.mp-address-fields {
+  display: grid;
+  gap: 10px;
+}
+.mp-address-fields__row {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) 2fr;
+  gap: 10px;
+}
+
+.mp-birthplace {
+  display: grid;
+  gap: 10px;
+}
+.mp-birthplace select,
+.mp-field select {
+  padding: 9px 11px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 14px;
+  background: #fff;
+}
+
+.mp-coordinates-reuse {
+  display: block;
+  margin-top: 2px;
+}
+
+.mp-coordinates-card {
+  background: #f8fafc;
+}
+
+.mp-coordinates-gaps {
+  margin: 0 0 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #f5c26b;
+  border-radius: 12px;
+  background: #fffaf0;
+  display: grid;
+  gap: 0.6rem;
+}
+.mp-coordinates-gaps__title {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.mp-coordinates-gap {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.6rem 0;
+  border-top: 1px solid rgba(25, 28, 29, 0.08);
+}
+.mp-coordinates-gap__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.mp-coordinates-gap__form {
+  display: grid;
+  gap: 0.6rem;
+}

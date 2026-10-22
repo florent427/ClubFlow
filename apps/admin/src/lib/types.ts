@@ -174,6 +174,9 @@ export type MembersQueryData = {
     addressLine: string | null;
     postalCode: string | null;
     city: string | null;
+    birthCity: string | null;
+    birthCityInseeCode: string | null;
+    birthCountryCode: string | null;
     status: string;
     birthDate: string | null;
     photoUrl: string | null;
@@ -787,6 +790,10 @@ export type ClubContactRow = {
   lastName: string;
   email: string;
   emailVerified: boolean;
+  phone: string | null;
+  addressLine: string | null;
+  postalCode: string | null;
+  city: string | null;
   linkedMemberId: string | null;
   canDeleteContact: boolean;
   createdAt: string;
@@ -809,6 +816,10 @@ export type UpdateClubContactMutationData = {
     | 'lastName'
     | 'email'
     | 'emailVerified'
+    | 'phone'
+    | 'addressLine'
+    | 'postalCode'
+    | 'city'
     | 'linkedMemberId'
     | 'canDeleteContact'
     | 'updatedAt'

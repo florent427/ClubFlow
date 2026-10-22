@@ -103,7 +103,7 @@ describe('Le crédit ne se choisit nulle part (ADR-0022, §6)', () => {
   it('pas de choix du crédit comme mode de règlement au portail', async () => {
     const viewer = new ViewerService(
       baseInterdite(),
-      aucun, aucun, aucun, aucun, aucun, aucun, aucun, aucun, aucun, aucun, aucun, aucun, aucun,
+      aucun, aucun, aucun, aucun, aucun, aucun, aucun, aucun, aucun, aucun, aucun, aucun, aucun, aucun,
     );
 
     await refuse(

@@ -24,6 +24,9 @@ export const VIEWER_ME = gql`
       postalCode
       city
       birthDate
+      birthCity
+      birthCityInseeCode
+      birthCountryCode
       editableProfileFields {
         key
         label
@@ -922,6 +925,9 @@ export const VIEWER_UPDATE_MY_PROFILE = gql`
       postalCode
       city
       birthDate
+      birthCity
+      birthCityInseeCode
+      birthCountryCode
     }
   }
 `;

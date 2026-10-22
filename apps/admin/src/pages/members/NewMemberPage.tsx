@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@apollo/client/react';
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   CLUB_GRADE_LEVELS,
@@ -16,6 +16,18 @@ import type {
   MemberFieldLayoutQueryData,
   RoleDefinitionsQueryData,
 } from '../../lib/types';
+import { AddressFields } from '../../components/coordinates/AddressFields';
+import {
+  BirthPlaceField,
+  type BirthPlaceValue,
+} from '../../components/coordinates/BirthPlaceField';
+import {
+  addressCatalogRequired,
+  firstAddressCatalogKey,
+  isAddressCatalogKey,
+} from '../../components/coordinates/catalog';
+import { PhoneField } from '../../components/coordinates/PhoneField';
+import { phoneForSave } from '../../components/coordinates/phone';
 import { BUILTIN_ROLE_OPTIONS } from './members-constants';
 import { MemberPhotoField } from './MemberPhotoField';
 import { useMembersUi } from './members-ui-context';
@@ -29,6 +41,11 @@ export function NewMemberPage() {
   const [civility, setCivility] = useState<string>('');
   const [email, setEmail] = useState('');
   const [birthDate, setBirthDate] = useState('');
+  const [birthPlace, setBirthPlace] = useState<BirthPlaceValue>({
+    birthCity: '',
+    birthCityInseeCode: '',
+    birthCountryCode: '',
+  });
   const [gradeId, setGradeId] = useState('');
   const [builtinRoles, setBuiltinRoles] = useState<string[]>(['STUDENT']);
   const [customRoleIds, setCustomRoleIds] = useState<string[]>([]);
@@ -180,16 +197,18 @@ export function NewMemberPage() {
       input.gradeLevelId = gradeId;
     }
     if (catalogKeysShown.has('PHONE')) {
-      input.phone = catalogScalars.PHONE?.trim() || undefined;
+      input.phone = phoneForSave(catalogScalars.PHONE) ?? undefined;
     }
-    if (catalogKeysShown.has('ADDRESS_LINE')) {
+    // Le bloc adresse affiche ses trois champs dès que l'un est au catalogue.
+    if (firstAddressCatalogKey(catalogFieldsWithoutPhoto)) {
       input.addressLine = catalogScalars.ADDRESS_LINE?.trim() || undefined;
-    }
-    if (catalogKeysShown.has('POSTAL_CODE')) {
       input.postalCode = catalogScalars.POSTAL_CODE?.trim() || undefined;
-    }
-    if (catalogKeysShown.has('CITY')) {
       input.city = catalogScalars.CITY?.trim() || undefined;
+    }
+    if (birthPlace.birthCity.trim() || birthPlace.birthCountryCode) {
+      input.birthCity = birthPlace.birthCity.trim() || null;
+      input.birthCityInseeCode = birthPlace.birthCityInseeCode || null;
+      input.birthCountryCode = birthPlace.birthCountryCode || null;
     }
     if (catalogKeysShown.has('MEDICAL_CERT_EXPIRES_AT')) {
       const v = catalogScalars.MEDICAL_CERT_EXPIRES_AT?.trim();
@@ -352,17 +371,62 @@ export function NewMemberPage() {
               const req = s.required ? ' *' : '';
               if (s.fieldKey === 'BIRTH_DATE') {
                 return (
-                  <label key={s.fieldKey} className="field">
-                    <span>
-                      {label}
-                      {req}
-                    </span>
-                    <input
-                      type="date"
-                      value={birthDate}
-                      onChange={(e) => setBirthDate(e.target.value)}
-                    />
-                  </label>
+                  <Fragment key={s.fieldKey}>
+                    <label className="field">
+                      <span>
+                        {label}
+                        {req}
+                      </span>
+                      <input
+                        type="date"
+                        value={birthDate}
+                        onChange={(e) => setBirthDate(e.target.value)}
+                      />
+                    </label>
+                    <BirthPlaceField value={birthPlace} onChange={setBirthPlace} />
+                  </Fragment>
+                );
+              }
+              if (s.fieldKey === 'PHONE') {
+                return (
+                  <PhoneField
+                    key={s.fieldKey}
+                    label={label}
+                    required={s.required}
+                    value={catalogScalars.PHONE ?? ''}
+                    onChange={(v) =>
+                      setCatalogScalars((prev) => ({ ...prev, PHONE: v }))
+                    }
+                  />
+                );
+              }
+              if (isAddressCatalogKey(s.fieldKey)) {
+                if (s.fieldKey !== firstAddressCatalogKey(catalogFieldsWithoutPhoto)) {
+                  return null;
+                }
+                return (
+                  <AddressFields
+                    key="address"
+                    required={addressCatalogRequired(catalogFieldsWithoutPhoto)}
+                    labels={{
+                      addressLine: MEMBER_CATALOG_FIELD_LABELS.ADDRESS_LINE,
+                      postalCode: MEMBER_CATALOG_FIELD_LABELS.POSTAL_CODE,
+                      city: MEMBER_CATALOG_FIELD_LABELS.CITY,
+                    }}
+                    value={{
+                      addressLine: catalogScalars.ADDRESS_LINE ?? '',
+                      postalCode: catalogScalars.POSTAL_CODE ?? '',
+                      city: catalogScalars.CITY ?? '',
+                    }}
+                    onChange={(a) =>
+                      setCatalogScalars((prev) => ({
+                        ...prev,
+                        ADDRESS_LINE: a.addressLine,
+                        POSTAL_CODE: a.postalCode,
+                        CITY: a.city,
+                      }))
+                    }
+                  />
                 );
               }
               if (s.fieldKey === 'GRADE_LEVEL') {
@@ -424,6 +488,11 @@ export function NewMemberPage() {
                 </label>
               );
             })}
+
+            {/* Lieu de naissance : à côté de la date si elle est au catalogue. */}
+            {catalogFieldsWithoutPhoto.some((s) => s.fieldKey === 'BIRTH_DATE') ? null : (
+              <BirthPlaceField value={birthPlace} onChange={setBirthPlace} />
+            )}
 
             {customDefsSorted.map((d) => {
               let options: string[] = [];

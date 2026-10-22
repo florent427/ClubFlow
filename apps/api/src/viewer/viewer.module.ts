@@ -12,6 +12,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { ShopModule } from '../shop/shop.module';
 import { ViewerResolver } from './viewer.resolver';
 import { ViewerService } from './viewer.service';
+import { ViewerCoordinatesService } from './viewer-coordinates.service';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { ViewerService } from './viewer.service';
   ],
   providers: [
     ViewerService,
+    ViewerCoordinatesService,
     ViewerResolver,
     ViewerActiveProfileGuard,
     ClubModuleEnabledGuard,

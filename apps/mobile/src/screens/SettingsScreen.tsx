@@ -22,6 +22,28 @@ import {
   TextField,
 } from '../components/ui';
 import { MemberProfileSwitcher } from '../components/MemberProfileSwitcher';
+import {
+  AddressFields,
+  BirthPlaceField,
+  PhoneField,
+} from '../components/coordinates';
+import {
+  VIEWER_COORDINATES_STATUS,
+  VIEWER_UPDATE_COORDINATES,
+} from '../lib/coordinates-documents';
+import {
+  EMPTY_ADDRESS,
+  EMPTY_BIRTH_PLACE,
+  addressError,
+  addressFromGraph,
+  birthPlaceError,
+  birthPlaceFromGraph,
+  birthPlaceInput,
+  mobilePhoneError,
+  type AddressValue,
+  type BirthPlaceValue,
+  type CoordinatesStatus,
+} from '../lib/coordinates';
 import { clearAllPinUnlocks } from '../components/PinGate';
 import { absolutizeMediaUrl } from '../lib/absolutize-url';
 import {
@@ -57,7 +79,25 @@ export function SettingsScreen() {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [address, setAddress] = useState<AddressValue>(EMPTY_ADDRESS);
+  const [birthPlace, setBirthPlace] = useState<BirthPlaceValue>(EMPTY_BIRTH_PLACE);
   const [savingProfile, setSavingProfile] = useState(false);
+  // Profil adhérent : le lieu de naissance est demandé à l'adhésion en ligne.
+  const isMemberProfile = me ? !me.isContactProfile : false;
+
+  // Adresse et lieu de naissance ne figurent pas dans `viewerMe` : ils
+  // viennent des coordonnées du compte (profil actif).
+  const { data: coordsData, refetch: refetchCoords } = useQuery<{
+    viewerCoordinatesStatus: CoordinatesStatus;
+  }>(VIEWER_COORDINATES_STATUS, { fetchPolicy: 'cache-and-network' });
+  const account = coordsData?.viewerCoordinatesStatus.account ?? null;
+  const [updateCoordinates] = useMutation(VIEWER_UPDATE_COORDINATES);
+
+  useEffect(() => {
+    if (!account) return;
+    setAddress(addressFromGraph(account));
+    setBirthPlace(birthPlaceFromGraph(account));
+  }, [account]);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   useEffect(() => {
@@ -104,6 +144,46 @@ export function SettingsScreen() {
   }
 
   async function onSaveProfile() {
+    // Contrôles avant tout envoi : rien n'est enregistré à moitié.
+    if (phone) {
+      const phoneErr = mobilePhoneError(phone);
+      if (phoneErr) {
+        Alert.alert('Portable invalide', phoneErr);
+        return;
+      }
+    }
+    const savedAddress = addressFromGraph(account);
+    const savedBirth = birthPlaceFromGraph(account);
+    const addressTouched =
+      address.addressLine.trim() !== savedAddress.addressLine.trim() ||
+      address.postalCode.trim() !== savedAddress.postalCode.trim() ||
+      address.city.trim() !== savedAddress.city.trim();
+    const birthTouched =
+      isMemberProfile &&
+      (birthPlace.birthCity.trim() !== savedBirth.birthCity.trim() ||
+        birthPlace.birthCountryCode !== savedBirth.birthCountryCode);
+    const saveCoordinates = addressTouched || birthTouched;
+    if (saveCoordinates) {
+      const addrErr = addressError(address);
+      if (addrErr) {
+        Alert.alert('Adresse incomplète', addrErr);
+        return;
+      }
+      if (!phone) {
+        Alert.alert(
+          'Portable manquant',
+          'Renseignez votre portable pour enregistrer votre adresse.',
+        );
+        return;
+      }
+      if (birthTouched) {
+        const birthErr = birthPlaceError(birthPlace);
+        if (birthErr) {
+          Alert.alert('Lieu de naissance incomplet', birthErr);
+          return;
+        }
+      }
+    }
     setSavingProfile(true);
     try {
       await updateProfile({
@@ -112,13 +192,30 @@ export function SettingsScreen() {
             firstName: firstName.trim(),
             lastName: lastName.trim(),
             email: email.trim() || null,
-            phone: phone.trim() || null,
+            phone: phone || null,
             photoUrl: photoUrl ?? null,
           },
         },
       });
+      if (saveCoordinates) {
+        const birthValid = isMemberProfile && !birthPlaceError(birthPlace);
+        await updateCoordinates({
+          variables: {
+            input: {
+              target: 'ACCOUNT',
+              targetId: null,
+              phone,
+              addressLine: address.addressLine.trim(),
+              postalCode: address.postalCode.trim(),
+              city: address.city.trim(),
+              ...(birthValid ? birthPlaceInput(birthPlace) : {}),
+            },
+          },
+        });
+      }
       Alert.alert('Profil enregistré', 'Vos informations ont été mises à jour.');
       void refetch();
+      void refetchCoords();
     } catch (err: unknown) {
       const msg =
         err instanceof Error
@@ -235,13 +332,11 @@ export function SettingsScreen() {
       }
       const data = (await res.json()) as { publicUrl: string };
       setPhotoUrl(data.publicUrl);
+      // Photo seule : un portable en cours de saisie (encore invalide) ne
+      // doit pas faire échouer l'envoi de la photo.
       await updateProfile({
         variables: {
           input: {
-            firstName: firstName.trim(),
-            lastName: lastName.trim(),
-            email: email.trim() || null,
-            phone: phone.trim() || null,
             photoUrl: data.publicUrl,
           },
         },
@@ -338,12 +433,16 @@ export function SettingsScreen() {
             autoCorrect={false}
             hint="Une copie sera adressée au(x) payeur(s) si vous êtes dans un foyer."
           />
-          <TextField
-            label="Téléphone"
+          <PhoneField
+            label="Portable"
             value={phone}
-            onChangeText={setPhone}
-            keyboardType="phone-pad"
+            onChange={setPhone}
+            hint="Portable, adresse et lieu de naissance sont demandés pour l’adhésion en ligne."
           />
+          <AddressFields value={address} onChange={setAddress} />
+          {isMemberProfile ? (
+            <BirthPlaceField value={birthPlace} onChange={setBirthPlace} />
+          ) : null}
           <Button
             label={savingProfile ? 'Enregistrement…' : 'Enregistrer'}
             onPress={() => void onSaveProfile()}

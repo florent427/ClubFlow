@@ -83,6 +83,36 @@ describe('entreeProfilSaisi', () => {
     expect(entree.email).toBeNull();
   });
 
+  it('porte le lieu de naissance saisi, code INSEE compris', () => {
+    const entree = entreeProfilSaisi(
+      saisie({
+        birthPlace: {
+          birthCity: ' Saint-Pierre ',
+          birthCityInseeCode: '97416',
+          birthCountryCode: 'FR',
+        },
+      }),
+      TOUS,
+    );
+    expect(entree.birthCity).toBe('Saint-Pierre');
+    expect(entree.birthCityInseeCode).toBe('97416');
+    expect(entree.birthCountryCode).toBe('FR');
+  });
+
+  it('omet un lieu de naissance vide ou absent (compte contact)', () => {
+    const vide = entreeProfilSaisi(
+      saisie({
+        birthPlace: { birthCity: '  ', birthCityInseeCode: null, birthCountryCode: 'FR' },
+      }),
+      TOUS,
+    );
+    expect(vide).not.toHaveProperty('birthCity');
+    expect(vide).not.toHaveProperty('birthCountryCode');
+    expect(entreeProfilSaisi(saisie({ birthPlace: null }), TOUS)).not.toHaveProperty(
+      'birthCity',
+    );
+  });
+
   it('reste sous la limite du DTO même avec une photo monstrueuse en mémoire', () => {
     // Le state du portail contient la data URL relue depuis l'API ; elle ne
     // doit pas atteindre la requête.
