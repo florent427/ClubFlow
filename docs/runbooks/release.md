@@ -254,3 +254,5 @@ Cf. `knowledge/conventions.md` pour la liste des types et leur impact bump.
 ⚠️ `.release-please-manifest.json` doit refléter le dernier tag publié.
 Si désynchronisé (ex: après un revert), corriger manuellement et commit
 `chore(ci): sync release-please manifest`.
+
+<!-- PR factice test ci-ok, à ne pas fusionner -->
