@@ -4,7 +4,7 @@ import type { FormEvent } from 'react';
 import {
   ADD_SHOP_PURCHASE_ORDER_LINE,
   CANCEL_SHOP_PURCHASE_ORDER,
-  CLUB_ACCOUNTING_ENTRIES,
+  CLUB_ACCOUNTING_ENTRIES_PAGE,
   CREATE_SHOP_PURCHASE_ORDER,
   CREATE_SHOP_PURCHASE_ORDER_LINK,
   LINK_SHOP_PURCHASE_ORDER_INVOICE,
@@ -22,7 +22,7 @@ import {
 import type {
   AddShopPurchaseOrderLineMutationData,
   CancelShopPurchaseOrderMutationData,
-  ClubAccountingEntriesData,
+  ClubAccountingEntriesPageData,
   CreateShopPurchaseOrderLinkMutationData,
   CreateShopPurchaseOrderMutationData,
   LinkShopPurchaseOrderInvoiceMutationData,
@@ -38,6 +38,7 @@ import type {
   UnlinkShopPurchaseOrderInvoiceMutationData,
 } from '../../lib/types';
 import { useToast } from '../../components/ToastProvider';
+import { useDebouncedValue } from '../../lib/use-debounced-value';
 import { ConfirmModal, Drawer, EmptyState } from '../../components/ui';
 import {
   canResendPurchaseOrder,
@@ -936,19 +937,28 @@ function ReceptionsHistory({
 // que poser — ou retirer — le lien.
 // ===========================================================================
 
+/** Dépenses proposées au rapprochement : les plus récentes, la recherche fait le reste. */
+const CANDIDATES_LIMIT = 100;
+
 function InvoiceReconciliation({ order }: { order: ShopPurchaseOrder }) {
   const { showToast } = useToast();
   const [picking, setPicking] = useState(false);
   const [entryId, setEntryId] = useState('');
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search.trim());
 
   const { data: accountData } = useQuery<ShopPurchaseInvoiceAccountQueryData>(
     SHOP_PURCHASE_INVOICE_ACCOUNT,
     { fetchPolicy: 'cache-first' },
   );
   const { data: entriesData, loading: entriesLoading } =
-    useQuery<ClubAccountingEntriesData>(CLUB_ACCOUNTING_ENTRIES, {
+    useQuery<ClubAccountingEntriesPageData>(CLUB_ACCOUNTING_ENTRIES_PAGE, {
       fetchPolicy: 'cache-and-network',
       skip: !picking,
+      variables: {
+        filter: { kind: 'EXPENSE', search: debouncedSearch || null },
+        limit: CANDIDATES_LIMIT,
+      },
     });
 
   const [link, { loading: linking }] =
@@ -961,8 +971,9 @@ function InvoiceReconciliation({ order }: { order: ShopPurchaseOrder }) {
 
   const account = accountData?.shopPurchaseInvoiceAccount ?? null;
   const alreadyLinked = new Set(order.accountingEntries.map((e) => e.id));
-  const candidates = (entriesData?.clubAccountingEntries ?? []).filter(
-    (e) => e.kind === 'EXPENSE' && !alreadyLinked.has(e.id),
+  const candidatesPage = entriesData?.clubAccountingEntriesPage;
+  const candidates = (candidatesPage?.items ?? []).filter(
+    (e) => !alreadyLinked.has(e.id),
   );
 
   async function onLink(e: FormEvent) {
@@ -1050,6 +1061,19 @@ function InvoiceReconciliation({ order }: { order: ShopPurchaseOrder }) {
       {picking ? (
         <form onSubmit={(e) => void onLink(e)} className="cf-form">
           <label className="cf-field">
+            <span className="cf-field__label">Rechercher une dépense</span>
+            <input
+              className="cf-input"
+              type="search"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setEntryId('');
+              }}
+              placeholder="Libellé, n° de facture, compte ou montant (1 300,00)"
+            />
+          </label>
+          <label className="cf-field">
             <span className="cf-field__label">
               Écriture de dépense à rapprocher
             </span>
@@ -1070,9 +1094,12 @@ function InvoiceReconciliation({ order }: { order: ShopPurchaseOrder }) {
               ))}
             </select>
             <span className="cf-field__hint">
-              Seules les écritures de dépense de la période courante sont
-              proposées. Si la vôtre n’y figure pas, saisissez-la d’abord dans
-              le module Comptabilité.
+              {candidatesPage &&
+              candidatesPage.totalCount > candidatesPage.items.length
+                ? `Les ${candidatesPage.items.length} dépenses les plus récentes sur ${candidatesPage.totalCount} : affinez la recherche pour trouver la vôtre. `
+                : null}
+              Si la vôtre n’existe pas encore, saisissez-la d’abord dans le
+              module Comptabilité.
             </span>
           </label>
           <div className="cf-form-actions">

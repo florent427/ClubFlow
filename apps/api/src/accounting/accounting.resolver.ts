@@ -44,6 +44,7 @@ import {
   AccountingPeriodLockGraph,
 } from './models/accounting-fiscal.model';
 import { RenameClubAccountingAccountInput } from './dto/accounting-account.input';
+import { AccountingEntriesFilterInput } from './dto/accounting-entries-filter.input';
 import { CancelAccountingEntryInput } from './dto/cancel-accounting-entry.input';
 import {
   CreateClubFinancialAccountInput,
@@ -58,6 +59,7 @@ import {
   AccountingAccountMappingGraph,
 } from './models/accounting-account.model';
 import { AccountingCohortGraph } from './models/accounting-cohort.model';
+import { AccountingEntriesPageGraph } from './models/accounting-entries-page.model';
 import {
   AccountingAllocationGraph,
   AccountingDocumentGraph,
@@ -387,6 +389,30 @@ export class AccountingResolver {
     return (rows as unknown as EntryRow[]).map(toGraph);
   }
 
+  /**
+   * Liste des écritures montrée à l'utilisateur : filtres et recherche
+   * appliqués côté serveur, et le total de ce qui passe le filtre, pour que
+   * l'écran dise ce qu'il n'affiche pas au lieu de le taire.
+   */
+  @Query(() => AccountingEntriesPageGraph, { name: 'clubAccountingEntriesPage' })
+  async clubAccountingEntriesPage(
+    @CurrentClub() club: Club,
+    @Args('filter', { type: () => AccountingEntriesFilterInput, nullable: true })
+    filter: AccountingEntriesFilterInput | null,
+    @Args('limit', { type: () => Int, nullable: true, defaultValue: 100 })
+    limit: number,
+  ): Promise<AccountingEntriesPageGraph> {
+    const page = await this.accounting.listEntriesPage(
+      club.id,
+      filter ?? {},
+      limit ?? 100,
+    );
+    return {
+      items: (page.items as unknown as EntryRow[]).map(toGraph),
+      totalCount: page.totalCount,
+    };
+  }
+
   @Query(() => AccountingEntryGraph, { name: 'clubAccountingEntry' })
   async clubAccountingEntry(
     @CurrentClub() club: Club,
@@ -404,10 +430,13 @@ export class AccountingResolver {
     // reviewQueue include est lighter — on récupère le détail complet
     const ids = rows.map((r) => r.id);
     if (ids.length === 0) return [];
-    const full = await this.accounting.listEntries(club.id, { limit: 500 });
-    return (full as unknown as EntryRow[])
-      .filter((r) => ids.includes(r.id))
-      .map(toGraph);
+    // Par identifiants : relire « les 500 plus récentes » puis filtrer
+    // perdait toute écriture à valider plus ancienne que la 500e.
+    const full = await this.accounting.listEntries(club.id, {
+      ids,
+      limit: ids.length,
+    });
+    return (full as unknown as EntryRow[]).map(toGraph);
   }
 
   @Query(() => AccountingSummaryGraph, { name: 'clubAccountingSummary' })

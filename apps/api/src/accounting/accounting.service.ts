@@ -50,7 +50,37 @@ export interface ListEntriesFilter {
   accountCode?: string | null;
   /** Filtre par compte financier (banque/caisse/transit) — multi-banques. */
   financialAccountId?: string | null;
+  kind?: AccountingEntryKind | null;
+  /**
+   * Projet analytique porté par au moins une ventilation. Distinct de
+   * `projectId`, qui ne lit que le projet posé sur l'écriture elle-même.
+   */
+  allocationProjectId?: string | null;
+  /** Écritures dont aucune ventilation ne porte de projet. */
+  withoutAllocationProject?: boolean | null;
+  /**
+   * Recherche libre : libellé de l'écriture ou d'une ligne, n° de facture,
+   * référence de paiement, code ou libellé de compte, et montant exact
+   * quand le texte est un montant (« 1300 », « 1 300,00 € »).
+   */
+  search?: string | null;
+  ids?: string[] | null;
   limit?: number;
+}
+
+/** Plafond d'une page de la liste des écritures (`listEntriesPage`). */
+export const MAX_ENTRIES_PAGE = 2000;
+
+/**
+ * Lit un montant en euros saisi dans la recherche (« 1300 », « 1 300,50 »,
+ * « 1300.5 € ») et le rend en centimes. Null si le texte n'est pas un
+ * montant : la recherche reste alors purement textuelle.
+ */
+export function parseSearchAmountCents(search: string): number | null {
+  const compact = search.replace(/[\s  €]/g, '');
+  if (!/^\d+([.,]\d{1,2})?$/.test(compact)) return null;
+  const cents = Math.round(Number(compact.replace(',', '.')) * 100);
+  return Number.isSafeInteger(cents) && cents <= 2_147_483_647 ? cents : null;
 }
 
 /** Input pour une création manuelle (UI formulaire). */
@@ -2772,44 +2802,128 @@ export class AccountingService {
   // Queries
   // ========================================================================
 
-  async listEntries(clubId: string, filter: ListEntriesFilter = {}) {
+  private entriesWhere(
+    clubId: string,
+    filter: ListEntriesFilter,
+  ): Prisma.AccountingEntryWhereInput {
     const where: Prisma.AccountingEntryWhereInput = { clubId };
+    // Chaque critère sur les lignes est une condition à part : « une ligne
+    // au compte X » et « une ligne ventilée sur le projet P » ne désignent
+    // pas forcément la même ligne.
+    const and: Prisma.AccountingEntryWhereInput[] = [];
     if (filter.from || filter.to) {
       where.occurredAt = {};
       if (filter.from) where.occurredAt.gte = filter.from;
       if (filter.to) where.occurredAt.lt = filter.to;
     }
+    if (filter.ids) where.id = { in: filter.ids };
+    if (filter.kind) where.kind = filter.kind;
     if (filter.status) where.status = filter.status;
     if (filter.source) where.source = filter.source;
     if (filter.projectId) where.projectId = filter.projectId;
     if (filter.financialAccountId)
       where.financialAccountId = filter.financialAccountId;
     if (filter.cohortCode || filter.accountCode) {
-      where.lines = {
-        some: {
-          ...(filter.accountCode && { accountCode: filter.accountCode }),
-          ...(filter.cohortCode && {
-            allocations: { some: { cohortCode: filter.cohortCode } },
-          }),
-        },
-      };
-    }
-    return this.prisma.accountingEntry.findMany({
-      where,
-      orderBy: { occurredAt: 'desc' },
-      take: filter.limit ?? 200,
-      include: {
+      and.push({
         lines: {
-          include: {
-            allocations: {
-              include: { project: { select: { id: true, title: true } } },
+          some: {
+            ...(filter.accountCode && { accountCode: filter.accountCode }),
+            ...(filter.cohortCode && {
+              allocations: { some: { cohortCode: filter.cohortCode } },
+            }),
+          },
+        },
+      });
+    }
+    if (filter.allocationProjectId) {
+      and.push({
+        lines: {
+          some: {
+            allocations: { some: { projectId: filter.allocationProjectId } },
+          },
+        },
+      });
+    }
+    if (filter.withoutAllocationProject) {
+      and.push({
+        lines: { every: { allocations: { every: { projectId: null } } } },
+      });
+    }
+    const search = filter.search?.trim();
+    if (search) {
+      const text = { contains: search, mode: 'insensitive' as const };
+      const or: Prisma.AccountingEntryWhereInput[] = [
+        { label: text },
+        { invoiceNumber: text },
+        { paymentReference: text },
+        {
+          lines: {
+            some: {
+              OR: [
+                { accountCode: { startsWith: search } },
+                { accountLabel: text },
+                { label: text },
+              ],
             },
           },
         },
-        documents: { include: { mediaAsset: true } },
-        financialAccount: { include: { accountingAccount: true } },
+      ];
+      const cents = parseSearchAmountCents(search);
+      if (cents !== null) or.push({ amountCents: cents });
+      and.push({ OR: or });
+    }
+    if (and.length > 0) where.AND = and;
+    return where;
+  }
+
+  private static readonly ENTRY_LIST_INCLUDE = {
+    lines: {
+      include: {
+        allocations: {
+          include: { project: { select: { id: true, title: true } } },
+        },
       },
+    },
+    documents: { include: { mediaAsset: true } },
+    financialAccount: { include: { accountingAccount: true } },
+  } satisfies Prisma.AccountingEntryInclude;
+
+  /**
+   * Liste plafonnée (200 par défaut) SANS dire ce qui manque : réservée aux
+   * appelants qui bornent eux-mêmes (ids, période courte). Une liste montrée
+   * à l'utilisateur passe par `listEntriesPage`, qui rend le total.
+   */
+  async listEntries(clubId: string, filter: ListEntriesFilter = {}) {
+    return this.prisma.accountingEntry.findMany({
+      where: this.entriesWhere(clubId, filter),
+      orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
+      take: filter.limit ?? 200,
+      include: AccountingService.ENTRY_LIST_INCLUDE,
     });
+  }
+
+  /**
+   * Les `limit` écritures les plus récentes qui passent le filtre, et le
+   * nombre total d'écritures qui le passent : l'écran sait ainsi qu'il n'a
+   * pas tout et propose d'en charger plus.
+   */
+  async listEntriesPage(
+    clubId: string,
+    filter: Omit<ListEntriesFilter, 'limit'>,
+    limit: number,
+  ) {
+    const where = this.entriesWhere(clubId, filter);
+    const take = Math.min(Math.max(Math.trunc(limit), 1), MAX_ENTRIES_PAGE);
+    const [items, totalCount] = await Promise.all([
+      this.prisma.accountingEntry.findMany({
+        where,
+        orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
+        take,
+        include: AccountingService.ENTRY_LIST_INCLUDE,
+      }),
+      this.prisma.accountingEntry.count({ where }),
+    ]);
+    return { items, totalCount };
   }
 
   async getEntry(clubId: string, entryId: string) {
