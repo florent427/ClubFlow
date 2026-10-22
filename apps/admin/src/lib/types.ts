@@ -2165,8 +2165,22 @@ export type AccountingEntry = {
   lines: AccountingEntryLineRow[];
   documents: AccountingDocumentRow[];
 };
-export type ClubAccountingEntriesData = {
-  clubAccountingEntries: AccountingEntry[];
+export type AccountingEntriesFilterInput = {
+  from?: string | null;
+  to?: string | null;
+  kind?: AccountingEntryKindGql | null;
+  status?: AccountingEntryStatusGql | null;
+  financialAccountId?: string | null;
+  allocationProjectId?: string | null;
+  withoutAllocationProject?: boolean | null;
+  accountCode?: string | null;
+  search?: string | null;
+};
+export type ClubAccountingEntriesPageData = {
+  clubAccountingEntriesPage: {
+    totalCount: number;
+    items: AccountingEntry[];
+  };
 };
 export type ClubAccountingReviewQueueData = {
   clubAccountingReviewQueue: AccountingEntry[];

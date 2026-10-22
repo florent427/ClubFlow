@@ -3434,10 +3434,22 @@ export const DELETE_CLUB_GRANT_APPLICATION = gql`
   }
 `;
 
-export const CLUB_ACCOUNTING_ENTRIES = gql`
-  query ClubAccountingEntries($from: DateTime, $to: DateTime) {
-    clubAccountingEntries(from: $from, to: $to) {
-      ${ACCOUNTING_ENTRY_FIELDS}
+/**
+ * Liste des écritures, filtres et recherche appliqués par l’API. `totalCount`
+ * dit combien d’écritures passent le filtre : quand il dépasse `items`, l’écran
+ * doit le signaler (la liste plafonnait à 200 sans le dire, constaté en prod
+ * le 2026-10-22).
+ */
+export const CLUB_ACCOUNTING_ENTRIES_PAGE = gql`
+  query ClubAccountingEntriesPage(
+    $filter: AccountingEntriesFilterInput
+    $limit: Int
+  ) {
+    clubAccountingEntriesPage(filter: $filter, limit: $limit) {
+      totalCount
+      items {
+        ${ACCOUNTING_ENTRY_FIELDS}
+      }
     }
   }
 `;

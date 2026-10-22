@@ -41,4 +41,33 @@ describe('AccountingResolver — schéma GraphQL', () => {
     expect(sdl).toContain('openingBalanceCents: Int');
     expect(sdl).toContain('openingBalanceOn: String');
   });
+
+  it('expose la liste paginée des écritures, son total et ses filtres', async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [GraphQLSchemaBuilderModule],
+    }).compile();
+    const factory = moduleRef.get(GraphQLSchemaFactory);
+    const schema = await factory.create([AccountingResolver]);
+    const sdl = printSchema(schema);
+
+    expect(sdl).toContain(
+      'clubAccountingEntriesPage(filter: AccountingEntriesFilterInput, limit: Int = 100): AccountingEntriesPageGraph!',
+    );
+    expect(sdl).toContain('items: [AccountingEntryGraph!]!');
+    expect(sdl).toContain('totalCount: Int!');
+    for (const field of [
+      'from: DateTime',
+      'to: DateTime',
+      'kind: AccountingEntryKind',
+      'status: AccountingEntryStatus',
+      'source: AccountingEntrySource',
+      'financialAccountId: ID',
+      'allocationProjectId: ID',
+      'withoutAllocationProject: Boolean',
+      'accountCode: String',
+      'search: String',
+    ]) {
+      expect(sdl).toContain(field);
+    }
+  });
 });

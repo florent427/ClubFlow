@@ -47,6 +47,7 @@ export const AGENT_CLASSIFICATIONS: AgentToolClassification[] = [
   { name: 'clubBlogPosts', kind: 'query', risk: 'SAFE', description: 'Liste les articles de blog internes.', allowedRoles: ['CLUB_ADMIN', 'BOARD', 'COMM_MANAGER'] },
   { name: 'clubInvoices', kind: 'query', risk: 'SAFE', description: 'Liste les factures du club.', allowedRoles: ['CLUB_ADMIN', 'TREASURER'] },
   { name: 'clubAccountingEntries', kind: 'query', risk: 'SAFE', description: 'Liste les écritures comptables.', allowedRoles: ['CLUB_ADMIN', 'TREASURER'] },
+  { name: 'clubAccountingEntriesPage', kind: 'query', risk: 'SAFE', description: 'Liste paginée des écritures comptables, filtres et recherche (libellé, compte, montant) côté serveur, avec le total.', allowedRoles: ['CLUB_ADMIN', 'TREASURER'] },
   { name: 'clubDashboard', kind: 'query', risk: 'SAFE', description: "Tableau de bord global du club : KPIs adhésions, finances, événements.", allowedRoles: ['CLUB_ADMIN', 'BOARD', 'TREASURER'] },
   { name: 'clubSeasons', kind: 'query', risk: 'SAFE', description: 'Liste les saisons sportives.', allowedRoles: ['CLUB_ADMIN', 'BOARD', 'TREASURER'] },
   { name: 'clubMembershipProducts', kind: 'query', risk: 'SAFE', description: 'Liste les formules d\'adhésion.', allowedRoles: ['CLUB_ADMIN', 'TREASURER'] },

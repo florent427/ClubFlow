@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@apollo/client/react';
+import { useApolloClient, useMutation, useQuery } from '@apollo/client/react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
@@ -6,7 +6,8 @@ import {
   CANCEL_CLUB_ACCOUNTING_ENTRY,
   CLUB_ACCOUNTING_ACCOUNTS,
   CLUB_ACCOUNTING_COHORTS,
-  CLUB_ACCOUNTING_ENTRIES,
+  CLUB_ACCOUNTING_ENTRIES_PAGE,
+  CLUB_ACCOUNTING_FISCAL_SETTINGS,
   CLUB_ACCOUNTING_SUMMARY,
   CLUB_MEMBERS,
   CLUB_FINANCIAL_ACCOUNTS,
@@ -29,7 +30,9 @@ import type {
   AccountingEntryConsolidationPreviewData,
   ClubAccountingAccountsData,
   ClubAccountingCohortsData,
-  ClubAccountingEntriesData,
+  AccountingEntriesFilterInput,
+  AccountingFiscalSettingsData,
+  ClubAccountingEntriesPageData,
   ClubAccountingSummaryData,
   ClubFinancialAccountsData,
   MembersQueryData,
@@ -43,37 +46,13 @@ import { downloadCsv, toCsv } from '../../lib/csv-export';
 import { getClubId, getToken } from '../../lib/storage';
 import { AccountingReviewDrawer } from './AccountingReviewDrawer';
 import { EntryDetailsDrawer } from './EntryDetailsDrawer';
+import { computeRange, type Period } from './entries-range';
+import { useDebouncedValue } from '../../lib/use-debounced-value';
 
-type Period = 'ALL' | 'MONTH' | 'YEAR' | 'CUSTOM';
-
-function computeRange(
-  period: Period,
-  customFrom: string,
-  customTo: string,
-): { from: string | null; to: string | null } {
-  const now = new Date();
-  if (period === 'MONTH') {
-    const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    const to = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-    return { from: from.toISOString(), to: to.toISOString() };
-  }
-  if (period === 'YEAR') {
-    const from = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
-    const to = new Date(Date.UTC(now.getUTCFullYear() + 1, 0, 1));
-    return { from: from.toISOString(), to: to.toISOString() };
-  }
-  if (period === 'CUSTOM') {
-    return {
-      from: customFrom ? new Date(customFrom + 'T00:00:00Z').toISOString() : null,
-      to: customTo
-        ? new Date(
-            new Date(customTo + 'T00:00:00Z').getTime() + 24 * 3600 * 1000,
-          ).toISOString()
-        : null,
-    };
-  }
-  return { from: null, to: null };
-}
+/** Écritures chargées par page de la liste (« Charger plus » en ajoute autant). */
+const ENTRIES_PAGE_SIZE = 100;
+/** Plafond d'une page côté API (`MAX_ENTRIES_PAGE`). */
+const ENTRIES_MAX_LIMIT = 2000;
 
 function fmtEuros(cents: number): string {
   return `${(cents / 100).toFixed(2).replace('.', ',')} €`;
@@ -129,30 +108,109 @@ function statusLabel(status: string): string {
 
 export function AccountingPage() {
   const { showToast } = useToast();
+  const apollo = useApolloClient();
   const [period, setPeriod] = useState<Period>('ALL');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
-  const range = useMemo(
-    () => computeRange(period, customFrom, customTo),
-    [period, customFrom, customTo],
+  // Exercice du club (SKSR : 1er septembre → 31 août) pour le préréglage
+  // « Exercice en cours » : l'année civile coupe l'exercice en deux.
+  const { data: fiscalData } = useQuery<AccountingFiscalSettingsData>(
+    CLUB_ACCOUNTING_FISCAL_SETTINGS,
+    { fetchPolicy: 'cache-first' },
   );
+  const fiscal = fiscalData?.clubAccountingFiscalSettings ?? null;
+  const fiscalYear = useMemo(
+    () =>
+      fiscal
+        ? {
+            startsOn: fiscal.currentFiscalYearStartsOn,
+            endsOn: fiscal.currentFiscalYearEndsOn,
+          }
+        : null,
+    [fiscal],
+  );
+  const range = useMemo(
+    () => computeRange(period, customFrom, customTo, fiscalYear),
+    [period, customFrom, customTo, fiscalYear],
+  );
+  const [kindFilter, setKindFilter] = useState<
+    'ALL' | 'INCOME' | 'EXPENSE' | 'IN_KIND'
+  >('ALL');
+  const [statusFilter, setStatusFilter] = useState<
+    'ALL' | 'NEEDS_REVIEW' | 'POSTED' | 'LOCKED' | 'CANCELLED'
+  >('ALL');
+  // Filtre par projet analytique — 'ALL' (aucun filtre), '__NONE__' (entries
+  // sans projet alloué), ou un id de projet.
+  const [projectFilter, setProjectFilter] = useState<string>('ALL');
+  // Filtre par compte financier (banque/caisse/transit) — 'ALL' ou id.
+  const [finAccountFilter, setFinAccountFilter] = useState<string>('ALL');
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search.trim());
+  // Filtres et recherche s'appliquent côté API, sur toutes les écritures :
+  // filtrer ici les seules écritures chargées en perdait sans le dire (le
+  // loyer du dojo SKSR, 211e écriture, était introuvable le 2026-10-22).
+  const entriesFilter = useMemo<AccountingEntriesFilterInput>(
+    () => ({
+      from: range.from,
+      to: range.to,
+      kind: kindFilter === 'ALL' ? null : kindFilter,
+      status: statusFilter === 'ALL' ? null : statusFilter,
+      financialAccountId:
+        finAccountFilter === 'ALL' ? null : finAccountFilter,
+      allocationProjectId:
+        projectFilter === 'ALL' || projectFilter === '__NONE__'
+          ? null
+          : projectFilter,
+      withoutAllocationProject: projectFilter === '__NONE__' ? true : null,
+      search: debouncedSearch || null,
+    }),
+    [
+      range,
+      kindFilter,
+      statusFilter,
+      finAccountFilter,
+      projectFilter,
+      debouncedSearch,
+    ],
+  );
+  // « Charger plus » agrandit la page plutôt que de concaténer des pages :
+  // le rafraîchissement (après une saisie, pendant l'OCR) relit ainsi tout
+  // ce qui est affiché. Un nouveau filtre repart d'une page : la limite
+  // est rattachée au filtre pour lequel elle a été agrandie, sans quoi la
+  // requête partirait d'abord avec l'ancienne limite.
+  const [grown, setGrown] = useState<{
+    filter: AccountingEntriesFilterInput;
+    limit: number;
+  } | null>(null);
+  const limit =
+    grown && grown.filter === entriesFilter ? grown.limit : ENTRIES_PAGE_SIZE;
+  const setLimit = (next: number) =>
+    setGrown({ filter: entriesFilter, limit: next });
   const {
     data: entriesData,
+    previousData: previousEntriesData,
     refetch: refetchEntries,
     loading,
     startPolling: startPollingEntries,
     stopPolling: stopPollingEntries,
-  } = useQuery<ClubAccountingEntriesData>(CLUB_ACCOUNTING_ENTRIES, {
+  } = useQuery<ClubAccountingEntriesPageData>(CLUB_ACCOUNTING_ENTRIES_PAGE, {
     fetchPolicy: 'cache-and-network',
-    variables: { from: range.from, to: range.to },
+    variables: { filter: entriesFilter, limit },
   });
+  // Pendant qu'un nouveau filtre se charge, garder la liste précédente
+  // plutôt que de flasher « Chargement… ».
+  const entriesPage = (entriesData ?? previousEntriesData)
+    ?.clubAccountingEntriesPage;
+  const entries = entriesPage?.items ?? [];
+  const totalCount = entriesPage?.totalCount ?? 0;
+  const [exporting, setExporting] = useState(false);
   // L'analyse d'un reçu tourne en arrière-plan côté API : la mutation rend
   // une écriture vide « Analyse OCR en cours… » que le pipeline complète
   // ensuite. Tant qu'une écriture est dans cet état, on rafraîchit la liste
   // pour que le résultat apparaisse sans recharger la page. Au-delà de
   // 10 minutes, l'analyse est tenue pour morte (API redémarrée en cours de
   // route) : on cesse de rafraîchir plutôt que de le faire indéfiniment.
-  const anyOcrProcessing = (entriesData?.clubAccountingEntries ?? []).some(
+  const anyOcrProcessing = entries.some(
     (e) =>
       e.aiProcessingStartedAt != null &&
       Date.now() - new Date(e.aiProcessingStartedAt).getTime() < 10 * 60_000,
@@ -444,18 +502,6 @@ export function AccountingPage() {
     null,
   );
   const [confirmDel, setConfirmDel] = useState<AccountingEntry | null>(null);
-  const [kindFilter, setKindFilter] = useState<
-    'ALL' | 'INCOME' | 'EXPENSE' | 'IN_KIND'
-  >('ALL');
-  const [statusFilter, setStatusFilter] = useState<
-    'ALL' | 'NEEDS_REVIEW' | 'POSTED' | 'LOCKED' | 'CANCELLED'
-  >('ALL');
-  // Filtre par projet analytique — 'ALL' (aucun filtre), '__NONE__' (entries
-  // sans projet alloué), ou un id de projet.
-  const [projectFilter, setProjectFilter] = useState<string>('ALL');
-  // Filtre par compte financier (banque/caisse/transit) — 'ALL' ou id.
-  const [finAccountFilter, setFinAccountFilter] = useState<string>('ALL');
-
   const [kind, setKind] = useState<'INCOME' | 'EXPENSE' | 'IN_KIND'>(
     'EXPENSE',
   );
@@ -521,34 +567,6 @@ export function AccountingPage() {
     setArticles((prev) => prev.filter((a) => a.id !== id));
   }
 
-  const entries = entriesData?.clubAccountingEntries ?? [];
-  const filtered = useMemo(() => {
-    let rows = entries;
-    if (kindFilter !== 'ALL')
-      rows = rows.filter((e) => e.kind === kindFilter);
-    if (statusFilter !== 'ALL')
-      rows = rows.filter((e) => e.status === statusFilter);
-    if (projectFilter !== 'ALL') {
-      if (projectFilter === '__NONE__') {
-        // entries sans allocation projet
-        rows = rows.filter((e) =>
-          e.lines.every((l) =>
-            l.allocations.every((a) => !a.projectId),
-          ),
-        );
-      } else {
-        rows = rows.filter((e) =>
-          e.lines.some((l) =>
-            l.allocations.some((a) => a.projectId === projectFilter),
-          ),
-        );
-      }
-    }
-    if (finAccountFilter !== 'ALL') {
-      rows = rows.filter((e) => e.financialAccountId === finAccountFilter);
-    }
-    return rows;
-  }, [entries, kindFilter, statusFilter, projectFilter, finAccountFilter]);
   const summary = summaryData?.clubAccountingSummary;
   const accounts = accountsData?.clubAccountingAccounts ?? [];
   const cohorts = cohortsData?.clubAccountingCohorts ?? [];
@@ -725,6 +743,51 @@ export function AccountingPage() {
       (import.meta.env as Record<string, string | undefined>)
         .VITE_GRAPHQL_HTTP?.replace(/\/graphql.*$/, '') ?? 'http://localhost:3000'
     );
+  }
+
+  /**
+   * Exporte toutes les écritures qui passent le filtre, pas seulement celles
+   * affichées : un export tronqué en silence serait le même défaut que la
+   * liste.
+   */
+  async function onExportCsv() {
+    setExporting(true);
+    try {
+      let rows = entries;
+      if (totalCount > entries.length) {
+        if (totalCount > ENTRIES_MAX_LIMIT) {
+          showToast(
+            `${totalCount} écritures : l’export est limité à ${ENTRIES_MAX_LIMIT}. Réduisez la période.`,
+            'error',
+          );
+          return;
+        }
+        const { data } = await apollo.query<ClubAccountingEntriesPageData>({
+          query: CLUB_ACCOUNTING_ENTRIES_PAGE,
+          variables: { filter: entriesFilter, limit: totalCount },
+          fetchPolicy: 'network-only',
+        });
+        rows = data?.clubAccountingEntriesPage.items ?? [];
+      }
+      const csv = toCsv(
+        ['Date', 'Libellé', 'Type', 'Statut', 'Source', 'Montant (€)', 'Compte'],
+        rows.map((e) => [
+          e.occurredAt.slice(0, 10),
+          e.label,
+          e.kind,
+          statusLabel(e.status),
+          sourceLabel(e.source),
+          ((e.kind === 'INCOME' ? 1 : -1) * (e.amountCents / 100)).toFixed(2),
+          e.lines[0]?.accountCode ?? '',
+        ]),
+      );
+      const ts = new Date().toISOString().slice(0, 10);
+      downloadCsv(`comptabilite-${ts}.csv`, csv);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Export impossible', 'error');
+    } finally {
+      setExporting(false);
+    }
   }
 
   async function onDownloadFec() {
@@ -950,6 +1013,16 @@ export function AccountingPage() {
 
       <div className="cf-toolbar" style={{ flexWrap: 'wrap', gap: 12 }}>
         <label className="cf-field cf-field--inline">
+          <span>Rechercher</span>
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Libellé, n° de facture, compte, montant…"
+            aria-label="Rechercher dans toutes les écritures"
+          />
+        </label>
+        <label className="cf-field cf-field--inline">
           <span>Type</span>
           <select
             value={kindFilter}
@@ -1028,7 +1101,12 @@ export function AccountingPage() {
           >
             <option value="ALL">Depuis le début</option>
             <option value="MONTH">Ce mois</option>
-            <option value="YEAR">Cette année</option>
+            {fiscal ? (
+              <option value="FISCAL">
+                Exercice en cours ({fiscal.currentFiscalYearLabel})
+              </option>
+            ) : null}
+            <option value="YEAR">Année civile</option>
             <option value="CUSTOM">Personnalisée…</option>
           </select>
         </label>
@@ -1056,28 +1134,11 @@ export function AccountingPage() {
           <button
             type="button"
             className="cf-btn cf-btn--ghost"
-            onClick={() => {
-              const csv = toCsv(
-                ['Date', 'Libellé', 'Type', 'Statut', 'Source', 'Montant (€)', 'Compte'],
-                filtered.map((e) => [
-                  e.occurredAt.slice(0, 10),
-                  e.label,
-                  e.kind,
-                  statusLabel(e.status),
-                  sourceLabel(e.source),
-                  ((e.kind === 'INCOME' ? 1 : -1) * (e.amountCents / 100)).toFixed(
-                    2,
-                  ),
-                  e.lines[0]?.accountCode ?? '',
-                ]),
-              );
-              const ts = new Date().toISOString().slice(0, 10);
-              downloadCsv(`comptabilite-${ts}.csv`, csv);
-            }}
-            disabled={!filtered.length}
+            onClick={() => void onExportCsv()}
+            disabled={!entries.length || exporting}
           >
             <span className="material-symbols-outlined">download</span>
-            Export CSV
+            {exporting ? 'Export…' : 'Export CSV'}
           </button>
           <button
             type="button"
@@ -1091,14 +1152,67 @@ export function AccountingPage() {
         </div>
       </div>
 
-      {loading && entries.length === 0 ? (
+      {entriesPage && totalCount > entries.length ? (
+        <div
+          className="cf-alert cf-alert--warning"
+          role="status"
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: 12,
+            marginBottom: 12,
+          }}
+        >
+          <span>
+            <strong>
+              {entries.length} écritures affichées sur {totalCount}
+            </strong>{' '}
+            — les plus récentes d’abord. Affinez la période ou la recherche,
+            ou chargez la suite.
+          </span>
+          <button
+            type="button"
+            className="cf-btn cf-btn--sm"
+            disabled={loading}
+            onClick={() => setLimit(limit + ENTRIES_PAGE_SIZE)}
+          >
+            Charger {Math.min(ENTRIES_PAGE_SIZE, totalCount - entries.length)}{' '}
+            de plus
+          </button>
+          {totalCount <= ENTRIES_MAX_LIMIT ? (
+            <button
+              type="button"
+              className="cf-btn cf-btn--sm cf-btn--ghost"
+              disabled={loading}
+              onClick={() => setLimit(totalCount)}
+            >
+              Tout afficher
+            </button>
+          ) : null}
+        </div>
+      ) : entriesPage && entries.length > 0 ? (
+        <p className="cf-muted" style={{ marginBottom: 12 }}>
+          {totalCount} écriture{totalCount > 1 ? 's' : ''}
+        </p>
+      ) : null}
+
+      {loading && !entriesPage ? (
         <p className="cf-muted">Chargement…</p>
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          icon="account_balance"
-          title="Aucune écriture"
-          message="Les cotisations sont ventilées automatiquement. Ajoutez vos dépenses manuellement."
-        />
+      ) : entries.length === 0 ? (
+        debouncedSearch ? (
+          <EmptyState
+            icon="search"
+            title="Aucune écriture trouvée"
+            message={`Aucune écriture ne correspond à « ${debouncedSearch} » avec ces filtres.`}
+          />
+        ) : (
+          <EmptyState
+            icon="account_balance"
+            title="Aucune écriture"
+            message="Les cotisations sont ventilées automatiquement. Ajoutez vos dépenses manuellement."
+          />
+        )
       ) : (
         <table className="cf-table">
           <thead>
@@ -1113,7 +1227,7 @@ export function AccountingPage() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((e) => {
+            {entries.map((e) => {
               // Distingue les lignes article (hors banque/caisse = contrepartie)
               // Contrepartie = trésorerie (51x banques, 53x caisses), même
               // règle que le backend — pas seulement 512000 / 530000, sinon
