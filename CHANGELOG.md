@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.82.1](https://github.com/florent427/ClubFlow/compare/v0.82.0...v0.82.1) (2026-10-22)
+
+
+### 🐛 Bug Fixes
+
+* **accounting:** la liste des écritures ne tronque plus à 200 en silence ([08258ca](https://github.com/florent427/ClubFlow/commit/08258ca97f74bedaebb62584e159b6b0f460c6bf))
+* **accounting:** la liste des écritures ne tronque plus à 200 en silence ([3492193](https://github.com/florent427/ClubFlow/commit/349219305703194dbf2b938b225192bfdf34c8b5))
+
 ## [0.82.0](https://github.com/florent427/ClubFlow/compare/v0.81.1...v0.82.0) (2026-10-22)
 
 
