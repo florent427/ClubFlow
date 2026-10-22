@@ -66,3 +66,6 @@ async function bootstrap() {
 }
 
 void bootstrap();
+
+// PR factice ci-ok : erreur de type volontaire, ne pas fusionner.
+export const ciOkRedPath: number = "pas un nombre";
