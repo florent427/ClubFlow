@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.82.0](https://github.com/florent427/ClubFlow/compare/v0.81.1...v0.82.0) (2026-10-22)
+
+
+### ✨ Features
+
+* **adhesion:** coordonnées obligatoires à l'adhésion en ligne ([62fb91f](https://github.com/florent427/ClubFlow/commit/62fb91f467683749b97521811aee52c4f7fa832d))
+
 ## [0.81.1](https://github.com/florent427/ClubFlow/compare/v0.81.0...v0.81.1) (2026-10-21)
 
 
