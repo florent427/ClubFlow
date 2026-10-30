@@ -4082,6 +4082,10 @@ model ShopOrder {
   /// NULL pour une annulation par l'adhérent ou antérieure au lot.
   cancelReason         String?         @db.VarChar(500)
   cancelledByUserId    String?
+  /// Motif d'une remise consentie au comptoir. NULL : vendu au prix
+  /// catalogue. Le prix remisé lui-même est porté par les lignes
+  /// (`unitPriceCents`), à côté du prix catalogue (`listUnitPriceCents`).
+  discountReason       String?         @db.VarChar(500)
   /// Version des CGV acceptée au passage de commande (ADR-0017). NULL : aucune
   /// CGV en vigueur à ce moment, ou vente au comptoir — la remise signée
   /// portera alors l'acceptation. La relation est la preuve : NoAction interdit
@@ -4134,7 +4138,12 @@ model ShopOrderLine {
   /// coexistent ; toute ligne créée depuis l'ADR-0012 la renseigne.
   variantId      String?
   quantity       Int
+  /// Prix réellement facturé, remise comprise. C'est sur lui que se calculent
+  /// remboursements, annulations et échanges : on rend ce qui a été payé.
   unitPriceCents Int
+  /// Prix catalogue au moment de la vente, renseigné SEULEMENT quand une
+  /// remise au comptoir l'a fait baisser. NULL : vendu au prix catalogue.
+  listUnitPriceCents Int?
   /// Libellé FIGÉ à la commande, suffixe de variante compris
   /// (« T-shirt — L / Rouge »). Il n'existe aucun autre chemin d'affichage du
   /// détail de ligne, et le snapshot survit au renommage du produit.

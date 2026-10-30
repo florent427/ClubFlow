@@ -74,6 +74,73 @@ export type ShopTermsConsent =
   /** Vente au comptoir : l'acceptation sera portée par la remise signée. */
   | { kind: 'COUNTER' };
 
+/**
+ * Remise consentie au comptoir (cf. `ShopCounterDiscountInput`) : exactement
+ * une des trois façons de la dire, et un motif.
+ */
+export type ShopCounterDiscount = {
+  percent?: number | null;
+  amountCents?: number | null;
+  targetUnitPriceCents?: number | null;
+  reason: string;
+};
+
+/**
+ * Prix unitaire d'un article après remise au comptoir.
+ *
+ * La remise porte sur le PRIX UNITAIRE, jamais sur le total : la ligne garde
+ * un prix par article, et c'est lui que les annulations, échanges et
+ * remboursements (ADR-0020) rendent plus tard. Une remise répartie sur le
+ * total laisserait des centimes sans article pour les porter.
+ *
+ * Refuse ce qui n'est pas une baisse, et un article rendu gratuit : une
+ * facture à zéro resterait ouverte sans rien à encaisser.
+ */
+export function discountedUnitPriceCents(
+  listCents: number,
+  discount: ShopCounterDiscount,
+): number {
+  const given = [
+    discount.percent,
+    discount.amountCents,
+    discount.targetUnitPriceCents,
+  ].filter((v) => v !== undefined && v !== null);
+  if (given.length !== 1) {
+    throw new BadRequestException(
+      'Indique la remise d’une seule façon : pourcentage, montant ou prix cible.',
+    );
+  }
+  let price: number;
+  if (discount.percent != null) {
+    if (!(discount.percent > 0 && discount.percent <= 100)) {
+      throw new BadRequestException('Pourcentage de remise invalide.');
+    }
+    price = Math.round((listCents * (100 - discount.percent)) / 100);
+  } else if (discount.amountCents != null) {
+    if (!Number.isInteger(discount.amountCents) || discount.amountCents < 1) {
+      throw new BadRequestException('Montant de remise invalide.');
+    }
+    price = listCents - discount.amountCents;
+  } else {
+    const target = discount.targetUnitPriceCents!;
+    if (!Number.isInteger(target) || target < 0) {
+      throw new BadRequestException('Prix cible invalide.');
+    }
+    price = target;
+  }
+  if (price >= listCents) {
+    throw new BadRequestException(
+      'La remise doit faire baisser le prix catalogue.',
+    );
+  }
+  if (price < 1) {
+    throw new BadRequestException(
+      'Le prix remisé doit rester d’au moins 0,01 € : un article ne peut pas être offert par une remise.',
+    );
+  }
+  return price;
+}
+
 /** Les CGV de la boutique, telles que les voient l'admin et l'adhérent. */
 export type ShopTermsView = {
   /** Identifiant du PDF : c'est lui que l'adhérent renvoie en acceptant. */
@@ -103,10 +170,14 @@ const WITHOUT_PAYMENT = {
  * Une commande telle que l'adhérent la voit : sans les notes internes du club —
  * motif d'annulation, historique des ajustements (ADR-0019, ADR-0020).
  */
-function forViewer<T extends { cancelReason: string | null; adjustments: unknown[] }>(
-  order: T,
-): T {
-  return { ...order, cancelReason: null, adjustments: [] };
+function forViewer<
+  T extends {
+    cancelReason: string | null;
+    discountReason: string | null;
+    adjustments: unknown[];
+  },
+>(order: T): T {
+  return { ...order, cancelReason: null, discountReason: null, adjustments: [] };
 }
 
 /**
@@ -687,6 +758,8 @@ export class ShopService {
       note?: string;
     },
     terms: ShopTermsConsent,
+    /** Remise au comptoir. Seul `recordCounterSale` la passe. */
+    counterDiscount?: ShopCounterDiscount | null,
   ): Promise<Prisma.ShopOrderGetPayload<{ include: { lines: true } }>> {
     if (!viewer.memberId && !viewer.contactId) {
       throw new ForbiddenException('Profil requis pour commander.');
@@ -729,14 +802,31 @@ export class ShopService {
     const byVariantId = new Map(variants.map((v) => [v.id, v]));
 
     // Le prix de la variante SURCHARGE celui du produit ; null hérite.
-    const unitPriceOf = (v: (typeof variants)[number]) =>
+    const listPriceOf = (v: (typeof variants)[number]) =>
       v.priceCents ?? v.product.priceCents;
     const labelOf = (v: (typeof variants)[number]) =>
       v.label ? `${v.product.name} — ${v.label}` : v.product.name;
 
+    const discountReason = counterDiscount?.reason.trim() ?? null;
+    if (counterDiscount && !discountReason) {
+      throw new BadRequestException('Indique le motif de la remise.');
+    }
+    // Prix FACTURÉ de chaque article : celui du catalogue, ou celui que la
+    // remise au comptoir en laisse. Calculé une fois, pour que le total et les
+    // lignes ne puissent pas diverger.
+    const unitPriceByVariantId = new Map<string, number>();
+    for (const v of variants) {
+      unitPriceByVariantId.set(
+        v.id,
+        counterDiscount
+          ? discountedUnitPriceCents(listPriceOf(v), counterDiscount)
+          : listPriceOf(v),
+      );
+    }
+
     let totalCents = 0;
     for (const [variantId, qty] of wanted) {
-      totalCents += unitPriceOf(byVariantId.get(variantId)!) * qty;
+      totalCents += unitPriceByVariantId.get(variantId)! * qty;
     }
 
     // TRI CROISSANT DES VARIANTES — anti-interblocage.
@@ -754,6 +844,7 @@ export class ShopService {
         status: ShopOrderStatus.PENDING,
         totalCents,
         note: input.note ?? null,
+        discountReason,
         termsAssetId: accepted?.termsAssetId ?? null,
         termsAcceptedAt: accepted?.termsAcceptedAt ?? null,
         lines: {
@@ -763,7 +854,8 @@ export class ShopService {
               productId: v.productId,
               variantId: v.id,
               quantity: wanted.get(variantId)!,
-              unitPriceCents: unitPriceOf(v),
+              unitPriceCents: unitPriceByVariantId.get(variantId)!,
+              listUnitPriceCents: counterDiscount ? listPriceOf(v) : null,
               // Libellé FIGÉ : il survit au renommage du produit.
               label: labelOf(v),
             };
@@ -1078,6 +1170,8 @@ export class ShopService {
       contactId?: string | null;
       lines: Array<{ variantId: string; quantity: number }>;
       note?: string | null;
+      /** Remise au prix unitaire, avec son motif. Absente : prix catalogue. */
+      discount?: ShopCounterDiscount | null;
     },
   ) {
     const buyer = await this.resolveBuyerInClub(clubId, input);
@@ -1089,6 +1183,7 @@ export class ShopService {
         { memberId: buyer.memberId, contactId: buyer.contactId },
         { lines: input.lines, note: input.note ?? undefined },
         { kind: 'COUNTER' },
+        input.discount ?? null,
       );
       const invoice = await this.createOrderInvoiceInTx(tx, clubId, order, {
         labelPrefix: 'Vente boutique',
@@ -2522,6 +2617,7 @@ export class ShopService {
         paidAt: o.paidAt,
         cancelledAt: o.cancelledAt,
         cancelReason: o.cancelReason,
+        discountReason: o.discountReason,
         termsAcceptedAt: o.termsAcceptedAt,
         fulfilledAt: o.fulfilledAt,
         deliveredAt: o.deliveredAt,
@@ -2563,6 +2659,7 @@ export class ShopService {
           variantId: l.variantId,
           quantity: l.quantity,
           unitPriceCents: l.unitPriceCents,
+          listUnitPriceCents: l.listUnitPriceCents,
           label: l.label,
           awaitingStockQty: l.awaitingStockQty,
           cancelledQty: l.cancelledQty,

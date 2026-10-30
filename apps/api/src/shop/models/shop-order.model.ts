@@ -32,8 +32,16 @@ export class ShopOrderLineGraph {
   @Field(() => Int)
   quantity!: number;
 
+  /** Prix facturé par article, remise au comptoir comprise. */
   @Field(() => Int)
   unitPriceCents!: number;
+
+  /**
+   * Prix catalogue au moment de la vente, quand une remise au comptoir l'a
+   * fait baisser. Null : vendu au prix catalogue.
+   */
+  @Field(() => Int, { nullable: true })
+  listUnitPriceCents!: number | null;
 
   @Field()
   label!: string;
@@ -148,6 +156,13 @@ export class ShopOrderGraph {
    */
   @Field(() => String, { nullable: true })
   cancelReason!: string | null;
+
+  /**
+   * Motif d'une remise consentie au comptoir. Réservé à l'administration :
+   * toujours null côté adhérent.
+   */
+  @Field(() => String, { nullable: true })
+  discountReason!: string | null;
 
   /**
    * Acceptation des CGV au passage de commande (ADR-0017). Null : aucune CGV

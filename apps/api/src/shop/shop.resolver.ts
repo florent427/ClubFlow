@@ -166,6 +166,7 @@ export class ShopAdminResolver {
       contactId: input.contactId ?? null,
       lines: input.lines,
       note: input.note ?? null,
+      discount: input.discount ?? null,
     });
   }
 

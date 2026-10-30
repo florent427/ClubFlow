@@ -3,7 +3,7 @@ import { InvoiceStatus } from '@prisma/client';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
 import type { ShopStockService } from './shop-stock.service';
-import { ShopService } from './shop.service';
+import { ShopService, discountedUnitPriceCents } from './shop.service';
 
 /**
  * Vente au comptoir.
@@ -350,5 +350,151 @@ describe('ShopService.recordCounterSale', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
 
     expect(h.invoices).toHaveLength(0);
+  });
+});
+
+/**
+ * Remise au comptoir.
+ *
+ * Elle porte sur le PRIX UNITAIRE de la ligne : c'est ce prix que les
+ * annulations, échanges et remboursements (ADR-0020) rendent ensuite. Ce qui
+ * se vérifie ici est donc la ligne elle-même, pas seulement le total — un
+ * total juste sur une ligne au prix catalogue rendrait trop au remboursement.
+ */
+describe('ShopService.recordCounterSale — remise', () => {
+  it('applique un pourcentage au prix unitaire, et le facture', async () => {
+    const h = makeHarness();
+
+    // 25,00 € − 10 % = 22,50 €, deux articles.
+    const res = await h.svc.recordCounterSale(CLUB, {
+      memberId: 'm-1',
+      lines: [{ variantId: 'v-120', quantity: 2 }],
+      discount: { percent: 10, reason: 'Fidélité' },
+    });
+
+    const line = (h.orders[0].lines as Array<Record<string, unknown>>)[0];
+    expect(line.unitPriceCents).toBe(2250);
+    expect(line.listUnitPriceCents).toBe(2500);
+    expect(res.totalCents).toBe(4500);
+    expect(h.orders[0].totalCents).toBe(4500);
+    expect(h.invoices[0].amountCents).toBe(4500);
+    expect(h.orders[0].discountReason).toBe('Fidélité');
+  });
+
+  it('retire un montant de chaque article', async () => {
+    const h = makeHarness();
+
+    const res = await h.svc.recordCounterSale(CLUB, {
+      memberId: 'm-1',
+      lines: [{ variantId: 'v-180', quantity: 3 }],
+      discount: { amountCents: 500, reason: 'Fin de série' },
+    });
+
+    expect(
+      (h.orders[0].lines as Array<Record<string, unknown>>)[0].unitPriceCents,
+    ).toBe(2500);
+    expect(res.totalCents).toBe(2500 * 3);
+  });
+
+  it('vend au prix cible demandé', async () => {
+    const h = makeHarness();
+
+    const res = await h.svc.recordCounterSale(CLUB, {
+      memberId: 'm-1',
+      lines: [{ variantId: 'v-180', quantity: 1 }],
+      discount: { targetUnitPriceCents: 2000, reason: 'Prix bureau' },
+    });
+
+    expect(res.totalCents).toBe(2000);
+    expect(h.invoices[0].amountCents).toBe(2000);
+  });
+
+  it('sans remise, garde le prix catalogue et ne note ni prix barré ni motif', async () => {
+    const h = makeHarness();
+
+    await h.svc.recordCounterSale(CLUB, {
+      memberId: 'm-1',
+      lines: [{ variantId: 'v-120', quantity: 1 }],
+    });
+
+    const line = (h.orders[0].lines as Array<Record<string, unknown>>)[0];
+    expect(line.unitPriceCents).toBe(2500);
+    expect(line.listUnitPriceCents ?? null).toBeNull();
+    expect(h.orders[0].discountReason ?? null).toBeNull();
+  });
+
+  it('refuse une remise sans motif, sans rien facturer', async () => {
+    const h = makeHarness();
+
+    await expect(
+      h.svc.recordCounterSale(CLUB, {
+        memberId: 'm-1',
+        lines: [{ variantId: 'v-120', quantity: 1 }],
+        discount: { percent: 10, reason: '   ' },
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(h.orders).toHaveLength(0);
+    expect(h.invoices).toHaveLength(0);
+  });
+
+  it('refuse un prix cible qui ne baisse pas le prix, sans rien facturer', async () => {
+    const h = makeHarness();
+
+    await expect(
+      h.svc.recordCounterSale(CLUB, {
+        memberId: 'm-1',
+        lines: [{ variantId: 'v-120', quantity: 1 }],
+        discount: { targetUnitPriceCents: 2500, reason: 'Erreur' },
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(h.orders).toHaveLength(0);
+    expect(h.invoices).toHaveLength(0);
+  });
+});
+
+describe('discountedUnitPriceCents', () => {
+  const r = 'motif';
+
+  it('arrondit un pourcentage au centime le plus proche', () => {
+    // 19,99 € − 15 % = 16,9915 € → 16,99 €.
+    expect(discountedUnitPriceCents(1999, { percent: 15, reason: r })).toBe(1699);
+    // 12,5 % de 10,00 € : 8,75 €, sans arrondi.
+    expect(discountedUnitPriceCents(1000, { percent: 12.5, reason: r })).toBe(875);
+  });
+
+  it('exige exactement une façon de dire la remise', () => {
+    expect(() => discountedUnitPriceCents(1000, { reason: r })).toThrow(
+      BadRequestException,
+    );
+    expect(() =>
+      discountedUnitPriceCents(1000, { percent: 10, amountCents: 100, reason: r }),
+    ).toThrow(BadRequestException);
+  });
+
+  it('refuse ce qui ne baisse pas le prix', () => {
+    expect(() =>
+      discountedUnitPriceCents(1000, { targetUnitPriceCents: 1000, reason: r }),
+    ).toThrow(BadRequestException);
+    expect(() =>
+      discountedUnitPriceCents(1000, { targetUnitPriceCents: 1200, reason: r }),
+    ).toThrow(BadRequestException);
+  });
+
+  it('refuse un article rendu gratuit', () => {
+    expect(() => discountedUnitPriceCents(1000, { percent: 100, reason: r })).toThrow(
+      BadRequestException,
+    );
+    expect(() =>
+      discountedUnitPriceCents(1000, { amountCents: 1000, reason: r }),
+    ).toThrow(BadRequestException);
+    expect(() =>
+      discountedUnitPriceCents(1000, { targetUnitPriceCents: 0, reason: r }),
+    ).toThrow(BadRequestException);
+  });
+
+  it('accepte le plus petit prix restant, 0,01 €', () => {
+    expect(discountedUnitPriceCents(1000, { amountCents: 999, reason: r })).toBe(1);
   });
 });
