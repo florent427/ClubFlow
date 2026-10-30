@@ -864,6 +864,44 @@ describe('avgCostCents — pondéré à la réception, dans la même transaction
     expect(h.variants[0].onHand).toBe(0);
   });
 
+  it('un stock existant SANS COÛT ne dilue pas la moyenne : le coût reçu la remplace', async () => {
+    // Cas réel (BASIC 150, 2026-10-30) : 6 kimonos en stock sans coût saisi,
+    // 5 arrivent à 2358. Pondérer le 0 comme un prix donnait
+    // (6 × 0 + 5 × 2358) / 11 = 1072 — une marge de 64 % qui n'existe pas.
+    const h = makeHarness({
+      orders: [ordre()],
+      lines: [ligne({ orderedQty: 5, unitCostCents: 2358 })],
+      variants: [variante({ onHand: 6, available: 6, avgCostCents: 0 })],
+    });
+
+    await h.svc.receiveOrder(CLUB, {
+      orderId: 'po-1',
+      lines: [{ orderLineId: 'pol-1', receivedQty: 5 }],
+    });
+
+    expect(h.variants[0].onHand).toBe(11);
+    expect(h.variants[0].avgCostCents).toBe(2358);
+  });
+
+  it('une ligne reçue SANS COÛT laisse le coût moyen connu intact', async () => {
+    // 10 à 900 en stock, 10 arrivent sans coût saisi. Pondérer le 0 donnait
+    // (10 × 900 + 10 × 0) / 20 = 450 : le stock aurait perdu la moitié de sa
+    // valeur parce qu'un champ n'a pas été rempli.
+    const h = makeHarness({
+      orders: [ordre()],
+      lines: [ligne({ orderedQty: 10, unitCostCents: 0 })],
+      variants: [variante({ onHand: 10, available: 10, avgCostCents: 900 })],
+    });
+
+    await h.svc.receiveOrder(CLUB, {
+      orderId: 'po-1',
+      lines: [{ orderLineId: 'pol-1', receivedQty: 10 }],
+    });
+
+    expect(h.variants[0].onHand).toBe(20);
+    expect(h.variants[0].avgCostCents).toBe(900);
+  });
+
   it('n’écrit AUCUN coût si la réception est REFUSÉE', async () => {
     // La garantie tient parce que le coût est écrit DANS la transaction du
     // mouvement : un coût committé qui survivrait à l'annulation de la
