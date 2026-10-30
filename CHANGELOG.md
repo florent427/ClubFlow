@@ -9,6 +9,15 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.83.0](https://github.com/florent427/ClubFlow/compare/v0.82.2...v0.83.0) (2026-10-30)
+
+
+### ✨ Features
+
+* **shop:** remise en %, en euros ou prix cible à la vente au comptoir ([6b8c4f2](https://github.com/florent427/ClubFlow/commit/6b8c4f2341a1a8061dda08edc4f54cd7783924b0))
+* **shop:** remise en %, en euros ou prix cible à la vente au comptoir ([2e22c73](https://github.com/florent427/ClubFlow/commit/2e22c73b8083de73c9495814752113c50d483e59))
+* **shop:** remise en %, en euros ou prix cible à la vente au comptoir ([d8a23a6](https://github.com/florent427/ClubFlow/commit/d8a23a66bd4080523e164a82596cdcaf46b723e6))
+
 ## [0.82.2](https://github.com/florent427/ClubFlow/compare/v0.82.1...v0.82.2) (2026-10-22)
 
 
