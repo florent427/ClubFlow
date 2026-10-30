@@ -2306,6 +2306,7 @@ const SHOP_ORDER_FIELDS = `
   paidAt
   cancelledAt
   cancelReason
+  discountReason
   termsAcceptedAt
   fulfilledAt
   deliveredAt
@@ -2322,6 +2323,7 @@ const SHOP_ORDER_FIELDS = `
     productId
     quantity
     unitPriceCents
+    listUnitPriceCents
     label
     awaitingStockQty
     cancelledQty

@@ -674,6 +674,16 @@ function CounterSaleDrawer({
   const [variantId, setVariantId] = useState('');
   const [qtyStr, setQtyStr] = useState('1');
   const [note, setNote] = useState('');
+  /**
+   * Remise au comptoir, sur le PRIX UNITAIRE : un pourcentage, un montant
+   * retiré de chaque article, ou le prix voulu par article. Le serveur refait
+   * le calcul et fait foi ; celui d'ici sert à montrer le prix avant d'enregistrer.
+   */
+  const [discountMode, setDiscountMode] = useState<
+    'NONE' | 'PERCENT' | 'AMOUNT' | 'TARGET'
+  >('NONE');
+  const [discountStr, setDiscountStr] = useState('');
+  const [discountReason, setDiscountReason] = useState('');
 
   const members = useMemo(
     () =>
@@ -731,7 +741,45 @@ function CounterSaleDrawer({
   const chosen = sellable.find((v) => v.id === variantId) ?? null;
   const qty = Number.parseInt(qtyStr, 10);
   const qtyOk = Number.isInteger(qty) && qty >= 1;
-  const totalCents = chosen && qtyOk ? chosen.unitPriceCents * qty : 0;
+
+  /** Prix par article après remise, ou ce qui empêche de le calculer. */
+  const discounted = useMemo((): {
+    unitCents: number | null;
+    error: string | null;
+  } => {
+    if (!chosen) return { unitCents: null, error: null };
+    const list = chosen.unitPriceCents;
+    if (discountMode === 'NONE') return { unitCents: list, error: null };
+    const n = Number(discountStr.replace(',', '.').trim());
+    if (!discountStr.trim() || !Number.isFinite(n)) {
+      return { unitCents: null, error: 'Saisis la remise.' };
+    }
+    if (discountMode === 'PERCENT' && !(n > 0 && n <= 100)) {
+      return { unitCents: null, error: 'Le pourcentage doit être entre 0 et 100.' };
+    }
+    const price =
+      discountMode === 'PERCENT'
+        ? Math.round((list * (100 - n)) / 100)
+        : discountMode === 'AMOUNT'
+          ? list - Math.round(n * 100)
+          : Math.round(n * 100);
+    if (price >= list) {
+      return {
+        unitCents: null,
+        error: `La remise doit faire baisser le prix catalogue (${fmtEuros(list)}).`,
+      };
+    }
+    if (price < 1) {
+      return {
+        unitCents: null,
+        error: 'Le prix remisé doit rester d’au moins 0,01 €.',
+      };
+    }
+    return { unitCents: price, error: null };
+  }, [chosen, discountMode, discountStr]);
+
+  const totalCents =
+    qtyOk && discounted.unitCents !== null ? discounted.unitCents * qty : 0;
   /**
    * Ce qui manque en stock pour cette vente. L'admin voit les quantités : on
    * lui dit AVANT d'enregistrer si la vente passera en précommande (ADR-0018)
@@ -755,6 +803,26 @@ function CounterSaleDrawer({
       showToast('Quantité invalide.', 'error');
       return;
     }
+    if (discounted.error) {
+      showToast(discounted.error, 'error');
+      return;
+    }
+    if (discountMode !== 'NONE' && !discountReason.trim()) {
+      showToast('Indique le motif de la remise.', 'error');
+      return;
+    }
+    const n = Number(discountStr.replace(',', '.').trim());
+    const discount =
+      discountMode === 'NONE'
+        ? null
+        : {
+            reason: discountReason.trim(),
+            ...(discountMode === 'PERCENT'
+              ? { percent: n }
+              : discountMode === 'AMOUNT'
+                ? { amountCents: Math.round(n * 100) }
+                : { targetUnitPriceCents: Math.round(n * 100) }),
+          };
     try {
       await sell({
         variables: {
@@ -762,6 +830,7 @@ function CounterSaleDrawer({
             memberId,
             lines: [{ variantId: chosen.id, quantity: qty }],
             note: note.trim() || null,
+            discount,
           },
         },
       });
@@ -873,6 +942,60 @@ function CounterSaleDrawer({
       ) : null}
 
       <label className="cf-field">
+        <span>Remise</span>
+        <select
+          value={discountMode}
+          onChange={(e) =>
+            setDiscountMode(e.target.value as typeof discountMode)
+          }
+        >
+          <option value="NONE">Aucune — prix catalogue</option>
+          <option value="PERCENT">Pourcentage (%)</option>
+          <option value="AMOUNT">Montant retiré par article (€)</option>
+          <option value="TARGET">Prix cible par article (€)</option>
+        </select>
+      </label>
+      {discountMode !== 'NONE' ? (
+        <>
+          <label className="cf-field">
+            <span>
+              {discountMode === 'PERCENT'
+                ? 'Pourcentage *'
+                : discountMode === 'AMOUNT'
+                  ? 'Montant retiré par article (€) *'
+                  : 'Prix voulu par article (€) *'}
+            </span>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={discountStr}
+              onChange={(e) => setDiscountStr(e.target.value)}
+              placeholder={discountMode === 'PERCENT' ? 'Ex : 10' : 'Ex : 2,50'}
+            />
+            {chosen && discounted.error && discountStr.trim() ? (
+              <small className="cf-muted">{discounted.error}</small>
+            ) : null}
+            {chosen && discounted.unitCents !== null ? (
+              <small className="cf-muted">
+                {fmtEuros(discounted.unitCents)} par article au lieu de{' '}
+                {fmtEuros(chosen.unitPriceCents)}.
+              </small>
+            ) : null}
+          </label>
+          <label className="cf-field">
+            <span>Motif de la remise *</span>
+            <input
+              type="text"
+              value={discountReason}
+              onChange={(e) => setDiscountReason(e.target.value)}
+              maxLength={500}
+              placeholder="Ex : fin de série, geste commercial"
+            />
+          </label>
+        </>
+      ) : null}
+
+      <label className="cf-field">
         <span>Note (optionnel)</span>
         <textarea
           value={note}
@@ -883,7 +1006,7 @@ function CounterSaleDrawer({
         />
       </label>
 
-      {chosen && qtyOk ? (
+      {chosen && qtyOk && discounted.unitCents !== null ? (
         <p className="cf-muted">
           Total : <strong>{fmtEuros(totalCents)}</strong>. Une facture de ce
           montant est ouverte au nom de l’acheteur ; elle s’encaisse dans
@@ -1683,6 +1806,13 @@ function OrdersTab() {
                               ({l.awaitingStockQty} en attente d’arrivage)
                             </span>
                           ) : null}
+                          {l.listUnitPriceCents !== null ? (
+                            <span className="cf-muted">
+                              {' '}
+                              (remisé : {fmtEuros(l.unitPriceCents)} au lieu de{' '}
+                              <s>{fmtEuros(l.listUnitPriceCents)}</s>)
+                            </span>
+                          ) : null}
                           {ajustable ? (
                             <span
                               style={{ display: 'inline-flex', gap: 4, marginLeft: 8 }}
@@ -1713,6 +1843,11 @@ function OrdersTab() {
                     );
                   })}
                 </ul>
+                {o.discountReason ? (
+                  <p className="cf-muted" style={{ margin: '0 0 8px' }}>
+                    Remise au comptoir — {o.discountReason}
+                  </p>
+                ) : null}
                 {o.adjustments.length > 0 ? (
                   <ul className="cf-order-lines" aria-label="Annulations et échanges">
                     {o.adjustments.map((a) => (
