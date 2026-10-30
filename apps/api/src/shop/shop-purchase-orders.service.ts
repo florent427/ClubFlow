@@ -971,12 +971,19 @@ export class ShopPurchaseOrdersService {
    * 0, la levée annule toute la réception, et l'on ne committe pas un coût
    * faux — au lieu de le committer en silence.
    *
-   * DEUX RÉSERVES, énoncées plutôt que masquées :
-   *  - une ligne laissée à `unitCostCents = 0` (coût non saisi) DILUE la
-   *    moyenne vers le bas. Le champ vaut « inconnu », pas « gratuit », mais la
-   *    formule ne sait pas faire la différence ;
-   *  - une déclinaison NON SUIVIE n'a pas de coût moyen : `restock` la refuse
-   *    en amont, donc on n'arrive jamais ici.
+   * UN COÛT À ZÉRO VEUT DIRE « INCONNU », JAMAIS « GRATUIT »
+   *
+   * C'est la convention de `shop.service.ts`, qui n'affiche ni coût ni marge
+   * tant que `avgCostCents` vaut 0. La pondérer comme un vrai prix ferait
+   * entrer dans la moyenne des unités à 0 € qui n'ont rien coûté de connu :
+   *  - stock existant sans coût (entré avant le suivi des achats, ou par un
+   *    simple réassort) : le coût reçu DEVIENT le coût moyen. Six kimonos sans
+   *    coût plus cinq à 23,58 € donnaient 10,72 € au lieu de 23,58 € ;
+   *  - ligne reçue avec `unitCostCents = 0` (coût non saisi) : le coût moyen
+   *    ne bouge pas, puisque la livraison n'apporte aucune information.
+   *
+   * Une déclinaison NON SUIVIE n'a pas de coût moyen : `restock` la refuse en
+   * amont, donc on n'arrive jamais ici.
    */
   private async bumpAverageCost(
     tx: Prisma.TransactionClient,
@@ -1000,9 +1007,17 @@ export class ShopPurchaseOrdersService {
     // il n'existe aucune moyenne à pondérer, et l'on ne touche à rien.
     if (onHandApres <= 0 || onHandAvant < 0) return;
 
-    const suivant = Math.round(
-      (onHandAvant * current.avgCostCents + qty * unitCostCents) / onHandApres,
-    );
+    // Coût de la livraison inconnu : rien à pondérer.
+    if (unitCostCents <= 0) return;
+
+    // Coût du stock existant inconnu : ses unités ne pèsent pas dans la moyenne.
+    const suivant =
+      current.avgCostCents <= 0
+        ? unitCostCents
+        : Math.round(
+            (onHandAvant * current.avgCostCents + qty * unitCostCents) /
+              onHandApres,
+          );
 
     const written = await tx.shopProductVariant.updateMany({
       where: {
