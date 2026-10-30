@@ -1407,7 +1407,10 @@ export type ShopOrderLine = {
   orderId: string;
   productId: string;
   quantity: number;
+  /** Prix facturé par article, remise au comptoir comprise. */
   unitPriceCents: number;
+  /** Prix catalogue quand une remise au comptoir l'a baissé — null sinon. */
+  listUnitPriceCents: number | null;
   label: string;
   /** Unités en attente d'arrivage (ADR-0018). Zéro : tout est servi. */
   awaitingStockQty: number;
@@ -1459,6 +1462,8 @@ export type ShopOrder = {
   cancelledAt: string | null;
   /** Motif d'une annulation par le club (ADR-0019) — null sinon. */
   cancelReason: string | null;
+  /** Motif d'une remise consentie au comptoir — null sinon. */
+  discountReason: string | null;
   /** Acceptation des CGV au passage de commande — null au comptoir. */
   termsAcceptedAt: string | null;
   /** Sortie de stock — null sur une commande payée avant le 2026-09-13. */
