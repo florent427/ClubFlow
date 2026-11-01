@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.85.0](https://github.com/florent427/ClubFlow/compare/v0.84.1...v0.85.0) (2026-11-01)
+
+
+### ✨ Features
+
+* **shop:** packs composés de pièces stockées ([032935f](https://github.com/florent427/ClubFlow/commit/032935f656c12118c97e4e86d3c16c6c0a86af2c))
+
 ## [0.84.1](https://github.com/florent427/ClubFlow/compare/v0.84.0...v0.84.1) (2026-11-01)
 
 
