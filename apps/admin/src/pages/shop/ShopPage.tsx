@@ -51,6 +51,8 @@ import { AiProductDescriptionPanel } from '../../components/AiProductDescription
 import { SuppliersTab } from './SuppliersTab';
 import { RestockTab } from './RestockTab';
 import { ProductSuppliersDrawer } from './ProductSuppliersDrawer';
+import { BundleDrawer } from './BundleDrawer';
+import { bundleSummary, productHasBundle } from '../../lib/shop-bundle';
 import { PurchaseOrdersTab } from './PurchaseOrdersTab';
 import { ShopSettingsTab } from './ShopSettingsTab';
 import { InvoiceDetailDrawer } from '../billing/InvoiceDetailDrawer';
@@ -204,7 +206,9 @@ function VariantsDrawer({
     const next: Record<string, MatrixRowDraft> = {};
     for (const v of matrix) next[v.id] = seedRow(v);
     setRows(next);
-    setTracked(matrix.length === 0 ? true : matrix.some((v) => v.trackStock));
+    // Les packs (ADR-0024) ne comptent pas : leur suivi se déduit des pièces.
+    const stocked = matrix.filter((v) => !v.isBundle);
+    setTracked(stocked.length === 0 ? true : stocked.some((v) => v.trackStock));
   }, [matrix]);
 
   function patchRow(id: string, patch: Partial<MatrixRowDraft>) {
@@ -465,6 +469,17 @@ function VariantsDrawer({
                         </td>
                         <td>
                           <strong>{v.label ?? '—'}</strong>
+                          {v.isBundle ? (
+                            <>
+                              {' '}
+                              <span
+                                className="cf-pill cf-pill--info"
+                                title={bundleSummary(v)}
+                              >
+                                pack
+                              </span>
+                            </>
+                          ) : null}
                           {v.belowThreshold ? (
                             <>
                               {' '}
@@ -502,9 +517,16 @@ function VariantsDrawer({
                             type="number"
                             min="0"
                             className="cf-input"
-                            value={tracked ? row.countedStr : ''}
-                            placeholder={tracked ? '0' : 'illimité'}
-                            disabled={!tracked}
+                            value={tracked && !v.isBundle ? row.countedStr : ''}
+                            placeholder={
+                              v.isBundle ? 'ses pièces' : tracked ? '0' : 'illimité'
+                            }
+                            title={
+                              v.isBundle
+                                ? 'Un pack n’a pas de stock à lui : il se compose de ses pièces.'
+                                : undefined
+                            }
+                            disabled={!tracked || v.isBundle}
                             onChange={(e) =>
                               patchRow(v.id, { countedStr: e.target.value })
                             }
@@ -567,9 +589,9 @@ function VariantsDrawer({
                             type="number"
                             min="0"
                             className="cf-input"
-                            value={row.thresholdStr}
-                            placeholder="aucun"
-                            disabled={!tracked}
+                            value={v.isBundle ? '' : row.thresholdStr}
+                            placeholder={v.isBundle ? '—' : 'aucun'}
+                            disabled={!tracked || v.isBundle}
                             onChange={(e) =>
                               patchRow(v.id, { thresholdStr: e.target.value })
                             }
@@ -1061,6 +1083,8 @@ function ProductsTab() {
   const [variantsFor, setVariantsFor] = useState<ShopProduct | null>(null);
   /** Produit dont on édite les fournisseurs (ADR-0021). Null = tiroir fermé. */
   const [suppliersFor, setSuppliersFor] = useState<ShopProduct | null>(null);
+  /** Produit dont on compose les packs (ADR-0024). Null = tiroir fermé. */
+  const [bundleFor, setBundleFor] = useState<ShopProduct | null>(null);
   /** Produit dont on s'apprête à retirer les déclinaisons (confirmation). */
   const [confirmFlatten, setConfirmFlatten] = useState<ShopProduct | null>(null);
 
@@ -1323,6 +1347,9 @@ function ProductsTab() {
                   >
                     {p.active ? 'Actif' : 'Désactivé'}
                   </span>
+                  {productHasBundle(p) ? (
+                    <span className="cf-pill cf-pill--info">Pack</span>
+                  ) : null}
                 </div>
                 {p.sku ? <code className="cf-product-card__sku">{p.sku}</code> : null}
                 <p className="cf-product-card__price">{fmtEuros(p.priceCents)}</p>
@@ -1408,6 +1435,13 @@ function ProductsTab() {
                     onClick={() => setSuppliersFor(p)}
                   >
                     Fournisseurs
+                  </button>
+                  <button
+                    type="button"
+                    className="cf-btn"
+                    onClick={() => setBundleFor(p)}
+                  >
+                    {productHasBundle(p) ? 'Composition du pack' : 'Faire un pack'}
                   </button>
                   <button
                     type="button"
@@ -1512,6 +1546,14 @@ function ProductsTab() {
                   déclinaisons.
                 </p>
               </div>
+            ) : editing && editing.variants.some((v) => v.isDefault && v.isBundle) ? (
+              <div className="cf-field">
+                <span className="cf-field__label">Stock</span>
+                <p className="cf-muted">
+                  C’est un pack : son stock se déduit de ses pièces (
+                  {editing.stock ?? 0} vendable{(editing.stock ?? 0) > 1 ? 's' : ''}).
+                </p>
+              </div>
             ) : (
               <label className="cf-field">
                 <span className="cf-field__label">
@@ -1552,6 +1594,12 @@ function ProductsTab() {
             />
             <span>Commandable même épuisé (précommande)</span>
           </label>
+          {preorderEnabled && editing && productHasBundle(editing) ? (
+            <span className="cf-field__hint">
+              Un pack ne se précommande pas : l’enregistrement sera refusé.
+              Activez la précommande sur ses pièces.
+            </span>
+          ) : null}
           {preorderEnabled ? (
             <label className="cf-field">
               <span className="cf-field__label">Délai indicatif</span>
@@ -1610,6 +1658,18 @@ function ProductsTab() {
           initialProduct={variantsFor}
           onClose={() => {
             setVariantsFor(null);
+            void refetch();
+          }}
+        />
+      ) : null}
+
+      {bundleFor ? (
+        <BundleDrawer
+          key={bundleFor.id}
+          initialProduct={bundleFor}
+          products={products}
+          onClose={() => {
+            setBundleFor(null);
             void refetch();
           }}
         />

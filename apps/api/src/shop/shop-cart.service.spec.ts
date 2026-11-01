@@ -30,6 +30,7 @@ type VariantRow = {
   productId: string;
   active: boolean;
   trackStock: boolean;
+  isBundle: boolean;
   onHand: number;
   available: number;
   priceCents: number | null;
@@ -132,6 +133,7 @@ function makeStore(opts: {
     if (where.clubId !== undefined && r.clubId !== where.clubId) return false;
     if (where.active !== undefined && r.active !== where.active) return false;
     if (where.trackStock !== undefined && r.trackStock !== where.trackStock) return false;
+    if (where.isBundle !== undefined && r.isBundle !== where.isBundle) return false;
     if (where.available?.gte !== undefined && !(r.available >= where.available.gte)) return false;
     if (where.onHand?.gte !== undefined && !(r.onHand >= where.onHand.gte)) return false;
     if (where.product?.active !== undefined && r.product.active !== where.product.active) return false;
@@ -199,6 +201,10 @@ function makeStore(opts: {
         hit.forEach((r) => applyVariant(r, data));
         return { count: hit.length };
       }),
+    },
+    shopOrderLineComponent: {
+      // Aucune ligne de pack dans ces scénarios (ADR-0024).
+      findMany: jest.fn(async () => []),
     },
     shopStockMovement: {
       create: jest.fn(async ({ data }: any) => {
@@ -480,6 +486,7 @@ const VARIANT = (over: Partial<VariantRow> = {}): VariantRow => ({
   productId: 'p-1',
   active: true,
   trackStock: true,
+  isBundle: false,
   onHand: 5,
   available: 5,
   priceCents: null,

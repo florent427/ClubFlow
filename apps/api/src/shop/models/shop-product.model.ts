@@ -2,6 +2,24 @@ import { Field, Float, ID, Int, ObjectType } from '@nestjs/graphql';
 import { ShopAvailability } from '../enums/shop-availability.enum';
 import { ShopProductSupplierGraph } from './shop-product-supplier.model';
 
+/**
+ * Une pièce d'un pack (ADR-0024). Publique : l'adhérent voit ce que contient
+ * ce qu'il achète. Aucune quantité en stock n'y figure.
+ */
+@ObjectType()
+export class ShopBundleComponentGraph {
+  @Field(() => ID)
+  componentVariantId!: string;
+
+  /** Unités de la pièce par pack. */
+  @Field(() => Int)
+  quantity!: number;
+
+  /** « Gants — Rouge / M ». */
+  @Field()
+  label!: string;
+}
+
 /** Une déclinaison vendable : c'est elle qui porte le stock (ADR-0012). */
 @ObjectType()
 export class ShopProductVariantGraph {
@@ -113,6 +131,17 @@ export class ShopProductVariantGraph {
 
   @Field()
   active!: boolean;
+
+  /**
+   * Vrai pour un pack (ADR-0024) : vendu, jamais stocké. Ses compteurs sont
+   * DÉRIVÉS de ses pièces et ne se règlent pas.
+   */
+  @Field()
+  isBundle!: boolean;
+
+  /** Ce que contient le pack ; vide hors pack. */
+  @Field(() => [ShopBundleComponentGraph])
+  bundleComponents!: ShopBundleComponentGraph[];
 }
 
 @ObjectType()

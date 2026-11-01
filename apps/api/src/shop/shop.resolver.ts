@@ -41,6 +41,7 @@ import {
   SetShopProductOptionsInput,
   UpdateShopProductVariantInput,
 } from './dto/shop-variant.input';
+import { SetShopVariantBundleInput } from './dto/shop-bundle.input';
 import {
   RemoveShopProductSupplierInput,
   SetShopProductPreferredSupplierInput,
@@ -409,6 +410,21 @@ export class ShopAdminResolver {
     return this.variants.deleteVariant(
       club.id,
       variantId,
+    ) as Promise<ShopProductGraph>;
+  }
+
+  @Mutation(() => ShopProductGraph, {
+    description:
+      'Composition d’un pack (ADR-0024) : la liste remplace la précédente, vide elle dissout le pack.',
+  })
+  setShopVariantBundle(
+    @CurrentClub() club: Club,
+    @Args('input') input: SetShopVariantBundleInput,
+  ): Promise<ShopProductGraph> {
+    return this.variants.setBundleComponents(
+      club.id,
+      input.variantId,
+      input.components,
     ) as Promise<ShopProductGraph>;
   }
 

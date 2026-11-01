@@ -138,7 +138,10 @@ export function planMatrixSave(args: {
       }
       touched = true;
     }
-    if (row.thresholdStr.trim() !== base.thresholdStr.trim()) {
+    // Un pack (ADR-0024) n'a ni seuil, ni suivi, ni inventaire à lui : ses
+    // compteurs se déduisent de ses pièces, et le serveur refuserait de les
+    // régler. Ses autres champs — vente, référence, prix — s'enregistrent.
+    if (!v.isBundle && row.thresholdStr.trim() !== base.thresholdStr.trim()) {
       const parsed = parseOptionalInt(row.thresholdStr);
       if (!parsed.ok) {
         return { ok: false, error: `Seuil invalide sur « ${name} »` };
@@ -146,13 +149,13 @@ export function planMatrixSave(args: {
       update.reorderThreshold = parsed.value;
       touched = true;
     }
-    if (tracked !== v.trackStock) {
+    if (!v.isBundle && tracked !== v.trackStock) {
       update.trackStock = tracked;
       touched = true;
     }
 
     let countedOnHand: number | null = null;
-    if (tracked && row.countedStr.trim() !== base.countedStr.trim()) {
+    if (!v.isBundle && tracked && row.countedStr.trim() !== base.countedStr.trim()) {
       const parsed = parseOptionalInt(row.countedStr);
       if (!parsed.ok || parsed.value === null) {
         return { ok: false, error: `Stock invalide sur « ${name} »` };

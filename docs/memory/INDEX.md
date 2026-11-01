@@ -121,6 +121,7 @@
 | [`0021-reapprovisionnement-multi-fournisseurs.md`](decisions/0021-reapprovisionnement-multi-fournisseurs.md) | ADR-0021 — Réapprovisionnement multi-fournisseurs : fournisseurs d'un produit et commandes réparties |
 | [`0022-credit-du-payeur.md`](decisions/0022-credit-du-payeur.md) | ADR-0022 — Crédit du payeur : avances encaissées sans facture, puis imputées sur ses factures |
 | [`0023-relais-mail-brevo.md`](decisions/0023-relais-mail-brevo.md) | ADR-0023 — Le mail sortant passe par le relais SMTP de Brevo |
+| [`0024-boutique-packs-composes.md`](decisions/0024-boutique-packs-composes.md) | ADR-0024 — Boutique : packs composés de pièces stockées |
 
 ## 🔄 Workflows métier
 
@@ -134,7 +135,7 @@
 
 ---
 
-_Index généré le 2026-10-21 07:00 UTC par `bin/memory-index`._
+_Index généré le 2026-11-01 15:32 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`

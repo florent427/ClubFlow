@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, ShopOrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ShopService } from './shop.service';
 import { ShopPreorderService } from './shop-preorder.service';
@@ -13,6 +13,9 @@ import { ShopStockService } from './shop-stock.service';
  * proportionnelle. On refuse net plutôt que de créer un produit inutilisable.
  */
 const MAX_MATRIX_SIZE = 200;
+
+/** Pièces d'un pack (ADR-0024) : un kit complet en compte quatre. */
+const MAX_BUNDLE_PARTS = 20;
 
 /** Un axe et ses valeurs, tels que saisis par l'admin. */
 export type OptionAxisInput = { name: string; values: string[] };
@@ -289,6 +292,7 @@ export class ShopVariantsService {
       where: { clubId, productId, isDefault: true },
       select: {
         trackStock: true,
+        isBundle: true,
         reorderThreshold: true,
         reorderTargetQty: true,
       },
@@ -305,7 +309,9 @@ export class ShopVariantsService {
             label: combo.label,
             sku: null,
             priceCents: null, // hérite du produit (ADR-0012 §6)
-            trackStock: template?.trackStock ?? true,
+            // Un pack se compose déclinaison par déclinaison (ADR-0024) : la
+            // matrice naît stockée à zéro, jamais illimitée par héritage.
+            trackStock: template?.isBundle ? true : template?.trackStock ?? true,
             onHand: 0,
             available: 0,
             reorderThreshold: template?.reorderThreshold ?? null,
@@ -363,6 +369,10 @@ export class ShopVariantsService {
     if (input.trackStock !== undefined) {
       data.trackStock = input.trackStock;
       data.lowStockAlertedAt = null;
+    }
+
+    if (input.trackStock !== undefined) {
+      await this.assertStockTrackingChangeable(clubId, variantId, input.trackStock);
     }
 
     await this.prisma.$transaction(async (tx) => {
@@ -449,6 +459,14 @@ export class ShopVariantsService {
         }),
       ]);
 
+    const inPacks = await this.prisma.shopBundleComponent.count({
+      where: { clubId, componentVariantId: variantId },
+    });
+    if (inPacks > 0) {
+      throw new BadRequestException(
+        'Cette déclinaison est la pièce d’un pack : retirez-la du pack d’abord.',
+      );
+    }
     if (orderLines > 0) {
       throw new BadRequestException(
         'Cette déclinaison a déjà été vendue : la supprimer effacerait la ' +
@@ -493,6 +511,187 @@ export class ShopVariantsService {
       throw new BadRequestException('Déclinaison introuvable.');
     }
     return this.shop.reloadProduct(clubId, variant.productId);
+  }
+
+  // --- Packs (ADR-0024) ---
+
+  /**
+   * Fixe la composition d'un pack : la liste REMPLACE la précédente. Une liste
+   * vide dissout le pack.
+   *
+   * Seule la composition du CATALOGUE change ici : les commandes déjà passées
+   * gardent les pièces figées à leur réservation, et c'est ce qui rend la
+   * composition modifiable à tout moment.
+   *
+   * Les règles tiennent la garantie du moteur de stock :
+   *  - une pièce est une déclinaison STOCKÉE et suivie, d'un autre article :
+   *    pas de pack dans un pack, pas de pièce illimitée qui rendrait le pack
+   *    illimité sans qu'on le voie ;
+   *  - un pack ne se précommande pas, l'attente d'arrivage se comptant par
+   *    déclinaison stockée ;
+   *  - une déclinaison ne devient pack qu'avec un stock propre à zéro : ce qui
+   *    resterait dans ses compteurs disparaîtrait des comptes sans mouvement.
+   */
+  async setBundleComponents(
+    clubId: string,
+    variantId: string,
+    components: Array<{ componentVariantId: string; quantity: number }>,
+  ) {
+    if (components.length > MAX_BUNDLE_PARTS) {
+      throw new BadRequestException(
+        `Un pack compte au plus ${MAX_BUNDLE_PARTS} pièces.`,
+      );
+    }
+    const seen = new Set<string>();
+    for (const c of components) {
+      if (!Number.isInteger(c.quantity) || c.quantity < 1 || c.quantity > 99) {
+        throw new BadRequestException('La quantité d’une pièce va de 1 à 99.');
+      }
+      if (seen.has(c.componentVariantId)) {
+        throw new BadRequestException(
+          'Une pièce figure deux fois : regroupez-la sur une seule ligne.',
+        );
+      }
+      seen.add(c.componentVariantId);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const variant = await tx.shopProductVariant.findFirst({
+        where: { id: variantId, clubId },
+        select: {
+          id: true,
+          productId: true,
+          isBundle: true,
+          product: { select: { preorderEnabled: true } },
+        },
+      });
+      if (!variant) throw new BadRequestException('Déclinaison introuvable.');
+
+      if (components.length === 0) {
+        if (!variant.isBundle) return;
+        // Dissoudre : la déclinaison redevient STOCKÉE, à zéro, donc
+        // invendable jusqu'à sa première réception. Jamais illimitée par
+        // défaut : un pack dissous se vendrait alors sans fin.
+        await tx.shopBundleComponent.deleteMany({
+          where: { clubId, bundleVariantId: variantId },
+        });
+        await tx.shopProductVariant.updateMany({
+          where: { id: variantId, clubId, isBundle: true },
+          data: {
+            isBundle: false,
+            trackStock: true,
+            onHand: 0,
+            available: 0,
+            lowStockAlertedAt: null,
+          },
+        });
+        return;
+      }
+
+      if (variant.product.preorderEnabled) {
+        throw new BadRequestException(
+          'Désactivez la précommande de ce produit : un pack ne se précommande pas.',
+        );
+      }
+      const usedAsPart = await tx.shopBundleComponent.count({
+        where: { clubId, componentVariantId: variantId },
+      });
+      if (usedAsPart > 0) {
+        throw new BadRequestException(
+          'Cette déclinaison est la pièce d’un autre pack : un pack ne peut pas en contenir un autre.',
+        );
+      }
+
+      const parts = await tx.shopProductVariant.findMany({
+        where: { id: { in: [...seen] }, clubId },
+        select: {
+          id: true,
+          productId: true,
+          isBundle: true,
+          trackStock: true,
+          label: true,
+          product: { select: { name: true } },
+        },
+      });
+      if (parts.length !== seen.size) {
+        throw new BadRequestException('Pièce introuvable.');
+      }
+      for (const part of parts) {
+        const name = part.label
+          ? `${part.product.name} — ${part.label}`
+          : part.product.name;
+        if (part.productId === variant.productId) {
+          throw new BadRequestException(
+            `« ${name} » est une déclinaison du pack lui-même : une pièce est un autre article.`,
+          );
+        }
+        if (part.isBundle) {
+          throw new BadRequestException(
+            `« ${name} » est un pack : un pack ne peut pas en contenir un autre.`,
+          );
+        }
+        if (!part.trackStock) {
+          throw new BadRequestException(
+            `Suivez le stock de « ${name} » avant d’en faire une pièce : un pack se compte sur ses pièces.`,
+          );
+        }
+      }
+
+      if (!variant.isBundle) {
+        // Une précommande en attente sur la déclinaison serait servie un jour
+        // par la réservation d'un pack, que l'attente ne sait pas compter.
+        const awaiting = await tx.shopOrderLine.count({
+          where: {
+            variantId,
+            awaitingStockQty: { gt: 0 },
+            order: { clubId, status: ShopOrderStatus.PENDING },
+          },
+        });
+        if (awaiting > 0) {
+          throw new BadRequestException(
+            'Des précommandes attendent cette déclinaison : servez-les ou annulez-les avant d’en faire un pack.',
+          );
+        }
+        // Conditionnel sur l'état du stock propre : suivi, il doit être à
+        // zéro ; non suivi, ses compteurs ne désignent plus rien et sont remis
+        // à zéro.
+        const converted = await tx.shopProductVariant.updateMany({
+          where: {
+            id: variantId,
+            clubId,
+            isBundle: false,
+            OR: [{ trackStock: false }, { onHand: 0, available: 0 }],
+          },
+          data: {
+            isBundle: true,
+            trackStock: false,
+            onHand: 0,
+            available: 0,
+            reorderThreshold: null,
+            reorderTargetQty: null,
+            lowStockAlertedAt: null,
+          },
+        });
+        if (converted.count !== 1) {
+          throw new BadRequestException(
+            'Cette déclinaison a encore du stock : ramenez-le à zéro (correction d’inventaire) avant d’en faire un pack.',
+          );
+        }
+      }
+
+      await tx.shopBundleComponent.deleteMany({
+        where: { clubId, bundleVariantId: variantId },
+      });
+      await tx.shopBundleComponent.createMany({
+        data: components.map((c) => ({
+          clubId,
+          bundleVariantId: variantId,
+          componentVariantId: c.componentVariantId,
+          quantity: c.quantity,
+        })),
+      });
+    });
+    return this.reloadVariantProduct(clubId, variantId);
   }
 
   // --- Délégations au moteur de stock ---
@@ -588,6 +787,36 @@ export class ShopVariantsService {
   }
 
   // --- Utilitaires ---
+
+  /**
+   * Le suivi du stock d'un pack ne se règle pas : il se déduit de ses pièces.
+   * Celui d'une pièce reste suivi tant qu'un pack la contient — illimitée,
+   * elle rendrait le pack illimité sans que rien ne le montre (ADR-0024).
+   */
+  private async assertStockTrackingChangeable(
+    clubId: string,
+    variantId: string,
+    trackStock: boolean,
+  ) {
+    const variant = await this.prisma.shopProductVariant.findFirst({
+      where: { id: variantId, clubId },
+      select: { isBundle: true },
+    });
+    if (variant?.isBundle) {
+      throw new BadRequestException(
+        'Le stock d’un pack se déduit de ses pièces : il ne se règle pas.',
+      );
+    }
+    if (trackStock) return;
+    const inPacks = await this.prisma.shopBundleComponent.count({
+      where: { clubId, componentVariantId: variantId },
+    });
+    if (inPacks > 0) {
+      throw new BadRequestException(
+        'Cette déclinaison est la pièce d’un pack : son stock doit rester suivi.',
+      );
+    }
+  }
 
   private async assertProduct(clubId: string, productId: string) {
     const found = await this.prisma.shopProduct.findFirst({

@@ -364,6 +364,10 @@ function makeStore(seed: {
         return { count: hit.length };
       }),
     },
+    shopOrderLineComponent: {
+      // Aucune ligne de pack dans ces scénarios (ADR-0024).
+      findMany: jest.fn(async () => []),
+    },
     shopStockMovement: {
       create: jest.fn(async ({ data }: any) => {
         movements.push(data);
