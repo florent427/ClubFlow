@@ -19,6 +19,22 @@
 }
 
 /* ---------------------------------------------------------------------
+ * Changement de page (`template.tsx`) : fondu de la nouvelle page.
+ * Opacité seule et `backwards` : une fois finie, l'animation ne laisse
+ * aucune propriété posée (un `translate` résiduel ferait du conteneur le
+ * repère des `position: fixed` de la page).
+ * ------------------------------------------------------------------ */
+
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+  }
+}
+.page-enter {
+  animation: pageEnter 0.6s var(--ease-ink) backwards;
+}
+
+/* ---------------------------------------------------------------------
  * Hero — entrée au chargement, sans attendre le JS
  * ------------------------------------------------------------------ */
 
@@ -262,6 +278,103 @@
   }
 }
 
+/* Dōjō-kun lu au défilement : le précepte qui passe au centre de l'écran
+   s'allume, les autres restent en retrait, et un filet doré descend le
+   long de la liste. Les cibles sont les enfants de `.voie__item` : leur
+   parent porte déjà l'opacité de `.reveal`. */
+@supports (animation-timeline: view()) {
+  @keyframes preceptFocus {
+    from,
+    30%,
+    70%,
+    to {
+      opacity: 0.3;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+  @keyframes preceptKanji {
+    from,
+    30%,
+    70%,
+    to {
+      opacity: 0.3;
+      filter: blur(3px);
+      scale: 0.92;
+    }
+    50% {
+      opacity: 1;
+      filter: blur(0);
+      scale: 1;
+    }
+  }
+  @keyframes preceptNum {
+    50% {
+      color: var(--accent);
+    }
+  }
+  @keyframes voieThread {
+    from {
+      scale: 1 0;
+    }
+    to {
+      scale: 1 1;
+    }
+  }
+  .voie__item {
+    view-timeline: --precept block;
+  }
+  .voie__item .voie__name,
+  .voie__item .voie__desc,
+  .voie__item .voie__kanji,
+  .voie__item .voie__num {
+    animation-timeline: --precept;
+    animation-range: cover 0% cover 100%;
+    animation-fill-mode: both;
+    animation-timing-function: linear;
+  }
+  .voie__item .voie__name,
+  .voie__item .voie__desc {
+    animation-name: preceptFocus;
+  }
+  .voie__item .voie__kanji {
+    animation-name: preceptKanji;
+    transform-origin: left center;
+  }
+  .voie__item .voie__num {
+    animation-name: preceptNum;
+  }
+  /* Le survol rallume la ligne même hors du centre ; en mode édition,
+     tout reste lisible. */
+  .voie__item:hover > *,
+  [data-edit-mode='true'] .voie__item > * {
+    animation: none;
+  }
+  .voie__list {
+    position: relative;
+  }
+  .voie__list::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 24px;
+    width: 1px;
+    background: linear-gradient(var(--accent), transparent);
+    transform-origin: top center;
+    pointer-events: none;
+    animation: voieThread linear both;
+    animation-timeline: view();
+    animation-range: cover 20% cover 80%;
+  }
+  @media (max-width: 768px) {
+    .voie__list::after {
+      left: 8px;
+    }
+  }
+}
+
 /* Cartes cours : filet doré qui se trace au survol. */
 .cours-card::after {
   content: '';
@@ -321,6 +434,21 @@
 
 /* Grands kanji décoratifs : dérive lente liée au défilement. */
 @supports (animation-timeline: view()) {
+  /* `view()` suit le plus proche conteneur de défilement, et
+     `overflow: hidden` en crée un même s'il ne défile jamais : avec
+     `overflow-x: hidden` sur `html, body`, toutes les timelines suivaient
+     `body` (la page entière) et restaient presque immobiles. `clip`
+     rogne pareil sans créer de conteneur. */
+  html,
+  body {
+    overflow-x: clip;
+  }
+  .voie,
+  .cta-band,
+  .page-hero {
+    overflow: clip;
+  }
+
   @keyframes kanjiDrift {
     from {
       translate: 0 10vh;
@@ -391,8 +519,13 @@
   .hero__visual,
   .cta-band__kanji,
   .page-hero__kanji,
-  .manifesto__kanji {
+  .manifesto__kanji,
+  .voie__item > *,
+  .voie__list::after {
     animation: none !important;
+  }
+  .voie__list::after {
+    display: none;
   }
   .section-label::before,
   .img-curtain img {
