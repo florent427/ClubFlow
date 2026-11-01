@@ -7,6 +7,7 @@ import {
   CLUB_COURSE_SLOTS,
 } from '../lib/documents';
 import { MODULE_CATALOG } from '../lib/module-catalog';
+import { useClubModules } from '../lib/club-modules-context';
 import type {
   CourseSlotsQueryData,
   DashboardQueryData,
@@ -75,6 +76,7 @@ export function DashboardPage() {
   }
   const token = getToken();
   const jwtPayload = token ? decodeJwt(token) : {};
+  const { isEnabled: isModuleEnabled } = useClubModules();
 
   const {
     data: dashData,
@@ -86,12 +88,14 @@ export function DashboardPage() {
     data: groupsData,
     error: groupsError,
     refetch: refetchGroups,
-  } = useQuery<DynamicGroupsQueryData>(
-    CLUB_DYNAMIC_GROUPS,
-  );
+  } = useQuery<DynamicGroupsQueryData>(CLUB_DYNAMIC_GROUPS, {
+    skip: !isModuleEnabled('MEMBERS'),
+  });
+  // Planning facultatif : un club qui l'a coupé n'a simplement pas de
+  // créneaux du jour, sans requête refusée.
   const { data: slotsData } = useQuery<CourseSlotsQueryData>(
     CLUB_COURSE_SLOTS,
-    { errorPolicy: 'ignore' },
+    { errorPolicy: 'ignore', skip: !isModuleEnabled('PLANNING') },
   );
 
   const summary = dashData?.adminDashboardSummary;

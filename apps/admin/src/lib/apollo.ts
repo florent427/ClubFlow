@@ -12,6 +12,7 @@ import {
   getClubId,
   getToken,
 } from './storage';
+import { authRedirectFor } from './graphql-errors';
 
 const uri =
   import.meta.env.VITE_GRAPHQL_HTTP ?? 'http://localhost:3000/graphql';
@@ -71,26 +72,15 @@ const errorLink = onError(({ error, operation }) => {
 
   // Erreurs GraphQL (avec extensions.code Apollo / NestJS)
   if (CombinedGraphQLErrors.is(error)) {
-    const codes = error.errors.map(
-      (e) => (e.extensions?.code as string | undefined) ?? '',
+    const target = authRedirectFor(
+      error.errors,
+      operation.operationName ?? '',
     );
-    const isUnauth = codes.some(
-      (c) => c === 'UNAUTHENTICATED' || c === 'UNAUTHORIZED',
-    );
-    const isForbidden = codes.some((c) => c === 'FORBIDDEN');
-    const opName = operation.operationName ?? '';
-
-    if (isUnauth) {
+    if (target === 'login') {
       goLogin();
-      return;
-    }
-    // FORBIDDEN sur opération nécessitant un club → clubId probablement
-    // stale. On exclut MyAdminClubs (qui n'utilise pas ClubContextGuard)
-    // pour ne pas boucler sur la page select-club elle-même.
-    if (isForbidden && opName !== 'MyAdminClubs') {
+    } else if (target === 'select-club') {
       clearActiveClub();
       window.location.assign('/select-club');
-      return;
     }
   }
 });
