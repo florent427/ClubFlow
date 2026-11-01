@@ -11,6 +11,8 @@ import { ModuleCode } from '../../domain/module-registry/module-codes';
 import { PrismaService } from '../../prisma/prisma.service';
 import { REQUIRE_CLUB_MODULE_KEY } from '../decorators/require-club-module.decorator';
 
+export const MODULE_DISABLED_REASON = 'MODULE_DISABLED';
+
 @Injectable()
 export class ClubModuleEnabledGuard implements CanActivate {
   constructor(
@@ -36,9 +38,17 @@ export class ClubModuleEnabledGuard implements CanActivate {
       where: { clubId_moduleCode: { clubId, moduleCode: code } },
     });
     if (!row?.enabled) {
-      throw new ForbiddenException(
-        `Le module ${code} n’est pas activé pour ce club`,
-      );
+      // `reason` distingue ce refus d'un club inaccessible : l'admin ne doit
+      // pas quitter le club pour un module coupé. `statusCode` est requis pour
+      // que le driver Apollo de Nest garde le code FORBIDDEN et expose ce
+      // corps dans `extensions.originalError`.
+      throw new ForbiddenException({
+        statusCode: 403,
+        error: 'Forbidden',
+        message: `Le module ${code} n’est pas activé pour ce club`,
+        reason: MODULE_DISABLED_REASON,
+        module: code,
+      });
     }
     return true;
   }
