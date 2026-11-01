@@ -46,45 +46,45 @@ export interface SksrPlanningProps extends EditProps {
 export function SksrPlanning(props: SksrPlanningProps) {
   const { sectionId, edit } = useEditIds(props);
   const slots = props.slots ?? [];
-  return (
-    <section className="planning">
-      <div className="planning__head">
-        <div className="reveal">
-          {props.label ? (
+  const head = (
+    <div className="reveal" key="head">
+      {props.label ? (
+        <EditableText
+          className="section-label"
+          sectionId={sectionId}
+          field="label"
+          value={props.label}
+          edit={edit}
+        />
+      ) : null}
+      {props.title || props.titleEm ? (
+        <h2 className="section-title">
+          {props.title ? (
             <EditableText
-              className="section-label"
               sectionId={sectionId}
-              field="label"
-              value={props.label}
+              field="title"
+              value={props.title}
               edit={edit}
             />
           ) : null}
-          {props.title || props.titleEm ? (
-            <h2 className="section-title">
-              {props.title ? (
-                <EditableText
-                  sectionId={sectionId}
-                  field="title"
-                  value={props.title}
-                  edit={edit}
-                />
-              ) : null}
-              {props.titleEm ? (
-                <>
-                  <br />
-                  <EditableText
-                    as="em"
-                    sectionId={sectionId}
-                    field="titleEm"
-                    value={props.titleEm}
-                    edit={edit}
-                  />
-                </>
-              ) : null}
-            </h2>
+          {props.titleEm ? (
+            <>
+              <br />
+              <EditableText
+                as="em"
+                sectionId={sectionId}
+                field="titleEm"
+                value={props.titleEm}
+                edit={edit}
+              />
+            </>
           ) : null}
-        </div>
-      </div>
+        </h2>
+      ) : null}
+    </div>
+  );
+  return (
+    <section className="planning">
       <EditableList
         sectionId={sectionId}
         listField="slots"
@@ -108,7 +108,7 @@ export function SksrPlanning(props: SksrPlanningProps) {
           { key: 'meta', label: 'Méta (horaire, tranche d\u2019âge…)' },
         ]}
       >
-        <SksrPlanningGrid slots={slots} />
+        <SksrPlanningGrid slots={slots} head={head} />
       </EditableList>
       <div className="legend reveal d4">
         <div className="legend__item">
@@ -890,45 +890,45 @@ export function SksrGallery(props: SksrGalleryProps) {
     tag: p.tag,
     size: p.size,
   }));
-  return (
-    <section className="gallery">
-      <div className="gallery__head">
-        <div className="reveal">
-          {props.label ? (
+  const head = (
+    <div className="reveal" key="head">
+      {props.label ? (
+        <EditableText
+          className="section-label"
+          sectionId={sectionId}
+          field="label"
+          value={props.label}
+          edit={edit}
+        />
+      ) : null}
+      {props.title || props.titleEm ? (
+        <h2 className="section-title">
+          {props.title ? (
             <EditableText
-              className="section-label"
               sectionId={sectionId}
-              field="label"
-              value={props.label}
+              field="title"
+              value={props.title}
               edit={edit}
             />
           ) : null}
-          {props.title || props.titleEm ? (
-            <h2 className="section-title">
-              {props.title ? (
-                <EditableText
-                  sectionId={sectionId}
-                  field="title"
-                  value={props.title}
-                  edit={edit}
-                />
-              ) : null}
-              {props.titleEm ? (
-                <>
-                  <br />
-                  <EditableText
-                    as="em"
-                    sectionId={sectionId}
-                    field="titleEm"
-                    value={props.titleEm}
-                    edit={edit}
-                  />
-                </>
-              ) : null}
-            </h2>
+          {props.titleEm ? (
+            <>
+              <br />
+              <EditableText
+                as="em"
+                sectionId={sectionId}
+                field="titleEm"
+                value={props.titleEm}
+                edit={edit}
+              />
+            </>
           ) : null}
-        </div>
-      </div>
+        </h2>
+      ) : null}
+    </div>
+  );
+  return (
+    <section className="gallery">
       <EditableList
         sectionId={sectionId}
         listField="photos"
@@ -944,7 +944,7 @@ export function SksrGallery(props: SksrGalleryProps) {
           { key: 'label', label: 'Légende' },
         ]}
       >
-        <SksrGalleryGrid photos={galleryPhotos} filters={filters} />
+        <SksrGalleryGrid photos={galleryPhotos} filters={filters} head={head} />
       </EditableList>
     </section>
   );
