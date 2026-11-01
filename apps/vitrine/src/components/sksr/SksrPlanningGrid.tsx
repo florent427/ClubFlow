@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 
 export type PlanningSlotType =
   | 'mini'
@@ -111,6 +111,8 @@ export const DEFAULT_SKSR_SLOTS: TypedSlot[] = [
 
 interface Props {
   slots?: PlanningSlot[];
+  /** Label + titre du bloc, posés à gauche des filtres dans `.planning__head`. */
+  head?: ReactNode;
 }
 
 /**
@@ -119,7 +121,7 @@ interface Props {
  *  - chaque jour a 2 sous-colonnes : principale + cross (à droite)
  *  - filtres par catégorie, slot.hidden = opacité 0.12
  */
-export function SksrPlanningGrid({ slots = DEFAULT_SKSR_SLOTS }: Props) {
+export function SksrPlanningGrid({ slots = DEFAULT_SKSR_SLOTS, head }: Props) {
   const [filter, setFilter] = useState<string>('all');
 
   const cells = useMemo(() => {
@@ -222,17 +224,20 @@ export function SksrPlanningGrid({ slots = DEFAULT_SKSR_SLOTS }: Props) {
 
   return (
     <>
-      <div className="planning__filters reveal d2">
-        {FILTERS.map((f) => (
-          <button
-            key={f.key}
-            type="button"
-            className={`planning__filter${filter === f.key ? ' active' : ''}`}
-            onClick={() => setFilter(f.key)}
-          >
-            {f.label}
-          </button>
-        ))}
+      <div className="planning__head">
+        {head}
+        <div className="planning__filters reveal d2">
+          {FILTERS.map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              className={`planning__filter${filter === f.key ? ' active' : ''}`}
+              onClick={() => setFilter(f.key)}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="planning__grid-wrap reveal d1">
         <div className="planning__grid">{cells}</div>

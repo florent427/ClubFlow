@@ -1045,7 +1045,7 @@ const CONTACT_SECTIONS: Section[] = [
   }),
   sec('sksrMap', {
     mapEmbedUrl:
-      'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d7129.0!2d55.2850!3d-21.2690!3m2!1i1024!2i768!4f13.1!5e0!3m2!1sfr!2sfr!4v1711111111111',
+      'https://maps.google.com/maps?q=13+bis+rue+du+stade+97427+L%27Etang-Sale+La+Reunion&t=&z=17&ie=UTF8&iwloc=&output=embed',
     addr: "13 bis rue du stade · 97427 L'Étang-Salé · La Réunion",
     stamp: '地図',
     links: [

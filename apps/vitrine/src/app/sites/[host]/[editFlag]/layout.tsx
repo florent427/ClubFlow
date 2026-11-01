@@ -37,8 +37,14 @@ export async function generateMetadata({
   const { host } = await params;
   try {
     const club = await resolveCurrentClub(host);
+    // Même requête que le layout (cache fetch partagé) : le logo du club
+    // sert d'icône d'onglet.
+    const branding = await fetchClubBranding(club.slug, club.name);
     const proto = process.env.NODE_ENV === 'production' ? 'https' : 'http';
     return {
+      ...(branding.logoUrl
+        ? { icons: { icon: branding.logoUrl, apple: branding.logoUrl } }
+        : {}),
       // Rend absolues les URLs relatives des balises og:image / canonical.
       metadataBase: new URL(`${proto}://${decodeURIComponent(host)}`),
       title: {

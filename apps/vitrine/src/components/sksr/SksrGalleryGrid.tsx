@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Lightbox } from './Lightbox';
 import { MediaImg } from '@/components/MediaImg';
 
@@ -28,6 +28,8 @@ interface Props {
   photos: GalleryPhotoItem[];
   /** Override liste de filtres (optionnel — sinon filtres SKSR par défaut). */
   filters?: Array<{ key: string; label: string }>;
+  /** Label + titre du bloc, posés à gauche des filtres dans `.gallery__head`. */
+  head?: ReactNode;
 }
 
 /**
@@ -35,7 +37,7 @@ interface Props {
  *  - variantes de taille s-1 à s-6
  *  - filtrage par tag, navigation prev/next cycle sur les visibles uniquement
  */
-export function SksrGalleryGrid({ photos, filters = FILTERS }: Props) {
+export function SksrGalleryGrid({ photos, filters = FILTERS, head }: Props) {
   const [filter, setFilter] = useState<string>('all');
   const [openIdx, setOpenIdx] = useState<number | null>(null);
 
@@ -69,17 +71,20 @@ export function SksrGalleryGrid({ photos, filters = FILTERS }: Props) {
 
   return (
     <>
-      <div className="gallery__filters reveal d2">
-        {filters.map((f) => (
-          <button
-            key={f.key}
-            type="button"
-            className={filter === f.key ? 'on' : ''}
-            onClick={() => setFilter(f.key)}
-          >
-            {f.label}
-          </button>
-        ))}
+      <div className="gallery__head">
+        {head}
+        <div className="gallery__filters reveal d2">
+          {filters.map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              className={filter === f.key ? 'on' : ''}
+              onClick={() => setFilter(f.key)}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="gallery__grid">
         {photos.map((p, i) => {
