@@ -12,19 +12,49 @@ interface HeaderProps {
   clubSlug?: string;
 }
 
-const LINKS: Array<{ href: string; label: string; id: string; cta?: boolean }> =
-  [
-    { href: '/', label: 'Accueil', id: 'home' },
-    { href: '/club', label: 'Le Club', id: 'club' },
-    { href: '/cours', label: 'Cours', id: 'cours' },
-    { href: '/equipe', label: 'Équipe', id: 'equipe' },
-    { href: '/tarifs', label: 'Tarifs', id: 'tarifs' },
-    { href: '/galerie', label: 'Galerie', id: 'galerie' },
-    { href: '/actualites', label: 'Actualités', id: 'actu' },
-    { href: '/blog', label: 'Blog', id: 'blog' },
-    { href: '/evenements', label: 'Événements', id: 'evenements' },
-    { href: '/contact', label: 'Contact', id: 'contact' },
-  ];
+interface NavLink {
+  href: string;
+  label: string;
+  /** Sous-pages regroupées sous cette entrée (menu déroulant). */
+  children?: Array<{ href: string; label: string }>;
+}
+
+/**
+ * Cinq entrées au lieu de dix : les pages voisines sont regroupées dans
+ * un menu déroulant (desktop) ou listées en retrait (tiroir mobile).
+ * L'accueil reste accessible par le logo.
+ */
+const LINKS: NavLink[] = [
+  {
+    href: '/club',
+    label: 'Le club',
+    children: [
+      { href: '/club', label: 'Notre histoire' },
+      { href: '/equipe', label: 'L’équipe' },
+      { href: '/dojo', label: 'Le dojo' },
+    ],
+  },
+  {
+    href: '/cours',
+    label: 'Cours & tarifs',
+    children: [
+      { href: '/cours', label: 'Cours & horaires' },
+      { href: '/tarifs', label: 'Tarifs' },
+    ],
+  },
+  {
+    href: '/actualites',
+    label: 'Actualités',
+    children: [
+      { href: '/actualites', label: 'Actualités' },
+      { href: '/blog', label: 'Blog' },
+      { href: '/evenements', label: 'Événements' },
+      { href: '/competitions', label: 'Compétitions' },
+    ],
+  },
+  { href: '/galerie', label: 'Galerie' },
+  { href: '/contact', label: 'Contact' },
+];
 
 /**
  * URL du portail membre. Côté Next, on lit `NEXT_PUBLIC_PORTAL_URL`
@@ -85,6 +115,8 @@ export function Header({
   const close = () => setOpen(false);
   const isActive = (href: string): boolean =>
     href === '/' ? pathname === '/' : pathname.startsWith(href);
+  const isGroupActive = (link: NavLink): boolean =>
+    isActive(link.href) || (link.children ?? []).some((c) => isActive(c.href));
 
   return (
     <nav className={`nav${scrolled ? ' scrolled' : ''}`}>
@@ -121,18 +153,43 @@ export function Header({
         <button className="nav__close" aria-label="Fermer le menu" onClick={close}>
           ×
         </button>
-        {LINKS.map((link) => (
-          <Link
-            key={link.href}
-            href={link.href}
-            className={`${link.cta ? 'nav__cta' : ''}${
-              isActive(link.href) ? ' active' : ''
-            }`}
-            onClick={close}
-          >
-            {link.label}
-          </Link>
-        ))}
+        {LINKS.map((link) =>
+          link.children ? (
+            <div key={link.href} className="nav__group">
+              <Link
+                href={link.href}
+                className={`nav__group-link${isGroupActive(link) ? ' active' : ''}`}
+                aria-haspopup="true"
+                onClick={close}
+              >
+                {link.label}
+              </Link>
+              <div className="nav__sub">
+                {link.children.map((child) => (
+                  <Link
+                    key={child.href}
+                    href={child.href}
+                    className={isActive(child.href) ? 'active' : undefined}
+                    aria-current={isActive(child.href) ? 'page' : undefined}
+                    onClick={close}
+                  >
+                    {child.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={isActive(link.href) ? 'active' : undefined}
+              aria-current={isActive(link.href) ? 'page' : undefined}
+              onClick={close}
+            >
+              {link.label}
+            </Link>
+          ),
+        )}
         {/* "Connexion" + "S'inscrire" — externes vers portail membre,
             pré-remplis avec le slug du club courant. Visibles en
             permanence dans la nav pour discoverability. */}

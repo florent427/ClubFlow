@@ -7,6 +7,7 @@ import {
   fetchCategories,
 } from '@/lib/page-fetchers';
 import { PageHero } from '@/blocks/PageHero';
+import { MediaImg } from '@/components/MediaImg';
 
 interface RouteParams {
   params: Promise<{ host: string; editFlag: string; slug: string }>;
@@ -114,7 +115,11 @@ export default async function CategoryPage({ params }: RouteParams) {
                 >
                   {a.coverImageUrl ? (
                     <div className="article-card__cover">
-                      <img src={a.coverImageUrl} alt={a.title} />
+                      <MediaImg
+                        src={a.coverImageUrl}
+                        alt={a.title}
+                        sizes="(max-width: 960px) 100vw, 33vw"
+                      />
                     </div>
                   ) : null}
                   <div className="article-card__body">

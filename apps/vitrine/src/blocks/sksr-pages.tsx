@@ -12,6 +12,7 @@ import { SksrPlanningGrid } from '@/components/sksr/SksrPlanningGrid';
 import { SksrGalleryGrid } from '@/components/sksr/SksrGalleryGrid';
 import { ContactForm } from '@/components/ContactForm';
 import type { EditContext } from '@/lib/edit-context';
+import { MediaImg } from '@/components/MediaImg';
 
 type EditProps = {
   __editSectionId?: string;
@@ -240,7 +241,13 @@ export function SksrDojoIntro(props: SksrDojoIntroProps) {
       >
         <div className="dojo-intro__img reveal">
           {props.stamp ? <div className="dojo-intro__stamp">{props.stamp}</div> : null}
-          {props.imageUrl ? <img src={props.imageUrl} alt="Dojo" /> : null}
+          {props.imageUrl ? (
+            <MediaImg
+              src={props.imageUrl}
+              alt="Le dojo"
+              sizes="(max-width: 960px) 100vw, 50vw"
+            />
+          ) : null}
         </div>
       </EditableImage>
       <div className="reveal d1">
@@ -631,7 +638,13 @@ export function SksrSensei(props: SksrSenseiProps) {
         >
           <div className="sensei__portrait">
             {props.stamp ? <div className="sensei__stamp">{props.stamp}</div> : null}
-            {props.imageUrl ? <img src={props.imageUrl} alt="" /> : null}
+            {props.imageUrl ? (
+              <MediaImg
+                src={props.imageUrl}
+                alt=""
+                sizes="(max-width: 960px) 100vw, 50vw"
+              />
+            ) : null}
           </div>
         </EditableImage>
         <div>
@@ -742,7 +755,12 @@ export function SksrTeachers(props: SksrTeachersProps) {
           <div className="teacher__portrait">
             <span className="teacher__rank">{t.rankLabel}</span>
             {t.imageUrl ? (
-              <img src={t.imageUrl} alt={t.name} />
+              <MediaImg
+                src={t.imageUrl}
+                alt={t.name}
+                sizes="(max-width: 960px) 100vw, 33vw"
+                maxWidth={828}
+              />
             ) : (
               <svg
                 viewBox="0 0 600 700"
@@ -966,7 +984,11 @@ export function SksrNews(props: SksrNewsProps) {
           <div className="news__featured-img">
             <span className="news__featured-tag">{props.featured.tag}</span>
             {props.featured.coverImageUrl ? (
-              <img src={props.featured.coverImageUrl} alt={props.featured.title} />
+              <MediaImg
+                src={props.featured.coverImageUrl}
+                alt={props.featured.title}
+                sizes="(max-width: 960px) 100vw, 66vw"
+              />
             ) : (
               <svg
                 viewBox="0 0 800 600"
@@ -1017,7 +1039,11 @@ export function SksrNews(props: SksrNewsProps) {
             <div className="news-card__img">
               <span className="news-card__tag">{c.tag}</span>
               {c.coverImageUrl ? (
-                <img src={c.coverImageUrl} alt={c.title} />
+                <MediaImg
+                  src={c.coverImageUrl}
+                  alt={c.title}
+                  sizes="(max-width: 960px) 100vw, 33vw"
+                />
               ) : (
                 <svg
                   viewBox="0 0 800 600"

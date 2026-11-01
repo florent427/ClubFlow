@@ -125,17 +125,24 @@ img {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: color-mix(in oklab, var(--bg) 75%, transparent);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  /* Transparente au-dessus du hero, verre dépoli dès qu'on défile. */
+  background: linear-gradient(
+    to bottom,
+    color-mix(in oklab, var(--bg) 55%, transparent),
+    transparent
+  );
   border-bottom: 1px solid transparent;
   transition:
-    padding 0.3s ease,
-    border-color 0.3s ease,
-    background 0.3s ease;
+    padding 0.4s var(--ease-premium, ease),
+    border-color 0.4s ease,
+    background-color 0.4s ease,
+    backdrop-filter 0.4s ease;
 }
 .nav.scrolled {
   padding: 12px 48px;
+  background: color-mix(in oklab, var(--bg) 78%, transparent);
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
   border-bottom-color: var(--line);
 }
 .nav__brand {
@@ -147,6 +154,8 @@ img {
   font-weight: 500;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+  min-width: 0;
+  margin-right: 24px;
 }
 .nav__logo {
   width: 44px;
@@ -158,10 +167,14 @@ img {
   flex-direction: column;
   line-height: 1.1;
 }
+.nav__brand-text span {
+  white-space: nowrap;
+  font-size: 16px;
+}
 .nav__brand-text small {
   font-family: var(--jp);
-  font-size: 11px;
-  letter-spacing: 0.3em;
+  font-size: 12px;
+  letter-spacing: 0.22em;
   color: var(--accent);
   margin-top: 3px;
 }
@@ -172,8 +185,9 @@ img {
 }
 .nav__links a {
   font-family: var(--sans);
-  font-size: 12px;
-  letter-spacing: 0.2em;
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  white-space: nowrap;
   text-transform: uppercase;
   font-weight: 400;
   color: color-mix(in oklab, var(--fg) 75%, transparent);
@@ -201,12 +215,77 @@ img {
 .nav__links a.active {
   color: var(--accent);
 }
+
+/* Menus déroulants : ouverts au survol et au clavier (focus-within). */
+.nav__group {
+  position: relative;
+}
+.nav__group-link::before {
+  /* Petit chevron. */
+  content: '';
+  position: absolute;
+  right: -12px;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  transform: translateY(-75%) rotate(45deg);
+  opacity: 0.6;
+}
+.nav__sub {
+  position: absolute;
+  top: calc(100% + 18px);
+  left: 50%;
+  min-width: 210px;
+  padding: 14px 0;
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in oklab, var(--bg) 92%, transparent);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--line);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  visibility: hidden;
+  translate: -50% -8px;
+  transition:
+    opacity 0.3s ease,
+    translate 0.4s var(--ease-premium, ease),
+    visibility 0s linear 0.3s;
+}
+/* Pont invisible entre le lien et le menu pour ne pas le refermer. */
+.nav__sub::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -20px;
+  height: 20px;
+}
+.nav__group:hover .nav__sub,
+.nav__group:focus-within .nav__sub {
+  opacity: 1;
+  visibility: visible;
+  translate: -50% 0;
+  transition-delay: 0s;
+}
+.nav__sub a {
+  padding: 10px 24px;
+  font-size: 12px;
+}
+.nav__sub a::after {
+  display: none;
+}
+.nav__sub a:hover {
+  background: color-mix(in oklab, var(--accent) 10%, transparent);
+}
 .nav__cta {
   padding: 10px 20px;
   border: 1px solid var(--accent);
   color: var(--accent) !important;
   letter-spacing: 0.2em;
-  font-size: 11px !important;
+  font-size: 12px !important;
   transition: all 0.3s ease;
 }
 .nav__cta::after {
@@ -289,7 +368,27 @@ img {
   color: var(--accent);
 }
 
-@media (max-width: 960px) {
+/* Écrans moyens : on resserre avant de basculer sur le tiroir. */
+@media (max-width: 1400px) {
+  .nav,
+  .nav.scrolled {
+    padding-left: 32px;
+    padding-right: 32px;
+  }
+  .nav__links {
+    gap: 24px;
+  }
+  .nav__links a {
+    letter-spacing: 0.1em;
+  }
+  .nav__brand-text span {
+    font-size: 14px;
+    letter-spacing: 0.08em;
+  }
+}
+
+/* Le tiroir prend le relais tant que le menu complet ne tient pas. */
+@media (max-width: 1180px) {
   .nav {
     padding: 16px 20px;
   }
@@ -326,6 +425,54 @@ img {
   }
   .nav__links a::after {
     display: none;
+  }
+  /* Tiroir : les sous-pages sont listées en retrait sous leur entrée. */
+  .nav__group {
+    width: 100%;
+  }
+  .nav__group-link::before {
+    display: none;
+  }
+  .nav__sub {
+    position: static;
+    min-width: 0;
+    padding: 4px 0 0 16px;
+    margin-top: 4px;
+    border: 0;
+    border-left: 1px solid var(--line);
+    background: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+    opacity: 1;
+    visibility: visible;
+    translate: none;
+  }
+  .nav__sub::before {
+    display: none;
+  }
+  .nav__links .nav__sub a {
+    font-family: var(--sans);
+    font-size: 14px;
+    letter-spacing: 0.04em;
+    text-transform: none;
+    padding: 6px 0;
+  }
+  .nav__links {
+    gap: 18px;
+  }
+  .nav__brand-text span {
+    white-space: normal;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+  }
+  .nav__brand-text small {
+    font-size: 11px;
+  }
+  .nav__logo {
+    width: 36px;
+    height: 36px;
+    flex: none;
   }
   .nav__cta {
     margin-top: 12px;
@@ -386,7 +533,7 @@ img {
   font-family: var(--serif);
   font-weight: 500;
   font-size: 14px;
-  letter-spacing: 0.25em;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--accent);
   margin-bottom: 20px;
@@ -423,7 +570,7 @@ img {
   border-top: 1px solid var(--line);
   display: flex;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   letter-spacing: 0.15em;
   text-transform: uppercase;
@@ -460,7 +607,7 @@ img {
   align-items: center;
   gap: 14px;
   font-family: var(--sans);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.35em;
   text-transform: uppercase;
   color: var(--accent);
@@ -494,7 +641,7 @@ img {
   padding: 16px 28px;
   font-family: var(--sans);
   font-size: 12px;
-  letter-spacing: 0.25em;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   font-weight: 500;
   border: 1px solid var(--accent);
@@ -591,13 +738,19 @@ img {
   }
 }
 
-/* reveal */
+/* reveal — `RevealRoot` ajoute `.in` à l'entrée dans le viewport. Le
+   contenu n'est masqué que si le navigateur exécute du JS : sans JS
+   (moteurs de recherche, aperçus de partage), tout reste visible. */
 .reveal {
-  opacity: 0;
-  transform: translateY(40px);
   transition:
-    opacity 1s cubic-bezier(0.2, 0.7, 0.2, 1),
-    transform 1s cubic-bezier(0.2, 0.7, 0.2, 1);
+    opacity 0.9s var(--ease-premium, cubic-bezier(0.16, 1, 0.3, 1)),
+    transform 0.9s var(--ease-premium, cubic-bezier(0.16, 1, 0.3, 1));
+}
+@media (scripting: enabled) {
+  .reveal:not(.in) {
+    opacity: 0;
+    transform: translateY(24px);
+  }
 }
 .reveal.in {
   opacity: 1;
@@ -722,4 +875,84 @@ img {
 }
 [data-edit-mode='true'] .nav {
   top: 44px;
+}
+
+/* ============ BARRE D'ACTIONS MOBILE ============ */
+.mobile-bar {
+  display: none;
+}
+@media (max-width: 768px) {
+  .mobile-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 90;
+    display: flex;
+    gap: 10px;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    background: color-mix(in oklab, var(--bg) 85%, transparent);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-top: 1px solid var(--line);
+    animation: mobileBarIn 0.6s var(--ease-premium, ease) 1.2s both;
+  }
+  .mobile-bar a {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 46px;
+    font-size: 13px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .mobile-bar__primary {
+    background: var(--accent);
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .mobile-bar__secondary {
+    flex: 0 0 auto !important;
+    padding: 0 18px;
+    border: 1px solid var(--line-strong, var(--line));
+    color: var(--fg);
+  }
+  /* Le bas du pied de page ne doit pas finir sous la barre. */
+  .footer {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+}
+@keyframes mobileBarIn {
+  from {
+    translate: 0 100%;
+  }
+  to {
+    translate: 0 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mobile-bar {
+    animation: none;
+  }
+}
+
+/* ============ LIEN D'ÉVITEMENT ============ */
+/* Invisible tant qu'on ne l'atteint pas au clavier (il s'affichait en haut
+   à gauche de toutes les pages faute de style). */
+.skip-link {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 300;
+  padding: 10px 18px;
+  background: var(--accent);
+  color: var(--ink);
+  font-size: 13px;
+  translate: 0 -200%;
+  transition: translate 0.3s ease;
+}
+.skip-link:focus-visible {
+  translate: 0 0;
 }

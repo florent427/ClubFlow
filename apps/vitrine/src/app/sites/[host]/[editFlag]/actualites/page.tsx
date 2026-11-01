@@ -7,6 +7,7 @@ import {
 } from '@/lib/page-fetchers';
 import { PageHero } from '@/blocks/PageHero';
 import { buildPageMetadata } from '@/lib/seo';
+import { MediaImg } from '@/components/MediaImg';
 
 interface RouteParams {
   params: Promise<{ host: string; editFlag: string }>;
@@ -86,7 +87,11 @@ function ArticleCard({ article }: { article: VitrineArticleSummary }) {
     <Link href={`/actualites/${article.slug}`} className="article-card">
       {article.coverImageUrl ? (
         <div className="article-card__cover">
-          <img src={article.coverImageUrl} alt={article.title} />
+          <MediaImg
+            src={article.coverImageUrl}
+            alt={article.title}
+            sizes="(max-width: 960px) 100vw, 33vw"
+          />
         </div>
       ) : null}
       <div className="article-card__body">

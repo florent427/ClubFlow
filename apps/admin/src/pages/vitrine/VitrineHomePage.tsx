@@ -171,7 +171,7 @@ export function VitrineHomePage() {
                   </td>
                   <td style={{ display: 'flex', gap: 8 }}>
                     <Link to={`/vitrine/pages/${p.slug}`} className="btn btn-tight">
-                      Modifier (JSON)
+                      Modifier
                     </Link>
                     <OpenEditModeButton
                       redirect={p.slug === 'index' ? '/' : `/${p.slug}`}

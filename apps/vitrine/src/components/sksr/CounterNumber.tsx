@@ -32,11 +32,19 @@ export function CounterNumber({
   threshold = 0.5,
 }: Props) {
   const ref = useRef<HTMLSpanElement | null>(null);
-  const [value, setValue] = useState(0);
+  // Le rendu serveur affiche la valeur finale : sans JS (moteurs de
+  // recherche, aperçus de partage), on lit « 17 » et non « 0 ».
+  const [value, setValue] = useState(target);
   const triggered = useRef(false);
 
   useEffect(() => {
     if (!ref.current) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setValue(target);
+      return;
+    }
+    // Le décompte repart de 0 seulement quand il démarre : si
+    // l'IntersectionObserver ne se déclenche jamais, la valeur finale reste.
     const el = ref.current;
     const io = new IntersectionObserver(
       (entries) => {

@@ -31,8 +31,11 @@ export function middleware(req: NextRequest): NextResponse {
 
 export const config = {
   matcher: [
-    // On exclut les assets Next statiques, les Route Handlers (api/**) et
-    // les fichiers de métadonnées qui restent hors du tree [host]/[editFlag].
-    '/((?!_next/static|_next/image|favicon.ico|fonts/|public/|api/|robots.txt|sitemap.xml).*)',
+    // On exclut les assets Next statiques, les Route Handlers (api/**), les
+    // fichiers de métadonnées qui restent hors du tree [host]/[editFlag] et
+    // tout fichier statique de `public/` (ex. `/sksr/logo-sksr.svg`) : sans
+    // cette dernière exclusion, il était réécrit vers une route de page et
+    // répondait 404.
+    '/((?!_next/static|_next/image|favicon.ico|fonts/|public/|api/|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpe?g|webp|avif|gif|ico|txt|xml|webmanifest|woff2?|pdf)$).*)',
   ],
 };

@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { resolveCurrentClub } from '@/lib/club-resolution';
 import { fetchVitrinePage } from '@/lib/vitrine-page';
+import { publicGraphqlUrl } from '@/lib/media-url';
 import {
   fetchAnnouncements,
   fetchArticles,
@@ -65,10 +66,7 @@ export async function VitrinePageShell({
   // le JWT n'est lu que si l'édition est active.
   const editModeOn = isEditFlagActive(editFlag);
   const editJwt = editModeOn ? await getEditJwt() : null;
-  const apiUrl =
-    process.env.VITRINE_PUBLIC_API_URL ??
-    process.env.VITRINE_API_URL ??
-    'http://localhost:3000/graphql';
+  const apiUrl = publicGraphqlUrl();
   const edit: EditContext =
     editModeOn && editJwt
       ? {

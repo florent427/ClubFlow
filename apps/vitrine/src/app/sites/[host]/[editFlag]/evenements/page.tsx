@@ -7,6 +7,7 @@ import {
 } from '@/lib/public-events';
 import { PageHero } from '@/blocks/PageHero';
 import { buildPageMetadata } from '@/lib/seo';
+import { MediaImg } from '@/components/MediaImg';
 
 // Fuseau d'affichage des horaires — les dates sont stockées en UTC ;
 // sans timeZone explicite, le SSR (serveur UTC) affichait 05:00 au lieu
@@ -182,7 +183,11 @@ function EventCard({ event }: { event: PublicClubEvent }) {
       {event.coverImageUrl ? (
         <div className="evt-card__cover">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={event.coverImageUrl} alt={event.title} loading="lazy" />
+          <MediaImg
+            src={event.coverImageUrl}
+            alt={event.title}
+            sizes="(max-width: 960px) 100vw, 33vw"
+          />
         </div>
       ) : null}
       <div className="evt-card__date">{formatEventDate(event.startsAt)}</div>
