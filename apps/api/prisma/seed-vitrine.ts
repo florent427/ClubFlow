@@ -26,7 +26,9 @@ function sec(type: string, props: Record<string, unknown>): Section {
 // ---------------------------------------------------------------------------
 const INDEX_SECTIONS: Section[] = [
   sec('sksrHero', {
-    label: '極真の道 · Depuis 2009',
+    // 空手道 = « la voie du karaté ». Ne pas utiliser 極真 (Kyokushin) :
+    // c'est le nom d'un autre style que le Shotokan.
+    label: '空手道 · Depuis 2009',
     titleTop: 'La voie',
     titleG1: 'tracée',
     titleG2: 'la main',

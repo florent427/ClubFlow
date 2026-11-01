@@ -1,3 +1,4 @@
+import { MediaImg } from '@/components/MediaImg';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -7,6 +8,7 @@ import { fetchArticle, fetchArticleComments } from '@/lib/page-fetchers';
 import { PageHero } from '@/blocks/PageHero';
 import { JsonLd, buildArticleLd, buildFaqLd } from '@/components/JsonLd';
 import { ArticleComments } from '@/components/ArticleComments';
+import { publicGraphqlUrl } from '@/lib/media-url';
 import { PptxHandlersBoundary } from '@/components/PptxHandlers';
 
 interface RouteParams {
@@ -109,8 +111,9 @@ function renderBody(bodyJson: string): ReactElement {
             if (imgMatch) {
               return (
                 <p key={i}>
-                  <img
+                  <MediaImg
                     src={imgMatch[2]}
+                    sizes="(max-width: 800px) 100vw, 800px"
                     alt={imgMatch[1] ?? ''}
                     style={{ maxWidth: '100%' }}
                   />
@@ -207,8 +210,10 @@ export default async function ActualiteDetailPage({ params }: RouteParams) {
           style={{ marginTop: 40, marginBottom: 40 }}
         >
           <figure className="article-cover">
-            <img
+            <MediaImg
               src={article.coverImageUrl}
+              sizes="100vw"
+              priority
               alt={article.coverImageAlt ?? article.title}
             />
             {article.coverImageAlt ? (
@@ -238,7 +243,7 @@ export default async function ActualiteDetailPage({ params }: RouteParams) {
           <ArticleComments
             clubSlug={club.slug}
             articleSlug={article.slug}
-            apiUrl={process.env.VITRINE_API_URL ?? 'http://localhost:3000/graphql'}
+            apiUrl={publicGraphqlUrl()}
             initialComments={comments}
           />
 

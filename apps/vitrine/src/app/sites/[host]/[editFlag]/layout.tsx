@@ -35,7 +35,10 @@ export async function generateMetadata({
   const { host } = await params;
   try {
     const club = await resolveCurrentClub(host);
+    const proto = process.env.NODE_ENV === 'production' ? 'https' : 'http';
     return {
+      // Rend absolues les URLs relatives des balises og:image / canonical.
+      metadataBase: new URL(`${proto}://${decodeURIComponent(host)}`),
       title: {
         default: club.name,
         template: `%s · ${club.name}`,

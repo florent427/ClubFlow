@@ -1,5 +1,6 @@
 import 'server-only';
 import { fetchGraphQL } from './graphql-client';
+import { normalizeMediaUrl, normalizeMediaUrlsDeep } from './media-url';
 
 /**
  * Types et queries GraphQL pour une page vitrine.
@@ -77,7 +78,9 @@ async function fetchVitrinePageBySlug(
     );
     const page = data.publicVitrinePage;
     if (!page) return null;
-    const sections = (JSON.parse(page.sectionsJson) as VitrineSection[]) ?? [];
+    const sections = normalizeMediaUrlsDeep(
+      (JSON.parse(page.sectionsJson) as VitrineSection[]) ?? [],
+    );
     return {
       id: page.id,
       slug: page.slug,
@@ -85,7 +88,9 @@ async function fetchVitrinePageBySlug(
       status: page.status,
       seoTitle: page.seoTitle,
       seoDescription: page.seoDescription,
-      seoOgImageUrl: page.seoOgImageUrl,
+      seoOgImageUrl: page.seoOgImageUrl
+        ? normalizeMediaUrl(page.seoOgImageUrl)
+        : null,
       sections,
     };
   } catch (err) {

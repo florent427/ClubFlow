@@ -1,5 +1,6 @@
 import '@/styles/globals.css';
 import '@/styles/sksr-pages.css';
+import '@/styles/motion.css';
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { fontClassNames } from '@/lib/fonts';

@@ -1,0 +1,405 @@
+/*
+ * Motion — couche d'animations de la vitrine, chargée après
+ * `globals.css` et `sksr-pages.css`.
+ *
+ * Principes :
+ * - Sobre et lent, inspiré de l'encre et du dojo : fondus, flous qui se
+ *   dissipent, traits qui se tracent. Jamais de rebond.
+ * - CSS uniquement. Les animations liées au défilement utilisent
+ *   `animation-timeline` quand le navigateur le gère (sinon, rien ne
+ *   bouge et tout reste visible).
+ * - Les propriétés individuelles `translate` / `scale` sont utilisées
+ *   plutôt que `transform` pour ne pas écraser les `transform` existants.
+ * - `prefers-reduced-motion` coupe tout (bloc en fin de fichier).
+ */
+
+:root {
+  --ease-premium: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-ink: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* ---------------------------------------------------------------------
+ * Hero — entrée au chargement, sans attendre le JS
+ * ------------------------------------------------------------------ */
+
+@keyframes heroRise {
+  from {
+    opacity: 0;
+    translate: 0 28px;
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+    filter: blur(0);
+  }
+}
+
+/* Le titre monte derrière un rideau : la ligne apparaît de bas en haut. */
+@keyframes heroTitle {
+  from {
+    opacity: 0;
+    translate: 0 48px;
+    clip-path: inset(0 -10% 100% -10%);
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+    clip-path: inset(-20% -10% -30% -10%);
+  }
+}
+
+/* L'encre se pose : flou qui se dissipe, léger retrait. */
+@keyframes inkBleed {
+  from {
+    opacity: 0;
+    filter: blur(28px);
+    scale: 1.08;
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    scale: 1;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes drawLine {
+  from {
+    scale: 0 1;
+  }
+  to {
+    scale: 1 1;
+  }
+}
+
+@keyframes ensoDraw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes kenBurns {
+  from {
+    scale: 1.12;
+  }
+  to {
+    scale: 1;
+  }
+}
+
+.hero-in {
+  animation: heroRise 1.1s var(--ease-premium) both;
+  animation-delay: 0.15s;
+}
+.hero-in--title {
+  animation-name: heroTitle;
+  animation-duration: 1.3s;
+  animation-delay: 0.25s;
+}
+.hero-in--2 {
+  animation-delay: 0.55s;
+}
+.hero-in--3 {
+  animation-delay: 0.7s;
+}
+.hero-in--4 {
+  animation-delay: 0.85s;
+}
+
+.hero__label::before {
+  transform-origin: left center;
+  animation: drawLine 1.2s var(--ease-premium) 0.2s both;
+}
+
+.hero__kanji-bg {
+  animation: inkBleed 2.6s var(--ease-ink) both;
+}
+
+.hero-enso circle {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: ensoDraw 3.2s var(--ease-ink) 0.4s forwards;
+}
+.hero-enso circle + circle {
+  animation-delay: 0.9s;
+  animation-duration: 3.6s;
+}
+
+.hero__visual-img {
+  animation: kenBurns 9s var(--ease-ink) both;
+}
+
+.hero__logo-medallion {
+  animation:
+    fadeIn 1.6s var(--ease-ink) 1s both,
+    sksrSlowRotate 120s linear infinite;
+}
+
+/* Grand sceau du club, en filigrane à droite du hero « full ». Tant que le
+   logo répondait 404, personne ne l'a vu : la règle `.hero__visual img`
+   (plus spécifique) l'étirait sur tout le hero. On lui rend sa taille, et
+   on masque le petit médaillon pour ne pas avoir deux logos qui tournent. */
+.hero__visual .hero__logo-big {
+  width: min(520px, 40vw);
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 20px 60px rgba(0, 0, 0, 0.5));
+  animation:
+    fadeIn 2.4s var(--ease-ink) 0.6s both,
+    sksrSlowRotate 180s linear infinite;
+}
+[data-hero='full'] .hero__logo-medallion {
+  display: none;
+}
+
+.hero__scroll-ind {
+  animation: fadeIn 1s ease 1.6s both;
+}
+
+/* Parallaxe douce du grand kanji et du visuel pendant qu'on quitte le hero. */
+@supports (animation-timeline: scroll()) {
+  @keyframes heroDrift {
+    to {
+      translate: 0 18vh;
+    }
+  }
+  @keyframes heroDim {
+    to {
+      opacity: 0.35;
+    }
+  }
+  .hero__kanji-bg {
+    animation:
+      inkBleed 2.6s var(--ease-ink) both,
+      heroDrift linear both;
+    animation-timeline: auto, scroll(root);
+    animation-range: normal, 0 100vh;
+  }
+  .hero__visual {
+    animation: heroDim linear both;
+    animation-timeline: scroll(root);
+    animation-range: 0 100vh;
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Apparitions au défilement (`.reveal`, posées par RevealRoot)
+ * ------------------------------------------------------------------ */
+
+/* Le trait doré des libellés de section se trace à l'apparition. */
+.section-label::before {
+  transform-origin: left center;
+  transition: scale 1.1s var(--ease-premium) 0.2s;
+}
+@media (scripting: enabled) {
+  .section-label.reveal:not(.in)::before {
+    scale: 0 1;
+  }
+}
+
+/* Les grandes listes (20 actualités) ne doivent pas attendre 2 s. */
+.reveal.d7,
+.reveal.d8,
+.reveal.d9,
+.reveal.d10,
+.reveal.d11,
+.reveal.d12 {
+  transition-delay: 0.2s;
+}
+
+/* Photos : rideau qui s'ouvre et image qui se pose. Le rideau est sur
+   l'image, pas sur le conteneur observé : un `clip-path` sur la cible
+   annule son intersection et `.in` n'arrivait jamais. */
+.img-curtain img {
+  /* Si le média est introuvable, ni icône cassée ni texte alternatif
+     par-dessus le panneau sombre. */
+  color: transparent;
+  clip-path: inset(0 0 0 0);
+  transition:
+    clip-path 1.4s var(--ease-premium),
+    scale 1.8s var(--ease-premium);
+}
+@media (scripting: enabled) {
+  .img-curtain.reveal:not(.in) {
+    opacity: 1;
+    transform: none;
+  }
+  .img-curtain.reveal:not(.in) img {
+    clip-path: inset(0 0 0 100%);
+    scale: 1.15;
+  }
+}
+
+/* Les kanji des préceptes se posent à l'encre avec leur ligne. */
+.voie__item.reveal .voie__kanji,
+.value.reveal .value__kanji {
+  transition:
+    filter 1.4s var(--ease-ink),
+    opacity 1.4s var(--ease-ink),
+    transform 0.3s ease;
+}
+@media (scripting: enabled) {
+  .voie__item.reveal:not(.in) .voie__kanji,
+  .value.reveal:not(.in) .value__kanji {
+    filter: blur(10px);
+    opacity: 0;
+  }
+}
+
+/* Cartes cours : filet doré qui se trace au survol. */
+.cours-card::after {
+  content: '';
+  position: absolute;
+  left: 32px;
+  right: 32px;
+  bottom: 0;
+  height: 1px;
+  background: var(--accent);
+  scale: 0 1;
+  transform-origin: left center;
+  transition: scale 0.7s var(--ease-premium);
+}
+.cours-card:hover::after,
+.cours-card:focus-within::after {
+  scale: 1 1;
+}
+.cours-card__age {
+  transition: translate 0.6s var(--ease-premium);
+}
+.cours-card:hover .cours-card__age {
+  translate: 0 -4px;
+}
+
+/* Cartes actualités : zoom plus lent, voile qui s'éclaircit. */
+.actu-card__img img {
+  transition:
+    transform 1.4s var(--ease-premium),
+    filter 0.8s ease;
+}
+.actu-card:hover .actu-card__img img {
+  filter: grayscale(0) contrast(1.05);
+}
+.actu-card__title {
+  transition: color 0.4s ease;
+}
+.actu-card:hover .actu-card__title {
+  color: var(--accent);
+}
+
+/* Boutons : le remplissage restait sous le fond des sections parentes
+   (`z-index: -1` sans contexte d'empilement propre). */
+.btn {
+  isolation: isolate;
+  transition:
+    color 0.4s var(--ease-premium),
+    border-color 0.4s var(--ease-premium),
+    background-color 0.4s var(--ease-premium);
+}
+.btn::before {
+  transition: transform 0.5s var(--ease-premium);
+}
+.btn:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 4px;
+}
+
+/* Grands kanji décoratifs : dérive lente liée au défilement. */
+@supports (animation-timeline: view()) {
+  @keyframes kanjiDrift {
+    from {
+      translate: 0 10vh;
+      opacity: 0;
+    }
+    35% {
+      opacity: 1;
+    }
+    to {
+      translate: 0 -10vh;
+    }
+  }
+  .cta-band__kanji,
+  .page-hero__kanji,
+  .manifesto__kanji {
+    animation: kanjiDrift linear both;
+    animation-timeline: view();
+    animation-range: entry 0% exit 100%;
+  }
+
+  /* Fine barre dorée de progression de lecture, en haut de l'écran. */
+  @keyframes readProgress {
+    from {
+      scale: 0 1;
+    }
+    to {
+      scale: 1 1;
+    }
+  }
+  #vitrine-shell::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    z-index: 200;
+    background: linear-gradient(90deg, var(--accent), var(--gold-bright, var(--accent)));
+    transform-origin: left center;
+    pointer-events: none;
+    animation: readProgress linear both;
+    animation-timeline: scroll(root);
+  }
+}
+
+/* ---------------------------------------------------------------------
+ * Mouvement réduit : contenu immédiatement visible, rien ne bouge.
+ * ------------------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal,
+  .reveal:not(.in) {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .hero__logo-medallion,
+  .hero__logo-big,
+  .hero__kanji-bg,
+  .hero__visual,
+  .cta-band__kanji,
+  .page-hero__kanji,
+  .manifesto__kanji {
+    animation: none !important;
+  }
+  .section-label::before,
+  .img-curtain img {
+    scale: none !important;
+  }
+  .img-curtain img {
+    clip-path: none !important;
+  }
+  .voie__item .voie__kanji,
+  .value .value__kanji {
+    filter: none !important;
+    opacity: 1 !important;
+  }
+  #vitrine-shell::before {
+    display: none;
+  }
+}

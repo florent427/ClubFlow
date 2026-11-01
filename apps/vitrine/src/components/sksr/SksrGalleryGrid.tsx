@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { Lightbox } from './Lightbox';
+import { MediaImg } from '@/components/MediaImg';
 
 export interface GalleryPhotoItem {
   id: string;
@@ -96,7 +97,12 @@ export function SksrGalleryGrid({ photos, filters = FILTERS }: Props) {
               }}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={p.url} alt={p.title} />
+              <MediaImg
+                src={p.url}
+                alt={p.title}
+                sizes="(max-width: 960px) 100vw, 33vw"
+                maxWidth={828}
+              />
               <div className="gal-item__cap">
                 <span className="gal-item__tag">{p.tag}</span>
                 <div className="gal-item__title">{p.title}</div>

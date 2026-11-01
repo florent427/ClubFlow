@@ -1,6 +1,7 @@
 import { SectionHeader } from './SectionHeader';
 import type { EditContext } from '@/lib/edit-context';
 import styles from './GallerySection.module.css';
+import { MediaImg } from '@/components/MediaImg';
 
 export interface GalleryPhoto {
   id: string;
@@ -44,7 +45,12 @@ export function GallerySection({
         <div className={styles.grid}>
           {photos.map((p) => (
             <figure key={p.id} className={styles.tile}>
-              <img src={p.imageUrl} alt={p.caption ?? ''} loading="lazy" />
+              <MediaImg
+                src={p.imageUrl}
+                alt={p.caption ?? ''}
+                sizes="(max-width: 960px) 100vw, 33vw"
+                maxWidth={828}
+              />
               {p.caption ? (
                 <figcaption className={styles.caption}>{p.caption}</figcaption>
               ) : null}

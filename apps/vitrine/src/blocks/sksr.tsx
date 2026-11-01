@@ -19,6 +19,7 @@ import { EditableImage } from '@/components/edit/EditableImage';
 import { EditableList } from '@/components/edit/EditableList';
 import { EditableCta } from '@/components/edit/EditableCta';
 import { CounterNumber } from '@/components/sksr/CounterNumber';
+import { MediaImg } from '@/components/MediaImg';
 import type { EditContext } from '@/lib/edit-context';
 
 type EditProps = {
@@ -76,14 +77,17 @@ export function SksrHero(props: SksrHeroProps) {
       {label !== undefined ? (
         <EditableText
           as="div"
-          className="hero__label reveal"
+          className="hero__label hero-in"
           sectionId={sectionId}
           field="label"
           value={label}
           edit={edit}
         />
       ) : null}
-      <h1 className="hero__title reveal d1">
+      {/* Le hero est au-dessus de la ligne de flottaison : animation CSS
+          pure (`hero-in`), jamais `.reveal`, qui attendait l'hydratation
+          JS et laissait l'écran noir plusieurs secondes sur mobile. */}
+      <h1 className="hero__title hero-in hero-in--title">
         {titleTop ? (
           <>
             <EditableText
@@ -133,7 +137,7 @@ export function SksrHero(props: SksrHeroProps) {
       {subtitle !== undefined ? (
         <EditableText
           as="p"
-          className="hero__sub reveal d2"
+          className="hero__sub hero-in hero-in--2"
           sectionId={sectionId}
           field="subtitle"
           value={subtitle}
@@ -141,7 +145,7 @@ export function SksrHero(props: SksrHeroProps) {
         />
       ) : null}
       {(ctaPrimary || ctaSecondary) && (
-        <div className="hero__cta-row reveal d3">
+        <div className="hero__cta-row hero-in hero-in--3">
           {ctaPrimary ? (
             <EditableCta
               sectionId={sectionId}
@@ -177,7 +181,7 @@ export function SksrHero(props: SksrHeroProps) {
             { key: 'label', label: 'Libellé' },
           ]}
         >
-          <div className="hero__meta reveal d4">
+          <div className="hero__meta hero-in hero-in--4">
             {metaItems.map((m, i) => (
               <div key={i} className="hero__meta-item">
                 <div className="hero__meta-val">
@@ -197,7 +201,13 @@ export function SksrHero(props: SksrHeroProps) {
       {heroContent}
       <div className="hero__visual">
         {visualImageUrl ? (
-          <img src={visualImageUrl} alt="" />
+          <MediaImg
+            src={visualImageUrl}
+            alt=""
+            sizes="100vw"
+            priority
+            className="hero__visual-img"
+          />
         ) : (
           <svg
             viewBox="0 0 800 1200"
@@ -229,9 +239,15 @@ export function SksrHero(props: SksrHeroProps) {
             >
               空
             </text>
-            <g stroke="#c9a96a" strokeOpacity="0.22" strokeWidth="1" fill="none">
-              <circle cx="400" cy="600" r="260" />
-              <circle cx="400" cy="600" r="320" />
+            <g
+              className="hero-enso"
+              stroke="#c9a96a"
+              strokeOpacity="0.22"
+              strokeWidth="1"
+              fill="none"
+            >
+              <circle cx="400" cy="600" r="260" pathLength={1} />
+              <circle cx="400" cy="600" r="320" pathLength={1} />
             </g>
           </svg>
         )}
@@ -543,9 +559,13 @@ export function SksrDojoSplit(props: SksrDojoSplitProps) {
         edit={edit}
         label="Image dojo"
       >
-        <div className="dojo-split__image">
+        <div className="dojo-split__image img-curtain reveal">
           {props.imageUrl ? (
-            <img src={props.imageUrl} alt="Dojo" />
+            <MediaImg
+              src={props.imageUrl}
+              alt="Le dojo"
+              sizes="(max-width: 960px) 100vw, 50vw"
+            />
           ) : (
             <div style={{ background: 'var(--ink-2)', width: '100%', height: '100%' }} />
           )}
@@ -673,7 +693,15 @@ export function SksrActuPreview(props: SksrActuPreviewProps) {
             <div className="actu-card__img">
               <span className="actu-card__tag">{a.tag}</span>
               {a.coverImageUrl ? (
-                <img src={a.coverImageUrl} alt={a.title} />
+                <MediaImg
+                  src={a.coverImageUrl}
+                  alt={a.title}
+                  sizes={
+                    a.featured
+                      ? '(max-width: 960px) 100vw, 66vw'
+                      : '(max-width: 960px) 100vw, 33vw'
+                  }
+                />
               ) : (
                 <svg
                   viewBox="0 0 800 500"
@@ -912,12 +940,16 @@ export function SksrTwoCol(props: SksrTwoColProps) {
         edit={edit}
         label="Visuel"
       >
-        <div className="two-col__visual reveal d2">
+        <div className="two-col__visual img-curtain reveal d2">
           {props.stamp ? (
             <div className="two-col__stamp">{props.stamp}</div>
           ) : null}
           {props.imageUrl ? (
-            <img src={props.imageUrl} alt="" />
+            <MediaImg
+              src={props.imageUrl}
+              alt=""
+              sizes="(max-width: 960px) 100vw, 50vw"
+            />
           ) : (
             <svg
               viewBox="0 0 800 1000"
