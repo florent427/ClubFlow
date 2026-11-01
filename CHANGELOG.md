@@ -9,6 +9,21 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.84.0](https://github.com/florent427/ClubFlow/compare/v0.83.0...v0.84.0) (2026-11-01)
+
+
+### ✨ Features
+
+* **admin:** éditeur visuel des sections de la vitrine ([91e6829](https://github.com/florent427/ClubFlow/commit/91e6829be96827b1b75bf4955d9bcc271d94557d))
+* **vitrine:** corrige les bugs du site public et ajoute des animations premium ([55e2090](https://github.com/florent427/ClubFlow/commit/55e2090b08cd416639be3c815aa3f41d5e59b926))
+* **vitrine:** fondu entre les pages et Dōjō-kun lu au défilement ([5a499f1](https://github.com/florent427/ClubFlow/commit/5a499f12e70089a056e3b5990c1a801486e008ba))
+* **vitrine:** simplifie la navigation et rend le site plus pratique ([7e14a93](https://github.com/florent427/ClubFlow/commit/7e14a9357ad3607704353f3d315302f2c2fe0289))
+
+
+### 🐛 Bug Fixes
+
+* **vitrine:** les animations liées au défilement suivaient la page entière ([5a499f1](https://github.com/florent427/ClubFlow/commit/5a499f12e70089a056e3b5990c1a801486e008ba))
+
 ## [0.83.0](https://github.com/florent427/ClubFlow/compare/v0.82.2...v0.83.0) (2026-10-30)
 
 
