@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.85.1](https://github.com/florent427/ClubFlow/compare/v0.85.0...v0.85.1) (2026-11-01)
+
+
+### 🐛 Bug Fixes
+
+* **vitrine:** filtres alignés sur l'en-tête, favicon du club, carte valide ([95c634f](https://github.com/florent427/ClubFlow/commit/95c634f2bdc2a5690840e20bf3291b2de132b22b))
+
 ## [0.85.0](https://github.com/florent427/ClubFlow/compare/v0.84.1...v0.85.0) (2026-11-01)
 
 
