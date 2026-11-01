@@ -3,12 +3,16 @@ import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   CLUB_VITRINE_PAGE,
+  REORDER_VITRINE_PAGE_SECTIONS,
   UPDATE_VITRINE_PAGE_SECTION,
   UPDATE_VITRINE_PAGE_SEO,
   type ClubVitrinePageData,
 } from '../../lib/vitrine-documents';
 import { useToast } from '../../components/ToastProvider';
 import { useCurrentClub } from '../../lib/use-current-club';
+import { OpenEditModeButton } from './OpenEditModeButton';
+import { SectionPropsForm } from './SectionPropsForm';
+import { blockLabel, moveItem } from './section-form';
 
 interface Section {
   id: string;
@@ -17,14 +21,12 @@ interface Section {
 }
 
 /**
- * Éditeur Phase 1 : formulaire JSON par section.
+ * Éditeur des pages de la vitrine.
  *
- * Pour chaque section, on affiche ses `props` comme JSON éditable dans un
- * textarea avec bouton « Enregistrer ». Une évolution Phase 2 (form dédié
- * par type de bloc, ou éditeur inline sur la vitrine) est prévue.
- *
- * C'est volontairement minimal pour livrer rapidement un admin fonctionnel ;
- * l'usage principal est l'édition inline côté vitrine.
+ * Chaque section s'ouvre sur un formulaire déduit de ses `props` (textes,
+ * images de la médiathèque, listes à compléter ou réordonner), avec un mode
+ * JSON en secours. L'ordre des sections se règle ici ; l'édition directe sur
+ * le site reste accessible par « Éditer sur le site ».
  */
 export function VitrinePageEditor() {
   const { slug = 'index' } = useParams<{ slug: string }>();
@@ -36,6 +38,9 @@ export function VitrinePageEditor() {
       variables: { slug },
       fetchPolicy: 'cache-and-network',
     },
+  );
+  const [reorder, { loading: reordering }] = useMutation(
+    REORDER_VITRINE_PAGE_SECTIONS,
   );
 
   const page = data?.clubVitrinePage ?? null;
@@ -72,7 +77,24 @@ export function VitrinePageEditor() {
       </p>
     );
 
+  const pageId = page.id;
+  const sitePath = slug === 'index' ? '/' : `/${slug}`;
   const publicUrl = `${vitrineUrl}${slug === 'index' ? '' : '/' + slug}`;
+
+  async function move(from: number, to: number): Promise<void> {
+    const ids = moveItem(
+      sections.map((s) => s.id),
+      from,
+      to,
+    );
+    try {
+      await reorder({
+        variables: { input: { pageId, orderedSectionIds: ids } },
+      });
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Échec', 'error');
+    }
+  }
 
   return (
     <>
@@ -83,20 +105,25 @@ export function VitrinePageEditor() {
               <Link to="/vitrine">← Site vitrine</Link> · Édition
             </p>
             <h1 className="members-loom__title">
-              {slug}{' '}
+              {slug === 'index' ? 'Accueil' : slug}{' '}
               <small style={{ color: 'var(--text-soft, #888)', fontSize: 16 }}>
                 ({sections.length} sections)
               </small>
             </h1>
           </div>
-          <a
-            href={publicUrl}
-            target="_blank"
-            rel="noopener"
-            className="btn btn-ghost"
-          >
-            Aperçu public ↗
-          </a>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <OpenEditModeButton redirect={sitePath} className="btn btn-primary">
+              Éditer sur le site ↗
+            </OpenEditModeButton>
+            <a
+              href={publicUrl}
+              target="_blank"
+              rel="noopener"
+              className="btn btn-ghost"
+            >
+              Aperçu public ↗
+            </a>
+          </div>
         </div>
       </header>
 
@@ -111,16 +138,20 @@ export function VitrinePageEditor() {
           Sections
         </h2>
         <p className="muted" style={{ marginBottom: 16 }}>
-          Chaque section est un bloc typé. Modifiez les props en JSON et
-          enregistrez — une révision est créée à chaque sauvegarde.
+          Ouvrez une section pour modifier ses textes, ses images et ses
+          listes. Les flèches changent l'ordre d'affichage sur le site. Une
+          révision est créée à chaque enregistrement.
         </p>
 
         {sections.map((section, i) => (
           <SectionCard
             key={section.id}
             index={i}
+            count={sections.length}
             pageId={page.id}
             section={section}
+            reordering={reordering}
+            onMove={(to) => void move(i, to)}
             onSaved={() => showToast('Section enregistrée.', 'success')}
           />
         ))}
@@ -159,15 +190,8 @@ function SeoEditor({
   }
 
   return (
-    <section
-      style={{
-        border: '1px solid var(--border, #ddd)',
-        borderRadius: 8,
-        padding: 16,
-        marginTop: 16,
-      }}
-    >
-      <h3 style={{ margin: '0 0 12px' }}>SEO</h3>
+    <section className="vpe-card" style={{ marginTop: 16 }}>
+      <h3 style={{ margin: '0 0 12px' }}>Référencement (SEO)</h3>
       <label className="field">
         <span>Titre (balise &lt;title&gt;)</span>
         <input
@@ -202,85 +226,174 @@ function SeoEditor({
 
 function SectionCard({
   index,
+  count,
   pageId,
   section,
+  reordering,
+  onMove,
   onSaved,
 }: {
   index: number;
+  count: number;
   pageId: string;
   section: Section;
+  reordering: boolean;
+  onMove: (to: number) => void;
   onSaved: () => void;
 }) {
-  const [patchText, setPatchText] = useState(() =>
-    JSON.stringify(section.props, null, 2),
-  );
+  const { showToast } = useToast();
+  const saved = useMemo(() => JSON.stringify(section.props), [section.props]);
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(section.props);
+  const [baseline, setBaseline] = useState(saved);
+  const [jsonMode, setJsonMode] = useState(false);
+  const [jsonText, setJsonText] = useState('');
   const [save, { loading }] = useMutation(UPDATE_VITRINE_PAGE_SECTION, {
     refetchQueries: [],
   });
 
-  async function onSave(): Promise<void> {
-    let patchJson = '{}';
+  // Section modifiée ailleurs (édition sur le site, restauration) : on
+  // reprend la version enregistrée, sauf si une saisie est en cours.
+  if (saved !== baseline) {
+    if (JSON.stringify(draft) === baseline) setDraft(section.props);
+    setBaseline(saved);
+  }
+
+  const dirty = jsonMode
+    ? jsonText !== JSON.stringify(draft, null, 2) || JSON.stringify(draft) !== saved
+    : JSON.stringify(draft) !== saved;
+
+  function parseJson(): Record<string, unknown> | null {
     try {
-      JSON.parse(patchText); // validate
-      patchJson = patchText;
+      const parsed: unknown = JSON.parse(jsonText);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('un objet { … } est attendu');
+      }
+      return parsed as Record<string, unknown>;
     } catch (err) {
-      alert(`JSON invalide : ${err instanceof Error ? err.message : err}`);
-      return;
+      showToast(
+        `JSON invalide : ${err instanceof Error ? err.message : String(err)}`,
+        'error',
+      );
+      return null;
     }
+  }
+
+  function toggleJson(): void {
+    if (jsonMode) {
+      const parsed = parseJson();
+      if (!parsed) return;
+      setDraft(parsed);
+    } else {
+      setJsonText(JSON.stringify(draft, null, 2));
+    }
+    setJsonMode(!jsonMode);
+  }
+
+  function cancel(): void {
+    setDraft(section.props);
+    setJsonText(JSON.stringify(section.props, null, 2));
+  }
+
+  async function onSave(): Promise<void> {
+    const props = jsonMode ? parseJson() : draft;
+    if (!props) return;
     try {
       await save({
         variables: {
-          input: { pageId, sectionId: section.id, patchJson },
+          input: { pageId, sectionId: section.id, patchJson: JSON.stringify(props) },
         },
       });
+      setDraft(props);
       onSaved();
     } catch (err) {
-      alert(`Échec : ${err instanceof Error ? err.message : err}`);
+      showToast(err instanceof Error ? err.message : 'Échec', 'error');
     }
   }
 
   return (
-    <article
-      style={{
-        border: '1px solid var(--border, #ddd)',
-        borderRadius: 8,
-        padding: 16,
-        marginBottom: 12,
-      }}
-    >
-      <header style={{ display: 'flex', justifyContent: 'space-between' }}>
-        <strong>
-          #{index + 1} · {section.type}
-        </strong>
-        <code
-          style={{ fontSize: 11, color: 'var(--text-soft, #888)' }}
-          title={section.id}
-        >
-          {section.id.slice(0, 8)}…
-        </code>
-      </header>
-      <textarea
-        value={patchText}
-        onChange={(e) => setPatchText(e.target.value)}
-        rows={Math.max(6, Math.min(24, patchText.split('\n').length + 1))}
-        disabled={loading}
-        style={{
-          width: '100%',
-          fontFamily: 'ui-monospace, monospace',
-          fontSize: 12,
-          marginTop: 8,
-        }}
-      />
-      <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+    <article className={`vpe-card vpe-section${open ? ' is-open' : ''}`}>
+      <header className="vpe-section__head">
         <button
           type="button"
-          className="btn btn-tight"
-          disabled={loading}
-          onClick={() => void onSave()}
+          className="vpe-section__toggle"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
         >
-          {loading ? 'Enregistrement…' : 'Enregistrer'}
+          <span className="vpe-section__num">{index + 1}</span>
+          <span>
+            <strong>{blockLabel(section.type)}</strong>
+            {dirty ? (
+              <span className="vpe-section__dirty"> · non enregistré</span>
+            ) : null}
+            <small className="muted vpe-section__type">{section.type}</small>
+          </span>
         </button>
-      </div>
+        <span className="vpe-list__tools">
+          <button
+            type="button"
+            className="vpe-icon"
+            aria-label="Monter la section"
+            title="Monter la section"
+            disabled={index === 0 || reordering}
+            onClick={() => onMove(index - 1)}
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            className="vpe-icon"
+            aria-label="Descendre la section"
+            title="Descendre la section"
+            disabled={index === count - 1 || reordering}
+            onClick={() => onMove(index + 1)}
+          >
+            ↓
+          </button>
+        </span>
+      </header>
+
+      {open ? (
+        <div className="vpe-section__body">
+          {jsonMode ? (
+            <textarea
+              className="vpe-json"
+              value={jsonText}
+              onChange={(e) => setJsonText(e.target.value)}
+              rows={Math.max(6, Math.min(24, jsonText.split('\n').length + 1))}
+              disabled={loading}
+              spellCheck={false}
+            />
+          ) : (
+            <SectionPropsForm value={draft} onChange={setDraft} />
+          )}
+          <div className="vpe-section__actions">
+            <button
+              type="button"
+              className="btn btn-primary btn-tight"
+              disabled={loading || !dirty}
+              onClick={() => void onSave()}
+            >
+              {loading ? 'Enregistrement…' : 'Enregistrer'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-tight"
+              disabled={loading || !dirty}
+              onClick={cancel}
+            >
+              Annuler les modifications
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-tight vpe-section__json"
+              onClick={toggleJson}
+            >
+              {jsonMode ? 'Revenir au formulaire' : 'Mode avancé (JSON)'}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </article>
   );
 }

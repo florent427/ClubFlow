@@ -42,6 +42,18 @@ export const UPDATE_VITRINE_PAGE_SECTION = gql`
   }
 `;
 
+export const REORDER_VITRINE_PAGE_SECTIONS = gql`
+  mutation ReorderVitrinePageSections(
+    $input: ReorderVitrinePageSectionsInput!
+  ) {
+    reorderVitrinePageSections(input: $input) {
+      id
+      sectionsJson
+      updatedAt
+    }
+  }
+`;
+
 export const UPDATE_VITRINE_PAGE_SEO = gql`
   mutation UpdateVitrinePageSeo($input: UpdateVitrinePageSeoInput!) {
     updateVitrinePageSeo(input: $input) {
