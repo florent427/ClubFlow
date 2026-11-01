@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.84.1](https://github.com/florent427/ClubFlow/compare/v0.84.0...v0.84.1) (2026-11-01)
+
+
+### 🐛 Bug Fixes
+
+* **admin:** un module coupé ne renvoie plus vers la sélection du club ([ca33972](https://github.com/florent427/ClubFlow/commit/ca33972edeb7dd483e259c7d957a5cc835f5732f))
+* **admin:** un module coupé ne renvoie plus vers la sélection du club ([154bc91](https://github.com/florent427/ClubFlow/commit/154bc917734a1644fff0cf24987bd4970fcfa378))
+
 ## [0.84.0](https://github.com/florent427/ClubFlow/compare/v0.83.0...v0.84.0) (2026-11-01)
 
 
