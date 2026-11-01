@@ -392,6 +392,15 @@ export type ViewerShopVariant = {
   inStock: boolean;
   /** Ce que l'adhérent peut en faire — jamais combien il en reste. */
   availability: ViewerShopAvailability;
+  /** Pack (ADR-0024) : plusieurs articles vendus ensemble. */
+  isBundle: boolean;
+  /** Ce que contient le pack ; vide hors pack. Aucune quantité en stock. */
+  bundleComponents: Array<{
+    componentVariantId: string;
+    quantity: number;
+    /** « Gants — Rouge ». */
+    label: string;
+  }>;
 };
 
 export type ViewerShopProduct = {

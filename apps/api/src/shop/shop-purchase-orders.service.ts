@@ -355,11 +355,14 @@ export class ShopPurchaseOrdersService {
     }
 
     const variants = await this.prisma.shopProductVariant.findMany({
-      where: { id: { in: [...seen] }, clubId },
+      // Un pack ne se commande pas au fournisseur : ses pièces, oui (ADR-0024).
+      where: { id: { in: [...seen] }, clubId, isBundle: false },
       select: { id: true, productId: true },
     });
     if (variants.length !== seen.size) {
-      throw new BadRequestException('Déclinaison introuvable.');
+      throw new BadRequestException(
+        'Déclinaison introuvable, ou pack : un pack se commande par ses pièces.',
+      );
     }
     const productOf = new Map(variants.map((v) => [v.id, v.productId]));
 
@@ -1340,11 +1343,13 @@ export class ShopPurchaseOrdersService {
     variantIds: string[],
   ) {
     const found = await this.prisma.shopProductVariant.findMany({
-      where: { id: { in: variantIds }, clubId },
+      where: { id: { in: variantIds }, clubId, isBundle: false },
       select: { id: true },
     });
     if (found.length !== new Set(variantIds).size) {
-      throw new BadRequestException('Déclinaison introuvable.');
+      throw new BadRequestException(
+        'Déclinaison introuvable, ou pack : un pack se commande par ses pièces.',
+      );
     }
   }
 }

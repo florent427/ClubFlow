@@ -525,6 +525,12 @@ const VIEWER_SHOP_PRODUCT_FIELDS = `
     unitPriceCents
     inStock
     availability
+    isBundle
+    bundleComponents {
+      componentVariantId
+      quantity
+      label
+    }
   }
 `;
 

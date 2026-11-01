@@ -112,6 +112,8 @@ export type WorldVariant = {
   priceCents: number | null;
   active: boolean;
   trackStock: boolean;
+  /** Pack (ADR-0024). Le monde n'en contient aucun : toujours faux. */
+  isBundle: boolean;
   onHand: number;
   available: number;
   lowStockAlertedAt: Date | null;
@@ -248,6 +250,7 @@ export const VARIANT = (over: Partial<WorldVariant> = {}): WorldVariant => ({
   priceCents: null,
   active: true,
   trackStock: true,
+  isBundle: false,
   onHand: 3,
   available: 3,
   lowStockAlertedAt: null,
@@ -772,12 +775,13 @@ export function makeWorld(seed: {
   };
 
   const variantMatches = (v: WorldVariant, w: any): boolean => {
-    allowOnly(w, ['id', 'clubId', 'active', 'trackStock', 'onHand', 'available']);
+    allowOnly(w, ['id', 'clubId', 'active', 'trackStock', 'isBundle', 'onHand', 'available']);
     return (
       (w.id === undefined || v.id === w.id) &&
       (w.clubId === undefined || v.clubId === w.clubId) &&
       (w.active === undefined || v.active === w.active) &&
       (w.trackStock === undefined || v.trackStock === w.trackStock) &&
+      (w.isBundle === undefined || v.isBundle === w.isBundle) &&
       count(v.onHand, w.onHand) &&
       count(v.available, w.available)
     );
@@ -884,9 +888,11 @@ export function makeWorld(seed: {
         if (select) return respond(pick(v, select));
         const row: Record<string, unknown> = clone(v);
         if (include) {
-          allowOnly(include, ['product']);
+          allowOnly(include, ['product', 'bundleComponents']);
           const p = products.find((x) => x.id === v.productId);
           row.product = p ? pick(p, include.product.select) : null;
+          // Aucun pack dans ce monde : une composition vide (ADR-0024).
+          if (include.bundleComponents) row.bundleComponents = [];
         }
         return respond(row);
       }),
@@ -895,6 +901,10 @@ export function makeWorld(seed: {
         for (const v of hit) write(v, data);
         return { count: hit.length };
       }),
+    },
+    shopOrderLineComponent: {
+      // Aucune ligne de pack dans ce monde (ADR-0024).
+      findMany: jest.fn(async () => []),
     },
     shopStockMovement: {
       create: jest.fn(async ({ data }: any) => {

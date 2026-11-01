@@ -35,6 +35,8 @@ function variant(over: Partial<ShopProductVariant> = {}): ShopProductVariant {
     availability: 'IN_STOCK',
     belowThreshold: false,
     active: true,
+    isBundle: false,
+    bundleComponents: [],
     ...over,
   };
 }

@@ -180,6 +180,9 @@ function makeHarness(
     shopStockMovement: {
       count: jest.fn(async () => seed.history?.movements ?? 0),
     },
+    shopBundleComponent: {
+      count: jest.fn(async () => 0),
+    },
     shopOrderLine: {
       count: jest.fn(async () => seed.history?.orderLines ?? 0),
     },

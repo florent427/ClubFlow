@@ -19,10 +19,28 @@ type VariantRow = {
   clubId: string;
   active: boolean;
   trackStock: boolean;
+  /** Pack (ADR-0024) : vendu, jamais stocké. */
+  isBundle: boolean;
   onHand: number;
   available: number;
   reorderThreshold: number | null;
   lowStockAlertedAt: Date | null;
+};
+
+/** Une pièce de pack au catalogue (`ShopBundleComponent`). */
+type BundleRow = {
+  clubId: string;
+  bundleVariantId: string;
+  componentVariantId: string;
+  quantity: number;
+};
+
+/** Une pièce figée sur une ligne de commande (`ShopOrderLineComponent`). */
+type LinePartRow = {
+  clubId: string;
+  orderLineId: string;
+  variantId: string;
+  unitQty: number;
 };
 
 const VARIANT = (over: Partial<VariantRow> = {}): VariantRow => ({
@@ -30,6 +48,7 @@ const VARIANT = (over: Partial<VariantRow> = {}): VariantRow => ({
   clubId: 'club-1',
   active: true,
   trackStock: true,
+  isBundle: false,
   onHand: 5,
   available: 5,
   reorderThreshold: null,
@@ -42,14 +61,18 @@ const VARIANT = (over: Partial<VariantRow> = {}): VariantRow => ({
  * satisfont TOUTES les conditions, et renvoie le nombre de lignes touchées.
  * C'est ce qui fait mordre les tests.
  */
-function makeHarness(rows: VariantRow[]) {
+function makeHarness(rows: VariantRow[], bundles: BundleRow[] = []) {
   const movements: Array<Record<string, unknown>> = [];
+  const lineParts: LinePartRow[] = [];
 
   const matches = (r: VariantRow, where: Record<string, any>): boolean => {
     if (where.id !== undefined && r.id !== where.id) return false;
     if (where.clubId !== undefined && r.clubId !== where.clubId) return false;
     if (where.active !== undefined && r.active !== where.active) return false;
     if (where.trackStock !== undefined && r.trackStock !== where.trackStock) {
+      return false;
+    }
+    if (where.isBundle !== undefined && r.isBundle !== where.isBundle) {
       return false;
     }
     if (where.available?.gte !== undefined && !(r.available >= where.available.gte)) {
@@ -99,10 +122,30 @@ function makeHarness(rows: VariantRow[]) {
     }),
     // Une COPIE, comme Prisma : une lecture ne suit pas les écritures qui
     // la suivent.
-    findFirst: jest.fn(async ({ where }: { where: any }) => {
+    findFirst: jest.fn(
+      async ({
+        where,
+      }: {
+        where: any;
+      }): Promise<
+        | (VariantRow & {
+            bundleComponents?: Array<{ componentVariantId: string; quantity: number }>;
+          })
+        | null
+      > => {
       const hit = rows.find((r) => matches(r, where));
-      return hit ? { ...hit } : null;
-    }),
+      if (!hit) return null;
+      return {
+        ...hit,
+        bundleComponents: bundles
+          .filter((b) => b.bundleVariantId === hit.id && b.clubId === hit.clubId)
+          .map((b) => ({
+            componentVariantId: b.componentVariantId,
+            quantity: b.quantity,
+          })),
+      };
+    },
+    ),
   };
 
   const tx = {
@@ -112,6 +155,38 @@ function makeHarness(rows: VariantRow[]) {
         movements.push(data);
         return data;
       }),
+    },
+    shopBundleComponent: {
+      findMany: jest.fn(async ({ where }: { where: any }) =>
+        bundles.filter(
+          (b) =>
+            b.clubId === where.clubId &&
+            where.bundleVariantId.in.includes(b.bundleVariantId),
+        ),
+      ),
+    },
+    shopOrderLineComponent: {
+      createMany: jest.fn(async ({ data }: { data: LinePartRow[] }) => {
+        for (const d of data) {
+          if (
+            lineParts.some(
+              (l) => l.orderLineId === d.orderLineId && l.variantId === d.variantId,
+            )
+          ) {
+            throw new Error('P2002 orderLineId_variantId');
+          }
+        }
+        lineParts.push(...data);
+        return { count: data.length };
+      }),
+      findMany: jest.fn(async ({ where }: { where: any }) =>
+        lineParts
+          .filter(
+            (l) => l.clubId === where.clubId && l.orderLineId === where.orderLineId,
+          )
+          .sort((a, b) => (a.variantId < b.variantId ? -1 : 1))
+          .map((l) => ({ variantId: l.variantId, unitQty: l.unitQty })),
+      ),
     },
   };
 
@@ -123,7 +198,7 @@ function makeHarness(rows: VariantRow[]) {
   };
 
   const svc = new ShopStockService(prisma as unknown as PrismaService);
-  return { svc, tx, rows, movements };
+  return { svc, tx, rows, movements, lineParts };
 }
 
 const ORDER = { orderId: 'o-1', orderLineId: 'ol-1' };
@@ -670,5 +745,183 @@ describe('ShopStockService.resumeTracking — reprise du suivi', () => {
 
     expect(h.rows[0]).toMatchObject({ trackStock: false, onHand: 5, available: 2 });
     expect(h.movements).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Packs composés (ADR-0024)
+// ---------------------------------------------------------------------------
+
+/**
+ * Un pack complet : 1 paire de gants rouges + 1 paire de gants bleus. Le pack
+ * lui-même n'a aucun stock, et `trackStock: false` — c'est ce qui le ferait
+ * passer pour un article illimité si le moteur l'oubliait.
+ */
+function packHarness(over: { rouge?: number; bleu?: number } = {}) {
+  const PACK = VARIANT({
+    id: 'v-pack',
+    trackStock: false,
+    isBundle: true,
+    onHand: 0,
+    available: 0,
+  });
+  const ROUGE = VARIANT({ id: 'v-gants-rouge', onHand: over.rouge ?? 5, available: over.rouge ?? 5 });
+  const BLEU = VARIANT({ id: 'v-gants-bleu', onHand: over.bleu ?? 5, available: over.bleu ?? 5 });
+  const bundles = [
+    { clubId: 'club-1', bundleVariantId: 'v-pack', componentVariantId: 'v-gants-rouge', quantity: 1 },
+    { clubId: 'club-1', bundleVariantId: 'v-pack', componentVariantId: 'v-gants-bleu', quantity: 2 },
+  ];
+  const h = makeHarness([PACK, ROUGE, BLEU], bundles);
+  const row = (id: string) => h.rows.find((r) => r.id === id)!;
+  return { ...h, bundles, row };
+}
+
+const PACK_LINE = {
+  clubId: 'club-1',
+  variantId: 'v-pack',
+  orderId: 'o-1',
+  orderLineId: 'ol-pack',
+};
+
+describe('ShopStockService — packs composés (ADR-0024)', () => {
+  it('réserver un pack réserve ses pièces, multipliées par leur quantité, et fige la composition sur la ligne', async () => {
+    const h = packHarness();
+
+    await h.svc.reserve(h.tx as never, { ...PACK_LINE, qty: 2 });
+
+    expect(h.row('v-gants-rouge').available).toBe(3); // 2 packs × 1
+    expect(h.row('v-gants-bleu').available).toBe(1); // 2 packs × 2
+    expect(h.row('v-pack')).toMatchObject({ onHand: 0, available: 0 });
+    expect(h.lineParts).toEqual([
+      { clubId: 'club-1', orderLineId: 'ol-pack', variantId: 'v-gants-bleu', unitQty: 2 },
+      { clubId: 'club-1', orderLineId: 'ol-pack', variantId: 'v-gants-rouge', unitQty: 1 },
+    ]);
+    // Le journal porte les pièces, rattachées à la ligne du pack.
+    expect(h.movements).toEqual([
+      expect.objectContaining({ variantId: 'v-gants-bleu', kind: ShopStockMovementKind.RESERVE, availableDelta: -4, orderLineId: 'ol-pack' }),
+      expect.objectContaining({ variantId: 'v-gants-rouge', kind: ShopStockMovementKind.RESERVE, availableDelta: -2, orderLineId: 'ol-pack' }),
+    ]);
+  });
+
+  it('REFUSE le pack dès qu’une pièce manque — un pack n’est jamais vendu amputé', async () => {
+    const h = packHarness({ bleu: 3 });
+
+    await expect(
+      h.svc.reserve(h.tx as never, { ...PACK_LINE, qty: 2 }),
+    ).rejects.toThrow('une de ses pièces manque');
+  });
+
+  it('un pack n’est JAMAIS un stock illimité, même sans pièce', async () => {
+    const h = packHarness();
+    h.bundles.length = 0;
+
+    await expect(
+      h.svc.reserve(h.tx as never, { ...PACK_LINE, qty: 1 }),
+    ).rejects.toThrow(BadRequestException);
+    expect(h.movements).toHaveLength(0);
+  });
+
+  it('un pack retiré de la vente ne se réserve pas', async () => {
+    const h = packHarness();
+    h.row('v-pack').active = false;
+
+    await expect(
+      h.svc.reserve(h.tx as never, { ...PACK_LINE, qty: 1 }),
+    ).rejects.toThrow(BadRequestException);
+    expect(h.row('v-gants-rouge').available).toBe(5);
+  });
+
+  it('libère les pièces FIGÉES, même si le catalogue a changé depuis', async () => {
+    const h = packHarness();
+    await h.svc.reserve(h.tx as never, { ...PACK_LINE, qty: 1 });
+
+    // Le club remplace les gants bleus par des rouges dans le pack.
+    h.bundles.splice(0, h.bundles.length, {
+      clubId: 'club-1',
+      bundleVariantId: 'v-pack',
+      componentVariantId: 'v-gants-rouge',
+      quantity: 3,
+    });
+    await h.svc.release(h.tx as never, { ...PACK_LINE, qty: 1 });
+
+    expect(h.row('v-gants-rouge').available).toBe(5);
+    expect(h.row('v-gants-bleu').available).toBe(5);
+  });
+
+  it('la sortie au paiement fait quitter le placard aux pièces', async () => {
+    const h = packHarness();
+    await h.svc.reserve(h.tx as never, { ...PACK_LINE, qty: 1 });
+
+    await h.svc.fulfill(h.tx as never, { ...PACK_LINE, qty: 1 });
+
+    expect(h.row('v-gants-rouge')).toMatchObject({ onHand: 4, available: 4 });
+    expect(h.row('v-gants-bleu')).toMatchObject({ onHand: 3, available: 3 });
+    expect(h.row('v-pack')).toMatchObject({ onHand: 0, available: 0 });
+  });
+
+  it('un pack rendu remonte ses pièces ; déclaré perdu, elles redescendent', async () => {
+    const h = packHarness();
+    await h.svc.reserve(h.tx as never, { ...PACK_LINE, qty: 1 });
+    await h.svc.fulfill(h.tx as never, { ...PACK_LINE, qty: 1 });
+
+    const tracked = await h.svc.returnToStock(h.tx as never, { ...PACK_LINE, qty: 1 });
+    expect(tracked).toBe(true);
+    expect(h.row('v-gants-rouge')).toMatchObject({ onHand: 5, available: 5 });
+    expect(h.row('v-gants-bleu')).toMatchObject({ onHand: 5, available: 5 });
+
+    await h.svc.recordShrinkage(
+      { ...PACK_LINE, qty: 1, reason: 'Abîmé' },
+      h.tx as never,
+    );
+    expect(h.row('v-gants-rouge')).toMatchObject({ onHand: 4, available: 4 });
+    expect(h.row('v-gants-bleu')).toMatchObject({ onHand: 3, available: 3 });
+  });
+
+  it('une perte sur un pack SANS ligne est refusée : rien ne dit quelles pièces sortir', async () => {
+    const h = packHarness();
+
+    await expect(
+      h.svc.recordShrinkage({ clubId: 'club-1', variantId: 'v-pack', qty: 1, reason: 'Casse' }),
+    ).rejects.toThrow(BadRequestException);
+    expect(h.row('v-gants-rouge').onHand).toBe(5);
+  });
+
+  it('un pack ne se précommande pas : `reserveUpTo` le refuse au lieu de le servir en illimité', async () => {
+    const h = packHarness();
+
+    await expect(
+      h.svc.reserveUpTo(h.tx as never, { ...PACK_LINE, qty: 1 }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('une déclinaison non suivie ordinaire reste illimitée', async () => {
+    const h = makeHarness([VARIANT({ trackStock: false, available: 0 })]);
+
+    await h.svc.reserve(h.tx as never, { clubId: 'club-1', variantId: 'v-1', qty: 3, ...ORDER });
+
+    expect(h.movements).toHaveLength(0);
+  });
+
+  it('verrouille pièces et articles seuls dans UN ordre croissant, pack déplié', async () => {
+    const h = packHarness();
+
+    await h.svc.lockForOrder(h.tx as never, 'club-1', ['v-pack', 'v-gants-rouge']);
+
+    const locked = h.tx.shopProductVariant.updateMany.mock.calls.map(
+      ([arg]) => (arg as { where: { id: string } }).where.id,
+    );
+    expect(locked).toEqual(['v-gants-bleu', 'v-gants-rouge']);
+  });
+
+  it('dit quelles déclinaisons stockées une ligne fait bouger', async () => {
+    const h = packHarness();
+    await h.svc.reserve(h.tx as never, { ...PACK_LINE, qty: 1 });
+
+    await expect(
+      h.svc.stockedVariantIdsOfLine(h.tx as never, 'club-1', { id: 'ol-pack', variantId: 'v-pack' }),
+    ).resolves.toEqual(['v-gants-bleu', 'v-gants-rouge']);
+    await expect(
+      h.svc.stockedVariantIdsOfLine(h.tx as never, 'club-1', { id: 'ol-autre', variantId: 'v-1' }),
+    ).resolves.toEqual(['v-1']);
   });
 });

@@ -43,6 +43,7 @@ type VariantRow = {
   clubId: string;
   active: boolean;
   trackStock: boolean;
+  isBundle: boolean;
   onHand: number;
   available: number;
   lowStockAlertedAt: Date | null;
@@ -74,6 +75,7 @@ const declinaison = (over: Partial<VariantRow> = {}): VariantRow => ({
   clubId: CLUB,
   active: true,
   trackStock: true,
+  isBundle: false,
   onHand: 0,
   available: 0,
   lowStockAlertedAt: null,
@@ -159,12 +161,13 @@ function makeStore(seed: {
     );
   };
   const variantMatches = (v: VariantRow, where: any) => {
-    clauses(where, ['id', 'clubId', 'active', 'trackStock', 'available', 'onHand']);
+    clauses(where, ['id', 'clubId', 'active', 'trackStock', 'isBundle', 'available', 'onHand']);
     return (
       egal(v.id, where.id) &&
       egal(v.clubId, where.clubId) &&
       egal(v.active, where.active) &&
       egal(v.trackStock, where.trackStock) &&
+      egal(v.isBundle, where.isBundle) &&
       entier(v.available, where.available) &&
       entier(v.onHand, where.onHand)
     );

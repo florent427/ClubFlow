@@ -268,6 +268,9 @@ model Club {
   shopVariants       ShopProductVariant[]
   shopStockMovements ShopStockMovement[]
   shopOrders         ShopOrder[]
+  /// Packs composés (ADR-0024).
+  shopBundleComponents    ShopBundleComponent[]
+  shopOrderLineComponents ShopOrderLineComponent[]
 
   /// Approvisionnement (ADR-0013).
   shopSuppliers               ShopSupplier[]
@@ -3685,6 +3688,16 @@ model ShopProductVariant {
   /// au portail de masquer entièrement le sélecteur.
   isDefault Boolean @default(false)
 
+  /// Vraie pour un PACK (ADR-0024) : la déclinaison se vend, mais ne se stocke
+  /// pas. Ses `onHand` et `available` restent à zéro et `trackStock` à faux ;
+  /// le moteur de stock réserve et sort ses COMPOSANTS (`bundleComponents`) à
+  /// sa place, et le stock affiché en est dérivé.
+  ///
+  /// Un booléen dédié et non « a des composants » : le moteur doit savoir, dans
+  /// le prédicat de sa propre écriture, qu'un `trackStock: false` est un pack
+  /// et non un stock illimité. Sans lui, un pack se vendrait sans limite.
+  isBundle Boolean @default(false)
+
   /// Libellé humain figé (« L / Rouge / Floqué »), null si isDefault.
   /// Recopié dans ShopOrderLine.label à la commande.
   label String? @db.VarChar(200)
@@ -3753,6 +3766,11 @@ model ShopProductVariant {
   cartItems         ShopCartItem[]
   /// Exceptions de référence ou de prix chez un fournisseur (ADR-0021 §1).
   supplierOverrides ShopProductSupplierVariant[]
+  /// Composition, si la déclinaison est un pack (ADR-0024).
+  bundleComponents  ShopBundleComponent[]    @relation("ShopBundleOf")
+  /// Packs dont cette déclinaison est une pièce.
+  usedInBundles     ShopBundleComponent[]    @relation("ShopBundleComponentOf")
+  orderLineParts    ShopOrderLineComponent[]
 
   @@unique([productId, optionSignature])
   @@index([clubId, productId, active])
@@ -4168,8 +4186,57 @@ model ShopOrderLine {
 
   returnedAdjustments ShopOrderAdjustment[] @relation("ShopOrderAdjustmentReturnedLine")
   addedByAdjustment   ShopOrderAdjustment?  @relation("ShopOrderAdjustmentNewLine")
+  /// Composition du pack FIGÉE à la réservation (ADR-0024). Vide hors pack.
+  components          ShopOrderLineComponent[]
 
   @@index([orderId])
+  @@index([variantId])
+}
+
+/// Une pièce d'un pack (ADR-0024) : « le pack complet M contient 1 paire de
+/// gants rouges M ». La composition est celle du CATALOGUE, modifiable à tout
+/// moment ; ce que le stock d'une commande a réellement pris est figé à part,
+/// sur `ShopOrderLineComponent`.
+model ShopBundleComponent {
+  id                 String @id @default(uuid())
+  clubId             String
+  /// La déclinaison pack (`isBundle`).
+  bundleVariantId    String
+  /// La pièce : une déclinaison STOCKÉE, jamais un pack (pas d'imbrication).
+  componentVariantId String
+  /// Unités de la pièce par pack vendu.
+  quantity           Int
+
+  club      Club               @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  bundle    ShopProductVariant @relation("ShopBundleOf", fields: [bundleVariantId], references: [id], onDelete: Cascade)
+  /// `Restrict` : supprimer une pièce viderait en silence les packs qui la
+  /// contiennent, et ils se vendraient amputés.
+  component ShopProductVariant @relation("ShopBundleComponentOf", fields: [componentVariantId], references: [id], onDelete: Restrict)
+
+  @@unique([bundleVariantId, componentVariantId])
+  @@index([clubId, componentVariantId])
+}
+
+/// Ce qu'une ligne de pack a pris au stock, figé à la RÉSERVATION (ADR-0024).
+///
+/// La libération, la sortie, le retour et la perte d'une ligne de pack relisent
+/// CET instantané, jamais la composition du catalogue. Sans lui, changer les
+/// gants bleus du pack en gants rouges après une vente ferait libérer des gants
+/// rouges qui n'ont jamais été réservés : le stock dériverait sans qu'aucun
+/// mouvement ne l'explique.
+model ShopOrderLineComponent {
+  id          String @id @default(uuid())
+  clubId      String
+  orderLineId String
+  variantId   String
+  /// Unités de la pièce par pack de la ligne.
+  unitQty     Int
+
+  club      Club               @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  orderLine ShopOrderLine      @relation(fields: [orderLineId], references: [id], onDelete: Cascade)
+  variant   ShopProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@unique([orderLineId, variantId])
   @@index([variantId])
 }
 

@@ -1270,6 +1270,22 @@ export type ShopProductVariant = {
   availability: ShopAvailabilityGql;
   belowThreshold: boolean;
   active: boolean;
+  /**
+   * Pack (ADR-0024) : vendu, jamais stocké. Ses compteurs sont DÉRIVÉS de ses
+   * pièces — ni réception, ni inventaire, ni commande fournisseur.
+   */
+  isBundle: boolean;
+  /** Ce que contient le pack ; vide hors pack. */
+  bundleComponents: ShopBundleComponent[];
+};
+
+/** Une pièce d'un pack : une déclinaison stockée d'un autre article. */
+export type ShopBundleComponent = {
+  componentVariantId: string;
+  /** Unités de la pièce par pack. */
+  quantity: number;
+  /** « Gants — Rouge / M ». */
+  label: string;
 };
 
 export type ShopProduct = {
@@ -1632,6 +1648,9 @@ export type GenerateShopProductVariantsMutationData = {
 };
 export type UpdateShopProductVariantMutationData = {
   updateShopProductVariant: ShopProduct;
+};
+export type SetShopVariantBundleMutationData = {
+  setShopVariantBundle: ShopProduct;
 };
 export type RestockShopVariantMutationData = {
   restockShopVariant: ShopProduct;

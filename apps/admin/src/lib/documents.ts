@@ -2246,6 +2246,12 @@ const SHOP_PRODUCT_VARIANT_FIELDS = `
   availability
   belowThreshold
   active
+  isBundle
+  bundleComponents {
+    componentVariantId
+    quantity
+    label
+  }
 `;
 
 /**
@@ -2613,6 +2619,18 @@ export const UPDATE_SHOP_PRODUCT_VARIANT = gql`
 export const DELETE_SHOP_PRODUCT_VARIANT = gql`
   mutation DeleteShopProductVariant($variantId: ID!) {
     deleteShopProductVariant(variantId: $variantId) {
+      ${SHOP_PRODUCT_FIELDS}
+    }
+  }
+`;
+
+/**
+ * Composition d'un pack (ADR-0024). La liste REMPLACE la précédente ; vide,
+ * elle dissout le pack, qui redevient une déclinaison stockée à zéro.
+ */
+export const SET_SHOP_VARIANT_BUNDLE = gql`
+  mutation SetShopVariantBundle($input: SetShopVariantBundleInput!) {
+    setShopVariantBundle(input: $input) {
       ${SHOP_PRODUCT_FIELDS}
     }
   }

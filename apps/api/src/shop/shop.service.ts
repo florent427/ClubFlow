@@ -18,6 +18,7 @@ import { lockInvoicesInTx } from '../payments/settlement-locks';
 import type { ShopDeliveryNoteData } from '../pdf/shop-delivery-note-pdf.service';
 import type { ShopExchangeNoteData } from '../pdf/shop-exchange-note-pdf.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { stockOf } from './bundle-stock';
 import { availabilityOf } from './enums/shop-availability.enum';
 import { ShopPreorderService } from './shop-preorder.service';
 import { ShopPurchaseOrdersService } from './shop-purchase-orders.service';
@@ -35,8 +36,39 @@ type ViewerIdentity = {
  * deux lectures admin : une lecture qui l'oublierait afficherait « aucun
  * fournisseur » sans rien signaler.
  */
+/**
+ * Pièces d'un pack (ADR-0024), avec ce qu'il faut pour en DÉRIVER le stock :
+ * toute lecture qui projette une déclinaison les charge, sans quoi un pack
+ * s'afficherait épuisé.
+ */
+const BUNDLE_INCLUDE = {
+  bundleComponents: {
+    orderBy: { componentVariantId: 'asc' },
+    include: {
+      component: {
+        select: {
+          label: true,
+          active: true,
+          trackStock: true,
+          onHand: true,
+          available: true,
+          product: { select: { name: true } },
+        },
+      },
+    },
+  },
+} as const satisfies Prisma.ShopProductVariantInclude;
+
+type BundleComponentRow = Prisma.ShopBundleComponentGetPayload<{
+  include: (typeof BUNDLE_INCLUDE)['bundleComponents']['include'];
+}>;
+
+type VariantRow = Prisma.ShopProductVariantGetPayload<object> & {
+  bundleComponents?: BundleComponentRow[];
+};
+
 const ADMIN_PRODUCT_INCLUDE = {
-  variants: { orderBy: { createdAt: 'asc' } },
+  variants: { orderBy: { createdAt: 'asc' }, include: BUNDLE_INCLUDE },
   supplierOffers: {
     orderBy: { createdAt: 'asc' },
     include: {
@@ -280,7 +312,11 @@ export class ShopService {
       where: { clubId, active: true },
       orderBy: [{ createdAt: 'desc' }],
       include: {
-        variants: { where: { active: true }, orderBy: { createdAt: 'asc' } },
+        variants: {
+          where: { active: true },
+          orderBy: { createdAt: 'asc' },
+          include: BUNDLE_INCLUDE,
+        },
       },
     });
     // `withQuantities: false` : l'acheteur reçoit `inStock`, jamais un
@@ -336,13 +372,19 @@ export class ShopService {
    * déploiement (ADR-0012 §Conséquences).
    */
   private shapeProduct(
-    p: Prisma.ShopProductGetPayload<{ include: { variants: true } }> & {
+    p: Prisma.ShopProductGetPayload<object> & {
+      variants: VariantRow[];
       supplierOffers?: AdminSupplierOffer[];
     },
     opts: ShapeOptions,
   ) {
     const variants = p.variants;
-    const tracked = variants.filter((v) => v.trackStock && v.active);
+    // Un pack compte pour ce que ses pièces permettent (ADR-0024) ; sa valeur
+    // de stock reste nulle, ses pièces étant déjà valorisées chez elles.
+    const tracked = variants
+      .filter((v) => v.active)
+      .map((v) => ({ ...v, ...stockOf(v) }))
+      .filter((v) => v.trackStock);
 
     const priceOf = (v: (typeof variants)[number]) =>
       v.priceCents ?? p.priceCents;
@@ -404,7 +446,10 @@ export class ShopService {
       // pour rien plutôt que d'inventer une valeur. Le total est donc un
       // PLANCHER, pas une estimation — à présenter comme tel à l'écran.
       stockValueCents: opts.withQuantities
-        ? tracked.reduce((sum, v) => sum + v.onHand * v.avgCostCents, 0)
+        ? tracked.reduce(
+            (sum, v) => sum + (v.isBundle ? 0 : v.onHand * v.avgCostCents),
+            0,
+          )
         : null,
       hasVariants: variants.some((v) => !v.isDefault),
       priceFromCents:
@@ -434,11 +479,15 @@ export class ShopService {
    * porte une garantie mérite de se relire d'un bloc.
    */
   private shapeVariant(
-    v: Prisma.ShopProductVariantGetPayload<object>,
+    row: VariantRow,
     unitPriceCents: number,
     preorderEnabled: boolean,
     opts: ShapeOptions,
   ) {
+    // Un pack se projette avec les compteurs DÉRIVÉS de ses pièces : le
+    // catalogue, l'admin et les règles de disponibilité ci-dessous le lisent
+    // comme n'importe quelle déclinaison, et ses propres zéros ne sortent pas.
+    const v = { ...row, ...stockOf(row) };
     // Coût d'achat, marge, taux de marge : trois champs DÉRIVÉS du coût
     // d'acquisition, donc trois fuites potentielles du prix fournisseur.
     //
@@ -500,6 +549,18 @@ export class ShopService {
         v.reorderThreshold !== null &&
         v.available <= v.reorderThreshold,
       active: v.active,
+      isBundle: v.isBundle,
+      // Ce que contient le pack : public, l'adhérent doit savoir ce qu'il
+      // achète. Jamais une quantité en stock — seulement « 1 × Gants ».
+      bundleComponents: v.isBundle
+        ? (row.bundleComponents ?? []).map((c) => ({
+            componentVariantId: c.componentVariantId,
+            quantity: c.quantity,
+            label: c.component.label
+              ? `${c.component.product.name} — ${c.component.label}`
+              : c.component.product.name,
+          }))
+        : [],
     };
   }
 
@@ -610,6 +671,18 @@ export class ShopService {
     // Un `null` venu du formulaire ne décoche rien : seul un booléen change la
     // précommande. Le délai, lui, s'efface par une chaîne vide ou `null`.
     if (typeof input.preorderEnabled === 'boolean') {
+      // Un pack ne se précommande pas (ADR-0024) : l'attente d'arrivage se
+      // compte par déclinaison stockée, et un pack n'en a pas.
+      if (
+        input.preorderEnabled &&
+        (await this.prisma.shopProductVariant.count({
+          where: { clubId, productId: id, isBundle: true },
+        })) > 0
+      ) {
+        throw new BadRequestException(
+          'Un pack ne se précommande pas : ses pièces, oui.',
+        );
+      }
       data.preorderEnabled = input.preorderEnabled;
     }
     if (input.preorderLeadTime !== undefined) {
@@ -623,8 +696,9 @@ export class ShopService {
     // Le champ `stock` du formulaire d'un produit SIMPLE pilote la variante
     // par défaut, via une correction d'inventaire — ce que l'admin déclare
     // là, c'est ce qu'il a compté. Le mouvement en garde la trace.
+    // Le stock d'un pack ne se saisit pas : il se déduit de ses pièces.
     const def = existing.variants[0];
-    if (input.stock !== undefined && def && def.isDefault) {
+    if (input.stock !== undefined && def && def.isDefault && !def.isBundle) {
       if (input.stock === null) {
         await this.prisma.shopProductVariant.update({
           where: { id: def.id },
@@ -661,7 +735,7 @@ export class ShopService {
     // masquant tous les passages suivants.
     if (input.reorderThreshold !== undefined) {
       await this.prisma.shopProductVariant.updateMany({
-        where: { productId: id, clubId },
+        where: { productId: id, clubId, isBundle: false },
         data: {
           reorderThreshold: input.reorderThreshold,
           lowStockAlertedAt: null,
@@ -872,6 +946,12 @@ export class ShopService {
     // Sauf précommande (ADR-0018) : l'article reste commandable épuisé. On
     // réserve ce qui reste, et le manque attend l'arrivage sur la ligne — dans
     // la même transaction, donc jamais visible à moitié.
+    //
+    // Un pack fait réserver ses pièces, que le tri des lignes ne range plus :
+    // on prend d'abord tous les verrous dans un ordre unique (ADR-0024).
+    if (variants.some((v) => v.isBundle)) {
+      await this.stock.lockForOrder(tx, clubId, orderedIds);
+    }
     for (const line of created.lines) {
       const reservation = {
         clubId,
@@ -1589,7 +1669,12 @@ export class ShopService {
         orderId: order.id,
         orderLineId: line.id,
       });
-      released.push(line.variantId);
+      released.push(
+        ...(await this.stock.stockedVariantIdsOfLine(tx, clubId, {
+          id: line.id,
+          variantId: line.variantId,
+        })),
+      );
     }
     await this.clearAwaitingInTx(tx, order);
     return released;
@@ -1742,7 +1827,12 @@ export class ShopService {
           tx,
         );
       } else {
-        released.push(line.variantId);
+        released.push(
+          ...(await this.stock.stockedVariantIdsOfLine(tx, clubId, {
+            id: line.id,
+            variantId: line.variantId,
+          })),
+        );
       }
     }
     await this.clearAwaitingInTx(tx, order);
@@ -1780,9 +1870,11 @@ export class ShopService {
             preorderEnabled: true,
           },
         },
+        ...BUNDLE_INCLUDE,
       },
     });
     if (!v) return null;
+    const counters = stockOf(v);
     return {
       variantId: v.id,
       productId: v.productId,
@@ -1791,8 +1883,8 @@ export class ShopService {
       label: v.label ? `${v.product.name} — ${v.label}` : v.product.name,
       unitPriceCents: v.priceCents ?? v.product.priceCents,
       active: v.active && v.product.active,
-      trackStock: v.trackStock,
-      available: v.available,
+      trackStock: counters.trackStock,
+      available: counters.available,
       preorderEnabled: v.product.preorderEnabled,
     };
   }
@@ -1957,7 +2049,12 @@ export class ShopService {
           orderId: order.id,
           orderLineId: line.id,
         });
-        released.push(line.variantId);
+        released.push(
+          ...(await this.stock.stockedVariantIdsOfLine(tx, clubId, {
+            id: line.id,
+            variantId: line.variantId,
+          })),
+        );
       } else {
         const tracked = await this.stock.returnToStock(tx, {
           clubId,
@@ -1982,7 +2079,12 @@ export class ShopService {
             tx,
           );
         } else if (tracked) {
-          released.push(line.variantId);
+          released.push(
+            ...(await this.stock.stockedVariantIdsOfLine(tx, clubId, {
+              id: line.id,
+              variantId: line.variantId,
+            })),
+          );
         }
       }
     }

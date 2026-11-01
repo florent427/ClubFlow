@@ -55,6 +55,7 @@ type VariantRow = {
   /** Sert au prix d'achat par défaut (ADR-0021) : l'offre vit sur le produit. */
   productId?: string;
   trackStock: boolean;
+  isBundle: boolean;
   onHand: number;
   available: number;
   avgCostCents: number;
@@ -111,6 +112,7 @@ function variante(over: Partial<VariantRow> = {}): VariantRow {
     id: 'v-1',
     clubId: CLUB,
     trackStock: true,
+    isBundle: false,
     onHand: 0,
     available: 0,
     avgCostCents: 0,
@@ -1629,7 +1631,7 @@ describe('createRestockOrders — un brouillon par fournisseur (ADR-0021 §4)', 
     });
     await expect(
       autreClub.svc.createRestockOrders(CLUB, [{ variantId: 'v-1', supplierId: 'sup-1', qty: 10 }]),
-    ).rejects.toThrow('Déclinaison introuvable.');
+    ).rejects.toThrow('Déclinaison introuvable');
 
     const doublon = makeHarness({ orders: [], lines: [], ...base });
     await expect(

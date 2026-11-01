@@ -10,6 +10,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { BUNDLE_STOCK_INCLUDE, stockOf } from './bundle-stock';
 import { availabilityOf, ShopAvailability } from './enums/shop-availability.enum';
 import { ShopService } from './shop.service';
 
@@ -161,6 +162,7 @@ export class ShopCartService {
                     preorderLeadTime: true,
                   },
                 },
+                ...BUNDLE_STOCK_INCLUDE,
               },
             },
           },
@@ -191,6 +193,7 @@ export class ShopCartService {
                     preorderLeadTime: true;
                   };
                 };
+                bundleComponents: (typeof BUNDLE_STOCK_INCLUDE)['bundleComponents'];
               };
             };
           };
@@ -200,7 +203,8 @@ export class ShopCartService {
   ): ShopCartView {
     let totalCents = 0;
     const items: ShopCartItemView[] = cart.items.map((it) => {
-      const v = it.variant;
+      // Un pack se juge sur ses pièces (ADR-0024).
+      const v = { ...it.variant, ...stockOf(it.variant) };
       const p = v.product;
       const unitPriceCents = v.priceCents ?? p.priceCents;
       const lineTotalCents = unitPriceCents * it.quantity;
@@ -256,8 +260,11 @@ export class ShopCartService {
       select: {
         id: true,
         trackStock: true,
+        onHand: true,
         available: true,
+        isBundle: true,
         product: { select: { preorderEnabled: true } },
+        ...BUNDLE_STOCK_INCLUDE,
       },
     });
     if (!variant) {
@@ -267,7 +274,7 @@ export class ShopCartService {
     // d'ajouter un article épuisé ET non commandable. Un article en précommande
     // s'ajoute (ADR-0018) ; la garantie anti-survente reste au checkout.
     if (
-      availabilityOf(variant, variant.product.preorderEnabled) ===
+      availabilityOf(stockOf(variant), variant.product.preorderEnabled) ===
       ShopAvailability.SOLD_OUT
     ) {
       throw new BadRequestException('Cet article est épuisé.');

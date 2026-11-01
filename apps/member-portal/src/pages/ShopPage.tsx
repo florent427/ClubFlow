@@ -312,6 +312,17 @@ export function ShopPage() {
                     {formatEuroCents(variant.unitPriceCents)}
                   </p>
 
+                  {/* Un pack dit ce qu'il contient : l'adhérent achète des
+                      articles précis, pas une étiquette (ADR-0024). */}
+                  {variant.isBundle && variant.bundleComponents.length > 0 ? (
+                    <p className="mp-hint" style={{ margin: '0 0 8px' }}>
+                      Contient :{' '}
+                      {variant.bundleComponents
+                        .map((c) => `${c.quantity} × ${c.label}`)
+                        .join(', ')}
+                    </p>
+                  ) : null}
+
                   {/* Ajout au panier via un BOUTON — jamais en modifiant une
                       quantité sur la grille. Refusé si épuisé et non
                       commandable : le portail ne connaît que la disponibilité
