@@ -19,6 +19,7 @@ import { EditableImage } from '@/components/edit/EditableImage';
 import { EditableList } from '@/components/edit/EditableList';
 import { EditableCta } from '@/components/edit/EditableCta';
 import { CounterNumber } from '@/components/sksr/CounterNumber';
+import { AgeFinder } from '@/components/sksr/AgeFinder';
 import { MediaImg } from '@/components/MediaImg';
 import type { EditContext } from '@/lib/edit-context';
 
@@ -460,6 +461,7 @@ export interface SksrCoursPreviewProps extends EditProps {
 export function SksrCoursPreview(props: SksrCoursPreviewProps) {
   const { sectionId, edit } = useEditIds(props);
   const cards = props.cards ?? [];
+  const gridId = `cours-grid-${sectionId || 'preview'}`;
   return (
     <section className="cours-preview">
       {props.kanjiBg ? (
@@ -488,6 +490,9 @@ export function SksrCoursPreview(props: SksrCoursPreviewProps) {
             </em>
           </h2>
         </div>
+        {edit?.editMode ? null : (
+          <AgeFinder groups={cards} gridId={gridId} />
+        )}
       </div>
       <EditableList
         sectionId={sectionId}
@@ -510,7 +515,7 @@ export function SksrCoursPreview(props: SksrCoursPreviewProps) {
           { key: 'desc', label: 'Description', type: 'textarea' },
         ]}
       >
-        <div className="cours-preview__grid">
+        <div className="cours-preview__grid" id={gridId}>
           {cards.map((c, i) => (
             <div key={i} className={`cours-card reveal${i > 0 ? ' d' + i : ''}`}>
               <div className="cours-card__age">
@@ -659,11 +664,33 @@ export interface SksrActuPreviewProps extends EditProps {
     kanji?: string;
     coverImageUrl?: string | null;
     featured?: boolean;
+    /** Articles dynamiques : date ISO à formater si `date` est absent. */
+    publishedAt?: string | null;
   }>;
 }
 
+/** Nombre d'articles sur l'accueil : un à la une, deux secondaires. */
+const ACTU_PREVIEW_COUNT = 3;
+
+function formatActuDate(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getDate())} · ${pad(d.getMonth() + 1)} · ${d.getFullYear()}`;
+}
+
 export function SksrActuPreview(props: SksrActuPreviewProps) {
-  const articles = props.articles ?? [];
+  // L'aperçu de l'accueil ne montre que les dernières nouvelles (la grille
+  // est dessinée pour trois cartes) ; la liste complète vit sur
+  // /actualites. Sans article marqué « à la une », le plus récent l'est.
+  const all = props.articles ?? [];
+  const hasFeatured = all.some((a) => a.featured);
+  const articles = all.slice(0, ACTU_PREVIEW_COUNT).map((a, i) => ({
+    ...a,
+    featured: hasFeatured ? a.featured : i === 0,
+    date: a.date || formatActuDate(a.publishedAt),
+  }));
   return (
     <section className="actu">
       <div className="actu__head">
@@ -691,7 +718,7 @@ export function SksrActuPreview(props: SksrActuPreviewProps) {
             className={`actu-card${a.featured ? ' featured' : ''} reveal${i > 0 ? ' d' + i : ''}`}
           >
             <div className="actu-card__img">
-              <span className="actu-card__tag">{a.tag}</span>
+              {a.tag ? <span className="actu-card__tag">{a.tag}</span> : null}
               {a.coverImageUrl ? (
                 <MediaImg
                   src={a.coverImageUrl}

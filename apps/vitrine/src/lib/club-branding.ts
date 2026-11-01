@@ -72,23 +72,23 @@ function neutralFallbackBranding(clubName = 'Mon club'): ClubBranding {
       socialLinks: [],
       columns: [
         {
-          title: 'Navigation',
+          title: 'Le club',
           links: [
-            { href: '/', label: 'Accueil' },
-            { href: '/club', label: 'Le Club' },
-            { href: '/cours', label: 'Cours' },
-            { href: '/equipe', label: 'Équipe' },
-            { href: '/dojo', label: 'Dojo' },
+            { href: '/club', label: 'Notre histoire' },
+            { href: '/equipe', label: 'L’équipe' },
+            { href: '/dojo', label: 'Le dojo' },
+            { href: '/cours', label: 'Cours & horaires' },
+            { href: '/tarifs', label: 'Tarifs' },
           ],
         },
         {
-          title: 'Infos',
+          title: 'Suivre',
           links: [
-            { href: '/tarifs', label: 'Tarifs' },
-            { href: '/galerie', label: 'Galerie' },
             { href: '/actualites', label: 'Actualités' },
             { href: '/blog', label: 'Blog' },
+            { href: '/evenements', label: 'Événements' },
             { href: '/competitions', label: 'Compétitions' },
+            { href: '/galerie', label: 'Galerie' },
             { href: '/contact', label: 'Contact' },
           ],
         },

@@ -164,6 +164,13 @@
 .hero__scroll-ind {
   animation: fadeIn 1s ease 1.6s both;
 }
+/* Il chevauche les chiffres clés sur les écrans de portable : on ne le
+   garde que lorsqu'il y a la place. */
+@media (max-height: 1000px) {
+  .hero__scroll-ind {
+    display: none;
+  }
+}
 
 /* Parallaxe douce du grand kanji et du visuel pendant qu'on quitte le hero. */
 @supports (animation-timeline: scroll()) {

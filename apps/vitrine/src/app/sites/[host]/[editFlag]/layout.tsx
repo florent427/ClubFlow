@@ -4,6 +4,8 @@ import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { resolveCurrentClub } from '@/lib/club-resolution';
 import { fetchClubBranding, paletteToCssVars } from '@/lib/club-branding';
+import { fetchClubContact, socialIcon } from '@/lib/club-contact';
+import { MobileActionBar } from '@/components/MobileActionBar';
 import { isEditFlagActive } from '@/lib/edit-mode';
 import { EditModeToolbar } from '@/components/edit/EditModeToolbar';
 import { JsonLd, buildSportsClubLd } from '@/components/JsonLd';
@@ -66,17 +68,47 @@ export default async function SiteLayout({
   const club = await resolveCurrentClub(host);
   // On passe le nom réel du club (résolu via le host) pour que le fallback
   // branding neutre affiche le bon nom même sans branding configuré en DB.
-  const branding = await fetchClubBranding(club.slug, club.name);
+  const [branding, pageContact] = await Promise.all([
+    fetchClubBranding(club.slug, club.name),
+    fetchClubContact(club.slug),
+  ]);
 
   const proto = process.env.NODE_ENV === 'production' ? 'https' : 'http';
   const baseUrl = `${proto}://${host}`;
 
-  const contact = branding.footer.contact;
-  const socialLinks = branding.footer.socialLinks.map((sl) => sl.href);
+  // Pied de page non configuré dans l'admin : on reprend les coordonnées
+  // de la page Contact plutôt que d'afficher un pied de page vide.
+  const configured = branding.footer.contact;
+  const hasConfiguredContact = Boolean(
+    configured.address || configured.phone || configured.email,
+  );
+  const contact = hasConfiguredContact
+    ? { ...configured, hours: '' }
+    : {
+        address: pageContact.address,
+        phone: pageContact.phone,
+        email: pageContact.email,
+        hours: pageContact.hours,
+      };
+  const footer = {
+    ...branding.footer,
+    contact,
+    socialLinks:
+      branding.footer.socialLinks.length > 0
+        ? branding.footer.socialLinks
+        : pageContact.socialLinks.map((sl) => ({
+            ...sl,
+            icon: socialIcon(sl.label),
+          })),
+  };
+  const phoneHref =
+    pageContact.phoneHref ||
+    (contact.phone ? `tel:${contact.phone.replace(/[^\d+]/g, '')}` : '');
+  const socialLinks = footer.socialLinks.map((sl) => sl.href);
   const clubLd = buildSportsClubLd({
     name: branding.clubName,
     url: baseUrl,
-    description: branding.footer.description,
+    description: footer.description,
     address: contact.address,
     phone: contact.phone,
     email: contact.email,
@@ -126,7 +158,8 @@ export default async function SiteLayout({
         clubSlug={club.slug}
       />
       <main id="main">{children}</main>
-      <Footer clubName={branding.clubName} content={branding.footer} />
+      <Footer clubName={branding.clubName} content={footer} />
+      {editMode ? null : <MobileActionBar phoneHref={phoneHref} />}
     </div>
   );
 }

@@ -205,8 +205,8 @@
   font-variant-numeric: tabular-nums;
 }
 .hero__meta-lbl {
-  font-size: 10px;
-  letter-spacing: 0.25em;
+  font-size: 11px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--muted);
 }
@@ -264,7 +264,7 @@
   bottom: 30px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.35em;
   text-transform: uppercase;
   color: var(--muted);
@@ -340,7 +340,7 @@
     max-width: 100%;
   }
   .hero__label {
-    font-size: 11px;
+    font-size: 12px;
     letter-spacing: 0.2em;
     gap: 10px;
     flex-wrap: wrap;
@@ -531,8 +531,8 @@
 .voie__name small {
   display: block;
   font-family: var(--sans);
-  font-size: 11px;
-  letter-spacing: 0.3em;
+  font-size: 12px;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--muted);
   margin-top: 6px;
@@ -577,7 +577,7 @@
     line-height: 1.25;
   }
   .voie__name small {
-    font-size: 10px;
+    font-size: 11px;
     margin-top: 8px;
   }
   .voie__desc {
@@ -640,7 +640,7 @@
 }
 .cours-card__age-unit {
   font-size: 12px;
-  letter-spacing: 0.25em;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--muted);
   margin-bottom: 32px;
@@ -660,8 +660,8 @@
 }
 .cours-card__link {
   font-family: var(--sans);
-  font-size: 11px;
-  letter-spacing: 0.25em;
+  font-size: 12px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--accent);
   display: inline-flex;
@@ -689,6 +689,94 @@
 @media (max-width: 580px) {
   .cours-preview__grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Sélecteur « Mon enfant a X ans » (accueil) */
+.cours-preview__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 40px;
+  flex-wrap: wrap;
+}
+.age-finder {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  max-width: 520px;
+  font-family: var(--serif);
+  font-size: 22px;
+}
+.age-finder__label {
+  font-style: italic;
+  color: var(--fg);
+}
+.age-finder__select {
+  appearance: none;
+  -webkit-appearance: none;
+  font: inherit;
+  color: var(--accent);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--accent);
+  padding: 2px 28px 4px 4px;
+  cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--accent) 50%),
+    linear-gradient(135deg, var(--accent) 50%, transparent 50%);
+  background-position:
+    right 10px center,
+    right 5px center;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+}
+.age-finder__select:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 4px;
+}
+.age-finder__select option {
+  background: var(--bg);
+  color: var(--fg);
+}
+.age-finder__result {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--muted);
+}
+.age-finder__result strong {
+  color: var(--fg);
+  font-weight: 500;
+}
+.age-finder__result a {
+  color: var(--accent);
+  border-bottom: 1px solid color-mix(in oklab, var(--accent) 40%, transparent);
+}
+.cours-card {
+  transition:
+    background 0.4s ease,
+    opacity 0.5s ease;
+}
+.cours-card.is-dimmed {
+  opacity: 0.35;
+}
+.cours-card.is-match {
+  background: var(--bg-2);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.cours-card.is-match::after {
+  scale: 1 1;
+}
+.cours-card__desc {
+  font-size: 14px;
+}
+@media (max-width: 960px) {
+  .age-finder {
+    font-size: 19px;
   }
 }
 
@@ -764,7 +852,7 @@
 .dojo-split__list li span:last-child {
   color: var(--accent);
   font-family: var(--sans);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
 }
@@ -835,15 +923,15 @@
   background: var(--accent);
   color: var(--ink);
   padding: 6px 12px;
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   font-weight: 500;
 }
 .actu-card__date {
   font-family: var(--sans);
-  font-size: 11px;
-  letter-spacing: 0.25em;
+  font-size: 12px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--muted);
   margin-bottom: 10px;
@@ -1164,8 +1252,8 @@
   font-variant-numeric: tabular-nums;
 }
 .stat__lbl {
-  font-size: 11px;
-  letter-spacing: 0.25em;
+  font-size: 12px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: color-mix(in oklab, var(--paper) 65%, transparent);
 }
@@ -1274,7 +1362,7 @@
   background: transparent;
   color: var(--fg);
   font-family: var(--sans);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   cursor: pointer;
@@ -1322,15 +1410,15 @@
 .planning__header small {
   display: block;
   font-family: var(--sans);
-  font-size: 10px;
-  letter-spacing: 0.25em;
+  font-size: 11px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--muted);
   margin-top: 4px;
 }
 .planning__time {
   font-family: var(--sans);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.05em;
   color: var(--muted);
   padding: 2px 8px;
@@ -1341,7 +1429,7 @@
   align-items: center;
 }
 .planning__time--minor {
-  font-size: 9px;
+  font-size: 10px;
   opacity: 0.35;
 }
 .planning__gap {
@@ -1349,9 +1437,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 9px;
+  font-size: 10px;
   color: var(--muted);
-  letter-spacing: 0.25em;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   font-family: var(--sans);
   background: var(--bg-2);
@@ -1419,7 +1507,7 @@
   font-weight: 500;
 }
 .slot__meta {
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--muted);
@@ -1431,7 +1519,7 @@
   display: flex;
   gap: 24px;
   flex-wrap: wrap;
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--muted);
@@ -1485,8 +1573,8 @@
 .disc__name small {
   display: block;
   font-family: var(--sans);
-  font-size: 11px;
-  letter-spacing: 0.3em;
+  font-size: 12px;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--muted);
   margin-top: 6px;
@@ -1649,8 +1737,8 @@
 }
 .spec-card__lbl {
   font-family: var(--sans);
-  font-size: 11px;
-  letter-spacing: 0.25em;
+  font-size: 12px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--muted);
   margin-bottom: 20px;
@@ -1728,7 +1816,7 @@
 .equip__tag {
   font-family: var(--jp);
   font-size: 12px;
-  letter-spacing: 0.3em;
+  letter-spacing: 0.22em;
   color: var(--accent);
   text-transform: uppercase;
   margin-bottom: 6px;
@@ -1863,8 +1951,8 @@
   border: none;
   color: var(--fg);
   font-family: var(--sans);
-  font-size: 11px;
-  letter-spacing: 0.25em;
+  font-size: 12px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   cursor: pointer;
   transition: all 0.3s;
@@ -1909,8 +1997,8 @@
   background: var(--accent);
   color: var(--ink);
   padding: 6px 14px;
-  font-size: 10px;
-  letter-spacing: 0.3em;
+  font-size: 11px;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
   font-weight: 500;
 }
@@ -1923,8 +2011,8 @@
 }
 .card-tarif__age {
   font-family: var(--sans);
-  font-size: 11px;
-  letter-spacing: 0.3em;
+  font-size: 12px;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--muted);
   margin-bottom: 8px;
@@ -1960,8 +2048,8 @@
   margin-left: 8px;
 }
 .card-tarif__period {
-  font-size: 11px;
-  letter-spacing: 0.25em;
+  font-size: 12px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--muted);
   margin-bottom: 32px;
@@ -1989,8 +2077,8 @@
   text-align: center;
   border: 1px solid var(--accent);
   color: var(--accent);
-  font-size: 11px;
-  letter-spacing: 0.25em;
+  font-size: 12px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   transition: all 0.3s;
 }
@@ -2218,7 +2306,7 @@
   margin-bottom: 6px;
 }
 .sensei__meta-lbl {
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--muted);
@@ -2263,7 +2351,7 @@
   left: 16px;
   font-family: var(--jp);
   font-size: 12px;
-  letter-spacing: 0.25em;
+  letter-spacing: 0.2em;
   color: var(--ink);
   background: var(--accent);
   padding: 6px 12px;
@@ -2375,7 +2463,7 @@
   margin-bottom: 6px;
 }
 .lineage__node-dates {
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: color-mix(in oklab, var(--paper) 60%, transparent);
@@ -2385,7 +2473,7 @@
   font-size: 12px;
   color: var(--accent);
   margin-top: 8px;
-  letter-spacing: 0.3em;
+  letter-spacing: 0.22em;
 }
 
 /* ============================================================================
@@ -2416,7 +2504,7 @@
   background: transparent;
   color: var(--fg);
   font-family: var(--sans);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   cursor: pointer;
@@ -2491,8 +2579,8 @@
 .gal-item__tag {
   display: inline-block;
   font-family: var(--jp);
-  font-size: 10px;
-  letter-spacing: 0.3em;
+  font-size: 11px;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--accent);
   margin-bottom: 4px;
@@ -2615,8 +2703,8 @@
   background: var(--accent);
   color: var(--ink);
   padding: 8px 14px;
-  font-size: 11px;
-  letter-spacing: 0.25em;
+  font-size: 12px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   font-weight: 500;
 }
@@ -2628,7 +2716,7 @@
 .news__featured-date {
   font-family: var(--jp);
   font-size: 13px;
-  letter-spacing: 0.3em;
+  letter-spacing: 0.22em;
   color: var(--accent);
   margin-bottom: 24px;
 }
@@ -2686,14 +2774,14 @@
   background: var(--ink);
   color: var(--accent);
   padding: 5px 10px;
-  font-size: 10px;
-  letter-spacing: 0.25em;
+  font-size: 11px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   border: 1px solid var(--line-strong);
 }
 .news-card__date {
-  font-size: 11px;
-  letter-spacing: 0.25em;
+  font-size: 12px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--muted);
   margin-bottom: 10px;
@@ -2750,7 +2838,7 @@
 }
 .cal-event__month {
   font-size: 12px;
-  letter-spacing: 0.3em;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--muted);
   margin-top: 6px;
@@ -2776,8 +2864,8 @@
 }
 .cal-event__tag {
   font-family: var(--jp);
-  font-size: 11px;
-  letter-spacing: 0.25em;
+  font-size: 12px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--accent);
   border: 1px solid var(--accent);
@@ -2870,8 +2958,8 @@
   font-weight: 300;
 }
 .medal__label {
-  font-size: 11px;
-  letter-spacing: 0.25em;
+  font-size: 12px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--muted);
 }
@@ -2908,7 +2996,7 @@
   color: var(--muted);
 }
 .result-cat {
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.15em;
   text-transform: uppercase;
   color: var(--muted);
@@ -3051,8 +3139,8 @@
 }
 .contact__item-lbl {
   font-family: var(--jp);
-  font-size: 11px;
-  letter-spacing: 0.25em;
+  font-size: 12px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--accent);
   padding-top: 4px;
@@ -3096,8 +3184,8 @@
 .form-field label {
   display: block;
   font-family: var(--sans);
-  font-size: 10px;
-  letter-spacing: 0.25em;
+  font-size: 11px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--muted);
   margin-bottom: 10px;
@@ -3140,7 +3228,7 @@
   border: none;
   font-family: var(--sans);
   font-size: 12px;
-  letter-spacing: 0.3em;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
   font-weight: 500;
   cursor: pointer;
@@ -3251,7 +3339,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
 }
@@ -4008,7 +4096,7 @@
   box-shadow: 0 0 0 2px rgba(201, 169, 106, 0.15);
 }
 .article-comments__form small {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   text-align: right;
 }
@@ -4084,7 +4172,7 @@
 }
 .article-comments__reply-badge {
   font-family: var(--sans);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;

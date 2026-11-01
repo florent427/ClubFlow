@@ -13,6 +13,7 @@ export interface FooterContent {
     address?: string; // lignes séparées par \n
     phone?: string;
     email?: string;
+    hours?: string;
   };
   copyright?: string;
   legalBottomRight?: string; // ex. "Affilié FFKDA · Ligue..."
@@ -109,12 +110,21 @@ export function Footer({ clubName, content }: FooterProps) {
                 }}
               />
             ) : null}
-            {content.contact.phone || content.contact.email ? (
-              <p style={{ marginTop: 16 }}>
+            {content.contact.phone ? (
+              <a
+                href={`tel:${content.contact.phone.replace(/[^\d+]/g, '')}`}
+                style={{ marginTop: 16 }}
+              >
                 {content.contact.phone}
-                {content.contact.phone && content.contact.email ? <br /> : null}
+              </a>
+            ) : null}
+            {content.contact.email ? (
+              <a href={`mailto:${content.contact.email}`}>
                 {content.contact.email}
-              </p>
+              </a>
+            ) : null}
+            {content.contact.hours ? (
+              <p style={{ marginTop: 16 }}>{content.contact.hours}</p>
             ) : null}
           </div>
         ) : null}
