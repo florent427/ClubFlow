@@ -263,8 +263,9 @@ const CLUB_SECTIONS: Section[] = [
   }),
   sec('sksrTwoCol', {
     label: 'Notre école',
-    title: 'Une voie exigeante',
-    titleEm1: 'ouvert.',
+    title: 'Une voie',
+    titleEm1: 'exigeante',
+    titleEm2: 'ouvert',
     paragraphs: [
       "Le Shotokan-ryū, né au début du XXᵉ siècle sous l'impulsion de Maître Gichin Funakoshi, est l'un des grands styles traditionnels du karaté-dō japonais. Il se distingue par ses positions basses, ses techniques franches et son cadre moral rigoureux.",
       "Notre club perpétue cet enseignement sans compromis, tout en ouvrant ses portes à tous les profils — du tout-petit curieux au pratiquant chevronné, du compétiteur au simple chercheur d'équilibre.",
