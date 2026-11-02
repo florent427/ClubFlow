@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.85.2](https://github.com/florent427/ClubFlow/compare/v0.85.1...v0.85.2) (2026-11-02)
+
+
+### 🐛 Bug Fixes
+
+* **vitrine:** titre « Notre école » du seed SKSR complet ([73cc567](https://github.com/florent427/ClubFlow/commit/73cc5674d38c6c55dccded0596c186375b461359))
+* **vitrine:** titre « Notre école » du seed SKSR complet ([ba26530](https://github.com/florent427/ClubFlow/commit/ba265301a195c245a09765c7785c87c9fbe5b6c6))
+
 ## [0.85.1](https://github.com/florent427/ClubFlow/compare/v0.85.0...v0.85.1) (2026-11-01)
 
 
