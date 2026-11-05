@@ -1,0 +1,11 @@
+{
+  "name": "Budget vacances janvier 2027",
+  "short_name": "Budget",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f2f8",
+  "theme_color": "#4c2a85",
+  "lang": "fr",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

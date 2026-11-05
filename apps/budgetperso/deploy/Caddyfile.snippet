@@ -1,0 +1,13 @@
+# Two changes inside the existing `sksr.re { ... }` block of /etc/caddy/Caddyfile.
+#
+# 1. Keep the budget out of the Souin cache: the vitrine reverse_proxy
+#    rewrites Cache-Control to "public", which would cache private data.
+    @cacheable {
+        not header_regexp Cookie clubflow_vitrine_edit=
+        not path /budgetperso*
+    }
+
+# 2. Route the app to its own service, before the vitrine reverse_proxy.
+    handle /budgetperso* {
+        reverse_proxy localhost:5180
+    }

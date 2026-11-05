@@ -70,9 +70,21 @@ sudo -u clubflow npm ci --no-audit --no-fund
 sudo -u clubflow rm -rf .next/cache .next
 sudo -u clubflow npm run build
 
+# 5b. Budget perso (sksr.re/budgetperso) — seulement une fois son unit
+# installée (cf. apps/budgetperso/README.md). Pas de build : Node pur.
+BUDGETPERSO_UNIT=/etc/systemd/system/clubflow-budgetperso.service
+if [ -f "$BUDGETPERSO_UNIT" ]; then
+  echo "=== budgetperso: npm ci ==="
+  cd ../budgetperso
+  sudo -u clubflow npm ci --omit=dev --no-audit --no-fund
+fi
+
 # 6. Restart
 echo "=== systemd restart ==="
 systemctl restart clubflow-api clubflow-vitrine
+if [ -f "$BUDGETPERSO_UNIT" ]; then
+  systemctl restart clubflow-budgetperso
+fi
 systemctl reload caddy
 
 # 7. Smoke test — l'API NestJS (Prisma + schéma GraphQL) ET la vitrine
