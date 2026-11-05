@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.86.0](https://github.com/florent427/ClubFlow/compare/v0.85.2...v0.86.0) (2026-11-05)
+
+
+### ✨ Features
+
+* **infra:** budget perso des vacances sur sksr.re/budgetperso ([881325d](https://github.com/florent427/ClubFlow/commit/881325de97a6100f15100d98c7e6009b7aecfea0))
+* **infra:** budget perso des vacances sur sksr.re/budgetperso ([30689ad](https://github.com/florent427/ClubFlow/commit/30689adfaf29ad7eee135b16817b5ddaef801ebd))
+
 ## [0.85.2](https://github.com/florent427/ClubFlow/compare/v0.85.1...v0.85.2) (2026-11-02)
 
 
