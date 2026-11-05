@@ -33,6 +33,7 @@ Coût         : 3,20 €/mois HT
 | `clubflow-api.service` | 3000 | `/home/clubflow/clubflow/apps/api/dist/main.js` | `/var/log/clubflow-api.log` |
 | `clubflow-vitrine.service` | 5175 | `cd apps/vitrine && npm run start` | `/var/log/clubflow-vitrine.log` |
 | `clubflow-landing.service` 🆕 Phase 1 | 5176 | `cd apps/landing && npm run start` | `/var/log/clubflow-landing.log` |
+| `clubflow-budgetperso.service` | 5180 | `apps/budgetperso/server.js` (budget perso de Florent, sksr.re/budgetperso, cf. son README) | `/var/log/clubflow-budgetperso.log` |
 
 ```bash
 # Status / restart

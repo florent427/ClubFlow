@@ -1,0 +1,19 @@
+{
+  "name": "budgetperso",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Budget des vacances de janvier 2027, servi sur sksr.re/budgetperso",
+  "type": "module",
+  "engines": {
+    "node": ">=20.6"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --env-file=.env server.js",
+    "test": "node --test test/app.test.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "nodemailer": "^10.3.1"
+  }
+}

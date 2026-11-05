@@ -1,0 +1,19 @@
+[Unit]
+Description=Budget vacances (sksr.re/budgetperso)
+After=network.target
+
+[Service]
+Type=simple
+User=clubflow
+Group=clubflow
+WorkingDirectory=/home/clubflow/clubflow/apps/budgetperso
+EnvironmentFile=/home/clubflow/budgetperso-data/budgetperso.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/clubflow-budgetperso.log
+StandardError=append:/var/log/clubflow-budgetperso.log
+
+[Install]
+WantedBy=multi-user.target
