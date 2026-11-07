@@ -30,6 +30,7 @@ import {
   VIEWER_ACTIVE_CART,
   type ViewerActiveCartData,
 } from '../lib/cart-documents';
+import { useNavDrawer } from '../lib/use-nav-drawer';
 
 const navClass = ({ isActive }: { isActive: boolean }) =>
   `mp-sidebar-link${isActive ? ' mp-sidebar-link-active' : ''}`;
@@ -62,6 +63,7 @@ function breadcrumbLabel(pathname: string): string {
 export function MemberLayout() {
   const loc = useLocation();
   const clubId = getClubId();
+  const drawer = useNavDrawer();
 
   const { data: profilesData } = useQuery<ViewerProfilesQueryData>(
     VIEWER_PROFILES,
@@ -140,7 +142,18 @@ export function MemberLayout() {
 
   return (
     <div className="mp-shell">
-      <aside className="mp-sidebar" aria-label="Navigation principale">
+      {drawer.open ? (
+        <div
+          className="mp-sidebar-backdrop"
+          aria-hidden="true"
+          onClick={drawer.close}
+        />
+      ) : null}
+      <aside
+        id="mp-sidebar"
+        className={`mp-sidebar${drawer.open ? ' mp-sidebar--open' : ''}`}
+        aria-label="Navigation principale"
+      >
         <div className="mp-sidebar-brand">
           <span className="mp-logo">ClubFlow</span>
         </div>
@@ -361,10 +374,18 @@ export function MemberLayout() {
           <span className="material-symbols-outlined">chat</span>
           <span>Chat</span>
         </NavLink>
-        <NavLink to="/parametres" className={bottomClass}>
-          <span className="material-symbols-outlined">settings</span>
-          <span>Profil</span>
-        </NavLink>
+        {/* « Plus » ouvre la barre latérale complète : Mes projets,
+            Événements, Boutique, Paramètres… n'ont pas de place ici. */}
+        <button
+          type="button"
+          className={`mp-bottom-btn${drawer.open ? ' mp-bottom-btn-active' : ''}`}
+          aria-controls="mp-sidebar"
+          aria-expanded={drawer.open}
+          onClick={drawer.toggle}
+        >
+          <span className="material-symbols-outlined">menu</span>
+          <span>Plus</span>
+        </button>
       </nav>
     </div>
   );

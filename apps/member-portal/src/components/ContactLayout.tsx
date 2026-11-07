@@ -26,6 +26,7 @@ import {
   VIEWER_ACTIVE_CART,
   type ViewerActiveCartData,
 } from '../lib/cart-documents';
+import { useNavDrawer } from '../lib/use-nav-drawer';
 
 function linkClass({ isActive }: { isActive: boolean }): string {
   return `mp-sidebar-link${isActive ? ' mp-sidebar-link-active' : ''}`;
@@ -40,6 +41,7 @@ function profileRowKey(p: ViewerProfile): string {
 export function ContactLayout() {
   const navigate = useNavigate();
   const clubId = getClubId();
+  const drawer = useNavDrawer();
 
   const { data: profilesData } = useQuery<ViewerProfilesQueryData>(
     VIEWER_PROFILES,
@@ -116,7 +118,18 @@ export function ContactLayout() {
 
   return (
     <div className="mp-shell">
-      <aside className="mp-sidebar" aria-label="Navigation contact">
+      {drawer.open ? (
+        <div
+          className="mp-sidebar-backdrop"
+          aria-hidden="true"
+          onClick={drawer.close}
+        />
+      ) : null}
+      <aside
+        id="mp-sidebar"
+        className={`mp-sidebar${drawer.open ? ' mp-sidebar--open' : ''}`}
+        aria-label="Navigation contact"
+      >
         <div className="mp-sidebar-brand">
           <span className="mp-logo">ClubFlow</span>
         </div>
@@ -183,6 +196,18 @@ export function ContactLayout() {
       </aside>
       <div className="mp-main-wrap">
         <header className="mp-topbar">
+          {/* L'espace contact n'a pas de barre du bas : sur téléphone, ce
+              bouton est le seul accès à la navigation. */}
+          <button
+            type="button"
+            className="mp-icon-btn mp-menu-btn"
+            aria-label="Menu"
+            aria-controls="mp-sidebar"
+            aria-expanded={drawer.open}
+            onClick={drawer.toggle}
+          >
+            <span className="material-symbols-outlined">menu</span>
+          </button>
           <div className="mp-breadcrumb">
             <span className="mp-bc-muted">Espace contact</span>
           </div>

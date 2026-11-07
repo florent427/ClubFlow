@@ -684,6 +684,43 @@ body {
   }
 }
 
+/* Écrans étroits : la barre latérale s'ouvre en tiroir (bouton « Plus » de
+   la barre du bas, ou « Menu » de l'espace contact). */
+@media (max-width: 899px) {
+  .mp-sidebar--open {
+    display: flex;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 40;
+    width: min(17rem, 85vw);
+    overflow-y: auto;
+    padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0));
+    box-shadow: 0 0 2rem rgba(0, 0, 0, 0.18);
+  }
+
+  .mp-sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    background: rgba(25, 28, 29, 0.4);
+  }
+}
+
+/* Double classe : `.mp-icon-btn`, déclarée plus bas, imposerait sinon son
+   `display: flex` au-dessus de 900 px. */
+.mp-icon-btn.mp-menu-btn {
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+@media (min-width: 900px) {
+  .mp-icon-btn.mp-menu-btn {
+    display: none;
+  }
+}
+
 .mp-logo {
   font-weight: 900;
   font-size: 1.05rem;
@@ -988,8 +1025,12 @@ body {
   padding: 0.35rem;
   font-size: 0.62rem;
   font-weight: 700;
+  font-family: inherit;
   color: #6f7078;
   text-decoration: none;
+  border: none;
+  background: none;
+  cursor: pointer;
   border-radius: 0.5rem;
 }
 
