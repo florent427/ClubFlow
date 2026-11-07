@@ -9,6 +9,13 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.86.1](https://github.com/florent427/ClubFlow/compare/v0.86.0...v0.86.1) (2026-11-07)
+
+
+### 🐛 Bug Fixes
+
+* **portail:** menu complet accessible sur téléphone ([3495c40](https://github.com/florent427/ClubFlow/commit/3495c4092823bbad92d70687290ded139b9587ef))
+
 ## [0.86.0](https://github.com/florent427/ClubFlow/compare/v0.85.2...v0.86.0) (2026-11-05)
 
 
