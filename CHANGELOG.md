@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.87.0](https://github.com/florent427/ClubFlow/compare/v0.86.1...v0.87.0) (2026-11-11)
+
+
+### ✨ Features
+
+* **portail:** changer de carte sur un échéancier en cours ([e9aa7fb](https://github.com/florent427/ClubFlow/commit/e9aa7fbc1956c5bdb10cbed1fd09711ce0476af4))
+* **portail:** changer de carte sur un échéancier en cours ([dc3d61c](https://github.com/florent427/ClubFlow/commit/dc3d61cd2a9325f7a63c9cbfc175090965ee346c))
+
 ## [0.86.1](https://github.com/florent427/ClubFlow/compare/v0.86.0...v0.86.1) (2026-11-07)
 
 
