@@ -617,6 +617,33 @@ function ScheduleRecap({
         </div>
       ) : null}
 
+      {/* Carte expirée, perdue ou refusée : sans ce bouton, l'adhérent n'avait
+          aucun moyen de la remplacer une fois l'échéancier actif. Le parcours
+          est le même que l'enregistrement initial ; le webhook remplace le
+          moyen de paiement de l'échéancier, qui servira aux prochains
+          prélèvements (y compris la nouvelle tentative d'un refus). */}
+      {!byTransfer && schedule.status === 'ACTIVE' && nextDue ? (
+        <div className="mp-hint mp-hint--block">
+          <p>
+            {schedule.method === 'SEPA_DEBIT'
+              ? 'Votre compte bancaire a changé ? Enregistrez le nouveau : il servira aux prochaines échéances.'
+              : 'Votre carte a expiré ou a changé ? Enregistrez la nouvelle : elle servira aux prochaines échéances.'}
+          </p>
+          <button
+            type="button"
+            className="mp-btn mp-btn-outline mp-btn-sm"
+            onClick={() => void handleResumeSetup()}
+            disabled={resuming}
+          >
+            {resuming
+              ? 'Redirection…'
+              : schedule.method === 'SEPA_DEBIT'
+                ? 'Changer de compte bancaire'
+                : 'Changer de carte'}
+          </button>
+        </div>
+      ) : null}
+
       {notice ? (
         <div
           className={`mp-hint mp-hint--block mp-hint--${notice.tone}`}
