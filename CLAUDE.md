@@ -193,6 +193,7 @@ deploy-staging.yml. Détails → [runbooks/release.md](docs/runbooks/release.md)
 | Vitrine `Cache-Control: no-store` sur toutes les pages, site perçu comme lent | `headers()`/`cookies()` appelés partout dans le render path | [pitfall](docs/memory/pitfalls/nextjs-route-force-dynamic-headers-cookies.md) |
 | Souin (`Cache-Status`) reste `PRIVATE-OR-AUTHENTICATED-RESPONSE`, jamais `hit` | `default_cache_control` n'override pas un `no-store` déjà présent | [pitfall](docs/memory/pitfalls/souin-respects-origin-no-store.md) |
 | Taux d'erreur non nul sur une destination webhook Stripe | échec masqué par le rejeu | [pitfall](docs/memory/pitfalls/compta-non-seedee-webhook-500.md) |
+| Deploy KO `permission denied for table _backup_…` **ou** table de sauvegarde disparue | `db push --accept-data-loss` supprime toute table de `public` hors schéma → schéma `backups` | [pitfall](docs/memory/pitfalls/db-push-supprime-tables-hors-schema.md) |
 | Retour de paiement mobile atterrit sur le portail web au lieu de l'app | `openAuthSessionAsync` exige un schéma custom | [pitfall](docs/memory/pitfalls/openauthsession-exige-scheme-custom.md) |
 | Mojibake `dÃ©mo` **ou** déconnexions membres intermittentes | `atob()` Latin-1 + base64url | [pitfall](docs/memory/pitfalls/atob-latin1-et-base64url.md) |
 | `Cannot find native module 'Expo…'` après un `npm install` | module natif absent du dev-client | [pitfall](docs/memory/pitfalls/module-natif-ne-passe-pas-par-metro.md) |
