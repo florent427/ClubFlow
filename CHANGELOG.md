@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.88.0](https://github.com/florent427/ClubFlow/compare/v0.87.0...v0.88.0) (2026-11-13)
+
+
+### ✨ Features
+
+* **admin:** vue des échéanciers et mois réglé par un paiement ([00f6949](https://github.com/florent427/ClubFlow/commit/00f694983a81df5da083cb7aa71d3c3b41c33ba1))
+* **admin:** vue des échéanciers et mois réglé par un paiement ([1efe185](https://github.com/florent427/ClubFlow/commit/1efe1854a954556860168739971b0e31421dc995))
+
 ## [0.87.0](https://github.com/florent427/ClubFlow/compare/v0.86.1...v0.87.0) (2026-11-11)
 
 
