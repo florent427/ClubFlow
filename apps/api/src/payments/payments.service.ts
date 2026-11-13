@@ -55,14 +55,14 @@ import { assertNotPayerCreditMethod } from './payment-method-rules';
 import { applyPricing } from './pricing-rules';
 import { lockInvoiceInTx, lockPayerCreditInTx } from './settlement-locks';
 
-type FamilyForLabel = {
+export type FamilyForLabel = {
   familyMembers: Array<{
     member: { lastName: string | null; firstName: string | null } | null;
     contact: { lastName: string | null; firstName: string | null } | null;
   }>;
 } | null;
 
-function deriveFamilyLabel(family: FamilyForLabel): string | null {
+export function deriveFamilyLabel(family: FamilyForLabel): string | null {
   if (!family) return null;
   const lastNames = new Set<string>();
   for (const fm of family.familyMembers) {

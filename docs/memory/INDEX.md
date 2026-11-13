@@ -39,6 +39,7 @@
 | [`compta-non-seedee-webhook-500.md`](pitfalls/compta-non-seedee-webhook-500.md) | Piège — module comptable activé mais plan comptable jamais seedé |
 | [`cors-admin-web-origin-missing-domain.md`](pitfalls/cors-admin-web-origin-missing-domain.md) | Piège — Login admin "Failed to fetch" : nouveau sous-domaine pas dans ADMIN_WEB_ORIGIN |
 | [`cors-no-origin-prod.md`](pitfalls/cors-no-origin-prod.md) | Piège — CORS API en `NODE_ENV=production` bloque les appels SSR |
+| [`db-push-supprime-tables-hors-schema.md`](pitfalls/db-push-supprime-tables-hors-schema.md) | Piège — Le déploiement supprime toute table de `public` absente du schéma Prisma |
 | [`domaine-envoi-role-non-modifiable.md`](pitfalls/domaine-envoi-role-non-modifiable.md) | Piège — un rôle figé à la création ne se corrige qu'en détruisant l'objet |
 | [`double-ignore-une-clause-du-where.md`](pitfalls/double-ignore-une-clause-du-where.md) | Piège — un double qui ignore une clause du `where` certifie un filtre absent |
 | [`double-transaction-rollback-trop-genereux.md`](pitfalls/double-transaction-rollback-trop-genereux.md) | Piège — un double de transaction qui annule TOUT à l'échec ne prouve rien |
@@ -135,7 +136,7 @@
 
 ---
 
-_Index généré le 2026-11-01 15:32 UTC par `bin/memory-index`._
+_Index généré le 2026-11-11 14:33 UTC par `bin/memory-index`._
 
 Pour rebuild : `bin/memory-index`
 Pour vérifier en CI : `bin/memory-index --check`
