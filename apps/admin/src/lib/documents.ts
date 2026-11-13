@@ -983,6 +983,53 @@ export const CLUB_INVOICE_DETAIL = gql`
   }
 `;
 
+const ADMIN_PAYMENT_SCHEDULE_FIELDS = `
+  id
+  invoiceId
+  invoiceLabel
+  invoiceStatus
+  payerLabel
+  method
+  status
+  totalCents
+  installmentCount
+  paidCount
+  paidCents
+  remainingCents
+  overdueCount
+  overdueCents
+  nextDueOn
+  nextDueCents
+  createdAt
+  installments {
+    id
+    seq
+    dueOn
+    amountCents
+    status
+    overdue
+    settleableByPayment
+  }
+`;
+
+/** Échéanciers du club : qui paie au mois, mois réglés, mois en retard. */
+export const CLUB_PAYMENT_SCHEDULES = gql`
+  query ClubPaymentSchedules {
+    clubPaymentSchedules {
+      ${ADMIN_PAYMENT_SCHEDULE_FIELDS}
+    }
+  }
+`;
+
+/** Échéancier d'une facture, ou null. */
+export const CLUB_INVOICE_PAYMENT_SCHEDULE = gql`
+  query ClubInvoicePaymentSchedule($invoiceId: ID!) {
+    clubInvoicePaymentSchedule(invoiceId: $invoiceId) {
+      ${ADMIN_PAYMENT_SCHEDULE_FIELDS}
+    }
+  }
+`;
+
 /** Avance versée en espèces, par virement ou par chèque (ADR-0022, tâche 4.2). */
 export const REFUND_PAYER_CREDIT_DEPOSIT = gql`
   mutation RefundPayerCreditDeposit(
