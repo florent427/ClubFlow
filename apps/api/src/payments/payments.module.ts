@@ -18,6 +18,7 @@ import { PayerCreditService } from './payer-credit.service';
 import { ViewerPayerCreditResolver } from './viewer-payer-credit.resolver';
 import { MonthlyContinuationService } from './monthly-continuation.service';
 import { PaymentScheduleAdminResolver } from './payment-schedule-admin.resolver';
+import { PaymentScheduleAdminQueryResolver } from './payment-schedule-admin-query.resolver';
 import { PaymentScheduleEngineService } from './payment-schedule-engine.service';
 import { PaymentScheduleNotifierService } from './payment-schedule-notifier.service';
 import { PaymentScheduleResolver } from './payment-schedule.resolver';
@@ -85,6 +86,8 @@ import { StripeWebhookController } from './stripe-webhook.controller';
     PaymentScheduleNotifierService,
     PaymentScheduleResolver,
     PaymentScheduleAdminResolver,
+    // Lecture des échéanciers dans le back-office.
+    PaymentScheduleAdminQueryResolver,
     MonthlyContinuationService,
     InvoicePayerScopeService,
     InvoiceRemindersService,

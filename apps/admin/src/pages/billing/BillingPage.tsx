@@ -14,6 +14,7 @@ import { SearchBox } from '../../components/ui/SearchBox';
 import { CardList, CardListItem } from '../../components/ui/CardList';
 import { useIsMobile } from '../../lib/use-media-query';
 import { InvoiceDetailDrawer } from './InvoiceDetailDrawer';
+import { PaymentSchedulesPanel } from './PaymentSchedulesPanel';
 
 function formatEuros(cents: number): string {
   return (cents / 100).toLocaleString('fr-FR', {
@@ -87,6 +88,8 @@ export function BillingPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<StatusFilter>('ALL');
   const [openId, setOpenId] = useState<string | null>(null);
+  // Factures, ou échéanciers (qui paie au mois, mois en retard).
+  const [view, setView] = useState<'INVOICES' | 'SCHEDULES'>('INVOICES');
   // Instant de référence figé au montage : « en retard » se juge à
   // l'ouverture de la page, pas à chaque re-rendu (règle de pureté React).
   const [now] = useState(() => Date.now());
@@ -180,7 +183,7 @@ export function BillingPage() {
               const ts = new Date().toISOString().slice(0, 10);
               downloadCsv(`factures-${ts}.csv`, csv);
             }}
-            disabled={!filtered.length}
+            disabled={view !== 'INVOICES' || !filtered.length}
           >
             <span className="material-symbols-outlined">download</span>
             Exporter CSV
@@ -188,203 +191,229 @@ export function BillingPage() {
         </div>
       </div>
 
-      <div className="cf-billing-kpis">
-        <div className="cf-billing-kpi">
-          <span className="cf-billing-kpi__label">Brouillons</span>
-          <span className="cf-billing-kpi__value">
-            {loading && !data ? <Skeleton width={90} /> : formatEuros(totals.draft)}
-          </span>
-        </div>
-        <div className="cf-billing-kpi">
-          <span className="cf-billing-kpi__label">Restant dû (ouvertes)</span>
-          <span className="cf-billing-kpi__value cf-billing-kpi__value--due">
-            {loading && !data ? <Skeleton width={90} /> : formatEuros(totals.open)}
-          </span>
-        </div>
-        <div className="cf-billing-kpi">
-          <span className="cf-billing-kpi__label">Encaissé (factures payées)</span>
-          <span className="cf-billing-kpi__value cf-billing-kpi__value--ok">
-            {loading && !data ? <Skeleton width={90} /> : formatEuros(totals.paid)}
-          </span>
-        </div>
+      <div className="cf-tabs cf-billing-views" role="tablist" aria-label="Vue">
+        {(
+          [
+            ['INVOICES', 'Factures'],
+            ['SCHEDULES', 'Mensualités'],
+          ] as const
+        ).map(([v, label]) => (
+          <button
+            key={v}
+            type="button"
+            role="tab"
+            aria-selected={view === v}
+            className={`cf-tab${view === v ? ' cf-tab--active' : ''}`}
+            onClick={() => setView(v)}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
-      <div className="cf-section-toolbar">
-        <SearchBox
-          value={search}
-          onChange={setSearch}
-          placeholder="Rechercher une facture…"
-        />
-        <div className="cf-tabs" role="tablist">
-          {(['ALL', 'DRAFT', 'OPEN', 'PAID', 'VOID', 'DEPOSIT'] as StatusFilter[]).map(
-            (s) => (
-              <button
-                key={s}
-                type="button"
-                role="tab"
-                aria-selected={status === s}
-                className={`cf-tab${status === s ? ' cf-tab--active' : ''}`}
-                onClick={() => setStatus(s)}
-              >
-                {s === 'ALL'
-                  ? 'Toutes'
-                  : s === 'DRAFT'
-                    ? 'Brouillons'
-                    : s === 'OPEN'
-                      ? 'Ouvertes'
-                      : s === 'PAID'
-                        ? 'Payées'
-                        : s === 'VOID'
-                          ? 'Annulées'
-                          : 'Avances'}
-              </button>
-            ),
-          )}
-        </div>
-      </div>
-
-      {error ? (
-        <ErrorState
-          title="Impossible de charger les factures"
-          message={error.message}
-          action={
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={() => void refetch()}
-            >
-              Réessayer
-            </button>
-          }
-        />
-      ) : loading && !data ? (
-        <LoadingState label="Chargement des factures…" />
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          icon="receipt_long"
-          title={
-            invoices.length === 0
-              ? 'Aucune facture pour le moment'
-              : 'Aucune facture ne correspond à ces filtres'
-          }
-          message={
-            invoices.length === 0
-              ? "Les factures d'adhésion apparaissent ici dès que vous en générez depuis les fiches membres, ou dès qu'un payeur choisit une formule via le portail."
-              : 'Ajustez la recherche ou changez d\u2019onglet.'
-          }
-        />
-      ) : isMobile ? (
-        <CardList ariaLabel="Factures">
-          {filtered.map((inv) => {
-            const overdue =
-              inv.status === 'OPEN' &&
-              inv.dueAt &&
-              new Date(inv.dueAt).getTime() < now;
-            const household =
-              inv.householdGroupLabel ??
-              inv.familyLabel ??
-              (inv.familyId ? inv.familyId.slice(0, 8) : '—');
-            return (
-              <CardListItem
-                key={inv.id}
-                title={inv.label}
-                subtitle={`${household} · ${
-                  overdue
-                    ? `en retard depuis le ${formatDate(inv.dueAt)}`
-                    : `échéance ${formatDate(inv.dueAt)}`
-                }`}
-                meta={
-                  <span
-                    className={
-                      inv.balanceCents > 0
-                        ? 'cf-cardlist__meta--danger'
-                        : 'cf-cardlist__meta--ok'
-                    }
-                  >
-                    {formatEuros(inv.amountCents)}
-                  </span>
-                }
-                footer={
-                  <>
-                    <StatusPill
-                      status={inv.status}
-                      isCreditNote={inv.isCreditNote}
-                      isDeposit={inv.purpose === 'PAYER_CREDIT_DEPOSIT'}
-                    />
-                    {inv.balanceCents > 0 ? (
-                      <span className="cf-pill cf-pill--danger">
-                        Reste dû {formatEuros(inv.balanceCents)}
-                      </span>
-                    ) : null}
-                  </>
-                }
-                onOpen={() => setOpenId(inv.id)}
-              />
-            );
-          })}
-        </CardList>
+      {view === 'SCHEDULES' ? (
+        <PaymentSchedulesPanel onOpenInvoice={setOpenId} />
       ) : (
-        <table className="cf-data-table cf-data-table--billing">
-          <thead>
-            <tr>
-              <th>Facture</th>
-              <th>Foyer</th>
-              <th>Échéance</th>
-              <th style={{ textAlign: 'right' }}>Montant</th>
-              <th style={{ textAlign: 'right' }}>Reste dû</th>
-              <th>Statut</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((inv) => {
-              const overdue =
-                inv.status === 'OPEN' &&
-                inv.dueAt &&
-                new Date(inv.dueAt).getTime() < now;
-              return (
-                <tr
-                  key={inv.id}
-                  className="cf-data-table__row--clickable"
-                  onClick={() => setOpenId(inv.id)}
-                >
-                  <td>
-                    <div className="cf-cell-primary">{inv.label}</div>
-                    <div className="cf-cell-muted">
-                      {inv.id.slice(0, 8)}
-                    </div>
-                  </td>
-                  <td>
-                    {inv.householdGroupLabel ??
-                      inv.familyLabel ??
-                      (inv.familyId ? inv.familyId.slice(0, 8) : '—')}
-                  </td>
-                  <td className={overdue ? 'cf-cell-danger' : ''}>
-                    {formatDate(inv.dueAt)}
-                    {overdue ? ' · en retard' : ''}
-                  </td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                    {formatEuros(inv.amountCents)}
-                  </td>
-                  <td
-                    style={{ textAlign: 'right' }}
-                    className={
-                      inv.balanceCents > 0 ? 'cf-cell-danger' : 'cf-cell-ok'
-                    }
+        <>
+          <div className="cf-billing-kpis">
+            <div className="cf-billing-kpi">
+              <span className="cf-billing-kpi__label">Brouillons</span>
+              <span className="cf-billing-kpi__value">
+                {loading && !data ? <Skeleton width={90} /> : formatEuros(totals.draft)}
+              </span>
+            </div>
+            <div className="cf-billing-kpi">
+              <span className="cf-billing-kpi__label">Restant dû (ouvertes)</span>
+              <span className="cf-billing-kpi__value cf-billing-kpi__value--due">
+                {loading && !data ? <Skeleton width={90} /> : formatEuros(totals.open)}
+              </span>
+            </div>
+            <div className="cf-billing-kpi">
+              <span className="cf-billing-kpi__label">Encaissé (factures payées)</span>
+              <span className="cf-billing-kpi__value cf-billing-kpi__value--ok">
+                {loading && !data ? <Skeleton width={90} /> : formatEuros(totals.paid)}
+              </span>
+            </div>
+          </div>
+
+          <div className="cf-section-toolbar">
+            <SearchBox
+              value={search}
+              onChange={setSearch}
+              placeholder="Rechercher une facture…"
+            />
+            <div className="cf-tabs" role="tablist">
+              {(['ALL', 'DRAFT', 'OPEN', 'PAID', 'VOID', 'DEPOSIT'] as StatusFilter[]).map(
+                (s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    role="tab"
+                    aria-selected={status === s}
+                    className={`cf-tab${status === s ? ' cf-tab--active' : ''}`}
+                    onClick={() => setStatus(s)}
                   >
-                    {formatEuros(inv.balanceCents)}
-                  </td>
-                  <td>
-                    <StatusPill
-                      status={inv.status}
-                      isCreditNote={inv.isCreditNote}
-                      isDeposit={inv.purpose === 'PAYER_CREDIT_DEPOSIT'}
-                    />
-                  </td>
+                    {s === 'ALL'
+                      ? 'Toutes'
+                      : s === 'DRAFT'
+                        ? 'Brouillons'
+                        : s === 'OPEN'
+                          ? 'Ouvertes'
+                          : s === 'PAID'
+                            ? 'Payées'
+                            : s === 'VOID'
+                              ? 'Annulées'
+                              : 'Avances'}
+                  </button>
+                ),
+              )}
+            </div>
+          </div>
+
+          {error ? (
+            <ErrorState
+              title="Impossible de charger les factures"
+              message={error.message}
+              action={
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => void refetch()}
+                >
+                  Réessayer
+                </button>
+              }
+            />
+          ) : loading && !data ? (
+            <LoadingState label="Chargement des factures…" />
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              icon="receipt_long"
+              title={
+                invoices.length === 0
+                  ? 'Aucune facture pour le moment'
+                  : 'Aucune facture ne correspond à ces filtres'
+              }
+              message={
+                invoices.length === 0
+                  ? "Les factures d'adhésion apparaissent ici dès que vous en générez depuis les fiches membres, ou dès qu'un payeur choisit une formule via le portail."
+                  : 'Ajustez la recherche ou changez d\u2019onglet.'
+              }
+            />
+          ) : isMobile ? (
+            <CardList ariaLabel="Factures">
+              {filtered.map((inv) => {
+                const overdue =
+                  inv.status === 'OPEN' &&
+                  inv.dueAt &&
+                  new Date(inv.dueAt).getTime() < now;
+                const household =
+                  inv.householdGroupLabel ??
+                  inv.familyLabel ??
+                  (inv.familyId ? inv.familyId.slice(0, 8) : '—');
+                return (
+                  <CardListItem
+                    key={inv.id}
+                    title={inv.label}
+                    subtitle={`${household} · ${
+                      overdue
+                        ? `en retard depuis le ${formatDate(inv.dueAt)}`
+                        : `échéance ${formatDate(inv.dueAt)}`
+                    }`}
+                    meta={
+                      <span
+                        className={
+                          inv.balanceCents > 0
+                            ? 'cf-cardlist__meta--danger'
+                            : 'cf-cardlist__meta--ok'
+                        }
+                      >
+                        {formatEuros(inv.amountCents)}
+                      </span>
+                    }
+                    footer={
+                      <>
+                        <StatusPill
+                          status={inv.status}
+                          isCreditNote={inv.isCreditNote}
+                          isDeposit={inv.purpose === 'PAYER_CREDIT_DEPOSIT'}
+                        />
+                        {inv.balanceCents > 0 ? (
+                          <span className="cf-pill cf-pill--danger">
+                            Reste dû {formatEuros(inv.balanceCents)}
+                          </span>
+                        ) : null}
+                      </>
+                    }
+                    onOpen={() => setOpenId(inv.id)}
+                  />
+                );
+              })}
+            </CardList>
+          ) : (
+            <table className="cf-data-table cf-data-table--billing">
+              <thead>
+                <tr>
+                  <th>Facture</th>
+                  <th>Foyer</th>
+                  <th>Échéance</th>
+                  <th style={{ textAlign: 'right' }}>Montant</th>
+                  <th style={{ textAlign: 'right' }}>Reste dû</th>
+                  <th>Statut</th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              </thead>
+              <tbody>
+                {filtered.map((inv) => {
+                  const overdue =
+                    inv.status === 'OPEN' &&
+                    inv.dueAt &&
+                    new Date(inv.dueAt).getTime() < now;
+                  return (
+                    <tr
+                      key={inv.id}
+                      className="cf-data-table__row--clickable"
+                      onClick={() => setOpenId(inv.id)}
+                    >
+                      <td>
+                        <div className="cf-cell-primary">{inv.label}</div>
+                        <div className="cf-cell-muted">
+                          {inv.id.slice(0, 8)}
+                        </div>
+                      </td>
+                      <td>
+                        {inv.householdGroupLabel ??
+                          inv.familyLabel ??
+                          (inv.familyId ? inv.familyId.slice(0, 8) : '—')}
+                      </td>
+                      <td className={overdue ? 'cf-cell-danger' : ''}>
+                        {formatDate(inv.dueAt)}
+                        {overdue ? ' · en retard' : ''}
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                        {formatEuros(inv.amountCents)}
+                      </td>
+                      <td
+                        style={{ textAlign: 'right' }}
+                        className={
+                          inv.balanceCents > 0 ? 'cf-cell-danger' : 'cf-cell-ok'
+                        }
+                      >
+                        {formatEuros(inv.balanceCents)}
+                      </td>
+                      <td>
+                        <StatusPill
+                          status={inv.status}
+                          isCreditNote={inv.isCreditNote}
+                          isDeposit={inv.purpose === 'PAYER_CREDIT_DEPOSIT'}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </>
       )}
 
       <InvoiceDetailDrawer

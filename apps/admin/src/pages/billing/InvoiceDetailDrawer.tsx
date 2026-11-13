@@ -6,6 +6,7 @@ import {
   CLUB_INVOICE_DETAIL,
   CLUB_INVOICE_PAYER_CREDITS,
   CLUB_INVOICE_PAYER_PEOPLE,
+  CLUB_INVOICE_PAYMENT_SCHEDULE,
   CLUB_PAYER_CREDIT,
   CREATE_CLUB_CREDIT_NOTE,
   ISSUE_CLUB_INVOICE,
@@ -56,6 +57,12 @@ import {
   canCancelManualPayment,
   isCancellationLine,
 } from '../../lib/manual-payment-cancellation';
+import {
+  firstSettleableInstallment,
+  previewSettlement,
+  type ClubInvoicePaymentScheduleQueryData,
+} from '../../lib/payment-schedules';
+import { PaymentScheduleSection, SettlementHint } from './PaymentScheduleSection';
 import { Drawer } from '../../components/ui/Drawer';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
 import { LoadingState } from '../../components/ui/LoadingState';
@@ -310,6 +317,25 @@ export function InvoiceDetailDrawer({
   );
   const payerPeople = payerPeopleData?.clubInvoicePayerPeople ?? [];
   const payAmountCents = Math.round(Number(payAmount.replace(',', '.').trim()) * 100) || 0;
+  // Échéancier de la facture (mensualités) : sans lui, une cotisation payée au
+  // mois se lisait comme un seul gros reste dû.
+  const { data: scheduleData, refetch: refetchSchedule } =
+    useQuery<ClubInvoicePaymentScheduleQueryData>(CLUB_INVOICE_PAYMENT_SCHEDULE, {
+      variables: { invoiceId: invoiceId ?? '' },
+      skip: !invoiceId,
+      fetchPolicy: 'cache-and-network',
+    });
+  const schedule = scheduleData?.clubInvoicePaymentSchedule ?? null;
+  // Montant proposé à l'encaissement : la prochaine mensualité, pas le reste
+  // dû de toute la saison.
+  const proposedPayCents =
+    firstSettleableInstallment(schedule)?.amountCents ?? balance;
+  const creditUseCents =
+    Math.round(Number(creditUseAmount.replace(',', '.').trim()) * 100) || 0;
+  // Tout encaissement, annulation ou avoir change l'état des mensualités.
+  async function refetchInvoiceAndSchedule() {
+    await Promise.all([refetch(), refetchSchedule()]);
+  }
   const [applyCredit, applyCreditState] =
     useMutation<ApplyPayerCreditToInvoiceMutationData>(APPLY_PAYER_CREDIT_TO_INVOICE);
   const paidByCredit = !!inv?.payments.some(
@@ -417,7 +443,7 @@ export function InvoiceDetailDrawer({
       setCreditUseNotice(
         `${formatEuros(cents)} réglés avec le crédit de ${candidate.displayName}.`,
       );
-      await refetch();
+      await refetchInvoiceAndSchedule();
       await refetchCredits();
       onChanged();
     } catch (err) {
@@ -439,7 +465,7 @@ export function InvoiceDetailDrawer({
         : 'MANUAL_CASH';
     setPayMethod(method);
     // Un chèque se saisit tel qu'écrit dessus : pas de reste dû pré-rempli.
-    setPayAmount(initialManualPaymentAmount(method, inv.balanceCents));
+    setPayAmount(initialManualPaymentAmount(method, proposedPayCents));
     setPayRef('');
     setPaySurplusKey('');
     setPayNotice(null);
@@ -511,7 +537,7 @@ export function InvoiceDetailDrawer({
           surplusPaymentNotice(cents - surplus.surplusCents, surplus.surplusCents, who),
         );
       }
-      await refetch();
+      await refetchInvoiceAndSchedule();
       onChanged();
     } catch (err) {
       setPayError(err instanceof Error ? err.message : 'Erreur');
@@ -524,7 +550,7 @@ export function InvoiceDetailDrawer({
     try {
       await issueInvoice({ variables: { id: inv.id } });
       setConfirmKind(null);
-      await refetch();
+      await refetchInvoiceAndSchedule();
       onChanged();
     } catch (err) {
       setConfirmKind(null);
@@ -545,7 +571,7 @@ export function InvoiceDetailDrawer({
       });
       setConfirmKind(null);
       setVoidReason('');
-      await refetch();
+      await refetchInvoiceAndSchedule();
       onChanged();
     } catch (err) {
       setConfirmKind(null);
@@ -588,7 +614,7 @@ export function InvoiceDetailDrawer({
           ? `Saisie de ${formatEuros(annule.amountCents)} annulée : ce montant est de nouveau dû. Saisis le bon encaissement ci-dessous.`
           : 'Saisie annulée.',
       );
-      await refetch();
+      await refetchInvoiceAndSchedule();
       onChanged();
     } catch (err) {
       setCancelError(err instanceof Error ? err.message : 'Annulation impossible.');
@@ -649,7 +675,7 @@ export function InvoiceDetailDrawer({
         setRefundNotice(
           depositRefundNotice(done?.kind ?? 'TRANSFER', formatEuros(done?.amountCents ?? cents)),
         );
-        await refetch();
+        await refetchInvoiceAndSchedule();
         await refetchDepositCredit();
         onChanged();
       } catch (err) {
@@ -736,7 +762,7 @@ export function InvoiceDetailDrawer({
         },
       });
       setCreditOpen(false);
-      await refetch();
+      await refetchInvoiceAndSchedule();
       onChanged();
     } catch (err) {
       setCreditError(err instanceof Error ? err.message : 'Erreur');
@@ -1053,6 +1079,8 @@ export function InvoiceDetailDrawer({
               </div>
             </section>
 
+            {schedule ? <PaymentScheduleSection schedule={schedule} /> : null}
+
             <section className="cf-invoice-detail__section">
               <h3 className="cf-invoice-detail__section-title">Paiements</h3>
               {inv.payments.length === 0 ? (
@@ -1195,6 +1223,13 @@ export function InvoiceDetailDrawer({
                     />
                   </label>
                 </div>
+                <SettlementHint
+                  preview={previewSettlement(
+                    schedule,
+                    creditUseCents,
+                    inv.balanceCents,
+                  )}
+                />
                 {creditUseError ? (
                   <p className="cf-form-error" role="alert">
                     {creditUseError}
@@ -1259,7 +1294,7 @@ export function InvoiceDetailDrawer({
                             payAmount,
                             payMethod,
                             next,
-                            inv.balanceCents,
+                            proposedPayCents,
                           ),
                         );
                         setPayMethod(next);
@@ -1292,6 +1327,13 @@ export function InvoiceDetailDrawer({
                     ) : null}
                   </label>
                 </div>
+                <SettlementHint
+                  preview={previewSettlement(
+                    schedule,
+                    payAmountCents,
+                    inv.balanceCents,
+                  )}
+                />
                 {payAmountCents > inv.balanceCents ? (
                   payMethod === 'MANUAL_CASH' || payMethod === 'MANUAL_TRANSFER' ? (
                     <label className="cf-field">

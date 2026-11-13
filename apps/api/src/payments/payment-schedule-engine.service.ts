@@ -14,6 +14,10 @@ import {
 } from '../scheduling/scheduling.constants';
 import { SchedulerLockService } from '../scheduling/scheduler-lock.service';
 import { resolveInvoiceBalance } from './invoice-balance';
+import {
+  MANUALLY_SETTLEABLE_INSTALLMENT_STATUSES,
+  MANUALLY_SETTLEABLE_SCHEDULE_STATUSES,
+} from './payment-schedule-admin-view';
 import { PaymentScheduleNotifierService } from './payment-schedule-notifier.service';
 
 /** Résumé d'un passage du moteur, pour les logs et le déclenchement manuel. */
@@ -220,13 +224,7 @@ export class PaymentScheduleEngineService {
       include: {
         installments: {
           where: {
-            status: {
-              in: [
-                InstallmentStatus.SCHEDULED,
-                InstallmentStatus.FAILED_RETRYABLE,
-                InstallmentStatus.REQUIRES_ACTION,
-              ],
-            },
+            status: { in: [...MANUALLY_SETTLEABLE_INSTALLMENT_STATUSES] },
           },
           orderBy: { seq: 'asc' },
         },
@@ -234,8 +232,7 @@ export class PaymentScheduleEngineService {
     });
     if (
       !schedule ||
-      (schedule.status !== PaymentScheduleStatus.ACTIVE &&
-        schedule.status !== PaymentScheduleStatus.PENDING_SETUP)
+      !MANUALLY_SETTLEABLE_SCHEDULE_STATUSES.includes(schedule.status)
     ) {
       return 0;
     }

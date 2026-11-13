@@ -4255,6 +4255,58 @@ a:focus-visible {
 }
 .cf-invoice-detail__empty { color: #64748b; font-size: 13px; margin: 0; }
 
+/* Échéancier d'une facture (mensualités), fiche facture et liste. */
+.cf-billing-views { margin-bottom: 16px; }
+.cf-schedule__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  font-size: 13px;
+  color: #475569;
+}
+.cf-schedule__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.cf-schedule__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  background: #ffffff;
+}
+.cf-schedule__row + .cf-schedule__row { border-top: 1px solid #f1f5f9; }
+.cf-schedule__row--overdue { background: #fef2f2; }
+.cf-schedule__month { font-weight: 600; color: #0f172a; text-transform: capitalize; }
+.cf-schedule__due { color: #64748b; font-size: 12px; }
+.cf-schedule__amount { font-weight: 600; color: #0f172a; text-align: right; }
+.cf-schedule__hint { color: #1e40af; }
+@media (max-width: 480px) {
+  .cf-schedule__row { grid-template-columns: minmax(0, 1fr) auto; }
+  .cf-schedule__due { grid-column: 1; }
+}
+.cf-schedule-months {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.cf-schedule-months__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: #e2e8f0;
+}
+.cf-schedule-months__dot--paid { background: #16a34a; }
+.cf-schedule-months__dot--overdue { background: #dc2626; }
+
 .cf-invoice-lines { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
 .cf-invoice-line {
   border: 1px solid #e2e8f0;
