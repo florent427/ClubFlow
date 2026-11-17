@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.89.0](https://github.com/florent427/ClubFlow/compare/v0.88.0...v0.89.0) (2026-11-17)
+
+
+### ✨ Features
+
+* **portail:** résumé « Où j'en suis » sur l'accueil adhérent ([e17aa34](https://github.com/florent427/ClubFlow/commit/e17aa3447d40c727b730205c9d3038fe9bab5293))
+* **portail:** résumé « Où j'en suis » sur l'accueil adhérent ([6e6d534](https://github.com/florent427/ClubFlow/commit/6e6d53415e791cd123f26b1ecdf53227f2402b13))
+
 ## [0.88.0](https://github.com/florent427/ClubFlow/compare/v0.87.0...v0.88.0) (2026-11-13)
 
 
