@@ -81,6 +81,8 @@ export function DashboardPage() {
   const isPayer = billing?.isPayerView ?? false;
 
   const cert = medicalCertState(me?.medicalCertExpiresAt ?? null);
+  const requiresMedicalCertificate =
+    clubData?.club?.requiresMedicalCertificate === true;
 
   // Bannière panier d'adhésion + CTAs inscriptions famille — parité
   // mobile (cf. apps/mobile/src/screens/HomeDashboardScreen.tsx).
@@ -130,14 +132,18 @@ export function DashboardPage() {
                 <span className="material-symbols-outlined mp-pill-ico">school</span>
                 {me?.gradeLevelLabel ?? 'Grade non renseigné'}
               </span>
-              <span
-                className={`mp-pill${cert.ok ? ' mp-pill-ok' : ' mp-pill-warn'}`}
-              >
-                <span className="material-symbols-outlined mp-pill-ico">
-                  verified_user
+              {/* Pas de pastille certificat quand le club ne l'exige pas :
+                  même règle que la carte « Où j'en suis ». */}
+              {requiresMedicalCertificate ? (
+                <span
+                  className={`mp-pill${cert.ok ? ' mp-pill-ok' : ' mp-pill-warn'}`}
+                >
+                  <span className="material-symbols-outlined mp-pill-ico">
+                    verified_user
+                  </span>
+                  {cert.label}
                 </span>
-                {cert.label}
-              </span>
+              ) : null}
               {me?.telegramLinked ? (
                 <span className="mp-pill mp-pill-ok">
                   <span className="material-symbols-outlined mp-pill-ico">
@@ -190,9 +196,7 @@ export function DashboardPage() {
             : null
         }
         cartId={cartIsOpen ? (cart?.id ?? null) : null}
-        requiresMedicalCertificate={
-          clubData?.club?.requiresMedicalCertificate === true
-        }
+        requiresMedicalCertificate={requiresMedicalCertificate}
       />
 
       {/* Inscriptions famille (PAYER uniquement) — modales déjà présentes

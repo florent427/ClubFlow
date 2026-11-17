@@ -314,9 +314,11 @@ function medicalCertItem(
   cert: { expiresAt: string | null; required: boolean },
   today: Date,
 ): StatusItem | null {
+  // Règle unique, posée à l'entrée : un club qui n'exige pas de certificat
+  // n'en parle pas du tout, même pour dire qu'il est valide.
+  if (!cert.required) return null;
   const id = 'medical-cert';
   if (!cert.expiresAt) {
-    if (!cert.required) return null;
     return {
       id,
       tone: 'todo',
@@ -327,8 +329,6 @@ function medicalCertItem(
   const date = formatShortDate(cert.expiresAt);
   const days = daysUntil(cert.expiresAt, today);
   if (days < 0) {
-    // Un club qui n'exige pas de certificat n'a rien à réclamer.
-    if (!cert.required) return null;
     return {
       id,
       tone: 'alert',
@@ -336,7 +336,7 @@ function medicalCertItem(
       detail: `Expiré depuis le ${date}. Remettez un nouveau certificat à votre club.`,
     };
   }
-  if (days <= CERT_WARNING_DAYS && cert.required) {
+  if (days <= CERT_WARNING_DAYS) {
     return {
       id,
       tone: 'todo',

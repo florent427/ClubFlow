@@ -285,6 +285,23 @@ describe('documentsSection', () => {
     expect(item?.detail).toContain('2027');
   });
 
+  it.each([
+    ['valide', '2027-09-01'],
+    ['bientôt expiré', '2026-11-30'],
+    ['expiré', '2026-11-16'],
+    ['absent', null],
+  ])(
+    'club qui n’exige pas de certificat : aucune ligne, certificat %s',
+    (_cas, expiresAt) => {
+      expect(
+        documentsSection({
+          ...none,
+          medicalCert: { expiresAt, required: false },
+        }).items,
+      ).toEqual([]);
+    },
+  );
+
   it('certificat absent : réclamé seulement si le club l’exige', () => {
     expect(
       documentsSection({
