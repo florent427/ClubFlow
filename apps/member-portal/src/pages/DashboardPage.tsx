@@ -16,17 +16,16 @@ import type {
   ViewerSlot,
 } from '../lib/viewer-types';
 import {
-  formatEuroCents,
   formatRangeHours,
   medicalCertState,
   slotCalendarBits,
 } from '../lib/format';
-import { DocumentsToSignBanner } from '../components/DocumentsToSignBanner';
 import { InviteFamilyMemberCta } from '../components/InviteFamilyMemberCta';
 import { JoinFamilyByPayerEmailCta } from '../components/JoinFamilyByPayerEmailCta';
 import { MemberRoleToggle } from '../components/MemberRoleToggle';
 import { PromoteSelfToMemberCta } from '../components/PromoteSelfToMemberCta';
 import { RegisterChildMemberCta } from '../components/RegisterChildMemberCta';
+import { StatusSummary } from '../components/StatusSummary';
 import {
   VIEWER_ACTIVE_CART,
   type ViewerActiveCartData,
@@ -80,8 +79,6 @@ export function DashboardPage() {
   const dashSlots = slots.slice(0, 3);
   const billing = billQ.data?.viewerFamilyBillingSummary;
   const isPayer = billing?.isPayerView ?? false;
-  const openInvoices =
-    billing?.invoices.filter((i) => i.balanceCents > 0) ?? [];
 
   const cert = medicalCertState(me?.medicalCertExpiresAt ?? null);
 
@@ -100,14 +97,8 @@ export function DashboardPage() {
     (cart?.items.length ?? 0) + (cart?.pendingItems.length ?? 0);
   const cartIsOpen = cart?.status === 'OPEN' && cartItemsCount > 0;
 
-  // KPIs payeur (Reste à payer / Déjà réglé) — parité mobile.
-  const totalBalance = openInvoices.reduce((s, i) => s + i.balanceCents, 0);
-  const totalPaid =
-    billing?.invoices.reduce((s, i) => s + i.totalPaidCents, 0) ?? 0;
-
   return (
     <div className="mp-page">
-      <DocumentsToSignBanner />
       <section className="mp-hero">
         <div className="mp-hero-head">
           <p className="mp-eyebrow">
@@ -180,67 +171,29 @@ export function DashboardPage() {
 
       <JoinFamilyByPayerEmailCta variant="dashboard" />
 
-      {/* Bannière panier en cours (cliquable vers /adhesion) — visible
-          dès que le payeur a ≥1 item dans son cart actif. Parité mobile. */}
-      {cartIsOpen ? (
-        <Link to="/adhesion" className="mp-cart-banner">
-          <span
-            className="material-symbols-outlined mp-cart-banner__ico"
-            aria-hidden="true"
-          >
-            shopping_basket
-          </span>
-          <div className="mp-cart-banner__body">
-            <strong>Panier d&rsquo;adhésion ({cartItemsCount})</strong>
-            <small>
-              Total {formatEuroCents(cart?.totalCents ?? 0)} —{' '}
-              {cart?.canValidate ? 'prêt à valider' : 'à compléter'}
-            </small>
-          </div>
-          <span className="mp-pill mp-pill-primary">Voir</span>
-        </Link>
-      ) : null}
-
-      {/* KPIs payeur (Reste à payer / Déjà réglé) — cliquables vers
-          /factures. Affichés uniquement si l'utilisateur est PAYER.
-          Ils menaient à /famille, qui liste les factures SANS aucune action
-          de paiement : le parcours naturel depuis « Reste à payer »
-          aboutissait donc à un écran où l'on ne peut pas payer. */}
-      {isPayer ? (
-        <div className="mp-kpi-row">
-          <Link
-            to="/factures"
-            className={`mp-kpi-tile${totalBalance > 0 ? ' mp-kpi-tile--warm' : ''}`}
-          >
-            <span
-              className="material-symbols-outlined mp-kpi-tile__ico"
-              aria-hidden="true"
-            >
-              account_balance_wallet
-            </span>
-            <span className="mp-kpi-tile__label">Reste à payer</span>
-            <span className="mp-kpi-tile__value">
-              {billQ.loading && !billing
-                ? '…'
-                : formatEuroCents(totalBalance)}
-            </span>
-          </Link>
-          <Link to="/factures" className="mp-kpi-tile mp-kpi-tile--cool">
-            <span
-              className="material-symbols-outlined mp-kpi-tile__ico"
-              aria-hidden="true"
-            >
-              check_circle
-            </span>
-            <span className="mp-kpi-tile__label">Déjà réglé</span>
-            <span className="mp-kpi-tile__value">
-              {billQ.loading && !billing
-                ? '…'
-                : formatEuroCents(totalPaid)}
-            </span>
-          </Link>
-        </div>
-      ) : null}
+      {/* Résumé « Où j'en suis » : paiements (reste dû, échéanciers, panier),
+          documents à signer et certificat, informations à compléter. Il
+          remplace la bannière panier, les indicateurs payeur, la bannière des
+          documents et le panneau « Famille & paiements », qui disaient chacun
+          un morceau de la même chose. */}
+      <StatusSummary
+        me={me}
+        billing={billing}
+        billingLoading={billQ.loading && !billing}
+        cart={
+          cartIsOpen
+            ? {
+                itemsCount: cartItemsCount,
+                totalCents: cart?.totalCents ?? 0,
+                canValidate: cart?.canValidate === true,
+              }
+            : null
+        }
+        cartId={cartIsOpen ? (cart?.id ?? null) : null}
+        requiresMedicalCertificate={
+          clubData?.club?.requiresMedicalCertificate === true
+        }
+      />
 
       {/* Inscriptions famille (PAYER uniquement) — modales déjà présentes
           dans les composants existants : RegisterChild + PromoteSelf
@@ -321,42 +274,6 @@ export function DashboardPage() {
               )}
             </section>
           </>
-        ) : null}
-
-        {isPayer ? (
-          <section className="mp-panel mp-panel-wide">
-            <h2 className="mp-panel-title">Famille &amp; paiements</h2>
-            {billQ.error ? (
-              <p className="mp-hint">
-                Facturation indisponible (module ou droits).
-              </p>
-            ) : !billing ? (
-              <p className="mp-hint">Chargement…</p>
-            ) : (
-              <>
-                {billing.familyLabel ? (
-                  <p className="mp-family-label">{billing.familyLabel}</p>
-                ) : null}
-                {openInvoices.length === 0 ? (
-                  <p className="mp-hint">Aucun solde ouvert.</p>
-                ) : (
-                  <ul className="mp-invoice-mini">
-                    {openInvoices.slice(0, 3).map((inv) => (
-                      <li key={inv.id} className="mp-invoice-line">
-                        <span>{inv.label}</span>
-                        <strong>
-                          {formatEuroCents(inv.balanceCents)}
-                        </strong>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <Link to="/famille" className="mp-link">
-                  Ouvrir Ma famille
-                </Link>
-              </>
-            )}
-          </section>
         ) : null}
       </div>
     </div>

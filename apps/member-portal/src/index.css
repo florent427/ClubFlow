@@ -5857,3 +5857,260 @@ a:focus-visible {
   display: grid;
   gap: 0.6rem;
 }
+
+/* === Résumé « Où j'en suis » (accueil) === */
+.mp-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.mp-status {
+  background: #ffffff;
+  border-radius: 1rem;
+  padding: 1.15rem 1.2rem 1.25rem;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 8px 28px -6px rgba(25, 28, 29, 0.07);
+}
+
+.mp-status__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.mp-status__title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: #191c1d;
+}
+
+.mp-status__sub {
+  margin: 0.15rem 0 0;
+  font-size: 0.85rem;
+  color: #6f7078;
+}
+
+.mp-status__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.mp-status__badge .material-symbols-outlined {
+  font-size: 1.1rem;
+}
+
+.mp-status__badge--ok,
+.mp-status-chip--ok {
+  background: rgba(0, 120, 80, 0.1);
+  color: #0d5c3d;
+}
+
+.mp-status__badge--todo,
+.mp-status-chip--todo {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.mp-status__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+  align-items: start;
+  gap: 0.85rem;
+}
+
+.mp-status-section {
+  min-width: 0;
+  border: 1px solid #e9ebee;
+  border-radius: 0.85rem;
+  padding: 0.85rem 0.9rem 0.9rem;
+}
+
+.mp-status-section__head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.mp-status-section__ico {
+  font-size: 1.25rem !important;
+  color: #0056c5;
+}
+
+.mp-status-section__title {
+  flex: 1;
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #191c1d;
+}
+
+.mp-status-chip {
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.mp-status-figures {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin: 0 0 0.65rem;
+}
+
+.mp-status-figure {
+  min-width: 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.6rem;
+  background: #f6f7f9;
+}
+
+.mp-status-figure dt {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.mp-status-figure dd {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
+.mp-status-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mp-status-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  min-height: 44px;
+  padding: 0.55rem 0.6rem;
+  border-radius: 0.6rem;
+  background: #f6f7f9;
+  color: inherit;
+  text-decoration: none;
+}
+
+.mp-status-item--link {
+  transition: box-shadow 0.12s ease;
+}
+
+.mp-status-item--link:hover {
+  box-shadow: inset 0 0 0 1px rgba(0, 86, 197, 0.35);
+}
+
+.mp-status-item--link:focus-visible {
+  outline: 2px solid #0056c5;
+  outline-offset: 2px;
+}
+
+.mp-status-item__ico {
+  flex-shrink: 0;
+  margin-top: 0.05rem;
+  font-size: 1.2rem !important;
+  color: #64748b;
+}
+
+.mp-status-item__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.mp-status-item__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.mp-status-item__title {
+  min-width: 0;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #191c1d;
+  overflow-wrap: break-word;
+}
+
+.mp-status-item__detail {
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: #5b5f66;
+}
+
+.mp-status-item__amount {
+  flex-shrink: 0;
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+
+.mp-status-item__cta {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 0.15rem;
+  font-size: 0.76rem;
+  font-weight: 800;
+  color: #0056c5;
+  white-space: nowrap;
+}
+
+.mp-status-item__cta .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+.mp-status-item--ok {
+  background: rgba(0, 120, 80, 0.06);
+}
+
+.mp-status-item--ok .mp-status-item__ico {
+  color: #0d7a52;
+}
+
+.mp-status-item--todo {
+  background: #fffbeb;
+}
+
+.mp-status-item--todo .mp-status-item__ico {
+  color: #b45309;
+}
+
+.mp-status-item--alert {
+  background: rgba(186, 26, 26, 0.07);
+}
+
+.mp-status-item--alert .mp-status-item__ico {
+  color: #ba1a1a;
+}
