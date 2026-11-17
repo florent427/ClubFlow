@@ -9,6 +9,14 @@ Ce fichier est **régénéré automatiquement** par
 [release-please](https://github.com/googleapis/release-please) à partir des
 commits Conventional Commits sur `main`. Ne pas l'éditer à la main.
 
+## [0.89.1](https://github.com/florent427/ClubFlow/compare/v0.89.0...v0.89.1) (2026-11-17)
+
+
+### 🐛 Bug Fixes
+
+* **portail:** pas de certificat médical sur l'accueil si le club ne l'exige pas ([c90dd1a](https://github.com/florent427/ClubFlow/commit/c90dd1ac83ff222389e077612395e1de8235fdf5))
+* **portail:** pas de certificat médical sur l'accueil si le club ne l'exige pas ([6ce1549](https://github.com/florent427/ClubFlow/commit/6ce15496dbfc2f78b495c0e844f6dbec907bdff8))
+
 ## [0.89.0](https://github.com/florent427/ClubFlow/compare/v0.88.0...v0.89.0) (2026-11-17)
 
 
