@@ -184,7 +184,12 @@ export type ViewerAllBillingData = {
 };
 
 export type ClubQueryData = {
-  club: { id: string; name: string; slug: string };
+  club: {
+    id: string;
+    name: string;
+    slug: string;
+    requiresMedicalCertificate: boolean;
+  };
 };
 
 export type ViewerClubModule = { moduleCode: string; enabled: boolean };
